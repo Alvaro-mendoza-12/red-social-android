@@ -29,24 +29,21 @@ class InboxIdentityCache @Inject constructor(
             .mapNotNull(::identityFromConversation)
             .distinctBy { it.id }
             .toList()
-        val identities = buildList(incomingIdentities.size) {
-            incomingIdentities.forEach { incoming ->
-                add(
-                    mergeInboxIdentity(
-                        existing = userDao.getUser(incoming.id),
-                        incoming = incoming,
-                    )
-                )
-            }
-        }
-
-        if (identities.isNotEmpty()) userDao.insertUsers(identities)
+        persistInboxIdentityBatch(userDao, incomingIdentities)
         warmAvatars(conversations.mapNotNull(::inboxAvatarUrl), accountId, identityGeneration)
     }
 
     private fun warmAvatars(urls: Iterable<String>, accountId: String, identityGeneration: Long) {
         ProfileIdentityImageStore.warm(context, selectInboxAvatarsForPrefetch(urls), accountId, identityGeneration)
     }
+}
+
+/** Refreshing 200 contacts should not issue 200 serialized Room lookups. */
+internal suspend fun persistInboxIdentityBatch(userDao: UserDao, incoming: List<UserEntity>) {
+    if (incoming.isEmpty()) return
+    val existing = incoming.map(UserEntity::id).distinct().chunked(800)
+        .flatMap { userDao.getUsers(it) }.associateBy(UserEntity::id)
+    userDao.insertUsers(incoming.map { mergeInboxIdentity(existing[it.id], it) })
 }
 
 internal fun mergeInboxConversationIdentity(

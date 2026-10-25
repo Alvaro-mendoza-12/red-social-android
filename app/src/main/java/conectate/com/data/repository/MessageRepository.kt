@@ -77,6 +77,7 @@ import conectate.com.util.Constants
 import conectate.com.util.buildCallEventPreview
 import conectate.com.util.buildConversationBackgroundPreview
 import conectate.com.util.guessMimeTypeFromUri
+import conectate.com.util.fileExtensionFromName
 import conectate.com.util.inferMimeTypeFromBytes
 import conectate.com.util.isCallEventContentType
 import conectate.com.util.resolveMediaMeta
@@ -157,7 +158,7 @@ class MessageRepository @Inject constructor(
     }
 
     private val scope = newSafeScope("MessageRepository", Dispatchers.IO)
-    private val mediaPrefetchSlots = kotlinx.coroutines.sync.Semaphore(2)
+    private val mediaPrefetchGate = conectate.com.data.repository.message.ChatMediaPrefetchGate(scope)
     private var json = Json { 
         ignoreUnknownKeys = true 
         coerceInputValues = true
@@ -2315,15 +2316,21 @@ class MessageRepository @Inject constructor(
 
     private fun prefetchChatMedia(candidates: Iterable<ChatMediaPrefetchCandidate>, isAllowed: (String) -> Boolean) {
         if (!automaticMediaAllowed()) return
+        val session = captureSessionSnapshot()
+        val account = session.accountId ?: return
         val recent = candidates.toList()
         val typeByUrl = recent.associate { it.mediaUrl?.trim() to it.contentType }
         selectRecentChatMediaForPrefetch(recent, maxItems = 24).asReversed()
             .sortedBy { if (typeByUrl[it] in setOf("image", "sticker", "gif")) 0 else 1 }.forEach { mediaPath ->
             if (!isAllowed(mediaPath)) return@forEach
-            scope.launch {
-              mediaPrefetchSlots.acquire()
-              try {
-                if (!isAllowed(mediaPath)) return@launch
+            val sourceKey = conectate.com.data.localfallback.UbuntuStorageUrl.stableCacheKey(mediaPath) ?: mediaPath
+            val key = conectate.com.data.repository.message.ChatMediaPrefetchGate.Key(
+                account, session.epoch,
+                "${typeByUrl[mediaPath]}:$sourceKey",
+            )
+            mediaPrefetchGate.enqueue(key, isAllowed = {
+                isSessionSnapshotValid(session, "prefetch-slot") && automaticMediaAllowed() && isAllowed(mediaPath)
+            }) {
                 val image = when (typeByUrl[mediaPath]) {
                     "sticker", "gif" -> conectate.com.core.media.MediaImageRequestFactory.animated(context, mediaPath)
                     "image" -> conectate.com.core.media.MediaImageRequestFactory.preview(context, mediaPath)
@@ -2336,9 +2343,6 @@ class MessageRepository @Inject constructor(
                     allowOfflineMediaCache = true,
                     isPrefetch = true
                 )
-              } finally {
-                mediaPrefetchSlots.release()
-              }
             }
         }
     }
@@ -4965,7 +4969,8 @@ class MessageRepository @Inject constructor(
             preferredMediaType = mediaType,
             declaredMime = declaredMime,
             guessedMime = guessedMime,
-            inferredMime = inferredMime
+            inferredMime = inferredMime,
+            fallbackExtension = fileExtensionFromName(mediaUri?.lastPathSegment) ?: "bin"
         )
         return resolved.mimeType to resolved.extensionWithDot
     }

@@ -1,7 +1,7 @@
 package conectate.com.data.repository.message
 
 import android.util.Log
-import com.google.firebase.crashlytics.FirebaseCrashlytics
+import conectate.com.core.crash.CrashReporter
 import conectate.com.BuildConfig
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.local.dao.ChatDao
@@ -36,7 +36,7 @@ class MessageRealtimeSync @Inject constructor(
     private val messageDao: MessageDao,
     private val chatDao: ChatDao,
     private val appMetrics: AppMetrics,
-    private val crashlytics: FirebaseCrashlytics,
+    private val crashlytics: CrashReporter,
     private val conversationReadReceiver: ConversationReadReceiver,
     @param:dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) {
@@ -234,10 +234,9 @@ class MessageRealtimeSync @Inject constructor(
                     Log.d(TAG, "✅ Mensaje insertado via realtime: ${msg.id} en chat $cleanId")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error procesando mensaje realtime insert", e)
-                    crashlytics.setCustomKey("component", "MessageRealtimeSync")
-                    crashlytics.setCustomKey("operation", "handleInsert")
-                    crashlytics.setCustomKey("msg_id", msg.id)
-                    crashlytics.recordException(e)
+                    crashlytics.recordException(e, mapOf(
+                        "component" to "MessageRealtimeSync", "operation" to "handleInsert", "msg_id" to msg.id,
+                    ))
                 }
             }
     }
@@ -289,10 +288,9 @@ class MessageRealtimeSync @Inject constructor(
                     Log.d(TAG, "✅ Mensaje actualizado via realtime: ${msg.id}")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error procesando mensaje realtime update", e)
-                    crashlytics.setCustomKey("component", "MessageRealtimeSync")
-                    crashlytics.setCustomKey("operation", "handleUpdate")
-                    crashlytics.setCustomKey("msg_id", msg.id)
-                    crashlytics.recordException(e)
+                    crashlytics.recordException(e, mapOf(
+                        "component" to "MessageRealtimeSync", "operation" to "handleUpdate", "msg_id" to msg.id,
+                    ))
                 }
             }
     }

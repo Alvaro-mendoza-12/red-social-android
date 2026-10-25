@@ -1,6 +1,8 @@
 package conectate.com.presentation.messages
 
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
@@ -15,8 +17,22 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.content.MediaType
+import androidx.compose.foundation.content.ReceiveContentListener
+import androidx.compose.foundation.content.consume
+import androidx.compose.foundation.content.hasMediaType
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.OutputTransformation
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,6 +43,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -35,6 +52,8 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -49,6 +68,7 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.EmojiEmotions
@@ -86,6 +106,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,7 +116,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -114,7 +134,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import conectate.com.presentation.components.ImageCropPreset
 import conectate.com.presentation.components.SimpleImageCropDialog
-import conectate.com.presentation.components.rememberReliableBottomSafePadding
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -125,6 +144,7 @@ import coil.request.ImageRequest
 import coil.size.Size
 import coil.request.videoFrameMillis
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -143,6 +163,172 @@ data class OutgoingMessageMedia(
     val uri: Uri,
     val type: String
 )
+
+/** Routes image URIs pasted into a chat field through the same preview/editor as gallery picks. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun rememberChatImagePasteReceiver(onImages: (List<Pair<Uri, String>>) -> Unit): ReceiveContentListener {
+    val context = LocalContext.current
+    val latestOnImages = rememberUpdatedState(onImages)
+    return remember(context) {
+        ReceiveContentListener { content ->
+            if (content.hasMediaType(MediaType.Image)) {
+                val description = content.clipEntry.clipData.description
+                val declaredImageType = (0 until description.mimeTypeCount)
+                    .map { description.getMimeType(it).lowercase(Locale.ROOT) }
+                    .firstOrNull { it.startsWith("image/") }
+                val pastedImages = mutableListOf<Pair<Uri, String>>()
+                val remaining = content.consume { item ->
+                    val image = clipboardImageItem(context, item, declaredImageType)
+                    if (image != null) {
+                        pastedImages += image
+                        true
+                    } else false
+                }
+                if (pastedImages.isNotEmpty()) latestOnImages.value(pastedImages)
+                remaining
+            } else {
+                content
+            }
+        }
+    }
+}
+
+private fun clipboardImageItem(context: Context, item: ClipData.Item, declaredImageType: String?): Pair<Uri, String>? {
+    val textUri = item.text?.toString()?.trim()?.takeIf {
+        it.startsWith("content://", ignoreCase = true) || it.startsWith("file://", ignoreCase = true)
+    }?.let { runCatching { Uri.parse(it) }.getOrNull() }
+    val uri = item.uri ?: item.intent?.data ?: textUri ?: return null
+    val resolvedType = runCatching { context.contentResolver.getType(uri)?.lowercase(Locale.ROOT) }.getOrNull()
+    val type = resolvedType?.takeIf { it.startsWith("image/") } ?: declaredImageType ?: return null
+    return uri to type
+}
+
+/** Read image URIs only after an explicit paste action; never inspect the clipboard on screen entry. */
+internal fun readClipboardImageUris(context: Context, maxItems: Int = 30): List<Pair<Uri, String>> {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return emptyList()
+    val clip = runCatching { clipboard.primaryClip }.getOrNull() ?: return emptyList()
+    val declaredImageTypes = (0 until clip.description.mimeTypeCount)
+        .mapNotNull { index -> runCatching { clip.description.getMimeType(index)?.lowercase(Locale.ROOT) }.getOrNull() }
+        .filter { it.startsWith("image/") }
+    val limit = maxItems.coerceAtLeast(0)
+    if (limit == 0) return emptyList()
+    return buildList {
+        for (index in 0 until clip.itemCount) {
+            if (size >= limit) break
+            val item = runCatching { clip.getItemAt(index) }.getOrNull() ?: continue
+            val image = clipboardImageItem(context, item, declaredImageTypes.firstOrNull()) ?: continue
+            if (none { it.first == image.first }) add(image)
+        }
+    }
+}
+
+/** TextField's native paste handles text. This action routes image clipboard items to the same editor as gallery picks. */
+@Composable
+internal fun ClipboardImagePasteAction(
+    maxItems: Int,
+    onImages: (List<Pair<Uri, String>>) -> Unit,
+) {
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("clipboard_image_paste")
+            .clickable {
+                val images = readClipboardImageUris(context, maxItems)
+                if (images.isNotEmpty()) {
+                    onImages(images)
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        "No hay imágenes en el portapapeles.",
+                        android.widget.Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.ContentPaste, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(16.dp))
+        Text("Pegar desde portapapeles", style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+/** Bridges the existing conversation draft with state-based TextField, which supports rich clipboard images. */
+@Composable
+internal fun rememberChatComposerFieldState(
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
+): TextFieldState {
+    val safeText = remember(value.text) { conectate.com.data.local.safeConversationDraft(value.text) }
+    val state = rememberTextFieldState(initialText = safeText)
+    val latestValue = rememberUpdatedState(value)
+    val latestOnValueChange = rememberUpdatedState(onValueChange)
+    LaunchedEffect(state, value) {
+        val safeSelection = TextRange(
+            conectate.com.data.local.safeConversationCaret(safeText, value.selection.start),
+            conectate.com.data.local.safeConversationCaret(safeText, value.selection.end),
+        )
+        if (state.text.toString() != safeText || state.selection != safeSelection) {
+            state.edit {
+                if (asCharSequence().toString() != safeText) {
+                    replace(0, length, safeText)
+                }
+                selection = safeSelection
+            }
+        }
+    }
+    LaunchedEffect(state) {
+        snapshotFlow { TextFieldValue(state.text.toString(), state.selection) }
+            .distinctUntilChanged()
+            .collect { changed ->
+                if (changed != latestValue.value) latestOnValueChange.value(changed)
+            }
+    }
+    return state
+}
+
+/** IME commits can precede the draft observer; sending must read the actual editor. */
+internal fun TextFieldState.publishCurrentChatDraft(onText: (String) -> Unit): String =
+    conectate.com.data.local.safeConversationDraft(text.toString()).also(onText)
+
+/** Validate before layout so a malformed IME edit never reaches emoji shaping. */
+internal val ChatUnicodeInputTransformation = androidx.compose.foundation.text.input.InputTransformation {
+    val source = asCharSequence().toString()
+    val safeText = conectate.com.data.local.safeConversationDraft(source)
+    if (source != safeText) replace(0, length, safeText)
+    val safeSelection = TextRange(
+        conectate.com.data.local.safeConversationCaret(asCharSequence(), selection.start),
+        conectate.com.data.local.safeConversationCaret(asCharSequence(), selection.end),
+    )
+    if (selection != safeSelection) selection = safeSelection
+}
+
+/** Keeps spelling and public-mention styling when the composer uses state-based text input. */
+@Composable
+internal fun rememberChatComposerOutputTransformation(
+    issues: List<conectate.com.presentation.components.ChatSpellingIssue>,
+    highlightMentions: Boolean,
+): OutputTransformation = remember(issues, highlightMentions) {
+    OutputTransformation {
+        val source = asCharSequence().toString()
+        if (highlightMentions) {
+            conectate.com.data.model.publicMentionPattern.findAll(source).forEach { match ->
+                addStyle(SpanStyle(color = androidx.compose.ui.graphics.Color(0xFF64B5F6)), match.range.first, match.range.last + 1)
+            }
+        }
+        issues.forEach { issue ->
+            if (issue.start >= 0 && issue.end <= length && issue.start < issue.end && source.substring(issue.start, issue.end) == issue.word) {
+                addStyle(
+                    SpanStyle(color = androidx.compose.ui.graphics.Color(0xFFED6666), textDecoration = TextDecoration.Underline),
+                    issue.start,
+                    issue.end,
+                )
+            }
+        }
+    }
+}
 
 internal data class DeviceMedia(
     val id: Long,
@@ -314,7 +500,12 @@ fun MessageMediaComposer(
     }
 
     Dialog(
-        onDismissRequest = { if (!isSending && !preparing) onDismiss() },
+        onDismissRequest = {
+            if (!isSending && !preparing) {
+                if ((step == "gallery" || step == "camera") && selected.isNotEmpty()) step = "editor"
+                else onDismiss()
+            }
+        },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
     ) {
         KeepMediaCanvasFixedWhileTyping()
@@ -322,7 +513,7 @@ fun MessageMediaComposer(
             when (step) {
                 "camera" -> ChatCameraCapture(
                     allowedTypes = selectableMediaTypes,
-                    onClose = onDismiss,
+                    onClose = { if (selected.isNotEmpty()) step = "editor" else onDismiss() },
                     onGallery = { step = "gallery" },
                     onCaptured = { captured, durationMs ->
                         if (selected.size < maxItems.coerceAtLeast(1)) {
@@ -346,7 +537,7 @@ fun MessageMediaComposer(
                     selected = selected,
                     isLoading = isLoading,
                     hasPermission = hasPermission,
-                    onDismiss = onDismiss,
+                    onDismiss = { if (selected.isNotEmpty()) step = "editor" else onDismiss() },
                     onSystemPicker = { systemPicker.launch(selectableMediaTypes.map { "$it/*" }.toTypedArray()) },
                     onToggle = { item ->
                         if (selected.any { it.uri == item.uri }) {
@@ -409,6 +600,8 @@ fun MessageMediaComposer(
                         if (!isSending && !preparing) viewOnceEnabled = enabled && selected.size == 1
                     },
                     onBack = { if (!isSending && !preparing) step = "gallery" },
+                    canAddMedia = selected.size < maxItems.coerceAtLeast(1),
+                    onAddMedia = { if (!isSending && !preparing) step = "gallery" },
                     onDismiss = onDismiss,
                     onActiveIndexChange = { if (!isSending && !preparing) activeIndex = it.coerceIn(0, selected.lastIndex) },
                     onRemove = { item ->
@@ -627,7 +820,11 @@ internal fun MessageGalleryStep(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onDismiss) {
-                Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+                Icon(
+                    if (selected.isNotEmpty()) Icons.AutoMirrored.Filled.ArrowBack else Icons.Default.Close,
+                    contentDescription = if (selected.isNotEmpty()) "Volver al editor" else "Cerrar",
+                    tint = Color.White,
+                )
             }
             Text(
                 text = title,
@@ -791,6 +988,8 @@ private fun MessageEditorStep(
     onCaptionChange: (String) -> Unit,
     onViewOnceChange: (Boolean) -> Unit,
     onBack: () -> Unit,
+    canAddMedia: Boolean,
+    onAddMedia: () -> Unit,
     onDismiss: () -> Unit,
     onActiveIndexChange: (Int) -> Unit,
     onRemove: (DeviceMedia) -> Unit,
@@ -799,7 +998,6 @@ private fun MessageEditorStep(
     onSend: () -> Unit
 ) {
     val context = LocalContext.current
-    val reliableBottomPadding = rememberReliableBottomSafePadding()
     val active = selected.getOrNull(activeIndex) ?: return
     val edit = edits[active.uri] ?: ComposerEditState()
     var showTextEditor by remember(active.uri) { mutableStateOf(false) }
@@ -849,296 +1047,333 @@ private fun MessageEditorStep(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            .safeDrawingPadding()
-            .imePadding()
+    // The preview and controls own separate layout space. Insets are consumed
+    // once here; visual offsets previously lifted the footer several times and
+    // made it float over the image on tall phones and under the keyboard.
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().background(Color.Black).safeDrawingPadding().imePadding()
     ) {
-        HorizontalPager(
-            state = pagerState,
-            userScrollEnabled = !isSending && !edit.drawEnabled,
-            modifier = Modifier.fillMaxSize()
-        ) { page ->
-            val pageItem = selected[page]
-            val pageEdit = edits[pageItem.uri] ?: ComposerEditState()
-            if (pageItem.type == "video") {
-                ComposerVideoPreview(
-                    item = pageItem,
-                    edit = pageEdit,
-                    isActive = page == activeIndex
-                )
-            } else {
-                val photoState = pageEdit.photoState()
-                val source = photoSources[pageItem.uri]
-                if (source == null) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        if (sourceFailures[pageItem.uri] == true) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("No se pudo abrir la foto.", color = Color.White)
-                                TextButton(onClick = { onRetrySource(pageItem.uri) }, enabled = !isSending) { Text("Reintentar") }
-                            }
-                        } else CircularProgressIndicator()
-                    }
-                } else MessagePhotoPreview(
-                    sourceUri = source,
-                    state = photoState,
-                    drawEnabled = page == activeIndex && pageEdit.drawEnabled,
-                    interactionEnabled = page == activeIndex && !isSending,
-                    onStrokeAdded = { stroke ->
-                        onEditChange(pageItem.uri, pageEdit.copy(strokes = pageEdit.strokes + listOf(stroke), strokeColors = pageEdit.strokeColors + pageEdit.brushColor.toArgb(), strokeWidths = pageEdit.strokeWidths + pageEdit.brushWidth))
-                    },
-                    onReadyChanged = { ready -> onPhotoReady(pageItem.uri, source, photoState, ready) },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-
-
-        Row(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .padding(top = 16.dp, start = 8.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack, enabled = !isSending) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Galería", tint = Color.White)
-            }
-            LazyRow(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (showViewOnceOption && selected.size == 1) {
-                    item {
-                        RoundToolButton(
-                            icon = Icons.Default.Visibility,
-                            label = "Ver una vez",
-                            selected = viewOnceEnabled,
-                            enabled = !isSending,
-                        ) {
-                            onViewOnceChange(!viewOnceEnabled)
-                        }
-                    }
-                }
-                if (active.type == "image") {
-                    item { RoundToolButton(Icons.AutoMirrored.Filled.Undo, "Deshacer último trazo", enabled = !isSending && edit.strokes.isNotEmpty()) {
-                        onEditChange(active.uri, edit.copy(strokes = edit.strokes.dropLast(1), strokeColors = edit.strokeColors.dropLast(1), strokeWidths = edit.strokeWidths.dropLast(1)))
-                    } }
-                    item { RoundToolButton(Icons.Default.RestartAlt, "Restablecer edición", enabled = !isSending && edit.hasRealEdits()) { onEditChange(active.uri, ComposerEditState()) } }
-                    item {
-                        RoundToolButton(Icons.AutoMirrored.Filled.RotateRight, "Girar", enabled = !isSending) {
-                            onEditChange(active.uri, edit.copy(rotateQuarterTurns = (edit.rotateQuarterTurns + 1) % 4))
-                        }
-                    }
-                    item {
-                        RoundToolButton(Icons.Default.Crop, "Recortar libre", enabled = !isSending && canSend) {
-                            onRequestCrop(active)
-                        }
-                    }
-                    item {
-                        RoundToolButton(Icons.Default.Brush, "Dibujar", selected = edit.drawEnabled, enabled = !isSending) {
-                            onEditChange(
-                                active.uri,
-                                edit.copy(drawEnabled = !edit.drawEnabled)
-                            )
-                        }
-                    }
-                    item {
-                        RoundToolButton(Icons.Default.EmojiEmotions, "Emoji", enabled = !isSending) {
-                            showEmojiEditor = true
-                        }
-                    }
-                    if (showCaptionInput) item {
-                        RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank(), enabled = !isSending) {
-                            showTextEditor = true
-                        }
-                    }
-                }
-            }
-            IconButton(onClick = onDismiss, enabled = !isSending) {
-                Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .offset(y = -(reliableBottomPadding + 12.dp))
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.94f))))
-                .padding(
-                    start = 12.dp,
-                    top = 12.dp,
-                    end = 12.dp,
-                    bottom = reliableBottomPadding
-                )
-        ) {
-            if (active.type == "image" && edit.drawEnabled) {
-                Surface(color = Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(16.dp)) {
-                    Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("Color del pincel", color = Color.White, style = MaterialTheme.typography.labelSmall)
-                            brushPalette.forEach { color ->
-                                Box(Modifier.size(32.dp).padding(3.dp).clip(CircleShape).background(color)
-                                    .border(if (edit.brushColor == color) 3.dp else 1.dp, if (edit.brushColor == color) MaterialTheme.colorScheme.primary else Color.White, CircleShape)
-                                    .semantics { contentDescription = "Color del pincel"; this.selected = edit.brushColor == color }
-                                    .clickable(enabled = !isSending) { onEditChange(active.uri, edit.copy(brushColor = color)) })
-                            }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Grosor", color = Color.White, style = MaterialTheme.typography.labelSmall)
-                            Slider(value = edit.brushWidth, onValueChange = { onEditChange(active.uri, edit.copy(brushWidth = it)) }, valueRange = 0.002f..0.04f, enabled = !isSending, modifier = Modifier.weight(1f))
-                        }
-                    }
-                }
-            }
-
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(selected.size) { index ->
-                    val item = selected[index]
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .border(
-                                width = if (index == activeIndex) 2.dp else 0.dp,
-                                color = MaterialTheme.colorScheme.primary,
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .clickable(enabled = !isSending) { onActiveIndexChange(index) }
-                    ) {
-                        AsyncImage(
-                            model = composerThumbnailRequest(context, item),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        if (item.type == "video") {
-                            Icon(Icons.Default.PlayCircle, null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(22.dp))
-                        }
-                        IconButton(
-                            onClick = { onRemove(item) },
-                            enabled = !isSending,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .size(20.dp)
-                                .background(Color.Black.copy(alpha = 0.7f), CircleShape)
-                        ) {
-                            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                        }
-                    }
-                }
-            }
-
-            if (active.type == "video" && active.durationMs > 0L) {
-                val trimEnd = edit.trimEndMs.takeIf { it > 0L }
-                    ?.coerceAtMost(active.durationMs)
-                    ?: active.durationMs
-                val trimStart = edit.trimStartMs.coerceIn(0L, (trimEnd - 500L).coerceAtLeast(0L))
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "Recorte ${formatComposerDuration(trimStart)} – ${formatComposerDuration(trimEnd)}",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium
-                )
-                RangeSlider(
-                    value = trimStart.toFloat()..trimEnd.toFloat(),
-                    enabled = !isSending,
-                    onValueChange = { range ->
-                        val start = range.start.toLong()
-                            .coerceAtMost((range.endInclusive.toLong() - 500L).coerceAtLeast(0L))
-                        val end = range.endInclusive.toLong()
-                            .coerceAtLeast(start + 500L)
-                            .coerceAtMost(active.durationMs)
-                        onEditChange(
-                            active.uri,
-                            edit.copy(trimStartMs = start, trimEndMs = end)
-                        )
-                    },
-                    valueRange = 0f..active.durationMs.coerceAtLeast(1_000L).toFloat(),
-                    modifier = Modifier.fillMaxWidth().testTag("message_video_trim")
-                )
-            }
-
-            if (showViewOnceOption && viewOnceEnabled) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "👁 Ver una vez: no se podrá abrir nuevamente",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelMedium
-                )
-            }
-
-            // The caption row is visually lifted by the safe inset below. Reserve
-            // that height in the layout too so thumbnails and captions can never
-            // occupy the same pixels on compact or gesture-navigation devices.
-            Spacer(Modifier.height(reliableBottomPadding))
+        val footerMaxHeight = (maxHeight * 0.6f).coerceAtLeast(136.dp)
+        Column(Modifier.fillMaxSize()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 10.dp)
-                    .offset(y = -reliableBottomPadding),
-                verticalAlignment = Alignment.Bottom
+                    .padding(horizontal = 4.dp)
+                    .testTag("composer_tools"),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(
-                    modifier = Modifier.weight(1f)
+                IconButton(onClick = onBack, enabled = !isSending) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Galería", tint = Color.White)
+                }
+                LazyRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (showCaptionInput) {
-                        OutlinedTextField(
-                            value = caption,
-                            onValueChange = onCaptionChange,
-                            enabled = !isSending,
-                            placeholder = { Text("Añade un comentario...", color = Color.White.copy(alpha = 0.7f)) },
-                            minLines = 1,
-                            maxLines = 3,
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(24.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                disabledTextColor = Color.White.copy(alpha = 0.55f),
-                                cursorColor = Color.White,
-                                focusedContainerColor = Color.Black.copy(alpha = 0.68f),
-                                unfocusedContainerColor = Color.Black.copy(alpha = 0.68f),
-                                disabledContainerColor = Color.Black.copy(alpha = 0.42f),
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.42f),
-                                focusedPlaceholderColor = Color.White.copy(alpha = 0.72f),
-                                unfocusedPlaceholderColor = Color.White.copy(alpha = 0.72f)
-                            )
-                        )
+                    if (showViewOnceOption && !showCaptionInput && selected.size == 1) {
+                        item {
+                            RoundToolButton(
+                                icon = Icons.Default.Visibility,
+                                label = "Ver una vez",
+                                selected = viewOnceEnabled,
+                                enabled = !isSending,
+                            ) {
+                                onViewOnceChange(!viewOnceEnabled)
+                            }
+                        }
                     }
-                    if (isAnimatedImage && edit.hasRealEdits()) {
-                        Text("Al editar un GIF se enviará como una foto fija.", color = Color.White,
-                            style = MaterialTheme.typography.bodySmall)
+                    if (active.type == "image") {
+                        item { RoundToolButton(Icons.AutoMirrored.Filled.Undo, "Deshacer último trazo", enabled = !isSending && edit.strokes.isNotEmpty()) {
+                            onEditChange(active.uri, edit.copy(strokes = edit.strokes.dropLast(1), strokeColors = edit.strokeColors.dropLast(1), strokeWidths = edit.strokeWidths.dropLast(1)))
+                        } }
+                        item { RoundToolButton(Icons.Default.RestartAlt, "Restablecer edición", enabled = !isSending && edit.hasRealEdits()) { onEditChange(active.uri, ComposerEditState()) } }
+                        item {
+                            RoundToolButton(Icons.AutoMirrored.Filled.RotateRight, "Girar", enabled = !isSending) {
+                                onEditChange(active.uri, edit.copy(rotateQuarterTurns = (edit.rotateQuarterTurns + 1) % 4))
+                            }
+                        }
+                        item {
+                            RoundToolButton(Icons.Default.Crop, "Recortar libre", enabled = !isSending && canSend) {
+                                onRequestCrop(active)
+                            }
+                        }
+                        item {
+                            RoundToolButton(Icons.Default.Brush, "Dibujar", selected = edit.drawEnabled, enabled = !isSending) {
+                                onEditChange(
+                                    active.uri,
+                                    edit.copy(drawEnabled = !edit.drawEnabled)
+                                )
+                            }
+                        }
+                        item {
+                            RoundToolButton(Icons.Default.EmojiEmotions, "Emoji", enabled = !isSending) {
+                                showEmojiEditor = true
+                            }
+                        }
+                        if (showCaptionInput) item {
+                            RoundToolButton(Icons.Default.TextFields, "Texto", selected = edit.overlayText.isNotBlank(), enabled = !isSending) {
+                                showTextEditor = true
+                            }
+                        }
                     }
-                    if (!error.isNullOrBlank()) {
-                        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Text(
-                        text = "${selected.size} seleccionado${if (selected.size == 1) "" else "s"}",
-                        color = Color.White.copy(alpha = 0.86f),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                }
+                IconButton(onClick = onDismiss, enabled = !isSending) {
+                    Icon(Icons.Default.Close, contentDescription = "Cerrar", tint = Color.White)
+                }
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                userScrollEnabled = !isSending && !edit.drawEnabled,
+                modifier = Modifier.fillMaxWidth().weight(1f).testTag("composer_preview")
+            ) { page ->
+                val pageItem = selected[page]
+                val pageEdit = edits[pageItem.uri] ?: ComposerEditState()
+                if (pageItem.type == "video") {
+                    ComposerVideoPreview(
+                        item = pageItem,
+                        edit = pageEdit,
+                        isActive = page == activeIndex
+                    )
+                } else {
+                    val photoState = pageEdit.photoState()
+                    val source = photoSources[pageItem.uri]
+                    if (source == null) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            if (sourceFailures[pageItem.uri] == true) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("No se pudo abrir la foto.", color = Color.White)
+                                    TextButton(onClick = { onRetrySource(pageItem.uri) }, enabled = !isSending) { Text("Reintentar") }
+                                }
+                            } else CircularProgressIndicator()
+                        }
+                    } else MessagePhotoPreview(
+                        sourceUri = source,
+                        state = photoState,
+                        drawEnabled = page == activeIndex && pageEdit.drawEnabled,
+                        interactionEnabled = page == activeIndex && !isSending,
+                        onStrokeAdded = { stroke ->
+                            onEditChange(pageItem.uri, pageEdit.copy(strokes = pageEdit.strokes + listOf(stroke), strokeColors = pageEdit.strokeColors + pageEdit.brushColor.toArgb(), strokeWidths = pageEdit.strokeWidths + pageEdit.brushWidth))
+                        },
+                        onReadyChanged = { ready -> onPhotoReady(pageItem.uri, source, photoState, ready) },
+                        modifier = Modifier.fillMaxSize(),
                     )
                 }
-                Spacer(Modifier.width(10.dp))
-                FloatingActionButton(
-                    onClick = { if (!isSending && canSend) onSend() },
-                    modifier = Modifier.semantics {
-                        contentDescription = confirmContentDescription
-                        if (isSending || !canSend) disabled()
-                    },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+            }
+
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = footerMaxHeight)
+                    .background(Color(0xFF17191C))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .testTag("composer_footer")
+            ) {
+                // Secondary controls may scroll on landscape/IME layouts; the
+                // caption and Send remain pinned and reachable below them.
+                Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                if (active.type == "image" && edit.drawEnabled) {
+                    Surface(color = Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(16.dp)) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Color del pincel", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                brushPalette.forEach { color ->
+                                    Box(Modifier.size(32.dp).padding(3.dp).clip(CircleShape).background(color)
+                                        .border(if (edit.brushColor == color) 3.dp else 1.dp, if (edit.brushColor == color) MaterialTheme.colorScheme.primary else Color.White, CircleShape)
+                                        .semantics { contentDescription = "Color del pincel"; this.selected = edit.brushColor == color }
+                                        .clickable(enabled = !isSending) { onEditChange(active.uri, edit.copy(brushColor = color)) })
+                                }
+                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Grosor", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                Slider(value = edit.brushWidth, onValueChange = { onEditChange(active.uri, edit.copy(brushWidth = it)) }, valueRange = 0.002f..0.04f, enabled = !isSending, modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                }
+
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().testTag("composer_selection"),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (isSending) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
+                    if (canAddMedia) item(key = "add_media") {
+                        Column(
+                            modifier = Modifier.size(72.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, Color.White.copy(alpha = .4f), RoundedCornerShape(12.dp))
+                                .clickable(enabled = !isSending, role = Role.Button, onClick = onAddMedia)
+                                .semantics { contentDescription = "Añadir fotos o videos" }
+                                .testTag("composer_add_media"),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Icon(Icons.Default.AddPhotoAlternate, null, tint = Color.White)
+                            Text("Añadir", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    items(selected.size, key = { selected[it].uri.toString() }) { index ->
+                        val item = selected[index]
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .semantics {
+                                    contentDescription = "${if (item.type == "video") "Video" else "Foto"} seleccionada ${index + 1}"
+                                    this.selected = index == activeIndex
+                                }
+                                .clip(RoundedCornerShape(10.dp))
+                                .border(
+                                    width = if (index == activeIndex) 2.dp else 0.dp,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                                .clickable(enabled = !isSending) { onActiveIndexChange(index) }
+                        ) {
+                            AsyncImage(
+                                model = composerThumbnailRequest(context, item),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            if (item.type == "video") {
+                                Icon(Icons.Default.PlayCircle, null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(22.dp))
+                            }
+                            IconButton(
+                                onClick = { onRemove(item) },
+                                enabled = !isSending,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(48.dp)
+                            ) {
+                                Icon(Icons.Default.Close, "Quitar archivo ${index + 1}", tint = Color.White,
+                                    modifier = Modifier.size(22.dp).background(Color.Black.copy(alpha = 0.72f), CircleShape).padding(2.dp))
+                            }
+                        }
+                    }
+                }
+
+                if (active.type == "video" && active.durationMs > 0L) {
+                    val trimEnd = edit.trimEndMs.takeIf { it > 0L }
+                        ?.coerceAtMost(active.durationMs)
+                        ?: active.durationMs
+                    val trimStart = edit.trimStartMs.coerceIn(0L, (trimEnd - 500L).coerceAtLeast(0L))
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "Recorte ${formatComposerDuration(trimStart)} – ${formatComposerDuration(trimEnd)}",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    RangeSlider(
+                        value = trimStart.toFloat()..trimEnd.toFloat(),
+                        enabled = !isSending,
+                        onValueChange = { range ->
+                            val start = range.start.toLong()
+                                .coerceAtMost((range.endInclusive.toLong() - 500L).coerceAtLeast(0L))
+                            val end = range.endInclusive.toLong()
+                                .coerceAtLeast(start + 500L)
+                                .coerceAtMost(active.durationMs)
+                            onEditChange(
+                                active.uri,
+                                edit.copy(trimStartMs = start, trimEndMs = end)
+                            )
+                        },
+                        valueRange = 0f..active.durationMs.coerceAtLeast(1_000L).toFloat(),
+                        modifier = Modifier.fillMaxWidth().testTag("message_video_trim")
+                    )
+                }
+
+                if (showViewOnceOption && viewOnceEnabled) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "👁 Ver una vez: no se podrá abrir nuevamente",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).testTag("composer_caption_row"),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        if (showCaptionInput) {
+                            OutlinedTextField(
+                                value = caption,
+                                onValueChange = onCaptionChange,
+                                enabled = !isSending,
+                                placeholder = { Text("Añade un comentario...", color = Color.White.copy(alpha = 0.7f)) },
+                                minLines = 1,
+                                maxLines = 3,
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(24.dp),
+                                trailingIcon = if (showViewOnceOption && selected.size == 1) ({
+                                    IconButton(
+                                        onClick = { onViewOnceChange(!viewOnceEnabled) },
+                                        enabled = !isSending,
+                                        modifier = Modifier.semantics {
+                                            contentDescription = "Ver una vez"
+                                            this.selected = viewOnceEnabled
+                                            stateDescription = if (viewOnceEnabled) "Activado" else "Desactivado"
+                                        },
+                                    ) {
+                                        Box(
+                                            Modifier.size(25.dp).border(1.5.dp,
+                                                if (viewOnceEnabled) MaterialTheme.colorScheme.primary else Color.White, CircleShape),
+                                            contentAlignment = Alignment.Center,
+                                        ) {
+                                            Text("1", color = if (viewOnceEnabled) MaterialTheme.colorScheme.primary else Color.White,
+                                                style = MaterialTheme.typography.labelLarge)
+                                        }
+                                    }
+                                }) else null,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White,
+                                    disabledTextColor = Color.White.copy(alpha = 0.55f),
+                                    cursorColor = Color.White,
+                                    focusedContainerColor = Color.Black.copy(alpha = 0.68f),
+                                    unfocusedContainerColor = Color.Black.copy(alpha = 0.68f),
+                                    disabledContainerColor = Color.Black.copy(alpha = 0.42f),
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = Color.White.copy(alpha = 0.42f),
+                                    focusedPlaceholderColor = Color.White.copy(alpha = 0.72f),
+                                    unfocusedPlaceholderColor = Color.White.copy(alpha = 0.72f)
+                                )
+                            )
+                        }
+                        if (isAnimatedImage && edit.hasRealEdits()) {
+                            Text("Al editar un GIF se enviará como una foto fija.", color = Color.White,
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (!error.isNullOrBlank()) {
+                            Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text(
+                            text = "${selected.size} seleccionado${if (selected.size == 1) "" else "s"}",
+                            color = Color.White.copy(alpha = 0.86f),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    FloatingActionButton(
+                        onClick = { if (!isSending && canSend) onSend() },
+                        modifier = Modifier.semantics {
+                            contentDescription = confirmContentDescription
+                            if (isSending || !canSend) disabled()
+                        },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        if (isSending) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
+                        }
                     }
                 }
             }

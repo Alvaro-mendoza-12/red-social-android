@@ -56,7 +56,14 @@ fun MomentHighlightViewerScreen(
                 TextButton(onClick = { navController.popBackStack() }) { Text("Volver") }
             }
             else -> key(highlightId) {
-                HighlightPlayback(state.items, title, onClose = { navController.popBackStack() })
+                HighlightPlayback(
+                    state.items, title, onClose = { navController.popBackStack() },
+                    onOpenProfile = { authorId ->
+                        navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(authorId)) {
+                            launchSingleTop = true
+                        }
+                    },
+                )
             }
         }
     }
@@ -64,7 +71,12 @@ fun MomentHighlightViewerScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun HighlightPlayback(items: List<MomentHighlightItemPreview>, title: String, onClose: () -> Unit) {
+private fun HighlightPlayback(
+    items: List<MomentHighlightItemPreview>,
+    title: String,
+    onClose: () -> Unit,
+    onOpenProfile: (String) -> Unit,
+) {
     val pager = rememberPagerState(pageCount = { items.size })
     val current = items[pager.settledPage]
     val scope = rememberCoroutineScope()
@@ -180,6 +192,7 @@ private fun HighlightPlayback(items: List<MomentHighlightItemPreview>, title: St
             MomentAuthorHeader(
                 moment, momentTimestampLabel(moment.createdAt),
                 onOpenMusicAttribution = { url -> runCatching { uriHandler.openUri(url) } },
+                onOpenProfile = { authorId -> userPaused = true; onOpenProfile(authorId) },
             )
         }
         current.caption?.takeIf { it.isNotBlank() }?.let { caption ->

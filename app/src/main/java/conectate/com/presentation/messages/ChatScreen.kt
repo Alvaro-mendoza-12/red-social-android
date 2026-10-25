@@ -12,10 +12,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.content.contentReceiver
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -79,8 +79,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 
-@OptIn(ExperimentalMaterial3Api::class)
-@androidx.compose.foundation.ExperimentalFoundationApi
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun ChatScreen(
     navController: NavController,
@@ -89,10 +88,10 @@ fun ChatScreen(
     focusMessageId: String? = null,
     birthdayGreeting: Boolean = false
 ) {
-    val chatState by viewModel.chatState.collectAsState()
+    val chatState by viewModel.chatState.collectAsStateWithLifecycle()
     val workspaceViewModel: ChatWorkspaceViewModel = hiltViewModel()
     val markersViewModel: ConversationMarkersViewModel = hiltViewModel()
-    val markerFeedback by markersViewModel.feedback.collectAsState()
+    val markerFeedback by markersViewModel.feedback.collectAsStateWithLifecycle()
     val workspaceState by workspaceViewModel.state.collectAsStateWithLifecycle()
     var showWorkspace by rememberSaveable { mutableStateOf(false) }
     var workspaceKind by rememberSaveable { mutableStateOf(ChatWorkspaceKind.TASK) }
@@ -132,14 +131,12 @@ fun ChatScreen(
         }
     }
 
-    val messageText by viewModel.messageText.collectAsState()
-    val otherUserReactive by viewModel.otherUserMetadata.collectAsState()
-    val isSending by viewModel.isSending.collectAsState()
+    val isSending by viewModel.isSending.collectAsStateWithLifecycle()
     var showBirthdayGreeting by rememberSaveable { mutableStateOf(birthdayGreeting) }
-    val messageRequest by viewModel.messageRequest.collectAsState()
-    val requestWarningAcknowledged by viewModel.requestWarningAcknowledged.collectAsState()
-    val requestDecisionBusy by viewModel.requestDecisionBusy.collectAsState()
-    val isBlocked by viewModel.isBlocked.collectAsState()
+    val messageRequest by viewModel.messageRequest.collectAsStateWithLifecycle()
+    val requestWarningAcknowledged by viewModel.requestWarningAcknowledged.collectAsStateWithLifecycle()
+    val requestDecisionBusy by viewModel.requestDecisionBusy.collectAsStateWithLifecycle()
+    val isBlocked by viewModel.isBlocked.collectAsStateWithLifecycle()
     if (showBirthdayGreeting && chatState is ChatUiState.Success) {
         BirthdayGreetingSheet(initial = remember { viewModel.restoreBirthdayCard() }, busy = isSending,
             canSend = !isBlocked && !requestDecisionBusy && messageRequest.permitsLocalQueue &&
@@ -147,7 +144,7 @@ fun ChatScreen(
             conversationNotice = {
                 if (isBlocked) Text("No puedes enviar mensajes a este usuario.")
                 else DirectMessageRequestNotice(
-                    state = messageRequest, senderName = otherUserReactive?.displayName.orEmpty(),
+                    state = messageRequest, senderName = (chatState as? ChatUiState.Success)?.otherUser?.displayName.orEmpty(),
                     warningAcknowledged = requestWarningAcknowledged, busy = requestDecisionBusy,
                     onContinue = viewModel::acknowledgeMessageRequestWarning,
                     onAccept = { viewModel.decideMessageRequest(true) },
@@ -155,34 +152,34 @@ fun ChatScreen(
                     onRefresh = viewModel::refreshMessageRequest,
                 )
             },
-            recipientName = otherUserReactive?.displayName.orEmpty(), onChange = viewModel::updateBirthdayCard,
+            recipientName = (chatState as? ChatUiState.Success)?.otherUser?.displayName.orEmpty(), onChange = viewModel::updateBirthdayCard,
             onDismiss = { showBirthdayGreeting = false },
             onSend = { viewModel.sendBirthdayCard(it) { showBirthdayGreeting = false } })
     }
-    val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsState()
-    val isSelectionMode by viewModel.isSelectionMode.collectAsState()
-    val selectedMessages by viewModel.selectedMessages.collectAsState()
+    val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsStateWithLifecycle()
+    val isSelectionMode by viewModel.isSelectionMode.collectAsStateWithLifecycle()
+    val selectedMessages by viewModel.selectedMessages.collectAsStateWithLifecycle()
     var highlightedId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(highlightedId) { if (highlightedId != null) { kotlinx.coroutines.delay(1400); highlightedId = null } }
     androidx.activity.compose.BackHandler(isSelectionMode) { viewModel.toggleSelectionMode() }
-    val isBlockedByMe by viewModel.isBlockedByMe.collectAsState()
-    val isBlockedByOther by viewModel.isBlockedByOther.collectAsState()
+    val isBlockedByMe by viewModel.isBlockedByMe.collectAsStateWithLifecycle()
+    val isBlockedByOther by viewModel.isBlockedByOther.collectAsStateWithLifecycle()
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showBulkDeleteDialog by remember { mutableStateOf(false) }
     var messageForInfo by remember { mutableStateOf<Message?>(null) }
-    val reactionPickerMessage by viewModel.reactionPickerMessage.collectAsState()
-    val forwardPickerMessage by viewModel.forwardPickerMessage.collectAsState()
-    val forwardTargets by viewModel.forwardTargets.collectAsState()
-    val forwardUserSearchQuery by viewModel.forwardUserSearchQuery.collectAsState()
-    val forwardUserTargets by viewModel.forwardUserTargets.collectAsState()
-    val isForwarding by viewModel.isForwarding.collectAsState()
+    val reactionPickerMessage by viewModel.reactionPickerMessage.collectAsStateWithLifecycle()
+    val forwardPickerMessage by viewModel.forwardPickerMessage.collectAsStateWithLifecycle()
+    val forwardTargets by viewModel.forwardTargets.collectAsStateWithLifecycle()
+    val forwardUserSearchQuery by viewModel.forwardUserSearchQuery.collectAsStateWithLifecycle()
+    val forwardUserTargets by viewModel.forwardUserTargets.collectAsStateWithLifecycle()
+    val isForwarding by viewModel.isForwarding.collectAsStateWithLifecycle()
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedForwardUsers by remember { mutableStateOf<Set<String>>(emptySet()) }
     
     val currentUserId = viewModel.getCurrentUserId() ?: ""
     val currentUserEmail = remember(currentUserId) { viewModel.getCurrentUserEmail() }
     LaunchedEffect(currentUserId) { markersViewModel.refresh() }
-    val listState = rememberLazyListState()
+    val listState = rememberConversationListState()
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(markerFeedback) {
         markerFeedback?.let { snackbarHostState.showSnackbar(it); markersViewModel.clearFeedback() }
@@ -191,7 +188,7 @@ fun ChatScreen(
     var showStorageDisabledDialog by remember { mutableStateOf(false) }
     
     val mediaPickerViewModel: conectate.com.presentation.components.MediaPickerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-    val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsState()
+    val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsStateWithLifecycle()
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
 
     var showAttachmentSheet by remember { mutableStateOf(false) }
@@ -203,19 +200,13 @@ fun ChatScreen(
     var fullScreenImageInitialIndex by remember { mutableStateOf(0) }
     var isViewingOnceMedia by remember { mutableStateOf(false) }
     
-    val voiceState by viewModel.voiceState.collectAsState()
-    val recordingDuration by viewModel.recordingDuration.collectAsState()
-    val voicePlaybackProgress by viewModel.voicePlaybackProgress.collectAsState()
-    val voicePlaybackDurationLabel by viewModel.voicePlaybackDurationLabel.collectAsState()
+    val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
+    val recordingDuration by viewModel.recordingDuration.collectAsStateWithLifecycle()
+    val voicePlaybackProgress by viewModel.voicePlaybackProgress.collectAsStateWithLifecycle()
+    val voicePlaybackDurationLabel by viewModel.voicePlaybackDurationLabel.collectAsStateWithLifecycle()
     
     // Audio Playback State
     // Audio Playback State
-    val currentPlayingAudioId by viewModel.currentPlayingAudioId.collectAsState()
-    val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
-    val audioProgress by viewModel.audioProgress.collectAsState()
-    val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
-    val audioDurations by viewModel.audioDurations.collectAsState()
-    val audioPlaybackSpeed by viewModel.audioPlaybackSpeed.collectAsState()
     
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
@@ -234,16 +225,16 @@ fun ChatScreen(
         }
     }
     
-    val showNicknameDialog by viewModel.showNicknameDialog.collectAsState()
-    val currentNickname by viewModel.currentNickname.collectAsState()
-    val showClearChatDialog by viewModel.showClearChatDialog.collectAsState()
-    val advancedMessage by viewModel.advancedMessage.collectAsState()
-    val chatSummary by viewModel.chatSummary.collectAsState()
-    val scheduledMessagesState by viewModel.scheduledMessagesState.collectAsState()
+    val showNicknameDialog by viewModel.showNicknameDialog.collectAsStateWithLifecycle()
+    val currentNickname by viewModel.currentNickname.collectAsStateWithLifecycle()
+    val showClearChatDialog by viewModel.showClearChatDialog.collectAsStateWithLifecycle()
+    val advancedMessage by viewModel.advancedMessage.collectAsStateWithLifecycle()
+    val chatSummary by viewModel.chatSummary.collectAsStateWithLifecycle()
+    val scheduledMessagesState by viewModel.scheduledMessagesState.collectAsStateWithLifecycle()
     val scheduledMessages = scheduledMessagesState.jobs
-    val autoTranslateEnabled by viewModel.autoTranslateEnabled.collectAsState()
-    val autoTranslateTargetLang by viewModel.autoTranslateTargetLang.collectAsState()
-    val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
+    val autoTranslateEnabled by viewModel.autoTranslateEnabled.collectAsStateWithLifecycle()
+    val autoTranslateTargetLang by viewModel.autoTranslateTargetLang.collectAsStateWithLifecycle()
+    val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsStateWithLifecycle()
 
     var showScheduleDialog by remember { mutableStateOf(false) }
     var showScheduledMessagesDialog by remember { mutableStateOf(false) }
@@ -274,6 +265,7 @@ fun ChatScreen(
     
     var showMediaComposer by remember { mutableStateOf(false) }
     var composerInitialStep by remember { mutableStateOf("gallery") }
+    var composerInitialUris by remember { mutableStateOf<List<Pair<Uri, String>>>(emptyList()) }
     var showAudioPickerDialog by remember { mutableStateOf(false) }
     var pendingAudioPreviewUri by remember { mutableStateOf<Uri?>(null) }
     var pendingDocumentUri by remember { mutableStateOf<Uri?>(null) }
@@ -374,26 +366,15 @@ fun ChatScreen(
     
     // Message Actions State
     val messages = (chatState as? ChatUiState.Success)?.messages ?: emptyList()
+    val messagesById = remember(messages) { messages.associateBy(Message::id) }
     val recentGifUrls = remember(messages) {
         messages.asReversed()
+            .asSequence()
             .filter { it.content_type == "gif" }
             .mapNotNull { it.media_url?.trim()?.takeIf(String::isNotBlank) }
             .distinct()
             .take(24)
-    }
-    val visibleMessageIds by remember(messages, listState) {
-        derivedStateOf {
-            listState.layoutInfo.visibleItemsInfo
-                .filter { it.size > 0 }
-                .flatMap { item ->
-                    val index = messages.indexOfFirst { it.id == item.key }
-                    if (index < 0) emptyList() else {
-                        conectate.com.presentation.components.mediaGridClusterAt(messages, index)
-                            ?.map { it.id }.orEmpty()
-                    }
-                }
-                .toSet()
-        }
+            .toList()
     }
     val showJumpToLatest by remember(messages, listState) {
         derivedStateOf {
@@ -403,25 +384,26 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(visibleMessageIds, messages.size) {
-        viewModel.onVisibleMessageIdsChanged(visibleMessageIds)
-    }
+    ObserveVisibleConversationMessages(
+        messages = messages, listState = listState, groupMedia = !isSelectionMode && highlightedId == null,
+        onVisibleIdsChanged = viewModel::onVisibleMessageIdsChanged,
+    )
     
     ConversationScrollAnchor("direct:$currentUserId:${workspaceChat?.id}", messages, currentUserId, focusMessageId, listState,
         messageId = { it.id }, senderId = { it.sender_id })
 
-    val selectedMessage by viewModel.selectedMessage.collectAsState()
-    val favoriteStickerMediaKeys by viewModel.favoriteStickerMediaKeys.collectAsState()
-    val replyToMessage by viewModel.replyToMessage.collectAsState()
+    val selectedMessage by viewModel.selectedMessage.collectAsStateWithLifecycle()
+    val favoriteStickerMediaKeys by viewModel.favoriteStickerMediaKeys.collectAsStateWithLifecycle()
+    val replyToMessage by viewModel.replyToMessage.collectAsStateWithLifecycle()
 
-    val editingMessage by viewModel.editingMessage.collectAsState()
+    val editingMessage by viewModel.editingMessage.collectAsStateWithLifecycle()
 
     if (showWorkspace && chatState is ChatUiState.Success) {
         ChatWorkspaceSheet(
             state = workspaceState,
             initialKind = workspaceKind,
             initialSource = workspaceSource,
-            composerText = messageText,
+            composerText = viewModel.messageText.value,
             onDismiss = { showWorkspace = false; workspaceSource = null },
             onSave = workspaceViewModel::add,
             onToggleTask = workspaceViewModel::toggleTask,
@@ -913,6 +895,7 @@ fun ChatScreen(
             conectate.com.presentation.common.KeyboardSafeSnackbarHost(snackbarHostState)
         },
         topBar = {
+             val otherUserReactive by viewModel.otherUserMetadata.collectAsStateWithLifecycle()
              if (isSelectionMode) {
                 MessageSelectionToolbar(selectedMessages.size,
                     onCancel = { viewModel.toggleSelectionMode() },
@@ -1077,7 +1060,7 @@ fun ChatScreen(
                                     text = { Text("Programar mensaje") },
                                     onClick = {
                                         showMenu = false
-                                        scheduleMessageText = messageText
+                                        scheduleMessageText = viewModel.messageText.value
                                         showScheduleDialog = true
                                     }
                                 )
@@ -1227,9 +1210,15 @@ fun ChatScreen(
                                         DateSeparator(label = formatDateSeparatorLabel(message.created_at))
                                     }
                                     val isSelected = selectedMessages.contains(message.id)
+                                    val audio = rememberChatMessageAudioState(
+                                        message.id, message.content_type, message.content,
+                                        viewModel.currentPlayingAudioId, viewModel.isAudioPlaying,
+                                        viewModel.audioProgress, viewModel.audioDurationLabel,
+                                        viewModel.audioDurations, viewModel.audioPlaybackSpeed,
+                                    )
                                     MessageBubble(
                                         message = message,
-                                        replyMessage = message.reply_to_id?.let { id -> messages.firstOrNull { it.id == id } },
+                                        replyMessage = message.reply_to_id?.let(messagesById::get),
                                         selectionMode = isSelectionMode,
                                         replySenderName = message.reply_to?.let { quoted ->
                                             if (quoted.sender_id != currentUserId) {
@@ -1301,12 +1290,12 @@ fun ChatScreen(
                                         navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                                     },
                                     onCollectionInvitationClick = { openCollectionInvitation(it) },
-                                    isAudioActive = currentPlayingAudioId == message.id,
-                                    totalAudioDurationMs = audioDurations[message.id],
-                                    isPlaying = currentPlayingAudioId == message.id && isAudioPlaying,
-                                    progress = if (currentPlayingAudioId == message.id) audioProgress else 0f,
-                                    duration = if (currentPlayingAudioId == message.id) audioDurationLabel else message.content,
-                                    playbackSpeed = audioPlaybackSpeed,
+                                    isAudioActive = audio.active,
+                                    totalAudioDurationMs = audio.totalDurationMs,
+                                    isPlaying = audio.playing,
+                                    progress = audio.progress,
+                                    duration = audio.duration,
+                                    playbackSpeed = audio.speed,
                                     onSeekAudio = { _, fraction -> viewModel.seekAudio(fraction) },
                                     onChangeAudioSpeed = { viewModel.cycleAudioPlaybackSpeed() },
                                      senderName = null,
@@ -1685,8 +1674,14 @@ fun ChatScreen(
                         }
                     } else {
                         // STANDARD INPUT
+                        ChatComposerDraft(viewModel.messageText) { messageText ->
                         val spelling = conectate.com.presentation.components.rememberChatSpellCheckState(messageText)
                         var spellingDraft by conectate.com.presentation.components.rememberChatSpellingDraft(messageText)
+                        val composerFieldState = rememberChatComposerFieldState(spellingDraft) {
+                            val textChanged = spellingDraft.text != it.text
+                            spellingDraft = it
+                            if (textChanged) viewModel.updateMessageText(it.text)
+                        }
                         Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -1705,12 +1700,17 @@ fun ChatScreen(
                         }
                     )
                     TextField(
-                        value = spellingDraft,
-                        visualTransformation = spelling.visualTransformation,
-                        onValueChange = { spellingDraft = it; viewModel.updateMessageText(it.text) },
+                        state = composerFieldState,
+                        inputTransformation = ChatUnicodeInputTransformation,
+                        outputTransformation = rememberChatComposerOutputTransformation(spelling.issues, highlightMentions = false),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 4.dp)
+                            .contentReceiver(rememberChatImagePasteReceiver { images ->
+                                composerInitialUris = images.take(if (messageRequest.status == "new") 1 else 7)
+                                composerInitialStep = "editor"
+                                showMediaComposer = true
+                            })
                             .focusRequester(stickerKeyboardPanel.inputFocusRequester)
                             .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
                         enabled = voiceState == VoiceState.IDLE && !isBlocked,
@@ -1721,7 +1721,7 @@ fun ChatScreen(
                                 Text("Mensaje", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)) 
                             }
                         },
-                        maxLines = 4,
+                        lineLimits = androidx.compose.foundation.text.input.TextFieldLineLimits.MultiLine(maxHeightInLines = 4),
                         shape = RoundedCornerShape(28.dp),
                         leadingIcon = {
                             IconButton(onClick = stickerKeyboardPanel.toggle, enabled = !isBlocked) {
@@ -1732,15 +1732,14 @@ fun ChatScreen(
                             capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true,
                             imeAction = androidx.compose.ui.text.input.ImeAction.Send
                         ),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                            onSend = {
+                        onKeyboardAction = androidx.compose.foundation.text.input.KeyboardActionHandler { _ ->
+                                val currentText = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
                                 if (editingMessage != null) {
                                     viewModel.confirmEditMessage()
-                                } else if (messageText.isNotBlank()) {
+                                } else if (currentText.isNotBlank()) {
                                     viewModel.sendTextMessage()
                                 }
-                            }
-                        ),
+                        },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
                             unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -1759,6 +1758,7 @@ fun ChatScreen(
                                  }
                                  IconButton(enabled = !isBlocked, onClick = {
                                      composerInitialStep = "camera"
+                                     composerInitialUris = emptyList()
                                      showMediaComposer = true
                                  }) {
                                      Icon(Icons.Default.CameraAlt, "Cámara", tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1771,14 +1771,15 @@ fun ChatScreen(
                     Spacer(modifier = Modifier.width(4.dp))
                     
                     // Send / Mic Button
-                    val isTextEmpty = messageText.isBlank()
+                    val isTextEmpty = composerFieldState.text.isBlank()
                     
                      FloatingActionButton(
                         onClick = { 
                             if (isBlocked) return@FloatingActionButton
+                            val currentText = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
                             if (editingMessage != null) {
                                 viewModel.confirmEditMessage()
-                            } else if (!isTextEmpty) {
+                            } else if (currentText.isNotBlank()) {
                                 viewModel.sendTextMessage()
                             } else {
                                 if (voiceState != VoiceState.IDLE) {
@@ -1816,6 +1817,7 @@ fun ChatScreen(
                          }
                      }
                 }
+                        }
               }
             }
         }
@@ -1832,7 +1834,13 @@ fun ChatScreen(
                         } else {
                             viewModel.sendStickerText(sticker.title.ifBlank { "🧩 Sticker" })
                         }
-                    }
+                    },
+                    onEmojiSelected = { emoji ->
+                        viewModel.updateMessageText(viewModel.messageText.value + emoji)
+                    },
+                    onEmojiBackspace = {
+                        viewModel.updateMessageText(removeLastChatGrapheme(viewModel.messageText.value))
+                    },
                 )
             }
         }
@@ -1888,6 +1896,13 @@ fun ChatScreen(
                     Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(16.dp))
                     Text("Fotos y videos", style = MaterialTheme.typography.bodyLarge)
+                }
+
+                ClipboardImagePasteAction(maxItems = if (messageRequest.status == "new") 1 else 7) { images ->
+                    composerInitialUris = images
+                    composerInitialStep = "editor"
+                    showAttachmentSheet = false
+                    showMediaComposer = true
                 }
 
                 Row(
@@ -1995,7 +2010,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .clickable {
                             showAttachmentSheet = false
-                            scheduleMessageText = messageText
+                            scheduleMessageText = viewModel.messageText.value
                             showScheduleDialog = true
                         }
                         .padding(8.dp),
@@ -2325,12 +2340,14 @@ fun ChatScreen(
     if (showMediaComposer) {
         MessageMediaComposer(
             maxItems = if (messageRequest.status == "new") 1 else 7,
+            initialSelectedUris = composerInitialUris,
             initialStep = composerInitialStep,
             isSending = false,
-            onDismiss = { showMediaComposer = false; composerInitialStep = "gallery" },
+            onDismiss = { showMediaComposer = false; composerInitialStep = "gallery"; composerInitialUris = emptyList() },
             onSend = { mediaList, mediaCaption ->
                 showMediaComposer = false
                 composerInitialStep = "gallery"
+                composerInitialUris = emptyList()
                 viewModel.sendMediaBatch(mediaList, mediaCaption)
             }
         )

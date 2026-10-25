@@ -5,7 +5,6 @@ import android.net.Uri
 import android.view.Surface
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -49,8 +48,8 @@ class VideoCachePlaybackTest {
                 val factory = VideoCache.getCacheDataSourceFactory(context)
                 val source = factory.createDataSource()
                 try {
-                    // Cache initialization failure must not bypass the formerly broken upstream.
-                    assertTrue("Playback cache must be active", source is CacheDataSource)
+                    // Production guards choose the cache on the loader's first open.
+                    assertTrue("Playback source must preserve account admission", source is StorageReadDataSource)
                 } finally {
                     source.close()
                 }

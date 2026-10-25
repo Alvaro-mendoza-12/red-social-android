@@ -310,13 +310,9 @@ fun LiveStreamItem(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    AsyncImage(
-                        model = stream.hostAvatarUrl,
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(20.dp)
-                            .clip(CircleShape),
-                        contentScale = ContentScale.Crop
+                    conectate.com.presentation.components.CircularProfileImage(
+                        imageUrl = stream.hostAvatarUrl, fallbackName = stream.hostName,
+                        size = 20.dp, openMomentOnClick = false, showMomentRing = false,
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(

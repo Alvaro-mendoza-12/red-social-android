@@ -230,10 +230,9 @@ private fun CollectionPreviewDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         if (participant.avatarUrl.isNotBlank()) {
-                            AsyncImage(
-                                model = participant.avatarUrl,
-                                contentDescription = null,
-                                modifier = Modifier.size(28.dp).clip(CircleShape)
+                            conectate.com.presentation.components.CircularProfileImage(
+                                imageUrl = participant.avatarUrl, fallbackName = participant.name,
+                                size = 28.dp, openMomentOnClick = false, showMomentRing = false,
                             )
                         }
                         Text(

@@ -90,11 +90,13 @@ export function ChatAttachmentMedia({
       container.current?.querySelectorAll('a').forEach((element) => element.removeAttribute('href'))
     }
     const removeInvalidator = onStorageReadInvalidated(clearDeliveredMedia)
-    if (size > maxBytes) {
+    if (kind !== 'image' && size > maxBytes) {
       setFailure({ source, identity, code: 'MEDIA_TOO_LARGE' })
     } else {
       const read = kind === 'image' ? (options: Parameters<typeof readBoundedStorageBlob>[0]) => readCachedStorageImage(options, attempt > 0) : readBoundedStorageBlob
-      void read({
+      const cachedImage = kind === 'image' && attempt === 0 ? cachedStorageImagePreview(source, identity, maxBytes) : undefined
+      if (cachedImage) setPreview(cachedImage)
+      else void read({
         url: source, backendBase, identity, maxBytes, signal: controller.signal,
         getAccessToken: () => prepareStorageReadAccessToken(identity),
       }).then((blob) => {
@@ -120,7 +122,14 @@ export function ChatAttachmentMedia({
         setFailure({ source, identity, code })
       })
     }
-    return () => { active = false; clearTimeout(contentionRetry); removeInvalidator(); clearDeliveredMedia() }
+    return () => {
+      active = false; clearTimeout(contentionRetry); removeInvalidator(); controller.abort()
+      if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = '' }
+      // React owns the DOM on ordinary effect updates (for example late size
+      // metadata). Removing a healthy img.src here leaves it blank when React
+      // correctly sees the next render's source as unchanged. Identity
+      // invalidation still removes delivered pixels synchronously above.
+    }
   }, [backendBase, identity, kind, maxBytes, ownStorage, size, source, visible, attempt, readRequested])
 
   useEffect(()=>onStorageReadInvalidated(()=>{setViewerOpen(false);setReadRequested(false);container.current?.querySelectorAll('img').forEach(image=>image.removeAttribute('src'))}),[])
@@ -159,7 +168,9 @@ export function ChatAttachmentMedia({
   } else if (!playbackUrl) {
     content = <div className="chat-file-card chat-file-card-loading" role="status"><span><strong>Preparando archivo</strong><small>{title}</small></span></div>
   } else if (kind === 'image') {
-    const image = <img className={imageClassName} src={playbackUrl} alt={title} loading="lazy" decoding="async" onError={decodingFailed} />
+    // The observer already controls which private images are fetched. Once the
+    // Blob is ready, a second lazy gate only delays decoding an on-screen photo.
+    const image = <img className={imageClassName} src={playbackUrl} alt={title} loading={visible ? 'eager' : 'lazy'} decoding="async" onError={decodingFailed} />
     content = <div className="chat-image-preview">{imageLink ? <button type="button" className="chat-media-card" aria-label={`Ampliar ${title}`} onClick={()=>onImageOpen ? onImageOpen() : setViewerOpen(true)}>{image}</button> : image}{overlay ? <div className="chat-media-overlay">{overlay}</div> : null}</div>
   } else if (kind === 'pdf') {
     content = <div className="chat-file-card"><strong>{title}</strong></div>

@@ -2580,6 +2580,33 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun loadProfileMusic(accessToken: String, profileId: String): Result<conectate.com.data.model.ProfileMusicSummary> =
+        runReadWithDeadline(InteractiveReadDeadlines.ProfileMillis) {
+            requestJson<conectate.com.data.model.ProfileMusicSummary>(
+                "$baseUrl/v1/data/profiles/${urlEncode(profileId)}/music/reactions", accessToken,
+            ).getOrThrow()
+        }
+
+    suspend fun updateProfileMusic(
+        accessToken: String, profileId: String, musicKey: String,
+        reaction: String? = null, presentation: String? = null,
+    ): Result<conectate.com.data.model.ProfileMusicSummary> = try {
+        val part = if (presentation == null) "reactions" else "presentation"
+        val response = supabaseConfig.httpClient.put("$baseUrl/v1/data/profiles/${urlEncode(profileId)}/music/$part") {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                put("musicKey", JsonPrimitive(musicKey))
+                if (presentation != null) put("presentation", JsonPrimitive(presentation))
+                else put("reaction", reaction?.let(::JsonPrimitive) ?: JsonNull)
+            })
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) Result.success(json.decodeFromString(body))
+        else Result.failure(toException(response, decodeError(body)))
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (error: Exception) { Result.failure(error) }
+
     suspend fun getBlockRelationship(
         accessToken: String,
         profileId: String
@@ -2630,7 +2657,7 @@ class LocalFallbackApiClient @Inject constructor(
 
     suspend fun loadProfileUser(accessToken: String, profileId: String): Result<User?> {
         return loadProfile(accessToken, profileId).map { response ->
-            response.profile?.let(::mapProfileUser)
+            response.profile?.let(::mapProfileUser)?.withComputedFollowCounts(response.stats)
         }
     }
 
@@ -6601,6 +6628,8 @@ class LocalFallbackApiClient @Inject constructor(
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()
         return when (code) {
+            "PROFILE_MUSIC_UNAVAILABLE" -> conectate.com.data.model.ProfileMusicUnavailableException()
+            "PROFILE_MUSIC_CHANGED" -> conectate.com.data.model.ProfileMusicChangedException()
             "COMMUNITY_WEEKLY_MESSAGE_LIMIT_REACHED" -> Exception("Alcanzaste el cupo semanal de esta comunidad. Se renueva el lunes a las 00:00 UTC.")
             "COMMUNITY_DAILY_MESSAGE_LIMIT_REACHED" -> Exception("Alcanzaste el cupo diario de esta comunidad.")
             "ONLY_ADMINS_CAN_TALK" -> Exception("Solo los administradores pueden escribir en esta comunidad.")

@@ -178,11 +178,11 @@ class MessagingViewModel @Inject constructor(
             }
             ConversationsUiState.Success(filtered, syncState.isRefreshing, !syncState.hasCompletedInitialSync)
         }
-    }.stateIn(
+    }.flowOn(Dispatchers.Default).stateIn(
         scope = viewModelScope,
-        // Reset stale account content once observation stops. A same-account return
-        // keeps its list during the grace period, while a later return starts loading.
-        started = SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0),
+        // Preserve the rendered inbox for this ViewModel's lifetime, including a
+        // return from a long conversation. _snapshots remains bound to the session.
+        started = SharingStarted.Lazily,
         initialValue = ConversationsUiState.Loading
     )
 

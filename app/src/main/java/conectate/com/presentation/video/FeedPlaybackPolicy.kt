@@ -12,6 +12,23 @@ internal fun shouldPlayFeedVideo(
 ): Boolean = requested && videoId != null &&
     (!isCellular || autoplayOnMobile || manuallyStartedVideoId == videoId)
 
+internal data class VideoEntryPlayback(val positionMs: Long, val loop: VideoReviewLoop?, val rejectedClip: Boolean)
+
+internal fun resolveVideoEntryPlayback(
+    video: conectate.com.data.model.Video,
+    requestedPositionMs: Long,
+    requestedEndMs: Long,
+    durationMs: Long,
+): VideoEntryPlayback {
+    if (requestedEndMs > 0L) {
+        val clip = if (video.isPublic && video.allowClipSharing)
+            conectate.com.data.model.validVideoClipRange(requestedPositionMs, requestedEndMs, durationMs) else null
+        return if (clip == null) VideoEntryPlayback(0L, null, true)
+        else VideoEntryPlayback(clip.startMs, VideoReviewLoop(video.id, clip.startMs, clip.endMs), false)
+    }
+    return VideoEntryPlayback(requestedPositionMs.coerceIn(0L, (durationMs - 1L).coerceAtLeast(0L)), null, false)
+}
+
 internal data class VideoReviewLoop(val videoId: String, val startMs: Long, val endMs: Long) {
     companion object {
         fun at(videoId: String, positionMs: Long, durationMs: Long): VideoReviewLoop? {

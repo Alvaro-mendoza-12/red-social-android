@@ -1,9 +1,11 @@
-# 🔴 Conéctate - Red Social Móvil
+# Novvin — Red social móvil
 
-Fecha de última revisión documental: 2026-08-25.
+Fecha de última revisión documental: 2026-10-25.
 
 > Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
 > Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
+
+Auditoría vigente: [acceso, emojis, avatares, vídeo, Social y música de perfil](docs/oficial/75-cierre-movil-167-2026-10-25.md). Candidato Android: **9.1.27 / código 167**. El documento distingue código implementado, regresiones automáticas, pruebas físicas y validación del artefacto firmado.
 
 Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose** y backend propio en **Ubuntu**. Supabase queda como compatibilidad legacy y herramienta temporal de migracion/importacion.
 
@@ -16,7 +18,7 @@ Novvin está en beta pública. Las pruebas y comentarios honestos de usuarios re
 
 ## 📱 Características
 
-- ✅ **Autenticación** con email y número de teléfono
+- ✅ **Acceso** con correo, cuentas guardadas, recuperación, 2FA y exploración como invitado
 - 💬 **Mensajería en tiempo real** (texto, imágenes, videos, audio)
 - 🎥 **Feed de videos** con likes y comentarios
 - 👤 **Perfiles de usuario** personalizables

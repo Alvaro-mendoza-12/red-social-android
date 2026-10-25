@@ -21,6 +21,47 @@ import org.robolectric.annotation.Config
 class MessageDeletionMigrationTest {
     @get:Rule val storage = TemporaryFolder()
 
+    @Test fun `v57 history and queued media survive the v58 index migration and reopen`() = runBlocking {
+        val path = File(storage.root, "v57.db").absolutePath
+        val schema = listOf(File("schemas/conectate.com.data.local.AppDatabase/57.json"),
+            File("app/schemas/conectate.com.data.local.AppDatabase/57.json")).first { it.isFile }
+        val entities = Json.parseToJsonElement(schema.readText()).jsonObject.getValue("database")
+            .jsonObject.getValue("entities").jsonArray
+        SQLiteDatabase.openOrCreateDatabase(path, null).use { old ->
+            entities.forEach { raw ->
+                val entity = raw.jsonObject
+                val table = entity.getValue("tableName").jsonPrimitive.content
+                old.execSQL(entity.getValue("createSql").jsonPrimitive.content.replace("\${TABLE_NAME}", table))
+                entity["indices"]?.jsonArray.orEmpty().forEach { index ->
+                    old.execSQL(index.jsonObject.getValue("createSql").jsonPrimitive.content.replace("\${TABLE_NAME}", table))
+                }
+            }
+            old.execSQL("INSERT INTO chats (id, is_group, created_by, participantsJson, unread_count, is_deleted) VALUES ('chat', 0, 'a', '[\"a\",\"b\"]', 0, 0)")
+            old.execSQL("INSERT INTO messages (id, chat_id, sender_id, content, content_type, media_url, created_at, status, is_edited, deleted_for_all, deleted_by_json, reactions_json, is_forwarded, is_synced, pending_action) VALUES ('queued', 'chat', 'a', 'Hola 👩🏽‍💻 🇵🇪', 'image', 'file:///saved/picture.webp', '2026-10-23T00:00:00Z', 'pending', 0, 0, '[]', '{}', 0, 0, 'send')")
+            old.version = 57
+        }
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        repeat(2) {
+            val db = Room.databaseBuilder(context, AppDatabase::class.java, path)
+                .addMigrations(*DatabaseMigrations.ALL).allowMainThreadQueries().build()
+            try {
+                val message = db.messageDao().getMessageById("queued")!!
+                assertEquals("Hola 👩🏽‍💻 🇵🇪", message.content)
+                assertEquals("file:///saved/picture.webp", message.media_url)
+                assertEquals("send", message.pending_action)
+                assertFalse(message.is_synced)
+                assertEquals(APP_DATABASE_VERSION, db.openHelper.writableDatabase.version)
+                for ((table, key) in listOf("group_messages" to "group_id", "community_messages" to "community_id")) {
+                    db.openHelper.readableDatabase.query("EXPLAIN QUERY PLAN SELECT * FROM $table WHERE $key = 'room' ORDER BY created_at, id").use { cursor ->
+                        val plan = buildList { while (cursor.moveToNext()) add(cursor.getString(3)) }.joinToString(" ")
+                        assertTrue("History must use the composite index: $plan", plan.contains("index_${table}_${key}_created_at_id"))
+                        assertFalse("History must not sort a temporary table: $plan", plan.contains("TEMP B-TREE"))
+                    }
+                }
+            } finally { db.close() }
+        }
+    }
+
     @Test fun `real v54 file migrates additively preserving history and quarantining unowned all delete`() = runBlocking {
         val path = File(storage.root, "v54.db").absolutePath
         val schema = listOf(File("schemas/conectate.com.data.local.AppDatabase/54.json"),

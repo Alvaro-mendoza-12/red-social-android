@@ -161,13 +161,42 @@ const audioTypes = new Set([
 const documentTypes = new Set([
   'application/pdf',
   'application/zip',
+  'application/vnd.ms-excel',
+  'application/msword',
+  'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel.sheet.macroenabled.12',
+  'application/vnd.ms-excel.sheet.binary.macroenabled.12',
+  'application/vnd.ms-word.document.macroenabled.12',
+  'application/vnd.ms-powerpoint.presentation.macroenabled.12',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/vnd.oasis.opendocument.presentation',
+  'application/rtf',
+  'application/epub+zip',
   'text/plain',
   'text/csv',
+  'text/tab-separated-values',
+])
+const documentExtensions = new Set([
+  'pdf', 'zip', 'doc', 'docx', 'docm',
+  'xls', 'xlsx', 'xlsm', 'xlsb',
+  'ppt', 'pptx', 'pptm', 'odt', 'ods',
+  'odp', 'rtf', 'epub', 'txt', 'csv', 'tsv',
+])
+const blockedMessageAttachmentExtensions = new Set([
+  'exe', 'dll', 'com', 'scr', 'msi', 'bat', 'cmd', 'ps1', 'psm1', 'sh', 'bash',
+  'zsh', 'fish', 'vbs', 'vbe', 'js', 'mjs', 'cjs', 'hta', 'html', 'htm', 'svg',
+  'wasm', 'class', 'so', 'dylib', 'elf',
+])
+const blockedMessageAttachmentMimes = new Set([
+  'text/html', 'application/xhtml+xml', 'image/svg+xml', 'text/javascript',
+  'application/javascript', 'application/x-javascript', 'application/wasm',
+  'application/x-msdownload', 'application/x-executable', 'application/x-sh',
+  'application/x-httpd-php',
 ])
-const documentExtensions = new Set(['pdf', 'zip', 'docx', 'xlsx', 'pptx', 'txt', 'csv'])
 const messagingBuckets = new Set(['chat-media', 'group-media', 'community-media', 'groups', 'communities'])
 const imageVariantRoot = path.join(storageRoot, '_variants')
 const imageVariantJobs = new Map()
@@ -442,12 +471,27 @@ function inferContentType(header, objectPath) {
   if (startsWith(header, [0x89, 0x50, 0x4e, 0x47])) return 'image/png'
   if (startsWith(header, [0x47, 0x49, 0x46, 0x38])) return 'image/gif'
   if (startsWith(header, [0x25, 0x50, 0x44, 0x46, 0x2d])) return 'application/pdf'
+  if (startsWith(header, [0x7b, 0x5c, 0x72, 0x74, 0x66])) return 'application/rtf'
   if (startsWith(header, [0x50, 0x4b, 0x03, 0x04]) || startsWith(header, [0x50, 0x4b, 0x05, 0x06])) {
     if (extension === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     if (extension === 'xlsx') return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     if (extension === 'pptx') return 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    if (extension === 'xlsm') return 'application/vnd.ms-excel.sheet.macroenabled.12'
+    if (extension === 'xlsb') return 'application/vnd.ms-excel.sheet.binary.macroenabled.12'
+    if (extension === 'docm') return 'application/vnd.ms-word.document.macroenabled.12'
+    if (extension === 'pptm') return 'application/vnd.ms-powerpoint.presentation.macroenabled.12'
+    if (extension === 'odt') return 'application/vnd.oasis.opendocument.text'
+    if (extension === 'ods') return 'application/vnd.oasis.opendocument.spreadsheet'
+    if (extension === 'odp') return 'application/vnd.oasis.opendocument.presentation'
+    if (extension === 'epub') return 'application/epub+zip'
     return 'application/zip'
   }
+  if (startsWith(header, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
+    if (extension === 'xls') return 'application/vnd.ms-excel'
+    if (extension === 'doc') return 'application/msword'
+    if (extension === 'ppt') return 'application/vnd.ms-powerpoint'
+    return 'application/x-ole-storage'
+  }
   if (startsWith(header, [0x52, 0x49, 0x46, 0x46])) {
     const riffKind = header.subarray(8, 12).toString('ascii')
     if (riffKind === 'WEBP') return 'image/webp'
@@ -470,12 +514,12 @@ function inferContentType(header, objectPath) {
     const brand = header.subarray(8, 12).toString('ascii').toLowerCase()
     return brand.includes('m4a') || extension === 'm4a' ? 'audio/mp4' : 'video/mp4'
   }
-  if (['txt', 'csv'].includes(extension) && Buffer.isBuffer(header)) {
+  if (['txt', 'csv', 'tsv'].includes(extension) && Buffer.isBuffer(header)) {
     const sample = header.subarray(0, 512)
     const hasNull = sample.includes(0)
     const controlBytes = [...sample].filter((byte) => byte < 9 || (byte > 13 && byte < 32)).length
     if (!hasNull && controlBytes <= Math.max(1, Math.floor(sample.length * 0.02))) {
-      return extension === 'csv' ? 'text/csv' : 'text/plain'
+      return extension === 'csv' ? 'text/csv' : extension === 'tsv' ? 'text/tab-separated-values' : 'text/plain'
     }
   }
   return ''
@@ -568,8 +612,19 @@ async function validateUpload(options) {
   // WebM subtype is safe to preserve because compatibility is still restricted below.
   if (inferredType === 'video/webm' && declaredType === 'audio/webm') inferredType = 'audio/webm'
   const extension = extensionOf(options.objectPath || options.fallbackName)
+  const isMessagingBucket = ['chat-media', 'group-media', 'community-media'].includes(bucket)
+  const safeOpaqueMime = (declaredType === 'application/octet-stream' ||
+    declaredType.startsWith('application/') || declaredType.startsWith('text/')) &&
+    !blockedMessageAttachmentMimes.has(declaredType)
+  const safeOpaqueExtension = /^[a-z0-9]{1,16}$/.test(extension) &&
+    !blockedMessageAttachmentExtensions.has(extension)
+  const genericFileAttachment = isMessagingBucket && safeOpaqueMime && safeOpaqueExtension
+  // Unknown binary formats are carried as opaque attachments; known signatures still
+  // get their exact MIME and document extensions retain signature checks below.
+  if (!inferredType && genericFileAttachment && !documentExtensions.has(extension)) inferredType = declaredType
   const allowedTypes = allowedTypesForBucket(bucket)
-  if (!inferredType || !allowedTypes.has(inferredType) || !typesCompatible(declaredType, inferredType)) {
+  if (!inferredType || (!allowedTypes.has(inferredType) && !genericFileAttachment) ||
+      !typesCompatible(declaredType, inferredType)) {
     const error = new Error('UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE')
     error.status = 415
     throw error

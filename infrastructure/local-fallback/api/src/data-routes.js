@@ -7,6 +7,7 @@ const { patchImportedRow, deleteImportedRow, deleteImportedPost } = require('./i
 const { isRetiredNotification } = require('./retired-notifications')
 const { isServerManagedNotification } = require('./notification-event-policy')
 const { publicFeedPage } = require('./public-feed-page')
+const { historyPageOptions, conversationHistoryPage } = require('./conversation-history-page')
 const { deniedPublicCreatorIds, publicCreatorVisibility } = require('./public-creator-visibility')
 const { loadCollectionReceipts, isCollectionMessageUnread, projectCollectionReceipt } = require('./collection-read-state')
 const bcrypt = require('bcrypt')
@@ -583,6 +584,52 @@ async function localMessages(pool, chatIds) {
     [ids],
   )
   return rows.map(normalizeMessageRow)
+}
+
+// Called only after the conversation's normal access check. JSON keeps exact
+// PostgreSQL timestamps instead of node-postgres converting them to millisecond Dates.
+async function readConversationHistoryPage(pool, kind, roomId, options, visible) {
+  const config = kind === 'chat'
+    ? { table: 'messages', key: 'chat_id', local: 'fallback_messages' }
+    : { table: `${kind}_messages`, key: `${kind}_id`, local: 'fallback_room_messages' }
+  const importedExists = await tableExists(pool, config.table)
+  const localWhere = kind === 'chat' ? 'lower(t.chat_id) = $1'
+    : `t.room_kind = '${kind}' AND lower(t.room_id) = $1`
+  const importedFields = kind === 'chat' ? ['chat_id', 'chatId'] : [config.key, 'room_id']
+  const importedWhere = '(' + importedFields.map(field => `lower(COALESCE(to_jsonb(t)->>'${field}', '')) = $1`).join(' OR ') + ')'
+  const importedTime = "COALESCE(NULLIF(to_jsonb(t)->>'created_at', ''), NULLIF(to_jsonb(t)->>'createdAt', ''), '1970-01-01T00:00:00Z')::timestamptz"
+  const read = async (before, limit) => {
+    const params = [roomId, before?.at || null, before?.id || '', limit]
+    const [localResult, importedResult] = await Promise.all([
+      pool.query(`SELECT to_jsonb(t) AS row FROM ${config.local} t
+        WHERE ${localWhere} AND ($2::timestamptz IS NULL OR
+          (t.created_at, t.id::text COLLATE "C") < ($2::timestamptz, $3::text COLLATE "C"))
+        ORDER BY t.created_at DESC, t.id::text COLLATE "C" DESC LIMIT $4`, params),
+      importedExists ? pool.query(`SELECT to_jsonb(t) AS row FROM supabase_import.${config.table} t
+        WHERE ${importedWhere} AND ($2::timestamptz IS NULL OR
+          (${importedTime}, (to_jsonb(t)->>'id') COLLATE "C") < ($2::timestamptz, $3::text COLLATE "C"))
+        ORDER BY ${importedTime} DESC, (to_jsonb(t)->>'id') COLLATE "C" DESC LIMIT $4`, params)
+        : Promise.resolve({ rows: [] }),
+    ])
+    const imported = importedResult.rows.map(entry => normalizeMessageRow(entry.row))
+    // A local hide/edit/recall overlay must override its imported snapshot even
+    // when that overlay is not in the local page's time interval.
+    if (imported.length) {
+      const overlays = await pool.query(`SELECT to_jsonb(t) AS row FROM ${config.local} t
+        WHERE ${localWhere} AND lower(t.id::text) = ANY($2::text[])`,
+      [roomId, imported.map(row => normalizeId(row.id))])
+      const byId = new Map(overlays.rows.map(entry => [normalizeId(entry.row.id), normalizeMessageRow(entry.row)]))
+      for (let index = 0; index < imported.length; index++) {
+        const overlay = byId.get(normalizeId(imported[index].id))
+        if (overlay) imported[index] = mergeMessageRows([imported[index], overlay])[0]
+      }
+    }
+    const local = localResult.rows.map(entry => normalizeMessageRow(entry.row))
+    const importedById = new Map(imported.map(row => [normalizeId(row.id), row]))
+    return [imported, local.map(row => importedById.has(normalizeId(row.id))
+      ? mergeMessageRows([importedById.get(normalizeId(row.id)), row])[0] : row)]
+  }
+  return conversationHistoryPage({ read, visible, options })
 }
 
 function chatParticipantKey(participants) {
@@ -5188,14 +5235,16 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId, options = {})
   const access = await loadCollectionRoomAccess(pool, user, kind, roomId, options)
   if (!access) return null
   const { config, cleanRoomId, identity, room, roomMembers, historyAccess } = access
-  const [importedMessages, localMessages] = await Promise.all([
+  const page = options.historyPage ? await readConversationHistoryPage(pool, config.kind, cleanRoomId,
+    options.historyPage, message => collectionHistoryAllows(historyAccess, message) && messageVisibleTo(message, identity)) : null
+  const [importedMessages, localMessages] = page ? [page.messages, []] : await Promise.all([
     importedRowsByFieldValues(pool, config.messageTable, [config.roomKey, 'room_id'], [cleanRoomId], 10_000),
     localCollectionMessages(pool, config.kind, cleanRoomId),
   ])
 
   const rawMessages = mergeMessageRows([...importedMessages, ...localMessages]).filter(message => collectionHistoryAllows(historyAccess, message))
   const [viewerReceipts, readStates] = await Promise.all([
-    loadCollectionReceipts(pool, config.kind, identity, [cleanRoomId]),
+    loadCollectionReceipts(pool, config.kind, identity, [cleanRoomId], page ? rawMessages.map(message => normalizeId(message.id)) : undefined),
     localCollectionReadStates(pool, config.kind, identity.displayUserId),
   ])
   const memberReadAt = roomMembers.filter((member) => identity.ids.has(memberUserId(member)))
@@ -5209,6 +5258,14 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId, options = {})
   ]
   const profilesById = indexProfiles(await publicProfilesByIds(pool, profileIds))
   const visibleIds = new Set(rawMessages.map(message => normalizeId(message.id)))
+  if (page) {
+    const outsidePage = rawMessages.map(message => normalizeId(message.reply_to_id))
+      .filter(id => id && !visibleIds.has(id))
+    if (outsidePage.length) {
+      const authorizedQuotes = await lookupMarkerMessages(pool, config.kind, cleanRoomId, outsidePage, identity)
+      for (const id of authorizedQuotes.keys()) visibleIds.add(id)
+    }
+  }
   const messages = rawMessages
     .map(message => message.reply_to_id && !visibleIds.has(normalizeId(message.reply_to_id))
       ? { ...message, reply_to_id: null, reply_to: null, reply_to_json: null } : message)
@@ -5221,6 +5278,7 @@ async function loadCollectionRoomPayload(pool, user, kind, roomId, options = {})
     chat: { ...room, last_message: previewFromMessage(messages.at(-1) || {}), last_message_at: messages.at(-1)?.created_at || null },
     room: { ...room, last_message: previewFromMessage(messages.at(-1) || {}), last_message_at: messages.at(-1)?.created_at || null },
     historyAccess,
+    ...(page ? { historyPage: page.historyPage } : {}),
     title: collectionRoomTitle(room, config.titleFallback),
     otherParticipant: null,
     participants: roomMembers.map((row) => {
@@ -5677,6 +5735,10 @@ async function ensureLocalDataTables(pool) {
     `CREATE INDEX IF NOT EXISTS idx_fallback_messages_chat_created
      ON fallback_messages(lower(chat_id), created_at)`,
   )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_messages_chat_created_id
+     ON fallback_messages(lower(chat_id), created_at, id)`,
+  )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_posts (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -6100,6 +6162,10 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_room_messages_room_created
      ON fallback_room_messages(room_kind, lower(room_id), created_at)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_room_messages_room_created_id
+     ON fallback_room_messages(room_kind, lower(room_id), created_at, id)`,
   )
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_community_member_week
@@ -6842,6 +6908,7 @@ async function ensureLocalDataTables(pool) {
   await ensureVideoCollectionTables(pool)
   await require('./call-access-store').ensureCallAccessTables(pool)
   await ensureFollowState(pool)
+  await require('./profile-music-routes').ensureProfileMusicTables(pool)
   await ensureCollectionMembershipTables(pool)
 }
 
@@ -6854,6 +6921,42 @@ function registerDataRoutes(app, {
 }) {
   const { createConversationActivityAuthorizer, registerVisibleMessageReadRoute, registerVisibleCollectionReadRoutes } = require('./conversation-activity-routes')
   const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
+  require('./profile-music-routes').registerProfileMusicRoutes(app, {
+    pool, authRequired, getCurrentUser,
+    loadAccess: async (db, actor, targetId) => {
+      if (!targetId || targetId.length > 160) return null
+      const identity = userIdentity(actor)
+      if ((await blockRelationshipForPair(db, identity, targetId)).isBlocked) return null
+      const profiles = await publicProfilesByIds(db, [targetId])
+      const raw = profiles.find(profile => profileAliasSet(profile).has(targetId))
+      if (!raw) return null
+      const ownerIds = profileAliasSet(raw)
+      const viewerIsOwner = Array.from(ownerIds).some(id => identity.ids.has(id))
+      const [imported, local] = viewerIsOwner ? [[], []] : await Promise.all([
+        importedRowsByFieldValues(db, 'follows', ['follower_id', 'user_id'], identity.values, 20_000),
+        localFollowsByFollowerIds(db, identity.values, 20_000),
+      ])
+      const follows = await visibleFollowRows(db, [...imported, ...local])
+      const isFollowing = follows.some(row => followMatches(row, identity.ids, ownerIds))
+      if (!profileVisibleToViewer(raw, { viewerIds: identity.ids, isFollowing })) return null
+      const musicUrl = require('./profile-music-routes').visibleMusicUrl(raw,
+        { viewerIsOwner, isFollowing }, profileForViewer)
+      if (!musicUrl) return null
+      return { ownerId: profileId(raw), ownerIds: Array.from(ownerIds), musicUrl,
+        viewerIsOwner, actorPublicId: identity.displayUserId }
+    },
+    createNotification: (db, context, reaction, emoji) => createLocalNotification(db, {
+      recipientId: context.ownerId, actorId: context.actorPublicId,
+      actorName: publicNotificationName(context.actor), actorAvatarUrl: context.actor.avatar_url || '',
+      type: 'profile_music_reaction', targetId: context.ownerId, targetType: 'profile',
+      content: `Reaccionó ${emoji} a tu música de entrada`, deferDispatch: true,
+      extraData: { notification_type: 'profile_music_reaction', profile_id: context.ownerId,
+        reaction, reaction_emoji: emoji, music_key: context.musicKey },
+    }),
+    dispatchNotification: notification => dispatchLocalNotification(pool, notification, notificationExtraData(notification)),
+    onChanged: context => Promise.all(context.ownerIds.map(id => publishRealtimeEvent(`profile-music:${id}`,
+      { event: 'profile_music_updated', profileId: id }))),
+  })
   registerCollectionMembershipRoutes(app, { pool, authRequired, getCurrentUser,
     invalidate: invalidateImportedDataCache,
     onChanged: async ({ user, kind, roomId, targetUserId, eventId, added }) => {
@@ -7324,6 +7427,10 @@ function registerDataRoutes(app, {
         avatar_media_type: hasAvatarMediaTypePatch ? nextAvatarMediaType : user.avatar_media_type,
       }
       const current = buildProfileForUser(refreshedUser, importedProfile, await localProfileOverride(pool, user.id))
+      if (Object.prototype.hasOwnProperty.call(patch, 'favorite_music_url')) {
+        for (const id of userIdentity(user).values) void publishRealtimeEvent(`profile-music:${id}`,
+          { event: 'profile_music_updated', profileId: id })
+      }
       res.json({ profile: current, stats: {} })
     } catch (error) {
       if (error?.code === '23505' && error?.constraint === 'idx_fallback_profile_username_unique') {
@@ -9881,6 +9988,8 @@ function registerDataRoutes(app, {
         importedRowsByFieldValues(pool, 'messages', ['chat_id', 'chatId'], chatIds, 10_000),
         localMessages(pool, chatIds),
       ])
+      const chatsWithStoredMessages = new Set([...importedMessages, ...fallbackMessages]
+        .map(message => normalizeId(textOf(message, ['chat_id', 'chatId'], ''))).filter(Boolean))
       const messages = mergeMessageRows([...importedMessages, ...fallbackMessages])
         .filter((message) => messageVisibleTo(message, identity))
 
@@ -9932,6 +10041,8 @@ function registerDataRoutes(app, {
       }
 
       const items = chatRows
+        .filter(row => require('./direct-conversation-activity').directConversationHasActivity(row,
+          chatsWithStoredMessages.has(normalizeId(row.id))))
         .map((row) => {
           const id = textOf(row, ['id'], '')
           const cleanChatId = normalizeId(id)
@@ -10455,7 +10566,8 @@ function registerDataRoutes(app, {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
-      const payload = await loadCollectionRoomPayload(pool, user, messageCollectionFromRequest(req), req.params.roomId, { allowRetainedHistory: true })
+      const payload = await loadCollectionRoomPayload(pool, user, messageCollectionFromRequest(req), req.params.roomId,
+        { allowRetainedHistory: true, historyPage: historyPageOptions(req.query) })
       if (!payload) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
       res.json(payload)
     } catch (error) {
@@ -14067,9 +14179,11 @@ function registerDataRoutes(app, {
         otherId = arrayOf(chat, ['participants']).map(normalizeId).find((entry) => !identity.ids.has(entry)) || ''
       }
 
-      const profilesById = indexProfiles(await publicProfilesByIds(pool, [otherId]))
+      const [profiles, nicknamesByTarget] = await Promise.all([
+        publicProfilesByIds(pool, [otherId]), localNicknames(pool, identity.displayUserId),
+      ])
+      const profilesById = indexProfiles(profiles)
       const otherProfile = otherId ? profilesById.get(otherId) : null
-      const nicknamesByTarget = await localNicknames(pool, identity.displayUserId)
       const nickname = nicknamesByTarget.get(normalizeId(otherId)) || ''
       const otherParticipantRow = memberRows.find((row) => {
         const id = normalizeId(textOf(row, ['user_id', 'profile_id'], ''))
@@ -14078,7 +14192,10 @@ function registerDataRoutes(app, {
       const myParticipantRow = ownChatParticipant(memberRows, identity)
       const myClearedAt = toMillis(textOf(myParticipantRow || {}, ['cleared_at', 'clearedAt'], ''))
 
-      const [importedMessages, fallbackMessages] = await Promise.all([
+      const pageOptions = historyPageOptions(req.query)
+      const page = pageOptions ? await readConversationHistoryPage(pool, 'chat', chatId, pageOptions,
+        message => messageVisibleTo(message, identity) && (!myClearedAt || toMillis(message.created_at) > myClearedAt)) : null
+      const [importedMessages, fallbackMessages] = page ? [page.messages, []] : await Promise.all([
         importedRowsByFieldValues(pool, 'messages', ['chat_id', 'chatId'], [chatId], 10_000),
         localMessages(pool, [chatId]),
       ])
@@ -14099,6 +14216,7 @@ function registerDataRoutes(app, {
             }
           : null,
         messages,
+        ...(page ? { historyPage: page.historyPage } : {}),
         settings: {
           ...chatPreferencesOf(ownChatParticipant(memberRows, identity)),
           translateEnabled: false,
@@ -14868,6 +14986,7 @@ async function processBirthdayNotifications(
 }
 
 module.exports = {
+  readConversationHistoryPage,
   ownChatParticipant,
   chatPreferencesOf,
   findUniquePublicMention,

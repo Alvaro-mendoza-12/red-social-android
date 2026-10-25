@@ -195,11 +195,9 @@ private fun ReplayDetails(
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                AsyncImage(
-                    model = replay.hostAvatarUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.width(44.dp).height(44.dp).clip(CircleShape)
+                conectate.com.presentation.components.CircularProfileImage(
+                    imageUrl = replay.hostAvatarUrl, fallbackName = replay.hostName,
+                    size = 44.dp, openMomentOnClick = false, showMomentRing = false,
                 )
                 Spacer(Modifier.width(12.dp))
                 Column {

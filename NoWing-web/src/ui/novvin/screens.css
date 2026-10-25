@@ -171,12 +171,13 @@
   height: 26px;
 }
 .conversation-row-menu {
-  position: absolute;
-  right: 12px;
-  top: 58px;
-  z-index: 30;
+  position: fixed;
+  z-index: 120;
   display: grid;
-  min-width: 190px;
+  min-width: min(210px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   padding: 8px;
   background: var(--surface-raised);
   border: 1px solid var(--outline);
@@ -186,6 +187,19 @@
 .conversation-row-menu button {
   padding: 12px;
   text-align: left;
+}
+.conversation-row-menu .conversation-row-menu-danger {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--danger, #ef6b75);
+  border-top: 1px solid var(--outline);
+  margin-top: 4px;
+  padding-top: 13px;
+}
+.conversation-row-menu .conversation-row-menu-danger:disabled {
+  opacity: .65;
+  cursor: wait;
 }
 .discover-section {
   padding: 12px 0;
@@ -1913,13 +1927,21 @@
   top: 0;
   left: 0;
   right: 0;
+  z-index: 0;
   height: 130px;
   width: 100%;
-  object-fit: cover;
   background: var(--surface-container);
   background-size: cover;
   background-position: center;
   border-radius: 14px;
+  overflow: hidden;
+}
+.settings-profile-cover-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 }
 .settings-profile-avatar {
   width: 64px;
@@ -1928,6 +1950,7 @@
   background: var(--surface-container);
   overflow: hidden;
   position: relative;
+  z-index: 1;
   border: 3px solid var(--surface);
 }
 .settings-profile-avatar img {
@@ -1940,6 +1963,7 @@
   gap: 5px;
   align-content: center;
   position: relative;
+  z-index: 1;
   margin-top: 20px;
 }
 .settings-profile-meta span {

@@ -99,7 +99,7 @@ class SocialViewModel @Inject constructor(
     private var submissionsJob: kotlinx.coroutines.Job? = null
     private var countdownJob: kotlinx.coroutines.Job? = null
 
-    private val _currentUser = MutableStateFlow<conectate.com.data.model.User?>(null)
+    private val _currentUser = MutableStateFlow(userRepository.cachedCurrentUserIdentity())
     val currentUser: StateFlow<conectate.com.data.model.User?> = _currentUser.asStateFlow()
 
     private val _posts = MutableStateFlow<List<Post>>(emptyList())
@@ -162,7 +162,7 @@ class SocialViewModel @Inject constructor(
     private var feedWasBackgrounded = false
     private var automaticEmptyPageReads = 0
     private var supplementalContentJob: Job? = null
-    private var activeAccountId: String? = authService.getCurrentUserId()
+    private var activeAccountId: String? = authService.getCurrentUserId()?.trim()?.lowercase()
         ?.trim()
         ?.lowercase()
         ?.takeIf { it.isNotBlank() }
@@ -252,6 +252,15 @@ class SocialViewModel @Inject constructor(
                 .distinctUntilChanged().collect { refreshAuthorFollows() }
         }
         viewModelScope.launch { userRepository.followUpdates.collect { refreshAuthorFollows() } }
+        viewModelScope.launch {
+            userRepository.profileUpdates.collect { profile ->
+                if (profile.id.equals(currentUserId, ignoreCase = true)) _currentUser.value = profile
+                // Mutations are confirmed here, including an explicit avatar removal.
+                // Optional profile reads may still be partial and use conservative hydration.
+                _posts.value = applyCanonicalPostAuthors(_posts.value, listOf(profile), confirmedUpdate = true)
+            }
+        }
+        loadCurrentUser()
         loadPosts()
         scheduleSupplementalContent()
     }
@@ -272,7 +281,8 @@ class SocialViewModel @Inject constructor(
         authorHydrator.cancel()
         supplementalContentJob?.cancel()
         resetAuthoritativeFeedState()
-        _currentUser.value = null
+        _currentUser.value = userRepository.cachedCurrentUserIdentity()
+            ?.takeIf { it.id.equals(accountId, ignoreCase = true) }
         _posts.value = emptyList()
         _friends.value = emptyList()
         _recommendedPeople.value = emptyList()
@@ -289,6 +299,7 @@ class SocialViewModel @Inject constructor(
             _isRefreshing.value = false
             return
         }
+        loadCurrentUser()
         loadPosts()
         scheduleSupplementalContent()
     }
@@ -300,7 +311,6 @@ class SocialViewModel @Inject constructor(
             // Recommendation rails must not compete with its TTFB or make the
             // user stare at a global loading state on a constrained server.
             _isRefreshing.filter { refreshing -> !refreshing }.first()
-            loadCurrentUser()
             loadFriends()
             delay(250L)
             loadRecommendedVideos()
@@ -431,12 +441,12 @@ class SocialViewModel @Inject constructor(
         val generation = accountGeneration
         viewModelScope.launch {
             val userId = authService.getCurrentUserId() ?: return@launch
-            userRepository.getUserById(userId).onSuccess {
-                if (generation != accountGeneration) return@onSuccess
-                _currentUser.value = it
-                // New interests inform the next explicit refresh, not a
-                // second reshuffle after the user has started reading.
-            }
+            loadSocialCurrentUser(
+                cached = { userRepository.getCachedUserById(userId) },
+                refresh = { userRepository.getUserById(userId) },
+                isCurrent = { generation == accountGeneration && userId.equals(currentUserId, true) },
+                apply = { _currentUser.value = it },
+            )
         }
     }
 
@@ -464,14 +474,21 @@ class SocialViewModel @Inject constructor(
     fun onFeedResumed() {
         if (!feedWasBackgrounded) return
         feedWasBackgrounded = false
-        if (feedMode.value == SocialFeedMode.DISCOVER) beginDiscoverySession(userInitiated = false)
+        resumeDiscoveryIfEmpty()
     }
 
     fun enterDiscovery() {
         feedWasBackgrounded = false
-        if (feedMode.value != SocialFeedMode.DISCOVER) {
-            selectFeedMode(SocialFeedMode.DISCOVER)
-        } else beginDiscoverySession(userInitiated = false)
+        resumeDiscoveryIfEmpty()
+    }
+
+    private fun resumeDiscoveryIfEmpty() {
+        // Back-stack restoration retains both the selected mode and its loaded
+        // page/scroll. Only pull-to-refresh starts another discovery session.
+        // Init may already own the first read when this screen first composes.
+        if (feedMode.value == SocialFeedMode.DISCOVER && _posts.value.isEmpty() && !_isRefreshing.value) {
+            loadPosts(forceLegacy = false, refreshSeed = discoverySessionSeed)
+        }
     }
 
     private fun beginDiscoverySession(userInitiated: Boolean) {
@@ -529,7 +546,7 @@ class SocialViewModel @Inject constructor(
                 // Do not roll an already visible/edited feed back to disk on
                 // each refresh. Cache is only the first-paint fallback.
                 val cachedPosts = if (_posts.value.isEmpty()) {
-                    postRepository.getCachedGlobalPosts(selectedMode.apiValue)
+                    withCachedPostAuthors(postRepository.getCachedGlobalPosts(selectedMode.apiValue))
                 } else emptyList()
                 if (cachedPosts.isNotEmpty() && generation == postsGeneration) {
                     val visibleCachedPosts = prioritizePreviousVisit(applyFeedControls(cachedPosts.map { reactionWriter.reconcile(it, -1L) }))
@@ -563,7 +580,8 @@ class SocialViewModel @Inject constructor(
                             authoritativeRankingVersion = authoritativePage.rankingVersion
                             authoritativeExplanationsEnabled = authoritativePage.explanationsEnabled
                             authoritativeExplanations.putAll(authoritativePage.explanationsByCandidateId)
-                            val ordered = orderSocialDiscoveryForSession(visiblePosts, authService.getCurrentUserId(), refreshSeed, previousDiscoveryFirstId, previousVisitSeenIds)
+                            val ordered = orderSocialDiscoveryForSession(withCachedPostAuthors(visiblePosts), authService.getCurrentUserId(), refreshSeed, previousDiscoveryFirstId, previousVisitSeenIds)
+                            if (generation != postsGeneration) return@launch
                             _posts.value = reconcileSocialFeed(_posts.value, ordered.map { reactionWriter.reconcile(it, reactionReadVersion) }, preserveVisibleOrder = true)
                             recordFeedLoaded(startedAt, visiblePosts.size, "authoritative", generation)
                             refreshVisibleAuthors(generation)
@@ -581,7 +599,8 @@ class SocialViewModel @Inject constructor(
                 publicFeedNextOffset = publicPage.nextOffset
                 _authoritativeHasMore.value = publicFeedNextOffset != null
                 run {
-                    val visiblePosts = prioritizePreviousVisit(applyFeedControls(publicPage.items))
+                    val visiblePosts = prioritizePreviousVisit(applyFeedControls(withCachedPostAuthors(publicPage.items)))
+                    if (generation != postsGeneration) return@launch
                     val ranked = if (selectedMode == SocialFeedMode.DISCOVER) {
                         rankPosts(visiblePosts, refreshSeed)
                     } else {
@@ -642,7 +661,9 @@ class SocialViewModel @Inject constructor(
                     _authoritativeHasMore.value = publicFeedNextOffset != null
                     page.items
                 }
-                _posts.value = (_posts.value + prioritizePreviousVisit(applyFeedControls(items.map { reactionWriter.reconcile(it, reactionReadVersion) }))).distinctBy { it.id }
+                val identifiedItems = withCachedPostAuthors(items)
+                if (generation != postsGeneration) return@launch
+                _posts.value = (_posts.value + prioritizePreviousVisit(applyFeedControls(identifiedItems.map { reactionWriter.reconcile(it, reactionReadVersion) }))).distinctBy { it.id }
                 refreshVisibleAuthors(generation)
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -964,6 +985,19 @@ class SocialViewModel @Inject constructor(
                 _posts.value = applyCanonicalPostAuthors(_posts.value, profiles)
             }
         }
+    }
+
+    private suspend fun withCachedPostAuthors(posts: List<Post>): List<Post> {
+        val missing = posts.filter { it.userProfileImage.isNullOrBlank() || it.userName.isBlank() || it.userName.equals("Usuario", true) }
+        if (missing.isEmpty()) return posts
+        val profiles = try {
+            userRepository.getCachedUsersByIds(missing.map(Post::userId))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return posts
+        }
+        return fillMissingPostAuthorIdentities(posts, profiles)
     }
 
     fun recordPostOpen(post: Post) {

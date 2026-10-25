@@ -24,4 +24,11 @@ class FocusedVideoFeedTest {
 
         assertEquals(listOf("video-x", "video-y"), merged.map(Video::id))
     }
+
+    @Test fun canonicalIdCaseCannotDuplicateTheEntryOrReplaceItsResolvedSource() {
+        val focused = Video(id = "VIDEO-X", videoUrl = "https://example.test/original.mp4")
+        val merged = mergeFocusedVideoPage(listOf(focused), listOf(Video(id = "video-x"), Video(id = "video-y")))
+        assertEquals(2, merged.size)
+        assertEquals(focused, merged.first())
+    }
 }

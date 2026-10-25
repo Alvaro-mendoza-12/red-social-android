@@ -215,6 +215,8 @@
 .chat-advanced-options { width:min(430px,calc(100% - 24px)); border-radius:14px; }
 .chat-advanced-options .grid-2-col { grid-template-columns:1fr; }
 .chat-advanced-options .surface-card { border:0; border-radius:0; }
+.chat-advanced-options .mini-composer { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px; }
+.chat-advanced-options .mini-composer .ghost-btn-sm { min-width:46px; min-height:42px; white-space:nowrap; flex-shrink:0; }
 .chat-thread-shell { background-image:url('/assets/chat-doodles.svg'); background-size:240px 200px; }
 .chat-thread { gap:4px; padding-block:14px; }
 .bubble:not(.chat-album):not(.sticker-bubble) { padding:7px 10px 5px; border-radius:9px; }

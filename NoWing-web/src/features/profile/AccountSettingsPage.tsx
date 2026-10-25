@@ -628,7 +628,7 @@ export function AccountSettingsPage() {
           </div>
           <div className="composer settings-stack">
             <div className="settings-profile-preview">
-              {model.coverUrl.trim() ? <div className="settings-profile-cover" style={{ position: 'relative' }}><StreamingImage className="settings-profile-cover" src={model.coverUrl.trim()} alt="Portada de tu perfil" />{model.profileEffect !== 'none' ? <ProfileCoverEffect effect={model.profileEffect} theme={model.profileTheme} overlay/> : null}</div> : <div className="settings-profile-cover"><ProfileCoverEffect effect={model.profileEffect} theme={model.profileTheme} /></div>}
+              {model.coverUrl.trim() ? <div className="settings-profile-cover"><StreamingImage className="settings-profile-cover-image" src={model.coverUrl.trim()} alt="Portada de tu perfil" />{model.profileEffect !== 'none' ? <ProfileCoverEffect effect={model.profileEffect} theme={model.profileTheme} overlay/> : null}</div> : <div className="settings-profile-cover"><ProfileCoverEffect effect={model.profileEffect} theme={model.profileTheme} /></div>}
               <div className="settings-profile-avatar">
                 {model.avatarUrl.trim() ? (
                   <SafeAvatar url={model.avatarUrl.trim()} name={model.displayName || 'Tu perfil'} />

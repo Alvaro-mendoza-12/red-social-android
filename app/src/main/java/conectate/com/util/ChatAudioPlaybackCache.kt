@@ -35,8 +35,7 @@ internal class ChatAudioPlaybackCache(
             if (!response.isSuccessful) throw IOException("No se pudo descargar el audio (${response.code})")
             val body = response.body ?: throw IOException("El audio está vacío")
             val contentType = body.contentType()?.toString()?.substringBefore(';').orEmpty()
-            if (contentType.isNotEmpty() && !contentType.startsWith("audio/") &&
-                contentType !in setOf("video/mp4", "application/octet-stream")) {
+            if (!isAudioDeliveryContentType(contentType)) {
                 throw IOException("El servidor no devolvió un archivo de audio")
             }
             val expectedBytes = body.contentLength()

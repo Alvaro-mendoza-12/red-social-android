@@ -527,7 +527,7 @@ class LiveSessionViewModel @Inject constructor(
         _connectionRequest.value = request
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val result = start(normalizedId)
+                val result = conectate.com.data.repository.awaitLiveConnection { start(normalizedId) }
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 if (result.isFailure) {
                     val fallback = if (role == LiveRole.HOST) {

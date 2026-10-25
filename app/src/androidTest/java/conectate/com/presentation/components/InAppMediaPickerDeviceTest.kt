@@ -26,7 +26,6 @@ class InAppMediaPickerDeviceTest {
     @get:Rule val compose = createComposeRule()
     @Test fun selectsAndEditsAnOwnedPhotoWithoutAnExternalFileBrowser() = runBlocking<Unit> {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
-        assertEquals("conectate.com.qa.cierre11",context.packageName)
         val bitmap=Bitmap.createBitmap(32,24,Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.GREEN) }
         val source=try { savePublicMedia(context,"Novvin_QA_${UUID.randomUUID()}.png","image/png",{}) {
             check(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))

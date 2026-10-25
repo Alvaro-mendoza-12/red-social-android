@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -145,18 +146,26 @@ fun StickerPickerDialog(
             tonalElevation = 6.dp
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    if (onEmojiSelected != null) "Emojis y stickers" else "Stickers",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+                    Text(
+                        if (onEmojiSelected != null) "Emojis y stickers" else "Stickers",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Cerrar selector") }
+                }
 
                 OutlinedTextField(
                     value = query,
                     onValueChange = { viewModel.updateQuery(it) },
                     placeholder = { Text(if (selectedTab == 3) "Buscar emoji..." else "Buscar sticker...") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) IconButton(onClick = { viewModel.updateQuery("") }) {
+                            Icon(Icons.Default.Close, "Borrar búsqueda")
+                        }
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     shape = RoundedCornerShape(12.dp)
@@ -224,23 +233,11 @@ fun StickerPickerDialog(
                     }.filter { !it.media_url.isNullOrBlank() }
 
                     if (selectedTab == 3 && onEmojiSelected != null) {
-                        val emojis = remember(query) { searchablePickerEmojis(query) }
-                        if (emojis.isEmpty()) {
-                            Text("No hay emojis que coincidan", modifier = Modifier.align(Alignment.Center))
-                        } else {
-                            LazyVerticalGrid(
-                                columns = GridCells.Adaptive(52.dp),
-                                contentPadding = PaddingValues(4.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(emojis, key = { it.first }) { (emoji, description) ->
-                                    TextButton(onClick = { onEmojiSelected(emoji) }, modifier = Modifier.size(52.dp)) {
-                                        Text(emoji, style = MaterialTheme.typography.headlineMedium,
-                                            modifier = Modifier.semantics { contentDescription = description })
-                                    }
-                                }
-                            }
-                        }
+                        conectate.com.presentation.messages.stickers.ChatEmojiGrid(
+                            query = query,
+                            modifier = Modifier.fillMaxSize(),
+                            onEmojiSelected = onEmojiSelected,
+                        )
                     } else if (isLoading) {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     } else if (currentItems.isEmpty()) {

@@ -88,13 +88,42 @@ class SocialAuthorHydratorTest {
     }
 
     @Test
-    fun `missing author is unchanged and an explicitly removed avatar stays removed`() {
+    fun `missing author stays unchanged and partial profile hydration preserves delivered identity`() {
         val untouched = post("other", "missing")
         val visible = applyCanonicalPostAuthors(
             listOf(post().copy(userProfileImage = "old-photo"), untouched),
-            listOf(user(" A ").copy(avatar_url = null)),
+            listOf(user(" A ").copy(display_name = "", full_name = null, username = null, avatar_url = null)),
         )
-        assertNull(visible.first().userProfileImage)
+        assertEquals("old-photo", visible.first().userProfileImage)
+        assertEquals("Antes", visible.first().userName)
         assertSame(untouched, visible.last())
+    }
+
+    @Test fun `missing feed photos use local identities without waiting for remote profiles`() {
+        val initial = post().copy(userName = "Usuario", userProfileImage = "", likeCount = 7).also { it.isSensitive = true }
+        val missing = post("missing", "unknown")
+        val visible = fillMissingPostAuthorIdentities(listOf(initial, missing), listOf(user(" A ")))
+        assertEquals("https://example.test/a.webp", visible.first().userProfileImage)
+        assertEquals("Actual", visible.first().userName)
+        assertEquals(7, visible.first().likeCount)
+        assertTrue(visible.first().isSensitive)
+        assertSame(missing, visible.last())
+    }
+
+    @Test fun `older local identity never replaces a photo already delivered by the feed`() {
+        val fresh = post().copy(userName = "Nombre actual", userProfileImage = "new-photo")
+        assertSame(fresh, fillMissingPostAuthorIdentities(listOf(fresh), listOf(user())).single())
+    }
+
+    @Test fun `confirmed avatar removal clears visible author photos while preserving post edits`() {
+        val edited = post().copy(userProfileImage = "old-photo", content = "editado", likedByMe = true)
+            .also { it.isSensitive = true }
+        val other = post("other", "someone-else").copy(userProfileImage = "other-photo")
+        val updated = applyCanonicalPostAuthors(listOf(edited, other), listOf(user().copy(avatar_url = null)), confirmedUpdate = true)
+        assertNull(updated.first().userProfileImage)
+        assertEquals("editado", updated.first().content)
+        assertTrue(updated.first().likedByMe)
+        assertTrue(updated.first().isSensitive)
+        assertSame(other, updated.last())
     }
 }

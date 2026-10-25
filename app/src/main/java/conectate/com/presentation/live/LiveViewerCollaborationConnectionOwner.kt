@@ -42,7 +42,7 @@ internal fun LiveViewerCollaborationConnectionOwner(
         retryRequested = false
         retryState = retryState.beginAttempt()
         val result = try {
-            latestConnect(desired)
+            conectate.com.data.repository.awaitLiveConnection { latestConnect(desired) }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
@@ -54,6 +54,7 @@ internal fun LiveViewerCollaborationConnectionOwner(
         if (result.isSuccess) {
             latestOnConnected(desired)
         } else {
+            latestDisconnect()
             retryRequested = true
         }
     }

@@ -156,7 +156,8 @@ class ChatCameraCaptureTest {
 
     private fun waitReady(action: String) {
         compose.waitUntil(25_000) {
-            compose.onAllNodesWithContentDescription(action).fetchSemanticsNodes().isNotEmpty() &&
+            compose.onAllNodesWithContentDescription(action).fetchSemanticsNodes()
+                .any { !it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled) } &&
                 compose.onAllNodes(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription, "Cámara lista"))
                     .fetchSemanticsNodes().isNotEmpty()
         }

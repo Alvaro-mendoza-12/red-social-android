@@ -21,6 +21,11 @@ internal class StorageReadCoilInterceptor(
         val identity = StorageReadSession.snapshot()?.identity
         val offlineAllowed = identity != null && !identity.accountId.startsWith("guest_") &&
             original.parameters.value<Boolean>(MediaImageRequestFactory.OFFLINE_CHAT_IMAGE) == true
+        // A guest may reuse decoded public previews within its own generation.
+        // It still cannot retain files on disk or borrow a member's cache key.
+        val memoryAllowed = identity != null && (
+            original.parameters.value<Boolean>(MediaImageRequestFactory.OFFLINE_CHAT_IMAGE) == true ||
+                original.parameters.value<Boolean>(MediaImageRequestFactory.MEMORY_ONLY_PREVIEW) == true)
         val cached = if (offlineAllowed) {
             try {
                 StorageReadSession.requireCurrent(identity)
@@ -30,8 +35,8 @@ internal class StorageReadCoilInterceptor(
         } else null
         val request = original.newBuilder()
             .data(cached ?: original.data)
-            .memoryCachePolicy(if (offlineAllowed) CachePolicy.ENABLED else CachePolicy.DISABLED)
-            .memoryCacheKey(if (offlineAllowed) StorageReadSession.scopedCacheKey(source,
+            .memoryCachePolicy(if (memoryAllowed) CachePolicy.ENABLED else CachePolicy.DISABLED)
+            .memoryCacheKey(if (memoryAllowed) StorageReadSession.scopedCacheKey(source,
                 original.memoryCacheKey?.key ?: source) else null)
             .diskCachePolicy(CachePolicy.DISABLED)
             // Remove an old account's preview before EngineInterceptor accesses placeholders.

@@ -1,5 +1,7 @@
 package conectate.com.presentation.messages
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import conectate.com.presentation.messages.OutgoingMessageMedia
 import androidx.compose.runtime.Composable
 
@@ -10,6 +12,7 @@ import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.content.contentReceiver
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
@@ -67,27 +70,17 @@ fun CommunityChatScreen(
     focusMessageId: String? = null,
     viewModel: CommunityChatViewModel = hiltViewModel()
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    val messageText by viewModel.messageText.collectAsState()
-    val mentionMembers by viewModel.mentionMembers.collectAsState()
-    var mentionDraft by remember(communityId) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(messageText)) }
-    LaunchedEffect(messageText) {
-        if (mentionDraft.text != messageText) mentionDraft = androidx.compose.ui.text.input.TextFieldValue(messageText, androidx.compose.ui.text.TextRange(messageText.length))
-    }
-    val activeMention = conectate.com.data.model.activeMentionAt(mentionDraft.text, mentionDraft.selection.end)
-    LaunchedEffect(activeMention?.start) { if (activeMention != null) viewModel.refreshMentionMembers() }
-    val mentionSuggestions = if (activeMention == null) emptyList() else
-        conectate.com.data.model.roomMentionCandidates(mentionMembers, activeMention.query, viewModel.getCurrentUserId())
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
-    val isSending by viewModel.isSending.collectAsState()
+    val isSending by viewModel.isSending.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val markersViewModel: ConversationMarkersViewModel = hiltViewModel()
-    val markerFeedback by markersViewModel.feedback.collectAsState()
+    val markerFeedback by markersViewModel.feedback.collectAsStateWithLifecycle()
     LaunchedEffect(communityId) { markersViewModel.bind("community", communityId) }
     LaunchedEffect(markerFeedback) {
         markerFeedback?.let { snackbarHostState.showSnackbar(it); markersViewModel.clearFeedback() }
     }
-    val listState = rememberLazyListState()
+    val listState = rememberConversationListState()
     val context = LocalContext.current
     val openCollectionInvitation = rememberCollectionInvitationOpener(navController)
     val scope = rememberCoroutineScope()
@@ -99,21 +92,15 @@ fun CommunityChatScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // Voice recording states
-    val voiceState by viewModel.voiceState.collectAsState()
-    val recordingDuration by viewModel.recordingDuration.collectAsState()
-    val voicePlaybackProgress by viewModel.voicePlaybackProgress.collectAsState()
-    val voicePlaybackDurationLabel by viewModel.voicePlaybackDurationLabel.collectAsState()
+    val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
+    val recordingDuration by viewModel.recordingDuration.collectAsStateWithLifecycle()
+    val voicePlaybackProgress by viewModel.voicePlaybackProgress.collectAsStateWithLifecycle()
+    val voicePlaybackDurationLabel by viewModel.voicePlaybackDurationLabel.collectAsStateWithLifecycle()
 
     // Reply/Edit states
-    val replyToMessage by viewModel.replyToMessage.collectAsState()
-    val editingMessage by viewModel.editingMessage.collectAsState()
-    val currentPlayingAudioId by viewModel.currentPlayingAudioId.collectAsState()
-    val isAudioPlaying by viewModel.isAudioPlaying.collectAsState()
-    val audioProgress by viewModel.audioProgress.collectAsState()
-    val audioDurationLabel by viewModel.audioDurationLabel.collectAsState()
-    val audioDurations by viewModel.audioDurations.collectAsState()
-    val audioPlaybackSpeed by viewModel.audioPlaybackSpeed.collectAsState()
-    val selectedMessage by viewModel.selectedMessage.collectAsState()
+    val replyToMessage by viewModel.replyToMessage.collectAsStateWithLifecycle()
+    val editingMessage by viewModel.editingMessage.collectAsStateWithLifecycle()
+    val selectedMessage by viewModel.selectedMessage.collectAsStateWithLifecycle()
     var selectedIds by remember(communityId, currentUserId) { mutableStateOf<Set<String>>(emptySet()) }
     var highlightedId by remember(communityId) { mutableStateOf<String?>(null) }
     var confirmSelectionDelete by remember { mutableStateOf(false) }
@@ -124,22 +111,22 @@ fun CommunityChatScreen(
     androidx.activity.compose.BackHandler(selectedIds.isNotEmpty()) { selectedIds = emptySet() }
     fun toggleSelected(id: String) { selectedIds = if (id in selectedIds) selectedIds - id else selectedIds + id }
 
-    val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsState()
-    val favoriteStickerMediaKeys by viewModel.favoriteStickerMediaKeys.collectAsState()
-    val reactionPickerMessage by viewModel.reactionPickerMessage.collectAsState()
-    val forwardPickerMessage by viewModel.forwardPickerMessage.collectAsState()
-    val forwardTargets by viewModel.forwardTargets.collectAsState()
-    val isForwarding by viewModel.isForwarding.collectAsState()
-    val pollStates by viewModel.pollStates.collectAsState()
-    val isCreatingPoll by viewModel.isCreatingPoll.collectAsState()
-    val messageInfoTarget by viewModel.messageInfoTarget.collectAsState()
-    val messageInfoReceipts by viewModel.messageInfoReceipts.collectAsState()
-    val isLoadingMessageInfo by viewModel.isLoadingMessageInfo.collectAsState()
-    val pollOptionVoters by viewModel.pollOptionVoters.collectAsState()
-    val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsState()
-    val channels by viewModel.channels.collectAsState()
-    val selectedChannel by viewModel.selectedChannel.collectAsState()
-    val isOpeningVoiceChannel by viewModel.isOpeningVoiceChannel.collectAsState()
+    val transfers by conectate.com.core.messaging.MessageUploadProgress.transfers.collectAsStateWithLifecycle()
+    val favoriteStickerMediaKeys by viewModel.favoriteStickerMediaKeys.collectAsStateWithLifecycle()
+    val reactionPickerMessage by viewModel.reactionPickerMessage.collectAsStateWithLifecycle()
+    val forwardPickerMessage by viewModel.forwardPickerMessage.collectAsStateWithLifecycle()
+    val forwardTargets by viewModel.forwardTargets.collectAsStateWithLifecycle()
+    val isForwarding by viewModel.isForwarding.collectAsStateWithLifecycle()
+    val pollStates by viewModel.pollStates.collectAsStateWithLifecycle()
+    val isCreatingPoll by viewModel.isCreatingPoll.collectAsStateWithLifecycle()
+    val messageInfoTarget by viewModel.messageInfoTarget.collectAsStateWithLifecycle()
+    val messageInfoReceipts by viewModel.messageInfoReceipts.collectAsStateWithLifecycle()
+    val isLoadingMessageInfo by viewModel.isLoadingMessageInfo.collectAsStateWithLifecycle()
+    val pollOptionVoters by viewModel.pollOptionVoters.collectAsStateWithLifecycle()
+    val chatBackgroundSettings by viewModel.chatBackgroundSettings.collectAsStateWithLifecycle()
+    val channels by viewModel.channels.collectAsStateWithLifecycle()
+    val selectedChannel by viewModel.selectedChannel.collectAsStateWithLifecycle()
+    val isOpeningVoiceChannel by viewModel.isOpeningVoiceChannel.collectAsStateWithLifecycle()
     var focusResolved by remember(focusMessageId) { mutableStateOf(focusMessageId.isNullOrBlank()) }
 
     var showAttachmentSheet by remember { mutableStateOf(false) }
@@ -149,7 +136,7 @@ fun CommunityChatScreen(
     val stickerKeyboardPanel = rememberStickerKeyboardPanel(showStickerCatalogDialog) { showStickerCatalogDialog = it }
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     val mediaPickerViewModel: conectate.com.presentation.components.MediaPickerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
-    val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsState()
+    val galleryMedia by mediaPickerViewModel.galleryMedia.collectAsStateWithLifecycle()
     var showUnifiedMediaPicker by remember { mutableStateOf(false) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
@@ -231,13 +218,6 @@ fun CommunityChatScreen(
             .distinct()
             .take(24)
     }
-    val visibleMessageIds by remember(messages, listState) {
-        derivedStateOf {
-            listState.layoutInfo.visibleItemsInfo
-                .mapNotNull { item -> messages.getOrNull(item.index)?.id }
-                .toSet()
-        }
-    }
     val mediaMessages = remember(messages) {
         messages.filter {
             conectate.com.presentation.components.isGalleryMediaType(it.content_type) &&
@@ -250,16 +230,17 @@ fun CommunityChatScreen(
             MediaItem(
                 id = msg.id,
                 url = msg.media_url ?: "",
-                type = msg.content_type
+                type = msg.content_type,
             )
         }
     }
     var fullScreenImageInitialIndex by remember { mutableStateOf<Int?>(null) }
     var oneTimeMediaItems by remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
-    LaunchedEffect(visibleMessageIds, messages.size) {
-        viewModel.onVisibleMessageIdsChanged(visibleMessageIds)
-    }
+    ObserveVisibleConversationMessages(
+        messages = chatMessages, listState = listState, groupMedia = selectedIds.isEmpty() && highlightedId == null,
+        onVisibleIdsChanged = viewModel::onVisibleMessageIdsChanged,
+    )
 
     fun sendCurrentLocation() {
         scope.launch {
@@ -590,7 +571,7 @@ fun CommunityChatScreen(
                             state = listState,
                             contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
                         ) {
-                            itemsIndexed(chatMessages, key = { _, item -> item.id }) { index, msg ->
+                            itemsIndexed(chatMessages, key = { _, item -> item.id }, contentType = { _, item -> item.content_type }) { index, msg ->
                                 val previousIso = chatMessages.getOrNull(index - 1)?.created_at
                                 if (shouldShowDateSeparator(msg.created_at, previousIso)) {
                                     DateSeparator(label = formatDateSeparatorLabel(msg.created_at))
@@ -638,6 +619,12 @@ fun CommunityChatScreen(
                                         navController.navigate(conectate.com.presentation.navigation.RaffleNavigation.createRoute("community", communityId, msg.media_url))
                                     }
                                 } else {
+                                    val audio = rememberChatMessageAudioState(
+                                        msg.id, msg.content_type, msg.content.ifBlank { "0:00" },
+                                        viewModel.currentPlayingAudioId, viewModel.isAudioPlaying,
+                                        viewModel.audioProgress, viewModel.audioDurationLabel,
+                                        viewModel.audioDurations, viewModel.audioPlaybackSpeed,
+                                    )
                                     MessageBubble(
                                         message = msg,
                                         replyMessage = msg.reply_to_id?.let(replyMessages::get),
@@ -652,12 +639,12 @@ fun CommunityChatScreen(
                                         isAdmin = memberProfile?.is_admin == true,
                                         isVerified = memberProfile?.is_verified ?: false,
                                         userBadges = memberProfile?.badges ?: emptyList(),
-                                        isAudioActive = currentPlayingAudioId == msg.id,
-                                        totalAudioDurationMs = audioDurations[msg.id],
-                                        isPlaying = currentPlayingAudioId == msg.id && isAudioPlaying,
-                                        progress = if (currentPlayingAudioId == msg.id) audioProgress else 0f,
-                                        duration = if (currentPlayingAudioId == msg.id) audioDurationLabel else (msg.content.ifBlank { "0:00" }),
-                                        playbackSpeed = audioPlaybackSpeed,
+                                        isAudioActive = audio.active,
+                                        totalAudioDurationMs = audio.totalDurationMs,
+                                        isPlaying = audio.playing,
+                                        progress = audio.progress,
+                                        duration = audio.duration,
+                                        playbackSpeed = audio.speed,
                                         onSeekAudio = { _, fraction -> viewModel.seekAudio(fraction) },
                                         onChangeAudioSpeed = { viewModel.cycleAudioPlaybackSpeed() },
                                         onPlayAudio = { viewModel.playAudio(it) },
@@ -847,7 +834,7 @@ fun CommunityChatScreen(
                         }
                     }
                 } else {
-                val myRole by viewModel.myRole.collectAsState()
+                val myRole by viewModel.myRole.collectAsStateWithLifecycle()
                 val canTalk = publicationAllowed && (!successState.community.only_admins_can_talk ||
                              myRole == "admin" || myRole == "owner" || 
                              successState.community.creator_id == currentUserId)
@@ -967,6 +954,16 @@ fun CommunityChatScreen(
                         }
                     } else {
                         // STANDARD INPUT
+                        ChatComposerDraft(viewModel.messageText) { messageText ->
+                        val mentionMembers by viewModel.mentionMembers.collectAsStateWithLifecycle()
+                        var mentionDraft by remember(communityId) { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(messageText)) }
+                        LaunchedEffect(messageText) {
+                            if (mentionDraft.text != messageText) mentionDraft = androidx.compose.ui.text.input.TextFieldValue(messageText, androidx.compose.ui.text.TextRange(messageText.length))
+                        }
+                        val activeMention = conectate.com.data.model.activeMentionAt(mentionDraft.text, mentionDraft.selection.end)
+                        LaunchedEffect(activeMention?.start) { if (activeMention != null) viewModel.refreshMentionMembers() }
+                        val mentionSuggestions = if (activeMention == null) emptyList() else
+                            conectate.com.data.model.roomMentionCandidates(mentionMembers, activeMention.query, viewModel.getCurrentUserId())
                         Column {
                         val spelling = conectate.com.presentation.components.rememberChatSpellCheckState(
                             mentionDraft.text, conectate.com.presentation.components.mentionInputTransformation)
@@ -996,19 +993,34 @@ fun CommunityChatScreen(
                                 Icon(Icons.Default.Add, null, tint = MaterialTheme.colorScheme.primary)
                             }
                             StickerButton(onClick = stickerKeyboardPanel.toggle, showingStickers = showStickerCatalogDialog)
+                            val composerFieldState = rememberChatComposerFieldState(mentionDraft) {
+                                val textChanged = mentionDraft.text != it.text
+                                mentionDraft = it
+                                if (textChanged) viewModel.updateMessageText(it.text)
+                            }
                             TextField(
-                                value = mentionDraft,
-                                visualTransformation = spelling.visualTransformation,
-                                onValueChange = { mentionDraft = it; viewModel.updateMessageText(it.text) },
+                                state = composerFieldState,
+                                inputTransformation = ChatUnicodeInputTransformation,
+                                outputTransformation = rememberChatComposerOutputTransformation(spelling.issues, highlightMentions = true),
                                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp)
+                                    .contentReceiver(rememberChatImagePasteReceiver { images ->
+                                        composerInitialUris = images.take(30)
+                                        composerInitialStep = "editor"
+                                        showMediaComposer = true
+                                    })
                                     .focusRequester(stickerKeyboardPanel.inputFocusRequester)
                                     .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
                                 enabled = true,
                                 placeholder = { Text("Mensaje") },
-                                maxLines = 4,
+                                lineLimits = androidx.compose.foundation.text.input.TextFieldLineLimits.MultiLine(maxHeightInLines = 4),
                                 shape = RoundedCornerShape(12.dp),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true, imeAction = androidx.compose.ui.text.input.ImeAction.Send),
-                                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSend = { if (messageText.isNotBlank()) { if (editingMessage != null) viewModel.confirmEditMessage() else viewModel.sendMessage() } }),
+                                onKeyboardAction = androidx.compose.foundation.text.input.KeyboardActionHandler {
+                                    val currentText = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
+                                    if (currentText.isNotBlank()) {
+                                        if (editingMessage != null) viewModel.confirmEditMessage() else viewModel.sendMessage()
+                                    }
+                                },
                                 colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent),
                                 trailingIcon = {
                                     IconButton(onClick = {
@@ -1023,7 +1035,8 @@ fun CommunityChatScreen(
                             Spacer(Modifier.width(4.dp))
                             FloatingActionButton(
                                 onClick = {
-                                    if (messageText.isNotBlank()) {
+                                    val currentText = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
+                                    if (currentText.isNotBlank()) {
                                         if (editingMessage != null) viewModel.confirmEditMessage()
                                         else viewModel.sendMessage()
                                     } else {
@@ -1040,12 +1053,10 @@ fun CommunityChatScreen(
                                 shape = CircleShape,
                                 elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                             ) {
-                                if (isSending && messageText.isBlank()) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                                } else {
-                                    Icon(imageVector = if (messageText.isNotBlank()) Icons.AutoMirrored.Filled.Send else Icons.Default.Mic, contentDescription = if (messageText.isNotBlank()) "Enviar mensaje" else "Grabar audio")
-                                }
+                                val hasText = composerFieldState.text.isNotBlank()
+                                Icon(imageVector = if (hasText) Icons.AutoMirrored.Filled.Send else Icons.Default.Mic, contentDescription = if (hasText) "Enviar mensaje" else "Grabar audio")
                             }
+                        }
                         }
                         }
                     }
@@ -1106,7 +1117,13 @@ fun CommunityChatScreen(
                         } else {
                             viewModel.sendStickerEmoji(sticker.title.ifBlank { "🧩" })
                         }
-                    }
+                    },
+                    onEmojiSelected = { emoji ->
+                        viewModel.updateMessageText(viewModel.messageText.value + emoji)
+                    },
+                    onEmojiBackspace = {
+                        viewModel.updateMessageText(removeLastChatGrapheme(viewModel.messageText.value))
+                    },
                 )
             }
         }
@@ -1316,7 +1333,7 @@ fun CommunityChatScreen(
     if (showWorkspace && uiState is CommunityChatUiState.Success) {
         ConversationWorkspaceDialog(
             type = "community", conversationId = communityId, channelId = selectedChannel?.id,
-            composerText = messageText, initialKind = workspaceKind, source = workspaceSource,
+            composerText = viewModel.messageText.value, initialKind = workspaceKind, source = workspaceSource,
             onDismiss = { showWorkspace = false; workspaceSource = null },
             onLoadDraft = { draft ->
                 viewModel.cancelEdit()
@@ -1654,6 +1671,12 @@ fun CommunityChatScreen(
                     Icon(Icons.Default.Image, null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(16.dp))
                     Text("Fotos y videos")
+                }
+                ClipboardImagePasteAction(maxItems = 30) { images ->
+                    composerInitialUris = images
+                    composerInitialStep = "editor"
+                    showAttachmentSheet = false
+                    showMediaComposer = true
                 }
                 Row(
                     modifier = Modifier

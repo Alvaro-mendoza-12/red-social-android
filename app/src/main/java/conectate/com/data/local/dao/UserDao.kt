@@ -18,6 +18,9 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE id = :userId")
     suspend fun getUser(userId: String): UserEntity?
 
+    @Query("SELECT * FROM users WHERE id IN (:userIds)")
+    suspend fun getUsers(userIds: List<String>): List<UserEntity>
+
     @Query("SELECT * FROM users WHERE id = :userId")
     fun getUserSync(userId: String): UserEntity?
 

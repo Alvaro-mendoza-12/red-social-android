@@ -40,3 +40,40 @@ test('expired images and non-image payloads are downloaded again', async () => {
   await readCachedStorageImage(options())
   expect(read).toHaveBeenCalledTimes(4)
 })
+
+test('concurrent bubbles share a transfer and cancelling one does not cancel the other', async () => {
+  let complete!: (blob: Blob) => void
+  read.mockImplementationOnce(() => new Promise(resolve => { complete = resolve }))
+  const firstController = new AbortController()
+  const firstOptions = { ...options(), signal: firstController.signal }, secondOptions = options()
+  const first = readCachedStorageImage(firstOptions)
+  const second = readCachedStorageImage(secondOptions)
+  expect(read).toHaveBeenCalledTimes(1)
+  const firstRejected = expect(first).rejects.toMatchObject({ name: 'AbortError' })
+  // Use the original caller's signal, not the shared transfer's signal.
+  const transferSignal = read.mock.calls[0][0].signal
+  expect(transferSignal).not.toBe(firstOptions.signal)
+  firstController.abort()
+  await firstRejected
+  expect(transferSignal.aborted).toBe(false)
+  const blob = new Blob(['one-download'], { type: 'image/png' })
+  complete(blob)
+  expect(await second).toBe(blob)
+  expect(await readCachedStorageImage(options())).toBe(blob)
+  expect(read).toHaveBeenCalledTimes(1)
+})
+
+test('unmounting every consumer aborts the transfer and a later mount starts a fresh one', async () => {
+  read.mockImplementationOnce(() => new Promise(() => {}))
+  const controller = new AbortController()
+  const first = readCachedStorageImage({ ...options(), signal: controller.signal })
+  const rejected = expect(first).rejects.toMatchObject({ name: 'AbortError' })
+  const transferSignal = read.mock.calls[0][0].signal
+  controller.abort()
+  await rejected
+  expect(transferSignal.aborted).toBe(true)
+  const blob = new Blob(['fresh-read'], { type: 'image/png' })
+  read.mockResolvedValueOnce(blob)
+  expect(await readCachedStorageImage(options())).toBe(blob)
+  expect(read).toHaveBeenCalledTimes(2)
+})

@@ -22,6 +22,8 @@ fun canonicalizeMediaContentType(contentType: String?): String? {
         "audio/mp3", "audio/x-mp3", "audio/x-mpeg" -> "audio/mpeg"
         "audio/x-wav" -> "audio/wav"
         "audio/x-flac" -> "audio/flac"
+        "application/msexcel", "application/x-msexcel", "application/xls", "application/x-excel" -> "application/vnd.ms-excel"
+        "application/mspowerpoint", "application/x-mspowerpoint" -> "application/vnd.ms-powerpoint"
         else -> clean
     }
 }
@@ -42,17 +44,75 @@ fun preferredExtensionForMime(contentType: String?): String? {
         "audio/flac" -> "flac"
         "application/pdf" -> "pdf"
         "application/zip" -> "zip"
+        "application/vnd.ms-excel" -> "xls"
+        "application/vnd.ms-excel.sheet.macroenabled.12" -> "xlsm"
+        "application/vnd.ms-excel.sheet.binary.macroenabled.12" -> "xlsb"
+        "application/msword" -> "doc"
+        "application/vnd.ms-word.document.macroenabled.12" -> "docm"
+        "application/vnd.ms-powerpoint" -> "ppt"
+        "application/vnd.ms-powerpoint.presentation.macroenabled.12" -> "pptm"
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> "docx"
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> "xlsx"
         "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> "pptx"
+        "application/vnd.oasis.opendocument.text" -> "odt"
+        "application/vnd.oasis.opendocument.spreadsheet" -> "ods"
+        "application/vnd.oasis.opendocument.presentation" -> "odp"
+        "application/rtf" -> "rtf"
         "text/plain" -> "txt"
         "text/csv" -> "csv"
+        "text/tab-separated-values" -> "tsv"
+        "application/json" -> "json"
+        "application/xml", "text/xml" -> "xml"
+        "application/epub+zip" -> "epub"
+        "application/x-7z-compressed" -> "7z"
+        "application/vnd.rar" -> "rar"
         else -> null
     }
 }
 
+fun fileExtensionFromName(fileName: String?): String? {
+    val cleanName = fileName
+        ?.substringBefore('?')
+        ?.substringBefore('#')
+        ?.substringAfterLast('/')
+        ?.substringAfterLast('\\')
+        ?.trim()
+        .orEmpty()
+    val extension = cleanName.substringAfterLast('.', "").trim().lowercase()
+    return extension.takeIf { it.matches(Regex("[a-z0-9]{1,16}")) }
+}
+
+fun guessMimeTypeFromFileName(fileName: String?): String? {
+    val extension = fileExtensionFromName(fileName) ?: return null
+    val explicit = when (extension) {
+        "xls" -> "application/vnd.ms-excel"
+        "xlsm" -> "application/vnd.ms-excel.sheet.macroEnabled.12"
+        "xlsb" -> "application/vnd.ms-excel.sheet.binary.macroEnabled.12"
+        "doc" -> "application/msword"
+        "docm" -> "application/vnd.ms-word.document.macroEnabled.12"
+        "ppt" -> "application/vnd.ms-powerpoint"
+        "pptm" -> "application/vnd.ms-powerpoint.presentation.macroEnabled.12"
+        "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        "odt" -> "application/vnd.oasis.opendocument.text"
+        "ods" -> "application/vnd.oasis.opendocument.spreadsheet"
+        "odp" -> "application/vnd.oasis.opendocument.presentation"
+        "rtf" -> "application/rtf"
+        "tsv" -> "text/tab-separated-values"
+        "json" -> "application/json"
+        "xml" -> "application/xml"
+        "epub" -> "application/epub+zip"
+        "7z" -> "application/x-7z-compressed"
+        "rar" -> "application/vnd.rar"
+        else -> null
+    }
+    return explicit ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+}
+
 fun guessMimeTypeFromUri(uri: Uri?): String? {
     val safeUri = uri ?: return null
+    guessMimeTypeFromFileName(safeUri.lastPathSegment)?.let { return it }
     var extension = MimeTypeMap.getFileExtensionFromUrl(safeUri.toString())
         ?.trim()
         ?.lowercase()
@@ -186,6 +246,10 @@ fun resolveMediaMeta(
             ?: declared?.takeIf { it == "image/webp" || it == "image/png" }
             ?: guessed?.takeIf { it == "image/webp" || it == "image/png" }
             ?: "image/png"
+        "document", "file" -> inferred
+            ?: guessed?.takeIf(::isSafeOpaqueAttachmentMime)
+            ?: declared?.takeIf(::isSafeOpaqueAttachmentMime)
+            ?: "application/octet-stream"
         else -> inferred ?: declared ?: guessed ?: "application/octet-stream"
     }
 
@@ -193,6 +257,24 @@ fun resolveMediaMeta(
     return ResolvedMediaMeta(
         mimeType = resolvedMime,
         extensionWithDot = ".${extension.trimStart('.')}"
+    )
+}
+
+private fun isSafeOpaqueAttachmentMime(mime: String): Boolean {
+    return mime in setOf(
+        "application/pdf", "application/zip", "application/vnd.rar", "application/x-7z-compressed",
+        "application/vnd.ms-excel", "application/msword", "application/vnd.ms-powerpoint",
+        "application/vnd.ms-excel.sheet.macroenabled.12",
+        "application/vnd.ms-excel.sheet.binary.macroenabled.12",
+        "application/vnd.ms-word.document.macroenabled.12",
+        "application/vnd.ms-powerpoint.presentation.macroenabled.12",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.spreadsheet",
+        "application/vnd.oasis.opendocument.presentation", "application/rtf", "application/epub+zip",
+        "application/json", "application/xml", "text/xml", "text/plain", "text/csv",
+        "text/tab-separated-values"
     )
 }
 

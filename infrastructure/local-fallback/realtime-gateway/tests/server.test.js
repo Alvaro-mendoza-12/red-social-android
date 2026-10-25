@@ -36,6 +36,7 @@ assert.equal(subscriptionAuthorizationUrl('message-markers:group:group-1'), '/v1
 assert.equal(subscriptionAuthorizationUrl('random-chat:session-1'), '/v1/data/proximity/random/sessions/session-1')
 assert.equal(subscriptionAuthorizationUrl('video-comments:video-1'), '/v1/data/videos/video-1')
 assert.equal(subscriptionAuthorizationUrl('post-comments:post-1'), '/v1/data/feed/posts/post-1')
+assert.equal(subscriptionAuthorizationUrl('profile-music:profile-1'), '/v1/data/profiles/profile-1/music/reactions')
 assert.equal(subscriptionAuthorizationUrl('live-comments:live-1'), '/v1/data/live/live-1')
 assert.equal(subscriptionAuthorizationUrl('live-collaboration:live-1'), '/v1/data/live/live-1')
 assert.equal(subscriptionAuthorizationUrl('live-moderation:live-1'), '/v1/data/live/live-1')

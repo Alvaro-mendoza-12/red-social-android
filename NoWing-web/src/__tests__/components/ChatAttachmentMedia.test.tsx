@@ -29,6 +29,24 @@ test('returning to a cached photo renders it immediately with the same source an
   expect(screen.getByAltText('Foto precargada')).toHaveAttribute('src', url)
   expect(readBlob).toHaveBeenCalledTimes(count)
 })
+
+test('late attachment metadata does not remove an already rendered image source', async () => {
+  readBlob.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }))
+  const { rerender } = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto estable" size={0}/>)
+  const image = await screen.findByAltText('Foto estable')
+  const source = image.getAttribute('src')
+  await act(async () => { rerender(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto estable" size={12345}/>) })
+  await waitFor(() => expect(image).toHaveAttribute('src', source))
+  expect(readBlob).toHaveBeenCalledTimes(1)
+  expect(image).toHaveAttribute('loading', 'eager')
+})
+
+test('a large original image still loads its bounded thumbnail', async () => {
+  readBlob.mockResolvedValue(new Blob(['small-preview'], { type: 'image/webp' }))
+  render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto grande" size={30 * 1024 * 1024}/>)
+  expect(await screen.findByAltText('Foto grande')).toBeInTheDocument()
+  expect(screen.queryByText('Archivo demasiado grande para la vista web')).toBeNull()
+})
 const createObjectURL = jest.fn((_blob: Blob) => 'blob:private-preview')
 const revokeObjectURL = jest.fn()
 

@@ -15,6 +15,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import conectate.com.data.model.MomentMusicPresentation
 import conectate.com.data.music.ApprovedMomentMusic
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,6 +31,20 @@ class MomentEditorCanvasUiTest {
         0, 6_000, 1f, 1f, presentation = MomentMusicPresentation.LABEL))
     private var hours by mutableStateOf(24f)
     private var caption by mutableStateOf("")
+
+    @Before fun resetEditorState() {
+        selection = selection.copy(
+            startMs = 0,
+            endMs = 6_000,
+            overlayX = .5f,
+            overlayY = .38f,
+            overlayScale = 1f,
+            overlayRotation = 0f,
+            presentation = MomentMusicPresentation.LABEL,
+        )
+        hours = 24f
+        caption = ""
+    }
 
     private fun show(largeText: Boolean = false) {
         val file = File(compose.activity.cacheDir, "qa-moment-canvas.png")
@@ -116,7 +131,7 @@ class MomentEditorCanvasUiTest {
         compose.waitForIdle()
         val sticker = compose.onNodeWithTag("moment_music_canvas_sticker").fetchSemanticsNode().boundsInRoot
         val footer = compose.onNodeWithTag("moment_editor_footer").fetchSemanticsNode().boundsInRoot
-        assertTrue(sticker.bottom <= footer.top + 1f)
+        assertTrue("Music sticker overlaps expanded caption controls: sticker=$sticker footer=$footer", sticker.bottom <= footer.top + 1f)
     }
     private fun capture(name: String) {
         compose.waitForIdle()

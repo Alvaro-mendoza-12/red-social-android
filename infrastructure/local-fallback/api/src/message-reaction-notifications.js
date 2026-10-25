@@ -1,5 +1,10 @@
 'use strict'
 const clean=value=>String(value||'').trim().toLowerCase()
+function reactionNotificationsMuted(rows, ownerIds) {
+  const own = rows.filter(row => ownerIds.includes(clean(row.user_id || row.profile_id)))
+  const preference = own.at(-1)
+  return preference?.is_muted === true || preference?.is_muted === 'true'
+}
 function reactionNotice({ actorIds, actorId, ownerId, emoji, reactions, deleted, deletedBy = [], ownerIds = [ownerId] }) {
   const ids=new Set([...(actorIds||[]),actorId].map(clean).filter(Boolean))
   const owner=clean(ownerId)
@@ -26,10 +31,18 @@ async function notifyMessageReaction(pool,{actorId,actorIds,kind,scopeId,message
     const data=require('./data-routes'),identity=data.userIdentity(actor)
     if((await data.blockRelationshipForPair(pool,identity,notice.ownerId)).isBlocked)return false
     let title='Chat'
+    if(kind==='chat') {
+      const [imported,local] = await Promise.all([
+        data.importedRowsByFieldValues(pool,'chat_participants',['chat_id'],[scopeId],1000),
+        data.localChatParticipantsByUserIds(pool,aliases(owner)),
+      ])
+      if(reactionNotificationsMuted([...imported,...local].filter(row=>clean(row.chat_id)===clean(scopeId)),aliases(owner)))return false
+    }
     if(kind!=='chat') {
       const {loadCollectionMembershipState,collectionHistoryAllows}=require('./collection-membership-policy')
       const state=await loadCollectionMembershipState(pool,kind,scopeId,aliases(owner))
       if(!state.member || !collectionHistoryAllows(state.history,message))return false
+      if(reactionNotificationsMuted(state.members,aliases(owner)))return false
       title=state.room?.name || (kind==='group'?'Grupo':'Comunidad')
     }
     const claim=await pool.query(`INSERT INTO fallback_message_reaction_notices(message_id,actor_id) VALUES($1::uuid,$2)
@@ -48,4 +61,4 @@ async function notifyMessageReaction(pool,{actorId,actorIds,kind,scopeId,message
     return Boolean(notification)
   } catch(error) { console.error('[reaction-notice] delivery failed',String(error.code||'DELIVERY_FAILED'));return false }
 }
-module.exports={reactionNotice,ensureReactionNoticeTables,notifyMessageReaction}
+module.exports={reactionNotice,reactionNotificationsMuted,ensureReactionNoticeTables,notifyMessageReaction}

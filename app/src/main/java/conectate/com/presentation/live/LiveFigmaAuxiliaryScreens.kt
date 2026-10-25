@@ -286,10 +286,9 @@ internal fun FigmaInviteFriendsScreen(
                                 .padding(horizontal = 4.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AsyncImage(
-                                model = user.avatar_url,
-                                contentDescription = user.displayName,
-                                contentScale = ContentScale.Crop,
+                            conectate.com.presentation.components.CircularProfileImage(
+                                imageUrl = user.avatar_url, fallbackName = user.displayName,
+                                size = 46.dp, openMomentOnClick = false, showMomentRing = false,
                                 modifier = Modifier
                                     .size(46.dp)
                                     .clip(CircleShape)

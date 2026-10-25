@@ -19,6 +19,7 @@ internal object StorageReadSession {
     @Volatile private var guestActive: () -> Boolean = { false }
     @Volatile private var prepareGuestProvider: (StorageReadIdentity) -> StorageReadCredential? = { guestSnapshot() }
     @Volatile private var prepareProvider: (StorageReadIdentity) -> StorageReadCredential? = { snapshot() }
+    @Volatile private var cachedScopeDigest: Pair<String, String>? = null
 
     fun install(credentials: () -> StorageReadCredential?) { install(credentials) { snapshot() } }
 
@@ -77,14 +78,21 @@ internal object StorageReadSession {
         if (!isStorageRequest(url)) return originalKey
         val identity = snapshot()?.identity
         val scope = if (identity == null) "anonymous" else "${identity.accountId}:${identity.generation}"
-        val digest = MessageDigest.getInstance("SHA-256").digest(scope.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
+        val digest = cachedScopeDigest?.takeIf { it.first == scope }?.second ?: run {
+            val hex = "0123456789abcdef"
+            val bytes = MessageDigest.getInstance("SHA-256").digest(scope.toByteArray(Charsets.UTF_8))
+            buildString(64) { bytes.forEach { byte ->
+                val value = byte.toInt() and 0xff
+                append(hex[value ushr 4]); append(hex[value and 15])
+            } }.also { cachedScopeDigest = scope to it }
+        }
         return "storage-read-v1:$digest:$originalKey"
     }
 
     fun guardInputStream(url: String, input: InputStream, expected: StorageReadIdentity?): InputStream {
         if (!isStorageRequest(url)) return input
         return object : FilterInputStream(input) {
+            private var pending = ByteArray(0)
             override fun read(): Int {
                 requireCurrent(expected)
                 return `in`.read().also { requireCurrent(expected) }
@@ -95,15 +103,21 @@ internal object StorageReadSession {
                 if (length == 0) return 0
                 // A socket read may block while logout completes. Do not copy its
                 // newly received bytes into the caller's buffer until identity is checked again.
-                val pending = ByteArray(minOf(length, 64 * 1024))
-                val count = `in`.read(pending, 0, pending.size)
+                val readLength = minOf(length, 64 * 1024)
+                if (pending.size < readLength) pending = ByteArray(readLength)
+                val scratch = pending
+                val count = `in`.read(scratch, 0, readLength)
                 requireCurrent(expected)
-                if (count > 0) pending.copyInto(buffer, offset, 0, count)
+                if (count > 0) scratch.copyInto(buffer, offset, 0, count)
                 return count
             }
             override fun skip(count: Long): Long {
                 requireCurrent(expected)
                 return `in`.skip(count).also { requireCurrent(expected) }
+            }
+            override fun close() {
+                pending = ByteArray(0)
+                super.close()
             }
         }
     }

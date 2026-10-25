@@ -5,6 +5,7 @@ const { cert, getApps, initializeApp } = require('firebase-admin/app')
 const { getMessaging } = require('firebase-admin/messaging')
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
+const { limitMessagePush } = require('./message-push-limiter')
 
 const serviceAccountFile = String(
   process.env.FIREBASE_SERVICE_ACCOUNT_FILE || '/run/secrets/firebase-service-account.json',
@@ -130,7 +131,9 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
   if (scope !== undefined) {
     if (!scope || !notification?.recipient_id) return { sent: 0, failed: 0, suppressed: true }
     const cancellation = notification.type === 'message_deleted'
-    return withCurrentMessage(pool, scope, async (current, client) => {
+    // Re-read permissions, payload and tombstones only after this item reaches
+    // the head of the queue. Waiting recipients must not hold DB connections.
+    return limitMessagePush(() => withCurrentMessage(pool, scope, async (current, client) => {
       if (!cancellation && ['group','community'].includes(scope.kind) &&
           !(await collectionMessageRecipients(client, scope.kind, scope.scopeId, current, [notification.recipient_id])).length)
         return { sent: 0, failed: 0, suppressed: true }
@@ -154,7 +157,7 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
         created_at: current.created_at instanceof Date ? current.created_at.toISOString() : String(current.created_at || ''),
       }
       return sendCurrentPush(client, persisted, authoritativeData)
-    }, { allowDeleted: cancellation, actorId: cancellation ? undefined : reactionOwner(notification) })
+    }, { allowDeleted: cancellation, actorId: cancellation ? undefined : reactionOwner(notification) }))
   }
   return sendCurrentPush(pool, notification, extraData)
 }

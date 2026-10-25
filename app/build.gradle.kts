@@ -93,8 +93,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 159
-        versionName = "9.1.19"
+        versionCode = 167
+        versionName = "9.1.27"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
         val props = Properties()
@@ -250,6 +250,10 @@ android {
         }
     }
 
+    // Run device regressions in the existing isolated QA package when requested,
+    // so a tablet's Play installation and private messages are preserved.
+    testBuildType = providers.gradleProperty("novvinInstrumentationBuildType").orElse("debug").get()
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -297,6 +301,13 @@ android {
         xmlReport = true
     }
 }
+
+// The isolated QA application has no Firebase client registration. Keep the
+// generator as a completed/skipped task (rather than excluding it, which breaks
+// AGP's generated-resource provider), and leave release/debug Firebase intact.
+tasks.matching {
+    it.name == "processAuditGoogleServices" || it.name == "processAuditReleaseGoogleServices"
+}.configureEach { enabled = false }
 
 kotlin {
     compilerOptions {

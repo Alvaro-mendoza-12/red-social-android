@@ -1,13 +1,14 @@
 const clean = (value) => String(value || '').trim().toLowerCase()
 const millis = (value) => Date.parse(value || '') || 0
 
-async function loadCollectionReceipts(pool, kind, identity, roomIds) {
-  if (!roomIds.length) return new Map()
+async function loadCollectionReceipts(pool, kind, identity, roomIds, messageIds) {
+  if (!roomIds.length || (messageIds && !messageIds.length)) return new Map()
   const { rows } = await pool.query(
     `SELECT room_id, message_id, delivered_at, read_at
      FROM fallback_collection_message_receipts
-     WHERE room_kind = $1 AND lower(user_id) = ANY($2::text[]) AND lower(room_id) = ANY($3::text[])`,
-    [kind, Array.from(identity.ids), roomIds],
+     WHERE room_kind = $1 AND lower(user_id) = ANY($2::text[]) AND lower(room_id) = ANY($3::text[])
+     ${messageIds ? 'AND lower(message_id::text) = ANY($4::text[])' : ''}`,
+    [kind, Array.from(identity.ids), roomIds, ...(messageIds ? [messageIds.map(clean)] : [])],
   )
   const result = new Map()
   for (const row of rows) {

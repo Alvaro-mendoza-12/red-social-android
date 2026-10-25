@@ -131,7 +131,7 @@ fun ChatSpellingSuggestions(
     }
 }
 
-private class ChatSpellChecker(context: Context) : SpellCheckerSession.SpellCheckerSessionListener {
+internal class ChatSpellChecker(context: Context) : SpellCheckerSession.SpellCheckerSessionListener {
     var checkedText by mutableStateOf("")
         private set
     var issues by mutableStateOf<List<ChatSpellingIssue>>(emptyList())
@@ -148,7 +148,7 @@ private class ChatSpellChecker(context: Context) : SpellCheckerSession.SpellChec
         sequence++
         checkedText = ""
         issues = emptyList()
-        session?.cancel()
+        runCatching { session?.cancel() }
     }
 
     fun check(text: String) {
@@ -159,23 +159,32 @@ private class ChatSpellChecker(context: Context) : SpellCheckerSession.SpellChec
 
     override fun onGetSuggestions(results: Array<out SuggestionsInfo>?) = Unit
 
-    override fun onGetSentenceSuggestions(results: Array<out SentenceSuggestionsInfo>?) {
+    override fun onGetSentenceSuggestions(results: Array<out SentenceSuggestionsInfo?>?) {
         if (closed) return
         val found = mutableListOf<ChatSpellingIssue>()
         var current = false
         results.orEmpty().forEach { sentence ->
-            for (index in 0 until sentence.suggestionsCount) {
-                val info = sentence.getSuggestionsInfoAt(index) ?: continue
+            if (sentence == null) return@forEach
+            // Some Android spell services send null entries (notably after an
+            // emoji-only request), or inconsistent parcelled ranges. A system
+            // suggestion must never be able to terminate the app's Main thread.
+            val count = runCatching { sentence.suggestionsCount }.getOrDefault(0)
+                .coerceIn(0, requestedText.length + 1)
+            for (index in 0 until count) {
+                val info = runCatching { sentence.getSuggestionsInfoAt(index) }.getOrNull() ?: continue
                 if (info.sequence != sequence) continue
                 current = true
-                val start = sentence.getOffsetAt(index)
-                val end = start + sentence.getLengthAt(index)
-                if (start < 0 || end > requestedText.length || start >= end) continue
+                val range = runCatching { sentence.getOffsetAt(index) to sentence.getLengthAt(index) }.getOrNull() ?: continue
+                val (start, length) = range
+                if (start < 0 || start > requestedText.length || length <= 0 || length > requestedText.length - start) continue
+                val end = start + length
+                if (conectate.com.data.local.safeConversationCaret(requestedText, start) != start ||
+                    conectate.com.data.local.safeConversationCaret(requestedText, end) != end) continue
                 // Handles, links, numeric codes and identifiers are not dictionary words.
                 val word = requestedText.substring(start, end)
-                if (word.any(Char::isDigit) || start > 0 && requestedText[start - 1] in "@/#") continue
+                if (word.none(Char::isLetter) || word.any(Char::isDigit) || start > 0 && requestedText[start - 1] in "@/#") continue
                 if (info.suggestionsAttributes and SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO == 0) continue
-                val suggestions = (0 until info.suggestionsCount)
+                val suggestions = (0 until info.suggestionsCount.coerceIn(0, 16))
                     .mapNotNull { suggestionIndex -> runCatching { info.getSuggestionAt(suggestionIndex)?.trim() }.getOrNull() }
                     .filter { it.isNotBlank() && !it.equals(word, ignoreCase = true) }
                     .distinct()
@@ -192,6 +201,6 @@ private class ChatSpellChecker(context: Context) : SpellCheckerSession.SpellChec
     fun close() {
         closed = true
         sequence++
-        session?.close()
+        runCatching { session?.close() }
     }
 }

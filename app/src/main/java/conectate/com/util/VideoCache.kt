@@ -16,9 +16,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 object VideoCache {
+    private val prefetchSlots = Semaphore(2)
     private var simpleCache: SimpleCache? = null
     private var databaseProvider: DatabaseProvider? = null
 
@@ -45,23 +49,38 @@ object VideoCache {
         }
     }
 
-    fun getCacheDataSourceFactory(context: Context): DataSource.Factory {
+    fun getCacheDataSourceFactory(context: Context): DataSource.Factory =
+        createCacheDataSourceFactory(context, requireStorageCacheAdmission = false)
+
+    private fun createCacheDataSourceFactory(
+        context: Context,
+        requireStorageCacheAdmission: Boolean,
+        prefetchTimeoutMs: Long? = null,
+    ): DataSource.Factory {
         // ChatMediaOfflineCache and pending uploads return file:/ or content:/ URIs.
         // An HTTP-only upstream fails as soon as the playback cache misses those local bytes.
-        val upstreamDataSourceFactory = MediaPlaybackDataSources.streamingFactory(context)
+        val upstreamDataSourceFactory = if (prefetchTimeoutMs == null) MediaPlaybackDataSources.streamingFactory(context)
+            else MediaPlaybackDataSources.prefetchFactory(context, prefetchTimeoutMs)
 
-        val cache = getOrCreateCache(context)
-        val cachedFactory = if (cache != null) {
-            CacheDataSource.Factory()
+        // StorageReadDataSource selects this factory from open() on Media3's
+        // loading thread. Building a player in Compose must not open SQLite or
+        // scan/create the disk cache on the main thread.
+        val cachedFactory = DataSource.Factory {
+            val cache = getOrCreateCache(context.applicationContext)
+            if (cache != null) CacheDataSource.Factory()
                 .setCache(cache)
                 .setUpstreamDataSourceFactory(upstreamDataSourceFactory)
                 .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-        } else {
-            upstreamDataSourceFactory
+                .createDataSource()
+            else upstreamDataSourceFactory.createDataSource()
         }
-        // Cached bytes cannot prove current membership. Own storage always uses
-        // the authenticated upstream; explicit file:/ offline copies are preserved.
-        return DataSource.Factory { StorageReadDataSource(upstreamDataSourceFactory, cachedFactory) { spec -> PlaybackCacheAdmission.key(spec) } }
+        // Every private cache open still checks current server permissions and
+        // ETag. Prefetch must stop if those bytes could not be reused by playback.
+        return DataSource.Factory {
+            StorageReadDataSource(upstreamDataSourceFactory, cachedFactory, requireStorageCacheAdmission) { spec ->
+                PlaybackCacheAdmission.key(spec, sourceFactory = upstreamDataSourceFactory)
+            }
+        }
     }
 
     /**
@@ -79,20 +98,21 @@ object VideoCache {
     }
 
     /**
-     * Adelanta únicamente el inicio del video que aparece en un chat. El
-     * reproductor usa la misma cache key, así que al tocarlo no vuelve a
-     * comenzar la descarga desde cero ni consume el archivo completo.
+     * Warm only a bounded prefix of a neighbouring feed video. Own-storage
+     * bytes are reusable only with fresh server admission and the same ETag.
      */
     suspend fun preloadStart(
         context: Context,
         url: String,
         byteCount: Long = 2L * 1024L * 1024L,
         timeoutMs: Long = 2_000L,
-    ) = coroutineScope {
+    ) = withContext(Dispatchers.IO) {
+      prefetchSlots.withPermit { coroutineScope {
         val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return@coroutineScope
         val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return@coroutineScope
         val cache = getOrCreateCache(context.applicationContext) ?: return@coroutineScope
-        val dataSource = getCacheDataSourceFactory(context.applicationContext).createDataSource()
+        val dataSource = createCacheDataSourceFactory(context.applicationContext,
+            requireStorageCacheAdmission = true, prefetchTimeoutMs = timeoutMs).createDataSource()
         val dataSpec = DataSpec.Builder()
             .setUri(resolvedUrl)
             .setPosition(0)
@@ -129,6 +149,7 @@ object VideoCache {
                 runCatching { dataSource.close() }
             }
         }
+      } }
     }
 
     fun release() {

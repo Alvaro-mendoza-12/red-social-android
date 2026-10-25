@@ -111,6 +111,7 @@ data class CommunityMemberEntity(
         Index(value = ["community_id"]),
         Index(value = ["channel_id"]),
         Index(value = ["created_at"]),
+        Index(value = ["community_id", "created_at", "id"]),
         Index(value = ["is_synced", "pending_action"]),
         Index(value = ["poll_id"]),
         Index(value = ["is_forwarded"])

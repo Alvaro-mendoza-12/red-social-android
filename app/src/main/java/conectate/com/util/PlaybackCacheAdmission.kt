@@ -8,11 +8,18 @@ import java.security.MessageDigest
 /** Cached playback consults current server permissions and revision on EVERY open. */
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 internal object PlaybackCacheAdmission {
-    fun key(spec: DataSpec, allowAudio: Boolean = false): String? {
+    fun key(
+        spec: DataSpec,
+        allowAudio: Boolean = false,
+        sourceFactory: androidx.media3.datasource.DataSource.Factory = MediaPlaybackDataSources.httpFactory(),
+    ): String? {
         val url = spec.uri.toString()
         if (!StorageReadSession.isStorageRequest(url) || spec.uri.getQueryParameter("lease") != null || spec.httpMethod != DataSpec.HTTP_METHOD_GET) return null
         val identity = StorageReadSession.snapshot()?.identity ?: return null
-        val source = MediaPlaybackDataSources.httpFactory().createDataSource()
+        // The guest contract is streaming-only and never advertises playback
+        // disk admission. Avoid an extra HEAD before every guest GET/Range.
+        if (identity.accountId.startsWith("guest_")) return null
+        val source = sourceFactory.createDataSource()
         val headers = try {
             StorageReadSession.requireCurrent(identity)
             source.open(spec.buildUpon().setHttpMethod(DataSpec.HTTP_METHOD_HEAD).setPosition(0).setLength(-1).build())

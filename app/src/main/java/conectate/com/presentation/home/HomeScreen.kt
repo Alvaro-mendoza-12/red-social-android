@@ -543,12 +543,23 @@ fun HomeScreen(
                         type = androidx.navigation.NavType.StringType
                         nullable = true
                         defaultValue = null
+                    },
+                    androidx.navigation.navArgument("resumeMs") {
+                        type = androidx.navigation.NavType.LongType
+                        defaultValue = 0L
+                    },
+                    androidx.navigation.navArgument("endMs") {
+                        type = androidx.navigation.NavType.LongType
+                        defaultValue = 0L
                     }
                 )
             ) { backStackEntry ->
-                conectate.com.presentation.videos.VideoPlayerScreen(
+                conectate.com.presentation.video.VideoDetailFeedScreen(
                     navController = navController,
-                    focusCommentId = backStackEntry.arguments?.getString("focusCommentId")
+                    videoId = backStackEntry.arguments?.getString("videoId") ?: return@composable,
+                    focusCommentId = backStackEntry.arguments?.getString("focusCommentId"),
+                    initialPositionMs = backStackEntry.arguments?.getLong("resumeMs") ?: 0L,
+                    initialClipEndMs = backStackEntry.arguments?.getLong("endMs") ?: 0L,
                 )
             }
 

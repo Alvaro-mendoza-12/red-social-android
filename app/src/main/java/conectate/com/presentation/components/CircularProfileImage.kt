@@ -2,8 +2,9 @@ package conectate.com.presentation.components
 
 import android.content.SharedPreferences
 import android.view.TextureView
-import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
@@ -24,7 +25,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.semantics
@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -52,12 +55,14 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.core.media.ProfileIdentityImageStore
+import conectate.com.core.media.isVideoProfileAvatar
+import conectate.com.core.media.profileAvatarImageRequest
+import conectate.com.core.media.profileIdentityPreviewDimensions
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import java.text.Normalizer
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @Composable
@@ -79,8 +84,8 @@ fun CircularProfileImage(
     showMomentRing: Boolean = true
 ) {
     val context = LocalContext.current
+    val windowSize = LocalWindowInfo.current.containerSize
     val identityAccountId = LocalProfileIdentityAccount.current
-    val coroutineScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     val lifecycleStarted = remember(lifecycleOwner) {
         mutableStateOf(
@@ -118,13 +123,7 @@ fun CircularProfileImage(
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
     val isVideoAvatar = remember(mediaType, resolvedImageUrl) {
-        val cleanType = mediaType?.trim()?.lowercase().orEmpty()
-        val cleanUrl = resolvedImageUrl?.substringBefore("?")?.lowercase().orEmpty()
-        cleanType == "video" ||
-            cleanType.startsWith("video/") ||
-            cleanUrl.endsWith(".mp4") ||
-            cleanUrl.endsWith(".m4v") ||
-            cleanUrl.endsWith(".mov")
+        isVideoProfileAvatar(resolvedImageUrl, mediaType)
     }
     val effectiveMuted = muted || globalAnimatedAvatarsMuted.value || !allowSound
     // El avatar de video forma parte de la identidad del perfil: debe animarse en
@@ -141,15 +140,20 @@ fun CircularProfileImage(
         if (isVideoAvatar) resolvedImageUrl else MediaImageRequestFactory.avatarUrl(resolvedImageUrl)
     }
     val cacheKey = remember(avatarDisplayUrl) { UbuntuStorageUrl.stableCacheKey(avatarDisplayUrl) }
-    val request = remember(avatarDisplayUrl, isVideoAvatar) {
-        if (isVideoAvatar) null else MediaImageRequestFactory.avatar(context, resolvedImageUrl)
+    val request = remember(context, resolvedImageUrl, mediaType, identityAccountId) {
+        profileAvatarImageRequest(context, resolvedImageUrl, mediaType)
     }
     val cachedIdentityImage = remember(resolvedImageUrl, identityAccountId) {
-        mutableStateOf<java.io.File?>(null)
+        mutableStateOf(ProfileIdentityImageStore.peek(resolvedImageUrl, identityAccountId))
+    }
+    val cachedIdentityPreview = remember(resolvedImageUrl, identityAccountId) {
+        mutableStateOf(ProfileIdentityImageStore.peekPreview(resolvedImageUrl, identityAccountId))
     }
     val identityGeneration = remember(resolvedImageUrl, identityAccountId) { ProfileIdentityImageStore.generation(identityAccountId) }
     LaunchedEffect(resolvedImageUrl, identityAccountId) {
+        if (cachedIdentityImage.value != null && cachedIdentityPreview.value != null) return@LaunchedEffect
         cachedIdentityImage.value = ProfileIdentityImageStore.find(context, resolvedImageUrl, identityAccountId, identityGeneration)
+        cachedIdentityPreview.value = ProfileIdentityImageStore.peekPreview(resolvedImageUrl, identityAccountId)
     }
     val momentAccess = LocalAvatarMoments.current
     val momentOwner = remember(ownerId, resolvedImageUrl) { avatarMomentOwnerId(ownerId, resolvedImageUrl) }
@@ -171,7 +175,7 @@ fun CircularProfileImage(
     } else Modifier
     Box(modifier = modifier.size(size).then(ring).then(openMoment).onGloballyPositioned { coordinates ->
         val bounds = coordinates.boundsInWindow()
-        visibleOnScreen.value = bounds.width > 0f && bounds.height > 0f
+        visibleOnScreen.value = profileAvatarIsVisible(bounds, windowSize)
     }) {
         Box(
             modifier = Modifier
@@ -194,7 +198,6 @@ fun CircularProfileImage(
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
-            val hasSuccessfulImage = remember(cacheKey, identityAccountId) { mutableStateOf(false) }
             if (resolvedImageUrl.isNullOrEmpty()) {
                 AvatarFallback(
                     initial = fallbackInitial,
@@ -205,15 +208,16 @@ fun CircularProfileImage(
                 val playerReleased = remember(resolvedImageUrl) { AtomicBoolean(false) }
                 val firstFrameRendered = remember(resolvedImageUrl) { mutableStateOf(false) }
                 val textureViewRef = remember(resolvedImageUrl) { mutableStateOf<TextureView?>(null) }
-                VideoAvatarPosterFallback(
+                SavedProfileIdentityImage(
                     posterFile = cachedIdentityImage.value,
-                    fallbackInitial = fallbackInitial,
-                    size = size,
+                    preview = cachedIdentityPreview.value,
                 )
                 DisposableEffect(resolvedImageUrl, identityAccountId) {
                     playerReleased.set(false)
                     firstFrameRendered.value = false
                     val player = ExoPlayer.Builder(context)
+                        .setRenderersFactory(androidx.media3.exoplayer.DefaultRenderersFactory(context)
+                            .setEnableDecoderFallback(true))
                         .setLoadControl(androidx.media3.exoplayer.DefaultLoadControl.Builder()
                             .setBufferDurationsMs(4_000, 8_000, 150, 1_000)
                             .setPrioritizeTimeOverSizeThresholds(true).build())
@@ -225,6 +229,9 @@ fun CircularProfileImage(
                         .build().apply {
                         repeatMode = Player.REPEAT_MODE_ONE
                         volume = 0f
+                        trackSelectionParameters = trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, effectiveMuted)
+                            .build()
                         playWhenReady = true
                     }
                     val listener = object : Player.Listener {
@@ -247,10 +254,16 @@ fun CircularProfileImage(
                 }
                 val exoPlayer = exoPlayerState.value
                 if (exoPlayer != null) {
-                    PauseMediaPlayerOnBackground(exoPlayer)
+                    // Navigation creates this player while the entry is STARTED.
+                    // The ordinary background guard pauses it until RESUMED;
+                    // avatars must then restore their automatic playback intent.
+                    PauseMediaPlayerOnBackground(exoPlayer, resumeOnReturn = true)
                     LaunchedEffect(effectiveMuted, exoPlayer) {
                         if (!playerReleased.get()) {
                             exoPlayer.volume = if (effectiveMuted) 0f else 1f
+                            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                                .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, effectiveMuted)
+                                .build()
                             exoPlayer.playWhenReady = true
                         }
                     }
@@ -279,49 +292,40 @@ fun CircularProfileImage(
                     )
                 }
                 LaunchedEffect(firstFrameRendered.value, resolvedImageUrl, identityAccountId) {
-                    if (!firstFrameRendered.value || resolvedImageUrl.isNullOrBlank()) {
+                    if (!firstFrameRendered.value || resolvedImageUrl.isNullOrBlank() || cachedIdentityPreview.value != null) {
                         return@LaunchedEffect
                     }
                     // The callback can happen before TextureView has published the
                     // frame. A short UI-only delay avoids reading an empty bitmap.
                     delay(80L)
-                    val bitmap = textureViewRef.value?.bitmap ?: return@LaunchedEffect
-                    try {
-                        ProfileIdentityImageStore.save(context, resolvedImageUrl, bitmap, identityAccountId, identityGeneration)
-                            ?.let { cachedIdentityImage.value = it }
-                    } finally {
-                        bitmap.recycle()
-                    }
-                }
-            } else if (isVideoAvatar) {
-                VideoAvatarPosterFallback(
-                    posterFile = cachedIdentityImage.value,
-                    fallbackInitial = fallbackInitial,
-                    size = size,
-                )
-            } else {
-                if (!hasSuccessfulImage.value) {
-                    VideoAvatarPosterFallback(
-                        posterFile = cachedIdentityImage.value,
-                        fallbackInitial = fallbackInitial,
-                        size = size,
+                    val texture = textureViewRef.value ?: return@LaunchedEffect
+                    val dimensions = profileIdentityPreviewDimensions(texture.width, texture.height)
+                    val bitmap = runCatching { texture.getBitmap(dimensions.first, dimensions.second) }.getOrNull()
+                        ?: return@LaunchedEffect
+                    cachedIdentityPreview.value = ProfileIdentityImageStore.retainBitmap(
+                        context, resolvedImageUrl, bitmap, identityAccountId, identityGeneration,
                     )
                 }
+            } else if (isVideoAvatar) {
+                SavedProfileIdentityImage(
+                    posterFile = cachedIdentityImage.value,
+                    preview = cachedIdentityPreview.value,
+                )
+            } else {
+                // Draw decoded identity pixels synchronously underneath refreshes.
+                // A known photo never becomes an initial while Coil is loading.
+                SavedProfileIdentityImage(cachedIdentityImage.value, cachedIdentityPreview.value)
                 AsyncImage(
-                    model = cachedIdentityImage.value ?: request,
+                    model = request ?: avatarDisplayUrl,
                     contentDescription = "Profile Image",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
                     onSuccess = { state ->
-                        hasSuccessfulImage.value = true
-                        if (cachedIdentityImage.value != null) return@AsyncImage
-                        val bitmap = state.result.drawable.toBitmap()
-                        coroutineScope.launch {
-                            ProfileIdentityImageStore.save(context, resolvedImageUrl, bitmap, identityAccountId, identityGeneration)
-                                ?.let { cachedIdentityImage.value = it }
-                        }
+                        if (cachedIdentityPreview.value != null) return@AsyncImage
+                        cachedIdentityPreview.value = ProfileIdentityImageStore.retainDrawable(
+                            context, resolvedImageUrl, state.result.drawable, identityAccountId, identityGeneration,
+                        )
                     },
-                    onError = { hasSuccessfulImage.value = false }
                 )
             }
         }
@@ -346,14 +350,24 @@ fun CircularProfileImage(
     }
 }
 
+internal fun profileAvatarIsVisible(bounds: Rect, viewport: IntSize): Boolean =
+    bounds.width > 0f && bounds.height > 0f &&
+        bounds.right > 0f && bounds.bottom > 0f &&
+        bounds.left < viewport.width && bounds.top < viewport.height
+
 @Composable
-private fun VideoAvatarPosterFallback(
+private fun SavedProfileIdentityImage(
     posterFile: java.io.File?,
-    fallbackInitial: String,
-    size: Dp,
+    preview: android.graphics.Bitmap?,
 ) {
-    AvatarFallback(initial = fallbackInitial, size = size)
-    if (posterFile != null) {
+    if (preview != null && !preview.isRecycled) {
+        Image(
+            bitmap = preview.asImageBitmap(),
+            contentDescription = "Foto guardada del perfil",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+    } else if (posterFile != null) {
         AsyncImage(
             model = posterFile,
             contentDescription = "Foto guardada del perfil",

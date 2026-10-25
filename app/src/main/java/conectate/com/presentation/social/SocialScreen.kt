@@ -185,46 +185,46 @@ fun SocialScreen(
     onFollowingFeedVisible: (List<conectate.com.data.model.Post>) -> Unit = {},
     onNavigateToHomeTab: (String) -> Unit,
 ) {
-    val posts by viewModel.posts.collectAsState()
-    val recommendedPeople by viewModel.recommendedPeople.collectAsState()
-    val recommendedVideos by viewModel.recommendedVideos.collectAsState()
-    val socializationCards by viewModel.socializationCards.collectAsState()
-    val feedError by viewModel.feedError.collectAsState()
-    val feedMode by viewModel.feedMode.collectAsState()
+    val posts by viewModel.posts.collectAsStateWithLifecycle()
+    val recommendedPeople by viewModel.recommendedPeople.collectAsStateWithLifecycle()
+    val recommendedVideos by viewModel.recommendedVideos.collectAsStateWithLifecycle()
+    val socializationCards by viewModel.socializationCards.collectAsStateWithLifecycle()
+    val feedError by viewModel.feedError.collectAsStateWithLifecycle()
+    val feedMode by viewModel.feedMode.collectAsStateWithLifecycle()
     val activeStreams by viewModel.activeStreams.collectAsStateWithLifecycle()
-    val showLiveCarousel by viewModel.showLiveCarousel.collectAsState()
-    val isRefreshing by viewModel.isRefreshing.collectAsState()
-    val isUserRefreshing by viewModel.isUserRefreshing.collectAsState()
-    val authoritativeHasMore by viewModel.authoritativeHasMore.collectAsState()
-    val isLoadingMorePosts by viewModel.isLoadingMorePosts.collectAsState()
-    val loadMorePostsError by viewModel.loadMorePostsError.collectAsState()
-    val feedScrollReset by viewModel.feedScrollReset.collectAsState()
-    val unreadCount by notificationViewModel.unreadCount.collectAsState()
-    val currentUser by viewModel.currentUser.collectAsState()
-    val moments by momentViewModel.moments.collectAsState()
+    val showLiveCarousel by viewModel.showLiveCarousel.collectAsStateWithLifecycle()
+    val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+    val isUserRefreshing by viewModel.isUserRefreshing.collectAsStateWithLifecycle()
+    val authoritativeHasMore by viewModel.authoritativeHasMore.collectAsStateWithLifecycle()
+    val isLoadingMorePosts by viewModel.isLoadingMorePosts.collectAsStateWithLifecycle()
+    val loadMorePostsError by viewModel.loadMorePostsError.collectAsStateWithLifecycle()
+    val feedScrollReset by viewModel.feedScrollReset.collectAsStateWithLifecycle()
+    val unreadCount by notificationViewModel.unreadCount.collectAsStateWithLifecycle()
+    val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val moments by momentViewModel.moments.collectAsStateWithLifecycle()
     val avatarClock by conectate.com.presentation.components.rememberMomentAvatarClock()
     val avatarMoments = remember(moments, avatarClock) { conectate.com.data.model.activeAvatarMoments(moments, avatarClock) }
-    val authorFollows by viewModel.authorFollows.collectAsState()
-    val followBusy by viewModel.followBusy.collectAsState()
-    val activeChallenge by challengeViewModel.activeChallenge.collectAsState()
-    val isSubmittingChallenge by challengeViewModel.isSubmittingChallenge.collectAsState()
-    val hasParticipated by challengeViewModel.hasParticipated.collectAsState()
-    val votingCountdown by challengeViewModel.votingCountdown.collectAsState()
-    val winnersCountdown by challengeViewModel.winnersCountdown.collectAsState()
-    val isConnected by connectivityViewModel.isConnected.collectAsState()
-    val reactionUsers by viewModel.reactionUsers.collectAsState()
-    val reactionsLoading by viewModel.reactionsLoading.collectAsState()
-    val reactionsError by viewModel.reactionsError.collectAsState()
-    val mutedCreatorIds by viewModel.mutedCreatorIds.collectAsState()
-    val mutedTerms by viewModel.mutedTerms.collectAsState()
-    val savedLibrary by viewModel.savedLibrary.collectAsState()
-    val savedLibraryLoading by viewModel.savedLibraryLoading.collectAsState()
-    val savedLibraryMessage by viewModel.savedLibraryMessage.collectAsState()
-    val algorithmActionMessage by viewModel.algorithmActionMessage.collectAsState()
+    val authorFollows by viewModel.authorFollows.collectAsStateWithLifecycle()
+    val followBusy by viewModel.followBusy.collectAsStateWithLifecycle()
+    val activeChallenge by challengeViewModel.activeChallenge.collectAsStateWithLifecycle()
+    val isSubmittingChallenge by challengeViewModel.isSubmittingChallenge.collectAsStateWithLifecycle()
+    val hasParticipated by challengeViewModel.hasParticipated.collectAsStateWithLifecycle()
+    val votingCountdown by challengeViewModel.votingCountdown.collectAsStateWithLifecycle()
+    val winnersCountdown by challengeViewModel.winnersCountdown.collectAsStateWithLifecycle()
+    val isConnected by connectivityViewModel.isConnected.collectAsStateWithLifecycle()
+    val reactionUsers by viewModel.reactionUsers.collectAsStateWithLifecycle()
+    val reactionsLoading by viewModel.reactionsLoading.collectAsStateWithLifecycle()
+    val reactionsError by viewModel.reactionsError.collectAsStateWithLifecycle()
+    val mutedCreatorIds by viewModel.mutedCreatorIds.collectAsStateWithLifecycle()
+    val mutedTerms by viewModel.mutedTerms.collectAsStateWithLifecycle()
+    val savedLibrary by viewModel.savedLibrary.collectAsStateWithLifecycle()
+    val savedLibraryLoading by viewModel.savedLibraryLoading.collectAsStateWithLifecycle()
+    val savedLibraryMessage by viewModel.savedLibraryMessage.collectAsStateWithLifecycle()
+    val algorithmActionMessage by viewModel.algorithmActionMessage.collectAsStateWithLifecycle()
     
     // Friend Request Count
     val friendViewModel: conectate.com.presentation.profile.FriendRequestsViewModel = hiltViewModel()
-    val pendingRequestCount by friendViewModel.unseenRequestCount.collectAsState()
+    val pendingRequestCount by friendViewModel.unseenRequestCount.collectAsStateWithLifecycle()
     
     val pullRefreshState = rememberPullRefreshState(isUserRefreshing, {
         viewModel.refreshDiscovery()
@@ -286,8 +286,8 @@ fun SocialScreen(
     var challengeText by remember { mutableStateOf("") }
     var showCreateChallengeDialog by remember { mutableStateOf(false) }
     var showPassTorchDialog by remember { mutableStateOf(false) }
-    val submissions by challengeViewModel.challengeSubmissions.collectAsState()
-    val galleryMedia by createMomentViewModel.galleryMedia.collectAsState()
+    val submissions by challengeViewModel.challengeSubmissions.collectAsStateWithLifecycle()
+    val galleryMedia by createMomentViewModel.galleryMedia.collectAsStateWithLifecycle()
     var showChallengeMediaPicker by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
@@ -415,7 +415,7 @@ fun SocialScreen(
         }
     }
 
-    val userChallenges by challengeViewModel.userChallenges.collectAsState()
+    val userChallenges by challengeViewModel.userChallenges.collectAsStateWithLifecycle()
     LaunchedEffect(showCreateChallengeDialog) {
         if (showCreateChallengeDialog) {
             challengeViewModel.loadUserChallenges()
@@ -425,7 +425,7 @@ fun SocialScreen(
     if (showCreatePostDialog) {
         val mentionModel: conectate.com.presentation.social.CreatePostViewModel =
             androidx.hilt.navigation.compose.hiltViewModel(key = "post-mentions-${viewModel.currentUserId}")
-        val mentionCandidates by mentionModel.mentionSuggestions.collectAsState()
+        val mentionCandidates by mentionModel.mentionSuggestions.collectAsStateWithLifecycle()
         conectate.com.presentation.components.CreatePostDialog(
             onDismiss = { showCreatePostDialog = false },
             onPostCreated = { content, uris, visibility, isSensitive, fromDraft, draftOwnerId ->
@@ -1589,7 +1589,7 @@ fun SocialScreen(
 
 
     if (showPassTorchDialog) {
-        val friends by viewModel.friends.collectAsState()
+        val friends by viewModel.friends.collectAsStateWithLifecycle()
         AlertDialog(
             onDismissRequest = { showPassTorchDialog = false },
             title = { Text("Pasar la Antorcha 🔥") },
@@ -2685,25 +2685,13 @@ private fun FacebookMomentRail(
                                 displayName = currentUser?.displayName ?: "Novvin",
                             )
                         } else {
-                            SubcomposeAsyncImage(
-                                model = UbuntuMedia.resolveUrl(avatarUrl) ?: avatarUrl,
-                                contentDescription = "Crear momento",
+                            CircularProfileImage(
+                                imageUrl = avatarUrl,
+                                size = 58.dp,
+                                fallbackName = currentUser?.displayName ?: "Novvin",
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                                loading = {
-                                    StoryCreatorAvatarFallback(
-                                        ownerId = currentUser?.id,
-                                        avatarUrl = avatarUrl,
-                                        displayName = currentUser?.displayName ?: "Novvin",
-                                    )
-                                },
-                                error = {
-                                    StoryCreatorAvatarFallback(
-                                        ownerId = currentUser?.id,
-                                        avatarUrl = avatarUrl,
-                                        displayName = currentUser?.displayName ?: "Novvin",
-                                    )
-                                },
+                                openMomentOnClick = false,
+                                showMomentRing = false,
                             )
                         }
                     }
@@ -3399,11 +3387,9 @@ fun SubmissionCard(
             // Header del Usuario con Foto Real
             Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (submission.user?.avatar_url != null) {
-                    coil.compose.AsyncImage(
-                        model = submission.user.avatar_url,
-                        contentDescription = null,
-                        modifier = Modifier.size(36.dp).clip(CircleShape),
-                        contentScale = ContentScale.Crop
+                    CircularProfileImage(
+                        imageUrl = submission.user.avatar_url, fallbackName = submission.user.displayName,
+                        size = 36.dp, openMomentOnClick = false, showMomentRing = false,
                     )
                 } else {
                     Box(Modifier.size(36.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
@@ -3551,11 +3537,9 @@ fun WinnerPodium(winners: List<conectate.com.data.model.ChallengeSubmission>) {
                         Text("#${index + 1}", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black)
                         Spacer(Modifier.width(16.dp))
                         if (winner.user?.avatar_url != null) {
-                            coil.compose.AsyncImage(
-                                model = winner.user.avatar_url,
-                                contentDescription = null,
-                                modifier = Modifier.size(48.dp).clip(CircleShape),
-                                contentScale = ContentScale.Crop
+                            CircularProfileImage(
+                                imageUrl = winner.user.avatar_url, fallbackName = winner.user.displayName,
+                                size = 48.dp, openMomentOnClick = false, showMomentRing = false,
                             )
                             Spacer(Modifier.width(12.dp))
                         }
@@ -3879,10 +3863,10 @@ fun AudioSubmissionDialog(
     voiceManager: conectate.com.presentation.messages.VoiceMessageManager,
     onMicPermissionRequest: () -> Unit
 ) {
-    val state by voiceManager.state.collectAsState()
-    val duration by voiceManager.duration.collectAsState()
-    val playbackProgress by voiceManager.playbackProgress.collectAsState()
-    val isPlaying by voiceManager.isDraftPlaying.collectAsState()
+    val state by voiceManager.state.collectAsStateWithLifecycle()
+    val duration by voiceManager.duration.collectAsStateWithLifecycle()
+    val playbackProgress by voiceManager.playbackProgress.collectAsStateWithLifecycle()
+    val isPlaying by voiceManager.isDraftPlaying.collectAsStateWithLifecycle()
     val context = LocalContext.current
     
     DisposableEffect(Unit) {

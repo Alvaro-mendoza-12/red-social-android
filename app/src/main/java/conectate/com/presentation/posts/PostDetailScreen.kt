@@ -43,6 +43,7 @@ fun PostDetailScreen(
     viewModel: PostDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val commentPosting by viewModel.commentPosting.collectAsStateWithLifecycle()
     var commentText by remember { mutableStateOf("") }
     var showReactions by remember(postId) { mutableStateOf(false) }
     var reactionFilter by remember(postId) { mutableStateOf<String?>(null) }
@@ -209,15 +210,18 @@ fun PostDetailScreen(
                                 onClick = {
                                     val content = commentText.trim()
                                     if (content.isNotEmpty()) {
-                                        viewModel.addComment(postId, content, replyingTo?.id)
-                                        commentText = ""
-                                        replyingTo = null
-                                        viewModel.clearMentionSuggestions()
+                                        val replyId = replyingTo?.id
+                                        viewModel.addComment(postId, content, replyId) {
+                                            if (commentText.trim() == content) commentText = ""
+                                            if (replyingTo?.id == replyId) replyingTo = null
+                                            viewModel.clearMentionSuggestions()
+                                        }
                                     }
                                 },
-                                enabled = commentText.isNotBlank()
+                                enabled = commentText.isNotBlank() && !commentPosting
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar comentario")
+                                if (commentPosting) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                                else Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar comentario")
                             }
                         }
                     }

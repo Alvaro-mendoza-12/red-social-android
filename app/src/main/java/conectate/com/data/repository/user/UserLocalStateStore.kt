@@ -13,6 +13,8 @@ internal class UserLocalStateStore(
         private const val PRIVACY_PREFS = "privacy_policy_cache"
         private const val USER_CACHE_PREFS = "user_cache"
         private const val USER_CACHE_KEY = "cached_profile"
+        private const val AVATAR_OWNER_KEY = "cached_avatar_owner"
+        private const val AVATAR_URL_KEY = "cached_avatar_url"
     }
 
     private val privacyPrefs by lazy {
@@ -145,10 +147,24 @@ internal class UserLocalStateStore(
     fun saveProfile(user: User) {
         try {
             var json = cacheJson.encodeToString(User.serializer(), user)
-            profilePrefs.edit().putString(USER_CACHE_KEY, json).apply()
+            profilePrefs.edit().putString(USER_CACHE_KEY, json)
+                .putString(AVATAR_OWNER_KEY, normalizeUserId(user.id))
+                .putString(AVATAR_URL_KEY, user.profileImage)
+                .apply()
         } catch (e: Exception) {
             android.util.Log.e("UserLocalStateStore", "Failed to cache profile", e)
         }
+    }
+
+    /** Compact first-frame identity without constructing repositories or waiting for the feed. */
+    fun cachedAvatarForUser(userId: String?): String? {
+        val owner = userId?.let(::normalizeUserId)?.takeIf(String::isNotBlank) ?: return null
+        if (profilePrefs.getString(AVATAR_OWNER_KEY, null) == owner) {
+            return profilePrefs.getString(AVATAR_URL_KEY, null)?.takeIf(String::isNotBlank)
+        }
+        // Older installations contain only the full profile. Never reuse another account's photo.
+        return getLocalProfileRaw()?.takeIf { normalizeUserId(it.id) == owner }
+            ?.profileImage?.takeIf(String::isNotBlank)
     }
 
     fun getLocalProfileRaw(): User? {

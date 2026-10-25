@@ -24,6 +24,16 @@ class VideoCacheLocalPlaybackTest {
 
     @After fun release() { VideoCache.release() }
 
+    @Test fun `composing a video player does not initialize the disk cache`() {
+        VideoCache.release()
+        val factory = VideoCache.getCacheDataSourceFactory(context)
+        val source = factory.createDataSource()
+        try {
+            val cacheField = VideoCache::class.java.getDeclaredField("simpleCache").apply { isAccessible = true }
+            assertNull("Disk cache must wait for the loader's first open", cacheField.get(VideoCache))
+        } finally { source.close() }
+    }
+
     @Test fun `active playback cache reads complete local offline video instead of sending file URI to HTTP`() {
         // This is the URI shape returned by ChatMediaOfflineCache after a sent video is retained.
         val video = File(context.filesDir, "retained-chat-video.media")

@@ -1,5 +1,8 @@
 package conectate.com.data.repository
 
+import conectate.com.data.localfallback.withComputedFollowCounts
+import conectate.com.data.localfallback.retainingFollowCountsFrom
+
 import conectate.com.core.media.readMediaBytesWithLimit
 
 import android.content.Context
@@ -356,6 +359,7 @@ class UserRepository @Inject constructor(
         return localFallbackApiClient.loadCurrentProfile(token)
             .map { response ->
                 val user = mapLocalFallbackProfile(response, fallbackId, fallbackEmail)
+                    ?.withComputedFollowCounts(response.stats)
                 if (user != null) {
                     userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(user))
                     saveProfileLocally(user)
@@ -842,6 +846,16 @@ class UserRepository @Inject constructor(
     // ─────────────────────────────────────────────
     // GET USER BY ID
     // ─────────────────────────────────────────────
+    /** Synchronous private snapshot for the first UI frame; never crosses account boundaries. */
+    fun cachedCurrentUserIdentity(): User? {
+        val account = authService.getCurrentUserId()?.let(::normalizePrivacyUserId) ?: return null
+        val cached = TestRuntimeOverrides.currentUser(context) ?: getLocalProfile()
+        return cached?.takeIf {
+            normalizePrivacyUserId(it.id) == account &&
+                authService.getCurrentUserId()?.let(::normalizePrivacyUserId) == account
+        }
+    }
+
     suspend fun getCachedUserById(userId: String): User? {
         val normalizedUserId = normalizePrivacyUserId(userId)
         TestRuntimeOverrides.currentUser(context)
@@ -854,6 +868,18 @@ class UserRepository @Inject constructor(
                 ?.let { return it }
         }
         return userDao.getUser(normalizedUserId)?.toDomain()?.let(::applyLocalUserOverrides)
+    }
+
+    /** Fill missing feed identities in one local query, without a profile request per post. */
+    suspend fun getCachedUsersByIds(userIds: List<String>): List<User> = withContext(Dispatchers.IO) {
+        val account = authService.getCurrentUserId()?.let(::normalizePrivacyUserId) ?: return@withContext emptyList()
+        val ids = userIds.map(::normalizePrivacyUserId).filter(String::isNotBlank).distinct()
+        if (ids.isEmpty()) return@withContext emptyList()
+        val own = cachedCurrentUserIdentity()?.takeIf { it.id.trim().lowercase() in ids }
+        val cached = ids.chunked(800).flatMap { userDao.getUsers(it) }
+            .map { applyLocalUserOverrides(it.toDomain()) }
+        if (account != authService.getCurrentUserId()?.let(::normalizePrivacyUserId)) return@withContext emptyList()
+        if (own == null) cached else listOf(own) + cached.filterNot { it.id.equals(own.id, true) }
     }
 
     suspend fun getUserById(userId: String, forceNetwork: Boolean = true): Result<User?> {
@@ -1282,7 +1308,11 @@ class UserRepository @Inject constructor(
             (cleanBody.contains("could not find the function") || cleanBody.contains("undefined function"))
     }
 
-    suspend fun getUsersByIds(userIds: List<String>): Result<List<User>> {
+    suspend fun getUsersByIds(userIds: List<String>): Result<List<User>> = withContext(Dispatchers.IO) {
+        getUsersByIdsInternal(userIds)
+    }
+
+    private suspend fun getUsersByIdsInternal(userIds: List<String>): Result<List<User>> {
         val identityRequest = captureProfileIdentityRequest()
         val normalizedIds = userIds
             .map(::normalizePrivacyUserId)
@@ -1290,10 +1320,15 @@ class UserRepository @Inject constructor(
             .distinct()
         if (normalizedIds.isEmpty()) return Result.success(emptyList())
 
-        val cachedUsers = normalizedIds.mapNotNull { userId ->
-            runCatching { userDao.getUser(userId)?.toDomain() }
-                .getOrNull()
-                ?.let(::applyLocalUserOverrides)
+        // Feed/profile hydration already requests a batch. Do not turn it back
+        // into one Room query and full JSON decode on Main for every author.
+        val cachedUsers = try {
+            normalizedIds.chunked(800).flatMap { userDao.getUsers(it) }
+                .map { applyLocalUserOverrides(it.toDomain()) }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            emptyList()
         }
 
         return try {
@@ -1818,11 +1853,12 @@ class UserRepository @Inject constructor(
                 )
 
                 response.onSuccess { profileResponse ->
+                    val previousUser = getCachedUserById(normalizedUserId)
                     val updatedUser = mapLocalFallbackProfile(
                         response = profileResponse,
                         fallbackId = normalizedUserId,
                         fallbackEmail = authService.getCurrentUserEmail()
-                    )
+                    )?.retainingFollowCountsFrom(previousUser)
                     if (updatedUser == null) {
                         return Result.failure(Exception("El servidor no devolvió el perfil actualizado"))
                     }

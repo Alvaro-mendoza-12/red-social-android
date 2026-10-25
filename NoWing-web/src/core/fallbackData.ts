@@ -318,6 +318,15 @@ export async function saveFallbackChatPreferences(chatId: string, patch: ChatPre
   return result
 }
 
+export async function hideFallbackChat(chatId: string) {
+  const result = await fallbackApiJson<{ ok: boolean; chatId: string; hidden: boolean }>(
+    `/v1/data/messages/chats/${encodeURIComponent(chatId)}`,
+    { method: 'DELETE' },
+  )
+  window.dispatchEvent(new Event('novvin:inbox-changed'))
+  return result
+}
+
 export async function markFallbackNotificationRead(notificationId: string): Promise<{ ok: boolean }> {
   const result = await fallbackApiJson<{ ok: boolean }>(
     `/v1/data/notifications/${encodeURIComponent(notificationId)}/read`,

@@ -14,7 +14,7 @@ class ConversationDraftStore @Inject constructor(@param:ApplicationContext conte
     private val preferences = context.getSharedPreferences("conversation-drafts-v1", Context.MODE_PRIVATE)
 
     fun read(owner: String?, scope: String, room: String): String =
-        key(owner, scope, room)?.let { preferences.getString(it, "").orEmpty() }.orEmpty()
+        key(owner, scope, room)?.let { safeConversationDraft(preferences.getString(it, "").orEmpty()) }.orEmpty()
 
     /** Real conversation IDs remain stable when profile/participant aliases change. */
     fun readAndMigrate(owner: String?, scope: String, room: String, legacyRoom: String?): String {
@@ -28,8 +28,11 @@ class ConversationDraftStore @Inject constructor(@param:ApplicationContext conte
 
     fun write(owner: String?, scope: String, room: String, text: String) {
         val name = key(owner, scope, room) ?: return
+        val safeText = safeConversationDraft(text)
+        // Cursor/composition updates must not enqueue another XML write for the same draft.
+        if (preferences.getString(name, "").orEmpty() == safeText) return
         val editor = preferences.edit()
-        if (text.isEmpty()) editor.remove(name) else editor.putString(name, text.take(16_000))
+        if (safeText.isEmpty()) editor.remove(name) else editor.putString(name, safeText)
         // apply updates memory immediately and serializes disk writes across normal lifecycle exits.
         editor.apply()
     }
@@ -49,9 +52,17 @@ class ConversationDraftStore @Inject constructor(@param:ApplicationContext conte
             val account = owner?.trim()?.lowercase().orEmpty()
             val conversation = room.trim().lowercase()
             if (account.isEmpty() || conversation.isEmpty() || scope !in setOf("chat", "group", "community")) return null
-            return MessageDigest.getInstance("SHA-256")
+            val digest = MessageDigest.getInstance("SHA-256")
                 .digest("$account\u0000$scope\u0000$conversation".toByteArray(Charsets.UTF_8))
-                .joinToString("") { "%02x".format(it) }
+            // This path runs while typing. Avoid constructing a Formatter for every byte.
+            val hex = "0123456789abcdef"
+            return CharArray(digest.size * 2).apply {
+                digest.forEachIndexed { index, byte ->
+                    val value = byte.toInt() and 0xff
+                    this[index * 2] = hex[value ushr 4]
+                    this[index * 2 + 1] = hex[value and 0xf]
+                }
+            }.concatToString()
         }
     }
 }

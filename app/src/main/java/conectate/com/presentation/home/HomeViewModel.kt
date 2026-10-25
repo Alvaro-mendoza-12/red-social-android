@@ -184,7 +184,8 @@ class HomeViewModel @Inject constructor(
         } }
     }
 
-    private val _currentUserAvatarUrl = MutableStateFlow<String?>(null)
+    private val localIdentityStore = conectate.com.data.repository.user.UserLocalStateStore(context)
+    private val _currentUserAvatarUrl = MutableStateFlow(localIdentityStore.cachedAvatarForUser(authService.getCurrentUserId()))
     val currentUserAvatarUrl: StateFlow<String?> = _currentUserAvatarUrl.asStateFlow()
 
     // 1. Unread DMs (Number of conversations with unread messages)
@@ -218,7 +219,7 @@ class HomeViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     private var avatarJob: Job? = null
-    private var avatarOwner: String? = null
+    private var avatarOwner: String? = authService.getCurrentUserId()
     private var avatarGeneration = 0L
 
     init {
@@ -310,7 +311,7 @@ class HomeViewModel @Inject constructor(
         if (avatarOwner == userId && avatarJob?.isActive == true) return
         val generation = ++avatarGeneration
         avatarJob?.cancel()
-        if (avatarOwner != userId) _currentUserAvatarUrl.value = null
+        if (avatarOwner != userId) _currentUserAvatarUrl.value = localIdentityStore.cachedAvatarForUser(userId)
         avatarOwner = userId
         if (userId.isNullOrBlank()) return
         avatarJob = viewModelScope.launch {
@@ -320,8 +321,9 @@ class HomeViewModel @Inject constructor(
                 val cached = repository.getCachedUserById(userId)
                 if (isCurrent() && cached != null) _currentUserAvatarUrl.value = cached.profileImage.ifBlank { null }
                 val result = repository.getUserById(userId)
-                if (isCurrent() && result.isSuccess) {
-                    _currentUserAvatarUrl.value = result.getOrNull()?.profileImage?.ifBlank { null }
+                val refreshed = result.getOrNull()
+                if (isCurrent() && refreshed != null) {
+                    _currentUserAvatarUrl.value = refreshed.profileImage.ifBlank { null }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { /* Keep the already loaded local avatar during network failures. */ }

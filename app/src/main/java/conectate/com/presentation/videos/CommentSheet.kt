@@ -69,10 +69,15 @@ fun CommentSheet(
     onAddSticker: (String, String) -> Unit = { _, _ -> },
     onReactComment: (VideoComment, String?) -> Unit = { _, _ -> },
     onEditComment: (VideoComment, String) -> Unit = { _, _ -> },
-    onReportComment: (VideoComment) -> Unit = {}
+    onReportComment: (VideoComment) -> Unit = {},
+    isPosting: Boolean = false,
+    focusCommentId: String? = null,
 ) {
     var newCommentText by remember { mutableStateOf("") }
     var pendingSentText by remember { mutableStateOf<String?>(null) }
+    var pendingExistingIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    var focusResolved by remember(focusCommentId) { mutableStateOf(focusCommentId.isNullOrBlank()) }
     var commentOrder by remember { mutableStateOf(VideoCommentOrder.RECENT) }
     var commentAuthorFilter by remember { mutableStateOf(VideoCommentAuthorFilter.ALL) }
     val haptic = LocalHapticFeedback.current
@@ -84,10 +89,20 @@ fun CommentSheet(
 
     LaunchedEffect(comments, pendingSentText) {
         val pending = pendingSentText?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        if (comments.any { it.content.trim() == pending }) {
-            newCommentText = ""
+        if (comments.any { it.id !in pendingExistingIds && it.userId == currentUserId && it.content.trim() == pending }) {
+            if (newCommentText.trim() == pending) newCommentText = ""
             pendingSentText = null
             onClearMentionSuggestions()
+        }
+    }
+    LaunchedEffect(visibleThreads, focusCommentId, focusResolved) {
+        if (focusResolved || focusCommentId.isNullOrBlank()) return@LaunchedEffect
+        val index = visibleThreads.indexOfFirst { thread ->
+            thread.root.id == focusCommentId || thread.replies.any { it.id == focusCommentId }
+        }
+        if (index >= 0) {
+            listState.scrollToItem(index)
+            focusResolved = true
         }
     }
     
@@ -153,6 +168,7 @@ fun CommentSheet(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
@@ -269,12 +285,14 @@ fun CommentSheet(
                             val text = newCommentText.trim()
                             if (text.isNotEmpty()) {
                                 pendingSentText = text
+                                pendingExistingIds = comments.mapTo(mutableSetOf()) { it.id }
                                 onAddComment(text)
                             }
                         },
-                        enabled = newCommentText.isNotBlank()
+                        enabled = newCommentText.isNotBlank() && !isPosting
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar comentario")
+                        if (isPosting) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        else Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar comentario")
                     }
                 }
             }
