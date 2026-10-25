@@ -38,6 +38,13 @@ test('Google ownership proof is a public verification document and the new help 
  assert.doesNotMatch(read('privacidad-y-seguridad.html'),/certificad[oa] ISO|seguridad garantizada|cifrado de extremo a extremo/)
 })
 
+test('the rendered home preserves the ownership proofs for Google and Bing',()=>{
+ const html=read('index.html')
+ assert.match(html,/<meta name="google-site-verification" content="[^"]+"/)
+ assert.match(html,/<meta name="msvalidate\.01" content="6AF16B2EBFF5AB4AA7EDD93B1C90DE3F"/)
+ assert.match(html,/name="robots" content="index, follow/)
+})
+
 test('home is readable without JavaScript and provides real access links',()=>{
  const html=read('index.html')
  assert.match(html,/<h1>Novvin/)

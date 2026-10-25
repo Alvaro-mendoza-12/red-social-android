@@ -2,6 +2,44 @@
 const records = new Map()
 const tokens = new Map()
 const pending = new Map()
+// Private image bytes live only in this worker's RAM, scoped to one client and
+// identity generation. Never persist authenticated responses in Cache Storage.
+const imageCache = new Map()
+const imageCacheLimit = 24 * 1024 * 1024
+const imageEntryLimit = 2 * 1024 * 1024
+let imageCacheBytes = 0
+function removeImage(key) {
+  const entry = imageCache.get(key)
+  if (entry) imageCacheBytes -= entry.bytes.byteLength
+  imageCache.delete(key)
+}
+function clearClientImages(client) {
+  for (const [key, entry] of imageCache) if (entry.client === client) removeImage(key)
+}
+async function rememberImage(response, key, record, auth) {
+  const reader = response.body?.getReader()
+  if (!reader) return
+  const chunks = []
+  let size = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > imageEntryLimit || tokens.get(record.client) !== auth || records.get(key) !== record) return
+      chunks.push(value)
+    }
+    if (!size || tokens.get(record.client) !== auth || records.get(key) !== record) return
+    const bytes = new Uint8Array(size)
+    let offset = 0
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+    removeImage(key)
+    while (imageCache.size && (imageCacheBytes + size > imageCacheLimit || imageCache.size >= 128)) removeImage(imageCache.keys().next().value)
+    imageCache.set(key, { client: record.client, record, auth, bytes, headers: [...response.headers], expires: Date.now() + 120000 })
+    imageCacheBytes += size
+  } catch { /* A failed preview read must not interrupt native media playback. */ }
+  finally { void reader.cancel().catch(() => {}); reader.releaseLock() }
+}
 async function refresh(clientId, id) {
   const client = await self.clients.get(clientId)
   if (!client) return
@@ -30,6 +68,7 @@ self.addEventListener('message', event => {
   if (!client || !data || typeof data !== 'object') return
   if (data.type === 'NOVVIN_MEDIA_CLEAR') {
     tokens.delete(client)
+    clearClientImages(client)
     for (const [key, value] of records) if (value.client === client) records.delete(key)
     event.ports[0]?.postMessage({ ok: true }); return
   }
@@ -37,7 +76,7 @@ self.addEventListener('message', event => {
       typeof data.token !== 'string' || data.token.length < 30 || data.token.length > 12000 || !safeSource(data.source, data.base)) return
   const previous = tokens.get(client)
   if (previous && previous.generation === data.generation && previous.base === data.base) previous.token = data.token
-  else tokens.set(client, { token: data.token, generation: data.generation, base: data.base })
+  else { clearClientImages(client); tokens.set(client, { token: data.token, generation: data.generation, base: data.base }) }
   const key = `${client}/${data.id}`, existing = records.get(key)
   if (!existing || existing.source !== data.source || existing.generation !== data.generation)
     records.set(key, { client, source: data.source, generation: data.generation, downloadName: typeof data.downloadName === 'string' ? data.downloadName.replace(/[\u0000-\u001f\u007f/\\]/g,'_').slice(0,180) : '' })
@@ -56,6 +95,14 @@ async function stream(event, id) {
   if (range) {
     if (!/^bytes=(\d+-\d*|-\d+)$/.test(range)) return new Response('', { status: 416 })
     headers.set('Range', range)
+  }
+  const cached = imageCache.get(key)
+  if (!range && !record.downloadName && cached) {
+    if (cached.record === record && cached.auth === auth && cached.expires > Date.now()) {
+      imageCache.delete(key); imageCache.set(key, cached)
+      return new Response(cached.bytes.slice(), { headers: cached.headers })
+    }
+    removeImage(key)
   }
   try {
     const oldToken = auth.token
@@ -81,7 +128,15 @@ async function stream(event, id) {
     }
     output.set('Cache-Control', 'private, no-store')
     output.delete('Set-Cookie')
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers: output })
+    const result = new Response(response.body, { status: response.status, statusText: response.statusText, headers: output })
+    const length = output.get('Content-Length')
+    if (!range && !record.downloadName && response.status === 200 &&
+        /^image\/(png|apng|jpeg|webp|gif|avif|bmp)(?:;|$)/i.test(output.get('Content-Type') || '') &&
+        /^\d+$/.test(length || '') && Number(length) <= imageEntryLimit) {
+      const remembering = rememberImage(result.clone(), key, record, auth)
+      event.waitUntil?.(remembering)
+    }
+    return result
   } catch { return new Response('', { status: 503 }) }
 }
 self.addEventListener('fetch', event => {

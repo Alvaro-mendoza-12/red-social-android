@@ -104,9 +104,11 @@ await check('Favicon and truthful install manifest', async () => {
   assert(data.name === 'Novvin Web' && data.start_url === '/app/messages', 'Incorrect manifest')
   assert(!data.share_target && !data.file_handlers && !data.scope_extensions, 'Unimplemented manifest handlers advertised')
 })
-await check('Google verification and IndexNow public key', async () => {
+await check('Google and Bing verification with IndexNow public key', async () => {
   const home = await request('/'), key = await request('/indexnow-key.txt')
-  assert(metas(await home.text(), 'google-site-verification'), 'Google verification missing')
+  const html = await home.text()
+  assert(metas(html, 'google-site-verification'), 'Google verification missing')
+  assert(metas(html, 'msvalidate.01') === '6AF16B2EBFF5AB4AA7EDD93B1C90DE3F', 'Bing verification missing or belongs to another property')
   assert(key.status === 200 && /^[a-zA-Z0-9-]{8,128}$/.test((await key.text()).trim()), 'Invalid IndexNow key')
 })
 const report = { atUtc: new Date().toISOString(), passed: checks.every(check => check.passed), publicUrl: site, checks, indexingOrRankingGuaranteed: false, scope: 'Current deployed HTTP, public metadata, CSP, assets and private-shell exclusion. Not authenticated functionality, field Core Web Vitals, device calls or search-engine acceptance.' }

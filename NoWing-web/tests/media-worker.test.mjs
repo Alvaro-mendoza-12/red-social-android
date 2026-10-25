@@ -8,16 +8,16 @@ const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const token = 'synthetic-media-token-never-production'
 const source = 'https://api.example.invalid/storage/v1/object/public/videos/clip.mp4'
 function fixture(fetcher = async () => new Response('ab', { status: 206, headers: { 'Content-Range': 'bytes 0-1/6', 'Content-Type': 'video/mp4' } })) {
-  const handlers = {}, requests = []
+  const handlers = {}, requests = [], tasks = []
   const self = { location: { origin: 'https://web.example.invalid' }, addEventListener: (name, callback) => { handlers[name] = callback }, clients: { get: async () => null, claim: async () => {} }, skipWaiting() {} }
   vm.runInNewContext(code, { self, URL, Headers, Response, Request, Map, setTimeout, clearTimeout, fetch: async (...args) => { requests.push(args); return fetcher(...args) } })
   const register = (client = 'a', extra = {}) => handlers.message({ source: { id: client }, ports: [], data: { type: 'NOVVIN_MEDIA_REGISTER', id, source, base: 'https://api.example.invalid', token, generation: 1, ...extra } })
   const read = async (client = 'a', range = 'bytes=0-1') => {
     let response
-    handlers.fetch({ clientId: client, request: new Request(`https://web.example.invalid/__novvin_media/${id}`, { headers: { Range: range } }), respondWith: value => { response = value } })
+    handlers.fetch({ clientId: client, request: new Request(`https://web.example.invalid/__novvin_media/${id}`, { headers: range ? { Range: range } : {} }), respondWith: value => { response = value }, waitUntil: task => tasks.push(task) })
     return await response
   }
-  return { handlers, requests, register, read, self }
+  return { handlers, requests, register, read, self, settle: () => Promise.all(tasks) }
 }
 test('authorized native media streaming preserves Range without URL tokens', async () => {
   const f = fixture(); f.register()
@@ -86,4 +86,35 @@ test('server error bodies are not rendered into a media element', async () => {
   const f = fixture(async () => new Response('internal diagnostic and URL', { status: 403 }))
   f.register(); const response = await f.read()
   assert.equal(response.status, 403); assert.equal(await response.text(), '')
+})
+
+test('small avatar bytes are reused in RAM within their authenticated client', async () => {
+  const f = fixture(async () => new Response('image-bytes', { headers: { 'Content-Type': 'image/webp', 'Content-Length': '11' } }))
+  f.register(); assert.equal(await (await f.read('a', null)).text(), 'image-bytes'); await f.settle()
+  assert.equal(await (await f.read('a', null)).text(), 'image-bytes')
+  assert.equal(f.requests.length, 1)
+  assert.equal((await f.read('b', null)).status, 404)
+  f.handlers.message({ source: { id: 'a' }, data: { type: 'NOVVIN_MEDIA_CLEAR' }, ports: [] })
+  f.register(); await f.read('a', null)
+  assert.equal(f.requests.length, 2)
+})
+
+test('cached avatars are discarded when the client identity generation changes', async () => {
+  const f = fixture(async () => new Response('ab', { headers: { 'Content-Type': 'image/png', 'Content-Length': '2' } }))
+  f.register(); await f.read('a', null); await f.settle()
+  f.register('a', { generation: 2 }); await f.read('a', null)
+  assert.equal(f.requests.length, 2)
+})
+
+test('videos, documents, unbounded images and Range requests never enter the image cache', async () => {
+  for (const headers of [
+    { 'Content-Type': 'video/mp4', 'Content-Length': '2' },
+    { 'Content-Type': 'text/html', 'Content-Length': '2' },
+    { 'Content-Type': 'image/png' },
+    { 'Content-Type': 'image/png', 'Content-Length': '2097153' },
+  ]) {
+    const f = fixture(async () => new Response('ab', { headers }))
+    f.register(); await f.read('a', null); await f.settle(); await f.read('a', null)
+    assert.equal(f.requests.length, 2)
+  }
 })
