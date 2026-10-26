@@ -1340,9 +1340,10 @@ fun CommunityChatScreen(
     }
 
     if (showWorkspace && uiState is CommunityChatUiState.Success) {
+        ChatComposerDraft(viewModel.messageText) { workspaceDraft ->
         ConversationWorkspaceDialog(
             type = "community", conversationId = communityId, channelId = selectedChannel?.id,
-            composerText = viewModel.messageText.value, initialKind = workspaceKind, source = workspaceSource,
+            composerText = workspaceDraft, initialKind = workspaceKind, source = workspaceSource,
             onDismiss = { showWorkspace = false; workspaceSource = null },
             onLoadDraft = { draft ->
                 viewModel.cancelEdit()
@@ -1358,6 +1359,7 @@ fun CommunityChatScreen(
                 } else scope.launch { snackbarHostState.showSnackbar("El mensaje no está en el canal o historial cargado.") }
             },
         )
+        }
     }
 
     if (selectedMessage != null) {

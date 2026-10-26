@@ -108,4 +108,5 @@
     <string name="room_link_close">Cerrar enlace</string>
     <string name="room_link_error">No se pudo abrir el enlace</string>
     <string name="room_link_error_hint">Comprueba tu conexión o vuelve a intentarlo. Puedes cerrar esta ventana y seguir en la sala.</string>
+    <string name="widget_minimal_actions_title">Novvin · Minimalista</string>
 </resources>

@@ -1036,9 +1036,10 @@ fun GroupChatScreen(
     }
 
     if (showWorkspace && uiState is GroupChatUiState.Success) {
+        ChatComposerDraft(viewModel.messageText) { workspaceDraft ->
         ConversationWorkspaceDialog(
             type = "group", conversationId = groupId,
-            composerText = viewModel.messageText.value, initialKind = workspaceKind, source = workspaceSource,
+            composerText = workspaceDraft, initialKind = workspaceKind, source = workspaceSource,
             onDismiss = { showWorkspace = false; workspaceSource = null },
             onLoadDraft = { draft ->
                 viewModel.cancelEdit()
@@ -1054,6 +1055,7 @@ fun GroupChatScreen(
                 } else scope.launch { snackbarHostState.showSnackbar("El mensaje no está en el historial cargado.") }
             },
         )
+        }
     }
 
     if (selectedMessage != null) {

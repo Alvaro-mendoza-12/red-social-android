@@ -100,4 +100,5 @@
     <string name="room_link_error">リンクを開けませんでした</string>
     <string name="room_link_error_hint">接続を確認するか、もう一度お試しください。このウィンドウを閉じてもルームに残れます。</string>
     <string name="live_overlay_bubble_idle">LIVE\nチャット</string>
+    <string name="widget_minimal_actions_title">Novvin · ミニマル</string>
 </resources>

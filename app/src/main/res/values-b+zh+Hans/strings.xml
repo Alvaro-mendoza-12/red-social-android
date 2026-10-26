@@ -100,4 +100,5 @@
     <string name="room_link_error">无法打开链接</string>
     <string name="room_link_error_hint">请检查网络连接或重试。你可以关闭此窗口并继续留在房间中。</string>
     <string name="live_overlay_bubble_idle">LIVE\n聊天</string>
+    <string name="widget_minimal_actions_title">Novvin · 极简</string>
 </resources>
