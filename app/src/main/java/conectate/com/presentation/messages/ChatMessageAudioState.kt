@@ -34,11 +34,13 @@ internal fun rememberChatMessageAudioState(
     val activeFlow = remember(messageId, currentAudioId) {
         currentAudioId.map { it == messageId }.distinctUntilChanged()
     }
-    val active by activeFlow.collectAsStateWithLifecycle(initialValue = currentAudioId.value == messageId)
+    val initialActive = remember(messageId, currentAudioId) { currentAudioId.value == messageId }
+    val active by activeFlow.collectAsStateWithLifecycle(initialValue = initialActive)
     val totalFlow = remember(messageId, totalDurations) {
         totalDurations.map { it[messageId] }.distinctUntilChanged()
     }
-    val total by totalFlow.collectAsStateWithLifecycle(initialValue = totalDurations.value[messageId])
+    val initialTotal = remember(messageId, totalDurations) { totalDurations.value[messageId] }
+    val total by totalFlow.collectAsStateWithLifecycle(initialValue = initialTotal)
     val playbackSpeed by speed.collectAsStateWithLifecycle()
     if (!active) return ChatMessageAudioState(duration = fallbackDuration, totalDurationMs = total, speed = playbackSpeed)
     val playing by isPlaying.collectAsStateWithLifecycle()

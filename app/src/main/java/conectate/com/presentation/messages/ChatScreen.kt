@@ -399,11 +399,12 @@ fun ChatScreen(
     val editingMessage by viewModel.editingMessage.collectAsStateWithLifecycle()
 
     if (showWorkspace && chatState is ChatUiState.Success) {
+        ChatComposerDraft(viewModel.messageText) { workspaceDraft ->
         ChatWorkspaceSheet(
             state = workspaceState,
             initialKind = workspaceKind,
             initialSource = workspaceSource,
-            composerText = viewModel.messageText.value,
+            composerText = workspaceDraft,
             onDismiss = { showWorkspace = false; workspaceSource = null },
             onSave = workspaceViewModel::add,
             onToggleTask = workspaceViewModel::toggleTask,
@@ -428,6 +429,7 @@ fun ChatScreen(
             onRetry = workspaceViewModel::load,
             onSchedule = workspaceViewModel::scheduleTask,
         )
+        }
     }
 
     LaunchedEffect(autoTranslateTargetLang) {

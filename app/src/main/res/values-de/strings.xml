@@ -100,4 +100,5 @@
     <string name="room_link_error">Der Link konnte nicht geöffnet werden</string>
     <string name="room_link_error_hint">Prüfe deine Verbindung oder versuche es erneut. Du kannst dieses Fenster schließen und im Raum bleiben.</string>
     <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
+    <string name="widget_minimal_actions_title">Novvin · Minimalistisch</string>
 </resources>

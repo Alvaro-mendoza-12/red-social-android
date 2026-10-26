@@ -32,6 +32,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import android.content.SharedPreferences
+import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -49,6 +52,13 @@ import kotlin.math.sin
 internal fun shouldAnimateProfileAmbient(effectId: String, reduceMotion: Boolean, resumed: Boolean): Boolean =
     !reduceMotion && resumed && effectId.trim().lowercase(java.util.Locale.ROOT) in
         setOf("sparkles", "constellation", "confetti", "waves", "orbit", "rain", "equalizer")
+
+internal fun profileSystemAnimationsEnabled(context: Context): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        android.animation.ValueAnimator.areAnimatorsEnabled()
+    } else {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+    }
 
 @Composable
 fun ProfileAmbientBackground(
@@ -73,7 +83,7 @@ fun ProfileAmbientBackground(
         lifecycle.addObserver(observer)
         onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener); lifecycle.removeObserver(observer) }
     }
-    val phase = if (shouldAnimateProfileAmbient(effectId, reduceMotion.value || !android.animation.ValueAnimator.areAnimatorsEnabled(), resumed.value)) {
+    val phase = if (shouldAnimateProfileAmbient(effectId, reduceMotion.value || !profileSystemAnimationsEnabled(context), resumed.value)) {
         val transition = rememberInfiniteTransition(label = "profile-ambient")
         transition.animateFloat(0f, 1f,
             infiniteRepeatable(tween(durationMillis = 6_000, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "profile-ambient-phase")
