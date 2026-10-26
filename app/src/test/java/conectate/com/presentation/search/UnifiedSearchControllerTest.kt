@@ -82,4 +82,85 @@ class UnifiedSearchControllerTest {
         assertTrue(controller.users.value.isEmpty())
         assertFalse(controller.loading.value)
     }
+
+    @Test fun readsRealPagesOnceAndDeduplicatesStableResults() = runTest {
+        val offsets = mutableListOf<Int>()
+        val controller = UnifiedSearchController(this, { Result.success(emptyList<String>()) },
+            { error("The unpaged endpoint must not be called") }, findContentPage = { _, offset ->
+                offsets += offset
+                Result.success(if (offset == 0) SearchContentPage(listOf("a", "b"), 2)
+                    else SearchContentPage(listOf("b", "c")))
+            })
+        controller.search("casas", immediate = true)
+        advanceUntilIdle()
+        assertTrue(controller.hasMoreContent.value)
+        controller.loadMoreContent()
+        controller.loadMoreContent()
+        advanceUntilIdle()
+        assertEquals(listOf(0, 2), offsets)
+        assertEquals(listOf("a", "b", "c"), controller.content.value)
+        assertFalse(controller.hasMoreContent.value)
+    }
+
+    @Test fun latePageCannotLeakIntoDifferentQueryOrClearedAccount() = runTest {
+        val controller = UnifiedSearchController(this, { Result.success(emptyList<String>()) },
+            { Result.success(emptyList<String>()) }, findContentPage = { query, offset ->
+                if (offset > 0) withContext(NonCancellable) { delay(2000) }
+                Result.success(SearchContentPage(listOf("$query:$offset"), if (offset == 0) 1 else null))
+            })
+        controller.search("old", immediate = true)
+        runCurrent()
+        controller.loadMoreContent()
+        runCurrent()
+        controller.search("new", immediate = true)
+        advanceUntilIdle()
+        assertEquals(listOf("new:0"), controller.content.value)
+        controller.loadMoreContent()
+        runCurrent()
+        controller.clear()
+        advanceUntilIdle()
+        assertTrue(controller.content.value.isEmpty())
+        assertFalse(controller.hasMoreContent.value)
+        assertFalse(controller.loadingMore.value)
+    }
+
+    @Test fun failedNextPageKeepsResultsAndRetriesSameOffset() = runTest {
+        var attempts = 0
+        val controller = UnifiedSearchController(this, { Result.success(emptyList<String>()) },
+            { Result.success(emptyList<String>()) }, findContentPage = { _, offset ->
+                if (offset == 0) Result.success(SearchContentPage(listOf("first"), 1))
+                else if (++attempts == 1) Result.failure(IllegalStateException("offline"))
+                else Result.success(SearchContentPage(listOf("second")))
+            })
+        controller.search("música", immediate = true)
+        advanceUntilIdle()
+        controller.loadMoreContent()
+        advanceUntilIdle()
+        assertEquals(listOf("first"), controller.content.value)
+        assertNotNull(controller.contentError.value)
+        assertTrue(controller.hasMoreContent.value)
+        controller.loadMoreContent()
+        advanceUntilIdle()
+        assertEquals(listOf("first", "second"), controller.content.value)
+        assertNull(controller.contentError.value)
+        assertFalse(controller.hasMoreContent.value)
+    }
+
+    @Test fun olderServerWithoutPaginationAndNonAdvancingOffsetsCannotLoop() = runTest {
+        val controller = UnifiedSearchController(this, { Result.success(emptyList<String>()) },
+            { Result.success(emptyList<String>()) }, findContentPage = { _, offset ->
+                Result.success(SearchContentPage(listOf(offset.toString()), if (offset == 0) 1 else 1))
+            })
+        controller.search("tema", immediate = true)
+        advanceUntilIdle()
+        controller.loadMoreContent()
+        advanceUntilIdle()
+        assertFalse(controller.hasMoreContent.value)
+        val oldServer = UnifiedSearchController(this, { Result.success(emptyList<String>()) },
+            { Result.success(emptyList<String>()) }, findContentPage = { _, _ -> Result.success(SearchContentPage(listOf("legacy"))) })
+        oldServer.search("tema", immediate = true)
+        advanceUntilIdle()
+        assertEquals(listOf("legacy"), oldServer.content.value)
+        assertFalse(oldServer.hasMoreContent.value)
+    }
 }

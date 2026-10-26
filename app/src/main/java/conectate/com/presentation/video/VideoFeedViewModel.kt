@@ -90,6 +90,7 @@ class VideoFeedViewModel @Inject constructor(
     val socializationCards: StateFlow<List<conectate.com.data.model.SocializationCard>> = _socializationCards.asStateFlow()
     val activeStreams = liveRepository.activeStreams
     val showLiveRecommendations = appSettingsPreferences.livesInVideoFeedEnabled
+    val reduceMotionEnabled = appSettingsPreferences.reduceMotionEnabled
     val dataSaverEnabled = appSettingsPreferences.dataSaverEnabled
     val videoAutoplayOnMobile = appSettingsPreferences.videoAutoplayOnMobile
     private val _soundVideos = MutableStateFlow<List<Video>>(emptyList())
@@ -344,6 +345,8 @@ class VideoFeedViewModel @Inject constructor(
     // Follow Status Tracking
     private val _followedUsers = MutableStateFlow<Set<String>>(emptySet())
     val followedUsers: StateFlow<Set<String>> = _followedUsers.asStateFlow()
+    private val _pendingFollowUsers = MutableStateFlow<Set<String>>(emptySet())
+    val pendingFollowUsers = _pendingFollowUsers.asStateFlow()
     private val _videoDownloadsInProgress = MutableStateFlow<Set<String>>(emptySet())
     val videoDownloadsInProgress: StateFlow<Set<String>> = _videoDownloadsInProgress.asStateFlow()
 
@@ -415,6 +418,7 @@ class VideoFeedViewModel @Inject constructor(
         _socializationCards.value = emptyList()
         videoFollowState = VideoFollowState()
         _followedUsers.value = emptySet()
+        _pendingFollowUsers.value = emptySet()
         clearSoundVideos()
         _searchQuery.value = ""
         _searchResults.value = emptyList()
@@ -1957,6 +1961,7 @@ class VideoFeedViewModel @Inject constructor(
                     android.util.Log.e("VideoFeedVM", "Failed to follow user: ${e.message}", e)
                     // Revert optimistic update on failure
                     publishFollowState(videoFollowState.complete(normalizedUserId, success = false))
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo seguir a esta persona. Intenta nuevamente.")
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1965,6 +1970,7 @@ class VideoFeedViewModel @Inject constructor(
                 android.util.Log.e("VideoFeedVM", "Exception in followUser", e)
                 // Revert optimistic update on exception
                 publishFollowState(videoFollowState.complete(normalizedUserId, success = false))
+                conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo seguir a esta persona. Revisa la conexión.")
             }
         }
     }
@@ -1972,6 +1978,7 @@ class VideoFeedViewModel @Inject constructor(
     private fun publishFollowState(state: VideoFollowState) {
         videoFollowState = state
         _followedUsers.value = state.followed
+        _pendingFollowUsers.value = state.pending
     }
 
     fun downloadVideo(video: Video) {

@@ -384,6 +384,21 @@ assert.deepStrictEqual(
   semanticCorpus.map((item) => item.searchId).sort(),
   ['post:post-public', 'video:video-public'],
 )
+const restrictedSearch = buildPublicSemanticSearchCorpus({
+  profiles: [
+    { id: 'blocked', supabase_user_id: 'blocked-alias' },
+    { id: 'private', is_private: true },
+    { id: 'visible' },
+  ],
+  deniedIds: ['blocked-alias'],
+  posts: ['blocked', 'private', 'visible', 'missing-profile'].map(owner => ({
+    id: `post-${owner}`, user_id: owner, content: 'Cocina', visibility: 'public',
+  })),
+  videos: ['blocked', 'private', 'visible', 'missing-profile'].map(owner => ({
+    id: `video-${owner}`, user_id: owner, title: 'Cocina', is_public: true,
+  })),
+})
+assert.deepStrictEqual(restrictedSearch.map(row => row.searchId).sort(), ['post:post-visible', 'video:video-visible'])
 
 assert.strictEqual(normalizeCollectionRole('creator'), 'owner')
 assert.strictEqual(normalizeCollectionRole('MOD'), 'moderator')

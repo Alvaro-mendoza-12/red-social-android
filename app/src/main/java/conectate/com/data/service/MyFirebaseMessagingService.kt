@@ -137,7 +137,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             var senderId = data["sender_id"] ?: data["senderId"] ?: data["uid"]
             var senderName = data["sender_name"] ?: data["senderName"] ?: data["author_name"] ?: notificationTitle ?: "Novvin"
             var content = data["content"] ?: data["message"] ?: data["body"] ?: data["text"] ?: data["comment"] ?: notificationBody ?: ""
-            val displayContent = if (contentType == "birthday_card") "🎂 Te envió una tarjeta de cumpleaños" else buildConversationBackgroundPreview(contentType, content) ?: content
+            val displayContent = conectate.com.util.typedMessageNotificationPreview(contentType)
+                ?: buildConversationBackgroundPreview(contentType, content) ?: content
             var targetId = data["target_id"] ?: data["targetId"] ?: data["post_id"] ?: data["video_id"] ?: data["challenge_id"] ?: ""
             var postId = data["post_id"] ?: data["postId"]
             var videoId = data["video_id"] ?: data["videoId"]

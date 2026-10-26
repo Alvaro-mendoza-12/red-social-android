@@ -599,7 +599,9 @@ data class LocalFallbackFeedResponse(
 data class LocalFallbackSemanticSearchResponse(
     val items: List<conectate.com.data.model.SemanticSearchResult> = emptyList(),
     val model: String = "",
-    val publicOnly: Boolean = true
+    val publicOnly: Boolean = true,
+    val hasMore: Boolean = false,
+    val nextOffset: Int? = null,
 )
 
 data class LocalFallbackPostDetailResponse(
@@ -3161,6 +3163,23 @@ class LocalFallbackApiClient @Inject constructor(
         return requestJson(
             "$baseUrl/v1/data/search/semantic?q=${urlEncode(cleanQuery)}&limit=$cleanLimit",
             accessToken
+        )
+    }
+
+    suspend fun searchPublicContentPage(
+        accessToken: String,
+        query: String,
+        limit: Int = 20,
+        offset: Int = 0,
+    ): Result<LocalFallbackSemanticSearchResponse> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        val cleanQuery = query.trim().take(120)
+        if (cleanQuery.length < 2) return Result.failure(IllegalArgumentException("Escribe al menos dos caracteres."))
+        val cleanLimit = limit.coerceIn(1, 50)
+        val cleanOffset = offset.coerceAtLeast(0)
+        return requestJson(
+            "$baseUrl/v1/data/search/semantic?q=${urlEncode(cleanQuery)}&limit=$cleanLimit&offset=$cleanOffset",
+            accessToken,
         )
     }
 

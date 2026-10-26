@@ -57,3 +57,8 @@ const birthday = JSON.stringify({ version: 1, kind: 'birthday', message: '¡Feli
 const letterPush = buildData({ type: 'message', recipient_id: 'account-2', content: birthday }, { content_type: 'birthday_card', content: birthday, body: birthday })
 assert.equal(letterPush.body, '🎂 Te envió una tarjeta de cumpleaños')
 assert.equal(letterPush.content, birthday, 'Keep the full letter for the local message replica')
+for (const content of ['', '   ', 'Estrella', 'https://storage.invalid/private/sticker.webp']) {
+  const sticker = buildData({ type: 'message', recipient_id: 'account-2', content }, { content_type: 'sticker', body: content })
+  assert.equal(sticker.body, 'Sticker')
+  assert.equal(sticker.content, content, 'Notification formatting must not mutate the replicated message')
+}

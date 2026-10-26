@@ -32,7 +32,9 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
             }
         } else conectate.com.presentation.surveys.SurveysScreen(id, key, mode, onBack = { navController.popBackStack() })
     }
-    composable(Screen.SearchUsers.route) {
+    composable(Screen.SearchUsers.route + "?query={query}", arguments = listOf(
+        navArgument("query") { type = NavType.StringType; defaultValue = "" }
+    )) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.search.SearchUsersScreen(navController = navController)
         }

@@ -2,7 +2,7 @@ const http = require('http')
 const { randomUUID } = require('crypto')
 const path = require('path')
 const { ConectateChatbot } = require('./chatbot')
-const { SEMANTIC_SEARCH_MODEL, rankSemanticDocuments } = require('./semantic-search')
+const { SEMANTIC_SEARCH_MODEL, rankSemanticPage } = require('./semantic-search')
 const { summarizeThread } = require('./thread-summary')
 
 const port = Number(process.env.PORT || 3010)
@@ -169,8 +169,9 @@ async function handle(req, res, requestContext) {
         ? document.tags.map((tag) => String(tag || '').trim().slice(0, 80)).slice(0, 30)
         : [],
     }))
-    const results = rankSemanticDocuments(query, sanitizedDocuments, {
+    const page = rankSemanticPage(query, sanitizedDocuments, {
       limit: body.limit,
+      offset: body.offset,
     })
     runtimeMetrics.semanticSearchRequests += 1
     logRequestResult({
@@ -179,11 +180,11 @@ async function handle(req, res, requestContext) {
       durationMs: Date.now() - requestContext.startedAt,
       queryLength: query.length,
       documentCount: sanitizedDocuments.length,
-      resultCount: results.length,
+      resultCount: page.results.length,
     })
     return sendJson(res, 200, {
       model: SEMANTIC_SEARCH_MODEL,
-      results,
+      ...page,
     })
   }
 

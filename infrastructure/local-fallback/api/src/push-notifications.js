@@ -81,6 +81,9 @@ function buildData(notification, extraData = {}) {
   }
 
   if (data.content_type === 'birthday_card') data.body = '🎂 Te envió una tarjeta de cumpleaños'
+  // Preserve content for the local replica, but never expose an empty/catalog
+  // label/transport URI as the notification body for a sticker.
+  if (String(data.content_type || '').trim().toLowerCase() === 'sticker') data.body = 'Sticker'
 
   const socialActions = {
     friend_request_accepted: 'aceptó tu solicitud de amistad',

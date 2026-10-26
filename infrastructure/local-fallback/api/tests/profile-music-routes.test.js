@@ -140,13 +140,19 @@ test('schema and real PostgreSQL reaction summary', { skip: !process.env.TEST_DA
   const { Pool } = require('pg')
   const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL })
   const ownerId = `qa-music-${require('node:crypto').randomUUID()}`
+  let schemaReady = false
   try {
     await ensureProfileMusicTables(pool)
+    schemaReady = true
     const context = { ownerId, actorId: 'qa-actor', musicKey: 'qa-song', viewerIsOwner: true }
     await setReaction(pool, context, 'LOVE', () => null)
     const result = await pool.query('SELECT reaction FROM fallback_profile_music_reactions WHERE owner_id=$1', [ownerId])
     assert.deepEqual(result.rows, [{ reaction: 'LOVE' }])
     assert.equal((await setReaction(pool, context, 'LOVE', () => null)).changed, false)
     await setReaction(pool, context, null, () => null)
-  } finally { await pool.query('DELETE FROM fallback_profile_music_reactions WHERE owner_id=$1', [ownerId]); await pool.end() }
+  } finally {
+    try {
+      if (schemaReady) await pool.query('DELETE FROM fallback_profile_music_reactions WHERE owner_id=$1', [ownerId])
+    } finally { await pool.end() }
+  }
 })

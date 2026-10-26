@@ -156,6 +156,7 @@ class LiveRepository @Inject constructor(
         get() = SignalingConfig.LIVE_URL
     @Volatile
     private var socket: Socket? = null
+    @Volatile private var pendingViewerSocketStartup: LiveSocketStartup? = null
     private var webRTCManager: WebRTCManager? = null
     private var commentsChannel: RealtimeChannel? = null
     private var commentsJob: Job? = null
@@ -1316,6 +1317,7 @@ class LiveRepository @Inject constructor(
     suspend fun joinLiveAsViewer(streamId: String): Result<Unit> = withContext(Dispatchers.IO) {
         sessionStartupMutex.withLock {
         val startupReady = CompletableDeferred<Unit>()
+        var viewerSocketStartup: LiveSocketStartup? = null
         try {
             val normalizedStreamId = normalizeLiveSessionId(streamId)
                 ?: return@withContext Result.failure(Exception("El identificador del live no es válido"))
@@ -1341,19 +1343,23 @@ class LiveRepository @Inject constructor(
             if (!interactiveMediaGate.acquire(conectate.com.core.media.InteractiveMediaKind.LIVE)) {
                 return@withContext Result.failure(Exception(interactiveMediaGate.conflictMessage()))
             }
+            val socketStartup = LiveSocketStartup(normalizedStreamId)
+            viewerSocketStartup = socketStartup
+            pendingViewerSocketStartup = socketStartup
             eligibleGuestInvitationIds.value = emptySet()
             // Prepare the native engine while the authoritative access read runs.
             // No signaling, publication or session is started before both complete.
-            val (loadedStream, mediaReady) = coroutineScope {
+            val (loadedStream, preparedMedia) = coroutineScope {
                 val media = async {
                     val useSfu = usesUbuntuPersistence() && liveViewerUsesSfu(getLiveCollaborationCapabilities())
-                    (if (useSfu) true else initializeWebRTC(userId = currentUserId)).also { ready ->
+                    val ready = (if (useSfu) true else initializeWebRTC(userId = currentUserId)).also { ready ->
                         if (ready) {
                             webRTCManager?.setAudioEnabled(false)
                             webRTCManager?.setVideoSendEnabled(false, renegotiate = false)
                             viewerStartupTrace.mark("mediaEngineReady")
                         }
                     }
+                    useSfu to ready
                 }
                 val streamRead = async {
                     getLiveStreamById(normalizedStreamId).getOrNull().also {
@@ -1375,9 +1381,10 @@ class LiveRepository @Inject constructor(
                 // Only establish authenticated signaling here. Room entry waits
                 // for authoritative access and native media preparation below.
                 connectSocket(normalizedStreamId, LiveRole.VIEWER, currentUserId,
-                    viewerName, viewerAvatar, startupReady = startupReady)
+                    viewerName, viewerAvatar, startupReady = startupReady, viewerStartup = socketStartup)
                 streamRead.await() to media.await()
             }
+            val (viewerUsesSfu, mediaReady) = preparedMedia
             val stream = loadedStream ?: run {
                 disconnectAndClear()
                 return@withContext Result.failure(Exception("Live no encontrado"))
@@ -1398,8 +1405,6 @@ class LiveRepository @Inject constructor(
                 disconnectAndClear()
                 return@withContext Result.failure(Exception("No se pudo abrir el motor del live en este dispositivo."))
             }
-            _activeSession.value = ActiveLiveSession(stream = stream, role = LiveRole.VIEWER, viewerCount = stream.viewerCount)
-
             _isMicEnabled.value = false
             _isPaused.value = false
             _currentSource.value = stream.source.toLiveSource()
@@ -1410,7 +1415,21 @@ class LiveRepository @Inject constructor(
             if (!currentUserId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
                 throw CancellationException("The active account changed during LIVE startup")
             }
+            // Keep the authorized session visible before the server can send
+            // host-info/offer. Native track callbacks consult its role and must
+            // not lose a first frame that races with the admission acknowledgement.
+            _activeSession.value = ActiveLiveSession(stream = stream, role = LiveRole.VIEWER, viewerCount = stream.viewerCount)
             startupReady.complete(Unit)
+            // Legacy P2P cannot receive media until signaling authorizes the room.
+            // SFU admission is owned by connectLiveKit in the screen's existing
+            // connection owner; do not add a second join or wait for P2P there.
+            if (!viewerUsesSfu) {
+                awaitLiveConnection { socketStartup.await(); Result.success(Unit) }.getOrThrow()
+                currentCoroutineContext().ensureActive()
+                if (!currentUserId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
+                    throw CancellationException("The active account changed during LIVE admission")
+                }
+            }
             subscribeToComments(stream.id)
             Result.success(Unit)
         } catch (cancelled: CancellationException) {
@@ -1423,6 +1442,10 @@ class LiveRepository @Inject constructor(
         } finally {
             // An unsuccessful read/account change must never release room entry.
             if (!startupReady.isCompleted) startupReady.cancel()
+            viewerSocketStartup?.let { startup ->
+                if (pendingViewerSocketStartup === startup) pendingViewerSocketStartup = null
+                startup.cancel()
+            }
         }
         }
     }
@@ -2948,6 +2971,7 @@ class LiveRepository @Inject constructor(
         liveId: String, role: LiveRole, userId: String, name: String, avatarUrl: String?,
         pollingFallback: Boolean = false,
         startupReady: CompletableDeferred<Unit>? = null,
+        viewerStartup: LiveSocketStartup? = null,
     ) {
         fun isCurrentSession(): Boolean {
             val active = _activeSession.value
@@ -2955,7 +2979,8 @@ class LiveRepository @Inject constructor(
                 active.role == role && isCurrentMediaSignalingSession(
                     liveId, active.stream.id, userId, authService.getCurrentUserId())
             } else {
-                role == LiveRole.VIEWER && startupReady != null && !startupReady.isCompleted &&
+                role == LiveRole.VIEWER && startupReady != null && !startupReady.isCancelled &&
+                    (!startupReady.isCompleted || viewerStartup?.isPending == true) &&
                     userId.isNotBlank() && userId.equals(authService.getCurrentUserId(), ignoreCase = true)
             }
         }
@@ -3012,7 +3037,12 @@ class LiveRepository @Inject constructor(
                             synchronized(this@LiveRepository) {
                                 if (isCurrentAttempt()) {
                                     android.util.Log.i("LiveRepository", "Direct live socket failed; trying polling fallback")
-                                    connectSocket(liveId, role, userId, name, avatarUrl, pollingFallback = true, startupReady = startupReady)
+                                    try {
+                                        connectSocket(liveId, role, userId, name, avatarUrl, pollingFallback = true,
+                                            startupReady = startupReady, viewerStartup = viewerStartup)
+                                    } catch (error: Exception) {
+                                        viewerStartup?.reject(error)
+                                    }
                                 }
                             }
                         }
@@ -3027,7 +3057,9 @@ class LiveRepository @Inject constructor(
                     role = role,
                     userId = userId,
                     name = name,
-                    avatarUrl = avatarUrl
+                    avatarUrl = avatarUrl,
+                    startupReady = startupReady,
+                    viewerStartup = viewerStartup
                 )
             }
 
@@ -3038,10 +3070,9 @@ class LiveRepository @Inject constructor(
                     startupReady?.await()
                     if (!isCurrentAttempt()) return@launch
                     val active = _activeSession.value
-                    if (
-                        active?.role != role ||
-                        !active.stream.id.equals(liveId, ignoreCase = true)
-                    ) return@launch
+                    val pendingViewer = role == LiveRole.VIEWER && active == null && viewerStartup?.isPending == true
+                    if (!pendingViewer && (active?.role != role ||
+                            !active.stream.id.equals(liveId, ignoreCase = true))) return@launch
                     val sid = createdSocket.id()
                     webRTCManager?.setCurrentUser(userId, sid)
                     webRTCManager?.setRemoteAudioPlaybackEnabled(true)
@@ -3177,6 +3208,9 @@ class LiveRepository @Inject constructor(
                 if (socket !== createdSocket) return@on
                 runCatching {
                     val data = args.firstOrNull() as? org.json.JSONObject ?: return@runCatching
+                    if (!liveId.equals(data.optString("liveId").trim(), ignoreCase = true)) return@runCatching
+                    if (!userId.equals(authService.getCurrentUserId(), ignoreCase = true)) return@runCatching
+                    viewerStartup?.acceptRoom(data.optString("liveId"))
                     val count = data.optInt("viewerCount", 0).coerceAtLeast(0)
                     _viewerCount.value = count
                     _activeSession.update { current -> current?.copy(viewerCount = count) }
@@ -3351,6 +3385,7 @@ class LiveRepository @Inject constructor(
 
             createdSocket.on("live-ended") {
                 if (socket !== createdSocket) return@on
+                viewerStartup?.reject(IllegalStateException("El directo ya finalizó o no está disponible."))
                 scope.launch {
                     if (!_activeSession.value?.stream?.id.equals(liveId, ignoreCase = true)) {
                         return@launch
@@ -3514,6 +3549,7 @@ class LiveRepository @Inject constructor(
                 }.getOrDefault("").ifBlank {
                     "El equipo de moderación te retiró de este directo."
                 }
+                viewerStartup?.reject(IllegalStateException(message))
                 scope.launch {
                     if (!_activeSession.value?.stream?.id.equals(liveId, ignoreCase = true)) {
                         return@launch
@@ -3534,6 +3570,7 @@ class LiveRepository @Inject constructor(
                 }.getOrDefault("").ifBlank {
                     "No se pudo completar la acción de moderación."
                 }
+                viewerStartup?.reject(IllegalStateException(message))
                 _runtimeErrors.tryEmit(message)
             }
 
@@ -3633,6 +3670,10 @@ class LiveRepository @Inject constructor(
             socket?.connect()
         } catch (e: Exception) {
             android.util.Log.e("LiveRepository", "Failed to setup live socket", e)
+            if (role == LiveRole.VIEWER && viewerStartup != null) {
+                viewerStartup.reject(e)
+                throw e
+            }
         }
     }
 
@@ -3644,7 +3685,9 @@ class LiveRepository @Inject constructor(
         role: LiveRole,
         userId: String,
         name: String,
-        avatarUrl: String?
+        avatarUrl: String?,
+        startupReady: CompletableDeferred<Unit>? = null,
+        viewerStartup: LiveSocketStartup? = null,
     ) {
         if (socketEndpointRecoveryJob?.isActive == true) return
         socketEndpointRecoveryJob = scope.launch {
@@ -3655,16 +3698,21 @@ class LiveRepository @Inject constructor(
                 if (
                     !refreshed ||
                     socket !== failedSocket ||
-                    active == null ||
-                    !isCurrentMediaSignalingSession(liveId, active.stream.id, userId, authService.getCurrentUserId()) ||
-                    active.role != role
+                    (active == null && viewerStartup?.isPending != true) ||
+                    !isCurrentMediaSignalingSession(liveId, active?.stream?.id ?: liveId, userId, authService.getCurrentUserId()) ||
+                    (active != null && active.role != role)
                 ) {
                     return@launch
                 }
                 val refreshedEndpoint = signalingUrl
                 if (refreshedEndpoint == failedSignalingEndpoint) return@launch
                 android.util.Log.w("LiveRepository", "Rebuilding live socket after backend endpoint changed.")
-                connectSocket(liveId, role, userId, name, avatarUrl)
+                try {
+                    connectSocket(liveId, role, userId, name, avatarUrl,
+                        startupReady = startupReady, viewerStartup = viewerStartup)
+                } catch (error: Exception) {
+                    viewerStartup?.reject(error)
+                }
             } finally {
                 socketEndpointRecoveryJob = null
             }
@@ -4020,6 +4068,8 @@ class LiveRepository @Inject constructor(
     }
 
     private suspend fun disconnectAndClear() = withContext(NonCancellable) {
+        pendingViewerSocketStartup?.cancel()
+        pendingViewerSocketStartup = null
         guestMediaStartCoordinator.withLock { guestMediaStartCoordinator.invalidate() }
         collaborationConnectionGate.invalidate()
         val departedCollaboration = confirmedCollaboration

@@ -36,6 +36,11 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.StickyNote2
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -46,6 +51,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -60,6 +67,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -120,9 +129,12 @@ fun StickerPickerDialog(
 
     // Comments can use offline emojis immediately; other callers open the catalog
     // rather than a Favorites tab that may be empty on first use.
-    var selectedTab by remember { mutableStateOf(if (onEmojiSelected != null) 3 else 2) }
-    var newPackName by remember { mutableStateOf("") }
-    var selectedPackId by remember { mutableStateOf<String?>(null) }
+    var selectedTab by rememberSaveable { mutableStateOf(if (onEmojiSelected != null) 3 else 2) }
+    var newPackName by rememberSaveable { mutableStateOf("") }
+    var selectedPackId by rememberSaveable { mutableStateOf<String?>(null) }
+    var lastStickerTab by rememberSaveable { mutableStateOf(2) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    val sectionStates = rememberSaveableStateHolder()
     val imagePickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         uri?.let { viewModel.createStickerFromImage(it, selectedPackId ?: packs.firstOrNull()?.id) }
     }
@@ -147,16 +159,23 @@ fun StickerPickerDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
-                    Text(
-                        if (onEmojiSelected != null) "Emojis y stickers" else "Stickers",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (onEmojiSelected != null) {
+                        IconToggleButton(checked = selectedTab == 3, onCheckedChange = { selectedTab = 3 }) {
+                            Icon(Icons.Default.EmojiEmotions, "Emojis")
+                        }
+                        IconToggleButton(checked = selectedTab != 3, onCheckedChange = { selectedTab = lastStickerTab }) {
+                            Icon(Icons.Default.StickyNote2, "Stickers")
+                        }
+                    } else Text("Stickers", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = {
+                        searchExpanded = !searchExpanded
+                        if (!searchExpanded) viewModel.updateQuery("")
+                    }) { Icon(Icons.Default.Search, if (selectedTab == 3) "Buscar emojis" else "Buscar stickers") }
                     IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, "Cerrar selector") }
                 }
 
-                OutlinedTextField(
+                if (searchExpanded) OutlinedTextField(
                     value = query,
                     onValueChange = { viewModel.updateQuery(it) },
                     placeholder = { Text(if (selectedTab == 3) "Buscar emoji..." else "Buscar sticker...") },
@@ -170,21 +189,6 @@ fun StickerPickerDialog(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                     shape = RoundedCornerShape(12.dp)
                 )
-
-                SecondaryTabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = Color.Transparent,
-                    divider = {}
-                ) {
-                    Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Favoritos") })
-                    Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Packs") })
-                    Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Catálogo") })
-                    if (onEmojiSelected != null) {
-                        Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, text = { Text("Emojis") })
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 if (selectedTab == 1) {
                     PackManagementSection(
@@ -232,16 +236,15 @@ fun StickerPickerDialog(
                         else -> results
                     }.filter { !it.media_url.isNullOrBlank() }
 
+                    sectionStates.SaveableStateProvider("picker-$selectedTab-${if (selectedTab == 1) selectedPackId else ""}") {
                     if (selectedTab == 3 && onEmojiSelected != null) {
                         conectate.com.presentation.messages.stickers.ChatEmojiGrid(
                             query = query,
                             modifier = Modifier.fillMaxSize(),
                             onEmojiSelected = onEmojiSelected,
                         )
-                    } else if (isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     } else if (currentItems.isEmpty()) {
-                        Text(
+                        if (isLoading) CircularProgressIndicator(modifier = Modifier.align(Alignment.Center)) else Text(
                             "No hay stickers para mostrar",
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.align(Alignment.Center),
@@ -255,7 +258,7 @@ fun StickerPickerDialog(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxSize()
                         ) {
-                            items(currentItems, key = { "${it.id}_${selectedTab}_${it.pack_id ?: "none"}" }) { sticker ->
+                            items(currentItems, key = { it.id }, contentType = { "sticker" }) { sticker ->
                                 StickerItemCard(
                                     sticker = sticker,
                                     isFavorite = viewModel.isFavorite(sticker),
@@ -272,14 +275,21 @@ fun StickerPickerDialog(
                             }
                         }
                     }
+                    }
+                    if (isLoading && currentItems.isNotEmpty() && selectedTab != 3) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter))
+                    }
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.End
+                if (selectedTab != 3) Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    TextButton(onClick = onDismiss) {
-                        Text("Cerrar")
+                    listOf(0 to Icons.Default.Star, 1 to Icons.Default.Folder, 2 to Icons.Default.Explore).forEach { (tab, icon) ->
+                        IconToggleButton(checked = selectedTab == tab, onCheckedChange = { selectedTab = tab; lastStickerTab = tab }) {
+                            Icon(icon, listOf("Favoritos", "Packs", "Explorar")[tab],
+                                tint = if (selectedTab == tab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -395,9 +405,9 @@ fun StickerItemCard(
                     modifier = Modifier.size(24.dp)
                 ) {
                     Icon(
-                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = null,
-                        tint = if (isFavorite) Color.Red else Color.Gray,
+                        imageVector = if (isFavorite) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = if (isFavorite) "Quitar de favoritos" else "Añadir a favoritos",
+                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(16.dp)
                     )
                 }

@@ -9,6 +9,27 @@ class MediaUploadGuardTest {
     private val guard = MediaUploadGuard()
 
     @Test
+    fun `accepts actual Ogg Opus music and both compatible MIME names`() {
+        val bytes = "OggS\u0000\u0002OpusHead".encodeToByteArray()
+        listOf("audio/opus", "audio/ogg", "application/ogg").forEach { mime ->
+            assertTrue(mime, guard.validate("community-music", "user/audio.ogg", bytes, mime).allowed)
+        }
+    }
+
+    @Test
+    fun `ADTS AAC music keeps its actual type and rejects an mp3 declaration`() {
+        val bytes = byteArrayOf(0xFF.toByte(), 0xF1.toByte(), 0x50, 0x80.toByte(), 1, 0x7F, 0xFC.toByte())
+        assertTrue(guard.validate("community-music", "user/audio.aac", bytes, "audio/aac").allowed)
+        assertFalse(guard.validate("community-music", "user/audio.mp3", bytes, "audio/mpeg").allowed)
+    }
+
+    @Test
+    fun `truncated container metadata returns a validation result`() {
+        val bytes = byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112)
+        guard.validate("community-music", "user/audio.m4a", bytes, "audio/mp4")
+    }
+
+    @Test
     fun `accepts valid jpeg payload`() {
         val bytes = byteArrayOf(
             0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0x00,
@@ -181,10 +202,23 @@ class MediaUploadGuardTest {
             guard.validate(
                 "chat-media",
                 "chat/report.xls",
-                modernExcel,
+                byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0x00),
                 "application/vnd.ms-excel"
             ).allowed
         )
+    }
+
+    @Test
+    fun `does not block zip-based workbook mislabeled as legacy xls before server inspection`() {
+        val zipHeader = byteArrayOf(0x50, 0x4B, 0x03, 0x04, 0x14, 0, 0, 0, 0, 0, 0, 0)
+        val result = guard.validateMetadata(
+            bucketName = "chat-media",
+            fileName = "chat/report.xls",
+            sizeBytes = 1024,
+            contentType = "application/vnd.ms-excel",
+            headerBytes = zipHeader,
+        )
+        assertTrue(result.allowed)
     }
 
     @Test

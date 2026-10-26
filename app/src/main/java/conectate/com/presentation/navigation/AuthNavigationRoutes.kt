@@ -62,8 +62,10 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                         StartupDestination.LOGIN -> Screen.Login.route
                     }
                     android.util.Log.d("MainActivity", "Splash: Navigating to ${if (isLoggedIn) "Home" else "Login"}")
-                    navController.navigate(targetRoute) {
-                        popUpTo(Screen.Splash.route) { inclusive = true }
+                    withContext(Dispatchers.Main.immediate) {
+                        navController.navigate(targetRoute) {
+                            popUpTo(Screen.Splash.route) { inclusive = true }
+                        }
                     }
                 } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
                 catch (e: Exception) {
@@ -76,9 +78,11 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     composable(Screen.Login.route) {
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
-                navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
-                    popUpTo(Screen.Login.route) { inclusive = true }
-                    launchSingleTop = true
+                withContext(Dispatchers.Main.immediate) {
+                    navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             }
         } else {
@@ -89,9 +93,11 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     composable(Screen.Guest.route) {
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
-                navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
-                    popUpTo(navController.graph.id) { inclusive = false }
-                    launchSingleTop = true
+                withContext(Dispatchers.Main.immediate) {
+                    navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
+                        popUpTo(navController.graph.id) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 }
             }
         } else GuestScreen(navController)
@@ -102,11 +108,13 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
                 val pendingProfile = guestViewModel.consumePendingProfile()
-                navController.navigate(
-                    conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: pendingProfile?.let(Screen.UserProfile::createRoute) ?: Screen.Home.createRoute()
-                ) {
-                    popUpTo(navController.graph.id) { inclusive = false }
-                    launchSingleTop = true
+                withContext(Dispatchers.Main.immediate) {
+                    navController.navigate(
+                        conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: pendingProfile?.let(Screen.UserProfile::createRoute) ?: Screen.Home.createRoute()
+                    ) {
+                        popUpTo(navController.graph.id) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 }
             }
         } else {

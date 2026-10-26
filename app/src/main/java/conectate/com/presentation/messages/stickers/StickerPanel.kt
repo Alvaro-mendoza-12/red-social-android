@@ -5,6 +5,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.size
@@ -25,12 +28,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.StickyNote2
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHostState
@@ -43,6 +49,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
@@ -70,6 +78,14 @@ fun StickerPanel(
     onEmojiSelected: ((String) -> Unit)? = null,
     onEmojiBackspace: (() -> Unit)? = null,
 ) {
+    // Callers keep this composable mounted while hidden, so both the active
+    // section and each section's scroll survive switching back to the keyboard.
+    var selectedTab by rememberSaveable { mutableStateOf(StickerPanelTab.RECENT) }
+    var selectedPackId by rememberSaveable { mutableStateOf<String?>(null) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
+    var showingEmojis by rememberSaveable { mutableStateOf(false) }
+    var emojiQuery by rememberSaveable { mutableStateOf("") }
+    val sectionStates = rememberSaveableStateHolder()
     if (!visible) return
     val model = viewModel ?: hiltViewModel<StickerPickerViewModel>()
 
@@ -81,12 +97,7 @@ fun StickerPanel(
     val isLoading by model.isLoading.collectAsState()
     val actionMessage by model.actionMessage.collectAsState()
 
-    var selectedTab by remember { mutableStateOf(StickerPanelTab.RECENT) }
-    var selectedPackId by remember { mutableStateOf<String?>(null) }
     var pendingEditorUri by remember { mutableStateOf<Uri?>(null) }
-    var searchExpanded by remember { mutableStateOf(false) }
-    var showingEmojis by remember { mutableStateOf(false) }
-    var emojiQuery by remember { mutableStateOf("") }
 
     val imagePickerLauncher = conectate.com.presentation.components.rememberInAppMediaPicker() { uri ->
         if (uri != null) {
@@ -95,7 +106,7 @@ fun StickerPanel(
     }
 
     LaunchedEffect(packs) {
-        if (selectedPackId == null && packs.isNotEmpty()) {
+        if (packs.isNotEmpty() && packs.none { it.id == selectedPackId }) {
             selectedPackId = packs.first().id
         }
     }
@@ -112,9 +123,9 @@ fun StickerPanel(
         val activePack = selectedPackId
         results.filter { item -> activePack == null || item.pack_id == activePack }
     }
-    val tabItems = remember(selectedTab, recents, favorites, packItems, results) {
+    val tabItems = remember(selectedTab, recents, favorites, packItems, results, searchExpanded, query) {
         StickerService.resolveItemsForTab(
-            tab = selectedTab,
+            tab = if (searchExpanded && query.isNotBlank()) StickerPanelTab.CATALOG else selectedTab,
             recents = recents,
             favorites = favorites,
             packsItems = packItems,
@@ -129,64 +140,43 @@ fun StickerPanel(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (onEmojiSelected != null) {
-                    Row(
-                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    IconToggleButton(
+                        checked = showingEmojis,
+                        onCheckedChange = { showingEmojis = true },
+                        modifier = Modifier.testTag("picker_emoji_category"),
                     ) {
-                        FilterChip(
-                            selected = showingEmojis,
-                            onClick = { showingEmojis = true; searchExpanded = false },
-                            label = { Text("Emojis", maxLines = 1, softWrap = false) },
-                            leadingIcon = { Icon(Icons.Default.EmojiEmotions, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        )
-                        FilterChip(
-                            selected = !showingEmojis,
-                            onClick = { showingEmojis = false },
-                            label = { Text("Stickers", maxLines = 1, softWrap = false) },
-                            leadingIcon = { Icon(Icons.Default.StickyNote2, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        )
+                        Icon(Icons.Default.EmojiEmotions, "Emojis",
+                            tint = if (showingEmojis) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    if (showingEmojis) {
-                        IconButton(onClick = { searchExpanded = !searchExpanded }) {
-                            Icon(Icons.Default.Search, "Buscar emojis")
-                        }
-                    }
-                    if (showingEmojis && onEmojiBackspace != null) {
-                        IconButton(onClick = onEmojiBackspace, modifier = Modifier.testTag("chat_emoji_backspace")) {
-                            Icon(Icons.AutoMirrored.Filled.Backspace, "Borrar último carácter o emoji")
-                        }
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Keyboard, "Volver al teclado")
-                    }
-                } else {
-                    StickerCategoryTabs(
-                        selectedTab = selectedTab,
-                        onTabSelected = { selectedTab = it },
-                        modifier = Modifier.weight(1f),
-                        compact = true
-                    )
-                    IconButton(onClick = { searchExpanded = !searchExpanded }) {
-                        Icon(Icons.Default.Search, "Buscar stickers")
-                    }
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Keyboard, "Volver al teclado")
+                    IconToggleButton(
+                        checked = !showingEmojis,
+                        onCheckedChange = { showingEmojis = false },
+                        modifier = Modifier.testTag("picker_sticker_category"),
+                    ) {
+                        Icon(Icons.Default.StickyNote2, "Stickers",
+                            tint = if (!showingEmojis) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-            }
-            if (!showingEmojis && onEmojiSelected != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    StickerCategoryTabs(
-                        selectedTab = selectedTab,
-                        onTabSelected = { selectedTab = it },
-                        modifier = Modifier.weight(1f),
-                        compact = true,
-                    )
-                    IconButton(onClick = { searchExpanded = !searchExpanded }) {
-                        Icon(Icons.Default.Search, "Buscar stickers")
+                Box(Modifier.weight(1f))
+                IconButton(onClick = {
+                    searchExpanded = !searchExpanded
+                    if (!searchExpanded) model.updateQuery("")
+                }) {
+                    Icon(Icons.Default.Search, if (showingEmojis) "Buscar emojis" else "Buscar stickers")
+                }
+                if (showingEmojis && onEmojiBackspace != null) {
+                    IconButton(onClick = onEmojiBackspace, modifier = Modifier.testTag("chat_emoji_backspace")) {
+                        Icon(Icons.AutoMirrored.Filled.Backspace, "Borrar último carácter o emoji")
                     }
+                } else if (!showingEmojis) {
+                    IconButton(onClick = { imagePickerLauncher.launch("image/*") }) {
+                        Icon(Icons.Default.AddPhotoAlternate, "Crear sticker")
+                    }
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Keyboard, "Volver al teclado")
                 }
             }
             if (showingEmojis) {
@@ -202,55 +192,68 @@ fun StickerPanel(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("chat_emoji_search"),
                 )
-                ChatEmojiGrid(
-                    query = if (searchExpanded) emojiQuery else "",
-                    modifier = Modifier.fillMaxWidth().weight(1f).testTag("chat_emoji_grid"),
-                    onEmojiSelected = { emoji -> onEmojiSelected?.invoke(emoji) },
-                )
+                Box(Modifier.fillMaxWidth().weight(1f).testTag("chat_emoji_grid")) {
+                    sectionStates.SaveableStateProvider("emojis") {
+                        ChatEmojiGrid(
+                            query = if (searchExpanded) emojiQuery else "",
+                            modifier = Modifier.fillMaxSize(),
+                            onEmojiSelected = { emoji -> onEmojiSelected?.invoke(emoji) },
+                        )
+                    }
+                }
             } else if (searchExpanded) {
                 OutlinedTextField(
                     value = query,
                     onValueChange = { model.updateQuery(it) },
                     label = { Text("Buscar sticker") },
+                    trailingIcon = {
+                        if (query.isNotEmpty()) IconButton(onClick = { model.updateQuery("") }) {
+                            Icon(Icons.Default.Close, "Borrar búsqueda de stickers")
+                        }
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            if (!showingEmojis && selectedTab == StickerPanelTab.PACKS) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(packs, key = { it.id }) { pack ->
-                        FilterChip(
-                            selected = selectedPackId == pack.id,
-                            onClick = { selectedPackId = pack.id },
-                            label = { Text(pack.name) }
+            if (!showingEmojis) {
+                Box(Modifier.fillMaxWidth().height(2.dp)) {
+                    if (isLoading) LinearProgressIndicator(Modifier.fillMaxSize())
+                }
+                Box(Modifier.fillMaxWidth().weight(1f).testTag("chat_sticker_grid")) {
+                    val sectionKey = "stickers:${selectedTab.name}:${if (selectedTab == StickerPanelTab.PACKS) selectedPackId else ""}"
+                    sectionStates.SaveableStateProvider(sectionKey) {
+                        StickerGrid(
+                            stickers = tabItems,
+                            isFavorite = { sticker -> model.isFavorite(sticker) },
+                            onFavoriteChange = { sticker, favorite -> model.setFavorite(sticker, favorite) },
+                            onStickerClick = { sticker ->
+                                model.recordStickerSelection(sticker)
+                                onStickerSelected(sticker)
+                            },
+                            onCreateClick = null, // Kept in the header without using a grid cell.
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
-            }
-
-            if (!showingEmojis && isLoading) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                    CircularProgressIndicator()
+                Row(modifier = Modifier.fillMaxWidth().testTag("sticker_bottom_categories"), verticalAlignment = Alignment.CenterVertically) {
+                    StickerCategoryTabs(
+                        selectedTab = selectedTab,
+                        onTabSelected = { selectedTab = it },
+                        modifier = if (selectedTab == StickerPanelTab.PACKS && packs.isNotEmpty()) Modifier.width(216.dp) else Modifier.weight(1f),
+                        compact = true,
+                    )
+                    if (selectedTab == StickerPanelTab.PACKS && packs.isNotEmpty()) {
+                        LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(packs, key = { it.id }) { pack ->
+                                FilterChip(selected = selectedPackId == pack.id,
+                                    onClick = { selectedPackId = pack.id },
+                                    label = { Text(pack.name, maxLines = 1, softWrap = false) })
+                            }
+                        }
+                    }
                 }
             }
-
-            if (!showingEmojis) StickerGrid(
-                stickers = tabItems,
-                isFavorite = { sticker -> model.isFavorite(sticker) },
-                onFavoriteChange = { sticker, favorite -> model.setFavorite(sticker, favorite) },
-                onStickerClick = { sticker ->
-                    model.recordStickerSelection(sticker)
-                    onStickerSelected(sticker)
-                },
-                onCreateClick = { imagePickerLauncher.launch("image/*") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            )
         }
     }
 

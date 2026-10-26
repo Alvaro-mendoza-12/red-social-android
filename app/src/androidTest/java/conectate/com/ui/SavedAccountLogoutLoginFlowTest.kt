@@ -3,6 +3,7 @@ package conectate.com.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import conectate.com.core.testing.RuntimeSessionOverride
@@ -47,8 +48,9 @@ class SavedAccountLogoutLoginFlowTest {
         }
 
         composeRule.onNodeWithText("Cuentas guardadas").assertIsDisplayed()
-        composeRule.onNodeWithText(session.email).assertIsDisplayed()
-        composeRule.onNodeWithText("Entrar").performClick()
+        composeRule.onNodeWithText(session.email).performScrollTo().assertIsDisplayed()
+        val signInLabel = composeRule.activity.getString(conectate.com.R.string.login)
+        composeRule.onNodeWithText(signInLabel).performScrollTo().performClick()
 
         composeRule.waitUntil(timeoutMillis = 15_000) {
             runCatching {

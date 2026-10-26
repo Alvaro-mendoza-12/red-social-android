@@ -81,7 +81,9 @@ class MessageNotificationService @Inject constructor(
 
                 // 3. Construir notificación
                 val notificationTitle = senderName
-                val notificationText = message.content.take(100).ifBlank { "Media" }
+                val notificationText = conectate.com.util.typedMessageNotificationPreview(message.content_type)
+                    ?: conectate.com.util.buildConversationBackgroundPreview(message.content_type, message.content)
+                    ?: message.content.take(100).ifBlank { "Nuevo mensaje" }
 
                 // 4. Mostrar notificación
                 val presented = sendNotification(
