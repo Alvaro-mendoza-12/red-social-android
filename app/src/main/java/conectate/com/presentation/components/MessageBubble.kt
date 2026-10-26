@@ -458,6 +458,7 @@ fun MessageBubble(
     replySenderName: String? = null,
     replyMessage: Message? = null,
     selectionMode: Boolean = false,
+    onStickerClick: () -> Unit = { onClick(null) },
 ) {
     val context = LocalContext.current
     var showDocument by remember(message.id, message.media_url) { mutableStateOf(false) }
@@ -551,7 +552,7 @@ fun MessageBubble(
                         when {
                             selectionMode -> onClick(null)
                             message.isAudio -> onPlayAudio(message)
-                            isStickerMessage -> onLongClick()
+                            isStickerMessage -> onStickerClick()
                             message.content_type in listOf("document", "file") && !message.deleted_for_all -> showDocument = true
                             else -> {
                                 // Pass the resolved URL back (useful for fullscreen dialogs)
@@ -846,9 +847,14 @@ fun MessageBubble(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                         } else {
+                            val stickerContent = remember(message.content) { legacyStickerDisplayContent(message.content) }
+                            val emojiOnly = remember(stickerContent) { isStandaloneEmojiMessage(stickerContent) }
                             Text(
-                                text = message.content.ifBlank { "🧩" },
-                                fontSize = 34.sp
+                                text = stickerContent,
+                                fontSize = if (emojiOnly) 42.sp else 16.sp,
+                                lineHeight = if (emojiOnly) 52.sp else 22.sp,
+                                maxLines = 3,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                             )
                         }
                         if (isFromCurrentUser && onRetrySend != null) {

@@ -104,7 +104,9 @@ sealed class Screen(val route: String) {
         fun createRoute(userId: String) = "user_profile/${android.net.Uri.encode(userId)}"
     }
     
-    object SearchUsers : Screen("search_users")
+    object SearchUsers : Screen("search_users") {
+        fun createRoute(query: String) = "search_users?query=${android.net.Uri.encode(query)}"
+    }
     object Proximity : Screen("proximity")
     object CreateGroup : Screen("create_group")
     object CreateCommunity : Screen("create_community")

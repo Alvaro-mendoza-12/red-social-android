@@ -3,6 +3,7 @@ const path = require('path')
 const express = require('express')
 const multer = require('multer')
 const crypto = require('crypto')
+const zlib = require('zlib')
 const sharp = require('sharp')
 const { boundedWorkQueue } = require('./bounded-work-queue')
 const { createStorageObjectReadGuard } = require('./storage-read-access')
@@ -582,6 +583,107 @@ async function readHeader(options, maxBytes = 512) {
   }
 }
 
+// Confirm a renamed OOXML Excel package before treating it as an .xlsx/.xlsm.
+async function verifiedMisnamedExcelPackage(options) {
+  const size = Number(options.sizeBytes || options.buffer?.length || 0)
+  if (!Number.isSafeInteger(size) || size < 22 || size > 128 * 1024 * 1024) return null
+  let handle = null
+  const readAt = async (length, position) => {
+    if (!Number.isSafeInteger(length) || length < 0 || !Number.isSafeInteger(position) ||
+        position < 0 || position + length > size) return Buffer.alloc(0)
+    if (Buffer.isBuffer(options.buffer)) return options.buffer.subarray(position, position + length)
+    if (!options.sourcePath) return Buffer.alloc(0)
+    if (!handle) handle = await fs.promises.open(options.sourcePath, 'r')
+    const buffer = Buffer.alloc(length)
+    const { bytesRead } = await handle.read(buffer, 0, length, position)
+    return buffer.subarray(0, bytesRead)
+  }
+  const readPackageXml = async (member, maxCompressedBytes, maxExpandedBytes, directoryOffset) => {
+    if (!member || member.compressedSize > maxCompressedBytes || member.uncompressedSize > maxExpandedBytes ||
+        ![0, 8].includes(member.method)) return null
+    const local = await readAt(30, member.localOffset)
+    if (local.length !== 30 || local.readUInt32LE(0) !== 0x04034b50) return null
+    const localFlags = local.readUInt16LE(6)
+    const localMethod = local.readUInt16LE(8)
+    const nameLength = local.readUInt16LE(26)
+    const extraLength = local.readUInt16LE(28)
+    if (localFlags !== member.flags || localMethod !== member.method || (localFlags & 1) || nameLength !== member.nameBytes.length) return null
+    const localName = await readAt(nameLength, member.localOffset + 30)
+    if (!localName.equals(member.nameBytes)) return null
+    const dataOffset = member.localOffset + 30 + nameLength + extraLength
+    if (dataOffset + member.compressedSize > directoryOffset) return null
+    const compressed = await readAt(member.compressedSize, dataOffset)
+    if (compressed.length !== member.compressedSize) return null
+    const xml = member.method === 0
+      ? compressed
+      : zlib.inflateRawSync(compressed, { maxOutputLength: maxExpandedBytes })
+    if (xml.length !== member.uncompressedSize) return null
+    const text = xml.toString('utf8')
+    if (text.includes('\uFFFD') || /<!DOCTYPE|<!ENTITY/i.test(text)) return null
+    return text
+  }
+  try {
+    const tailLength = Math.min(size, 65_557)
+    const tail = await readAt(tailLength, size - tailLength)
+    let end = -1
+    for (let i = tail.length - 22; i >= Math.max(0, tail.length - 65_557); i--) {
+      if (tail.readUInt32LE(i) === 0x06054b50) { end = i; break }
+    }
+    if (end < 0 || tail.readUInt16LE(end + 4) || tail.readUInt16LE(end + 6)) return null
+    const diskCount = tail.readUInt16LE(end + 8)
+    const count = tail.readUInt16LE(end + 10)
+    const directorySize = tail.readUInt32LE(end + 12)
+    const directoryOffset = tail.readUInt32LE(end + 16)
+    const commentLength = tail.readUInt16LE(end + 20)
+    if (commentLength !== tail.length - end - 22 || diskCount !== count || count < 2 || count > 4096 ||
+        directorySize > 1024 * 1024 || directoryOffset + directorySize > size - tailLength + end) return null
+    const directory = await readAt(directorySize, directoryOffset)
+    if (directory.length !== directorySize) return null
+    let cursor = 0
+    const members = new Map()
+    for (let i = 0; i < count; i++) {
+      if (cursor + 46 > directory.length || directory.readUInt32LE(cursor) !== 0x02014b50) return null
+      const flags = directory.readUInt16LE(cursor + 8)
+      const method = directory.readUInt16LE(cursor + 10)
+      const compressedSize = directory.readUInt32LE(cursor + 20)
+      const uncompressedSize = directory.readUInt32LE(cursor + 24)
+      const nameLength = directory.readUInt16LE(cursor + 28)
+      const extraLength = directory.readUInt16LE(cursor + 30)
+      const commentLength = directory.readUInt16LE(cursor + 32)
+      const localOffset = directory.readUInt32LE(cursor + 42)
+      const next = cursor + 46 + nameLength + extraLength + commentLength
+      if (next > directory.length || (flags & 1) || compressedSize === 0xFFFFFFFF ||
+          uncompressedSize === 0xFFFFFFFF || localOffset >= directoryOffset) return null
+      const nameBytes = directory.subarray(cursor + 46, cursor + 46 + nameLength)
+      const name = nameBytes.toString('utf8')
+      if (name === 'xl/workbook.xml' || name === '[Content_Types].xml') {
+        members.set(name, { name, nameBytes: Buffer.from(nameBytes), flags, method, compressedSize, uncompressedSize, localOffset })
+      }
+      cursor = next
+    }
+    if (cursor !== directory.length) return null
+    const manifest = await readPackageXml(members.get('[Content_Types].xml'), 64 * 1024, 128 * 1024, directoryOffset)
+    const workbook = await readPackageXml(members.get('xl/workbook.xml'), 2 * 1024 * 1024, 4 * 1024 * 1024, directoryOffset)
+    if (!manifest || !workbook || !/<(?:[A-Za-z0-9_]+:)?Types\b/i.test(manifest) ||
+        !/<(?:[A-Za-z0-9_]+:)?workbook\b/i.test(workbook) ||
+        !/schemas\.openxmlformats\.org\/spreadsheetml\/2006\/main|purl\.oclc\.org\/ooxml\/spreadsheetml\/main/i.test(workbook)) return null
+    const workbookOverride = manifest.match(/<(?:[A-Za-z0-9_]+:)?Override\b[^>]*\bPartName=["']\/xl\/workbook\.xml["'][^>]*>/i)?.[0]
+    if (!workbookOverride) return null
+    const contentType = workbookOverride.match(/\bContentType=["']([^"']+)["']/i)?.[1]?.toLowerCase()
+    if (contentType === 'application/vnd.ms-excel.sheet.macroenabled.main+xml') {
+      return { contentType: 'application/vnd.ms-excel.sheet.macroenabled.12', extension: 'xlsm' }
+    }
+    if (contentType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml') {
+      return { contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', extension: 'xlsx' }
+    }
+    return null
+  } catch {
+    return null
+  } finally {
+    await handle?.close().catch(() => {})
+  }
+}
+
 async function validateUpload(options) {
   const bucket = cleanBucketName(options.bucket)
   if (!allowedBuckets.has(bucket)) {
@@ -612,6 +714,11 @@ async function validateUpload(options) {
   // WebM subtype is safe to preserve because compatibility is still restricted below.
   if (inferredType === 'video/webm' && declaredType === 'audio/webm') inferredType = 'audio/webm'
   const extension = extensionOf(options.objectPath || options.fallbackName)
+  const excelPackage = extension === 'xls' && inferredType === 'application/zip' &&
+    declaredType === 'application/vnd.ms-excel'
+    ? await verifiedMisnamedExcelPackage(options)
+    : null
+  if (excelPackage) inferredType = excelPackage.contentType
   const isMessagingBucket = ['chat-media', 'group-media', 'community-media'].includes(bucket)
   const safeOpaqueMime = (declaredType === 'application/octet-stream' ||
     declaredType.startsWith('application/') || declaredType.startsWith('text/')) &&
@@ -624,7 +731,7 @@ async function validateUpload(options) {
   if (!inferredType && genericFileAttachment && !documentExtensions.has(extension)) inferredType = declaredType
   const allowedTypes = allowedTypesForBucket(bucket)
   if (!inferredType || (!allowedTypes.has(inferredType) && !genericFileAttachment) ||
-      !typesCompatible(declaredType, inferredType)) {
+      (!excelPackage && !typesCompatible(declaredType, inferredType))) {
     const error = new Error('UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE')
     error.status = 415
     throw error

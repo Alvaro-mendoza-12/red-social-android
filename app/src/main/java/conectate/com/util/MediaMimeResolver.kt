@@ -22,6 +22,7 @@ fun canonicalizeMediaContentType(contentType: String?): String? {
         "audio/mp3", "audio/x-mp3", "audio/x-mpeg" -> "audio/mpeg"
         "audio/x-wav" -> "audio/wav"
         "audio/x-flac" -> "audio/flac"
+        "audio/x-aac", "audio/aac-adts" -> "audio/aac"
         "application/msexcel", "application/x-msexcel", "application/xls", "application/x-excel" -> "application/vnd.ms-excel"
         "application/mspowerpoint", "application/x-mspowerpoint" -> "application/vnd.ms-powerpoint"
         else -> clean
@@ -39,7 +40,8 @@ fun preferredExtensionForMime(contentType: String?): String? {
         "audio/mpeg" -> "mp3"
         "audio/wav" -> "wav"
         "audio/mp4" -> "m4a"
-        "audio/ogg" -> "ogg"
+        "audio/aac" -> "aac"
+        "audio/ogg", "application/ogg", "audio/opus" -> "ogg"
         "audio/webm" -> "webm"
         "audio/flac" -> "flac"
         "application/pdf" -> "pdf"
@@ -86,6 +88,10 @@ fun guessMimeTypeFromFileName(fileName: String?): String? {
     val extension = fileExtensionFromName(fileName) ?: return null
     val explicit = when (extension) {
         "xls" -> "application/vnd.ms-excel"
+        "aac", "adts" -> "audio/aac"
+        "ogg", "oga" -> "audio/ogg"
+        "opus" -> "audio/opus"
+        "m4a" -> "audio/mp4"
         "xlsm" -> "application/vnd.ms-excel.sheet.macroEnabled.12"
         "xlsb" -> "application/vnd.ms-excel.sheet.binary.macroEnabled.12"
         "doc" -> "application/msword"
@@ -122,7 +128,7 @@ fun guessMimeTypeFromUri(uri: Uri?): String? {
 }
 
 fun inferMimeTypeFromBytes(bytes: ByteArray): String? {
-    if (bytes.size < 12) return null
+    if (bytes.size < 4) return null
 
     if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()) {
         return "image/jpeg"
@@ -173,6 +179,10 @@ fun inferMimeTypeFromBytes(bytes: ByteArray): String? {
     ) {
         return "audio/mpeg"
     }
+    // ADTS shares the MPEG sync word, but its layer bits are always zero.
+    if ((bytes[0].toInt() and 0xFF) == 0xFF && (bytes[1].toInt() and 0xF6) == 0xF0) {
+        return "audio/aac"
+    }
     if ((bytes[0].toInt() and 0xFF) == 0xFF && (bytes[1].toInt() and 0xE0) == 0xE0) {
         return "audio/mpeg"
     }
@@ -201,7 +211,7 @@ fun inferMimeTypeFromBytes(bytes: ByteArray): String? {
         return "audio/webm"
     }
     if (
-        bytes.getOrNull(4) == 0x66.toByte() &&
+        bytes.size >= 12 && bytes.getOrNull(4) == 0x66.toByte() &&
         bytes.getOrNull(5) == 0x74.toByte() &&
         bytes.getOrNull(6) == 0x79.toByte() &&
         bytes.getOrNull(7) == 0x70.toByte()

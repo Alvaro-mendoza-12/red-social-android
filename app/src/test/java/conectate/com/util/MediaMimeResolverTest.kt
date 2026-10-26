@@ -4,6 +4,24 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class MediaMimeResolverTest {
+    @Test fun aacAdtsIsNotMislabeledAsMp3OrGivenAnM4aSuffix() {
+        val bytes = byteArrayOf(0xFF.toByte(), 0xF1.toByte(), 0x50, 0x80.toByte(), 1, 0x7F, 0xFC.toByte())
+        val meta = resolveMediaMeta("audio", "audio/mp4", "audio/mp4", inferMimeTypeFromBytes(bytes))
+        assertEquals("audio/aac", meta.mimeType)
+        assertEquals(".aac", meta.extensionWithDot)
+    }
+
+    @Test fun editedImageBytesOverrideTheOriginalProviderMime() {
+        val bytes = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0)
+        val meta = resolveMediaMeta("image", "image/png", "image/png", inferMimeTypeFromBytes(bytes))
+        assertEquals("image/jpeg", meta.mimeType)
+        assertEquals(".jpg", meta.extensionWithDot)
+    }
+
+    @Test fun truncatedFtypHeaderDoesNotThrow() {
+        assertEquals(null, inferMimeTypeFromBytes(byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112)))
+    }
+
     @Test fun androidAacRecordingWithAnIsomContainerRemainsAudio() {
         val header = byteArrayOf(0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109)
         val meta = resolveMediaMeta("audio", null, "audio/mp4", inferMimeTypeFromBytes(header))

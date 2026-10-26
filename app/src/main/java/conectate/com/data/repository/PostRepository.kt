@@ -187,6 +187,25 @@ class PostRepository @Inject constructor(
                 .map { response -> response.items }
         }
 
+    suspend fun searchPublicContentPage(
+        query: String,
+        limit: Int = 20,
+        offset: Int = 0,
+    ): Result<PublicContentSearchPage> = withContext(Dispatchers.IO) {
+        val account = authService.getCurrentUserId()
+            ?: return@withContext Result.failure(IllegalStateException("Necesitas iniciar sesión para buscar contenido."))
+        val accessToken = authService.ensureValidAccessToken().getOrElse { return@withContext Result.failure(it) }
+        if (account != authService.getCurrentUserId()) throw CancellationException("La cuenta cambió durante la búsqueda.")
+        val result = localFallbackApiClient.searchPublicContentPage(accessToken, query, limit, offset)
+        if (account != authService.getCurrentUserId()) throw CancellationException("La cuenta cambió durante la búsqueda.")
+        result.map { response ->
+            PublicContentSearchPage(
+                response.items.distinctBy { "${it.type}:${it.id}" },
+                response.nextOffset?.takeIf { response.hasMore && it > offset },
+            )
+        }
+    }
+
     suspend fun getSavedLibrary(query: String = ""): Result<SavedLibraryResponse> {
         val accessToken = authService.getAccessToken()
             ?: return Result.failure(IllegalStateException("Necesitas iniciar sesión para ver tus guardados."))
@@ -958,8 +977,11 @@ class PostRepository @Inject constructor(
         wasReacted: Boolean
     ): Result<Unit> {
         return try {
-            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
+            val accessToken = authService.ensureValidAccessToken().getOrThrow()
+            if (authService.getCurrentUserId() != userId) {
+                return Result.failure(IllegalStateException("La sesión cambió. Vuelve a intentar la reacción."))
+            }
             val normalizedReaction = normalizePostReaction(reactionType)
 
             if (usesLocalFallbackBackend()) {
@@ -1016,6 +1038,8 @@ class PostRepository @Inject constructor(
 
             invalidateGlobalPostCache()
             Result.success(Unit)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }

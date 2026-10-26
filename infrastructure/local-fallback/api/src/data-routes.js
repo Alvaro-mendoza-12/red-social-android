@@ -7,6 +7,7 @@ const { patchImportedRow, deleteImportedRow, deleteImportedPost } = require('./i
 const { isRetiredNotification } = require('./retired-notifications')
 const { isServerManagedNotification } = require('./notification-event-policy')
 const { publicFeedPage } = require('./public-feed-page')
+const { publicSearchPage, searchPageOptions } = require('./public-search-page')
 const { historyPageOptions, conversationHistoryPage } = require('./conversation-history-page')
 const { deniedPublicCreatorIds, publicCreatorVisibility } = require('./public-creator-visibility')
 const { loadCollectionReceipts, isCollectionMessageUnread, projectCollectionReceipt } = require('./collection-read-state')
@@ -4929,9 +4930,10 @@ function normalizeCollectionRole(role, { isCreator = false } = {}) {
   return 'member'
 }
 
-function buildPublicSemanticSearchCorpus({ profiles = [], posts = [], videos = [], maximum = 800 } = {}) {
+function buildPublicSemanticSearchCorpus({ profiles = [], posts = [], videos = [], maximum = 800, deniedIds = [], viewerIds = [] } = {}) {
   const boundedMaximum = Math.max(1, Math.min(Number(maximum) || 800, 800))
   const profilesById = indexProfiles(profiles)
+  const canViewOwner = publicCreatorVisibility({ profiles, deniedIds, viewerIds })
   const hiddenOwnerIds = new Set()
   for (const profile of profiles) {
     if (textOf(profile, ['break_mode', 'breakMode'], 'off').toLowerCase() !== 'hidden') continue
@@ -4941,6 +4943,7 @@ function buildPublicSemanticSearchCorpus({ profiles = [], posts = [], videos = [
   const postDocuments = mergeRowsById(posts)
     .filter((row) => textOf(row, ['visibility'], 'public').toLowerCase() === 'public')
     .filter((row) => !hiddenOwnerIds.has(postOwnerId(row)))
+    .filter((row) => canViewOwner(postOwnerId(row)))
     .map((row) => {
       const id = normalizeId(textOf(row, ['id', 'post_id'], ''))
       const authorId = postOwnerId(row)
@@ -4968,6 +4971,7 @@ function buildPublicSemanticSearchCorpus({ profiles = [], posts = [], videos = [
   const videoDocuments = mergeRowsById(videos)
     .filter((row) => boolOf(row, ['is_public', 'isPublic'], true))
     .filter((row) => !hiddenOwnerIds.has(normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id'], ''))))
+    .filter((row) => canViewOwner(textOf(row, ['user_id', 'owner_id', 'author_id'], '')))
     .map((row) => {
       const id = normalizeId(textOf(row, ['id', 'video_id'], ''))
       const authorId = normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id'], ''))
@@ -4993,7 +4997,7 @@ function buildPublicSemanticSearchCorpus({ profiles = [], posts = [], videos = [
     .filter((document) => document.id && (document.text || document.tags.length > 0))
 
   return [...postDocuments, ...videoDocuments]
-    .sort((left, right) => toMillis(right.created_at) - toMillis(left.created_at))
+    .sort((left, right) => toMillis(right.created_at) - toMillis(left.created_at) || left.searchId.localeCompare(right.searchId))
     .slice(0, boundedMaximum)
 }
 
@@ -8299,7 +8303,8 @@ function registerDataRoutes(app, {
 
       const query = cleanText(req.query.q || req.query.query || '', 200)
       if (query.length < 2) return res.status(400).json({ error: 'SEMANTIC_QUERY_TOO_SHORT' })
-      const limit = Math.max(1, Math.min(Number(req.query.limit) || 24, 50))
+      const { limit, offset } = searchPageOptions(req.query)
+      const identity = userIdentity(user)
       const [profiles, importedPosts, fallbackPosts, importedVideos, fallbackVideos] = await Promise.all([
         allPublicProfiles(pool),
         importedRows(pool, 'posts', 5000),
@@ -8310,23 +8315,29 @@ function registerDataRoutes(app, {
       const mergedVideos = mergeRowsById([...importedVideos, ...fallbackVideos])
       const videoIds = mergedVideos.map((row) => textOf(row, ['id'], '')).filter(Boolean)
       const deletedVideoIds = await localVideoDeletionIds(pool, videoIds)
+      const deniedIds = await deniedPublicCreatorIds(pool, { profiles, viewerIds: identity.values })
       const corpus = buildPublicSemanticSearchCorpus({
         profiles,
+        deniedIds,
+        viewerIds: identity.values,
         posts: [...importedPosts, ...fallbackPosts],
         videos: mergedVideos.filter((row) =>
           !deletedVideoIds.has(normalizeId(textOf(row, ['id'], ''))),
         ),
       })
-      const ranked = await callAiService('/v1/semantic-rank', {
+      const ranked = await publicSearchPage({
         query,
         limit,
+        offset,
         documents: corpus.map((document) => ({
           id: document.searchId,
           title: document.title,
           text: document.text,
           tags: document.tags,
         })),
-      }, process.env.AI_SEMANTIC_SEARCH_TIMEOUT_MS || 5000)
+        rank: payload => callAiService('/v1/semantic-rank', payload,
+          process.env.AI_SEMANTIC_SEARCH_TIMEOUT_MS || 3000),
+      })
       const bySearchId = new Map(corpus.map((document) => [document.searchId, document]))
       const items = (Array.isArray(ranked.results) ? ranked.results : [])
         .map((result) => {
@@ -8345,6 +8356,9 @@ function registerDataRoutes(app, {
         items,
         model: cleanText(ranked.model, 80) || 'novvin-semantic-local-v1',
         publicOnly: true,
+        hasMore: ranked.hasMore,
+        nextOffset: ranked.nextOffset,
+        corpusLimit: 800,
       })
     } catch (error) {
       if (new Set(['AI_SERVICE_TIMEOUT', 'AI_SERVICE_UNAVAILABLE']).has(error?.code)) {

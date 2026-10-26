@@ -4,6 +4,7 @@ const os = require('os')
 const path = require('path')
 const express = require('express')
 const sharp = require('sharp')
+const JSZip = require('jszip')
 const moduleStorageRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'conectate-storage-http-'))
 process.env.STORAGE_ROOT = moduleStorageRoot
 process.env.STORAGE_SIGNING_SECRET = 'storage-test-secret-'.repeat(3)
@@ -268,6 +269,33 @@ async function run() {
     })).contentType,
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   )
+  const renamedWorkbook = new JSZip()
+  renamedWorkbook.file('xl/workbook.xml', '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets/></workbook>')
+  renamedWorkbook.file('[Content_Types].xml', '<Types><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>')
+  const renamedWorkbookBytes = await renamedWorkbook.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+  const correctedWorkbook = await validateUpload({
+    bucket: 'chat-media', objectPath: 'user/report.xls', buffer: renamedWorkbookBytes,
+    contentType: 'application/vnd.ms-excel',
+  })
+  assert.equal(correctedWorkbook.contentType, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  const renamedWorkbookFile = path.join(moduleStorageRoot, 'renamed-workbook.xls')
+  fs.writeFileSync(renamedWorkbookFile, renamedWorkbookBytes)
+  assert.equal((await validateUpload({
+    bucket: 'chat-media', objectPath: 'user/report.xls', sourcePath: renamedWorkbookFile,
+    sizeBytes: renamedWorkbookBytes.length, contentType: 'application/vnd.ms-excel',
+  })).contentType, correctedWorkbook.contentType)
+  const invalidWorkbook = new JSZip()
+  invalidWorkbook.file('xl/workbook.xml', 'not a workbook')
+  invalidWorkbook.file('[Content_Types].xml', '<Types><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>')
+  await expectRejected(validateUpload({
+    bucket: 'chat-media', objectPath: 'user/forged.xls',
+    buffer: await invalidWorkbook.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }),
+    contentType: 'application/vnd.ms-excel',
+  }), 'UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE')
+  await expectRejected(validateUpload({
+    bucket: 'chat-media', objectPath: 'user/fake.xls', buffer: modernXls,
+    contentType: 'application/vnd.ms-excel',
+  }), 'UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE')
   const opaqueFile = Buffer.from('010203040506', 'hex')
   assert.equal(
     (await validateUpload({ bucket: 'chat-media', objectPath: 'user/design.psd', buffer: opaqueFile, contentType: 'application/octet-stream' })).contentType,

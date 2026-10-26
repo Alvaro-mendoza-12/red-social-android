@@ -52,9 +52,12 @@ internal fun rememberStickerKeyboardPanel(
         runCatching { requester.requestFocus() }
         keyboard?.show()
     }
+    // Keep a useful grid on tall phones/tablets; matching a short keyboard left
+    // barely one sticker row after the controls. Still leave the composer visible.
     val availableHeight = windowHeight - if (visible) with(density) { imeHeight.toDp() } else 0.dp
+    val preferredHeight = maxOf(lastKeyboardHeight, (windowHeight * 0.48f).coerceIn(300.dp, 480.dp))
     return StickerKeyboardPanel(
-        height = lastKeyboardHeight.coerceIn(120.dp, (availableHeight * 0.45f).coerceAtLeast(120.dp)),
+        height = preferredHeight.coerceIn(160.dp, (availableHeight * 0.56f).coerceAtLeast(160.dp)),
         inputFocusRequester = requester,
         toggle = { if (visible) showKeyboard() else onVisibleChange(true) },
         showKeyboard = showKeyboard,

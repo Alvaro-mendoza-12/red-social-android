@@ -103,9 +103,8 @@ function cosineSimilarity(left, right) {
   return dot / Math.sqrt(leftNorm * rightNorm)
 }
 
-function rankSemanticDocuments(query, documents, { limit = 20, minimumScore = 0.02 } = {}) {
+function rankAllSemanticDocuments(query, documents, { minimumScore = 0.02 } = {}) {
   const cleanQuery = String(query || '').trim()
-  const boundedLimit = Math.max(1, Math.min(Number(limit) || 20, 50))
   if (cleanQuery.length < 2) return []
 
   const queryFeatures = weightedFeatures(cleanQuery, { title: true })
@@ -113,7 +112,7 @@ function rankSemanticDocuments(query, documents, { limit = 20, minimumScore = 0.
     semanticTokens(cleanQuery).map((token) => CONCEPT_BY_TOKEN.get(token)).filter(Boolean),
   )
 
-  return (Array.isArray(documents) ? documents : [])
+  return (Array.isArray(documents) ? documents : []).slice(0, 800)
     .map((document) => {
       const titleFeatures = weightedFeatures(document?.title, { title: true })
       const bodyFeatures = weightedFeatures(document?.text)
@@ -141,11 +140,25 @@ function rankSemanticDocuments(query, documents, { limit = 20, minimumScore = 0.
     })
     .filter((result) => result.id && result.score >= minimumScore)
     .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))
-    .slice(0, boundedLimit)
+}
+
+function rankSemanticPage(query, documents, { limit = 20, offset = 0, minimumScore = 0.02 } = {}) {
+  const size = Math.max(1, Math.min(Math.floor(Number(limit) || 20), 50))
+  const start = Math.max(0, Math.min(Math.floor(Number(offset) || 0), 800))
+  const ranked = rankAllSemanticDocuments(query, documents, { minimumScore })
+  const results = ranked.slice(start, start + size)
+  const hasMore = start + results.length < ranked.length
+  return { results, hasMore, nextOffset: hasMore ? start + results.length : null }
+}
+
+// Preserve the list contract used by existing internal callers.
+function rankSemanticDocuments(query, documents, options = {}) {
+  return rankSemanticPage(query, documents, options).results
 }
 
 module.exports = {
   SEMANTIC_SEARCH_MODEL,
   rankSemanticDocuments,
+  rankSemanticPage,
   semanticTokens,
 }

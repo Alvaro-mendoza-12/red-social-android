@@ -2095,6 +2095,11 @@ class ChatViewModel @Inject constructor(
     }
 
     fun deleteMessageForEveryone(message: Message) {
+        val messages = (_chatState.value as? ChatUiState.Success)?.messages.orEmpty()
+        if (!MessageDeletionPolicy.canDeleteForEveryone(messages, setOf(message.id), getCurrentUserId())) {
+            conectate.com.presentation.common.AppFeedbackBus.showError("Solo puedes eliminar para todos tus propios mensajes disponibles")
+            return
+        }
         viewModelScope.launch {
             val result = messageRepository.deleteMessage(message.id, true)
             if (result.isFailure) {
@@ -2113,7 +2118,12 @@ class ChatViewModel @Inject constructor(
     }
 
     fun deleteSelectedMessages(forEveryone: Boolean) {
-        val selected = _selectedMessages.value.toList()
+        val selected = _selectedMessages.value.toSet()
+        val messages = (_chatState.value as? ChatUiState.Success)?.messages.orEmpty()
+        if (forEveryone && !MessageDeletionPolicy.canDeleteForEveryone(messages, selected, getCurrentUserId())) {
+            conectate.com.presentation.common.AppFeedbackBus.showError("La selección incluye mensajes que no puedes eliminar para todos")
+            return
+        }
         viewModelScope.launch {
             var failed = 0
             selected.forEach { id ->

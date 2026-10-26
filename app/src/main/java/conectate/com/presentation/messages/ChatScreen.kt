@@ -504,7 +504,8 @@ fun ChatScreen(
                     }
                     
                     // Delete for Everyone (if not already deleted)
-                    if (selectedMessage?.deleted_for_all != true) {
+                    if (MessageDeletionPolicy.canDeleteForEveryone(selectedMessage, currentUserId) &&
+                        (!isSelectionMode || MessageDeletionPolicy.canDeleteForEveryone(messages, selectedMessages, currentUserId))) {
                         Row(modifier = Modifier
                             .fillMaxWidth()
                             .clickable { 
@@ -1230,6 +1231,7 @@ fun ChatScreen(
                                         isFromCurrentUser = message.sender_id == currentUserId,
                                     isSelected = isSelected || message.id == highlightedId,
                                     onLongClick = { viewModel.toggleMessageSelection(message.id) },
+                                    onStickerClick = { viewModel.onMessageLongClick(message) },
                                     onClick = { url ->
                                         if (isSelectionMode) {
                                             viewModel.toggleMessageSelection(message.id)
@@ -1822,7 +1824,6 @@ fun ChatScreen(
             }
         }
 
-            if (showStickerCatalogDialog) {
                 StickerPanel(
                     visible = showStickerCatalogDialog,
                     onDismiss = stickerKeyboardPanel.showKeyboard,
@@ -1842,7 +1843,6 @@ fun ChatScreen(
                         viewModel.updateMessageText(removeLastChatGrapheme(viewModel.messageText.value))
                     },
                 )
-            }
         }
     }
 
@@ -2253,10 +2253,18 @@ fun ChatScreen(
             title = { Text("Eliminar mensajes") },
             text = { Text("¿Deseas eliminar los ${selectedMessages.size} mensajes seleccionados?") },
             confirmButton = {
-                TextButton(onClick = {
-                    showBulkDeleteDialog = false
-                    viewModel.deleteSelectedMessages(forEveryone = false)
-                }) { Text("Eliminar para mí") }
+                Column {
+                    if (MessageDeletionPolicy.canDeleteForEveryone(messages, selectedMessages, currentUserId)) {
+                        TextButton(onClick = {
+                            showBulkDeleteDialog = false
+                            viewModel.deleteSelectedMessages(forEveryone = true)
+                        }) { Text("Eliminar para todos", color = MaterialTheme.colorScheme.error) }
+                    }
+                    TextButton(onClick = {
+                        showBulkDeleteDialog = false
+                        viewModel.deleteSelectedMessages(forEveryone = false)
+                    }) { Text("Eliminar para mí") }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showBulkDeleteDialog = false }) { Text("Cancelar") }

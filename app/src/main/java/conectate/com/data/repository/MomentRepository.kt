@@ -1128,7 +1128,9 @@ class MomentRepository @Inject constructor(
         val guessed = canonicalizeContentType(guessMimeFromUri(mediaUri))
         val inferred = canonicalizeContentType(inferMimeType(bytes))
 
-        val candidates = listOfNotNull(declared, guessed, inferred)
+        // Editors can change the encoding while the source provider still reports
+        // the original MIME. The bytes being uploaded determine the output suffix.
+        val candidates = listOfNotNull(inferred, declared, guessed)
 
         return when (mediaType.trim().lowercase()) {
             "video" -> {
@@ -1280,7 +1282,7 @@ class MomentRepository @Inject constructor(
     }
 
     private fun resolveMomentMusicContentType(uri: Uri): String? {
-        val resolverType = context.contentResolver.getType(uri)?.substringBefore(';')?.trim()?.lowercase()
+        val resolverType = conectate.com.util.canonicalizeMediaContentType(context.contentResolver.getType(uri))
         val supported = setOf(
             "audio/mpeg",
             "audio/mp4",
@@ -1294,6 +1296,10 @@ class MomentRepository @Inject constructor(
             "audio/x-wav",
             "audio/webm",
         )
+        val inferred = readUriHeaderBytes(uri)?.let { conectate.com.util.inferMimeTypeFromBytes(it) }
+            ?.let { if (it == "video/mp4") "audio/mp4" else it }
+        if (inferred in supported) return inferred
+        if (inferred != null && !inferred.startsWith("audio/")) return null
         if (resolverType in supported) return resolverType
         return when (uri.lastPathSegment.orEmpty().substringAfterLast('.', "").lowercase()) {
             "mp3" -> "audio/mpeg"
@@ -1310,7 +1316,8 @@ class MomentRepository @Inject constructor(
 
     private fun momentMusicExtension(contentType: String): String = when (contentType) {
         "audio/mpeg" -> "mp3"
-        "audio/mp4", "audio/aac" -> "m4a"
+        "audio/mp4" -> "m4a"
+        "audio/aac" -> "aac"
         "audio/ogg", "application/ogg", "audio/opus" -> "ogg"
         "audio/flac", "audio/x-flac" -> "flac"
         "audio/webm" -> "webm"

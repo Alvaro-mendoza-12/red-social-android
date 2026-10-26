@@ -6,6 +6,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -23,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -39,13 +44,24 @@ fun SearchUsersScreen(
     navController: NavController,
     viewModel: SearchUsersViewModel = hiltViewModel()
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    val searchQuery by viewModel.query.collectAsState()
+    val accountId by viewModel.accountId.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val contentResults by viewModel.contentResults.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val userErrorMessage by viewModel.userErrorMessage.collectAsState()
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val history by viewModel.history.collectAsState()
+    val suggestions by viewModel.suggestions.collectAsState()
+    val hashtags by viewModel.hashtags.collectAsState()
+    val loadingMore by viewModel.isLoadingMore.collectAsState()
+    val hasMore by viewModel.hasMoreContent.collectAsState()
+    var selectedTab by rememberSaveable(accountId) { mutableIntStateOf(viewModel.initialCategory) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    fun submit(query: String) {
+        viewModel.submitSearch(query)
+        keyboard?.hide()
+    }
 
     Scaffold(
         topBar = {
@@ -73,45 +89,72 @@ fun SearchUsersScreen(
             )
             HorizontalDivider()
 
-            PrimaryTabRow(selectedTabIndex = selectedTab) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("Personas") }
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("Contenido") }
-                )
+            PrimaryScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 12.dp) {
+                listOf("Personas", "Contenido", "Videos", "Etiquetas").forEachIndexed { index, label ->
+                    Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(label) })
+                }
             }
 
             // Search Bar
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { 
-                    searchQuery = it
-                    viewModel.searchUsers(it)
-                },
+                onValueChange = viewModel::searchUsers,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
                 placeholder = {
-                    Text(if (selectedTab == 0) "Buscar personas..." else "Buscar por significado...")
+                    Text(if (selectedTab == 0) "Nombre o @usuario" else "Temas, videos o #etiquetas")
                 },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
                         IconButton(onClick = { 
-                            searchQuery = "" 
                             viewModel.clearSearch()
                         }) {
                             Icon(Icons.Default.Clear, contentDescription = "Limpiar")
                         }
                     }
                 },
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { submit(searchQuery) }),
             )
+
+            if (searchQuery.isBlank()) {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp)) {
+                    if (history.isNotEmpty()) item {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Tus búsquedas recientes", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+                            TextButton(onClick = viewModel::clearHistory) { Text("Borrar todo") }
+                        }
+                    }
+                    items(history, key = { searchTermKey(it) }) { query ->
+                        ListItem(
+                            headlineContent = { Text(query, maxLines = 2) },
+                            leadingContent = { Icon(Icons.Default.Search, contentDescription = null) },
+                            trailingContent = {
+                                IconButton(onClick = { viewModel.removeHistory(query) }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Eliminar búsqueda $query")
+                                }
+                            },
+                            modifier = Modifier.clickable { submit(query) },
+                        )
+                    }
+                    item { Text("Busca personas, temas y contenido de Novvin.", Modifier.padding(vertical = 16.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+                return@Column
+            }
+
+            if (suggestions.isNotEmpty()) {
+                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(suggestions, key = { searchTermKey(it.query) }) { suggestion ->
+                        SuggestionChip(onClick = { submit(suggestion.query); selectedTab = 1 },
+                            label = { Text(suggestion.query, maxLines = 1) },
+                            icon = { Icon(Icons.Default.Search, contentDescription = suggestion.label) })
+                    }
+                }
+            }
 
             if (isLoading) {
                 Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
@@ -154,13 +197,30 @@ fun SearchUsersScreen(
                         HorizontalDivider()
                     }
                 }
+            } else if (selectedTab == 3) {
+                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+                    items(hashtags, key = { searchTermKey(it.tag) }) { hashtag ->
+                        ListItem(
+                            headlineContent = { Text("#${hashtag.tag}") },
+                            supportingContent = { Text("${hashtag.resultCount} ${if (hashtag.resultCount == 1) "resultado cargado" else "resultados cargados"}") },
+                            modifier = Modifier.clickable { submit("#${hashtag.tag}"); selectedTab = 1 },
+                        )
+                    }
+                    if (hashtags.isEmpty() && !isLoading) item {
+                        Text("No hay etiquetas en los resultados cargados. Prueba otra consulta.")
+                    }
+                    if (hasMore) item { TextButton(onClick = viewModel::loadMore, enabled = !loadingMore) {
+                        Text(if (loadingMore) "Cargando…" else "Cargar más resultados")
+                    } }
+                }
             } else {
+                val visibleContent = if (selectedTab == 2) contentResults.filter { it.type == "video" } else contentResults
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(contentResults, key = { "${it.type}:${it.id}" }) { result ->
+                    items(visibleContent, key = { "${it.type}:${it.id}" }) { result ->
                         SemanticContentResultCard(
                             result = result,
                             onClick = {
@@ -172,6 +232,14 @@ fun SearchUsersScreen(
                                 navController.navigate(route)
                             }
                         )
+                    }
+                    if (visibleContent.isEmpty() && !isLoading && errorMessage == null) item {
+                        Text(if (selectedTab == 2) "No encontramos videos para esta consulta." else "No encontramos contenido. Prueba un tema relacionado.")
+                    }
+                    if (hasMore) item {
+                        TextButton(onClick = viewModel::loadMore, enabled = !loadingMore, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (loadingMore) "Cargando…" else if (errorMessage != null) "Reintentar más resultados" else "Cargar más resultados")
+                        }
                     }
                 }
             }
@@ -240,7 +308,7 @@ private fun SemanticContentResultCard(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Coincidencia por significado",
+                    text = if (result.reason == "semantic_concept") "Tema relacionado" else "Coincidencia por significado",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -328,6 +328,8 @@ fun VideoFeedScreen(
     val algorithmActionMessage by viewModel.algorithmActionMessage.collectAsState()
     val algorithmUndoOffer by viewModel.algorithmUndoOffer.collectAsState()
     val followedUsers by viewModel.followedUsers.collectAsState()
+    val pendingFollowUsers by viewModel.pendingFollowUsers.collectAsState()
+    val reduceMotionEnabled by viewModel.reduceMotionEnabled.collectAsState()
     val videoDownloadsInProgress by viewModel.videoDownloadsInProgress.collectAsState()
     val currentPlayingCommentId by viewModel.currentPlayingCommentId.collectAsState()
     val audioProgress by viewModel.audioProgress.collectAsState()
@@ -2025,6 +2027,8 @@ fun VideoFeedScreen(
                             },
                             currentUserId = currentUserId,
                             followedUsers = followedUsers,
+                            pendingFollowUsers = pendingFollowUsers,
+                            reduceMotion = reduceMotionEnabled,
                             isDownloading = videoDownloadsInProgress.contains(video.id.trim().lowercase()),
                             getStatsFlow = { viewModel.getVideoStats(it) },
                             onShareInternalClick = { videoToShare ->
@@ -2043,7 +2047,9 @@ fun VideoFeedScreen(
                                 selectedVideoForReport = reportedVideo
                             },
                             onSoundClick = { soundVideo -> selectedSound = soundVideo },
-                            onRelatedSearch = { query -> viewModel.toggleSearchMode(true); viewModel.onSearchQueryChanged(query) },
+                            onRelatedSearch = { query ->
+                                navController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
+                            },
                             hasPlaybackError = exhaustedPlaybackVideoId == video.id,
                             onRetryPlayback = {
                                 automaticPlaybackAttempts[video.id] = 0
@@ -2201,7 +2207,7 @@ fun VideoFeedScreen(
                                 .clickable { viewModel.onTabSelected(0) }
                         )
                     }
-                    IconButton(onClick = { viewModel.toggleSearchMode(true) }, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onNavigateToSearch, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.Search, contentDescription = "Buscar videos", tint = Color.White)
                     }
                     }
@@ -2506,6 +2512,8 @@ fun VideoItem(
     onSwipeLeft: () -> Unit,
     currentUserId: String?,
     followedUsers: Set<String>,
+    pendingFollowUsers: Set<String> = emptySet(),
+    reduceMotion: Boolean = false,
     isDownloading: Boolean,
     getStatsFlow: (String) -> kotlinx.coroutines.flow.Flow<conectate.com.data.local.entity.VideoStatsEntity?>,
     onShareInternalClick: (Video) -> Unit,
@@ -2779,7 +2787,7 @@ fun VideoItem(
             val isOwnVideo = video.ownedByMe ||
                 (normalizedCurrentUserId != null && normalizedCurrentUserId == normalizedVideoUserId)
             val isFollowing = followedUsers.any { it.trim().lowercase() == normalizedVideoUserId }
-            val showFollowButton = !isOwnVideo && !isFollowing
+            val isFollowPending = normalizedVideoUserId in pendingFollowUsers
 
             Box(modifier = Modifier.size(width = 54.dp, height = 65.dp)) {
                 conectate.com.presentation.components.CircularProfileImage(ownerId = video.userId, 
@@ -2796,31 +2804,10 @@ fun VideoItem(
                     borderWidth = 1.dp
                 )
                 
-                if (showFollowButton) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .size(28.dp)
-                            .semantics {
-                                contentDescription = "Seguir a ${video.userName}"
-                            }
-                            .clickable(
-                                role = Role.Button,
-                            ) {
-                                onFollowClick(video.userId)
-                            },
-                        shape = CircleShape,
-                        color = Color(0xFFFF2D55),
-                        border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
-                        shadowElevation = 4.dp,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.padding(4.dp),
-                        )
-                    }
+                if (!isOwnVideo) {
+                    VideoFollowButton(userId = video.userId, name = video.userName,
+                        following = isFollowing, pending = isFollowPending, reduceMotion = reduceMotion,
+                        modifier = Modifier.align(Alignment.BottomCenter), onFollow = { onFollowClick(video.userId) })
                 }
             }
 
@@ -3078,7 +3065,9 @@ fun VideoItem(
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2
             )
-            videoRelatedTopic(video)?.let { topic ->
+            remember(video.id, video.title, video.description, video.tags, video.isPublic, video.isSensitive) {
+                videoRelatedTopic(video)
+            }?.let { topic ->
                 Row(Modifier.fillMaxWidth().clickable { onRelatedSearch(topic) }.padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))

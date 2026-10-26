@@ -128,6 +128,20 @@ async function run() {
     const semantic = await semanticResponse.json()
     assert.strictEqual(semantic.model, 'novvin-semantic-local-v1')
     assert.strictEqual(semantic.results[0].id, 'recipe')
+    assert.strictEqual(semantic.hasMore, false)
+    assert.strictEqual(semantic.nextOffset, null)
+    const pagedResponse = await fetch(`${baseUrl}/v1/semantic-rank`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: 'cocina', limit: 20, offset: 40,
+        documents: Array.from({ length: 63 }, (_, index) => ({ id: `recipe-${String(index).padStart(3, '0')}`, title: 'Cocina saludable' })),
+      }),
+    })
+    assert.strictEqual(pagedResponse.status, 200)
+    const paged = await pagedResponse.json()
+    assert.strictEqual(paged.results.length, 20)
+    assert.strictEqual(paged.results[0].id, 'recipe-040')
+    assert.strictEqual(paged.hasMore, true)
+    assert.strictEqual(paged.nextOffset, 60)
 
     const summaryResponse = await fetch(`${baseUrl}/v1/thread-summary`, {
       method: 'POST',

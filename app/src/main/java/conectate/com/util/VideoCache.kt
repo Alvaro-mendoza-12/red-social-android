@@ -91,9 +91,17 @@ object VideoCache {
     @Synchronized
     fun removeResource(context: Context, url: String?) {
         val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return
-        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return
+        val guarded = conectate.com.core.media.StorageReadSession.isStorageRequest(resolvedUrl)
+        val identity = if (guarded) conectate.com.core.media.StorageReadSession.snapshot()?.identity else null
         val cache = getOrCreateCache(context.applicationContext) ?: return
-        runCatching { cache.removeResource(cacheKey) }
+        runCatching {
+            if (guarded) conectate.com.core.media.StorageReadSession.requireCurrent(identity)
+            val keys = videoCacheKeysToRemove(resolvedUrl, cache.keys)
+            keys.forEach { key ->
+                if (guarded) conectate.com.core.media.StorageReadSession.requireCurrent(identity)
+                cache.removeResource(key)
+            }
+        }
             .onFailure { Log.w("VideoCache", "Unable to evict failed media resource", it) }
     }
 

@@ -308,7 +308,7 @@ class MediaUploadGuard @Inject constructor() {
             canonicalType.startsWith("application/") || canonicalType.startsWith("text/")
             ) && canonicalType !in blockedMessageAttachmentMimes
         val isZipBasedOpaqueDocument = fileExtension in setOf(
-            "zip", "odt", "ods", "odp", "epub", "pages", "numbers", "key"
+            "zip", "odt", "ods", "odp", "epub", "pages", "numbers", "key", "xls"
         )
         val expectedFileMime = runCatching {
             conectate.com.util.guessMimeTypeFromFileName(fileName)
@@ -472,6 +472,9 @@ class MediaUploadGuard @Inject constructor() {
         ) {
             return "audio/wav"
         }
+        if ((bytes[0].toInt() and 0xFF) == 0xFF && (bytes[1].toInt() and 0xF6) == 0xF0) {
+            return "audio/aac"
+        }
         if (
             bytes[0] == 0x49.toByte() &&
             bytes[1] == 0x44.toByte() &&
@@ -495,7 +498,7 @@ class MediaUploadGuard @Inject constructor() {
             return "video/webm"
         }
         if (
-            bytes.getOrNull(4) == 0x66.toByte() &&
+            bytes.size >= 12 && bytes.getOrNull(4) == 0x66.toByte() &&
             bytes.getOrNull(5) == 0x74.toByte() &&
             bytes.getOrNull(6) == 0x79.toByte() &&
             bytes.getOrNull(7) == 0x70.toByte()
@@ -522,6 +525,8 @@ class MediaUploadGuard @Inject constructor() {
 
     private fun isCompatibleMime(declared: String, inferred: String): Boolean {
         if (declared == inferred) return true
+        if (declared in setOf("audio/ogg", "application/ogg", "audio/opus") &&
+            inferred in setOf("audio/ogg", "application/ogg", "audio/opus")) return true
         return (declared == "audio/mp4" && inferred == "video/mp4") ||
             (declared == "video/mp4" && inferred == "audio/mp4") ||
             (declared == "audio/webm" && inferred == "video/webm") ||

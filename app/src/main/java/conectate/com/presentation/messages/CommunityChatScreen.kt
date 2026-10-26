@@ -203,11 +203,21 @@ fun CommunityChatScreen(
     if (confirmSelectionDelete) AlertDialog(
         onDismissRequest = { confirmSelectionDelete = false },
         title = { Text("Eliminar mensajes") },
-        text = { Text("¿Eliminar ${selectedIds.size} mensajes solo para ti?") },
-        confirmButton = { TextButton(onClick = {
-            confirmSelectionDelete = false; selectionBusy = true
-            viewModel.deleteMessagesForMe(selectedIds) { deleted -> selectedIds = selectedIds - deleted; selectionBusy = false }
-        }) { Text("Eliminar para mí") } },
+        text = { Text("¿Eliminar ${selectedIds.size} mensajes seleccionados?") },
+        confirmButton = {
+            Column {
+                if (MessageDeletionPolicy.canDeleteForEveryone(chatMessages, selectedIds, currentUserId)) {
+                    TextButton(onClick = {
+                        confirmSelectionDelete = false; selectionBusy = true
+                        viewModel.deleteMessagesForEveryone(selectedIds) { deleted -> selectedIds = selectedIds - deleted; selectionBusy = false }
+                    }) { Text("Eliminar para todos", color = MaterialTheme.colorScheme.error) }
+                }
+                TextButton(onClick = {
+                    confirmSelectionDelete = false; selectionBusy = true
+                    viewModel.deleteMessagesForMe(selectedIds) { deleted -> selectedIds = selectedIds - deleted; selectionBusy = false }
+                }) { Text("Eliminar para mí") }
+            }
+        },
         dismissButton = { TextButton(onClick = { confirmSelectionDelete = false }) { Text("Cancelar") } },
     )
 
@@ -649,6 +659,7 @@ fun CommunityChatScreen(
                                         onChangeAudioSpeed = { viewModel.cycleAudioPlaybackSpeed() },
                                         onPlayAudio = { viewModel.playAudio(it) },
                                         onLongClick = { toggleSelected(msg.id) },
+                                        onStickerClick = { viewModel.onMessageLongClick(msg) },
                                         onResolveUrl = { path ->
                                             viewModel.getPlayableUrl(
                                                 path = path,
@@ -1105,7 +1116,6 @@ fun CommunityChatScreen(
                 }
             }
 
-            if (showStickerCatalogDialog) {
                 StickerPanel(
                     visible = showStickerCatalogDialog,
                     onDismiss = stickerKeyboardPanel.showKeyboard,
@@ -1125,7 +1135,6 @@ fun CommunityChatScreen(
                         viewModel.updateMessageText(removeLastChatGrapheme(viewModel.messageText.value))
                     },
                 )
-            }
         }
     }
 
@@ -1400,7 +1409,8 @@ fun CommunityChatScreen(
                     }
                     
                     // Delete for Everyone (if not already deleted)
-                    if (selectedMessage?.deleted_for_all != true) {
+                    if (MessageDeletionPolicy.canDeleteForEveryone(selectedMessage, currentUserId) &&
+                        (selectedIds.isEmpty() || MessageDeletionPolicy.canDeleteForEveryone(chatMessages, selectedIds, currentUserId))) {
                         Row(modifier = Modifier
                             .fillMaxWidth()
                             .clickable { 

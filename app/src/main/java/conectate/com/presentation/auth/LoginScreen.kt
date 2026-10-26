@@ -1,6 +1,7 @@
 package conectate.com.presentation.auth
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import android.content.Intent
 import android.util.Patterns
@@ -228,9 +229,11 @@ fun LoginScreen(
         if (!isAddAccountMode || authState !is AuthState.Success) {
             return@LaunchedEffect
         }
-        navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute(startTab = "messages")) {
-            popUpTo(Screen.AddAccountLogin.route) { inclusive = true }
-            launchSingleTop = true
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+            navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute(startTab = "messages")) {
+                popUpTo(Screen.AddAccountLogin.route) { inclusive = true }
+                launchSingleTop = true
+            }
         }
     }
 
@@ -375,6 +378,26 @@ fun LoginScreen(
         )
     }
 
+    val onAuthBack: (() -> Unit)? = if (loginType != null || isAddAccountMode) {
+        {
+            if (isAddAccountMode) {
+                if (initialAssistedRecovery) navController.popBackStack()
+                else viewModel.clearEmailRecovery { navController.popBackStack() }
+            } else if (loginType == "recovery" || loginType == "assisted") {
+                viewModel.clearEmailRecovery()
+                loginType = "email"
+                migrationEmail = ""
+                migrationToken = ""
+                migrationNewPassword = ""
+                migrationConfirmPassword = ""
+                recoveryCodeRequired = false
+                migrationInfo = ""
+                viewModel.resetAuthState()
+            } else loginType = null
+        }
+    } else null
+    BackHandler(enabled = onAuthBack != null) { onAuthBack?.invoke() }
+
     BoxWithConstraints(
         modifier = Modifier
             .testTag("auth-login")
@@ -422,25 +445,7 @@ fun LoginScreen(
             introTopSpace = if (loginType == null && !isAddAccountMode) {
                 ((availableHeight - 620.dp) * 0.55f).coerceIn(0.dp, 140.dp)
             } else 0.dp,
-            onBack = if (loginType != null || isAddAccountMode) {
-                {
-                    if (isAddAccountMode) {
-                        if (initialAssistedRecovery) navController.popBackStack()
-                        else viewModel.clearEmailRecovery { navController.popBackStack() }
-                    }
-                    else if (loginType == "recovery" || loginType == "assisted") {
-                        viewModel.clearEmailRecovery()
-                        loginType = "email"
-                        migrationEmail = ""
-                        migrationToken = ""
-                        migrationNewPassword = ""
-                        migrationConfirmPassword = ""
-                        recoveryCodeRequired = false
-                        migrationInfo = ""
-                        viewModel.resetAuthState()
-                    } else loginType = null
-                }
-            } else null,
+            onBack = onAuthBack,
         )
 
         if (!accountSwitchMessage.isNullOrBlank()) {

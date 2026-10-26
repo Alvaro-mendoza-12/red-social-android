@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import org.junit.Rule
@@ -47,8 +48,9 @@ class SecondarySavedAccountLoginFlowTest {
         }
 
         composeRule.onNodeWithText("Cuentas guardadas").assertIsDisplayed()
-        composeRule.onNodeWithText(harness.secondaryAccount.email).assertIsDisplayed()
-        composeRule.onAllNodesWithText("Entrar")[1].performClick()
+        composeRule.onNodeWithText(harness.secondaryAccount.email).performScrollTo().assertIsDisplayed()
+        val signInLabel = composeRule.activity.getString(conectate.com.R.string.login)
+        composeRule.onAllNodesWithText(signInLabel)[1].performScrollTo().performClick()
 
         composeRule.waitUntil(timeoutMillis = 15_000) {
             runCatching {

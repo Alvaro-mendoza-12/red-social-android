@@ -1196,16 +1196,40 @@ class CommunityChatViewModel @Inject constructor(
     }
 
     fun deleteMessageForEveryone(message: conectate.com.data.model.Message) {
+        if (!canDeleteSelectionForEveryone(setOf(message.id))) {
+            _errorMessage.value = "Solo puedes eliminar para todos tus propios mensajes disponibles"
+            return
+        }
         viewModelScope.launch {
-            communityRepository.deleteCommunityMessage(message.id, true)
+            if (communityRepository.deleteCommunityMessage(message.id, true).isFailure) {
+                _errorMessage.value = "No se pudo eliminar para todos"
+            }
         }
     }
 
-    fun deleteMessagesForMe(ids: Set<String>, onComplete: (Set<String>) -> Unit) {
+    private fun canDeleteSelectionForEveryone(ids: Set<String>): Boolean {
+        val messages = (_uiState.value as? CommunityChatUiState.Success)?.messages.orEmpty()
+        return MessageDeletionPolicy.canDeleteForEveryone(getCurrentUserId(), ids, messages.map {
+            MessageDeletionPolicy.Candidate(it.id, it.sender_id, it.deleted_for_all)
+        })
+    }
+
+    fun deleteMessagesForMe(ids: Set<String>, onComplete: (Set<String>) -> Unit) =
+        deleteMessages(ids, forEveryone = false, onComplete = onComplete)
+
+    fun deleteMessagesForEveryone(ids: Set<String>, onComplete: (Set<String>) -> Unit) =
+        deleteMessages(ids, forEveryone = true, onComplete = onComplete)
+
+    private fun deleteMessages(ids: Set<String>, forEveryone: Boolean, onComplete: (Set<String>) -> Unit) {
+        if (forEveryone && !canDeleteSelectionForEveryone(ids)) {
+            _errorMessage.value = "La selección incluye mensajes que no puedes eliminar para todos"
+            onComplete(emptySet())
+            return
+        }
         viewModelScope.launch {
             val deleted = mutableSetOf<String>()
             try {
-                for (id in ids) if (communityRepository.deleteCommunityMessage(id, false).isSuccess) deleted += id
+                for (id in ids) if (communityRepository.deleteCommunityMessage(id, forEveryone).isSuccess) deleted += id
                 if (deleted.size < ids.size) _errorMessage.value = "Algunos mensajes no se pudieron eliminar. Siguen seleccionados."
             } finally { onComplete(deleted) }
         }

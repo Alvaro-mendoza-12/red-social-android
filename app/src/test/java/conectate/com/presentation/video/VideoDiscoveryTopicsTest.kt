@@ -19,4 +19,16 @@ class VideoDiscoveryTopicsTest {
         assertEquals("Tema del mes", topics.first().label)
         assertNull(videoRelatedTopic(Video(title = "Correo @privado", tags = listOf("@privado"))))
     }
+
+    @Test fun contextualSearchRequiresSpecificCorroboratedPublicMetadata() {
+        assertNull(videoRelatedTopic(Video(title = "Mi nuevo video", tags = listOf("viral", "fyp"))))
+        assertNull(videoRelatedTopic(Video(title = "Momento cualquiera", tags = listOf("Construcción"))))
+        assertNull(videoRelatedTopic(Video(title = "Construcción de casas")))
+        assertEquals("Construcción", videoRelatedTopic(Video(title = "Construcción de casas",
+            tags = listOf("viral", "Construcción"))))
+        assertEquals("Construcción de casas", videoRelatedTopic(Video(title = "Construcción de casas",
+            description = "Aprende construcción de casas modernas")))
+        assertNull(videoRelatedTopic(Video(title = "Construcción de casas", tags = listOf("Construcción"), isPublic = false)))
+        assertNull(videoRelatedTopic(Video(title = "Construcción de casas", tags = listOf("Construcción")).apply { isSensitive = true }))
+    }
 }
