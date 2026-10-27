@@ -1,4 +1,4 @@
-FROM node:22.23.2-alpine
+FROM node:22.23.4-alpine
 
 # Install the distribution zlib security fix even when the base tag is cached.
 RUN apk add --no-cache --upgrade 'zlib>=1.3.2-r1'
