@@ -11,7 +11,7 @@ const config=JSON.parse(fs.readFileSync(path.join(root,'vercel.json'),'utf8'))
 
 test('feature illustrations have visible alternatives and discoverable public image URLs',()=>{
  const html=read('funciones.html'),page=graph(html).find(item=>item['@type']==='WebPage')
- const images=['/novvin-logo.png','/images/promotion-messages.svg','/images/promotion-videos.svg','/images/promotion-social.svg']
+ const images=['chats','grupos','comunidades','videos','social','momentos'].map(name=>'/images/novvin-'+name+'.png')
  assert.equal(page.image.length,images.length)
  for(const src of images){
   assert.ok(html.includes('src="'+src+'"'))
@@ -48,7 +48,8 @@ test('the rendered home preserves the ownership proofs for Google and Bing',()=>
 test('home is readable without JavaScript and provides real access links',()=>{
  const html=read('index.html')
  assert.match(html,/<h1>Novvin/)
- for(const word of ['N-O-V-V-I-N','Novvyn','NoWin','Noving','Nowing'])assert.ok(html.includes(word))
+ assert.ok(html.includes('Novvin es una red social para conectar con tu gente.'))
+ assert.doesNotMatch(html,/N-O-V-V-I-N|Novvyn|NoWin|Noving|Nowing/)
  assert.match(html,/href="\/login"/);assert.match(html,/href="\/register"/)
  assert.doesNotMatch(html,/name="keywords"|accessToken|access_token/)
 })
@@ -60,15 +61,12 @@ test('the public home loads no application scripts or preload bundles',()=>{
  assert.doesNotMatch(read(stylesheet),/@import|fonts\.googleapis/)
 })
 
-test('home describes the product while spelling help stays visible and out of Google snippets',()=>{
+test('home describes the product without spelling phrases that displace the search snippet',()=>{
  const html=read('index.html')
- const spelling=/<span data-nosnippet="true">([\s\S]*?)<\/span>/.exec(html)?.[1]
- assert.ok(spelling?.includes('N-O-V-V-I-N'))
- assert.ok(spelling?.includes('href="/ayuda/encontrar-novvin"'))
- const eligible=html.replace(/<span data-nosnippet="true">[\s\S]*?<\/span>/g,'')
- assert.match(eligible,/Novvin es una red social con mensajes, videos, momentos y comunidades/)
- assert.match(eligible,/href="\/funciones"/)
- assert.doesNotMatch(eligible,/N-O-V-V-I-N/)
+ assert.match(html,/Novvin es una red social para conectar con tu gente/)
+ assert.match(html,/href="\/funciones"/)
+ assert.match(html,/href="\/ayuda\/encontrar-novvin"/)
+ assert.doesNotMatch(html,/N-O-V-V-I-N|Novvyn|Nowing/)
  assert.doesNotMatch(html,/<(?:main|div)[^>]+data-nosnippet/)
 })
 test('private shell is noindex, contains no public page and retains its application entry',()=>{
@@ -142,17 +140,18 @@ test('site name signals consistently prefer Novvin and offer the site hostname a
  assert.ok(!web.alternateName.includes('Novvyn'))
 })
 
-test('the brand spelling explanation is visible without opening a disclosure or executing JavaScript',()=>{
+test('the home links to the official-access guide without repeating typo keywords',()=>{
  const html=read('index.html')
  assert.match(html,/<details open=""><summary>¿Cómo encuentro el acceso oficial a Novvin\?<\/summary>/)
- assert.match(html,/Si llegaste escribiendo Novvyn/)
- assert.match(html,/href="\/ayuda\/encontrar-novvin">cómo encontrar Novvin/)
+ assert.doesNotMatch(html,/Si llegaste escribiendo/)
+ assert.match(html,/href="\/ayuda\/encontrar-novvin">los enlaces oficiales de Novvin/)
 })
 
-test('the web guide explains Novvyn as a spelling query without changing the real brand',()=>{
+test('the web guide describes actual access and features while spelling help has its own guide',()=>{
  const html=read('novvin-web.html')
- assert.match(html,/<h2>¿Buscabas Novvyn con «y»\?<\/h2>/)
- assert.match(html,/el nombre de la aplicación es Novvin: N-O-V-V-I-N/)
+ assert.match(html,/<h2>El acceso oficial a Novvin Web<\/h2>/)
+ assert.match(html,/misma cuenta|tu cuenta de Android/)
+ assert.doesNotMatch(html,/N-O-V-V-I-N/)
  assert.equal(graph(html).find(item=>item['@type']==='Organization').name,'Novvin')
 })
 

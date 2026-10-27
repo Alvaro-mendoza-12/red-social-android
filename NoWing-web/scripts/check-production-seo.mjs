@@ -90,7 +90,7 @@ for (const path of ['/login', '/register', '/forgot-password', '/app/messages', 
     assert(!html.includes('<h1>Novvin') && !/accessToken|access_token/.test(html), 'Unexpected private HTML content')
   })
 }
-for (const [path, width, height] of [['/novvin-share.png', 1200, 630], ['/novvin-logo.png', 512, 512], ...[48, 96, 180, 192, 512].map(size => ['/icons/novvin-' + size + '.png', size, size])]) {
+for (const [path, width, height] of [['/novvin-share.png', 1200, 630], ['/novvin-logo.png', 512, 512], ...[48, 96, 180, 192, 512].map(size => ['/icons/novvin-' + size + '.png', size, size]), ...['chats', 'grupos', 'comunidades', 'videos', 'social', 'momentos'].map(name => ['/images/novvin-' + name + '.png', 1200, 800])]) {
   await check('Public brand image: ' + path, async () => {
     const response = await request(path), data = Buffer.from(await response.arrayBuffer())
     assert(response.status === 200 && response.headers.get('content-type')?.includes('image/png'), 'Brand image unavailable')

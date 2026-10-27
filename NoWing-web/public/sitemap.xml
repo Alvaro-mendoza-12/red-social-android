@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
-  <url><loc>https://red-social-android.vercel.app/</loc><lastmod>2026-10-21</lastmod></url>
+  <url><loc>https://red-social-android.vercel.app/</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-chats.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-videos.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-momentos.png</image:loc></image:image></url>
   <url><loc>https://red-social-android.vercel.app/que-es-novvin</loc><lastmod>2026-10-18</lastmod></url>
   <url><loc>https://red-social-android.vercel.app/ayuda/preguntas-frecuentes</loc><lastmod>2026-10-18</lastmod></url>
-  <url><loc>https://red-social-android.vercel.app/novvin-web</loc><lastmod>2026-10-18</lastmod></url>
-  <url><loc>https://red-social-android.vercel.app/mensajes</loc><lastmod>2026-10-16</lastmod></url>
-  <url><loc>https://red-social-android.vercel.app/videos</loc><lastmod>2026-10-16</lastmod></url>
+  <url><loc>https://red-social-android.vercel.app/novvin-web</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-chats.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-comunidades.png</image:loc></image:image></url>
+  <url><loc>https://red-social-android.vercel.app/mensajes</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-chats.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-grupos.png</image:loc></image:image></url>
+  <url><loc>https://red-social-android.vercel.app/videos</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-videos.png</image:loc></image:image></url>
   <url><loc>https://red-social-android.vercel.app/salas-de-voz</loc><lastmod>2026-10-18</lastmod></url>
   <url><loc>https://red-social-android.vercel.app/ayuda/vincular-web</loc><lastmod>2026-10-16</lastmod></url>
-  <url><loc>https://red-social-android.vercel.app/descargar</loc><lastmod>2026-10-18</lastmod></url>
+  <url><loc>https://red-social-android.vercel.app/descargar</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-chats.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-social.png</image:loc></image:image></url>
   <url><loc>https://red-social-android.vercel.app/ayuda/encontrar-novvin</loc><lastmod>2026-10-21</lastmod></url>
-  <url><loc>https://red-social-android.vercel.app/social</loc><lastmod>2026-10-16</lastmod></url>
-  <url><loc>https://red-social-android.vercel.app/momentos</loc><lastmod>2026-10-16</lastmod></url>
-  <url><loc>https://red-social-android.vercel.app/comunidades</loc><lastmod>2026-10-18</lastmod></url>
+  <url><loc>https://red-social-android.vercel.app/social</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-social.png</image:loc></image:image></url>
+  <url><loc>https://red-social-android.vercel.app/momentos</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-momentos.png</image:loc></image:image></url>
+  <url><loc>https://red-social-android.vercel.app/comunidades</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-comunidades.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-grupos.png</image:loc></image:image></url>
   <url><loc>https://red-social-android.vercel.app/juegos</loc><lastmod>2026-10-16</lastmod></url>
   <url><loc>https://red-social-android.vercel.app/asistente</loc><lastmod>2026-10-16</lastmod></url>
   <url><loc>https://red-social-android.vercel.app/ayuda</loc><lastmod>2026-10-18</lastmod></url>
-  <url><loc>https://red-social-android.vercel.app/funciones</loc><lastmod>2026-10-21</lastmod><image:image><image:loc>https://red-social-android.vercel.app/novvin-logo.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/promotion-messages.svg</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/promotion-videos.svg</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/promotion-social.svg</image:loc></image:image></url>
+  <url><loc>https://red-social-android.vercel.app/funciones</loc><lastmod>2026-10-26</lastmod><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-chats.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-grupos.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-comunidades.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-videos.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-social.png</image:loc></image:image><image:image><image:loc>https://red-social-android.vercel.app/images/novvin-momentos.png</image:loc></image:image></url>
   <url><loc>https://red-social-android.vercel.app/ayuda/stickers-animados</loc><lastmod>2026-10-21</lastmod></url>
   <url><loc>https://red-social-android.vercel.app/ayuda/privacidad-y-seguridad</loc><lastmod>2026-10-21</lastmod></url>
 </urlset>

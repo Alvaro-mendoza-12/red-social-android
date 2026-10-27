@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto'
 import ts from 'typescript'
 import { renderToStaticMarkup } from 'react-dom/server'
 import React from 'react'
-import { publicRoutes, site, structuredData } from './public-seo.mjs'
+import { publicRoutes, site, structuredData, homeMetadata } from './public-seo.mjs'
 
 const require = createRequire(import.meta.url), root = path.resolve(import.meta.dirname, '..')
 function componentModule(file) {
@@ -37,7 +37,7 @@ fs.writeFileSync(path.join(root, 'dist/app-shell.html'), html.replace(schemaPatt
 const template = html.replace(/\s*<script\b[^>]*type="module"[^>]*>[\s\S]*?<\/script>/g, '').replace(/\s*<link\b[^>]*rel="(?:modulepreload|stylesheet)"[^>]*>/g, '').replace(schemaPattern, '').replace('</head>', `<link rel="stylesheet" href="/${cssPath}" /></head>`)
 const metadata = []
 for (const [route, file, label] of publicRoutes) {
-  const info = route === '/' ? { title: 'Novvin Web — mensajes, videos y comunidades', description: 'Novvin es la red social para conversar, descubrir videos y compartir con tu gente. Entra a Novvin Web desde tu computadora, tablet o móvil con tu misma cuenta.' } : publicInfoPage(route)
+  const info = route === '/' ? homeMetadata : publicInfoPage(route)
   if (!info) throw new Error('Missing public route metadata')
   const url = route === '/' ? site + '/' : site + route
   let page = template.replace(/<title>.*?<\/title>/, `<title>${escape(info.title)}</title>`)

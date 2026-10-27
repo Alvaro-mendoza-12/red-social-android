@@ -1,4 +1,5 @@
 export const site = 'https://red-social-android.vercel.app'
+export const homeMetadata = { title: 'Novvin | Red social, mensajes y videos', description: 'Novvin es una red social para conectar con tu gente. Envía mensajes, comparte fotos y videos y únete a grupos y comunidades desde Android o la web.' }
 export const publicRoutes = [
   ['/', 'index.html', 'Inicio'],
   ['/que-es-novvin', 'que-es-novvin.html', 'Qué es Novvin'],

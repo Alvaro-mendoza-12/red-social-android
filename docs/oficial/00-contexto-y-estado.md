@@ -1,10 +1,10 @@
 # 00 — Contexto y estado actual
 
-## Actualización del 26/10/2026
+## Actualización del 27/10/2026
 
 El producto se presenta como **Novvin**, con identificador Android `conectate.com`. El candidato firmado revisado es **9.1.27 / código 167**; su código móvil está confirmado en ambas ramas. Se detectó además un incremento local a **9.1.28 / 168** en `feature/live-gifts`, fuera de los cambios de servidor de esta entrega y todavía sin validar como artefacto aquí. El estado de acceso, regresiones, pruebas físicas y artefactos se detalla en la [auditoría 75](75-cierre-movil-167-2026-10-25.md). Las versiones, mediciones y pendientes escritos debajo corresponden a sus fechas históricas.
 
-La [auditoría de servidor 76](76-auditoria-servidor-2026-10-26.md) registra las actualizaciones aplicadas, las verificaciones operativas y el bloqueo administrativo de los paquetes Ubuntu. El [prompt de continuidad 77](77-prompt-continuidad-produccion-y-escalado.md) conserva el contexto de producción y separa los objetivos futuros de los resultados ya demostrados.
+La [auditoría de servidor 76](76-auditoria-servidor-2026-10-26.md) y su [continuación 78](78-capacidad-host-y-acceso-web-2026-10-27.md) registran Ubuntu actualizado, reinicio verificado, 14 contenedores operativos y transporte web público sin permiso de red local. La simulación detectó degradación desde 24 solicitudes simultáneas y errores en 64; no se aprueba capacidad masiva. La [revisión 79](79-indexacion-publica-2026-10-27.md) registra 19 páginas públicas, seis imágenes y estado real de indexación. El [prompt de continuidad 77](77-prompt-continuidad-produccion-y-escalado.md) conserva los objetivos pendientes.
 
 Conéctate es una red social móvil orientada a producción y con una versión histórica
 distribuida. La rama de trabajo es `feature/live-gifts` en `D:\red social - live-gifts`.

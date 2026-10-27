@@ -4,12 +4,12 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import ts from 'typescript'
-import { publicRoutes, structuredData, site } from './public-seo.mjs'
+import { publicRoutes, structuredData, site, homeMetadata } from './public-seo.mjs'
 const root = path.resolve(import.meta.dirname, '..'), require = createRequire(import.meta.url)
 const code = ts.transpileModule(fs.readFileSync(path.join(root, 'src/ui/novvin/publicInfoPages.ts'), 'utf8'), { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText
 const module = { exports: {} }
 new Function('require', 'module', 'exports', code)(require, module, module.exports)
-const home = { title: 'Novvin Web — mensajes, videos y comunidades', description: 'Novvin es la red social para conversar, descubrir videos y compartir con tu gente. Entra a Novvin Web desde tu computadora, tablet o móvil con tu misma cuenta.' }
+const home = homeMetadata
 const hashes = publicRoutes.map(([route,,label]) => {
   const page = route === '/' ? home : module.exports.publicInfoPage(route)
   return "'sha256-" + createHash('sha256').update(structuredData(route,page.title,page.description,label,module.exports.publicIllustrations[route] || [])).digest('base64') + "'"

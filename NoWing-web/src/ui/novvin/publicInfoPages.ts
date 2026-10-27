@@ -88,7 +88,7 @@ export const publicInfoPages = {
     description: 'Usa Novvin desde una computadora, tablet o celular. Conoce los mensajes con archivos, los videos, Social y el acceso con tu cuenta móvil.',
     heading: 'Tu cuenta de Novvin, también en la web.',
     sections: [
-      { heading: '¿Buscabas Novvyn con «y»?', body: 'Si escribiste Novvyn, Noving, Nowing o NoWin buscando nuestra red social, el nombre de la aplicación es Novvin: N-O-V-V-I-N. Esta es Novvin Web, donde puedes iniciar sesión con la misma cuenta del móvil. Guarda esta dirección en tus favoritos para volver directamente.' },
+      { heading: 'El acceso oficial a Novvin Web', body: 'Entra a tus mensajes y comunidades desde https://red-social-android.vercel.app/. Usa tu cuenta de Android para seguir conversando, compartir archivos y descubrir publicaciones desde la computadora.' },
       { heading: 'Conversa desde tu computadora', body: 'Abre tus conversaciones, grupos y comunidades con la misma cuenta que usas en el teléfono. En una pantalla grande puedes ver la lista de mensajes junto al chat. En una pantalla pequeña, cada conversación ocupa su propia vista.' },
       { heading: 'Comparte fotos y archivos', body: 'El botón de adjuntar permite elegir imágenes, videos, audios y documentos de tu equipo. Puedes revisar los archivos y añadir un texto antes de enviarlos. Las imágenes se abren en un visor con ampliación y los documentos compatibles permiten vista previa o descarga.' },
       { heading: 'Descubre videos y publicaciones', body: 'Explora videos verticales, sigue a sus creadores y comparte contenido con tus conversaciones. Social reúne publicaciones, comentarios y momentos. Los perfiles conservan el nombre, la foto, las relaciones y las preferencias de la cuenta.' },
@@ -282,13 +282,24 @@ export const publicInfoPages = {
   },
 } as const
 
-export const publicIllustrations: Record<string, Array<{src: string; alt: string; caption: string; width: number; height: number}>> = {
-  '/funciones': [
-    {src:'/novvin-logo.png',alt:'Logo de Novvin, red social para Android y navegador',caption:'La marca de Novvin para reconocer la aplicación y su acceso web.',width:512,height:512},
-    {src:'/images/promotion-messages.svg',alt:'Ilustración de los mensajes y chats de Novvin',caption:'Mensajes: conversaciones, stickers y archivos para compartir con tu gente.',width:500,height:500},
-    {src:'/images/promotion-videos.svg',alt:'Ilustración de la sección de videos de Novvin',caption:'Videos: descubre y comparte contenido con tu cuenta de Novvin.',width:500,height:500},
-    {src:'/images/promotion-social.svg',alt:'Ilustración de las publicaciones sociales de Novvin',caption:'Social: publicaciones y momentos para compartir con otras personas.',width:500,height:500},
-  ],
+const productIllustrations = [
+  {src:'/images/novvin-chats.png',alt:'Vista ilustrativa de mensajes privados y fotos en Novvin',caption:'Chats de Novvin: mensajes y fotos. Ilustración con datos de ejemplo.',width:1200,height:800},
+  {src:'/images/novvin-grupos.png',alt:'Vista ilustrativa de un grupo de estudio y documentos en Novvin',caption:'Grupos de Novvin: conversaciones y documentos compartidos. Datos de ejemplo.',width:1200,height:800},
+  {src:'/images/novvin-comunidades.png',alt:'Vista ilustrativa de una comunidad de fotografía y sus canales en Novvin',caption:'Comunidades de Novvin: avisos, ideas y recursos. Ilustración con datos de ejemplo.',width:1200,height:800},
+  {src:'/images/novvin-videos.png',alt:'Vista ilustrativa del contenido de videos en Novvin',caption:'Videos de Novvin: contenido y creadores para descubrir. Datos de ejemplo.',width:1200,height:800},
+  {src:'/images/novvin-social.png',alt:'Vista ilustrativa de publicaciones y comentarios en Social de Novvin',caption:'Social de Novvin: publicaciones, fotos y comentarios. Datos de ejemplo.',width:1200,height:800},
+  {src:'/images/novvin-momentos.png',alt:'Vista ilustrativa de fotos y videos en Momentos de Novvin',caption:'Momentos de Novvin: comparte fotos y videos de tu día. Datos de ejemplo.',width:1200,height:800},
+]
+export const publicIllustrations: Record<string, typeof productIllustrations> = {
+  '/': [productIllustrations[0],productIllustrations[3],productIllustrations[5]],
+  '/funciones': productIllustrations,
+  '/mensajes': productIllustrations.slice(0,2),
+  '/comunidades': [productIllustrations[2],productIllustrations[1]],
+  '/videos': [productIllustrations[3]],
+  '/social': [productIllustrations[4]],
+  '/momentos': [productIllustrations[5]],
+  '/novvin-web': [productIllustrations[0],productIllustrations[2]],
+  '/descargar': [productIllustrations[0],productIllustrations[4]],
 }
 
 export function publicInfoPage(path: string) {

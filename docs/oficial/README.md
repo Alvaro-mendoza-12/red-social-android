@@ -96,6 +96,8 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 79. [Continuidad móvil: acceso, emojis, avatares, vídeo y música de perfil — 2026-10-25](75-cierre-movil-167-2026-10-25.md)
 80. [Servidor: limpieza, runtimes, dependencias y restauración — 2026-10-26](76-auditoria-servidor-2026-10-26.md)
 81. [Prompt de continuidad: producción, auditoría y crecimiento](77-prompt-continuidad-produccion-y-escalado.md)
+82. [Host actualizado, capacidad y acceso público web — 2026-10-27](78-capacidad-host-y-acceso-web-2026-10-27.md)
+83. [Indexación pública e imágenes — 2026-10-27](79-indexacion-publica-2026-10-27.md)
 
 ## Reglas para quien trabaje en este proyecto
 

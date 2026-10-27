@@ -46,6 +46,7 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import { joinFallbackVoiceRoom, leaveFallbackVoiceRoom, loadFallbackVoiceRoom } from '../../core/fallbackData'
 import { ensureFallbackAccessToken } from '../../core/auth/fallbackAuth'
 import { getRuntimeBackendUrl } from '../../core/runtimeBackend'
+import { publicBackendTransportUrl } from '../../core/publicBackendTransport'
 import { buildSignalingAffinity } from '../../core/signalingAffinity'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import WebRTCManager from './WebRTCManager'
@@ -163,7 +164,7 @@ function joinedRoomStorageKey(accountId?: string): string {
 function readSignalingUrl(): string {
   const configured = String(import.meta.env.VITE_SIGNALING_URL ?? '').trim()
   const fallbackApi = getRuntimeBackendUrl()
-  return configured || fallbackApi
+  return configured ? publicBackendTransportUrl(configured) : fallbackApi
 }
 
 function writeJoinedRoomToStorage(accountId: string | undefined, roomId: string | null) {

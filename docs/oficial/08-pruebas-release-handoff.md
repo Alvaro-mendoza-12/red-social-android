@@ -9,6 +9,8 @@ release concreto desde la primera pantalla, los tres recorridos de entrada y la
 restauración de sesión; una batería aislada de componentes no basta para aprobar
 el arranque completo. El documento vigente registra los resultados y límites.
 
+La [revisión 78](78-capacidad-host-y-acceso-web-2026-10-27.md) registra el host actualizado, capacidad y transporte autenticado web. La [revisión 79](79-indexacion-publica-2026-10-27.md) registra la publicación y 69 controles SEO aprobados. No sustituyen la aceptación física del APK ni resuelven el límite de carga observado.
+
 ## Estados permitidos
 
 Usar siempre una de estas etiquetas:

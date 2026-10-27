@@ -15,8 +15,8 @@ export function PublicHome() {
               comparte y descubre.
             </h1>
             <p>
-              Novvin es una red social con mensajes, videos, momentos y comunidades. Conecta con tu gente desde Android o abre
-              Novvin Web en tu computadora.
+              Novvin es una red social para conectar con tu gente. Envía mensajes, comparte fotos
+              y videos y únete a grupos y comunidades desde Android o la web.
             </p>
             <div className="public-home-actions">
               <a className="primary-btn" href="/login">
@@ -38,6 +38,7 @@ export function PublicHome() {
         </section>
         <section className="public-home-features" aria-label="Qué puedes hacer en Novvin">
           <article>
+            <img className="public-feature-preview" src="/images/novvin-chats.png" alt="Vista ilustrativa de los chats de Novvin con mensajes y fotos de ejemplo" width="1200" height="800" loading="lazy" decoding="async" />
             <span>01</span>
             <h2>La conversación sigue.</h2>
             <p>
@@ -47,12 +48,14 @@ export function PublicHome() {
             <a href="/login?next=%2Fapp%2Fmessages">Abrir mis mensajes →</a>
           </article>
           <article>
+            <img className="public-feature-preview" src="/images/novvin-videos.png" alt="Vista ilustrativa de la sección de videos de Novvin" width="1200" height="800" loading="lazy" decoding="async" />
             <span>02</span>
             <h2>Algo nuevo por descubrir.</h2>
             <p>Explora videos y publicaciones, sigue a tus creadores y comparte lo que te gusta.</p>
             <a href="/explore/posts">Descubrir Social →</a>
           </article>
           <article>
+            <img className="public-feature-preview" src="/images/novvin-momentos.png" alt="Vista ilustrativa de fotos y videos en Momentos de Novvin" width="1200" height="800" loading="lazy" decoding="async" />
             <span>03</span>
             <h2>Momentos que conectan.</h2>
             <p>
@@ -102,9 +105,7 @@ export function PublicHome() {
               Entra a tus mensajes, descubre videos y participa en grupos y comunidades desde
               Android o tu navegador. Puedes <a href="/login">iniciar sesión</a>,
               <a href="/descargar"> descargar la app</a> o <a href="/funciones">conocer sus funciones</a>.
-              <span data-nosnippet="true"> Si llegaste escribiendo Novvyn, Noving, Nowing o NoWin,
-                el nombre de la red social es <strong>Novvin</strong>: N-O-V-V-I-N.
-                Consulta <a href="/ayuda/encontrar-novvin">cómo encontrar Novvin</a>.</span>
+              Consulta <a href="/ayuda/encontrar-novvin">los enlaces oficiales de Novvin</a>.
             </p>
           </details>
         </section>
