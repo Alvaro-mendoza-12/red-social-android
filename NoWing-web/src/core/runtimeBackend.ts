@@ -4,6 +4,7 @@ import {
   verifyBackendDiscoveryEnvelope,
 } from './backendTrust'
 import { recordMessagingClock } from './messagingClock'
+import { publicBackendTransportUrl } from './publicBackendTransport'
 
 const storageKey = 'conectate:runtime-backend-url:v2'
 const legacyStorageKey = 'conectate:runtime-backend-url'
@@ -55,7 +56,7 @@ function activeUrl(): string {
 }
 
 export function getRuntimeBackendUrl(): string {
-  return activeUrl()
+  return publicBackendTransportUrl(activeUrl())
 }
 
 export function rewriteRuntimeStorageUrl(value: string): string {
@@ -120,7 +121,7 @@ function updateRuntimeBackend(candidate: TrustedCandidate) {
   currentUrl = candidate.url
   currentExpiresAtEpochSeconds = candidate.expiresAtEpochSeconds
   persistCandidate(candidate)
-  if (changed) listeners.forEach((listener) => listener(candidate.url))
+  if (changed) listeners.forEach((listener) => listener(getRuntimeBackendUrl()))
 }
 
 async function trustCandidate(
@@ -165,7 +166,8 @@ async function restoreStoredCandidate(): Promise<TrustedCandidate | null> {
 async function probeBackend(url: string): Promise<boolean> {
   try {
     const started = performance.now()
-    const response = await fetch(`${url}/ready`, {
+    const transport = publicBackendTransportUrl(url)
+    const response = await fetch(`${transport}/ready`, {
       cache: 'no-store',
       headers: { 'ngrok-skip-browser-warning': 'true' },
       signal: AbortSignal.timeout(5_000),
@@ -177,7 +179,7 @@ async function probeBackend(url: string): Promise<boolean> {
       payload.capabilities.map((value) => String(value ?? '').trim()).filter(Boolean),
     )
     const compatible = [...requiredCapabilities].every((capability) => advertised.has(capability))
-    if (compatible) recordMessagingClock(url, payload.databaseTime, started, performance.now())
+    if (compatible) recordMessagingClock(transport, payload.databaseTime, started, performance.now())
     return compatible
   } catch {
     return false
@@ -286,7 +288,7 @@ export async function initializeRuntimeBackend(): Promise<string> {
 export async function refreshRuntimeBackend(failedUrl = ''): Promise<string> {
   const before = getRuntimeBackendUrl()
   if (failedUrl && before && !String(failedUrl).trim().startsWith(before)) return ''
-  const candidate = await resolveRuntimeBackend(before)
+  const candidate = await resolveRuntimeBackend(activeUrl())
   if (candidate) updateRuntimeBackend(candidate)
   const after = getRuntimeBackendUrl()
   return after && after !== before ? after : ''

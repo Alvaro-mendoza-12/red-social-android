@@ -14,6 +14,7 @@ import { supabase } from '../../core/supabase'
 import { sendCallInvite, sendCallResponse } from './callRealtime'
 import { CallControlClient } from './callControl'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
+import { publicBackendTransportUrl } from '../../core/publicBackendTransport'
 import WebCallManager, { type CallState, type CallParticipant } from './WebCallManager'
 
 type CallInterfaceProps = {
@@ -64,7 +65,7 @@ export function CallInterface({
     user?.email?.split('@')[0] ||
     'Usuario'
   const avatarUrl = String(user?.user_metadata?.avatar_url ?? user?.user_metadata?.picture ?? '').trim()
-  const signalingBaseUrl = String(import.meta.env.VITE_CALL_SIGNALING_URL ?? import.meta.env.VITE_SIGNALING_URL ?? '').trim()
+  const signalingBaseUrl = publicBackendTransportUrl(String(import.meta.env.VITE_CALL_SIGNALING_URL ?? import.meta.env.VITE_SIGNALING_URL ?? '').trim())
 
   useEffect(() => {
     if (!isFallbackSession) {

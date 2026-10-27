@@ -2,6 +2,8 @@
 
 Fecha: **26/10/2026, America/Bogota**. Ámbito: servicios de Novvin en la mini PC Ubuntu de producción. Complementa la [auditoría móvil 75](75-cierre-movil-167-2026-10-25.md); no sustituye sus verificaciones pendientes de APK, dispositivos y rendimiento.
 
+**Cierre posterior, 27/10:** se completaron las actualizaciones de Ubuntu y el reinicio autorizado. Docker 29.9.2, Tailscale 1.104.2, cero paquetes actualizables y 14 contenedores operativos. La [continuación 78](78-capacidad-host-y-acceso-web-2026-10-27.md) registra la evidencia y las pruebas de capacidad. Las referencias a paquetes pendientes debajo describen el bloqueo inicial del 26/10, ya superado.
+
 ## Resultado observado
 
 Los servicios actualizados están operativos y el ingreso público `https://conectate.tail9b267c.ts.net/ready` responde HTTP 200. Se comprobaron **14 contenedores persistentes en ejecución**, ninguno con estado unhealthy. Las instancias de PostgreSQL, Redis, edge, TURN, vista previa de documentos y Ferrenorte conservaron sus identidades durante las actualizaciones de Novvin. Edge recibió una recarga gradual de Nginx tras validar su configuración.
@@ -58,7 +60,7 @@ La base de Novvin ocupa aproximadamente 113 MB. La instantánea inicial mostró 
 
 Las muestras acotadas de logs y los estados de salud se conservan como evidencia. No se borraron logs para aparentar una limpieza ni se ejecutó una prueba de estrés sobre usuarios reales. Estos recursos y sondas no acreditan una capacidad de 500.000 usuarios.
 
-## Respaldos, reversión y actualización del host pendiente
+## Respaldos, reversión y preparación inicial de actualización del host
 
 Los respaldos privados están en el servidor, dentro de:
 
@@ -78,7 +80,7 @@ sudo systemd-run --unit=novvin-host-maintenance-20261026 --collect \
   /home/alvaro/novvin-candidates/security-20261026/upgrade-host-reviewed.sh --apply
 ```
 
-El trabajo continúa aunque se corte SSH y deja diagnóstico en `/var/log/novvin-host-maintenance/`. `--plan` permite revisar el plan sin cambiar paquetes instalados. Hasta que se ejecute y verifique ese paso, los 93 paquetes del host siguen pendientes. No se solicita publicar contraseñas en el chat ni se usa Docker para eludir la restricción de sudo.
+El trabajo continúa aunque se corte SSH y deja diagnóstico en `/var/log/novvin-host-maintenance/`. `--plan` permite revisar sin cambiar paquetes. Este paso y la comprobación posterior ya se completaron: véase la revisión 78. No se publican contraseñas ni se usa Docker para eludir sudo.
 
 ## Referencias
 

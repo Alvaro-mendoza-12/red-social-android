@@ -1,4 +1,13 @@
 User-agent: *
 Allow: /
+Disallow: /v1/
+Disallow: /rest/v1/
+Disallow: /auth/v1/
+Disallow: /realtime/
+Disallow: /socket.io/
+Disallow: /call/socket.io/
+Disallow: /live/socket.io/
+Disallow: /api/novvin-socket
+Disallow: /storage/v1/object/private/
 
 Sitemap: https://red-social-android.vercel.app/sitemap.xml

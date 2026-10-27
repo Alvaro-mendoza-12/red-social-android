@@ -8,7 +8,7 @@ Actúa como ingeniero senior responsable de la estabilidad, rendimiento, segurid
 
 ## 1. Continúa el trabajo existente
 
-- Revisa el estado Git, la documentación vigente de `docs/oficial/`, las incidencias abiertas y las evidencias disponibles. Empieza por las auditorías 75 y 76 y sus referencias; si alguna no existe o quedó desactualizada, registra esa diferencia.
+- Revisa el estado Git, la documentación vigente de `docs/oficial/`, las incidencias y evidencias. Empieza por las auditorías 75, 76, 78 y 79: Android sigue con aceptación física pendiente; el host ya está actualizado y reiniciado, el transporte web público está desplegado y la carga detectó un límite que requiere optimización. No confundas solicitudes de indexación con páginas ya indexadas.
 - Conserva el contexto útil de la conversación y las autorizaciones ya concedidas. Contrástalo con el código, los artefactos y los servicios actuales. No presupongas memoria completa del proyecto ni resultados que no puedas verificar.
 - Identifica qué está implementado, probado, desplegado y observado por usuarios. Son estados distintos. No repitas un trabajo aprobado sin una regresión, cambio o incertidumbre que lo justifique.
 - Termina o deja estabilizada la tarea en curso antes de abrir otra que dependa de ella. Mantén un registro breve del punto exacto donde continuar.

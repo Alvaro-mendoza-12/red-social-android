@@ -16,6 +16,10 @@ Proyecto existente `red-social-android`, directorio raíz `NoWing-web`, instalac
 
 Ejecutar `vercel --prod` desde la raíz del repositorio, o `npm run deploy:production` desde `NoWing-web`. La exclusión de subida impide incluir archivos de entorno y datos locales.
 
+En los dominios oficiales de Vercel, `publicBackendTransport.ts` usa el mismo origen público para API y archivos; `middleware.ts` los reenvía al origen lógico firmado y `api/novvin-socket.js` conserva los canales WebSocket. No se debe pedir permiso de red local al visitante. Mantener la lista cerrada de destinos y rutas, autenticación y límites del relé. La [revisión 78](../docs/oficial/78-capacidad-host-y-acceso-web-2026-10-27.md) detalla pruebas y límites.
+
+Las 19 páginas informativas se prerenderizan sin JavaScript. `npm run test:seo` comprueba la compilación y `npm run check:production-seo` revisa producción. Los cambios públicos requieren regenerar sitemap y hashes CSP con `npm run seo:config`; la [revisión 79](../docs/oficial/79-indexacion-publica-2026-10-27.md) describe imágenes y avisos. Las ilustraciones se regeneran con `node tools/generate-public-product-images.cjs` desde la raíz, usando Sharp instalado en el backend local.
+
 ## Momentos
 
 Seleccionar una foto JPG, PNG o WEBP, o un video MP4, abre el editor sin publicarlo (hasta 35 MB, según la política del servidor). El botón «Publicar momento» confirma la descripción, audiencia, duración, texto y música. El catálogo de comunidad muestra pistas aprobadas y autorizadas para reutilización; se puede recorrer la canción completa para elegir el inicio del fragmento. También se puede usar audio del dispositivo. Las fotos duran seis segundos y los videos respetan su duración hasta veinticinco segundos.
