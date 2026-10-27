@@ -2,7 +2,7 @@
 
 Este documento define cómo probar, publicar y entregar el proyecto a otro equipo o IA.
 
-La evidencia vigente del 25/10/2026 está en la
+La evidencia vigente, actualizada el 26/10/2026, está en la
 [auditoría del candidato 167](75-cierre-movil-167-2026-10-25.md).
 El candidato Android es **9.1.27 / 167**. La aceptación exige comprobar el artefacto
 release concreto desde la primera pantalla, los tres recorridos de entrada y la

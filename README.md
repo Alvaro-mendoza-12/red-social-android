@@ -1,11 +1,13 @@
 # Novvin — Red social móvil
 
-Fecha de última revisión documental: 2026-10-25.
+Fecha de última revisión documental: 2026-10-26.
 
 > Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
 > Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
 
 Auditoría vigente: [acceso, emojis, avatares, vídeo, Social y música de perfil](docs/oficial/75-cierre-movil-167-2026-10-25.md). Candidato Android: **9.1.27 / código 167**. El documento distingue código implementado, regresiones automáticas, pruebas físicas y validación del artefacto firmado.
+
+La [revisión del servidor del 26/10](docs/oficial/76-auditoria-servidor-2026-10-26.md) registra limpieza, actualización de runtimes y dependencias, restauración de respaldo y los permisos administrativos pendientes de Ubuntu. Las [instrucciones de continuidad](docs/oficial/77-prompt-continuidad-produccion-y-escalado.md) adaptan la auditoría y el crecimiento al producto ya publicado.
 
 Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose** y backend propio en **Ubuntu**. Supabase queda como compatibilidad legacy y herramienta temporal de migracion/importacion.
 

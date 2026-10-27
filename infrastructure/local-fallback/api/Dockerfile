@@ -1,4 +1,4 @@
-FROM node:22.23.2-alpine
+FROM node:22.23.4-alpine
 
 # The base image can retain an older zlib; install the distribution security fix.
 RUN apk add --no-cache --upgrade 'zlib>=1.3.2-r1' ffmpeg clamav su-exec font-dejavu \

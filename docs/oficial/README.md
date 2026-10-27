@@ -1,13 +1,15 @@
 # Novvin — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-10-25 (Bogotá; cada evidencia indica su fecha y alcance)
+Última actualización de la fuente canónica: 2026-10-26 (Bogotá; cada evidencia indica su fecha y alcance)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
 Revisión actual: [75 — Auditoría móvil y candidato 167](75-cierre-movil-167-2026-10-25.md). El candidato es **9.1.27 / 167**. Esta revisión sustituye las cifras de versión y el estado de validación de las revisiones históricas; no atribuye una prueba de componentes a todo el APK de producción.
 
-Este directorio reúne la documentación de NoWi (identificador técnico e histórico: Conéctate/Novvin). Está escrito para que un equipo de desarrollo, una IA de programación o una persona nueva entienda el sistema sin adivinar ni asumir resultados no verificados. Cada documento indica su fecha y alcance: las evidencias recientes de conectividad, Videos, Social, perfiles, borrado, programados, bandeja e integridad de reintentos están en los documentos 16–21, junto al handoff 08. Una prueba nueva de un módulo no certifica toda la aplicación.
+Servidor: [76 — Limpieza, actualización y verificación](76-auditoria-servidor-2026-10-26.md). Continuidad del proyecto en producción: [77 — Prompt de auditoría y escalado](77-prompt-continuidad-produccion-y-escalado.md).
+
+Este directorio reúne la documentación de Novvin (identificadores históricos: Conéctate/NoWi). Está escrito para que un equipo de desarrollo, una IA de programación o una persona nueva entienda el sistema sin adivinar ni asumir resultados no verificados. Cada documento indica su fecha y alcance: las evidencias de conectividad, Videos, Social, perfiles, borrado, programados, bandeja e integridad de reintentos están en los documentos 16–21 y en sus continuaciones posteriores, junto al handoff 08. Una prueba nueva de un módulo no certifica toda la aplicación.
 
 Importante: en el repositorio existen documentos históricos, diagnósticos y notas de migración. Algunos reflejan etapas anteriores con Supabase, VPS, túneles temporales, pruebas o ideas aspiracionales. Si hay conflicto entre esos documentos y esta carpeta, usa esta carpeta como referencia principal y valida el estado real con los comandos del runbook.
 
@@ -92,6 +94,8 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 77. [Botella al mar: recepción sin filtros — 2026-10-07](73-botella-al-mar-recepcion-sin-filtros-2026-10-07.md)
 78. [Auditoría del release: acceso, sesión, invitado, vídeo y perfiles — 2026-10-24](74-auditoria-release-acceso-y-medios-2026-10-24.md)
 79. [Continuidad móvil: acceso, emojis, avatares, vídeo y música de perfil — 2026-10-25](75-cierre-movil-167-2026-10-25.md)
+80. [Servidor: limpieza, runtimes, dependencias y restauración — 2026-10-26](76-auditoria-servidor-2026-10-26.md)
+81. [Prompt de continuidad: producción, auditoría y crecimiento](77-prompt-continuidad-produccion-y-escalado.md)
 
 ## Reglas para quien trabaje en este proyecto
 

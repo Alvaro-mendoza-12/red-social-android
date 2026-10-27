@@ -2,6 +2,8 @@
 
 El backend Ubuntu es el servidor principal de Conéctate. Corre sobre una mini PC con Ubuntu Server, Docker Compose y servicios systemd/watchdog.
 
+La revisión vigente del 26/10/2026 está en la [auditoría 76](76-auditoria-servidor-2026-10-26.md): servicios Node de Novvin en 22.23.4, API/gateway con dependencias corregidas, 14 contenedores persistentes operativos, respaldos restaurados y limpieza de caché. Distingue esas actualizaciones de los 93 paquetes del host pendientes por falta de acceso administrativo. Los estados escritos debajo corresponden a sus fechas históricas.
+
 ## Ubicación
 
 En Windows:

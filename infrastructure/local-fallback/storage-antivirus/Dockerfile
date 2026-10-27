@@ -1,4 +1,4 @@
-FROM node:22.23.2-alpine
+FROM node:22.23.4-alpine
 
 RUN apk add --no-cache --upgrade 'zlib>=1.3.2-r1' clamav-daemon clamav \
   && addgroup -S -g 10001 novvin \
