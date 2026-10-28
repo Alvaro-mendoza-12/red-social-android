@@ -106,3 +106,19 @@ test('the selected thumbnail is centered only after the dialog is open', async (
     await waitFor(() => expect(opened).toEqual([true]))
   } finally { HTMLElement.prototype.scrollIntoView = previous }
 })
+
+test('scrolling the filmstrip still loads distant thumbnails without selecting them', () => {
+  const previous = globalThis.IntersectionObserver
+  let observe!: IntersectionObserverCallback
+  globalThis.IntersectionObserver = class {
+    constructor(callback: IntersectionObserverCallback) { observe = callback }
+    observe() {} disconnect() {}
+  } as unknown as typeof IntersectionObserver
+  try {
+    render(<MediaViewer items={Array.from({ length: 40 }, (_, index) => ({ url: `https://media.test/${index}.jpg`, type: 'image' as const }))} initialIndex={20} onClose={() => {}} />)
+    const distant = screen.getByRole('button', { name: 'Ver archivo 1' })
+    expect(distant.querySelector('img')).toBeNull()
+    act(() => observe([{ target: distant, isIntersecting: true } as unknown as IntersectionObserverEntry], {} as IntersectionObserver))
+    expect(distant.querySelector('img')).toHaveAttribute('src', 'https://media.test/0.jpg')
+  } finally { globalThis.IntersectionObserver = previous }
+})
