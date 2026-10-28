@@ -101,6 +101,7 @@ class NotificationViewModel @Inject constructor(
                             "live_started", "new_live" -> "Inició un directo"
                             "challenge_invite" -> "Te desafió a un reto"
                             "like_video" -> "Le gusta tu video"
+                            "like_moment" -> "Le gusta tu momento"
                             "comment_video" -> "Comentó tu video"
                             "reply_video" -> "Respondió a tu comentario en video"
                             "mention_video" -> "Te mencionó en un comentario de video"
