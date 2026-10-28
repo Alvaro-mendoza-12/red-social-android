@@ -480,6 +480,7 @@ export class WebCallManager {
 
     const socket = io(toCallNamespaceUrl(this.signalingBaseUrl), {
       transports: ['websocket', 'polling'],
+      tryAllTransports: true,
       query: { affinity: buildSignalingAffinity('call', callId) },
       auth: { token: this.accessToken },
       autoConnect: false,
