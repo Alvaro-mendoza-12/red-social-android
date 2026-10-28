@@ -3,8 +3,12 @@ import { createHash } from 'node:crypto'
 import { publicRoutes, site } from './public-seo.mjs'
 
 const checks = []
+// Probe preview deployments while checking their intended production canonicals.
+const probeOrigin = process.env.NOVVIN_SEO_PROBE_ORIGIN || site
+const probeUrl = new URL(probeOrigin)
+if (probeUrl.protocol !== 'https:' || probeUrl.origin !== probeOrigin || probeUrl.username || probeUrl.password) throw new Error('SEO probe origin must be an HTTPS origin without credentials or path')
 async function request(path, userAgent = 'Novvin-owned-production-SEO-audit/9.0.64') {
-  return fetch(site + path, { redirect: 'manual', headers: { 'User-Agent': userAgent, 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) })
+  return fetch(probeOrigin + path, { redirect: 'manual', headers: { 'User-Agent': userAgent, 'Cache-Control': 'no-cache' }, signal: AbortSignal.timeout(20000) })
 }
 async function check(name, run) {
   try { await run(); checks.push({ name, passed: true }) }
@@ -95,10 +99,11 @@ for (const path of ['/login', '/register', '/forgot-password', '/app/messages', 
     assert(!html.includes('<h1>Novvin') && !/accessToken|access_token/.test(html), 'Unexpected private HTML content')
   })
 }
-for (const [path, width, height] of [['/novvin-share.png', 1200, 630], ['/novvin-logo.png', 512, 512], ...[48, 96, 180, 192, 512].map(size => ['/icons/novvin-' + size + '.png', size, size]), ...['chats', 'grupos', 'comunidades', 'videos', 'social', 'momentos'].map(name => ['/images/novvin-' + name + '.png', 1200, 800])]) {
+for (const [path, width, height] of [['/novvin-share.png', 1200, 630], ['/novvin-logo.png', 512, 512], ...[48, 96, 180, 192, 512].map(size => ['/icons/novvin-' + size + '.png', size, size]), ...['chats', 'grupos', 'comunidades', 'videos', 'social', 'momentos'].map(name => ['/images/novvin-' + name + '.png', 1200, 800]), ['/images/novvin-chat-android-demo.png', 1080, 2400], ['/images/novvin-perfil-android-demo.png', 1080, 2400], ['/images/novvin-chat-web-demo.png', 1440, 900]]) {
   await check('Public brand image: ' + path, async () => {
     const response = await request(path), data = Buffer.from(await response.arrayBuffer())
     assert(response.status === 200 && response.headers.get('content-type')?.includes('image/png'), 'Brand image unavailable')
+    assert(!/noindex|none/i.test(response.headers.get('x-robots-tag') || ''), 'Public image is noindex')
     assert(data.toString('hex', 0, 8) === '89504e470d0a1a0a' && data.readUInt32BE(16) === width && data.readUInt32BE(20) === height, 'Brand image dimensions mismatch')
   })
 }
@@ -116,6 +121,6 @@ await check('Google and Bing verification with IndexNow public key', async () =>
   assert(metas(html, 'msvalidate.01') === '6AF16B2EBFF5AB4AA7EDD93B1C90DE3F', 'Bing verification missing or belongs to another property')
   assert(key.status === 200 && /^[a-zA-Z0-9-]{8,128}$/.test((await key.text()).trim()), 'Invalid IndexNow key')
 })
-const report = { atUtc: new Date().toISOString(), passed: checks.every(check => check.passed), publicUrl: site, checks, indexingOrRankingGuaranteed: false, scope: 'Current deployed HTTP, public metadata, CSP, assets and private-shell exclusion. Not authenticated functionality, field Core Web Vitals, device calls or search-engine acceptance.' }
+const report = { atUtc: new Date().toISOString(), passed: checks.every(check => check.passed), publicUrl: site, probeOrigin, checks, indexingOrRankingGuaranteed: false, scope: 'Current deployed HTTP, public metadata, CSP, assets and private-shell exclusion. Not authenticated functionality, field Core Web Vitals, device calls or search-engine acceptance.' }
 console.log(JSON.stringify(report, null, 2))
 if (!report.passed) process.exitCode = 1

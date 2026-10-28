@@ -1,11 +1,11 @@
 # Novvin — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-10-26 (Bogotá; cada evidencia indica su fecha y alcance)
+Última actualización de la fuente canónica: 2026-10-28 (Bogotá; cada evidencia indica su fecha y alcance)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Revisión actual: [75 — Auditoría móvil y candidato 167](75-cierre-movil-167-2026-10-25.md). El candidato es **9.1.27 / 167**. Esta revisión sustituye las cifras de versión y el estado de validación de las revisiones históricas; no atribuye una prueba de componentes a todo el APK de producción.
+Revisión actual: [81 — SEO publicado, imágenes, chats y candidato 168](81-continuidad-seo-chats-y-release-168-2026-10-28.md). La web SEO está publicada; el candidato móvil es **9.1.28 / 168**, con validación en curso. La [auditoría 75](75-cierre-movil-167-2026-10-25.md) conserva la evidencia histórica del APK 167.
 
 Servidor: [76 — Limpieza, actualización y verificación](76-auditoria-servidor-2026-10-26.md). Continuidad del proyecto en producción: [77 — Prompt de auditoría y escalado](77-prompt-continuidad-produccion-y-escalado.md).
 

@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Continuidad del 28/10/2026
+
+La [revisión 81](81-continuidad-seo-chats-y-release-168-2026-10-28.md) registra SEO e imágenes publicados (90/90 controles HTTP), IndexNow aceptado y las correcciones locales de chat sin historial, restauración de archivos compartidos y conexión del lector PDF. El candidato Android es 9.1.28 / 168, con validación en curso. Los apartados siguientes conservan su alcance histórico.
+
 ## Actualización del 27/10/2026
 
 La [revisión 80](80-auditoria-seo-y-candidato-local-2026-10-27.md) registra el nuevo candidato SEO **local, pendiente de autorización**: puerta de build, huellas/sitemap, redirects públicos, control de IndexNow y privacidad de vistas compartidas. No se ha desplegado ni subido a GitHub desde la restricción del propietario. La producción descrita en 78/79 continúa como referencia del último despliegue autorizado.
