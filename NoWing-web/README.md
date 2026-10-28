@@ -18,7 +18,9 @@ Ejecutar `vercel --prod` desde la raíz del repositorio, o `npm run deploy:produ
 
 En los dominios oficiales de Vercel, `publicBackendTransport.ts` usa el mismo origen público para API y archivos; `middleware.ts` los reenvía al origen lógico firmado y `api/novvin-socket.js` conserva los canales WebSocket. No se debe pedir permiso de red local al visitante. Mantener la lista cerrada de destinos y rutas, autenticación y límites del relé. La [revisión 78](../docs/oficial/78-capacidad-host-y-acceso-web-2026-10-27.md) detalla pruebas y límites.
 
-Las 19 páginas informativas se prerenderizan sin JavaScript. `npm run test:seo` comprueba la compilación y `npm run check:production-seo` revisa producción. Los cambios públicos requieren regenerar sitemap y hashes CSP con `npm run seo:config`; la [revisión 79](../docs/oficial/79-indexacion-publica-2026-10-27.md) describe imágenes y avisos. Las ilustraciones se regeneran con `node tools/generate-public-product-images.cjs` desde la raíz, usando Sharp instalado en el backend local.
+Las 19 páginas informativas se prerenderizan sin JavaScript. `npm run seo:config` registra el contenido realmente modificado, conserva las fechas del resto y actualiza sitemap/hashes CSP. El build genera el sitemap desde ese estado y ejecuta una puerta SEO que rechaza cambios no preparados, bloqueos de rastreo, canonical incorrecto y pérdida de rutas privadas. Después ejecutar `npm run test:node` y la regresión Jest. `npm run check:production-seo` comprueba el despliegue real; no publica.
+
+`node scripts/submit-indexnow.mjs /ruta --dry-run` prepara un aviso; es también el modo por defecto. `--submit` requiere la autorización y publicación previas. No hay envío automático desde el build. El historial local queda excluido de Git/Vercel. La [revisión 80](../docs/oficial/80-auditoria-seo-y-candidato-local-2026-10-27.md) registra el candidato y sus límites; la [revisión 79](../docs/oficial/79-indexacion-publica-2026-10-27.md) conserva el despliegue anterior. Las ilustraciones se regeneran con `node tools/generate-public-product-images.cjs` desde la raíz, usando Sharp instalado en el backend local.
 
 ## Momentos
 

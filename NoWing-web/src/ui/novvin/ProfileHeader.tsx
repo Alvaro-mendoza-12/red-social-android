@@ -4,7 +4,8 @@ import { ProfileMediaButton } from '../../components/ProfileMediaButton'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StreamingImage } from '../../components/StreamingMedia'
 import type { ProfileIdentity } from './profileIdentity'
-import { ProfileCoverEffect, profileThemeColor } from '../../components/ProfileCoverEffect'
+import { ProfileCoverEffect } from '../../components/ProfileCoverEffect'
+import { profileThemeColor } from '../../components/profileAppearanceOptions'
 import type { CSSProperties } from 'react'
 
 export function VerifiedMark() {

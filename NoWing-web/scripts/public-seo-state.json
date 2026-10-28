@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "routes": {
+    "/": {
+      "file": "index.html",
+      "contentHash": "0ffc0bf9b7bf7d5a5be099dea3a69c8c593107ebedbf6af17045757285ca350b",
+      "lastmod": "2026-10-26"
+    },
+    "/que-es-novvin": {
+      "file": "que-es-novvin.html",
+      "contentHash": "e936febed18f3a9a2bbaf1eb0dc276d5b218d74587391af36b4db5e886a0e2f8",
+      "lastmod": "2026-10-18"
+    },
+    "/ayuda/preguntas-frecuentes": {
+      "file": "preguntas-frecuentes.html",
+      "contentHash": "e86a5d6127072fa6a780978216acaf9e2ee985a092564714201e5040ab22099c",
+      "lastmod": "2026-10-18"
+    },
+    "/novvin-web": {
+      "file": "novvin-web.html",
+      "contentHash": "1ba964890c71c356da6b1cd8ade572bce8a0388b76fea49b509f7866f3e456e2",
+      "lastmod": "2026-10-26"
+    },
+    "/mensajes": {
+      "file": "mensajes.html",
+      "contentHash": "bce5ef815daffab51b5c2f0c936ccfccd819bd6376564d98be8704f3a8b8e508",
+      "lastmod": "2026-10-26"
+    },
+    "/videos": {
+      "file": "videos.html",
+      "contentHash": "4ce5108ea048cdb86b223d646a333c7f8297ebe54b913c757b9ed3b90ff0181d",
+      "lastmod": "2026-10-26"
+    },
+    "/salas-de-voz": {
+      "file": "salas-de-voz.html",
+      "contentHash": "73562932e9fff8f8f0d97389342176f4d79f435c10ef86c45e8a90359cc0a16e",
+      "lastmod": "2026-10-18"
+    },
+    "/ayuda/vincular-web": {
+      "file": "vincular-web.html",
+      "contentHash": "d516d045d572d2caa8f1589a30196d3c256cb254ec155b350ae975f93ac85a0a",
+      "lastmod": "2026-10-16"
+    },
+    "/descargar": {
+      "file": "descargar.html",
+      "contentHash": "c38c8f7524123c958f6278b489a6d40fa58f7fb0334569b86e79ecd17d1ca32a",
+      "lastmod": "2026-10-26"
+    },
+    "/ayuda/encontrar-novvin": {
+      "file": "encontrar-novvin.html",
+      "contentHash": "f4596e834edd055fb6b20249fb7e180e5bd30e2971fcd30292024574d89f5073",
+      "lastmod": "2026-10-21"
+    },
+    "/social": {
+      "file": "social.html",
+      "contentHash": "d160e3112e634d733a99a3e416db193b686ba137d27a5e85cc35d81a93d446da",
+      "lastmod": "2026-10-26"
+    },
+    "/momentos": {
+      "file": "momentos.html",
+      "contentHash": "8031db729e169de135d0be086388c04e3ae195a86122e7bc2ae65eb84b01f29e",
+      "lastmod": "2026-10-26"
+    },
+    "/comunidades": {
+      "file": "comunidades.html",
+      "contentHash": "853d2c822b8a9586aff77bd1077aca3f3ea71584f024381d5a4ba7c4d9c8258e",
+      "lastmod": "2026-10-26"
+    },
+    "/juegos": {
+      "file": "juegos.html",
+      "contentHash": "d2e06e830a99069562cc0cae85da4ee6142f1885766b06111ca7cbc68f37133d",
+      "lastmod": "2026-10-16"
+    },
+    "/asistente": {
+      "file": "asistente.html",
+      "contentHash": "05b295312a3ba170a2a4116197c6f8a188e418777ac1396bb7d2deed787c9aec",
+      "lastmod": "2026-10-16"
+    },
+    "/ayuda": {
+      "file": "ayuda.html",
+      "contentHash": "c21e562fea8948ac433c0898dacf6ae7a5e6b381c74be7768b3db67cbff20632",
+      "lastmod": "2026-10-18"
+    },
+    "/funciones": {
+      "file": "funciones.html",
+      "contentHash": "bb8d91c97367eff89f438edb1941f3c03bdf089ef9ab3a3853dd7fe2cb080d80",
+      "lastmod": "2026-10-26"
+    },
+    "/ayuda/stickers-animados": {
+      "file": "stickers-animados.html",
+      "contentHash": "2f1945dd70ece8013f863d7b2b56dd20a4542feddd9dcadda1e1a1b490e1ab18",
+      "lastmod": "2026-10-21"
+    },
+    "/ayuda/privacidad-y-seguridad": {
+      "file": "privacidad-y-seguridad.html",
+      "contentHash": "a24496dc7376f66e9b1785aaf2b5b3d05b784e11cbc3ab462c30327929563500",
+      "lastmod": "2026-10-21"
+    }
+  }
+}

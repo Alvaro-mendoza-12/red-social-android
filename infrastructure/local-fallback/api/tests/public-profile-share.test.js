@@ -25,6 +25,7 @@ test('shared profiles use readable metadata, escape untrusted text and omit priv
   assert.match(html, /Estás viendo la versión web como invitado/)
   assert.match(html, /Iniciar sesión/)
   assert.match(html, /Crear cuenta/)
+  assert.match(html, /name="robots" content="noindex, follow"/)
 })
 
 test('guest web view includes only public and non-sensitive profile posts', async () => {
@@ -86,8 +87,39 @@ test('public profile preview does not reveal unavailable profiles', async () => 
     assert.ok(sql.some((statement) => statement.includes("profile_visibility', 'everyone') = 'everyone'")))
     assert.equal((await fetch(`${base}/v1/public/profiles/invalid%3Cscript%3E`)).status, 404)
     assert.equal((await fetch(`${base}/v1/public/profiles/mirella_vr07/card.jpg`)).status, 404)
-    assert.equal((await fetch(`${base}/p/mirella_vr07`)).status, 404)
+    const preview = await fetch(`${base}/p/mirella_vr07`)
+    assert.equal(preview.status, 404)
+    assert.match(preview.headers.get('x-robots-tag'), /noindex/)
     assert.equal((await fetch(`${base}/p/mirella_vr07/card.jpg`)).status, 404)
     assert.equal((await fetch(`${base}/p/invalid%3Cscript%3E`)).status, 404)
   } finally { await new Promise((resolve) => server.close(resolve)) }
+})
+
+test('a malformed imported date cannot break a readable public share page', () => {
+  const html = profileShareHtml({ id: 'test-id', display_name: 'Example' }, 'https://example.invalid', [
+    { content: 'Public text remains readable', created_at: 'not-a-date' },
+  ])
+  assert.match(html, /Public text remains readable/)
+  assert.doesNotMatch(html, /Invalid Date/)
+})
+
+test('share previews remain usable while private cards cannot be cached or indexed', async () => {
+  const app = express()
+  const profile = { id: 'test-id', display_name: 'Example', username: 'example_user', is_private: true }
+  const pool = { async query(sql) { return { rows: sql.includes('FROM fallback_users u') ? [profile] : [] } } }
+  registerPublicProfileShareRoutes(app, { pool, publicBaseUrl: 'https://example.invalid' })
+  const server = app.listen(0, '127.0.0.1')
+  try {
+    await new Promise(resolve => server.once('listening', resolve))
+    const base = `http://127.0.0.1:${server.address().port}`
+    const html = await fetch(base + '/p/example_user')
+    assert.equal(html.status, 200)
+    assert.match(html.headers.get('x-robots-tag'), /noindex/)
+    assert.match(await html.text(), /Esta cuenta es privada/)
+    const card = await fetch(base + '/p/example_user/card.jpg')
+    assert.equal(card.status, 200)
+    assert.equal(card.headers.get('cache-control'), 'no-store')
+    assert.match(card.headers.get('x-robots-tag'), /noindex/)
+    assert.match(card.headers.get('content-type'), /image\/jpeg/)
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)) }
 })

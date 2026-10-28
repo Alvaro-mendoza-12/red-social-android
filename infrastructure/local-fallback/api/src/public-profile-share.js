@@ -142,11 +142,12 @@ function profileShareHtml(profile, publicBaseUrl, posts = []) {
         ? `<video src="${escapeHtml(mediaUrls[0])}" controls preload="none" aria-label="Video de una publicación"></video>`
         : ''
     const body = String(post.content || '').trim()
-    const date = post.created_at ? new Date(post.created_at).toISOString().slice(0, 10) : ''
+    const timestamp = post.created_at ? new Date(post.created_at) : null
+    const date = timestamp && Number.isFinite(timestamp.getTime()) ? timestamp.toISOString().slice(0, 10) : ''
     return `<article class="post"><p>${escapeHtml(body)}</p>${visual}${date ? `<small>${escapeHtml(date)}</small>` : ''}</article>`
   }).join('')
   return `<!doctype html><html lang="es"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, follow">
 <title>${escapeHtml(title)}</title>${image ? `<link rel="icon" href="${escapeHtml(image)}" type="image/jpeg">` : ''}<meta name="description" content="${escapeHtml(description)}">
 <meta property="og:type" content="profile"><meta property="og:site_name" content="Novvin"><meta property="og:locale" content="es_PE">
 <meta property="og:title" content="${escapeHtml(title)}">
@@ -169,16 +170,20 @@ ${profile.is_private ? '<p>Esta cuenta es privada. Su contenido se ve según sus
 function registerPublicProfileShareRoutes(app, { pool, publicBaseUrl }) {
   app.get(['/v1/public/profiles/:identifier/card.jpg', '/p/:identifier/card.jpg'], async (req, res, next) => {
     try {
+      // Share previews are not search opt-ins. Keep existing guest access, while
+      // preventing indexing until a separate owner-controlled policy exists.
+      res.set('X-Robots-Tag', 'noindex, noarchive')
       const identifier = String(req.params.identifier || '')
       if (!/^[a-z0-9_.-]{3,36}$/i.test(identifier)) return res.sendStatus(404)
       const profile = await readPublicProfile(pool, identifier)
       if (!profile) return res.sendStatus(404)
       const image = await publicProfileCard(profile, publicBaseUrl)
-      return res.set('Cache-Control', 'public, max-age=300').type('image/jpeg').send(image)
+      return res.set('Cache-Control', profile.is_private ? 'no-store' : 'public, max-age=300').type('image/jpeg').send(image)
     } catch (error) { next(error) }
   })
   app.get(['/v1/public/profiles/:identifier', '/p/:identifier'], async (req, res, next) => {
     try {
+      res.set('X-Robots-Tag', 'noindex, follow, noarchive')
       const identifier = String(req.params.identifier || '')
       if (!/^[a-z0-9_.-]{3,36}$/i.test(identifier)) return res.status(404).type('text').send('Perfil no disponible.')
       const profile = await readPublicProfile(pool, identifier)

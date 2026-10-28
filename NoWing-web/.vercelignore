@@ -13,3 +13,4 @@ cypress/videos
 .playwright-cli
 tests
 src/__tests__
+.indexnow-state.local.json*

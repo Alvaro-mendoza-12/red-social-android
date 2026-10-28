@@ -5,6 +5,8 @@ Fecha de última revisión documental: 2026-10-27.
 > Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
 > Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
 
+Candidato actual de SEO: [auditoría, cambios y regresiones](docs/oficial/80-auditoria-seo-y-candidato-local-2026-10-27.md). Está preparado localmente; su publicación requiere autorización del propietario. La rama `main` está conectada a producción en Vercel.
+
 Auditoría vigente: [acceso, emojis, avatares, vídeo, Social y música de perfil](docs/oficial/75-cierre-movil-167-2026-10-25.md). Candidato Android: **9.1.27 / código 167**. El documento distingue código implementado, regresiones automáticas, pruebas físicas y validación del artefacto firmado.
 
 La [revisión del servidor](docs/oficial/76-auditoria-servidor-2026-10-26.md) y su [continuación del 27/10](docs/oficial/78-capacidad-host-y-acceso-web-2026-10-27.md) registran limpieza, restauración, Ubuntu actualizado y reiniciado, capacidad y transporte web público. La [revisión de indexación](docs/oficial/79-indexacion-publica-2026-10-27.md) recoge 19 páginas, seis imágenes nuevas y verificaciones de Vercel y buscadores. Las [instrucciones de continuidad](docs/oficial/77-prompt-continuidad-produccion-y-escalado.md) conservan los objetivos pendientes.

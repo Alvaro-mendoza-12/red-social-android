@@ -76,5 +76,7 @@ jobs:
         env:
           VITE_FALLBACK_API_URL: https://ci.invalid
         run: npm run build
+      - name: Public SEO, privacy boundaries, media and socket regressions
+        run: npm run test:node
       - name: Audit direct and transitive dependencies
         run: npm audit --audit-level=moderate

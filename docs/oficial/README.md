@@ -98,6 +98,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 81. [Prompt de continuidad: producción, auditoría y crecimiento](77-prompt-continuidad-produccion-y-escalado.md)
 82. [Host actualizado, capacidad y acceso público web — 2026-10-27](78-capacidad-host-y-acceso-web-2026-10-27.md)
 83. [Indexación pública e imágenes — 2026-10-27](79-indexacion-publica-2026-10-27.md)
+84. [Auditoría SEO y candidato local, pendiente de autorización — 2026-10-27](80-auditoria-seo-y-candidato-local-2026-10-27.md)
 
 ## Reglas para quien trabaje en este proyecto
 
