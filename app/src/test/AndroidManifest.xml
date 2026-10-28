@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <!-- Match production's on-demand WorkManager initialization. The JVM
+             test manifest otherwise restores the dependency initializer, whose
+             Room callbacks outlive Robolectric's per-test SQLite sandbox. -->
+        <provider android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="merge">
+            <meta-data android:name="androidx.work.WorkManagerInitializer" tools:node="remove" />
+        </provider>
+    </application>
+</manifest>
