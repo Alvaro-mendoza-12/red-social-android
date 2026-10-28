@@ -399,6 +399,96 @@
       "source": "/privacidad-y-seguridad.html",
       "destination": "/ayuda/privacidad-y-seguridad",
       "permanent": true
+    },
+    {
+      "source": "/que-es-novvin(/)",
+      "destination": "/que-es-novvin",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/preguntas-frecuentes(/)",
+      "destination": "/ayuda/preguntas-frecuentes",
+      "permanent": true
+    },
+    {
+      "source": "/novvin-web(/)",
+      "destination": "/novvin-web",
+      "permanent": true
+    },
+    {
+      "source": "/mensajes(/)",
+      "destination": "/mensajes",
+      "permanent": true
+    },
+    {
+      "source": "/videos(/)",
+      "destination": "/videos",
+      "permanent": true
+    },
+    {
+      "source": "/salas-de-voz(/)",
+      "destination": "/salas-de-voz",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/vincular-web(/)",
+      "destination": "/ayuda/vincular-web",
+      "permanent": true
+    },
+    {
+      "source": "/descargar(/)",
+      "destination": "/descargar",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/encontrar-novvin(/)",
+      "destination": "/ayuda/encontrar-novvin",
+      "permanent": true
+    },
+    {
+      "source": "/social(/)",
+      "destination": "/social",
+      "permanent": true
+    },
+    {
+      "source": "/momentos(/)",
+      "destination": "/momentos",
+      "permanent": true
+    },
+    {
+      "source": "/comunidades(/)",
+      "destination": "/comunidades",
+      "permanent": true
+    },
+    {
+      "source": "/juegos(/)",
+      "destination": "/juegos",
+      "permanent": true
+    },
+    {
+      "source": "/asistente(/)",
+      "destination": "/asistente",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda(/)",
+      "destination": "/ayuda",
+      "permanent": true
+    },
+    {
+      "source": "/funciones(/)",
+      "destination": "/funciones",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/stickers-animados(/)",
+      "destination": "/ayuda/stickers-animados",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/privacidad-y-seguridad(/)",
+      "destination": "/ayuda/privacidad-y-seguridad",
+      "permanent": true
     }
   ]
 }

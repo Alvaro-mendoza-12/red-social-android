@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "prebuild": "node ./scripts/ensure-web-build-env.mjs && node ./scripts/prepare-spelling-assets.mjs",
-    "build": "tsc -b && vite build && node scripts/prerender-public-home.mjs",
+    "build": "tsc -b && vite build && node scripts/prerender-public-home.mjs && node scripts/check-built-seo.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "jest",
@@ -21,6 +21,8 @@
     "deploy:production": "vercel --cwd .. --prod",
     "test:media": "node --test tests/media-worker.test.mjs",
     "test:seo": "node --test tests/public-home.test.mjs",
+    "test:node": "node --test tests/*.test.mjs",
+    "check:built-seo": "node scripts/check-built-seo.mjs",
     "check:production-seo": "node scripts/check-production-seo.mjs",
     "seo:config": "node scripts/update-public-seo-policy.mjs"
   },

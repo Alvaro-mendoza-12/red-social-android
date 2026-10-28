@@ -21,3 +21,4 @@ NoWing-web/*.log
 NoWing-web/.playwright-cli/
 NoWing-web/tests/
 NoWing-web/src/__tests__/
+NoWing-web/.indexnow-state.local.json*

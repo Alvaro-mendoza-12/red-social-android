@@ -76,6 +76,11 @@ for (const path of ['/no-existe-produccion-9038', '/js/no-existe-9038.js', '/ico
   await check('Unknown URL returns 404: ' + path, async () => assert((await request(path)).status === 404, 'Missing URL did not return HTTP 404'))
 }
 for (const [route, file] of publicRoutes) {
+  if (route !== '/') await check('Trailing-slash canonical redirect: ' + route, async () => {
+    const response = await request(route + '/')
+    assert([301, 308].includes(response.status), 'Expected permanent canonical redirect')
+    assert(new URL(response.headers.get('location'), site).href === site + route, 'Incorrect slash canonical destination')
+  })
   await check('Canonical redirect: /' + file, async () => {
     const response = await request('/' + file)
     assert([301, 308].includes(response.status), 'Expected permanent redirect')

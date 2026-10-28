@@ -1,4 +1,4 @@
-import { PROFILE_EFFECT_CHOICES, PROFILE_THEME_CHOICES } from './ProfileCoverEffect'
+import { PROFILE_EFFECT_CHOICES, PROFILE_THEME_CHOICES } from './profileAppearanceOptions'
 
 export function ProfileAppearanceControls({ theme, effect, onTheme, onEffect }: {
   theme: string; effect: string; onTheme: (value: string) => void; onEffect: (value: string) => void

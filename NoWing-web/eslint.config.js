@@ -8,6 +8,9 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 export default defineConfig([
   globalIgnores([
     'dist',
+    'tmp',
+    'output',
+    'coverage',
     'src/__tests__',
     'src/components/advanced',
     'src/components/EnterpriseLayout.tsx',
