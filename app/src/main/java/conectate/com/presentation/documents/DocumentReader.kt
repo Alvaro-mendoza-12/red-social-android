@@ -44,11 +44,14 @@ internal suspend fun openDocumentPreview(
     suggestedName: String?,
     resolveSource: (suspend (String) -> String?)?,
     timeoutMillis: Long = 45_000,
+    onResolved: (Uri) -> Unit = {},
 ): Pair<Uri, OpenedDocument> = withTimeoutOrNull(timeoutMillis) {
     val resolved = if (resolveSource != null) resolveSource(source.toString())
         ?: throw IOException("El documento ya no está disponible o requiere renovar el acceso.")
     else source.toString()
     val uri = Uri.parse(resolved)
+    // Preserve the original download action even if the internal preview fails.
+    onResolved(uri)
     uri to session.open(uri, suggestedName)
 } ?: throw IOException("La apertura del documento tardó demasiado. Comprueba la conexión y reintenta.")
 

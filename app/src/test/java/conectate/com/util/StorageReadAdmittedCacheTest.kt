@@ -10,7 +10,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.io.IOException
 
-@RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
+@RunWith(RobolectricTestRunner::class) @Config(sdk=[28], application=conectate.com.test.UnitTestApplication::class)
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class StorageReadAdmittedCacheTest {
     private val spec get()=DataSpec.Builder().setUri(UbuntuStorageUrl.baseUrl+"/storage/v1/object/public/videos/owner/test.mp4").build()
