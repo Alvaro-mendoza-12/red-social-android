@@ -8,9 +8,9 @@ import org.junit.Test
 
 class NotificationTextSupportTest {
     @Test fun momentLikeNamesThePersonAndTheMoment() {
-        assertEquals("Alvaro le dio like a tu momento", buildNotificationPlainText(Notification(
+        assertEquals("Alvaro le dio like a tu momento", buildNotificationText(Notification(
             recipientId = "receiver", actorId = "actor", type = "like_moment", actorName = "Alvaro",
-        )))
+        )).text)
     }
 
     @Test

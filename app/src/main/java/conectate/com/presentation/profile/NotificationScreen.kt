@@ -473,7 +473,7 @@ private fun notificationDateSection(createdAt: String): String {
     }
 }
 
-private fun buildNotificationText(n: Notification): androidx.compose.ui.text.AnnotatedString {
+internal fun buildNotificationText(n: Notification): androidx.compose.ui.text.AnnotatedString {
     val actor = n.actorName ?: "Usuario"
     val type = resolveNotificationType(n)
     val builder = androidx.compose.ui.text.AnnotatedString.Builder()
