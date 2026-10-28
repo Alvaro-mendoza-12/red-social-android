@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Film, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Film, Image as ImageIcon, X } from 'lucide-react'
+import { runtimeStoragePreviewUrl } from '../core/runtimeBackend'
 import { StreamingImage, StreamingVideo } from './StreamingMedia'
 import { onStorageReadInvalidated } from '../core/media/storageReadSession'
 import { DocumentPreview } from './DocumentPreview'
@@ -38,7 +39,9 @@ export function MediaViewer({
   const failed = item && failedKey === keyOf(item)
   const setIndex = (value: number) => { if (items[value]) setSelectedKey(keyOf(items[value])) }
   useEffect(() => {
-    strip.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({block:'nearest',inline:'center'})
+    // The dialog must be open before measuring its initially hidden filmstrip.
+    const frame = window.requestAnimationFrame(() => strip.current?.querySelector('[aria-current="true"]')?.scrollIntoView?.({block:'nearest',inline:'center'}))
+    return () => window.cancelAnimationFrame(frame)
   }, [index])
   useEffect(() => {
     const node = dialog.current,
@@ -123,7 +126,7 @@ export function MediaViewer({
           <ZoomableImage key={keyOf(item)} src={item.url} title={item.title || 'Imagen ampliada'} onError={() => setFailedKey(keyOf(item))} />
         )}
       </div>
-      {items.length>1?<nav ref={strip} className="media-viewer-filmstrip" aria-label="Archivos de la conversación">{items.map((entry,i)=><button type="button" key={`${entry.url}-${i}`} aria-label={`Ver archivo ${i+1}`} aria-current={i===index?'true':undefined} onClick={()=>setIndex(i)}>{entry.type==='image'?<StreamingImage src={entry.url} alt="" loading="lazy"/>:entry.type==='video'&&Math.abs(i-index)<=4?<StreamingVideo src={entry.url} muted preload="metadata" playsInline/>:<Film size={24}/>}<small>{i+1}</small></button>)}</nav>:null}
+      {items.length>1?<nav ref={strip} className="media-viewer-filmstrip" aria-label="Archivos de la conversación">{items.map((entry,i)=><button type="button" key={`${entry.url}-${i}`} aria-label={`Ver archivo ${i+1}`} aria-current={i===index?'true':undefined} onClick={()=>setIndex(i)}>{entry.type==='image'?(Math.abs(i-index)<=3?<StreamingImage src={runtimeStoragePreviewUrl(entry.url,160,65)} alt="" loading="lazy"/>:<ImageIcon size={24}/>):entry.type==='video'&&Math.abs(i-index)<=1?<StreamingVideo src={entry.url} muted preload="metadata" playsInline/>:<Film size={24}/>}<small>{i+1}</small></button>)}</nav>:null}
       {items.length > 1 ? (
         <>
           <button

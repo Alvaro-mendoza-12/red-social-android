@@ -423,7 +423,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 "like", "like_post", "like_video", "follow", "friend_request", "friend_request_accepted",
                 "comment", "comment_post", "reply_post", "comment_video", "reply_video",
                 "mention", "mention_post", "mention_video", "share", "share_post", "share_video", "admin_warning_video",
-                "challenge_invite", "voice_invite", "voice_access_request", "birthday", "new_moment"
+                "challenge_invite", "voice_invite", "voice_access_request", "birthday", "new_moment", "like_moment"
             )
 
             if (type in socialTypes) {
@@ -666,7 +666,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 "like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video" -> putExtra("video_id", targetId)
                 "voice_invite" -> putExtra("room_id", targetId)
                 "challenge_invite" -> putExtra("challenge_id", targetId)
-                "new_moment" -> putExtra("moment_id", targetId)
+                "new_moment", "like_moment" -> putExtra("moment_id", targetId)
             }
             if (type == "mention" && !videoId.isNullOrBlank()) {
                 putExtra("video_id", videoId)
@@ -700,7 +700,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             .setCategory(NotificationCompat.CATEGORY_SOCIAL)
 
         if (type == "birthday") notificationBuilder.addAction(0, "Felicítalo ahora", pendingIntent)
-        if (type == "new_moment") {
+        if (type == "new_moment" || type == "like_moment") {
             val remaining = runCatching {
                 expiresAt?.let { java.time.Instant.parse(it).toEpochMilli() - System.currentTimeMillis() }
             }.getOrNull()

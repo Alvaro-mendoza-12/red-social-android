@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MediaViewer } from '../../components/MediaViewer'
 import { invalidateStorageReadIdentity } from '../../core/media/storageReadSession'
 beforeAll(()=>{global.ResizeObserver=class { observe(){} unobserve(){} disconnect(){} } as unknown as typeof ResizeObserver})
@@ -72,4 +72,37 @@ test('prepending older history keeps the selected image and its zoom instead of 
   expect(screen.getByAltText('Actual')).toBe(image)
   expect(image.style.transform).toContain('scale(1.5)')
   expect(screen.getByRole('button', { name: 'Ver archivo 2' })).toHaveAttribute('aria-current', 'true')
+})
+
+test('opening a long gallery prioritizes the selected image instead of downloading every original', () => {
+  const items = Array.from({ length: 40 }, (_, index) => ({ url: `https://media.test/${index}.jpg`, type: 'image' as const, title: `Foto ${index}` }))
+  const { container } = render(<MediaViewer items={items} initialIndex={20} onClose={() => {}} />)
+  expect(screen.getByAltText('Foto 20')).toHaveAttribute('src', items[20].url)
+  expect(container.querySelectorAll('.media-viewer-filmstrip img')).toHaveLength(7)
+  expect(screen.getByRole('button', { name: 'Ver archivo 1' }).querySelector('img')).toBeNull()
+  expect(screen.getByText('Cargando imagen…')).toBeInTheDocument()
+  fireEvent.load(screen.getByAltText('Foto 20'))
+  expect(screen.queryByText('Cargando imagen…')).toBeNull()
+})
+
+test('a stalled image offers retry and resets its loading indicator', () => {
+  jest.useFakeTimers()
+  try {
+    render(<MediaViewer items={[{ url: 'https://media.test/slow.jpg', type: 'image', title: 'Lenta' }]} onClose={() => {}} />)
+    const first = screen.getByAltText('Lenta')
+    act(() => { jest.advanceTimersByTime(15000) })
+    fireEvent.click(screen.getByRole('button', { name: 'Reintentar imagen' }))
+    expect(screen.getByAltText('Lenta')).not.toBe(first)
+    expect(screen.getByText('Cargando imagen…')).toBeInTheDocument()
+  } finally { jest.useRealTimers() }
+})
+
+test('the selected thumbnail is centered only after the dialog is open', async () => {
+  const previous = HTMLElement.prototype.scrollIntoView
+  const opened: boolean[] = []
+  HTMLElement.prototype.scrollIntoView = function () { opened.push(Boolean(this.closest('dialog')?.open)) }
+  try {
+    render(<MediaViewer items={[{ url: 'https://media.test/first.jpg', type: 'image' }, { url: 'https://media.test/selected.jpg', type: 'image' }]} initialIndex={1} onClose={() => {}} />)
+    await waitFor(() => expect(opened).toEqual([true]))
+  } finally { HTMLElement.prototype.scrollIntoView = previous }
 })

@@ -1,0 +1,32 @@
+# 82 — Carga multimedia, emojis y candidato 169
+
+Fecha: **28/10/2026, America/Bogota**. Continúa el [cierre 168](81-continuidad-seo-chats-y-release-168-2026-10-28.md). Esta revisión incorpora los nuevos reportes posteriores a la publicación de chats sin historial. No certifica todas las funciones ni todos los dispositivos.
+
+## Cambios y causas comprobadas
+
+- **Foco del chat web.** El editor se enfoca una vez por conversación al estar disponible, en privados, grupos y comunidades. Los refrescos de fondo no vuelven a robar el foco. Se conserva responder con doble clic. Las regresiones escriben sin hacer clic adicional.
+- **Avatares web al regresar.** SafeAvatar utilizaba el transporte de streaming, separado de la caché de imágenes ya existente. Ahora las fotos protegidas usan esa caché de Blob por cuenta; una foto ya cargada reutiliza su URL decodificada desde el primer render y comparte transferencias concurrentes. Las fotos estáticas usan vistas de 160 px; GIF/WebP/APNG conservan el original animado. Se mantiene la carga visible y el descarte inmediato al cambiar de identidad. Los avatares de video conservan su reproductor.
+- **Imágenes de tamaño desconocido.** El worker excluía imágenes pequeñas sin Content-Length. Ahora su lector acotado puede conservarlas en RAM hasta 2 MiB por respuesta; se mantienen los límites totales y el aislamiento de sesión. Los documentos, videos y respuestas Range quedan fuera de esa caché.
+- **Visor web.** La tira de miniaturas descargaba los originales de toda la galería, compitiendo con el archivo seleccionado. Ahora solicita miniaturas de 160 px próximas a la selección; una galería de 40 fotos monta como máximo siete miniaturas. El original seleccionado conserva su resolución y zoom. Una vista ya disponible en la caché del chat se reutiliza como imagen o vista previa. El visor muestra carga, ofrece reintento tras 15 segundos y centra la miniatura una vez abierto el diálogo.
+- **Emojis Android superpuestos.** LinkText aumentaba el tamaño del span sin ajustar el interlineado del párrafo. La prueba nativa reprodujo 84 px de avance para símbolos de 89,25 px. El estilo del párrafo ahora conserva el espaciado normal mínimo y crece con el tamaño del texto. Pasaron diez pruebas nativas de diseño de emojis, borradores, escritura y portapapeles tras corregirlo.
+- **Compartir un archivo a un destino.** El diálogo esperaba a que terminara la red pese a que el repositorio ya había guardado el mensaje en Room. Se reutiliza su callback de aceptación duradera para consumir el share y abrir el chat privado, grupo o comunidad; allí continúa el estado de envío existente. No se borra el original antes de copiarlo a la cola. La generación de la acción impide que una transferencia anterior cierre un diálogo nuevo. Los lotes conservan su progreso existente. La entrega completa sigue dependiendo del tamaño y la red.
+- **Documento atascado.** La resolución previa al lector no tenía plazo global. La apertura completa tiene un plazo de 45 segundos y una opción de reintentar; una cancelación del usuario se conserva como cancelación. El lector PDF sigue abriendo copias seekable y renderizando páginas bajo demanda; se conserva el límite interno de 32 MiB. No se afirma que se midió el libro exacto reportado.
+- **Like de momento.** La ruta guardaba la reacción sin crear un aviso. Ahora una inserción nueva genera like_moment para el propietario, sin avisos por likes propios ni reintentos del mismo POST. Se reutilizan las comprobaciones de audiencia/expiración y el notificador existente. El fallo del aviso no revierte una reacción guardada. Web, FCM y navegación Android reconocen el evento y abren el momento correspondiente.
+
+## Evidencia y publicación
+
+La tanda intermedia aprobó **802 pruebas web / 146 suites**, **96 Node**, build/puerta SEO y lint con **0 errores / 7 advertencias**. Después se añadieron las comprobaciones de navegación de momento y centrado inicial del visor; la tanda final se está repitiendo.
+
+El backend completo aprobó **931 pruebas, cero fallos y 11 omisiones declaradas por sus suites**, de 942 casos. Las pruebas locales de push no envían FCM real: su entorno no tiene el secreto Firebase de producción.
+
+Las fuentes Android de emojis, apertura acotada y compartir pasaron **1.913 pruebas unitarias / 405 suites** antes de incorporar el nuevo tipo de notificación. La versión de esta revisión es **9.1.29 / código 169**; su compilación final y sus pruebas nativas deben registrarse antes de entregar el nuevo paquete. El paquete 168 del documento anterior no contiene esta tanda posterior.
+
+La revisión visual local usa los componentes y CSS reales a 390 px, con capturas sintéticas ya autorizadas; no envía mensajes ni modifica cuentas. El visor mantiene ancho de documento igual al viewport y siete miniaturas cargadas.
+
+Una sonda pública acotada obtuvo /health y /ready con HTTP 200 y el handshake real /socket.io/ con HTTP 200. Son observaciones puntuales; no prueban audio entre redes, todos los LIVE ni latencia sostenida. El cliente LIVE utiliza el namespace /live sobre /socket.io/, por lo que una sonda de la ruta alternativa /live/socket.io/ no sustituye a una prueba del flujo real.
+
+La corrección anterior de chat vacío y el SEO están publicados. **Esta nueva tanda web/servidor está pendiente de autorización de producción** según la instrucción del propietario. Se preparan los cambios y pruebas antes de pedirla. No se publica el AAB en Play Store automáticamente.
+
+Siguen sin acreditarse 60 FPS físicos en todos los modelos, audio bidireccional/LIVE entre redes, entrega push real en dispositivos del destinatario y el informe previo al lanzamiento de Play Console. La auditoría distingue corrección de código, validación local y verificación real de producción.
+
+Evidencias locales: artifacts/production-continuity-20261028/, fuera de Git.

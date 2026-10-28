@@ -16,6 +16,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Request
@@ -36,6 +37,20 @@ internal sealed interface DocumentBody {
 }
 
 internal data class OpenedDocument(val name: String, val mimeType: String, val file: File?, val size: Long, val body: DocumentBody)
+
+internal suspend fun openDocumentPreview(
+    session: DocumentReadSession,
+    source: Uri,
+    suggestedName: String?,
+    resolveSource: (suspend (String) -> String?)?,
+    timeoutMillis: Long = 45_000,
+): Pair<Uri, OpenedDocument> = withTimeoutOrNull(timeoutMillis) {
+    val resolved = if (resolveSource != null) resolveSource(source.toString())
+        ?: throw IOException("El documento ya no está disponible o requiere renovar el acceso.")
+    else source.toString()
+    val uri = Uri.parse(resolved)
+    uri to session.open(uri, suggestedName)
+} ?: throw IOException("La apertura del documento tardó demasiado. Comprueba la conexión y reintenta.")
 
 /** Each dialog owns one immutable local snapshot, including sources supplied by a non-seekable provider. */
 internal class DocumentReadSession(private val context: Context) : AutoCloseable {

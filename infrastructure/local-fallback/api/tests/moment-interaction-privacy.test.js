@@ -87,3 +87,51 @@ test('a public moment view is recorded without creating an activity notification
   assert.match(pool.writes[0], /INSERT INTO fallback_moment_views/)
   assert.equal(notices, 0)
 })
+
+test('a new moment like notifies its owner once and a retried POST stays idempotent', async () => {
+  const handlers = new Map(), notices = []
+  const app = Object.fromEntries(['get', 'post', 'put', 'patch', 'delete'].map(verb => [verb, (path, ...stack) => handlers.set(`${verb} ${path}`, stack.at(-1))]))
+  const pool = fixture({ id, user_id: 'owner', visibility: 'public', expires_at: future })
+  const query = pool.query
+  let inserted = false
+  pool.query = async (sql, parameters) => {
+    if (sql.includes('INSERT INTO fallback_moment_reactions')) {
+      assert.match(sql, /DO NOTHING RETURNING moment_id/)
+      const rows = inserted ? [] : [{ moment_id: id }]
+      inserted = true
+      return { rows }
+    }
+    return query(sql, parameters)
+  }
+  registerMomentsRoutes(app, { pool, authRequired: () => {}, getCurrentUser: async () => ({ id: 'viewer', display_name: 'Persona' }),
+    userIdentity: () => identity, createLocalNotification: async (_pool, input) => { notices.push(input) },
+  })
+  const handler = handlers.get('post /v1/data/moments/:momentId/reaction')
+  const results = []
+  const res = { json: value => { results.push(value); return res } }
+  for (let attempt = 0; attempt < 2; attempt++) await handler({ params: { momentId: id } }, res, error => { throw error })
+  assert.deepEqual(results, [{ ok: true, liked: true }, { ok: true, liked: true }])
+  assert.equal(notices.length, 1)
+  assert.equal(notices[0].type, 'like_moment')
+  assert.equal(notices[0].recipientId, 'owner')
+  assert.equal(notices[0].actorName, 'Persona')
+  assert.equal(notices[0].targetId, id)
+  assert.equal(notices[0].extraData.expires_at, future)
+})
+
+test('a self-like does not notify and notification failure does not undo a persisted like', async () => {
+  for (const owner of ['viewer', 'owner']) {
+    const handlers = new Map()
+    const app = Object.fromEntries(['get', 'post', 'put', 'patch', 'delete'].map(verb => [verb, (path, ...stack) => handlers.set(`${verb} ${path}`, stack.at(-1))]))
+    const pool = fixture({ id, user_id: owner, visibility: 'public', expires_at: future })
+    const query = pool.query
+    pool.query = async (sql, parameters) => sql.includes('INSERT INTO fallback_moment_reactions') ? { rows: [{ moment_id: id }] } : query(sql, parameters)
+    let notices = 0, result
+    registerMomentsRoutes(app, { pool, authRequired: () => {}, getCurrentUser: async () => ({ id: 'viewer' }), userIdentity: () => identity,
+      createLocalNotification: async () => { notices++; throw Object.assign(new Error('Delivery unavailable'), { code: 'TEST_DELIVERY_UNAVAILABLE' }) },
+    })
+    await handlers.get('post /v1/data/moments/:momentId/reaction')({ params: { momentId: id } }, { json: value => { result = value } }, error => { throw error })
+    assert.deepEqual(result, { ok: true, liked: true })
+    assert.equal(notices, owner === 'viewer' ? 0 : 1)
+  }
+})

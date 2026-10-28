@@ -72,6 +72,7 @@ import {
 } from '../../core/supabase'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { useConversationRecovery } from './useConversationRecovery'
+import { useChatEntryFocus } from './useChatEntryFocus'
 import {
   formatDateTime,
   friendlyError,
@@ -535,6 +536,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
+  useChatEntryFocus(composerInputRef, user?.id ? `${user.id}/chat/${cleanChatId}` : '', !loading || Boolean(otherParticipant))
   useEffect(() => { otherParticipantRef.current = otherParticipant }, [otherParticipant])
   useEffect(() => {
     loadSequenceRef.current += 1

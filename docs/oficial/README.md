@@ -5,7 +5,7 @@ Fecha base: 2026-08-24
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Revisión actual: [81 — SEO publicado, imágenes, chats y candidato 168](81-continuidad-seo-chats-y-release-168-2026-10-28.md). La web SEO está publicada; el candidato móvil es **9.1.28 / 168**, con validación en curso. La [auditoría 75](75-cierre-movil-167-2026-10-25.md) conserva la evidencia histórica del APK 167.
+Revisión actual: [82 — Multimedia, emojis y candidato 169](82-carga-multimedia-emojis-y-candidato-169-2026-10-28.md). La [revisión 81](81-continuidad-seo-chats-y-release-168-2026-10-28.md) registra SEO/chats publicados y el paquete 168 firmado y probado. La nueva tanda **9.1.29 / 169** está en validación y requiere autorización para publicar sus cambios web/servidor. La [auditoría 75](75-cierre-movil-167-2026-10-25.md) conserva la evidencia histórica del APK 167.
 
 Servidor: [76 — Limpieza, actualización y verificación](76-auditoria-servidor-2026-10-26.md). Continuidad del proyecto en producción: [77 — Prompt de auditoría y escalado](77-prompt-continuidad-produccion-y-escalado.md).
 

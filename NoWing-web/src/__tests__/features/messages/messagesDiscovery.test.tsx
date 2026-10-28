@@ -35,7 +35,6 @@ test('a discovered person without inbox history opens immediately and survives i
   await waitFor(() => expect(loadFallbackMessagesInbox).toHaveBeenCalledTimes(2))
   expect(screen.getByTestId('opened-chat')).toBeVisible()
   expect(getOrCreateDirectChat).toHaveBeenCalledWith('viewer', 'peer')
-  expect(screen.getByLabelText('Escribir mensaje')).not.toHaveFocus()
   expect(document.querySelectorAll('.messages-list-pane .conversation-row:not(.discover-row)')).toHaveLength(0)
 })
 

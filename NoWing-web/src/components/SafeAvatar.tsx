@@ -1,6 +1,60 @@
 import { StreamingImage, StreamingVideo } from '../components/StreamingMedia'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ImgHTMLAttributes } from 'react'
 import { isVideoAvatarSource } from '../core/profileMediaFields'
+import { rewriteRuntimeStorageUrl, runtimeStoragePreviewUrl } from '../core/runtimeBackend'
+import { cachedStorageImagePreview, readCachedStorageImage } from '../core/media/imagePreviewCache'
+import { STORAGE_PREVIEW_MAX_BYTES } from '../core/media/boundedStorageRead'
+import { prepareStorageReadAccessToken, trustedStorageBackend } from '../core/media/storageReadClient'
+import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../core/media/storageReadSession'
+
+/** Reuse the existing account-scoped Blob cache, including its decoded browser resource. */
+function CachedAvatarImage({ src, mediaType, ...props }: ImgHTMLAttributes<HTMLImageElement> & { src: string; mediaType: string }) {
+  const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  const source = /\.(gif|webp|apng)(?:[?#]|$)/i.test(src) || /gif|webp|apng/i.test(mediaType)
+    ? rewriteRuntimeStorageUrl(src) : runtimeStoragePreviewUrl(src, 160, 75)
+  const backendBase = trustedStorageBackend(source)
+  const cache = backendBase && identity.accountId ? cachedStorageImagePreview(source, identity, STORAGE_PREVIEW_MAX_BYTES) : undefined
+  const [ready, setReady] = useState<typeof cache>()
+  const image = useRef<HTMLImageElement>(null)
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
+  const key = `${identity.generation}/${source}`
+  const [streamingKey, setStreamingKey] = useState('')
+  const delivered = cache || (ready?.source === source && ready.identity === identity ? ready : undefined)
+  const hasCached = Boolean(cache)
+  useEffect(() => {
+    if (visible || !image.current) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect() }
+    }, { rootMargin: '128px' })
+    observer.observe(image.current)
+    return () => observer.disconnect()
+  }, [visible])
+  useEffect(() => {
+    if (!backendBase || !identity.accountId || !visible || hasCached || streamingKey === key) return
+    let active = true, retries = 0
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const load = () => {
+      void readCachedStorageImage({ url: source, backendBase, identity, maxBytes: STORAGE_PREVIEW_MAX_BYTES,
+        signal: controller.signal, getAccessToken: () => prepareStorageReadAccessToken(identity),
+      }).then(() => {
+        if (!active) return
+        const cached = cachedStorageImagePreview(source, identity, STORAGE_PREVIEW_MAX_BYTES)
+        if (cached) setReady(cached)
+        else setStreamingKey(key)
+      }).catch(error => {
+        if (!active || controller.signal.aborted) return
+        if (error instanceof Error && error.message === 'MEDIA_READ_QUEUE_FULL' && retries++ < 3) timer = setTimeout(load, 250 * retries)
+        else setStreamingKey(key)
+      })
+    }
+    load()
+    return () => { active = false; clearTimeout(timer); controller.abort() }
+  }, [backendBase, identity, visible, hasCached, streamingKey, key, source])
+  return backendBase && streamingKey !== key
+    ? <img {...props} ref={image} src={delivered?.url} decoding="async"/>
+    : <StreamingImage {...props} ref={image} src={source}/>
+}
 
 type AvatarSize = 'sm' | 'md' | 'lg'
 
@@ -84,9 +138,10 @@ export function SafeAvatar({
 
   if (canRenderMedia) {
     return (
-      <StreamingImage
+      <CachedAvatarImage
         className={combinedClassName}
         src={trimmedUrl}
+        mediaType={normalizedMediaType}
         alt={initialName}
         title={title ?? initialName}
         loading="lazy"

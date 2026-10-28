@@ -38,6 +38,7 @@ import { MentionSuggestions } from '../../components/MentionSuggestions'
 import { insertMention, type MentionCandidate } from '../../core/mentionSuggestions'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { useConversationRecovery } from './useConversationRecovery'
+import { useChatEntryFocus } from './useChatEntryFocus'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
@@ -343,6 +344,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const viewOncePending = useRef(false)
   const [receiptsByMessage, setReceiptsByMessage] = useState<Record<string, MessageReceipt[]>>({})
   const [loading, setLoading] = useState(true)
+  useChatEntryFocus(composerInputRef, user?.id ? `${user.id}/${scope}/${cleanRoomId}` : '', !loading && isMember && canPublish)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [showStickers, setShowStickers] = useState(false)

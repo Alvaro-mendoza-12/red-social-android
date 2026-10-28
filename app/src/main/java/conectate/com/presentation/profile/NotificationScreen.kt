@@ -406,7 +406,7 @@ private fun NotificationTargetFallback(
 }
 
 private fun notificationEventStyle(type: String): Pair<ImageVector, Color> = when (type) {
-    "like", "like_post", "like_video" -> Icons.Default.Favorite to Color(0xFFF44336)
+    "like", "like_post", "like_video", "like_moment" -> Icons.Default.Favorite to Color(0xFFF44336)
     "comment", "comment_post", "comment_video", "reply_post", "reply_video" ->
         Icons.Default.ChatBubble to Color(0xFF1687F8)
     "mention", "mention_post", "mention_video", "mention_video_description" ->
@@ -523,6 +523,7 @@ private fun buildNotificationText(n: Notification): androidx.compose.ui.text.Ann
         "call_missed" -> " tiene una llamada perdida contigo"
         "view_moment" -> " vio tu estado"
         "new_moment" -> " subió un nuevo estado"
+        "like_moment" -> " le dio like a tu momento"
         "challenge_invite" -> {
             val title = extractNotificationExtra(n, "challenge_title")
             if (title.isNullOrBlank()) " te invitó a participar en un reto"
@@ -661,7 +662,7 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
             val destination = communityId ?: n.targetId
             if (!destination.isNullOrBlank()) navController.navigate(Screen.CommunityChat.createRoute(destination))
         }
-        "view_moment", "new_moment" -> {
+        "view_moment", "new_moment", "like_moment" -> {
             n.targetId?.let { navController.navigate(Screen.MomentViewer.createRoute(it)) }
         }
         "live_started", "new_live" -> {

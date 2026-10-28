@@ -2,7 +2,7 @@
 
 ## Continuidad del 28/10/2026
 
-La [revisión 81](81-continuidad-seo-chats-y-release-168-2026-10-28.md) registra SEO e imágenes publicados (90/90 controles HTTP), IndexNow aceptado y las correcciones locales de chat sin historial, restauración de archivos compartidos y conexión del lector PDF. El candidato Android es 9.1.28 / 168, con validación en curso. Los apartados siguientes conservan su alcance histórico.
+La [revisión 81](81-continuidad-seo-chats-y-release-168-2026-10-28.md) registra SEO, imágenes y chat sin historial publicados (90/90 controles HTTP), IndexNow aceptado y el paquete Android 168 firmado y probado. La [revisión 82](82-carga-multimedia-emojis-y-candidato-169-2026-10-28.md) continúa con foco del editor, avatares/visor, emojis, compartir, plazos de documentos y avisos de likes de momentos; su candidato 9.1.29 / 169 está en validación. Esta tanda web/servidor aún requiere autorización de producción. Los apartados siguientes conservan su alcance histórico.
 
 ## Actualización del 27/10/2026
 

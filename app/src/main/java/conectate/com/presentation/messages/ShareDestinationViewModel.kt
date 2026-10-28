@@ -51,6 +51,7 @@ class ShareDestinationViewModel @Inject constructor(
 
     private val _actionState = MutableStateFlow<ShareActionState>(ShareActionState.Idle)
     val actionState: StateFlow<ShareActionState> = _actionState
+    private var incomingSendGeneration = 0L
 
     val destinations: StateFlow<List<ShareDestination>> = combine(
         messageRepository.getUserChatsFlow(),
@@ -113,6 +114,7 @@ class ShareDestinationViewModel @Inject constructor(
     }
 
     fun resetActionState() {
+        incomingSendGeneration++
         peopleSearch?.cancel()
         completedVideoDestinations.clear()
         videoPeople.value = emptyList()
@@ -179,7 +181,8 @@ class ShareDestinationViewModel @Inject constructor(
     fun sendIncomingShare(
         payload: IncomingSharePayload,
         destinationKeys: Set<String>,
-        caption: String? = null
+        caption: String? = null,
+        onDestinationQueued: (ShareDestination) -> Unit = {},
     ) {
         if (_actionState.value is ShareActionState.Running) return
         val selected = destinations.value.filter { destinationKeys.contains(it.key) }
@@ -202,41 +205,66 @@ class ShareDestinationViewModel @Inject constructor(
             return
         }
 
+        val actor = authRepository.getCurrentUserId() ?: run {
+            _actionState.value = ShareActionState.Failed("Inicia sesión para compartir.")
+            return
+        }
+        val generation = ++incomingSendGeneration
         viewModelScope.launch {
+            fun report(state: ShareActionState) {
+                if (generation == incomingSendGeneration) _actionState.value = state
+            }
             val operationsPerTarget = payload.items.size.coerceAtLeast(1)
             val total = operationsPerTarget * selected.size
             var completed = 0
             var successes = 0
             val errors = mutableListOf<String>()
-            _actionState.value = ShareActionState.Running(0, total)
+            report(ShareActionState.Running(0, total))
 
             selected.forEach { destination ->
+                if (actor != authRepository.getCurrentUserId()) {
+                    report(ShareActionState.Failed("La cuenta cambió. Abre Compartir de nuevo."))
+                    return@launch
+                }
                 if (payload.items.isEmpty()) {
                     sendText(destination, effectiveText.orEmpty()).fold(
                         onSuccess = { successes += 1 },
                         onFailure = { errors += it.message ?: "No se pudo enviar" }
                     )
                     completed += 1
-                    _actionState.value = ShareActionState.Running(completed, total)
+                    report(ShareActionState.Running(completed, total))
                 } else {
                     payload.items.forEachIndexed { index, item ->
+                        if (actor != authRepository.getCurrentUserId()) {
+                            report(ShareActionState.Failed("La cuenta cambió. Abre Compartir de nuevo."))
+                            return@launch
+                        }
                         val content = if (index == 0 && !effectiveText.isNullOrBlank()) {
                             effectiveText
                         } else {
                             defaultSharedItemContent(item)
                         }
-                        sendMedia(destination, item, content).fold(
+                        sendMedia(destination, item, content, onQueued = {
+                            // The original share can be consumed only after the repository
+                            // has copied it and durably queued its optimistic message.
+                            if (total == 1) {
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                                    if (generation == incomingSendGeneration && actor == authRepository.getCurrentUserId())
+                                        onDestinationQueued(destination)
+                                }
+                            }
+                        }).fold(
                             onSuccess = { successes += 1 },
                             onFailure = { errors += it.message ?: "No se pudo enviar" }
                         )
                         completed += 1
-                        _actionState.value = ShareActionState.Running(completed, total)
+                        report(ShareActionState.Running(completed, total))
                         if (index < payload.items.lastIndex) delay(MEDIA_BATCH_INTERVAL_MS)
                     }
                 }
             }
 
-            _actionState.value = when {
+            report(when {
                 successes == 0 -> ShareActionState.Failed(errors.firstOrNull() ?: "No se pudo compartir")
                 errors.isNotEmpty() -> ShareActionState.Completed(
                     message = "Se enviaron $successes de $total elementos",
@@ -246,7 +274,7 @@ class ShareDestinationViewModel @Inject constructor(
                     message = "Compartido en ${selected.size} destino(s)",
                     hadFailures = false
                 )
-            }
+            })
         }
     }
 
@@ -343,7 +371,8 @@ class ShareDestinationViewModel @Inject constructor(
     private suspend fun sendMedia(
         destination: ShareDestination,
         item: IncomingSharedItem,
-        content: String
+        content: String,
+        onQueued: suspend () -> Unit = {},
     ): Result<Unit> {
         return when (destination.type) {
             ShareDestinationType.CHAT -> messageRepository.sendMessage(
@@ -351,19 +380,22 @@ class ShareDestinationViewModel @Inject constructor(
                 content = content,
                 mediaUri = item.uri,
                 mediaType = item.messageContentType,
-                allowRapidMediaBatch = true
+                allowRapidMediaBatch = true,
+                onQueued = onQueued,
             ).map { Unit }
             ShareDestinationType.GROUP -> groupRepository.sendGroupMediaMessage(
                 groupId = destination.id,
                 sourceUri = item.uri,
                 contentType = item.messageContentType,
-                content = content
+                content = content,
+                onQueued = onQueued,
             )
             ShareDestinationType.COMMUNITY -> communityRepository.sendCommunityMediaMessage(
                 communityId = destination.id,
                 sourceUri = item.uri,
                 contentType = item.messageContentType,
-                content = content
+                content = content,
+                onQueued = onQueued,
             )
         }
     }

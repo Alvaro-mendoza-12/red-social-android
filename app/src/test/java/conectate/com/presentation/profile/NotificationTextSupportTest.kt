@@ -7,6 +7,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class NotificationTextSupportTest {
+    @Test fun momentLikeNamesThePersonAndTheMoment() {
+        assertEquals("Alvaro le dio like a tu momento", buildNotificationPlainText(Notification(
+            recipientId = "receiver", actorId = "actor", type = "like_moment", actorName = "Alvaro",
+        )))
+    }
 
     @Test
     fun callInvite_usesHumanFriendlyText() {

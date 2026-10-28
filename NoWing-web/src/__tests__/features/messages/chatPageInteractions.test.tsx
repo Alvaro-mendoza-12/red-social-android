@@ -63,6 +63,16 @@ function open(scope: 'chat' | 'group' | 'community' = 'chat', state?: unknown) {
   return render(<MemoryRouter initialEntries={[{ pathname: '/app/messages/room-a', state }]}><Routes><Route path="/app/messages/:chatId" element={scope === 'chat' ? <ChatDetailPage/> : <RoomChatPage scope={scope} roomId="room-a"/>}/></Routes></MemoryRouter>)
 }
 
+test.each(['chat', 'group', 'community'] as const)('%s accepts typing immediately after opening without another click', async scope => {
+  const user = userEvent.setup()
+  open(scope)
+  await screen.findByText('Mensaje recibido')
+  const input = screen.getByPlaceholderText(scope === 'chat' ? 'Escribe un mensaje...' : `Escribe en ${scope === 'group' ? 'grupo' : 'comunidad'}...`)
+  await waitFor(() => expect(input).toHaveFocus())
+  await user.keyboard('Hola 😀')
+  expect(input).toHaveValue('Hola 😀')
+})
+
 test.each(['chat', 'group', 'community'] as const)('%s contact cards keep their time even when the contact has a JPG URL', async scope => {
   const contact = { ...incoming, id: 'contact-message', content: JSON.stringify({ name: 'Contacto de prueba', phone: '+51999999999' }), content_type: 'contact', media_url: 'https://example.test/contact.jpg' }
   ;(loadFallbackChat as jest.Mock).mockResolvedValue({ ...response, messages: [contact] })
