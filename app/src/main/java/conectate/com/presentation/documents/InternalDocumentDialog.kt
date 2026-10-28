@@ -97,8 +97,8 @@ fun InternalDocumentDialog(
         error = null
         try {
             val sourceName = suggestedName?.takeIf { it.contains('.') } ?: source.lastPathSegment
-            val (resolved, opened) = openDocumentPreview(session, source, sourceName, resolveSource)
-            resolvedSource = resolved
+            val (_, opened) = openDocumentPreview(session, source, sourceName, resolveSource,
+                onResolved = { resolvedSource = it })
             document = opened
             draft = (opened.body as? DocumentBody.Text)?.value.orEmpty()
             wordEdits = ((opened.body as? DocumentBody.Office)?.value?.wordParagraphs ?: emptyList())

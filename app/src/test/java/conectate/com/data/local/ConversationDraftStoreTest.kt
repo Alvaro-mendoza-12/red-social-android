@@ -10,7 +10,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE, sdk = [34])
+@Config(manifest = Config.NONE, sdk = [34], application = conectate.com.test.UnitTestApplication::class)
 class ConversationDraftStoreTest {
     private lateinit var context: Context
     @Before fun setup() {

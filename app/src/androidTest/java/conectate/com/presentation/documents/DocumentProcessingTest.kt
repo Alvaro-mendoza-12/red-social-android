@@ -14,6 +14,22 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 @MediumTest
 class DocumentProcessingTest {
+    @Test fun aFailedPreviewRetainsTheResolvedOriginalForDownload() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val missing = File(context.cacheDir, "missing-document-${java.util.UUID.randomUUID()}.pdf")
+        val original = Uri.fromFile(missing)
+        var resolved: Uri? = null
+        DocumentReadSession(context).use { session ->
+            try {
+                openDocumentPreview(session, original, missing.name, null,
+                    onResolved = { resolved = it })
+                fail("A missing original must fail to preview")
+            } catch (expected: java.io.IOException) {
+                assertEquals(original, resolved)
+            }
+        }
+    }
+
     @Test fun anUnresponsiveResolverTimesOutAndTheSameSessionCanRetry() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val original = File.createTempFile("document-retry-", ".txt", context.cacheDir).apply { writeText("Documento recuperado") }
