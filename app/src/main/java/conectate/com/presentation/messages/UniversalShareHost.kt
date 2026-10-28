@@ -55,7 +55,8 @@ import conectate.com.util.IncomingSharePayload
 fun UniversalShareHost(
     incomingShare: IncomingSharePayload?,
     forwardCoordinator: UniversalForwardCoordinator,
-    onIncomingShareConsumed: () -> Unit
+    onIncomingShareConsumed: () -> Unit,
+    onOpenConversation: (ShareDestination) -> Unit = {},
 ) {
     val forwardRequest = forwardCoordinator.request
     val videoRequest = forwardCoordinator.videoRequest
@@ -251,7 +252,10 @@ fun UniversalShareHost(
                         } else if (forwardRequest != null) {
                             viewModel.forwardMessages(forwardRequest.candidates, selectedKeys)
                         } else if (incomingShare != null) {
-                            viewModel.sendIncomingShare(incomingShare, selectedKeys, caption)
+                            viewModel.sendIncomingShare(incomingShare, selectedKeys, caption) { destination ->
+                                close()
+                                onOpenConversation(destination)
+                            }
                         }
                     },
                     enabled = selectedKeys.isNotEmpty() && !isRunning,

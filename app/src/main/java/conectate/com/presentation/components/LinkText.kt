@@ -19,6 +19,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
 import conectate.com.data.model.videoIdFromSharedLink
 import conectate.com.presentation.theme.readableLinkColors
 
@@ -151,10 +152,20 @@ fun LinkText(
         }
     }
 
+    val bodyStyle = MaterialTheme.typography.bodyLarge
+    // Span font sizes do not enlarge an explicit paragraph line height. Keep
+    // the normal text spacing, and grow it with enlarged emoji/accessibility text.
+    val paragraphStyle = if (fontSize.isSp) bodyStyle.copy(
+        fontSize = fontSize,
+        lineHeight = maxOf(
+            if (bodyStyle.lineHeight.isSp) bodyStyle.lineHeight.value else 0f,
+            fontSize.value * 1.3f,
+        ).sp,
+    ) else bodyStyle
     Text(
         text = annotatedString,
         modifier = modifier,
-        style = MaterialTheme.typography.bodyLarge.copy(color = if (color == Color.Unspecified) MaterialTheme.colorScheme.onSurface else color),
+        style = paragraphStyle.copy(color = if (color == Color.Unspecified) MaterialTheme.colorScheme.onSurface else color),
         maxLines = maxLines,
         overflow = overflow,
         onTextLayout = onTextLayout

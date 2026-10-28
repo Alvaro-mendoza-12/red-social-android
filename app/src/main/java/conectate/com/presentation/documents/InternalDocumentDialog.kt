@@ -63,6 +63,7 @@ fun InternalDocumentDialog(
     val scope = rememberCoroutineScope()
     var document by remember(source) { mutableStateOf<OpenedDocument?>(null) }
     var error by remember(source) { mutableStateOf<String?>(null) }
+    var openAttempt by remember(source) { mutableIntStateOf(0) }
     var busy by remember(source) { mutableStateOf(false) }
     var draft by remember(source) { mutableStateOf("") }
     var editing by remember(source) { mutableStateOf(false) }
@@ -92,14 +93,12 @@ fun InternalDocumentDialog(
     fun requestClose() { if (changed) confirmDiscard = true else onDismiss() }
 
     DisposableEffect(session) { onDispose { session.close() } }
-    LaunchedEffect(source, session) {
+    LaunchedEffect(source, session, openAttempt) {
+        error = null
         try {
-            val resolved = if (resolveSource != null) {
-                resolveSource(source.toString()) ?: error("El documento ya no está disponible o requiere renovar el acceso.")
-            } else source.toString()
-            resolvedSource = Uri.parse(resolved)
             val sourceName = suggestedName?.takeIf { it.contains('.') } ?: source.lastPathSegment
-            val opened = session.open(Uri.parse(resolved), sourceName)
+            val (resolved, opened) = openDocumentPreview(session, source, sourceName, resolveSource)
+            resolvedSource = resolved
             document = opened
             draft = (opened.body as? DocumentBody.Text)?.value.orEmpty()
             wordEdits = ((opened.body as? DocumentBody.Office)?.value?.wordParagraphs ?: emptyList())
@@ -203,8 +202,15 @@ fun InternalDocumentDialog(
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
                 val opened = document
                 if (opened == null && error == null) {
-                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                } else if (opened != null) {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CircularProgressIndicator()
+                            Text("Abriendo documento…")
+                        }
+                    }
+                } else if (opened == null) {
+                    Button(onClick = { openAttempt++ }, modifier = Modifier.padding(16.dp)) { Text("Reintentar apertura") }
+                } else {
                     Text("${opened.size / 1_024} KB · ${when (opened.body) {
                         is DocumentBody.Pdf -> "PDF · lectura"
                         is DocumentBody.Text -> if (editing) "Edición de texto · copia UTF-8" else "Texto"

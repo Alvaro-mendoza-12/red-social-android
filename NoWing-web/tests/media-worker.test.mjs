@@ -106,11 +106,22 @@ test('cached avatars are discarded when the client identity generation changes',
   assert.equal(f.requests.length, 2)
 })
 
-test('videos, documents, unbounded images and Range requests never enter the image cache', async () => {
+test('small streamed images without Content-Length are also reused on reentry', async () => {
+  const f = fixture(async () => new Response('streamed-avatar', { headers: { 'Content-Type': 'image/webp' } }))
+  f.register(); await f.read('a', null); await f.settle(); await f.read('a', null)
+  assert.equal(f.requests.length, 1)
+})
+
+test('unknown-length images exceeding the byte cap are never retained', async () => {
+  const f = fixture(async () => new Response(new Uint8Array(2097153), { headers: { 'Content-Type': 'image/webp' } }))
+  f.register(); await (await f.read('a', null)).arrayBuffer(); await f.settle(); await f.read('a', null)
+  assert.equal(f.requests.length, 2)
+})
+
+test('videos, documents, oversized images and Range requests never enter the image cache', async () => {
   for (const headers of [
     { 'Content-Type': 'video/mp4', 'Content-Length': '2' },
     { 'Content-Type': 'text/html', 'Content-Length': '2' },
-    { 'Content-Type': 'image/png' },
     { 'Content-Type': 'image/png', 'Content-Length': '2097153' },
   ]) {
     const f = fixture(async () => new Response('ab', { headers }))

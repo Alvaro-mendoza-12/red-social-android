@@ -132,7 +132,9 @@ async function stream(event, id) {
     const length = output.get('Content-Length')
     if (!range && !record.downloadName && response.status === 200 &&
         /^image\/(png|apng|jpeg|webp|gif|avif|bmp)(?:;|$)/i.test(output.get('Content-Type') || '') &&
-        /^\d+$/.test(length || '') && Number(length) <= imageEntryLimit) {
+        (!length || (/^\d+$/.test(length) && Number(length) <= imageEntryLimit))) {
+      // Streaming/proxied images may omit Content-Length. rememberImage enforces
+      // the byte limit while reading and never retains an oversized response.
       const remembering = rememberImage(result.clone(), key, record, auth)
       event.waitUntil?.(remembering)
     }

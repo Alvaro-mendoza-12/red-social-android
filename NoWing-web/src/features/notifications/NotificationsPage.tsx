@@ -134,6 +134,8 @@ function typeLabel(type: string): string {
       return 'Compartieron tu publicación'
     case 'like_video':
       return 'Like en video'
+    case 'like_moment':
+      return 'Like en momento'
     case 'comment_video':
       return 'Comentario en video'
     case 'message':
@@ -187,6 +189,7 @@ function resolveNotificationAction(item: NotificationItem): NotificationAction |
   const videoTargetId = item.videoId || (targetType === 'video' ? item.targetId : '')
 
   if (targetType === 'live' && item.targetId) return { label: 'Ver directo', path: `/app/live/${encodeURIComponent(item.targetId)}` }
+  if (targetType === 'moment' && item.targetId) return { label: 'Ver momento', path: `/app/moments/view/${encodeURIComponent(item.targetId)}` }
   if (postTargetId) return { label: 'Ver publicación', path: `/app/feed/post/${postTargetId}` }
   if (videoTargetId) return { label: 'Abrir video', path: `/app/reels/${videoTargetId}` }
 

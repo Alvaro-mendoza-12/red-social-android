@@ -1,6 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Minus, Plus, RotateCcw } from 'lucide-react'
 import { StreamingImage } from './StreamingMedia'
+import { rewriteRuntimeStorageUrl, runtimeStoragePreviewUrl } from '../core/runtimeBackend'
+import { cachedStorageImagePreview } from '../core/media/imagePreviewCache'
+import { STORAGE_PREVIEW_MAX_BYTES } from '../core/media/boundedStorageRead'
+import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../core/media/storageReadSession'
 
 /** One mounted instance per image: navigation always restores fit-to-screen. */
 export function ZoomableImage({ src, title, onError }: { src: string; title: string; onError: () => void }) {
@@ -9,6 +13,20 @@ export function ZoomableImage({ src, title, onError }: { src: string; title: str
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const view = useRef({ scale: 1, x: 0, y: 0 })
   const [state, setState] = useState(view.current)
+  const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  const original = rewriteRuntimeStorageUrl(src)
+  const cachedOriginal = identity.accountId ? cachedStorageImagePreview(original, identity, STORAGE_PREVIEW_MAX_BYTES) : undefined
+  const cachedPreview = cachedOriginal || (identity.accountId ? cachedStorageImagePreview(runtimeStoragePreviewUrl(original), identity, STORAGE_PREVIEW_MAX_BYTES) : undefined)
+  const [attempt, setAttempt] = useState(0)
+  const [loadedKey, setLoadedKey] = useState('')
+  const [slowKey, setSlowKey] = useState('')
+  const requestKey = `${src}/${attempt}`
+  const loaded = loadedKey === requestKey
+  useEffect(() => {
+    if (loaded) return
+    const timer = window.setTimeout(() => setSlowKey(requestKey), 15000)
+    return () => window.clearTimeout(timer)
+  }, [requestKey, loaded])
   const update = useCallback((scale: number, x = view.current.x, y = view.current.y) => {
     const box = stage.current, img = picture.current
     scale = Math.min(5, Math.max(1, scale))
@@ -38,6 +56,10 @@ export function ZoomableImage({ src, title, onError }: { src: string; title: str
     if (event.key === '-') { event.preventDefault(); zoomAt(view.current.scale - .5) }
     if (event.key === '0') update(1, 0, 0)
   }}>
+    {!loaded ? <div className="image-zoom-loading" role="status">
+      <span>{slowKey === requestKey ? 'La imagen está tardando en cargar.' : 'Cargando imagen…'}</span>
+      {slowKey === requestKey ? <button className="mini-action-btn" type="button" onClick={() => setAttempt(value => value + 1)}>Reintentar imagen</button> : null}
+    </div> : null}
     <div className="image-zoom-controls" aria-label="Zoom de imagen">
       <button className="icon-btn" aria-label="Alejar" disabled={state.scale === 1} onClick={() => zoomAt(state.scale - .5)}><Minus /></button>
       <output aria-live="polite">{Math.round(state.scale * 100)}%</output>
@@ -58,7 +80,8 @@ export function ZoomableImage({ src, title, onError }: { src: string; title: str
         } else update(view.current.scale, view.current.x + event.clientX - before.x, view.current.y + event.clientY - before.y)
       }}
       onPointerUp={event => pointers.current.delete(event.pointerId)} onPointerCancel={event => pointers.current.delete(event.pointerId)} onLostPointerCapture={event => pointers.current.delete(event.pointerId)}>
-      <StreamingImage ref={picture} src={src} alt={title} draggable={false} onError={onError} onLoad={() => update(view.current.scale)} style={{ transform: `translate(${state.x}px, ${state.y}px) scale(${state.scale})` }} />
+      {!loaded && cachedPreview && !cachedOriginal ? <img className="image-zoom-preview" src={cachedPreview.url} alt="" aria-hidden="true" draggable={false}/> : null}
+      <StreamingImage key={requestKey} ref={picture} src={cachedOriginal?.url || src} alt={title} draggable={false} onError={onError} onLoad={() => { setLoadedKey(requestKey); update(view.current.scale) }} style={{ transform: `translate(${state.x}px, ${state.y}px) scale(${state.scale})` }} />
     </div>
   </div>
 }

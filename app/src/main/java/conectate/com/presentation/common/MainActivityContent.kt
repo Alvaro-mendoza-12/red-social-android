@@ -360,7 +360,15 @@ fun MainActivityContent(
                     UniversalShareHost(
                         incomingShare = incomingShare,
                         forwardCoordinator = universalForwardCoordinator,
-                        onIncomingShareConsumed = onIncomingShareConsumed
+                        onIncomingShareConsumed = onIncomingShareConsumed,
+                        onOpenConversation = { destination ->
+                            val route = when (destination.type) {
+                                conectate.com.presentation.messages.ShareDestinationType.CHAT -> Screen.Chat.createRoute(destination.id)
+                                conectate.com.presentation.messages.ShareDestinationType.GROUP -> Screen.GroupChat.createRoute(destination.id)
+                                conectate.com.presentation.messages.ShareDestinationType.COMMUNITY -> Screen.CommunityChat.createRoute(destination.id)
+                            }
+                            navController.navigate(route) { launchSingleTop = true }
+                        },
                     )
                 }
 

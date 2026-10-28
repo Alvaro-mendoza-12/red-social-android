@@ -1410,15 +1410,29 @@ function registerMomentsRoutes(
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
       const momentId = normalizeId(req.params.momentId)
-      if (!(await visibleMomentForInteraction(pool, identity, momentId))) {
+      const moment = await visibleMomentForInteraction(pool, identity, momentId)
+      if (!moment) {
         return res.status(404).json({ error: 'MOMENT_NOT_FOUND' })
       }
-      await pool.query(
+      const { rows: added } = await pool.query(
         `INSERT INTO fallback_moment_reactions(moment_id, user_id, reaction)
          VALUES ($1::uuid, $2, 'like')
-         ON CONFLICT (moment_id, user_id) DO UPDATE SET reaction = 'like', created_at = NOW()`,
+         ON CONFLICT (moment_id, user_id) DO NOTHING RETURNING moment_id`,
         [momentId, identity.displayUserId],
       )
+      const ownerId = normalizeId(moment.user_id)
+      if (added.length && ownerId && !identity.ids.has(ownerId) && typeof createLocalNotification === 'function') {
+        try {
+          await createLocalNotification(pool, {
+            recipientId: ownerId, actorId: identity.displayUserId,
+            actorName: user.display_name || 'Usuario', actorAvatarUrl: user.avatar_url || '',
+            type: 'like_moment', targetId: momentId, targetType: 'moment',
+            content: 'Le gustó tu momento.', extraData: momentNotificationExtraData(moment),
+          })
+        } catch (error) {
+          console.warn('[moment-like] notification failed', String(error?.code || 'DELIVERY_FAILED'))
+        }
+      }
       res.json({ ok: true, liked: true })
     } catch (error) {
       next(error)

@@ -14,6 +14,24 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 @MediumTest
 class DocumentProcessingTest {
+    @Test fun anUnresponsiveResolverTimesOutAndTheSameSessionCanRetry() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val original = File.createTempFile("document-retry-", ".txt", context.cacheDir).apply { writeText("Documento recuperado") }
+        try {
+            DocumentReadSession(context).use { session ->
+                try {
+                    openDocumentPreview(session, Uri.fromFile(original), original.name, { kotlinx.coroutines.delay(5000); it }, timeoutMillis = 50)
+                    fail("A stalled resolver must not leave an endless loading screen")
+                } catch (expected: java.io.IOException) {
+                    assertTrue(expected.message.orEmpty().contains("tardó demasiado"))
+                }
+                val (_, opened) = openDocumentPreview(session, Uri.fromFile(original), original.name, null)
+                assertEquals("Documento recuperado", (opened.body as DocumentBody.Text).value)
+                assertTrue(original.isFile)
+            }
+        } finally { original.delete() }
+    }
+
     @Test fun aThreeHundredPagePdfOpensAndRendersOnlyTheRequestedPages() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val original = File.createTempFile("document-300-pages-", ".pdf", context.cacheDir)
