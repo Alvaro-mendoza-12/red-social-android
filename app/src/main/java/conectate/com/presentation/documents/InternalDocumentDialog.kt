@@ -345,7 +345,7 @@ fun InternalDocumentDialog(
                             }
                         }
                     }
-                } else Spacer(Modifier.weight(1f))
+                }
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
                 if (onSend == null && resolvedSource != null) {
                     Button(onClick = {

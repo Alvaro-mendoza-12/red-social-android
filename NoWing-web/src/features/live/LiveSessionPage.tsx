@@ -522,6 +522,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
 
         const socket: LiveSocket = io(`${getRuntimeBackendUrl().replace(/\/$/, '')}/live`, {
           transports: ['websocket', 'polling'],
+          tryAllTransports: true,
           query: { affinity: buildSignalingAffinity('live', cleanLiveId) },
           auth: { token },
           autoConnect: false,

@@ -822,6 +822,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     const signalingUrl = readSignalingUrl()
     const socket: VoiceSocket = io(signalingUrl, {
       transports: ['websocket', 'polling'],
+      tryAllTransports: true,
       query: { affinity: buildSignalingAffinity('voice', room.id) },
       auth: { token: accessToken },
       autoConnect: false,
