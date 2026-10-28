@@ -35,6 +35,7 @@ export function MediaViewer({
   })
   const index = Math.max(0, items.findIndex(entry => keyOf(entry) === selectedKey))
   const [failedKey, setFailedKey] = useState<string|null>(null)
+  const [visibleThumbnails, setVisibleThumbnails] = useState(() => new Set<string>())
   const item = items[index]
   const failed = item && failedKey === keyOf(item)
   const setIndex = (value: number) => { if (items[value]) setSelectedKey(keyOf(items[value])) }
@@ -63,6 +64,22 @@ export function MediaViewer({
       if (previous?.isConnected) previous.focus()
     }
   }, [])
+  useEffect(() => {
+    const root = strip.current
+    if (!root || typeof IntersectionObserver === 'undefined') return
+    const observer = new IntersectionObserver(entries => {
+      setVisibleThumbnails(previous => {
+        const next = new Set(previous)
+        for (const entry of entries) {
+          const key = (entry.target as HTMLElement).dataset.mediaKey
+          if (entry.isIntersecting && key) next.add(key)
+        }
+        return next.size === previous.size ? previous : next
+      })
+    }, { root })
+    root.querySelectorAll('[data-media-key]').forEach(button => observer.observe(button))
+    return () => observer.disconnect()
+  }, [items])
   if (!item) return null
   const move = (delta: number) => setIndex(Math.max(0, Math.min(items.length - 1, index + delta)))
   return (
@@ -126,7 +143,7 @@ export function MediaViewer({
           <ZoomableImage key={keyOf(item)} src={item.url} title={item.title || 'Imagen ampliada'} onError={() => setFailedKey(keyOf(item))} />
         )}
       </div>
-      {items.length>1?<nav ref={strip} className="media-viewer-filmstrip" aria-label="Archivos de la conversación">{items.map((entry,i)=><button type="button" key={`${entry.url}-${i}`} aria-label={`Ver archivo ${i+1}`} aria-current={i===index?'true':undefined} onClick={()=>setIndex(i)}>{entry.type==='image'?(Math.abs(i-index)<=3?<StreamingImage src={runtimeStoragePreviewUrl(entry.url,160,65)} alt="" loading="lazy"/>:<ImageIcon size={24}/>):entry.type==='video'&&Math.abs(i-index)<=1?<StreamingVideo src={entry.url} muted preload="metadata" playsInline/>:<Film size={24}/>}<small>{i+1}</small></button>)}</nav>:null}
+      {items.length>1?<nav ref={strip} className="media-viewer-filmstrip" aria-label="Archivos de la conversación">{items.map((entry,i)=><button type="button" key={`${entry.url}-${i}`} data-media-key={keyOf(entry)} aria-label={`Ver archivo ${i+1}`} aria-current={i===index?'true':undefined} onClick={()=>setIndex(i)}>{entry.type==='image'?(Math.abs(i-index)<=3||visibleThumbnails.has(keyOf(entry))?<StreamingImage src={runtimeStoragePreviewUrl(entry.url,160,65)} alt="" loading="lazy"/>:<ImageIcon size={24}/>):entry.type==='video'&&Math.abs(i-index)<=1?<StreamingVideo src={entry.url} muted preload="metadata" playsInline/>:<Film size={24}/>}<small>{i+1}</small></button>)}</nav>:null}
       {items.length > 1 ? (
         <>
           <button
