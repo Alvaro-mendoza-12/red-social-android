@@ -13,6 +13,7 @@ import conectate.com.data.repository.AuthRepository
 import conectate.com.data.model.LiveRole
 import conectate.com.presentation.common.MainActivityContent
 import conectate.com.presentation.messages.isIncomingShareIntent
+import conectate.com.presentation.messages.shouldAcceptRestoredShare
 import conectate.com.presentation.messages.parseIncomingShareIntent
 import conectate.com.presentation.messages.takeIncomingSharePersistablePermissions
 import conectate.com.presentation.messages.toCapturedShareIntent
@@ -33,6 +34,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val PROCESS_INSTANCE_KEY = "novvin_process_instance"
+        private const val SHARE_CONSUMED_KEY = "novvin_incoming_share_consumed"
         private val processInstanceId = java.util.UUID.randomUUID().toString()
     }
 
@@ -91,7 +93,14 @@ class MainActivity : ComponentActivity() {
             )
         }
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        acceptIncomingIntent(intent)
+        val restoredIntent = intent
+        val replayedShare = isIncomingShareIntent(restoredIntent) && !shouldAcceptRestoredShare(
+            fromHistory = restoredIntent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0,
+            alreadyConsumed = savedInstanceState?.getBoolean(SHARE_CONSUMED_KEY, false) == true
+        )
+        acceptIncomingIntent(if (replayedShare) {
+            Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java)
+        } else restoredIntent)
 
         lifecycleScope.launch {
             moderationNoticeCenter.notices.collect { notice ->
@@ -151,6 +160,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(PROCESS_INSTANCE_KEY, processInstanceId)
+        outState.putBoolean(SHARE_CONSUMED_KEY, !isIncomingShareIntent(intent) && incomingShareState.value == null)
         super.onSaveInstanceState(outState)
     }
 

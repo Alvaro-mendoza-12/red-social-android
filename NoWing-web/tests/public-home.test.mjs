@@ -11,7 +11,7 @@ const config=JSON.parse(fs.readFileSync(path.join(root,'vercel.json'),'utf8'))
 
 test('feature illustrations have visible alternatives and discoverable public image URLs',()=>{
  const html=read('funciones.html'),page=graph(html).find(item=>item['@type']==='WebPage')
- const images=['chats','grupos','comunidades','videos','social','momentos'].map(name=>'/images/novvin-'+name+'.png')
+ const images=[...['chats','grupos','comunidades','videos','social','momentos'],...['chat-android-demo','chat-web-demo','perfil-android-demo']].map(name=>'/images/novvin-'+name+'.png')
  assert.equal(page.image.length,images.length)
  for(const src of images){
   assert.ok(html.includes('src="'+src+'"'))
@@ -20,6 +20,24 @@ test('feature illustrations have visible alternatives and discoverable public im
   assert.ok(read('sitemap.xml').includes('<image:loc>'+site+src+'</image:loc>'))
  }
  assert.match(html,/<figcaption>/)
+})
+
+test('real demonstration captures are described honestly and included on relevant canonical guides',()=>{
+ for(const [file,sources] of [
+  ['mensajes.html',['chat-android-demo','chat-web-demo']],
+  ['novvin-web.html',['chat-web-demo']],
+  ['descargar.html',['chat-android-demo','perfil-android-demo']],
+ ]){
+  const html=read(file),images=graph(html).find(item=>item['@type']==='WebPage').image
+  for(const name of sources){
+   const src='/images/novvin-'+name+'.png',image=images.find(item=>item.contentUrl===site+src)
+   assert.ok(image?.caption.includes('demostración'))
+   assert.ok(html.includes('src="'+src+'"'))
+   const bytes=fs.readFileSync(path.join(root,'dist',src))
+   assert.equal(bytes.readUInt32BE(16),image.width)
+   assert.equal(bytes.readUInt32BE(20),image.height)
+  }
+ }
 })
 
 test('spelling queries are explained visibly without keyword stuffing or false organization aliases',()=>{

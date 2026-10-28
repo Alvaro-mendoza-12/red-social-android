@@ -79,6 +79,8 @@ type ConversationItem = {
 type SelectedConversation = {
   id: string
   kind: ConversationKind
+  preview?: ConversationItem
+  accountId?: string
 }
 
 type LocalReadByChat = Record<string, string>
@@ -582,7 +584,8 @@ export function MessagesPage() {
   const inboxLoadSequence=useRef(0)
   const [openingChatId, setOpeningChatId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [discoverUsers, setDiscoverUsers] = useState<DiscoverUserItem[]>([])
+  const [discoveredUsers, setDiscoverUsers] = useState<DiscoverUserItem[]>([])
+  const [discoverResultKey, setDiscoverResultKey] = useState('')
   const [discoverLoading, setDiscoverLoading] = useState(false)
   const [discoverError, setDiscoverError] = useState<string | null>(null)
   const [localReadByChat, setLocalReadByChat] = useState<LocalReadByChat>(() =>
@@ -606,15 +609,19 @@ export function MessagesPage() {
   )
 
   const normalizedSearch = useMemo(() => searchQuery.trim().toLowerCase(), [searchQuery])
-  const knownChatProfileIds = useMemo(() => {
+  const discoveryAccountId = user?.id || ''
+  const discoveryKey = `${discoveryAccountId}:${normalizedSearch}`
+  const discoverUsers = discoverResultKey === discoveryKey ? discoveredUsers : []
+  const knownChatProfileKey = useMemo(() => {
     const next = new Set<string>()
     items.forEach((item) => {
       if (item.kind !== 'chat' || !item.profileId) return
       const id = normalizeId(item.profileId)
       if (id) next.add(id)
     })
-    return next
+    return [...next].sort().join(',')
   }, [items])
+  const knownChatProfileIds = useMemo(() => new Set(knownChatProfileKey.split(',').filter(Boolean)), [knownChatProfileKey])
 
   const projectedItems = withInboxActivity(user?.id || '', items)
   const filteredItems = useMemo(() => {
@@ -639,7 +646,7 @@ export function MessagesPage() {
   const showGlobalSearchResults = activeTab === 'chats' && normalizedSearch.length >= 2
   const showNoResultsState =
     filteredItems.length === 0 &&
-    (!showGlobalSearchResults || (!discoverLoading && discoverUsers.length === 0 && !discoverError))
+    (!showGlobalSearchResults || (discoverResultKey === discoveryKey && !discoverLoading && discoverUsers.length === 0 && !discoverError))
 
   useEffect(() => {
     if (activeTab !== 'chats') {
@@ -652,7 +659,7 @@ export function MessagesPage() {
   }, [activeTab])
 
   useEffect(() => {
-    if (!user || activeTab !== 'chats') {
+    if (!discoveryAccountId || activeTab !== 'chats') {
       setDiscoverUsers([])
       setDiscoverLoading(false)
       setDiscoverError(null)
@@ -671,11 +678,13 @@ export function MessagesPage() {
       setDiscoverLoading(true)
       setDiscoverError(null)
       try {
-        const nextUsers = await searchUsersGlobally(normalizedSearch, user.id, knownChatProfileIds)
-        if (!cancelled) setDiscoverUsers(nextUsers)
+        const nextUsers = await searchUsersGlobally(normalizedSearch, discoveryAccountId, knownChatProfileIds)
+        if (!cancelled) {
+          setDiscoverUsers(nextUsers)
+          setDiscoverResultKey(discoveryKey)
+        }
       } catch (caught) {
         if (!cancelled) {
-          setDiscoverUsers([])
           setDiscoverError(friendlyError(caught, 'No se pudo buscar usuarios'))
         }
       } finally {
@@ -687,7 +696,7 @@ export function MessagesPage() {
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [activeTab, isFallbackSession, knownChatProfileIds, normalizedSearch, user])
+  }, [activeTab, discoveryAccountId, discoveryKey, isFallbackSession, knownChatProfileIds, normalizedSearch])
 
   const title = tabOptions.find((tab) => tab.key === activeTab)?.label || 'Mensajes'
   const supportsSplitLayout =
@@ -710,9 +719,9 @@ export function MessagesPage() {
     return (
       items.find(
         (item) => item.id === selectedConversation.id && item.kind === selectedConversation.kind,
-      ) ?? null
+      ) ?? (selectedConversation.accountId === user?.id ? selectedConversation.preview ?? null : null)
     )
-  }, [items, selectedConversation])
+  }, [items, selectedConversation, user?.id])
 
   useEffect(() => {
     if (!supportsSplitLayout) {
@@ -1287,13 +1296,18 @@ export function MessagesPage() {
     setOpeningChatId(`discover:${cleanProfileId}`)
     try {
       const chatId = await getOrCreateDirectChat(user.id, cleanProfileId)
-      await markChatAsReadBestEffort(chatId)
-      await loadCurrentTab({ silent: true })
       if (supportsSplitLayout) {
-        setSelectedConversation({ id: chatId, kind: 'chat' })
+        // Empty chats deliberately stay out of the inbox until the first message.
+        // Keep this explicit selection locally instead of requiring an inbox row.
+        setSelectedConversation({ id: chatId, kind: 'chat', accountId: user.id, preview: {
+          id: chatId, kind: 'chat', title: item.title, subtitle: '', updatedAt: '',
+          avatarUrl: item.avatarUrl, profileId: cleanProfileId, unreadCount: 0,
+          isMuted: false, isPinned: false, isArchived: false, isFavorite: false, folders: [],
+        } })
       } else {
         navigate(`/app/messages/${chatId}`)
       }
+      void loadCurrentTab({ silent: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo iniciar el chat'))
     } finally {
@@ -1686,13 +1700,12 @@ export function MessagesPage() {
             {showGlobalSearchResults ? (
               <div className="discover-section">
                 <small className="discover-title">Personas</small>
-                {discoverLoading ? (
+                {(discoverLoading || discoverResultKey !== discoveryKey) && discoverUsers.length === 0 && !discoverError ? (
                   <small>Buscando…</small>
-                ) : discoverError ? (
-                  <small className="error-text">{discoverError}</small>
                 ) : (
                   discoverUsers.map(renderDiscoveredUserRow)
                 )}
+                {discoverError ? <small className="error-text">{discoverError}</small> : null}
               </div>
             ) : null}
           </div>

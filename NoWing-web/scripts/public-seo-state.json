@@ -18,18 +18,18 @@
     },
     "/novvin-web": {
       "file": "novvin-web.html",
-      "contentHash": "1ba964890c71c356da6b1cd8ade572bce8a0388b76fea49b509f7866f3e456e2",
-      "lastmod": "2026-10-26"
+      "contentHash": "c6fc006ef92b194291a251e6200e80c7bd53bf7884c54835dc67c3f3fee6722e",
+      "lastmod": "2026-10-28"
     },
     "/mensajes": {
       "file": "mensajes.html",
-      "contentHash": "bce5ef815daffab51b5c2f0c936ccfccd819bd6376564d98be8704f3a8b8e508",
-      "lastmod": "2026-10-26"
+      "contentHash": "06dc7aafcf2f63702bfb55ff94bd20c44aa8b337b78aff8a638b29c320720991",
+      "lastmod": "2026-10-28"
     },
     "/videos": {
       "file": "videos.html",
-      "contentHash": "4ce5108ea048cdb86b223d646a333c7f8297ebe54b913c757b9ed3b90ff0181d",
-      "lastmod": "2026-10-26"
+      "contentHash": "5fe8db2367b1b4c34601c451f39ce7b9a3f0bbe1054bd7804c6653a0d25b77aa",
+      "lastmod": "2026-10-28"
     },
     "/salas-de-voz": {
       "file": "salas-de-voz.html",
@@ -43,8 +43,8 @@
     },
     "/descargar": {
       "file": "descargar.html",
-      "contentHash": "c38c8f7524123c958f6278b489a6d40fa58f7fb0334569b86e79ecd17d1ca32a",
-      "lastmod": "2026-10-26"
+      "contentHash": "fbd088d028b5f476e07ff1c38b0194544306eeacb0026c488d6b4bbb3706b608",
+      "lastmod": "2026-10-28"
     },
     "/ayuda/encontrar-novvin": {
       "file": "encontrar-novvin.html",
@@ -53,18 +53,18 @@
     },
     "/social": {
       "file": "social.html",
-      "contentHash": "d160e3112e634d733a99a3e416db193b686ba137d27a5e85cc35d81a93d446da",
-      "lastmod": "2026-10-26"
+      "contentHash": "d6b4143f4f8b4ba647b8349a16284adef51ca21eea619d3771dd5e423e1049c6",
+      "lastmod": "2026-10-28"
     },
     "/momentos": {
       "file": "momentos.html",
-      "contentHash": "8031db729e169de135d0be086388c04e3ae195a86122e7bc2ae65eb84b01f29e",
-      "lastmod": "2026-10-26"
+      "contentHash": "6d455618efc8c7f573f92992c5b680e422a776da3b416837d40f7a227458cfa3",
+      "lastmod": "2026-10-28"
     },
     "/comunidades": {
       "file": "comunidades.html",
-      "contentHash": "853d2c822b8a9586aff77bd1077aca3f3ea71584f024381d5a4ba7c4d9c8258e",
-      "lastmod": "2026-10-26"
+      "contentHash": "ac186ab648f97abc9fbb3cdb0679e808e5969e5e74f7837bb1748a47390e7fc0",
+      "lastmod": "2026-10-28"
     },
     "/juegos": {
       "file": "juegos.html",
@@ -83,8 +83,8 @@
     },
     "/funciones": {
       "file": "funciones.html",
-      "contentHash": "bb8d91c97367eff89f438edb1941f3c03bdf089ef9ab3a3853dd7fe2cb080d80",
-      "lastmod": "2026-10-26"
+      "contentHash": "df1b2cb02118b368ed25ad8b5f7166db6c979cf4f04744592650f2c0173f106f",
+      "lastmod": "2026-10-28"
     },
     "/ayuda/stickers-animados": {
       "file": "stickers-animados.html",

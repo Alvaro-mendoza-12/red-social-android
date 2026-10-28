@@ -12,7 +12,7 @@ export function PublicInfo({ path }: { path: string }) {
       <nav className="public-breadcrumb" aria-label="Ruta de esta página"><ol><li><a href="/">Novvin</a></li><li aria-current="page">{publicPageLabel(path)}</li></ol></nav>
       <h1>{page.heading}</h1>
       <p className="public-info-intro">{page.description}</p>
-      {publicIllustrations[path]?.length ? <section className="public-feature-gallery" aria-label="Imágenes de las funciones de Novvin">{publicIllustrations[path].map(image=><figure key={image.src}><img src={image.src} alt={image.alt} width={image.width} height={image.height} loading="lazy"/><figcaption>{image.caption}</figcaption></figure>)}</section> : null}
+      {publicIllustrations[path]?.length ? <section className="public-feature-gallery" aria-label="Imágenes de las funciones de Novvin">{publicIllustrations[path].map(image=><figure key={image.src}><img className={image.height > image.width ? 'public-feature-portrait' : undefined} src={image.src} alt={image.alt} width={image.width} height={image.height} loading="lazy" decoding="async"/><figcaption>{image.caption}</figcaption></figure>)}</section> : null}
       <div className="public-home-actions"><a className="primary-btn" href="/login">Entrar a Novvin</a><a className="ghost-btn" href="/explore/videos">Explorar videos</a></div>
       {(path === '/descargar' || path === '/que-es-novvin') && <aside className="public-download-card" aria-label="Descarga oficial de Novvin">
         <img src="/novvin-logo.png" width="72" height="72" alt="" />

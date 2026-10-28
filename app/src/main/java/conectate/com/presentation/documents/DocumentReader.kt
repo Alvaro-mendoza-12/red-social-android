@@ -18,7 +18,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.File
@@ -187,9 +186,9 @@ internal class DocumentReadSession(private val context: Context) : AutoCloseable
     companion object {
         val textExtensions = setOf("txt", "csv", "tsv", "json", "md", "xml", "log", "yaml", "yml")
         private val knownExtensions = textExtensions + setOf("pdf", "docx", "xlsx", "pptx", "doc", "xls", "ppt")
-        private val remoteClient = OkHttpClient.Builder().dns(conectate.com.core.network.PublicBackendDns)
-    .addInterceptor(conectate.com.core.media.StorageReadRequestInterceptor())
-    .addNetworkInterceptor(conectate.com.core.media.StorageReadNetworkInterceptor())
+        // Reuse the media pool, TLS sessions and the existing account guards.
+        // Opening a document no longer starts an independent network stack.
+        private val remoteClient = conectate.com.util.MediaPlaybackDataSources.networkClient().newBuilder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS).callTimeout(40, TimeUnit.SECONDS).followSslRedirects(false).build()
     }
