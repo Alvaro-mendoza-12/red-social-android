@@ -8,7 +8,7 @@ import { prepareStorageReadAccessToken, trustedStorageBackend } from '../core/me
 import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../core/media/storageReadSession'
 
 /** Reuse the existing account-scoped Blob cache, including its decoded browser resource. */
-function CachedAvatarImage({ src, mediaType, ...props }: ImgHTMLAttributes<HTMLImageElement> & { src: string; mediaType: string }) {
+function CachedAvatarImage({ src, mediaType, onSourceUnavailable, ...props }: ImgHTMLAttributes<HTMLImageElement> & { src: string; mediaType: string; onSourceUnavailable: () => void }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const source = /\.(gif|webp|apng)(?:[?#]|$)/i.test(src) || /gif|webp|apng/i.test(mediaType)
     ? rewriteRuntimeStorageUrl(src) : runtimeStoragePreviewUrl(src, 160, 75)
@@ -53,7 +53,7 @@ function CachedAvatarImage({ src, mediaType, ...props }: ImgHTMLAttributes<HTMLI
   }, [backendBase, identity, visible, hasCached, streamingKey, key, source])
   return backendBase && streamingKey !== key
     ? <img {...props} ref={image} src={delivered?.url} decoding="async"/>
-    : <StreamingImage {...props} ref={image} src={source}/>
+    : <StreamingImage {...props} ref={image} src={source} onSourceUnavailable={onSourceUnavailable}/>
 }
 
 type AvatarSize = 'sm' | 'md' | 'lg'
@@ -102,10 +102,11 @@ export function SafeAvatar({
   title,
   mediaType,
 }: SafeAvatarProps) {
+  const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const trimmedUrl = (url ?? '').trim()
   const initialName = name && name.trim().length > 0 ? name.trim() : 'Usuario'
   const normalizedMediaType = (mediaType ?? '').trim()
-  const signature = `${trimmedUrl}|${normalizedMediaType}`
+  const signature = `${identity.generation}|${trimmedUrl}|${normalizedMediaType}`
   const [failedSignature, setFailedSignature] = useState('')
   useEffect(() => {
     if (!failedSignature) return
@@ -132,6 +133,7 @@ export function SafeAvatar({
         autoPlay
         preload="metadata"
         onError={() => setFailedSignature(signature)}
+        onSourceUnavailable={() => setFailedSignature(signature)}
       />
     )
   }
@@ -147,6 +149,7 @@ export function SafeAvatar({
         loading="lazy"
         referrerPolicy="no-referrer"
         onError={() => setFailedSignature(signature)}
+        onSourceUnavailable={() => setFailedSignature(signature)}
       />
     )
   }

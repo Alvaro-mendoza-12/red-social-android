@@ -50,3 +50,17 @@ test('animated avatar bytes retain their original source instead of a static thu
   await waitFor(() => expect(screen.getByRole('img', { name: 'Animado' }).getAttribute('src')).toMatch(/^blob:/))
   expect(readBoundedStorageBlob).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://owned.test/animated.gif' }))
 })
+
+test('failure before a streaming source is assigned reaches accessible initials', async () => {
+  const streaming = jest.requireMock('../../core/media/browserStreaming')
+  streaming.browserStreamingSource = jest.fn(async () => { throw Error('offline') })
+  ;(readBoundedStorageBlob as jest.Mock).mockRejectedValue(Error('offline'))
+  jest.useFakeTimers()
+  render(<SafeAvatar url="https://owned.test/missing.png" name="Mendoza" />)
+  for (let step = 0; step < 8; step++) {
+    await act(async () => { await jest.advanceTimersByTimeAsync(3100) })
+  }
+  expect(screen.getByLabelText('Mendoza')).toHaveTextContent('M')
+  expect(screen.queryByRole('img', { name: 'Mendoza' })).toBeNull()
+  jest.useRealTimers()
+})

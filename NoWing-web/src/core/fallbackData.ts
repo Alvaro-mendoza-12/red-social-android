@@ -809,7 +809,7 @@ export async function loadFallbackVoiceRooms(): Promise<FallbackVoiceRoomsRespon
 export async function loadFallbackVoiceRoom(roomId: string): Promise<FallbackVoiceRoomResponse> {
   return fallbackApiJson<FallbackVoiceRoomResponse>(
     `/v1/data/voice/rooms/${encodeURIComponent(roomId)}`,
-    { cache: 'no-store' },
+    { cache: 'no-store', signal: AbortSignal.timeout(12_000) },
   )
 }
 
@@ -820,6 +820,7 @@ export async function joinFallbackVoiceRoom(
     userAvatarUrl?: string
     socketId?: string
     isMuted?: boolean
+    password?: string
   },
 ): Promise<{ participants: GenericRow[] }> {
   return fallbackApiJson<{ participants: GenericRow[] }>(

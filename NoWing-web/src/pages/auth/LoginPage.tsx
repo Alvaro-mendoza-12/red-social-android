@@ -24,6 +24,7 @@ import {
 import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
 import { useWebPreferences } from '../../core/webPreferences'
+import { authReturnPath, safeAuthDestination } from '../../core/auth/loginReturnPath'
 
 type LoginMode = 'password' | 'qr'
 
@@ -44,19 +45,13 @@ function normalizeMode(value: string | null): LoginMode {
   return 'password'
 }
 
-function normalizeNextPath(value: string | null): string {
-  const clean = value?.trim()
-  if (!clean || !clean.startsWith('/') || clean.startsWith('//')) return '/app/messages'
-  return clean
-}
-
 export function LoginPage() {
   const navigate = useNavigate()
   const client = supabase
   const [webPreferences] = useWebPreferences()
   const [searchParams, setSearchParams] = useSearchParams()
   const mode = useMemo<LoginMode>(() => normalizeMode(searchParams.get('mode')), [searchParams])
-  const nextPath = useMemo(() => normalizeNextPath(searchParams.get('next')), [searchParams])
+  const nextPath = useMemo(() => safeAuthDestination(searchParams.get('next')), [searchParams])
   const initialEmail = useMemo(() => searchParams.get('email')?.trim() ?? '', [searchParams])
   const [email, setEmail] = useState(initialEmail)
   const [password, setPassword] = useState('')
@@ -370,7 +365,7 @@ export function LoginPage() {
       return
     }
 
-    navigate(`/forgot-password?email=${encodeURIComponent(normalizedEmail)}`)
+    navigate(`${authReturnPath('/forgot-password', nextPath)}&email=${encodeURIComponent(normalizedEmail)}`)
   }
 
   async function requestMigrationPasswordReset() {
@@ -542,7 +537,7 @@ export function LoginPage() {
                 {loading ? 'Entrando...' : 'Iniciar sesión'}
               </button>
               <Link
-                to={`/forgot-password${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
+                to={`${authReturnPath('/forgot-password', nextPath)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ''}`}
               >
                 Olvidé mi contraseña
               </Link>
@@ -727,7 +722,7 @@ export function LoginPage() {
           {info ? <p>{info}</p> : null}
 
           <p className="auth-foot">
-            ¿No tienes cuenta? <Link to="/register">Regístrate</Link>
+              ¿No tienes cuenta? <Link to={authReturnPath('/register', nextPath)}>Regístrate</Link>
           </p>
           <p className="auth-foot">
             <Link to="/explore/videos">Continuar como invitado</Link>
