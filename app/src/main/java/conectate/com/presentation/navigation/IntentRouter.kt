@@ -442,6 +442,11 @@ object IntentRouter {
             clearIntent()
             return true
         }
+        voiceRoomFromLink(uri)?.let { roomId ->
+            navController.navigate(Screen.RoomDetail.createRoute(roomId)) { launchSingleTop = true }
+            clearIntent()
+            return true
+        }
         val surveyLink = (uri.scheme == "conectate" && uri.host == "survey") ||
             (uri.scheme == "https" && uri.pathSegments.firstOrNull() == "survey")
         if (surveyLink) {
@@ -660,7 +665,8 @@ internal fun isTrustedExternalDeepLinkOrigin(scheme: String?, host: String?): Bo
     val normalizedScheme = scheme?.trim()?.lowercase().orEmpty()
     val normalizedHost = host?.trim()?.lowercase().orEmpty()
     if (normalizedScheme == "https" || normalizedScheme == "http") {
-        return normalizedHost == "conectate.com" || normalizedHost == "www.conectate.com"
+        return normalizedHost == "conectate.com" || normalizedHost == "www.conectate.com" ||
+            (normalizedScheme == "https" && normalizedHost == "red-social-android.vercel.app")
     }
     if (normalizedScheme != "conectate") return false
     return normalizedHost in setOf(
@@ -674,6 +680,7 @@ internal fun isTrustedExternalDeepLinkOrigin(scheme: String?, host: String?): Bo
         "profile",
         "group",
         "community",
+        "voice",
         "web-login",
         "recovery",
     )

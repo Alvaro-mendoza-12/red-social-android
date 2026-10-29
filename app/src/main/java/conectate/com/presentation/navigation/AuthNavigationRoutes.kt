@@ -79,7 +79,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
                 withContext(Dispatchers.Main.immediate) {
-                    navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
+                    navController.navigate(PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                         launchSingleTop = true
                     }
@@ -94,7 +94,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
                 withContext(Dispatchers.Main.immediate) {
-                    navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
+                    navController.navigate(PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
                         popUpTo(navController.graph.id) { inclusive = false }
                         launchSingleTop = true
                     }
@@ -110,7 +110,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 val pendingProfile = guestViewModel.consumePendingProfile()
                 withContext(Dispatchers.Main.immediate) {
                     navController.navigate(
-                        conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: pendingProfile?.let(Screen.UserProfile::createRoute) ?: Screen.Home.createRoute()
+                        PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: pendingProfile?.let(Screen.UserProfile::createRoute) ?: Screen.Home.createRoute()
                     ) {
                         popUpTo(navController.graph.id) { inclusive = false }
                         launchSingleTop = true

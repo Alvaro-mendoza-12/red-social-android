@@ -230,7 +230,7 @@ fun LoginScreen(
             return@LaunchedEffect
         }
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
-            navController.navigate(conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute(startTab = "messages")) {
+            navController.navigate(conectate.com.presentation.navigation.PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute(startTab = "messages")) {
                 popUpTo(Screen.AddAccountLogin.route) { inclusive = true }
                 launchSingleTop = true
             }

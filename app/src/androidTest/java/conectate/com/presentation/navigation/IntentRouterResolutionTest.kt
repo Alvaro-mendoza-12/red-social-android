@@ -15,6 +15,16 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 @MediumTest
 class IntentRouterResolutionTest {
+    @Test fun sharedVoiceLinksRemainPendingDestinationsAndMatchTheAppRoute() {
+        val link = voiceRoomShareLink("room-qa-123")!!
+        assertTrue(IntentRouter.hasPendingNavigationIntent(Intent(Intent.ACTION_VIEW, Uri.parse(link))))
+        assertEquals("room-qa-123", voiceRoomFromLink(Uri.parse(link)))
+        assertEquals("room-qa-123", voiceRoomFromLink(Uri.parse("conectate://voice/room-qa-123")))
+        val state = androidx.lifecycle.SavedStateHandle()
+        PendingVoiceRoomDestination.remember("room-qa-123", state)
+        assertEquals(Screen.RoomDetail.createRoute("room-qa-123"), PendingVoiceRoomDestination.consume(state))
+        assertEquals(null, PendingVoiceRoomDestination.consume(state))
+    }
 
     @Test
     fun pendingIntentDetection_acceptsDeepLinksNotificationsAndShares() {
