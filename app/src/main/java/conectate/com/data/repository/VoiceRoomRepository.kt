@@ -2862,6 +2862,11 @@ class VoiceRoomRepository @Inject constructor(
 
     suspend fun updateRoom(roomId: String, name: String, isPublic: Boolean, password: String?): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
+                val token = authService.getAccessTokenAwait()
+                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                return@withContext localFallbackApiClient.updateVoiceRoom(token, roomId, name, isPublic, password)
+            }
             val updateData = mutableMapOf<String, Any>(
                 "name" to name,
                 "is_public" to isPublic
@@ -2874,7 +2879,8 @@ class VoiceRoomRepository @Inject constructor(
                 filter { eq("id", roomId) }
             }
             Result.success(Unit)
-        } catch (e: Exception) {
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Result.failure(e)
         }
     }

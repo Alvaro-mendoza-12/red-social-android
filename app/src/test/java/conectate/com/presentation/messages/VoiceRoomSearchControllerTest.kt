@@ -1,4 +1,5 @@
 package conectate.com.presentation.messages
+import kotlinx.coroutines.test.advanceTimeBy
 
 import conectate.com.data.model.VoiceRoom
 import kotlinx.coroutines.CompletableDeferred
@@ -11,6 +12,15 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class VoiceRoomSearchControllerTest {
+    @Test fun anUnresponsiveLookupEndsInARetryableState() = runTest {
+        val search = VoiceRoomSearchController(backgroundScope, { "account" }) { kotlinx.coroutines.awaitCancellation() }
+        search.search("100031")
+        runCurrent()
+        assertEquals(VoiceRoomSearchState.Searching, search.state.value)
+        advanceTimeBy(10_001)
+        runCurrent()
+        assertTrue(search.state.value is VoiceRoomSearchState.Failed)
+    }
     private val room = VoiceRoom(id = "qa-room", name = "Prueba", creatorId = "qa-owner", isPublic = false, passwordRequired = true)
 
     @Test fun privateRoomWithoutDisclosedPasswordCanBeResolved() = runTest {

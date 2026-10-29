@@ -12,6 +12,17 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class CommunityDetailSessionTest {
+    @Test fun retryReplacesTheFailedObserverTreeForTheSameCollection() = runTest {
+        val sessions = CommunityDetailSession(backgroundScope)
+        val first = sessions.open("group", "account")!!
+        val pending = first.scope.launch { awaitCancellation() }
+        runCurrent()
+        val retried = sessions.open("group", "account", force = true)!!
+        runCurrent()
+        assertTrue(pending.isCancelled)
+        assertFalse(sessions.isCurrent(first, "account"))
+        assertTrue(sessions.isCurrent(retried, "account"))
+    }
     @Test fun reopeningSameCommunityDoesNotCreateMoreObservers() = runTest {
         val sessions = CommunityDetailSession(backgroundScope)
         val first = sessions.open("community", "account")!!

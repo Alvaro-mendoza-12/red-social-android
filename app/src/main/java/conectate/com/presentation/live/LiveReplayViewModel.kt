@@ -22,18 +22,24 @@ class LiveReplayViewModel @Inject constructor(
 
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
+    private var request: kotlinx.coroutines.Job? = null
+    private var requestedId: String? = null
 
     fun load(liveId: String) {
-        if (_loading.value || _replay.value?.id == liveId) return
-        viewModelScope.launch {
-            _loading.value = true
-            liveRepository.loadLiveReplay(liveId)
-                .onSuccess { _replay.value = it }
+        if ((_loading.value && requestedId == liveId) || _replay.value?.id == liveId) return
+        request?.cancel()
+        requestedId = liveId
+        _loading.value = true
+        _error.value = null
+        _replay.value = null
+        request = viewModelScope.launch {
+            try {
+            conectate.com.core.network.runReadWithDeadline(10_000) { liveRepository.loadLiveReplay(liveId).getOrThrow() }
+                .onSuccess { if (requestedId == liveId) _replay.value = it }
                 .onFailure {
-                    _error.value = it.message
-                        ?: "No se pudo cargar esta repetición. Verifica tu conexión."
+                    if (requestedId == liveId) _error.value = "No se pudo cargar esta repetición. Verifica tu conexión y reintenta."
                 }
-            _loading.value = false
+            } finally { if (requestedId == liveId) _loading.value = false }
         }
     }
 }

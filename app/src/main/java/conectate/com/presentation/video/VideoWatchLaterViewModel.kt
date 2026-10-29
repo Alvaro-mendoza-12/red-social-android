@@ -99,7 +99,7 @@ class VideoWatchLaterViewModel @Inject constructor(
                 realtime.updateAccessToken(token)
                 realtime.replaceUserSubscription(account)
             }
-            val result = repository.getVideoWatchLater(cursor, sort)
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoWatchLater(cursor, sort).getOrThrow() }
             if (requestRevision != revision || account != bindAccount()) return@launch
             result.fold(onSuccess = { page ->
                 val items = (if (cursor.isEmpty()) page.items else _state.value.items + page.items)

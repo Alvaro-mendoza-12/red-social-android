@@ -401,27 +401,24 @@ class CreateMomentViewModel @Inject constructor(
         }
     }
 
+    private var audienceSearch: kotlinx.coroutines.Job? = null
+    private var audienceRevision = 0L
     fun searchAudienceUsers(query: String) {
-        val clean = query.trim()
-        if (clean.length < 2) {
-            _audienceUsers.value = emptyList()
-            return
-        }
-        viewModelScope.launch {
-            _isSearchingAudience.value = true
+        audienceSearch?.cancel()
+        val revision = ++audienceRevision
+        val clean = query.trim().take(120)
+        val owner = authService.getCurrentUserId()
+        _audienceUsers.value = emptyList()
+        _isSearchingAudience.value = false
+        if (clean.length < 2) return
+        _isSearchingAudience.value = true
+        audienceSearch = viewModelScope.launch {
             try {
-                val currentUserId = authService.getCurrentUserId()
-                _audienceUsers.value = userRepository.searchUsers(clean)
-                    .getOrDefault(emptyList())
-                    .filter { it.id.isNotBlank() && it.id != currentUserId }
-                    .distinctBy { it.id }
-                    .take(40)
-            } catch (error: Exception) {
-                android.util.Log.e("CreateMomentViewModel", "Audience search failed", error)
-                _audienceUsers.value = emptyList()
-            } finally {
-                _isSearchingAudience.value = false
-            }
+                kotlinx.coroutines.delay(300)
+                val result = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.searchUsers(clean).getOrThrow() }
+                if (revision != audienceRevision || owner != authService.getCurrentUserId()) return@launch
+                _audienceUsers.value = result.getOrDefault(emptyList()).filter { it.id.isNotBlank() && it.id != owner }.distinctBy { it.id }.take(40)
+            } finally { if (revision == audienceRevision) _isSearchingAudience.value = false }
         }
     }
 

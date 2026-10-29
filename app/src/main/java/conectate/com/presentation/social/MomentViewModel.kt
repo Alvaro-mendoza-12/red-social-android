@@ -153,34 +153,21 @@ class MomentViewModel @Inject constructor(
         }
     }
 
+    private val deletingMoments = mutableSetOf<String>()
     fun deleteMoment(momentId: String, onSuccess: () -> Unit = {}) {
+        val owner = authService.getCurrentUserId() ?: return
+        if (!deletingMoments.add(momentId)) return
         viewModelScope.launch {
-            android.util.Log.d("MomentViewModel", "Deleting moment: $momentId")
-            
-            // 1. Optimistic Update: Remove from list immediately
-            val currentList = _moments.value.toMutableList()
-            val wasRemoved = currentList.removeAll { it.id == momentId }
-            if (wasRemoved) {
-                 _moments.value = currentList
-            }
-
-            // 2. Perform API Call
-            repository.deleteMoment(momentId).onSuccess {
-                android.util.Log.d("MomentViewModel", "Moment deleted successfully from server")
-                
-                // 3. Confirm with Refresh (Background)
-                try {
-                    repository.refreshMoments()
-                } catch (e: Exception) {
-                    android.util.Log.e("MomentViewModel", "Error refreshing after deletion", e)
-                }
-                
-                onSuccess()
-            }.onFailure { e ->
-                android.util.Log.e("MomentViewModel", "Failed to delete moment", e)
-                // Optional: Revert optimistic update if needed, but usually we just show error
-                // _moments.value = currentList + moment // tough to revert without keeping ref
-            }
+            try {
+                val result = repository.deleteMoment(momentId)
+                if (owner != authService.getCurrentUserId()) return@launch
+                result.fold(onSuccess = { onSuccess() }, onFailure = {
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo eliminar el momento. Revisa tu conexión y reintenta.")
+                })
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (owner == authService.getCurrentUserId()) conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo eliminar el momento. Reintenta.")
+            } finally { deletingMoments.remove(momentId) }
         }
     }
 

@@ -82,6 +82,8 @@ class VideoFeedViewModel @Inject constructor(
     val isProfileFeed: Boolean = profileFeedOwnerId != null
     private val _profileVideos = MutableStateFlow<List<Video>>(emptyList())
     val profileVideos: StateFlow<List<Video>> = _profileVideos.asStateFlow()
+    private val _profileFeedError = MutableStateFlow<String?>(null)
+    val profileFeedError = _profileFeedError.asStateFlow()
     private val _socialHighlights = MutableStateFlow<List<Post>>(emptyList())
     val socialHighlights: StateFlow<List<Post>> = _socialHighlights.asStateFlow()
     private val _recommendedPeople = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
@@ -497,14 +499,17 @@ class VideoFeedViewModel @Inject constructor(
             ProfileVideoFeedPaging.initialPage(profileInitialIndex, profilePageSize).offset
         } else profileNextOffset
         profilePageRequestInFlight = true
+        val generation = accountGeneration
+        _profileFeedError.value = null
         viewModelScope.launch {
             try {
                 if (reset) _isLoading.value = true
-                videoRepository.getUserVideosPage(
+                conectate.com.core.network.runReadWithDeadline(10_000) { videoRepository.getUserVideosPage(
                     userId = profileId,
                     offset = requestedOffset,
                     limit = profilePageSize
-                ).onSuccess { page ->
+                ).getOrThrow() }.onSuccess { page ->
+                    if (generation != accountGeneration) return@onSuccess
                     if (reset) {
                         _profileVideos.value = page.map(likeWriter::reconcile)
                     } else {
@@ -528,9 +533,11 @@ class VideoFeedViewModel @Inject constructor(
                     isProfileLastPage = page.size < profilePageSize
                     loadFollowedUsers()
                 }.onFailure { error ->
+                    if (generation == accountGeneration) _profileFeedError.value = "No se pudieron cargar los videos del perfil. Reintenta."
                     android.util.Log.e("VideoFeedVM", "No se pudo cargar el feed del perfil", error)
                 }
-            } catch (error: Exception) {
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
                 android.util.Log.e("VideoFeedVM", "No se pudo cargar el feed del perfil", error)
             } finally {
                 profilePageRequestInFlight = false
@@ -551,13 +558,15 @@ class VideoFeedViewModel @Inject constructor(
         val request = ProfileVideoFeedPaging.previousPage(profileFirstOffset, profilePageSize) ?: return
 
         profilePageRequestInFlight = true
+        val generation = accountGeneration
         viewModelScope.launch {
             try {
-                videoRepository.getUserVideosPage(
+                conectate.com.core.network.runReadWithDeadline(10_000) { videoRepository.getUserVideosPage(
                     userId = profileId,
                     offset = request.offset,
                     limit = request.limit
-                ).onSuccess { page ->
+                ).getOrThrow() }.onSuccess { page ->
+                    if (generation != accountGeneration) return@onSuccess
                     val existingIds = _profileVideos.value.asSequence().map { it.id }.toHashSet()
                     val newVideos = page.filterNot { it.id in existingIds }
                     if (newVideos.isNotEmpty()) {
@@ -576,6 +585,7 @@ class VideoFeedViewModel @Inject constructor(
                     profileFirstOffset = request.offset
                     loadFollowedUsers()
                 }.onFailure { error ->
+                    if (generation == accountGeneration) _profileFeedError.value = "No se pudo cargar la página anterior. Reintenta."
                     android.util.Log.e("VideoFeedVM", "No se pudo cargar la página anterior del perfil", error)
                 }
             } finally {
@@ -749,7 +759,7 @@ class VideoFeedViewModel @Inject constructor(
         searchJob = viewModelScope.launch {
             delay(250)
             try {
-                videoRepository.searchVideos(clean).onSuccess { videos ->
+                conectate.com.core.network.runReadWithDeadline(10_000) { videoRepository.searchVideos(clean).getOrThrow() }.onSuccess { videos ->
                     if (generation != accountGeneration || revision != searchRevision || !_isSearchMode.value) return@onSuccess
                     _searchResults.value = videos.map(likeWriter::reconcile)
                     _isSearching.value = false

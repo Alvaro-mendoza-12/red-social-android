@@ -8,11 +8,13 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 @HiltViewModel
 class CreateVoiceRoomViewModel @Inject constructor(
-    val repository: VoiceRoomRepository // Made public for direct access legacy support
+    val repository: VoiceRoomRepository, // Made public for direct access legacy support
+    private val authService: conectate.com.data.supabase.AuthService,
 ) : ViewModel() {
 
     private val _isCreating = MutableStateFlow(false)
@@ -35,19 +37,23 @@ class CreateVoiceRoomViewModel @Inject constructor(
         }
 
         if (_isCreating.value) return
+        val owner = authService.getCurrentUserId() ?: run { _error.value = "Inicia sesión para continuar."; return }
 
+        _isCreating.value = true
+        _error.value = null
         viewModelScope.launch {
-            _isCreating.value = true
-            _error.value = null
             try {
                 val result = repository.createRoom(name, description, isPublic, password, roomMode)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (owner != authService.getCurrentUserId()) return@launch
                 if (result.isSuccess) {
                     val room = result.getOrThrow()
                     onSuccess(room)
                 } else {
                     _error.value = result.exceptionOrNull()?.message
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 _error.value = e.message
             } finally {
                 _isCreating.value = false

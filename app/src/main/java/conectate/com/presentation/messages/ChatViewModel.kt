@@ -45,6 +45,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.async
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlinx.coroutines.flow.update
@@ -2068,22 +2069,27 @@ class ChatViewModel @Inject constructor(
     }
 
     fun confirmEditMessage() {
+        if (_isSending.value) return
         val msg = _editingMessage.value ?: return
-        val newContent = _messageText.value
-        if (newContent.isBlank() || newContent == msg.content) {
-            cancelEdit()
-            return
-        }
-
+        val snapshot = textComposer.captureEdit()
+        if (snapshot.text.isBlank() || snapshot.text == msg.content) { cancelEdit(); return }
+        val owner = authService.getCurrentUserId() ?: return
+        val destination = chatId
+        fun current() = owner == authService.getCurrentUserId() && destination == chatId
+        _isSending.value = true
         viewModelScope.launch {
-            _isSending.value = true
-            val result = messageRepository.editMessage(msg, newContent)
-            if (result.isSuccess) {
-                cancelEdit()
-            } else {
-                conectate.com.presentation.common.AppFeedbackBus.showError("Error al editar")
-            }
-            _isSending.value = false
+            try {
+                val result = messageRepository.editMessage(msg, snapshot.text)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (!current()) return@launch
+                if (result.isSuccess) {
+                    if (_editingMessage.value?.id == msg.id && textComposer.finishEditingIfUnchanged(snapshot)) {
+                        _editingMessage.value = null
+                    }
+                } else { conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar la edición. Reintenta.") }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { if (current()) { conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar la edición. Reintenta.") } }
+            finally { if (current()) _isSending.value = false }
         }
     }
 

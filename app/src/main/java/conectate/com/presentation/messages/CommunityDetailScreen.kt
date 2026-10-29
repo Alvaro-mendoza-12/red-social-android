@@ -57,6 +57,7 @@ fun CommunityDetailScreen(
     val isMember by viewModel.isMember.collectAsState()
     val currentUserId by viewModel.currentUserId.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val loadError by viewModel.loadError.collectAsState()
     val roleCatalog by viewModel.roleCatalog.collectAsState()
     val communityProfile by viewModel.communityProfile.collectAsState()
     val communityProfiles by viewModel.communityProfiles.collectAsState()
@@ -105,7 +106,7 @@ fun CommunityDetailScreen(
             if (community?.is_deleted == true || (community?.is_public == false && members.isNotEmpty() && !isStillMember)) {
                 showDeletedByOtherAlert = true
             }
-        } else if (!isLoading && community == null) {
+        } else if (!isLoading && community == null && loadError == null) {
             showDeletedByOtherAlert = true
         }
     }
@@ -226,6 +227,12 @@ fun CommunityDetailScreen(
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
+            }
+        } else if (community == null && loadError != null) {
+            Column(Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text(loadError.orEmpty())
+                Button(onClick = viewModel::retryCommunityDetails) { Text("Reintentar") }
             }
         } else {
             LazyColumn(

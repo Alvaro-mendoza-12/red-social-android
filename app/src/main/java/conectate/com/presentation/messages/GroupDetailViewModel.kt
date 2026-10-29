@@ -10,6 +10,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 @HiltViewModel
@@ -22,6 +24,8 @@ class GroupDetailViewModel @Inject constructor(
 
     private val _actionMessage = MutableStateFlow<String?>(null)
     val actionMessage = _actionMessage.asStateFlow()
+    private val actions = CollectionActionRunner(viewModelScope, authService::getCurrentUserId) { _actionMessage.value = it }
+    val actionsBusy = actions.busy
 
     fun consumeActionMessage() {
         _actionMessage.value = null
@@ -35,6 +39,8 @@ class GroupDetailViewModel @Inject constructor(
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
+    private val _loadError = MutableStateFlow<String?>(null)
+    val loadError = _loadError.asStateFlow()
 
     private val _currentUserId = MutableStateFlow<String?>(null)
     val currentUserId = _currentUserId.asStateFlow()
@@ -106,14 +112,24 @@ class GroupDetailViewModel @Inject constructor(
 
     private var groupId: String? = null
     private var redeemedInviteToken: String? = null
+    private var pendingInviteToken: String? = null
+    private val detailSession = CommunityDetailSession(viewModelScope)
+    private var membersLoadJob: kotlinx.coroutines.Job? = null
 
     init {
         val userId = authService.getCurrentUserId()
         _currentUserId.value = userId
     }
 
-    fun loadGroupDetails(id: String, inviteToken: String? = null) {
+    fun retryGroupDetails() { groupId?.let { loadGroupDetails(it, pendingInviteToken, force = true) } }
+
+    fun loadGroupDetails(id: String, inviteToken: String? = null, force: Boolean = false) {
+        val ticket = detailSession.open(id, authService.getCurrentUserId(), force || !inviteToken.isNullOrBlank()) ?: return
         groupId = id
+        pendingInviteToken = inviteToken?.trim()?.takeIf(String::isNotBlank)
+        _currentUserId.value = ticket.accountId
+        membersLoadJob = null
+        _loadError.value = null
         _membershipPolicy.value = null
         // An invitation must finish before requesting the new member's rights.
         if (inviteToken.isNullOrBlank()) refreshMembershipPolicy()
@@ -125,10 +141,11 @@ class GroupDetailViewModel @Inject constructor(
         _isDeleted.value = false
         
         // 1. Force Sync (Fire and forget)
-        viewModelScope.launch {
+        ticket.scope.launch {
              val cleanInvite = inviteToken?.trim().orEmpty()
              if (cleanInvite.isNotBlank() && redeemedInviteToken != cleanInvite) {
                  val joined = groupRepository.joinGroupWithInvite(id, cleanInvite)
+                 if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@launch
                  if (joined.isSuccess) {
                      redeemedInviteToken = cleanInvite
                      _actionMessage.value = "Te uniste al grupo"
@@ -146,9 +163,20 @@ class GroupDetailViewModel @Inject constructor(
         }
 
         // 2. Observe Group
-        viewModelScope.launch {
+        ticket.scope.launch {
+            val initial = conectate.com.core.network.runReadWithDeadline(12_000) {
+                groupRepository.getGroupFlow(id).filterNotNull().first()
+            }
+            if (detailSession.isCurrent(ticket, authService.getCurrentUserId()) && initial.isFailure) {
+                _loadError.value = "No se pudo cargar el grupo. Comprueba el acceso y la conexión y reintenta."
+                _isLoading.value = false
+            }
+        }
+        ticket.scope.launch {
             groupRepository.getGroupFlow(id).collect { grp ->
+                if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@collect
                 if (grp != null) {
+                    _loadError.value = null
                     if (grp.is_deleted) _isDeleted.value = true
                     _group.value = grp
                     _isLoading.value = false
@@ -158,11 +186,12 @@ class GroupDetailViewModel @Inject constructor(
         }
 
         // 3. Observe Members Reactively
-        viewModelScope.launch {
+        ticket.scope.launch {
             // Initial Load with names
             loadGroupMembers()
             
             groupRepository.getMembersFlow(id).collect { basicMembers ->
+                if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@collect
                 val currentMap = _members.value.associateBy { it.user_id }
 
                 val enriched = basicMembers.map { basic ->
@@ -187,53 +216,48 @@ class GroupDetailViewModel @Inject constructor(
 
     fun leaveGroup(onSuccess: () -> Unit) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            val result = groupRepository.leaveGroup(id)
-            if (result.isSuccess) {
-                onSuccess()
-            }
-        }
+        actions.run(id, "No se pudo salir del grupo. Revisa la conexión y reintenta.", { groupId == id },
+            { groupRepository.leaveGroup(id) }, { onSuccess() })
     }
 
     fun deleteGroup(onSuccess: () -> Unit) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            val result = groupRepository.deleteGroup(id)
-            if (result.isSuccess) {
-                onSuccess()
-            }
-        }
+        actions.run(id, "No se pudo eliminar el grupo. Comprueba tus permisos y reintenta.", { groupId == id },
+            { groupRepository.deleteGroup(id) }, { onSuccess() })
     }
 
     fun deleteGroupLocally(onSuccess: () -> Unit) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            groupRepository.deleteGroupLocally(id)
-            onSuccess()
-        }
+        actions.run(id, "No se pudo quitar el grupo de este dispositivo.", { groupId == id },
+            { groupRepository.deleteGroupLocally(id); Result.success(Unit) }, { onSuccess() })
     }
 
     fun removeMember(userId: String) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            groupRepository.removeMember(id, userId)
-            // Reload members to reflect changes (or rely on realtime if enabled/working)
-            // For now, let's force a reload of members to be safe
-            loadGroupMembers()
-        }
+        actions.run(id, "No se pudo quitar al participante. Comprueba tus permisos y reintenta.", { groupId == id },
+            { groupRepository.removeMember(id, userId) }, { loadGroupMembers() })
     }
 
     // Search users for adding members
     private val _searchResults = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val searchResults = _searchResults.asStateFlow()
+    private var searchJob: kotlinx.coroutines.Job? = null
+    private var searchRevision = 0L
 
     fun searchUsers(query: String) {
+        searchJob?.cancel()
+        val revision = ++searchRevision
+        val account = authService.getCurrentUserId()
+        val id = groupId
+        _searchResults.value = emptyList()
         if (query.isBlank()) {
             _searchResults.value = emptyList()
             return
         }
-        viewModelScope.launch {
-            val result = userRepository.searchUsers(query)
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300)
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.searchUsers(query).getOrThrow() }
+            if (revision != searchRevision || account != authService.getCurrentUserId() || id != groupId) return@launch
             if (result.isSuccess) {
                 // Filter out existing members
                 val currentMemberIds = _members.value.map { it.user_id }.toSet()
@@ -248,41 +272,38 @@ class GroupDetailViewModel @Inject constructor(
     
     fun promoteToAdmin(userId: String) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            groupRepository.updateMemberRole(id, userId, "admin")
-            loadGroupMembers()
-        }
+        actions.run(id, "No se pudo cambiar el rol. Comprueba tus permisos y reintenta.", { groupId == id },
+            { groupRepository.updateMemberRole(id, userId, "admin") }, { loadGroupMembers() })
     }
 
 
 
     fun demoteToMember(userId: String) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            groupRepository.updateMemberRole(id, userId, "member")
-            loadGroupMembers()
-        }
+        actions.run(id, "No se pudo cambiar el rol. Comprueba tus permisos y reintenta.", { groupId == id },
+            { groupRepository.updateMemberRole(id, userId, "member") }, { loadGroupMembers() })
     }
 
     fun updateGroupInfo(name: String, description: String?, imageBytes: ByteArray?, onlyAdminsCanTalk: Boolean, onSuccess: () -> Unit) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            val result = groupRepository.updateGroupInfo(id, name, description, imageBytes, onlyAdminsCanTalk)
-            if (result.isSuccess) {
+        actions.run(id, "No se pudo guardar la información del grupo. Reintenta.", { groupId == id },
+            { groupRepository.updateGroupInfo(id, name, description, imageBytes, onlyAdminsCanTalk) }, {
                 _group.value = _group.value?.copy(
                     name = name.trim(),
                     description = description?.trim().orEmpty().ifBlank { null },
                     only_admins_can_talk = onlyAdminsCanTalk
                 )
                 onSuccess()
-            }
-        }
+        })
     }
 
     private fun loadGroupMembers() {
-         val id = groupId ?: return
-         viewModelScope.launch {
-             val membersResult = groupRepository.getGroupMembers(id)
+         val ticket = detailSession.current() ?: return
+         val id = ticket.communityId
+         if (membersLoadJob?.isActive == true) return
+         membersLoadJob = ticket.scope.launch {
+             val membersResult = conectate.com.core.network.runReadWithDeadline(10_000) { groupRepository.getGroupMembers(id).getOrThrow() }
+             if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@launch
              if (membersResult.isSuccess) {
                 _members.value = membersResult.getOrDefault(emptyList())
                 recomputePermissions()
@@ -292,30 +313,20 @@ class GroupDetailViewModel @Inject constructor(
 
     fun createShareLink(onReady: (String) -> Unit) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            groupRepository.createGroupInvite(id).fold(
-                onSuccess = { token ->
-                      onReady("https://red-social-android.vercel.app/group/$id?invite=${android.net.Uri.encode(token)}")
-                },
-                onFailure = { error ->
-                    _actionMessage.value = error.message ?: "No se pudo crear el enlace"
-                }
-            )
-        }
+        actions.run("invite:$id", "No se pudo crear el enlace. Comprueba tus permisos y reintenta.", { groupId == id },
+            { groupRepository.createGroupInvite(id) }, { token ->
+                onReady("https://red-social-android.vercel.app/group/$id?invite=${android.net.Uri.encode(token)}")
+            })
     }
 
     fun setRestDuration(hours: Long?) {
         val id = groupId ?: return
-        viewModelScope.launch {
-            val until = hours?.let { java.time.Instant.now().plusSeconds(it * 3600L).toString() }
-            val result = groupRepository.setGroupRestUntil(id, until)
-            if (result.isSuccess) {
+        val until = hours?.let { java.time.Instant.now().plusSeconds(it.coerceIn(0, 8760) * 3600L).toString() }
+        actions.run(id, "No se pudo cambiar el modo descanso. Reintenta.", { groupId == id },
+            { groupRepository.setGroupRestUntil(id, until) }, {
                 _group.value = _group.value?.copy(rest_until = until)
                 _actionMessage.value = if (until == null) "Modo descanso desactivado" else "Modo descanso activado"
-            } else {
-                _actionMessage.value = result.exceptionOrNull()?.message ?: "No se pudo cambiar el modo descanso"
-            }
-        }
+            })
     }
 
     private fun recomputePermissions() {

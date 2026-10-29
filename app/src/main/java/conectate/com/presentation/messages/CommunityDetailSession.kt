@@ -10,8 +10,8 @@ internal class CommunityDetailSession(private val parent: CoroutineScope) {
     data class Ticket(val communityId: String, val accountId: String?, val scope: CoroutineScope)
     private var active: Ticket? = null
 
-    fun open(communityId: String, accountId: String?): Ticket? {
-        if (active?.let { it.communityId == communityId && it.accountId == accountId } == true) return null
+    fun open(communityId: String, accountId: String?, force: Boolean = false): Ticket? {
+        if (!force && active?.let { it.communityId == communityId && it.accountId == accountId } == true) return null
         active?.scope?.cancel()
         return Ticket(communityId, accountId, CoroutineScope(parent.coroutineContext +
             SupervisorJob(parent.coroutineContext[Job]))).also { active = it }

@@ -10,6 +10,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueuedMessageComposerTest {
+    @Test fun `edit acknowledgement restores original draft only for the submitted revision`() {
+        val composer = QueuedMessageComposer<String>()
+        composer.updateText("Mi borrador")
+        composer.beginEditing("Mensaje corregido")
+        val edit = composer.captureEdit()
+        assertTrue(composer.finishEditingIfUnchanged(edit))
+        assertEquals("Mi borrador", composer.text.value)
+    }
+
+    @Test fun `late edit acknowledgement preserves newer edits even with identical text`() {
+        val composer = QueuedMessageComposer<String>()
+        composer.beginEditing("Corrección")
+        val edit = composer.captureEdit()
+        composer.updateText("Otra corrección")
+        composer.updateText("Corrección")
+        assertFalse(composer.finishEditingIfUnchanged(edit))
+        assertEquals("Corrección", composer.text.value)
+        composer.reset()
+        composer.updateText("Otro chat")
+        assertFalse(composer.finishEditingIfUnchanged(edit))
+        assertEquals("Otro chat", composer.text.value)
+    }
     @Test fun `a queued video or sticker clears its reply and preserves the typed text`() {
         val composer = QueuedMessageComposer<String>()
         composer.updateText("Borrador")

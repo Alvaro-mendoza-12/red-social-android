@@ -16,6 +16,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 @HiltViewModel
@@ -28,6 +30,8 @@ class CommunityDetailViewModel @Inject constructor(
 
     private val _actionMessage = MutableStateFlow<String?>(null)
     val actionMessage = _actionMessage.asStateFlow()
+    private val actions = CollectionActionRunner(viewModelScope, authService::getCurrentUserId) { _actionMessage.value = it }
+    val actionsBusy = actions.busy
 
     fun consumeActionMessage() {
         _actionMessage.value = null
@@ -53,6 +57,8 @@ class CommunityDetailViewModel @Inject constructor(
 
     private val _isLoading = MutableStateFlow(true)
     val isLoading = _isLoading.asStateFlow()
+    private val _loadError = MutableStateFlow<String?>(null)
+    val loadError = _loadError.asStateFlow()
 
     private val _currentUserId = MutableStateFlow<String?>(null)
     val currentUserId = _currentUserId.asStateFlow()
@@ -147,8 +153,10 @@ class CommunityDetailViewModel @Inject constructor(
         _currentUserId.value = userId
     }
 
-    fun loadCommunityDetails(id: String) {
-        val ticket = detailSession.open(id, authService.getCurrentUserId()) ?: return
+    fun retryCommunityDetails() { communityId?.let { loadCommunityDetails(it, force = true) } }
+
+    fun loadCommunityDetails(id: String, force: Boolean = false) {
+        val ticket = detailSession.open(id, authService.getCurrentUserId(), force) ?: return
         membersLoadJob = null
         featuresLoadJob = null
         communityId = id
@@ -156,6 +164,7 @@ class CommunityDetailViewModel @Inject constructor(
         _membershipPolicy.value = null
         refreshMembershipPolicy()
         _isLoading.value = true
+        _loadError.value = null
         _community.value = null
         _members.value = emptyList()
         _isMember.value = false
@@ -179,10 +188,20 @@ class CommunityDetailViewModel @Inject constructor(
 
         // 2. Observe Community
         ticket.scope.launch {
+            val initial = conectate.com.core.network.runReadWithDeadline(12_000) {
+                communityRepository.getCommunityFlow(id).filterNotNull().first()
+            }
+            if (detailSession.isCurrent(ticket, authService.getCurrentUserId()) && initial.isFailure) {
+                _loadError.value = "No se pudo cargar la comunidad. Comprueba el acceso y la conexión y reintenta."
+                _isLoading.value = false
+            }
+        }
+        ticket.scope.launch {
             communityRepository.getCommunityFlow(id).collect { comm ->
                 if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@collect
                 _community.value = comm
                 if (comm != null) {
+                    _loadError.value = null
                     _isLoading.value = false
                     recomputePermissions()
                 }
@@ -232,62 +251,52 @@ class CommunityDetailViewModel @Inject constructor(
 
     private val _searchResults = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val searchResults = _searchResults.asStateFlow()
+    private var searchJob: Job? = null
+    private var searchRevision = 0L
     fun searchUsers(query: String) {
+        searchJob?.cancel()
+        val revision = ++searchRevision
+        val account = authService.getCurrentUserId()
+        val id = communityId
+        _searchResults.value = emptyList()
         if (query.trim().length < 3) { _searchResults.value = emptyList(); return }
-        viewModelScope.launch {
+        searchJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(300)
             val ids = _members.value.map { it.user_id }.toSet()
-            _searchResults.value = userRepository.searchUsers(query).getOrDefault(emptyList()).filter { it.id !in ids }
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.searchUsers(query).getOrThrow() }
+            if (revision != searchRevision || account != authService.getCurrentUserId() || id != communityId) return@launch
+            _searchResults.value = result.getOrDefault(emptyList()).filter { it.id !in ids }
         }
     }
 
     fun joinCommunity() {
-        communityId?.let {
-            viewModelScope.launch {
-                communityRepository.joinCommunity(it)
-                loadCommunityDetails(it)
-            }
-        }
+        val id = communityId ?: return
+        actions.run(id, "No se pudo entrar a la comunidad. Revisa el acceso y reintenta.", { communityId == id },
+            { communityRepository.joinCommunity(id) }, { retryCommunityDetails() })
     }
 
     fun leaveCommunity(onSuccess: () -> Unit) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            val result = communityRepository.leaveCommunity(id)
-            if (result.isSuccess) {
-                onSuccess()
-            }
-        }
+        actions.run(id, "No se pudo salir de la comunidad. Revisa la conexión y reintenta.", { communityId == id },
+            { communityRepository.leaveCommunity(id) }, { onSuccess() })
     }
 
     fun deleteCommunity(onSuccess: () -> Unit) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            val result = communityRepository.deleteCommunity(id)
-            if (result.isSuccess) {
-                onSuccess()
-            }
-        }
+        actions.run(id, "No se pudo eliminar la comunidad. Comprueba tus permisos y reintenta.", { communityId == id },
+            { communityRepository.deleteCommunity(id) }, { onSuccess() })
     }
 
     fun deleteCommunityLocally(onSuccess: () -> Unit) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            communityRepository.deleteCommunityLocally(id)
-            onSuccess()
-        }
+        actions.run(id, "No se pudo quitar la comunidad de este dispositivo.", { communityId == id },
+            { communityRepository.deleteCommunityLocally(id); Result.success(Unit) }, { onSuccess() })
     }
 
     fun setMemberRole(userId: String, role: String) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            val result = communityRepository.updateMemberRole(id, userId, role)
-            if (result.isSuccess) {
-                loadMembers()
-            } else {
-                _actionMessage.value = result.exceptionOrNull()?.message
-                    ?: "No se pudo actualizar el rol."
-            }
-        }
+        actions.run(id, "No se pudo actualizar el rol. Comprueba tus permisos y reintenta.", { communityId == id },
+            { communityRepository.updateMemberRole(id, userId, role) }, { loadMembers() })
     }
 
     fun loadRoleCatalog() {
@@ -299,7 +308,9 @@ class CommunityDetailViewModel @Inject constructor(
             _members.value.firstOrNull { sameCommunityUserId(it.user_id, myId) }?.role
         }
         viewModelScope.launch {
-            val result = communityRepository.getCommunityRoleCatalog(id, currentRole)
+            val owner = authService.getCurrentUserId()
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { communityRepository.getCommunityRoleCatalog(id, currentRole).getOrThrow() }
+            if (communityId != id || owner != authService.getCurrentUserId()) return@launch
             if (result.isSuccess) {
                 _roleCatalog.value = result.getOrNull()
             } else {
@@ -311,10 +322,8 @@ class CommunityDetailViewModel @Inject constructor(
 
     fun removeMember(userId: String) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            communityRepository.removeMember(id, userId)
-            loadMembers()
-        }
+        actions.run(id, "No se pudo quitar al participante. Comprueba tus permisos y reintenta.", { communityId == id },
+            { communityRepository.removeMember(id, userId) }, { loadMembers() })
     }
 
     fun saveCommunityProfile(
@@ -324,26 +333,21 @@ class CommunityDetailViewModel @Inject constructor(
         onSuccess: () -> Unit
     ) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            val result = communityRepository.updateCommunityMemberProfile(
+        actions.run(id, "No se pudo guardar tu perfil de la comunidad. Reintenta.", { communityId == id },
+            { communityRepository.updateCommunityMemberProfile(
                 communityId = id,
                 alias = alias,
                 bio = bio,
                 distinctive = distinctive
-            )
-            if (result.isSuccess) {
-                val profile = result.getOrThrow()
+            ) }, { value ->
+                val profile = value
                 _communityProfile.value = profile
                 _communityProfiles.value = _communityProfiles.value + (
                     profile.userId.trim().lowercase() to profile
                 )
                 _actionMessage.value = "Tu perfil de la comunidad se guardó."
                 onSuccess()
-            } else {
-                _actionMessage.value = result.exceptionOrNull()?.message
-                    ?: "No se pudo guardar tu perfil de la comunidad."
-            }
-        }
+            })
     }
 
     fun createCommunityEvent(
@@ -354,27 +358,22 @@ class CommunityDetailViewModel @Inject constructor(
         onSuccess: () -> Unit
     ) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            val result = communityRepository.createCommunityEvent(
+        actions.run(id, "No se pudo crear el evento. Comprueba tus permisos y reintenta.", { communityId == id },
+            { communityRepository.createCommunityEvent(
                 communityId = id,
                 title = title,
                 description = description,
                 startsAt = startsAt,
                 endsAt = null,
                 location = location
-            )
-            if (result.isSuccess) {
-                val event = result.getOrThrow()
+            ) }, { value ->
+                val event = value
                 _events.value = (_events.value + event)
                     .distinctBy { it.id }
                     .sortedBy { it.startsAt }
                 _actionMessage.value = "Evento creado."
                 onSuccess()
-            } else {
-                _actionMessage.value = result.exceptionOrNull()?.message
-                    ?: "No se pudo crear el evento."
-            }
-        }
+            })
     }
 
     fun setEventAttendance(
@@ -383,39 +382,29 @@ class CommunityDetailViewModel @Inject constructor(
         reminderMinutes: Int?
     ) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            val result = communityRepository.updateCommunityEventAttendance(
+        actions.run(id, "No se pudo guardar tu asistencia. Reintenta.", { communityId == id },
+            { communityRepository.updateCommunityEventAttendance(
                 communityId = id,
                 eventId = event.id,
                 attending = attending,
                 reminderMinutes = reminderMinutes
-            )
-            if (result.isSuccess) {
-                replaceEvent(result.getOrThrow())
+            ) }, { value ->
+                replaceEvent(value)
                 _actionMessage.value = when {
                     !attending -> "Ya no asistirás a este evento."
                     reminderMinutes != null -> "Asistencia y recordatorio guardados."
                     else -> "Tu asistencia quedó confirmada."
                 }
-            } else {
-                _actionMessage.value = result.exceptionOrNull()?.message
-                    ?: "No se pudo actualizar tu asistencia."
-            }
-        }
+            })
     }
 
     fun cancelCommunityEvent(event: CommunityEvent) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            val result = communityRepository.cancelCommunityEvent(id, event.id)
-            if (result.isSuccess) {
-                replaceEvent(result.getOrThrow())
+        actions.run(id, "No se pudo cancelar el evento. Reintenta.", { communityId == id },
+            { communityRepository.cancelCommunityEvent(id, event.id) }, { value ->
+                replaceEvent(value)
                 _actionMessage.value = "Evento cancelado."
-            } else {
-                _actionMessage.value = result.exceptionOrNull()?.message
-                    ?: "No se pudo cancelar el evento."
-            }
-        }
+            })
     }
 
     fun updateCommunityInfo(
@@ -428,8 +417,8 @@ class CommunityDetailViewModel @Inject constructor(
         onSuccess: () -> Unit
     ) {
         val id = communityId ?: return
-        viewModelScope.launch {
-            val result = communityRepository.updateCommunityInfo(
+        actions.run(id, "No se pudo guardar la información de la comunidad. Reintenta.", { communityId == id },
+            { communityRepository.updateCommunityInfo(
                 communityId = id,
                 name = name,
                 description = description,
@@ -437,9 +426,7 @@ class CommunityDetailViewModel @Inject constructor(
                 isPublic = isPublic,
                 onlyAdminsCanTalk = onlyAdminsCanTalk,
                 weeklyMessageLimit = weeklyMessageLimit
-            )
-
-            if (result.isSuccess) {
+            ) }, { value ->
                 _community.value = _community.value?.copy(
                     name = name.trim(),
                     description = description?.trim().orEmpty().ifBlank { null },
@@ -449,12 +436,7 @@ class CommunityDetailViewModel @Inject constructor(
                     weekly_message_limit = weeklyMessageLimit.coerceIn(0, 10000)
                 )
                 onSuccess()
-            } else {
-                val msg = result.exceptionOrNull()?.message ?: "No se pudo guardar los cambios"
-                android.util.Log.e("CommunityDetailVM", "updateCommunityInfo failed. id=$id msg=$msg", result.exceptionOrNull())
-                _actionMessage.value = msg
-            }
-        }
+            })
     }
 
     private fun loadMembers() {
@@ -462,7 +444,7 @@ class CommunityDetailViewModel @Inject constructor(
         val id = ticket.communityId
         if (membersLoadJob?.isActive == true) return
         membersLoadJob = ticket.scope.launch {
-            val membersResult = communityRepository.getCommunityMembers(id)
+            val membersResult = conectate.com.core.network.runReadWithDeadline(10_000) { communityRepository.getCommunityMembers(id).getOrThrow() }
             if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@launch
             if (membersResult.isSuccess) {
                 _members.value = membersResult.getOrDefault(emptyList())
@@ -483,7 +465,7 @@ class CommunityDetailViewModel @Inject constructor(
         featuresLoadJob = ticket.scope.launch {
         coroutineScope {
         launch {
-            val profileResult = communityRepository.getCommunityMemberProfiles(id)
+            val profileResult = conectate.com.core.network.runReadWithDeadline(10_000) { communityRepository.getCommunityMemberProfiles(id).getOrThrow() }
             if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@launch
             if (profileResult.isSuccess) {
                 val catalog = profileResult.getOrThrow()
@@ -497,7 +479,7 @@ class CommunityDetailViewModel @Inject constructor(
             }
         }
         launch {
-            val eventsResult = communityRepository.getCommunityEvents(id)
+            val eventsResult = conectate.com.core.network.runReadWithDeadline(10_000) { communityRepository.getCommunityEvents(id).getOrThrow() }
             if (!detailSession.isCurrent(ticket, authService.getCurrentUserId())) return@launch
             if (eventsResult.isSuccess) {
                 val catalog = eventsResult.getOrThrow()

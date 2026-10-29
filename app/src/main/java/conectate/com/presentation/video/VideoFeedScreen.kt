@@ -322,6 +322,7 @@ fun VideoFeedScreen(
     val comments by viewModel.comments.collectAsState()
     val commentPosting by viewModel.commentPosting.collectAsState()
     val focusedVideoError by viewModel.focusedVideoError.collectAsState()
+    val profileFeedError by viewModel.profileFeedError.collectAsState()
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsState()
     val reportedVideoIds by viewModel.reportedVideoIds.collectAsState()
     val reportActionMessage by viewModel.reportActionMessage.collectAsState()
@@ -555,16 +556,8 @@ fun VideoFeedScreen(
         }
     }
 
-    LaunchedEffect(initialVideoId, feedEntries, initialVideoPositionApplied) {
-        if (initialVideoPositionApplied) return@LaunchedEffect
-        val targetId = initialVideoId?.trim()?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        val targetPage = feedEntries.indexOfFirst { entry ->
-            entry is VideoFeedVideoEntry && entry.video.id.equals(targetId, ignoreCase = true)
-        }
-        if (targetPage >= 0) {
-            pagerState.scrollToPage(targetPage)
-            initialVideoPositionApplied = true
-        }
+    PositionInitialVideoPage(initialVideoId, feedEntries, pagerState, initialVideoPositionApplied) {
+        initialVideoPositionApplied = true
     }
 
     LaunchedEffect(profilePrependCount, feedEntries.size) {
@@ -1804,6 +1797,11 @@ fun VideoFeedScreen(
                         Text(focusedVideoError.orEmpty(), color = Color.White, textAlign = TextAlign.Center)
                         Button(onClick = { initialVideoId?.let(viewModel::ensureVideoInFeed) }) { Text("Reintentar") }
                     }
+                }
+            } else if (isProfileFeed && currentVideos.isEmpty() && profileFeedError != null) {
+                Column(Modifier.align(Alignment.Center).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(profileFeedError.orEmpty(), color = Color.White)
+                    Button(onClick = viewModel::refreshFeed) { Text("Reintentar") }
                 }
             } else if (!isConnected && feedEntries.isEmpty()) {
                  Box(

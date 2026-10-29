@@ -7,11 +7,13 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 @HiltViewModel
 class CreateCommunityViewModel @Inject constructor(
-    private val communityRepository: CommunityRepository
+    private val communityRepository: CommunityRepository,
+    private val authService: conectate.com.data.supabase.AuthService,
 ) : ViewModel() {
 
     private val _isCreating = MutableStateFlow(false)
@@ -34,28 +36,34 @@ class CreateCommunityViewModel @Inject constructor(
         isPublic: Boolean,
         onSuccess: (String) -> Unit
     ) {
+        if (_isCreating.value) return
         if (name.isBlank()) {
             _error.value = "El nombre es obligatorio"
             return
         }
 
+        val image = _selectedImageBytes.value
+        val owner = authService.getCurrentUserId() ?: run { _error.value = "Inicia sesión para continuar."; return }
+        _isCreating.value = true
+        _error.value = null
         viewModelScope.launch {
-            _isCreating.value = true
-            _error.value = null
             try {
                 val result = communityRepository.createCommunity(
                     name = name,
                     description = description,
-                    imageBytes = _selectedImageBytes.value,
+                    imageBytes = image,
                     category = category,
                     isPublic = isPublic
                 )
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (owner != authService.getCurrentUserId()) return@launch
                 if (result.isSuccess) {
                     onSuccess(result.getOrThrow())
                 } else {
                     _error.value = result.exceptionOrNull()?.message
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 _error.value = e.message
             } finally {
                 _isCreating.value = false
