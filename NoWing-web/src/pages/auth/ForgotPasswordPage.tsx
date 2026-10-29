@@ -1,6 +1,7 @@
 import { StreamingImage } from '../../components/StreamingMedia'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { authReturnPath, safeAuthDestination } from '../../core/auth/loginReturnPath'
 import { requestFallbackPasswordReset, verifyFallbackPasswordReset, confirmFallbackPasswordReset,
   FallbackPasswordChangedNeedsTwoFactorError } from '../../core/auth/fallbackAuth'
 
@@ -28,6 +29,7 @@ function resetError(error: unknown): string {
 
 export function ForgotPasswordPage() {
   const [params] = useSearchParams(), navigate = useNavigate()
+  const nextPath = safeAuthDestination(params.get('next'))
   const [draft] = useState(readDraft)
   const [email, setEmail] = useState(params.get('email') || draft.email)
   const [step, setStep] = useState<Step>(params.get('email') && params.get('email') !== draft.email ? 'email' : draft.step)
@@ -63,12 +65,12 @@ export function ForgotPasswordPage() {
       } else {
         await confirmFallbackPasswordReset(grant, password)
         try { sessionStorage.removeItem(draftKey) } catch { /* Optional draft. */ }
-        navigate('/app/messages', { replace: true })
+        navigate(nextPath, { replace: true })
       }
     } catch (caught) {
       if (caught instanceof FallbackPasswordChangedNeedsTwoFactorError) {
         try { sessionStorage.removeItem(draftKey) } catch { /* Optional draft. */ }
-        navigate(`/login?email=${encodeURIComponent(normalizedEmail)}&passwordChanged=1`, { replace: true })
+        navigate(`${authReturnPath('/login', nextPath)}&email=${encodeURIComponent(normalizedEmail)}&passwordChanged=1`, { replace: true })
       } else { setError(resetError(caught)) }
     } finally { setBusy(false) }
   }
@@ -90,7 +92,7 @@ export function ForgotPasswordPage() {
       {step === 'code' && <><button type="button" className="ghost-btn" disabled={busy} onClick={() => void request()}>Enviar otro código</button>
         <button type="button" className="ghost-btn" disabled={busy} onClick={() => { setStep('email'); setError(''); setInfo('') }}>Cambiar correo</button></>}
       {step === 'password' && <button type="button" className="ghost-btn" disabled={busy} onClick={() => { setGrant(''); setPassword(''); setConfirmation(''); setStep('code'); setError('') }}>Volver a verificar un código</button>}
-      <Link to="/login">Volver a iniciar sesión</Link>
+      <Link to={authReturnPath('/login', nextPath)}>Volver a iniciar sesión</Link>
     </article></div>
   </section>
 }

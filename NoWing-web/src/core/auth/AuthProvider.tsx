@@ -20,7 +20,7 @@ import {
   upgradeFallbackWebSession,
 } from './fallbackAuth'
 import { bootstrapSessionProfile } from './sessionBootstrap'
-import { loginReturnPath } from './loginReturnPath'
+import { loginReturnPath, safeAuthDestination } from './loginReturnPath'
 import { retainUnchangedAuthUser } from './stableAuthUser'
 import { getStorageReadIdentity, invalidateStorageReadIdentity, updateStorageReadIdentity } from '../media/storageReadSession'
 import { subscribeUbuntuRealtime } from '../ubuntuRealtime'
@@ -375,13 +375,14 @@ export function RequireAuth({ children }: PropsWithChildren) {
 }
 
 export function GuestOnlyRoute({ children }: PropsWithChildren) {
+  const location = useLocation()
   const { loading, user, configured } = useAuth()
   if (!configured) return <>{children}</>
   if (loading) {
     return <StatusView title="Cargando sesión" description="Espera un momento..." />
   }
   if (user) {
-    return <Navigate to="/app/messages" replace />
+    return <Navigate to={safeAuthDestination(new URLSearchParams(location.search).get('next'))} replace />
   }
   return <>{children}</>
 }

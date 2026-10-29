@@ -1,15 +1,18 @@
 import { StreamingImage } from '../../components/StreamingMedia'
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { signUpAndBootstrapProfile } from '../../core/auth/sessionBootstrap'
 import { supabase } from '../../core/supabase'
 import { friendlyError } from '../../core/utils'
 import { useWebPreferences } from '../../core/webPreferences'
+import { authReturnPath, safeAuthDestination } from '../../core/auth/loginReturnPath'
 
 export function RegisterPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const nextPath = safeAuthDestination(searchParams.get('next'))
   const client = supabase
   const [webPreferences] = useWebPreferences()
   const [email, setEmail] = useState('')
@@ -61,7 +64,7 @@ export function RegisterPage() {
         displayName,
         username,
       })
-      navigate('/app/messages', { replace: true })
+      navigate(nextPath, { replace: true })
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo registrar la cuenta'))
     } finally {
@@ -152,7 +155,7 @@ export function RegisterPage() {
           </div>
 
           <p className="auth-foot">
-            ¿Ya tienes cuenta? <Link to="/login">Inicia sesión</Link>
+            ¿Ya tienes cuenta? <Link to={authReturnPath('/login', nextPath)}>Inicia sesión</Link>
           </p>
         </form>
       </div>

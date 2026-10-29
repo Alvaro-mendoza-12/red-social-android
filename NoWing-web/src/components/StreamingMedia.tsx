@@ -49,8 +49,9 @@ function useSource(raw?: string) {
   const loaded = useCallback(() => loadedRef.current(), [])
   return { url: !protectedSource ? source || undefined : ready?.source === source && ready.identity === identity ? ready.url : cachedBrowserStreamingSource(source, identity), unavailable: unavailable?.source === source && unavailable.identity === identity, retry, loaded }
 }
-export const StreamingImage = forwardRef<HTMLImageElement, ImgHTMLAttributes<HTMLImageElement>>(function StreamingImage({ src, onError, onLoad, ...props }, ref) {
+export const StreamingImage = forwardRef<HTMLImageElement, ImgHTMLAttributes<HTMLImageElement> & { onSourceUnavailable?: () => void }>(function StreamingImage({ src, onError, onLoad, onSourceUnavailable, ...props }, ref) {
   const source = useSource(src)
+  useEffect(() => { if (source.unavailable) onSourceUnavailable?.() }, [source.unavailable, onSourceUnavailable])
   return <img {...props} ref={ref} src={source.url} onLoad={event => { source.loaded(); onLoad?.(event) }} onError={event => { if (!source.retry()) onError?.(event) }} data-novvin-media={src ? '' : undefined} />
 })
 export const StreamingVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLVideoElement> & { onSourceUnavailable?: () => void }>(function StreamingVideo({ src, poster, onError, onLoadedData, onSourceUnavailable, ...props }, ref) {

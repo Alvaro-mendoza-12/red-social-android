@@ -5,6 +5,8 @@ import { RoomVideo } from './RoomVideo'
 import { RoomChatPhoto } from './RoomChatPhoto'
 import { roomSocketReady } from './voiceMembership'
 import { voiceSocketAuth, voiceReconnectOptions } from './voiceSocketRecovery'
+import { voiceMembershipRecovery, voiceTransportOptions } from './voiceTransportPolicy'
+import { voiceRoomShareUrl } from '../../core/voiceRoomLinks'
 import { RoomReactionMenu } from '../../components/RoomReactionMenu'
 import { MessageText } from '../../components/MessageText'
 import { boundedRoomChat, firstRoomClipboardImage, prepareRoomImage, validRoomImage, roomChatTtlMs } from './roomChatImage'
@@ -34,6 +36,8 @@ import {
   Users,
   Volume2,
   VolumeX,
+  Share2,
+  Copy,
 } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
 import {
@@ -70,6 +74,7 @@ type VoiceRoom = {
   participantCount: number
   maxParticipants: number
   updatedAt: string
+  isPrivate: boolean
 }
 
 type Participant = {
@@ -241,6 +246,7 @@ function mapRoom(row: GenericRow, fallbackId: string): VoiceRoom {
     participantCount: resolveParticipantCount(row),
     maxParticipants: Math.max(1, Number(row.max_participants ?? 10)),
     updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
+    isPrivate: row.is_public === false || row.is_public === 'false',
   }
 }
 
@@ -305,6 +311,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const [syncingParticipants, setSyncingParticipants] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [joinError, setJoinError] = useState<string | null>(null)
+  const [roomPassword, setRoomPassword] = useState('')
   const [isJoined, setIsJoined] = useState(false)
   const [isJoining, setIsJoining] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
@@ -354,6 +361,9 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const mutedRef = useRef(false)
   const joinedRef = useRef(false)
   const autoJoinAttemptedRef = useRef(false)
+  const membershipCleanupRef = useRef<() => void>(() => {})
+  const joinPendingRef = useRef(false)
+  const participantsPendingRef = useRef(false)
   const socketToUserIdRef = useRef(new Map<string, string>())
   const liveParticipantStateRef = useRef(new Map<string, { socketId: string; isMuted: boolean | null; isSpeaking: boolean }>())
   const visualSourceRef = useRef<'none' | 'camera' | 'screen'>('none')
@@ -406,6 +416,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }, [])
 
   const stopSignaling = useCallback(() => {
+    membershipCleanupRef.current()
     roomCues.suspend()
     acceptedSocketRef.current = ''
     setSignalingReady(false)
@@ -544,7 +555,9 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }, [roomId, useUbuntuVoice])
 
   const loadParticipants = useCallback(async (targetRoomId: string, options?: { silent?: boolean }) => {
+    if (participantsPendingRef.current) return
     if (useUbuntuVoice) {
+      participantsPendingRef.current = true
       if (options?.silent) {
         setSyncingParticipants(true)
       }
@@ -570,6 +583,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       } catch (caught) {
         setJoinError(friendlyError(caught, 'No se pudieron cargar los participantes desde Ubuntu'))
       } finally {
+        participantsPendingRef.current = false
         setSyncingParticipants(false)
       }
       return
@@ -795,7 +809,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           Authorization: `Bearer ${accessToken}`,
         },
       })
-      if (!response.ok) return
+      if (!response.ok) throw new Error('No se pudieron cargar los servidores de audio')
       const payload = await response.json() as unknown
       const iceServers = extractIceServers(payload)
       manager.setIceServers(iceServers)
@@ -817,13 +831,14 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       return
     }
 
+    const sessionKey = photoRoom.current
     await configureIceServers(manager, accessToken)
+    if (sessionKey !== photoRoom.current || !joinedRef.current || manager !== webrtcManagerRef.current) return
     stopSignaling()
 
     const signalingUrl = readSignalingUrl()
     const socket: VoiceSocket = io(signalingUrl, {
-      transports: ['websocket', 'polling'],
-      tryAllTransports: true,
+      ...voiceTransportOptions,
       query: { affinity: buildSignalingAffinity('voice', room.id) },
       auth: voiceSocketAuth(async () => useUbuntuVoice
         ? await ensureFallbackAccessToken()
@@ -833,10 +848,16 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       ...voiceReconnectOptions,
       timeout: 12000,
     })
-    let roomJoinPending = false
+    const current = () => joinedRef.current && socketRef.current === socket
+    const membership = voiceMembershipRecovery(socket, () => {
+      if (!current()) return
+      setConnectionLabel('Reconectando acceso a la sala')
+      socket.disconnect()
+      socket.connect()
+    }, current)
+    membershipCleanupRef.current = membership.complete
     const requestRoomMembership = () => {
-      if (!socket.connected || roomJoinPending || !joinedRef.current || socketRef.current !== socket) return
-      roomJoinPending = true
+      if (!membership.begin()) return
       acceptedSocketRef.current = ''
       setSignalingReady(false)
       socket.emit('join-room', { roomId: room.id, userId: user.id, name: displayName, avatarUrl, isMuted: mutedRef.current })
@@ -901,7 +922,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       acceptedSocketRef.current = ''
       setSignalingReady(false)
       setConnectionLabel('Señalización conectada')
-      roomJoinPending = false
+      membership.complete()
       requestRoomMembership()
     })
 
@@ -912,8 +933,8 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         : socketError.message || 'No se pudo conectar con el servidor de voz')
     })
 
-    socket.on('disconnect', () => {
-      roomJoinPending = false
+    socket.on('disconnect', (reason) => {
+      membership.reconnect(reason)
       acceptedSocketRef.current = ''
       setSignalingReady(false)
       roomCues.suspend()
@@ -922,6 +943,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
     socket.on('auth-error', (payload) => {
       if (String(payload.error || '').includes('not joined to requested room')) {
+        membership.complete()
         acceptedSocketRef.current = ''
         setSignalingReady(false)
         requestRoomMembership()
@@ -934,7 +956,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     socket.on('room-joined', (payload) => {
       if (payload.roomId && payload.roomId !== room.id) return
       if (socketRef.current !== socket || !joinedRef.current) return
-      roomJoinPending = false
+      membership.complete()
       acceptedSocketRef.current = socket.id || ''
       setSignalingReady(true)
       setJoinError(null)
@@ -952,7 +974,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
     socket.on('room-join-error', (payload) => {
       if (payload.roomId && payload.roomId !== room.id) return
-      roomJoinPending = false
+      membership.complete()
       acceptedSocketRef.current = ''
       setSignalingReady(false)
       setConnectionLabel('Acceso rechazado')
@@ -1112,8 +1134,9 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
   const joinRoom = useCallback(async () => {
     void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))
-    if (!user || !room || isJoining || isJoined) return
+    if (!user || !room || joinPendingRef.current || isJoining || isJoined) return
     if (!claimInteractiveMediaSession({ accountId: user.id, key: mediaKey, kind: 'voice', title: room.title, path: `/app/voice/${encodeURIComponent(room.id)}`, close: () => closeMediaRef.current() })) return
+    joinPendingRef.current = true
     setIsJoining(true)
     setJoinError(null)
     setConnectionLabel('Conectando')
@@ -1135,6 +1158,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           userName: displayName,
           userAvatarUrl: avatarUrl,
           isMuted: nextMuted,
+          ...(room.isPrivate ? { password: roomPassword } : {}),
         })
         createdParticipant = true
         const mappedParticipants = (response.participants ?? []).map(mapParticipant)
@@ -1223,6 +1247,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       setConnectionLabel('Sin conectar')
       setJoinError(friendlyError(caught, 'No se pudo unir a la sala'))
     } finally {
+      joinPendingRef.current = false
       setIsJoining(false)
     }
   }, [
@@ -1235,6 +1260,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     loadParticipants,
     mediaKey,
     room,
+    roomPassword,
     startLocalAudio,
     stopLocalMedia,
     syncParticipantCounter,
@@ -1395,9 +1421,10 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   }, [loadRoom])
 
   useEffect(() => {
-    if (!room?.id) return
+    // Ubuntu's detail response already contains the participant list.
+    if (!room?.id || useUbuntuVoice) return
     void loadParticipants(room.id)
-  }, [loadParticipants, room?.id])
+  }, [loadParticipants, room?.id, useUbuntuVoice])
 
   useEffect(() => {
     if (!room || !user || !explicitJoin || autoJoinAttemptedRef.current || isJoined) return
@@ -1405,6 +1432,10 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('join')
     navigate({ search: nextParams.toString() }, { replace: true })
+    if (room.isPrivate && room.creatorId !== user.id) {
+      setJoinError('Esta sala es privada. Introduce su contraseña y pulsa Unirse.')
+      return
+    }
     void joinRoom()
   }, [explicitJoin, isJoined, joinRoom, navigate, room, searchParams, user])
 
@@ -1437,10 +1468,11 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   useEffect(() => {
     if (!useUbuntuVoice || !room?.id) return
     const intervalId = window.setInterval(() => {
+      if (document.hidden || minimized) return
       void loadParticipants(room.id, { silent: true })
-    }, 5000)
+    }, signalingReady ? 15_000 : 5_000)
     return () => window.clearInterval(intervalId)
-  }, [loadParticipants, room?.id, useUbuntuVoice])
+  }, [loadParticipants, minimized, room?.id, signalingReady, useUbuntuVoice])
 
   useEffect(() => {
     const operations = photoOperation
@@ -1561,14 +1593,34 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           </div>
         </div>
 
+        <div className="row-wrap">
+          <button className="ghost-btn" type="button" onClick={() => {
+            void navigator.clipboard.writeText(voiceRoomShareUrl(room.id)).then(() => toast.success('Enlace de la sala copiado')).catch(() => toast.error('No se pudo copiar el enlace'))
+          }}><Copy size={17} aria-hidden="true" />Copiar enlace</button>
+          <button className="ghost-btn" type="button" onClick={() => {
+            const url = voiceRoomShareUrl(room.id)
+            if (navigator.share) void navigator.share({ title: 'Sala de voz · Novvin', text: 'Te invito a una sala de voz en Novvin', url }).catch(error => {
+              if (!(error instanceof DOMException && error.name === 'AbortError')) toast.error('No se pudo compartir. Puedes copiar el enlace.')
+            })
+            else void navigator.clipboard.writeText(url).then(() => toast.success('Enlace copiado para compartir')).catch(() => toast.error('No se pudo copiar el enlace'))
+          }}><Share2 size={17} aria-hidden="true" />Compartir sala</button>
+        </div>
       </header>
 
       {cueAudioBlocked&&isJoined?<div role="status" className="voice-room-alert">El navegador requiere una pulsación para activar los avisos. <button className="ghost-btn" onClick={()=>void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))}>Habilitar sonidos</button></div>:null}
       {joinError ? (
         <article className="voice-room-alert" role="status">
           {joinError}
+          {isJoined && !signalingReady ? <button className="ghost-btn" type="button" onClick={() => {
+            const manager = webrtcManagerRef.current
+            if (manager) void connectSignaling(manager).catch(() => setJoinError('No se pudo reconectar la sala. Reintenta cuando vuelva la conexión.'))
+          }}>Reconectar voz</button> : null}
         </article>
       ) : null}
+      {!isJoined && room.isPrivate && room.creatorId !== user?.id ? <label>
+        Contraseña de la sala
+        <input className="text-input" type="password" autoComplete="off" value={roomPassword} onChange={event => setRoomPassword(event.target.value)} />
+      </label> : null}
 
       <ReactionCloud items={voiceReactionItems} room/>
       <div className="voice-room-console">
