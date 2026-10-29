@@ -5,7 +5,7 @@ import { readConversationDraft, useDraftRevision } from '../../core/conversation
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Search, MessageSquarePlus, MoreVertical, Phone, Plus, Trash2, Users } from 'lucide-react'
+import { Search, MessageSquarePlus, MoreVertical, Phone, Plus, Trash2, Users, Compass } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
@@ -1605,8 +1605,8 @@ export function MessagesPage() {
           >
             {activeTab === 'chats' ? <MessageSquarePlus size={22} /> : <Plus size={22} />}
           </button>
-          <button className="icon-btn" type="button" aria-label="Menú" onClick={openNovvinMenu}>
-            <MoreVertical size={22} />
+          <button className="icon-btn" type="button" aria-label="Explorar Novvin" title="Explorar Novvin" onClick={openNovvinMenu}>
+            <Compass size={22} aria-hidden="true" />
           </button>
         </div>
       </header>
