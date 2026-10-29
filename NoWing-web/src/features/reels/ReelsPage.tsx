@@ -215,6 +215,7 @@ export function ReelFeedCard({
   const [paused, setPaused] = useState(false)
   const [buffering, setBuffering] = useState(true)
   const [playbackError, setPlaybackError] = useState(false)
+  const [playbackRetry, setPlaybackRetry] = useState(0)
   const [showBuffering, setShowBuffering] = useState(false)
   useEffect(() => {
     if (!buffering || !visible || playbackError) return
@@ -256,6 +257,7 @@ export function ReelFeedCard({
     <article className="reel-feed-item">
       <StreamingVideo
         ref={videoRef}
+        retryKey={playbackRetry}
         onLoadedData={() => {
           setBuffering(false); setPlaybackError(false)
           if (visibleRef.current && !userPausedRef.current && !document.hidden) void videoRef.current?.play().catch(() => setPaused(true))
@@ -302,7 +304,7 @@ export function ReelFeedCard({
         poster={canLoad ? item.coverUrl || undefined : undefined}
       />
       <div className="reel-feed-shade" />
-      {playbackError ? <div className="reel-media-status" role="status"><span>El video está tardando en cargar.</span><button className="ghost-btn" type="button" onClick={() => { setPlaybackError(false); setBuffering(true); videoRef.current?.load(); void videoRef.current?.play().catch(() => undefined) }}>Reintentar</button></div> : showBuffering && canLoad ? <div className="reel-media-status loading" role="status">Cargando video…</div> : null}
+      {playbackError ? <div className="reel-media-status" role="status"><span>El video está tardando en cargar.</span><button className="ghost-btn" type="button" onClick={() => { userPausedRef.current = false; setPlaybackError(false); setBuffering(true); setPlaybackRetry(value => value + 1); videoRef.current?.load(); void videoRef.current?.play().catch(() => undefined) }}>Reintentar</button></div> : showBuffering && canLoad ? <div className="reel-media-status loading" role="status">Cargando video…</div> : null}
       {paused ? (
         <span className="reel-play-indicator" aria-hidden="true">
           <Play fill="white" size={30} />

@@ -5,7 +5,7 @@ import { readConversationDraft, useDraftRevision } from '../../core/conversation
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Search, MessageSquarePlus, MoreVertical, Phone, Plus, Trash2, Users, Compass } from 'lucide-react'
+import { Search, MessageSquarePlus, Phone, Plus, Trash2, Users, Compass } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
