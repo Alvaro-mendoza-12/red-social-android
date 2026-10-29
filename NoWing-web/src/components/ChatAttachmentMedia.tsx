@@ -48,7 +48,7 @@ export function ChatAttachmentMedia({
 }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const rewritten = rewriteRuntimeStorageUrl(url)
-  const source = kind === 'image' && !preserveAnimation && !/\.(gif|webp)(?:[?#]|$)/i.test(rewritten) ? runtimeStoragePreviewUrl(rewritten) : rewritten
+  const source = kind === 'image' && !preserveAnimation && !/\.(gif|webp)(?:[?#]|$)/i.test(rewritten) ? runtimeStoragePreviewUrl(rewritten, 640, 75) : rewritten
   const backendBase = trustedStorageBackend(source)
   const ownStorage = Boolean(backendBase)
   const maxBytes = kind === 'image' ? STORAGE_PREVIEW_MAX_BYTES : STORAGE_SHORT_MEDIA_MAX_BYTES
@@ -65,11 +65,13 @@ export function ChatAttachmentMedia({
     const target = container.current
     if (!target || typeof IntersectionObserver === 'undefined') { setVisible(true); return }
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) { setVisible(true); observer.disconnect() }
-    }, { rootMargin: preserveAnimation ? '48px' : '250px' })
+      const nearby = entries.some((entry) => entry.isIntersecting)
+      if (kind === 'image') setVisible(nearby)
+      else if (nearby) { setVisible(true); observer.disconnect() }
+    }, { rootMargin: preserveAnimation ? '360px' : '1000px' })
     observer.observe(target)
     return () => observer.disconnect()
-  }, [preserveAnimation])
+  }, [kind, preserveAnimation])
 
   useEffect(() => {
     if (!ownStorage || !visible || !identity.accountId || kind === 'video' || kind === 'audio' || ((kind === 'file' || kind === 'pdf') && !readRequested)) return
@@ -177,5 +179,5 @@ export function ChatAttachmentMedia({
   } else {
     content = <a className="chat-file-card" href={playbackUrl} download={title} rel="noopener noreferrer"><span className="chat-file-icon">DOC</span><span><strong>{title}</strong>{ready?.size ? <small>{Math.ceil(ready.size / 1024)} KB</small> : null}</span></a>
   }
-  return <div ref={container}>{content}{kind==='image'&&imageLink&&inlineDownload?<MediaDownloadButton url={rewritten} name={title}/>:null}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':kind==='file'?'document':'image',title,documentName:attachmentName(rewritten, title),downloadUrl:rewritten}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
+  return <div ref={container}>{kind === 'image' ? <div className={`chat-attachment-image-frame ${imageClassName === 'sticker-preview' ? 'sticker-image-frame' : ''}`}>{content}</div> : content}{kind==='image'&&imageLink&&inlineDownload?<MediaDownloadButton url={rewritten} name={title}/>:null}{viewerOpen && playbackUrl && (!ownStorage || identity.accountId) ? <MediaViewer items={[{url:playbackUrl,type:kind==='pdf'?'pdf':kind==='file'?'document':'image',title,documentName:attachmentName(rewritten, title),downloadUrl:rewritten}]} onClose={()=>setViewerOpen(false)}/> : null}</div>
 }

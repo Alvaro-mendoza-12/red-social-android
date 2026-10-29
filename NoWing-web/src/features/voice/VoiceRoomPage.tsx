@@ -4,6 +4,7 @@ import { useReactionBursts } from '../../components/useReactionBursts'
 import { RoomVideo } from './RoomVideo'
 import { RoomChatPhoto } from './RoomChatPhoto'
 import { roomSocketReady } from './voiceMembership'
+import { voiceSocketAuth, voiceReconnectOptions } from './voiceSocketRecovery'
 import { RoomReactionMenu } from '../../components/RoomReactionMenu'
 import { MessageText } from '../../components/MessageText'
 import { boundedRoomChat, firstRoomClipboardImage, prepareRoomImage, validRoomImage, roomChatTtlMs } from './roomChatImage'
@@ -824,11 +825,12 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       transports: ['websocket', 'polling'],
       tryAllTransports: true,
       query: { affinity: buildSignalingAffinity('voice', room.id) },
-      auth: { token: accessToken },
+      auth: voiceSocketAuth(async () => useUbuntuVoice
+        ? await ensureFallbackAccessToken()
+        : (await supabase?.auth.getSession())?.data.session?.access_token,
+      () => joinedRef.current && socketRef.current === socket),
       autoConnect: false,
-      reconnection: true,
-      reconnectionAttempts: 8,
-      reconnectionDelay: 700,
+      ...voiceReconnectOptions,
       timeout: 12000,
     })
     let roomJoinPending = false
@@ -905,7 +907,9 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
     socket.on('connect_error', (socketError) => {
       setConnectionLabel('Reconectando voz')
-      setJoinError(socketError.message || 'No se pudo conectar con el servidor de voz')
+      setJoinError(/xhr|transport|websocket|timeout/i.test(socketError.message)
+        ? 'Se interrumpió la conexión de voz. Reintentando automáticamente…'
+        : socketError.message || 'No se pudo conectar con el servidor de voz')
     })
 
     socket.on('disconnect', () => {

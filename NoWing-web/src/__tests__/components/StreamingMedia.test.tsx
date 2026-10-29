@@ -94,3 +94,17 @@ test('permanent audio registration failure is reported after bounded retries', a
     unmount()
   } finally { jest.useRealTimers() }
 })
+
+test('video registration failure is surfaced even when no native src was ever assigned', async () => {
+  jest.useFakeTimers()
+  try {
+    stream.mockRejectedValue(new Error('NOT_FOUND'))
+    const unavailable = jest.fn()
+    const { container, unmount } = render(<StreamingVideo src={media} onSourceUnavailable={unavailable}/>)
+    await act(async () => { await Promise.resolve() })
+    for (const delay of [350,1200,3000]) await act(async () => { jest.advanceTimersByTime(delay); await Promise.resolve() })
+    expect(container.querySelector('video')).not.toHaveAttribute('src')
+    expect(unavailable).toHaveBeenCalledTimes(1)
+    unmount()
+  } finally { jest.useRealTimers() }
+})

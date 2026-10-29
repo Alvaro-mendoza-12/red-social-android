@@ -53,9 +53,10 @@ export const StreamingImage = forwardRef<HTMLImageElement, ImgHTMLAttributes<HTM
   const source = useSource(src)
   return <img {...props} ref={ref} src={source.url} onLoad={event => { source.loaded(); onLoad?.(event) }} onError={event => { if (!source.retry()) onError?.(event) }} data-novvin-media={src ? '' : undefined} />
 })
-export const StreamingVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLVideoElement>>(function StreamingVideo({ src, poster, onError, onLoadedData, ...props }, ref) {
+export const StreamingVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLVideoElement> & { onSourceUnavailable?: () => void }>(function StreamingVideo({ src, poster, onError, onLoadedData, onSourceUnavailable, ...props }, ref) {
   const source = useSource(src)
   const posterSource = useSource(poster)
+  useEffect(() => { if (source.unavailable) onSourceUnavailable?.() }, [source.unavailable, onSourceUnavailable])
   return <video {...props} ref={ref} src={source.url} poster={posterSource.url} onLoadedData={event => { source.loaded(); onLoadedData?.(event) }} onError={event => { if (!source.retry()) onError?.(event) }} data-novvin-media={src ? '' : undefined} />
 })
 export const StreamingAudio = forwardRef<HTMLAudioElement, AudioHTMLAttributes<HTMLAudioElement> & { onSourceUnavailable?: () => void }>(function StreamingAudio({ src, onError, onLoadedData, onSourceUnavailable, ...props }, ref) {

@@ -19,6 +19,36 @@ jest.mock('../../core/media/boundedStorageRead', () => ({
 const privateUrl = 'https://backend.test/storage/v1/object/public/chat-media/a/file.png'
 const readBlob = readBoundedStorageBlob as jest.MockedFunction<typeof readBoundedStorageBlob>
 
+test('images reserve the same frame while awaiting and after receiving their bytes', async () => {
+  let finish!: (value: Blob) => void
+  readBlob.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  const { container } = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto estable" inlineDownload={false}/>)
+  await waitFor(() => expect(readBlob).toHaveBeenCalledTimes(1))
+  const frame = container.querySelector('.chat-attachment-image-frame')
+  expect(frame).toContainElement(screen.getByText('Preparando archivo'))
+  await act(async () => finish(new Blob(['photo'], { type: 'image/png' })))
+  expect(frame).toContainElement(await screen.findByAltText('Foto estable'))
+  expect(container.querySelector('.chat-attachment-image-frame')).toBe(frame)
+})
+
+test('scrolling away releases a pending image read so visible messages can load', async () => {
+  const callbacks: IntersectionObserverCallback[] = []
+  const previous = globalThis.IntersectionObserver
+  Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: class {
+    constructor(callback: IntersectionObserverCallback) { callbacks.push(callback) }
+    observe() {} disconnect() {} unobserve() {} takeRecords() { return [] }
+  } })
+  try {
+    readBlob.mockImplementation(() => new Promise(() => {}))
+    render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto lejana" inlineDownload={false}/>)
+    act(() => callbacks[0]([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver))
+    await waitFor(() => expect(readBlob).toHaveBeenCalledTimes(1))
+    const signal = readBlob.mock.calls[0][0].signal
+    act(() => callbacks[0]([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver))
+    expect(signal.aborted).toBe(true)
+  } finally { Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: previous }) }
+})
+
 test('returning to a cached photo renders it immediately with the same source and no new read', async () => {
   readBlob.mockResolvedValue(new Blob(['original-image'], { type: 'image/png' }))
   const first = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto precargada"/>)

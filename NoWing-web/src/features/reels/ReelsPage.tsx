@@ -252,6 +252,7 @@ function ReelFeedCard({
         onWaiting={() => setBuffering(true)}
         onPlaying={() => { setBuffering(false); setPlaybackError(false) }}
         onError={() => { setBuffering(false); setPlaybackError(true) }}
+        onSourceUnavailable={() => { setBuffering(false); setPlaybackError(true) }}
         onTimeUpdate={event => {
           const video = event.currentTarget, progress = watch.current, delta = video.currentTime - progress.position
           progress.position = video.currentTime

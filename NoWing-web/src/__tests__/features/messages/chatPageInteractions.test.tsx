@@ -73,6 +73,16 @@ test.each(['chat', 'group', 'community'] as const)('%s accepts typing immediatel
   expect(input).toHaveValue('Hola 😀')
 })
 
+test.each(['chat', 'group', 'community'] as const)('%s keeps a reply outside the loaded history in stacked layout', async scope => {
+  const reply = { ...incoming, id: 'reply-outside-page', content: 'Mañana prosigo con el código para noticias', reply_to_id: 'older-message' }
+  ;(loadFallbackChat as jest.Mock).mockResolvedValue({ ...response, messages: [reply] })
+  ;(loadFallbackRoomChat as jest.Mock).mockResolvedValue({ ...response, messages: [reply] })
+  const { container } = open(scope)
+  await screen.findByText(reply.content)
+  expect(screen.getByRole('button', { name: 'Ir al mensaje respondido' })).toBeInTheDocument()
+  expect(container.querySelector('#message-reply-outside-page')).not.toHaveClass('text-bubble')
+})
+
 test.each(['chat', 'group', 'community'] as const)('%s contact cards keep their time even when the contact has a JPG URL', async scope => {
   const contact = { ...incoming, id: 'contact-message', content: JSON.stringify({ name: 'Contacto de prueba', phone: '+51999999999' }), content_type: 'contact', media_url: 'https://example.test/contact.jpg' }
   ;(loadFallbackChat as jest.Mock).mockResolvedValue({ ...response, messages: [contact] })
