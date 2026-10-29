@@ -320,7 +320,7 @@ async function fetchProfileMapByIds(
 
   if (isFallbackAuthConfigured) {
     const params = new URLSearchParams({ select: '*', id: `in.(${uniqueIds.join(',')})` })
-    const rows = await fallbackApiJson<GenericRow[]>(`/rest/v1/profiles_public?${params}`)
+    const rows = await fallbackApiJson<GenericRow[]>(`/rest/v1/profiles?${params}`)
     rows.forEach(profile => {
       const id = normalizeId(textOf(profile, ['id'], ''))
       if (id) {
@@ -602,6 +602,7 @@ export function MessagesPage() {
   const [selectedConversation, setSelectedConversation] = useState<SelectedConversation | null>(
     null,
   )
+  const [conversationOpenRequest, setConversationOpenRequest] = useState(0)
 
   const inboxCacheKey = useMemo(
     () => `messages:${user?.id ?? 'anon'}:${activeTab}${activeTab === 'voice' ? ':standalone-v2' : ''}`,
@@ -1255,6 +1256,7 @@ export function MessagesPage() {
         try {
           void markChatAsReadBestEffort(item.id)
           if (supportsSplitLayout) {
+            setConversationOpenRequest(value => value + 1)
             setSelectedConversation({ id: item.id, kind: 'chat' })
           } else if (item.openPath) {
             navigate(item.openPath)
@@ -1269,6 +1271,7 @@ export function MessagesPage() {
     }
     if (item.kind === 'group' || item.kind === 'community') {
       if (supportsSplitLayout) {
+        setConversationOpenRequest(value => value + 1)
         setSelectedConversation({ id: item.id, kind: item.kind })
       } else {
         navigate(item.openPath || `/app/messages/${item.kind}/${encodeURIComponent(item.id)}`)
@@ -1299,6 +1302,7 @@ export function MessagesPage() {
       if (supportsSplitLayout) {
         // Empty chats deliberately stay out of the inbox until the first message.
         // Keep this explicit selection locally instead of requiring an inbox row.
+        setConversationOpenRequest(value => value + 1)
         setSelectedConversation({ id: chatId, kind: 'chat', accountId: user.id, preview: {
           id: chatId, kind: 'chat', title: item.title, subtitle: '', updatedAt: '',
           avatarUrl: item.avatarUrl, profileId: cleanProfileId, unreadCount: 0,
@@ -1738,6 +1742,7 @@ export function MessagesPage() {
               <ChatDetailPage
                 key={`chat-${selectedConversationItem.id}`}
                 chatIdOverride={selectedConversationItem.id}
+                focusRequest={conversationOpenRequest}
                 embedded
                 onCloseChat={()=>setSelectedConversation(null)}
               />
@@ -1746,6 +1751,7 @@ export function MessagesPage() {
                 key={`${selectedConversationItem.kind}-${selectedConversationItem.id}`}
                 scope={selectedConversationItem.kind === 'group' ? 'group' : 'community'}
                 roomId={selectedConversationItem.id}
+                focusRequest={conversationOpenRequest}
                 embedded
               />
             )}

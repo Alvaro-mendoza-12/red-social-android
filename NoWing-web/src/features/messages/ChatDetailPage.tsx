@@ -411,12 +411,13 @@ function FallbackAvatar({ url, name, className }: { url: string; name: string; c
 }
 
 type ChatDetailPageProps = {
+  focusRequest?: number
   chatIdOverride?: string
   embedded?: boolean
   onCloseChat?:()=>void
 }
 
-export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }: ChatDetailPageProps = {}) {
+export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, focusRequest = 0 }: ChatDetailPageProps = {}) {
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const { chatId: routeChatId = '' } = useParams()
@@ -536,7 +537,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
   const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
-  useChatEntryFocus(composerInputRef, user?.id ? `${user.id}/chat/${cleanChatId}` : '', !loading || Boolean(otherParticipant))
+  useChatEntryFocus(composerInputRef, user?.id ? `${user.id}/chat/${cleanChatId}` : '', !loading || Boolean(otherParticipant), focusRequest)
   useEffect(() => { otherParticipantRef.current = otherParticipant }, [otherParticipant])
   useEffect(() => {
     loadSequenceRef.current += 1
@@ -2427,7 +2428,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat }
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article id={`message-${message.id}`} onDoubleClick={event => { if (shouldReplyToMessageDoubleClick(event.target, selectingMessages)) beginReply(message.id) }} title="Doble clic para responder" className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${inlinePhoto ? ' image-bubble' : ''}${selectingMessages ? ' message-selectable' : ''}${selectedMessageIds.has(message.id) ? ' message-selected' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`} >
+              <article id={`message-${message.id}`} onDoubleClick={event => { if (shouldReplyToMessageDoubleClick(event.target, selectingMessages)) beginReply(message.id) }} title="Doble clic para responder" className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${inlinePhoto ? ' image-bubble' : ''}${selectingMessages ? ' message-selectable' : ''}${selectedMessageIds.has(message.id) ? ' message-selected' : ''}${message.contentType === 'text' && !message.mediaUrl && !message.replyToId && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`} >
                 {selectingMessages ? <label className="message-select-control"><input type="checkbox" aria-label={`Seleccionar mensaje de ${mine ? 'ti' : title} a las ${new Date(message.createdAt).toLocaleTimeString('es')}`} checked={selectedMessageIds.has(message.id)} onChange={() => toggleSelectedMessage(message.id)} /></label> : null}
                 {message.isForwarded ? <small>Reenviado</small> : null}
                 {message.replyToId ? <MessageReplyPreview onJump={setReplyJumpId} message={replied || { id: message.replyToId, content: 'Mensaje anterior', contentType: 'text', mediaUrl: null, deletedForAll: false }} name={replied?.senderId === user?.id ? 'Tú' : title}/> : null}

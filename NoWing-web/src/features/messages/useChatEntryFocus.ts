@@ -1,16 +1,17 @@
 import { useEffect, useRef, type RefObject } from 'react'
 
 /** Focus once per opened conversation, without stealing focus on background refreshes. */
-export function useChatEntryFocus(input: RefObject<HTMLInputElement | null>, conversation: string, ready: boolean) {
+export function useChatEntryFocus(input: RefObject<HTMLInputElement | null>, conversation: string, ready: boolean, request = 0) {
   const focusedConversation = useRef('')
   useEffect(() => {
-    if (!ready || !conversation || focusedConversation.current === conversation) return
+    const entry = `${conversation}/${request}`
+    if (!ready || !conversation || focusedConversation.current === entry) return
     const frame = window.requestAnimationFrame(() => {
       const element = input.current
       if (!element || element.disabled) return
       element.focus({ preventScroll: true })
-      focusedConversation.current = conversation
+      focusedConversation.current = entry
     })
     return () => window.cancelAnimationFrame(frame)
-  }, [input, conversation, ready])
+  }, [input, conversation, ready, request])
 }

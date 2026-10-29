@@ -289,12 +289,13 @@ function mapReceipt(row: GenericRow): MessageReceipt {
 }
 
 type RoomChatPageProps = {
+  focusRequest?: number
   scope: RoomScope
   roomId: string
   embedded?: boolean
 }
 
-export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPageProps) {
+export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0 }: RoomChatPageProps) {
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const config = roomConfigByScope[scope]
@@ -344,7 +345,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
   const viewOncePending = useRef(false)
   const [receiptsByMessage, setReceiptsByMessage] = useState<Record<string, MessageReceipt[]>>({})
   const [loading, setLoading] = useState(true)
-  useChatEntryFocus(composerInputRef, user?.id ? `${user.id}/${scope}/${cleanRoomId}` : '', !loading && isMember && canPublish)
+  useChatEntryFocus(composerInputRef, user?.id ? `${user.id}/${scope}/${cleanRoomId}` : '', !loading && isMember && canPublish, focusRequest)
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [showStickers, setShowStickers] = useState(false)
@@ -1673,7 +1674,7 @@ export function RoomChatPage({ scope, roomId, embedded = false }: RoomChatPagePr
                   <span>{formatConversationDay(message.createdAt)}</span>
                 </div>
               ) : null}
-              <article id={`message-${message.id}`} onDoubleClick={event => { if (shouldReplyToMessageDoubleClick(event.target)) beginReply(message.id) }} title="Doble clic para responder" className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'question' ? ' question-bubble' : ''}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${inlinePhoto ? ' image-bubble' : ''}${message.contentType === 'text' && !message.mediaUrl && !replied && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`}>
+              <article id={`message-${message.id}`} onDoubleClick={event => { if (shouldReplyToMessageDoubleClick(event.target)) beginReply(message.id) }} title="Doble clic para responder" className={`${mine ? 'bubble bubble-me' : 'bubble bubble-them'}${message.contentType === 'question' ? ' question-bubble' : ''}${message.contentType === 'sticker' && !message.deletedForAll ? ' sticker-bubble' : ''}${inlinePhoto ? ' image-bubble' : ''}${message.contentType === 'text' && !message.mediaUrl && !message.replyToId && !message.isForwarded && !message.deletedForAll && !activeReactions.length && !/https?:/.test(message.content) && !['pending','failed'].includes(message.status) ? ' text-bubble' : ''}`}>
                 {message.isForwarded ? <small>Reenviado</small> : null}
                 {message.replyToId ? <MessageReplyPreview onJump={setReplyJumpId} message={replied || { id: message.replyToId, content: 'Mensaje anterior', contentType: 'text', mediaUrl: null, deletedForAll: false }} name={replied?.senderId === user?.id ? 'Tú' : participants.find(person => person.id === replied?.senderId)?.name || 'Participante'}/> : null}
                 {message.deletedForAll ? (
