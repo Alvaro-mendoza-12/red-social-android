@@ -15,7 +15,7 @@ Fecha: 28/10/2026, America/Bogota. Continúa la [tanda 169](82-carga-multimedia-
 
 - Web: **816 pruebas / 150 suites**, sin fallos. Lint: **0 errores / 7 advertencias**. Compilación y puerta SEO aprobadas; continúan 19 páginas públicas legibles sin JavaScript y exclusión de rutas privadas. Las 96 comprobaciones Node de la tanda anterior siguen siendo aplicables a sus fuentes sin cambios.
 - Diseño real a 390 px, con componentes/CSS reales e imagen sintética servida con demora controlada: la coordenada vertical del mensaje siguiente fue **374,015625 px antes y después**. El texto de la respuesta midió 290,125 px de ancho y 21,0625 px de alto. Esta prueba mide estabilidad geométrica local; no representa velocidad de descarga en todas las redes.
-- La tanda web anterior autorizada está publicada en Vercel y aprobó **90/90** verificaciones públicas. El propietario también autorizó estas correcciones posteriores a las nuevas capturas; se está verificando su publicación.
+- Con autorización del propietario se publicaron también estas correcciones posteriores a las nuevas capturas. Vercel declaró READY el despliegue `red-social-android-7n093eye8-alvaro-s-projects1.vercel.app`, accesible en https://red-social-android.vercel.app. La verificación pública final aprobó **90/90**. En una sesión sintética real de producción se confirmó foco al abrir y al reseleccionar el mismo chat, reutilización de la URL de avatar tras ir a Comunidades/Mensajes y cero fallos en solicitudes de perfiles.
 - Voz: sonda autenticada con cuenta sintética, Origin oficial y sin entrar a salas: WebSocket de voz/llamadas/LIVE conectó; polling de voz permaneció **65 segundos** conectado, sin errores. No prueba audio bidireccional, la conexión particular del propietario ni llamadas de larga duración.
 - Servidor: 14 contenedores en ejecución, saludables todos los que tienen healthcheck, cero unidades fallidas y sin reinicio pendiente. La imagen del aviso de like en momento deriva de la imagen previamente desplegada y modifica únicamente `moments-routes.js`. Aprobó 17 pruebas aisladas en el host y el preflight de imagen, entorno y restricciones. Con autorización explícita se activó `novvin-api:moment-alert169`, imagen `sha256:f2cb913ec18af7c8b7103dc3cc3aed449b7be03c4fc0e47e76eca7c76ebca8c0`: API respondió ready y se comprobó identidad inalterada del resto de contenedores. No hubo migraciones. Respaldo: `/home/alvaro/novvin-candidates/moment-alert169-20261028/backup-20261029T024054Z`.
 
@@ -23,13 +23,15 @@ Fecha: 28/10/2026, America/Bogota. Continúa la [tanda 169](82-carga-multimedia-
 
 La compilación normal de producción **9.1.29 / 169** finalizó. APK y AAB tienen la firma esperada; bundletool, R8 (17 componentes) y alineación de 16 KiB (14 bibliotecas de 64 bits) aprobados. No se subió a Play Store.
 
-Las fuentes Android aprobaron **1.914 pruebas unitarias / 405 suites** y **16 pruebas nativas** en el paquete QA: recorrido de entrada, PDF de 300 páginas, copias y recuperación de documentos, restauración del share y emojis/borradores/portapapeles. El paquete firmado está en comprobación de arranque independiente; los resultados finales deben registrarse antes de presentarlo como validado en ese recorrido.
+Las fuentes Android aprobaron **1.914 pruebas unitarias / 405 suites** y **16 pruebas nativas** en el paquete QA: recorrido de entrada, PDF de 300 páginas, copias y recuperación de documentos, restauración del share y emojis/borradores/portapapeles. El APK firmado de producción también aprobó un recorrido independiente de bienvenida, login, recuperación, primer paso de registro, entrada de invitado, perfil invitado y salida; no hubo un crash Novvin en el buffer observado. Arranque frío medido: 3.976 ms en el emulador API 35; no es una medición de un teléfono físico. El primer intento del script buscaba Perfil como descripción accesible, mientras el paquete firmado lo expone como texto; se corrigió el localizador y se completó el recorrido sin cambiar código de producción.
 
 SHA-256 APK: `dcb2078643adb177fb8ce82afc4cb50ee839f9034a034bace2b6f6f0a5fd468c`.
 
 SHA-256 AAB: `bf1bde874d5b79abd7ec11dd3a7b8bd22366ac1d95cbb87dcae107ad51572705`.
 
-Fuente Android y sello del paquete: `4fd0b236e63e`. Las correcciones web posteriores no requieren recompilar el móvil. Evidencias privadas en `artifacts/production-continuity-20261028/`, fuera de Git.
+Fuente Android y sello del paquete: `4fd0b236e63e`. Correcciones web: `1de7ae17` en main y `3250990c` en feature/live-gifts. Las correcciones web posteriores no requieren recompilar el móvil. Evidencias privadas en `artifacts/production-continuity-20261028/`, fuera de Git.
+
+Se corrigió también el sello operativo del servidor, que aún anunciaba una revisión anterior: `/ready` identifica ahora `novvin-moment-alert169-20261028`, imagen indicada arriba y digest `5fedbdc4d360c5b778cc5aed65b794b6c47855fcdc4c0c98a60584d31a8e356d` (SHA-256 del listado ordenado de hashes de `src` y `scripts` de la imagen). El sello anterior quedó respaldado y no se necesitó otro reinicio.
 
 La inspección automatizada de la ventana Brave del propietario fue detenida por la revisión automática al no poder verificar su URL con suficiente confianza. No se realizaron acciones en esa ventana. La inspección de una sesión sintética independiente y los ensayos de código continuaron por sus herramientas habituales.
 

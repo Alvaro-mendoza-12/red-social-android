@@ -2,6 +2,8 @@
 
 Fecha: **28/10/2026, America/Bogota**. Continúa el [cierre 168](81-continuidad-seo-chats-y-release-168-2026-10-28.md). Esta revisión incorpora los nuevos reportes posteriores a la publicación de chats sin historial. No certifica todas las funciones ni todos los dispositivos.
 
+**Cierre posterior:** la [revisión 83](83-capturas-chat-y-recuperacion-voz-2026-10-28.md) registra autorización y publicación final web/servidor, 816 pruebas web, las 16 pruebas nativas y la verificación completa del recorrido de entrada del paquete 169 firmado. Las menciones de trabajo pendiente en este documento describen la etapa previa a ese cierre.
+
 ## Cambios y causas comprobadas
 
 - **Foco del chat web.** El editor se enfoca una vez por conversación al estar disponible, en privados, grupos y comunidades. Los refrescos de fondo no vuelven a robar el foco. Se conserva responder con doble clic. Las regresiones escriben sin hacer clic adicional.
