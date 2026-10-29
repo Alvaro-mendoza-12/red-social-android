@@ -335,6 +335,7 @@ export function ProfilePage() {
         profileTheme={profile?.profileTheme}
         frame={profile?.profileFrame}
         identity={profile?.identity || profileIdentity(metadataRow)}
+        profileId={user?.id}
         followers={stats.followers}
         following={stats.following}
         own

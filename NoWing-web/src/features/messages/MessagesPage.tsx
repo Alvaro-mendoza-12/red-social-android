@@ -4,7 +4,7 @@ import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversatio
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Search, MessageSquarePlus, MoreVertical, Phone, Plus, Trash2, Users } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
@@ -571,7 +571,9 @@ export function MessagesPage() {
     return () => { live = false }
   }, [birthdayTarget, user?.id, navigate])
   const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const [activeTab, setActiveTab] = useState<InboxTab>('chats')
+  const { chatId, groupId, communityId } = useParams()
+  const routeConversation = useMemo(() => chatId ? { id: chatId, kind: 'chat' as const } : groupId ? { id: groupId, kind: 'group' as const } : communityId ? { id: communityId, kind: 'community' as const } : null, [chatId, groupId, communityId])
+  const [activeTab, setActiveTab] = useState<InboxTab>(groupId ? 'groups' : communityId ? 'communities' : 'chats')
   const [isCompactViewport, setIsCompactViewport] = useState(() => {
     if (typeof window === 'undefined') return false
     return window.matchMedia('(max-width: 980px)').matches
@@ -723,9 +725,11 @@ export function MessagesPage() {
       ) ?? (selectedConversation.accountId === user?.id ? selectedConversation.preview ?? null : null)
     )
   }, [items, selectedConversation, user?.id])
+  const activeConversation = routeConversation || selectedConversationItem
 
   useEffect(() => {
     if (!supportsSplitLayout) {
+      if (isCompactViewport && selectedConversation && !routeConversation) navigate(`/app/messages/${selectedConversation.kind === 'chat' ? '' : selectedConversation.kind + '/'}${encodeURIComponent(selectedConversation.id)}`)
       setSelectedConversation(null)
       return
     }
@@ -733,7 +737,7 @@ export function MessagesPage() {
     if (!selectedConversationItem) {
       setSelectedConversation(null)
     }
-  }, [selectedConversation, selectedConversationItem, supportsSplitLayout])
+  }, [selectedConversation, selectedConversationItem, supportsSplitLayout, isCompactViewport, routeConversation, navigate])
 
   const loadCurrentTab = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -1255,7 +1259,7 @@ export function MessagesPage() {
         setOpeningChatId(item.id)
         try {
           void markChatAsReadBestEffort(item.id)
-          if (supportsSplitLayout) {
+          if (supportsSplitLayout && !routeConversation) {
             setConversationOpenRequest(value => value + 1)
             setSelectedConversation({ id: item.id, kind: 'chat' })
           } else if (item.openPath) {
@@ -1270,7 +1274,7 @@ export function MessagesPage() {
       return
     }
     if (item.kind === 'group' || item.kind === 'community') {
-      if (supportsSplitLayout) {
+      if (supportsSplitLayout && !routeConversation) {
         setConversationOpenRequest(value => value + 1)
         setSelectedConversation({ id: item.id, kind: item.kind })
       } else {
@@ -1698,7 +1702,7 @@ export function MessagesPage() {
             {filteredItems.map((item) =>
               renderConversationRow(
                 item,
-                selectedConversation?.id === item.id && selectedConversation?.kind === item.kind,
+                activeConversation?.id === item.id && activeConversation?.kind === item.kind,
               ),
             )}
             {showGlobalSearchResults ? (
@@ -1718,6 +1722,10 @@ export function MessagesPage() {
     </>
   )
 
+  if (isCompactViewport && routeConversation) return routeConversation.kind === 'chat'
+    ? <ChatDetailPage chatIdOverride={routeConversation.id}/>
+    : <RoomChatPage scope={routeConversation.kind} roomId={routeConversation.id}/>
+
   return (
     <section className="messages-page">
       {supportsSplitLayout ? (
@@ -1732,25 +1740,25 @@ export function MessagesPage() {
             {renderInbox()}
           </aside>
           <section className="messages-detail-pane" aria-label="Conversación">
-            {!selectedConversationItem ? (
+            {!activeConversation ? (
               <div className="messages-empty-state">
                 <img src="/novvin-logo.png" alt="" />
                 <h2>Novvin para web</h2>
                 <p>Selecciona un chat para seguir la conversación.</p>
               </div>
-            ) : selectedConversationItem.kind === 'chat' ? (
+            ) : activeConversation.kind === 'chat' ? (
               <ChatDetailPage
-                key={`chat-${selectedConversationItem.id}`}
-                chatIdOverride={selectedConversationItem.id}
+                key={`chat-${activeConversation.id}`}
+                chatIdOverride={activeConversation.id}
                 focusRequest={conversationOpenRequest}
                 embedded
-                onCloseChat={()=>setSelectedConversation(null)}
+                onCloseChat={()=>{setSelectedConversation(null);if(routeConversation)navigate('/app/messages')}}
               />
             ) : (
               <RoomChatPage
-                key={`${selectedConversationItem.kind}-${selectedConversationItem.id}`}
-                scope={selectedConversationItem.kind === 'group' ? 'group' : 'community'}
-                roomId={selectedConversationItem.id}
+                key={`${activeConversation.kind}-${activeConversation.id}`}
+                scope={activeConversation.kind === 'group' ? 'group' : 'community'}
+                roomId={activeConversation.id}
                 focusRequest={conversationOpenRequest}
                 embedded
               />

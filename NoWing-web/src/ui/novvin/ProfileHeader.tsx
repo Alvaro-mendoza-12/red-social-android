@@ -2,6 +2,7 @@ import { BadgeCheck, Check, Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { ProfileMediaButton } from '../../components/ProfileMediaButton'
 import { SafeAvatar } from '../../components/SafeAvatar'
+import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { StreamingImage } from '../../components/StreamingMedia'
 import type { ProfileIdentity } from './profileIdentity'
 import { ProfileCoverEffect } from '../../components/ProfileCoverEffect'
@@ -30,6 +31,7 @@ export function ProfileHeader({
   profileTheme,
   frame,
   identity,
+  profileId,
   followers,
   following,
   own = false,
@@ -43,6 +45,7 @@ export function ProfileHeader({
   profileTheme?: string
   frame?: string
   identity: ProfileIdentity
+  profileId?: string
   followers: number
   following: number
   own?: boolean
@@ -72,7 +75,7 @@ export function ProfileHeader({
             <div className="novvin-profile-name-row">
               <div className="novvin-profile-name">
                 <h1 title={name}>{name}</h1>
-                {identity.verified ? <VerifiedMark /> : null}
+                {profileId ? <ProfileStatusBadges profileId={profileId} initialIdentity={identity}/> : identity.verified ? <VerifiedMark /> : null}
               </div>
               <nav className="mobile-profile-stats" aria-label="Estadísticas del perfil">
                 {own ? (
@@ -111,7 +114,7 @@ export function ProfileHeader({
                   <Info size={14} />
                 </span>
               ) : null}
-              {identity.admin ? (
+              {identity.admin && !profileId ? (
                 <span className="novvin-admin-badge">
                   <BadgeCheck />
                   ADMIN

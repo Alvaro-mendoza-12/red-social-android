@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { MessagesPage } from '../../../features/messages/MessagesPage'
 import { loadFallbackMessagesInbox, searchFallbackProfiles } from '../../../core/fallbackData'
 import { getOrCreateDirectChat } from '../../../features/messages/directChat'
@@ -24,6 +24,21 @@ beforeEach(() => {
   jest.clearAllMocks()
   mockUser.id = 'viewer'
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) })
+})
+
+test('a direct conversation opens in compact mode and restores the inbox beside it on expansion',async()=>{
+ let matches=true
+ const changes=new Set<()=>void>()
+ Object.defineProperty(window,'matchMedia',{configurable:true,value:()=>({get matches(){return matches},addEventListener:(_name:string,fn:()=>void)=>changes.add(fn),removeEventListener:(_name:string,fn:()=>void)=>changes.delete(fn)})})
+ render(<MemoryRouter initialEntries={['/app/messages/direct-qa']}><Routes><Route path="/app/messages/:chatId" element={<MessagesPage/>}/></Routes></MemoryRouter>)
+ expect(screen.getByTestId('opened-chat')).toHaveTextContent('direct-qa')
+ expect(screen.queryByLabelText('Lista de conversaciones')).toBeNull()
+ act(()=>{matches=false;changes.forEach(fn=>fn())})
+ expect(await screen.findByLabelText('Lista de conversaciones')).toBeInTheDocument()
+ expect(screen.getByTestId('opened-chat')).toHaveTextContent('direct-qa')
+ act(()=>{matches=true;changes.forEach(fn=>fn())})
+ expect(screen.queryByLabelText('Lista de conversaciones')).toBeNull()
+ expect(screen.getByTestId('opened-chat')).toHaveTextContent('direct-qa')
 })
 
 test('a discovered person without inbox history opens immediately and survives inbox refresh', async () => {
