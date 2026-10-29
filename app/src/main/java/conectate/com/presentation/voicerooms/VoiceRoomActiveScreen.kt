@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import android.Manifest
 import android.content.ClipData
 import android.content.Intent
+import conectate.com.presentation.navigation.voiceRoomShareLink
 import android.net.Uri
 import android.view.ViewGroup
 import android.widget.FrameLayout
@@ -272,6 +273,24 @@ fun VoiceRoomActiveScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = {
+                            room?.id?.let(::voiceRoomShareLink)?.let { link ->
+                                val share = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, "Te invito a una sala de voz en Novvin: $link")
+                                }
+                                runCatching { context.startActivity(Intent.createChooser(share, "Compartir sala")) }
+                                    .onFailure { android.widget.Toast.makeText(context, "No se pudo abrir Compartir", android.widget.Toast.LENGTH_SHORT).show() }
+                            }
+                        }) { Icon(Icons.Default.Share, contentDescription = "Compartir sala") }
+                        IconButton(onClick = {
+                            room?.id?.let(::voiceRoomShareLink)?.let { link ->
+                                clipboardScope.launch {
+                                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Enlace de sala", link)))
+                                    android.widget.Toast.makeText(context, "Enlace copiado", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }) { Icon(Icons.Default.Link, contentDescription = "Copiar enlace de sala") }
                         IconButton(onClick = { showSoundSettings = true }) {
                             Icon(Icons.Default.MusicNote, contentDescription = "Sonidos de la sala")
                         }
