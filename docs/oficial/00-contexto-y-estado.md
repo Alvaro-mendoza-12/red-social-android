@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Continuación web del 29/10/2026
+
+La [revisión 87](87-web-insignias-chat-adaptable-y-estados-2026-10-29.md) registra la web publicada con verificados/ADMIN/insignias, conversaciones que recuperan la vista de escritorio al ampliar la ventana, menús por sección, color personalizado y recuperación/estados de video, voz y envíos. Aprueba 852 pruebas web, 96 Node y 90 controles públicos. Se comprobaron borrador y redimensionado en la web real, perfiles, selector de color, reproducción, menú de voz y recuperación de red. Los cambios están subidos a GitHub en ambas ramas. No hay nueva distribución Android ni despliegue de la optimización API aislada.
+
 ## Salas y publicación web del 29/10/2026
 
 La [revisión 86](86-salas-compartidas-voz-y-avatares-2026-10-29.md) continúa la auditoría con prioridad web autorizada por el propietario. Corrige la recuperación/carga de voz, añade enlaces compartidos con retorno tras autenticación y fallback Android/web, y resuelve el estado de avatares cuyo origen protegido falla. Registra la publicación web y los controles reales. Android 9.1.30 / 170 permanece como candidato local, con 1.956 unitarias aprobadas; faltan la firma/distribución del nuevo paquete y la huella de firma de Play para verificar HTTPS. No se despliega la optimización API aislada de 85.
