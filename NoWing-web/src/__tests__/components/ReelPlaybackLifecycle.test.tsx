@@ -6,7 +6,7 @@ jest.mock('../../components/SafeAvatar',()=>({SafeAvatar:()=>null}))
 jest.mock('../../components/StreamingMedia',()=>{
  const React=jest.requireActual('react')
  return {StreamingVideo:React.forwardRef((props:Record<string,unknown>,ref:unknown)=>{
-  const {onSourceUnavailable,...rest}=props; void onSourceUnavailable
+  const {onSourceUnavailable,retryKey,...rest}=props; void onSourceUnavailable; void retryKey
   return React.createElement('video',{...rest,ref})
  }),StreamingImage:()=>null}
 })
