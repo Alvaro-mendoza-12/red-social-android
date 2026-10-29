@@ -5,7 +5,7 @@ import { RoomVideo } from './RoomVideo'
 import { RoomChatPhoto } from './RoomChatPhoto'
 import { roomSocketReady } from './voiceMembership'
 import { voiceSocketAuth, voiceReconnectOptions } from './voiceSocketRecovery'
-import { voiceMembershipRecovery, voiceTransportOptions } from './voiceTransportPolicy'
+import { voiceMembershipRecovery, voiceTransportOptions, voiceRecoveryNotice } from './voiceTransportPolicy'
 import { voiceRoomShareUrl } from '../../core/voiceRoomLinks'
 import { RoomReactionMenu } from '../../components/RoomReactionMenu'
 import { MessageText } from '../../components/MessageText'
@@ -17,6 +17,7 @@ import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
 import {useVoiceRoomCues} from './useVoiceRoomCues'
 import { Camera, CameraOff, MonitorUp, Settings, MessageCircle, Send, Maximize2, Minimize2 } from 'lucide-react'
 import './voice.css'
+import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { LiveStreamAudio } from '../../components/LiveStreamMedia'
 import { AudioOutputSelect } from '../../components/AudioOutputSelect'
@@ -855,7 +856,8 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       socket.disconnect()
       socket.connect()
     }, current)
-    membershipCleanupRef.current = membership.complete
+    const notice = voiceRecoveryNotice(() => setJoinError('La conexión de voz está tardando en volver. Reintentamos automáticamente; también puedes pulsar Reconectar voz.'), () => current() && !acceptedSocketRef.current)
+    membershipCleanupRef.current = () => {membership.complete();notice.clear()}
     const requestRoomMembership = () => {
       if (!membership.begin()) return
       acceptedSocketRef.current = ''
@@ -926,11 +928,10 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       requestRoomMembership()
     })
 
-    socket.on('connect_error', (socketError) => {
+    socket.on('connect_error', () => {
+      if (!current()) return
       setConnectionLabel('Reconectando voz')
-      setJoinError(/xhr|transport|websocket|timeout/i.test(socketError.message)
-        ? 'Se interrumpió la conexión de voz. Reintentando automáticamente…'
-        : socketError.message || 'No se pudo conectar con el servidor de voz')
+      notice.schedule()
     })
 
     socket.on('disconnect', (reason) => {
@@ -939,6 +940,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       setSignalingReady(false)
       roomCues.suspend()
       setConnectionLabel('Reconectando voz')
+      if (reason !== 'io client disconnect' && current()) notice.schedule()
     })
 
     socket.on('auth-error', (payload) => {
@@ -950,13 +952,14 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         setConnectionLabel('Sincronizando acceso a la sala')
         return
       }
-      setJoinError(payload.error || 'La señalización de voz rechazó la sesión')
+      setJoinError(friendlyError(new Error(payload.error || ''), 'No se pudo confirmar tu acceso. Intenta reconectar la sala.'))
     })
 
     socket.on('room-joined', (payload) => {
       if (payload.roomId && payload.roomId !== room.id) return
       if (socketRef.current !== socket || !joinedRef.current) return
       membership.complete()
+      notice.clear()
       acceptedSocketRef.current = socket.id || ''
       setSignalingReady(true)
       setJoinError(null)
@@ -978,7 +981,8 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       acceptedSocketRef.current = ''
       setSignalingReady(false)
       setConnectionLabel('Acceso rechazado')
-      setJoinError(payload.error || 'El servidor rechazó el acceso a esta sala de voz')
+      notice.clear()
+      setJoinError(friendlyError(new Error(payload.error || ''), 'No se pudo entrar en la sala. Revisa si sigue disponible o necesita contraseña.'))
       socket.disconnect()
     })
 
@@ -1405,6 +1409,18 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     try { setDevices(await navigator.mediaDevices.enumerateDevices()) } catch { setJoinError('No se pudieron consultar los dispositivos.') }
   }
   useEffect(() => {
+    if (minimized) return
+    const action = (event: Event) => {
+      const command = (event as CustomEvent<string>).detail
+      if (command === 'settings') setShowDeviceSettings(true)
+      if (command === 'refresh' && room) void loadParticipants(room.id)
+      if (command === 'leave' && isJoined) void leaveRoom()
+      if (command === 'copy' && room) void navigator.clipboard.writeText(voiceRoomShareUrl(room.id)).then(() => toast.success('Enlace de la sala copiado')).catch(() => toast.error('No se pudo copiar el enlace'))
+    }
+    window.addEventListener('novvin:voice-action', action)
+    return () => window.removeEventListener('novvin:voice-action', action)
+  }, [isJoined, leaveRoom, loadParticipants, minimized, room])
+  useEffect(() => {
     if (!showDeviceSettings || !navigator.mediaDevices?.addEventListener) return
     let active = true
     const refresh = () => { void navigator.mediaDevices.enumerateDevices().then(values => { if (active) setDevices(values) }).catch(() => {}) }
@@ -1686,7 +1702,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
                   <span className="voice-speaking-ring" aria-hidden="true" />
                 </div>
                 <div className="voice-participant-meta">
-                  <strong>{participant.userName || 'Usuario'}</strong>
+                  <strong>{participant.userName || 'Usuario'} <ProfileStatusBadges profileId={participant.userId}/></strong>
                   <span>{participant.isSpeaking ? 'Hablando' : participant.joinedAt ? formatDateTime(participant.joinedAt) : 'En sala'}</span>
                 </div>
                 <span className={participant.isMuted ? 'voice-muted-badge active' : 'voice-muted-badge'}>

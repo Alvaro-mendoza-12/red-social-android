@@ -7,5 +7,5 @@ test('Ubuntu summaries use the supported public projection and bind the active a
   const id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
   jest.mocked(fallbackApiJson).mockResolvedValue([{ id, display_name: 'Amigo' }])
   expect((await publicProfileSummaries([id, id, 'invalid'])).get(id)?.display_name).toBe('Amigo')
-  expect(fallbackApiJson).toHaveBeenCalledWith(`/rest/v1/profiles?select=id,display_name,username,avatar_url,avatar_media_type,is_admin,is_verified&id=in.(${id})`, { expectedAccountId: 'owner' })
+  expect(fallbackApiJson).toHaveBeenCalledWith(`/rest/v1/profiles?select=id,display_name,username,avatar_url,avatar_media_type,is_admin,is_verified,badges&id=in.(${id})`, { expectedAccountId: 'owner' })
 })

@@ -1237,8 +1237,10 @@ export function AccountSettingsPage() {
               <option value="cyan">Cian</option>
               <option value="amber">Ámbar</option>
               <option value="graphite">Grafito</option>
+              <option value="custom">Personalizado</option>
             </select>
           </label>
+          {webPreferences.accentTheme === 'custom' ? <label className="settings-toggle-card"><span>Tu color <small>Se adapta para mantener el texto legible.</small></span><input type="color" aria-label="Color personalizado" value={webPreferences.customAccent || '#8acfff'} onChange={event => updateWebPreferences({customAccent:event.target.value})}/></label> : null}
           <label className="settings-toggle-card vertical">
             <div>
               <strong>Escala de texto</strong>

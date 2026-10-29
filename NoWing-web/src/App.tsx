@@ -60,21 +60,9 @@ const NovvinPage = lazy(() =>
     default: module.NovvinPage,
   })),
 )
-const ChatDetailPage = lazy(() =>
-  import('./features/messages/ChatDetailPage').then((module) => ({
-    default: module.ChatDetailPage,
-  })),
-)
-const GroupChatDetailPage = lazy(() =>
-  import('./features/messages/GroupChatDetailPage').then((module) => ({
-    default: module.GroupChatDetailPage,
-  })),
-)
-const CommunityChatDetailPage = lazy(() =>
-  import('./features/messages/CommunityChatDetailPage').then((module) => ({
-    default: module.CommunityChatDetailPage,
-  })),
-)
+
+
+
 const VoiceRoomsPage = lazy(() =>
   import('./features/voice/VoiceRoomsPage').then((module) => ({
     default: module.VoiceRoomsPage,
@@ -348,7 +336,7 @@ function AppRouter() {
             path="messages/:chatId"
             element={
               <RouteSuspense>
-                <ChatDetailPage />
+                <MessagesPage />
               </RouteSuspense>
             }
           />
@@ -356,7 +344,7 @@ function AppRouter() {
             path="messages/group/:groupId"
             element={
               <RouteSuspense>
-                <GroupChatDetailPage />
+                <MessagesPage />
               </RouteSuspense>
             }
           />
@@ -364,7 +352,7 @@ function AppRouter() {
             path="messages/community/:communityId"
             element={
               <RouteSuspense>
-                <CommunityChatDetailPage />
+                <MessagesPage />
               </RouteSuspense>
             }
           />

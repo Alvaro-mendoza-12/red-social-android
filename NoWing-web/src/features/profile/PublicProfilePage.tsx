@@ -540,6 +540,7 @@ export function PublicProfilePage() {
         profileTheme={profile.profileTheme}
         frame={profile.profileFrame}
         identity={profile.identity}
+        profileId={profile.id}
         followers={stats.followers}
         following={stats.following}
       />

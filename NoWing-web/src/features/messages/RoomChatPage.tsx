@@ -1,3 +1,4 @@
+import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
 import { MessageTimestamp } from '../../components/MessageTimestamp'
 import { ContactMessageCard } from '../../components/ContactMessageCard'
 import { messageLocationUrl } from '../../core/messageLocation'
@@ -1779,7 +1780,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
                     ))}
                   </div>
                 ) : null}
-                {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}
+                {mine && message.status==='failed' ? <p className="message-delivery-error" role="status">{messageDeliveryFeedback(message.deliveryError)}</p> : null}
                 {mine && message.status==='pending' && message.mediaUrl ? <OutboxTransferStatus id={message.id}/> : null}
                 {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={message.status} edited={message.isEdited} onRetry={() => void retryPendingWebMessage(message.id)}/> : null}
               </article>

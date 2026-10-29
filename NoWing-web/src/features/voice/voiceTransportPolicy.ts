@@ -8,6 +8,15 @@ export const voiceTransportOptions = {
   upgrade: false,
 }
 
+/** Brief reconnects retain a quiet progress label; persistent failures get an action. */
+export function voiceRecoveryNotice(show: () => void, current: () => boolean, delayMs = 4000) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return {
+    schedule() { if (timer === undefined) timer = setTimeout(() => { timer = undefined; if (current()) show() }, delayMs) },
+    clear() { clearTimeout(timer); timer = undefined },
+  }
+}
+
 /** A connected socket can lose a membership response without losing its transport. */
 export function voiceMembershipRecovery(socket: Pick<Socket, 'connected' | 'connect'>, retry: () => void,
   current: () => boolean, timeoutMs = 10_000) {

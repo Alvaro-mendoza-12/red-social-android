@@ -118,7 +118,8 @@
 .accent-cyan { --accent-light: #006b78; --accent-dark: #85d4df; }
 .accent-amber { --accent-light: #765900; --accent-dark: #e7c568; }
 .accent-graphite { --accent-light: #485b70; --accent-dark: #bfccd9; }
-:is(.accent-conectate,.accent-ocean,.accent-violet,.accent-emerald,.accent-midnight,.accent-ruby,.accent-cyan,.accent-amber,.accent-graphite) {
+.accent-custom { --accent-light: var(--custom-accent-light, #006a9f); --accent-dark: var(--custom-accent-dark, #8acfff); }
+:is(.accent-conectate,.accent-ocean,.accent-violet,.accent-emerald,.accent-midnight,.accent-ruby,.accent-cyan,.accent-amber,.accent-graphite,.accent-custom) {
   --primary: light-dark(var(--accent-light), var(--accent-dark));
   --on-primary: light-dark(#fff, #102237);
   --accent: var(--primary);

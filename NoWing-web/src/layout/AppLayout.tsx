@@ -5,6 +5,7 @@ import { AttachmentJobsStatus } from '../components/AttachmentJobsStatus'
 import { MessageReactionNotice } from '../components/MessageReactionNotice'
 import { dedupeInboxConversations } from '../features/messages/conversationInboxSupport'
 import { voiceBackPath } from '../core/voiceDirectory'
+import { sectionMenu } from '../core/sectionMenu'
 import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -217,6 +218,7 @@ export function AppLayout() {
     getDeferredMutationCount(user?.id ?? 'signed-out'),
   )
   const [isMobileExploreOpen, setIsMobileExploreOpen] = useState(false)
+  const [menuMode, setMenuMode] = useState<'navigation' | 'section'>('navigation')
   const mobileExploreButtonRef = useRef<HTMLButtonElement | null>(null)
   const mobileExploreCloseRef = useRef<HTMLButtonElement | null>(null)
   const [supabaseRestriction, setSupabaseRestriction] = useState(() =>
@@ -850,6 +852,7 @@ export function AppLayout() {
     const open = () => {
       if (document.activeElement instanceof HTMLButtonElement)
         mobileExploreButtonRef.current = document.activeElement
+      setMenuMode('navigation')
       setIsMobileExploreOpen(true)
     }
     window.addEventListener('novvin:open-menu', open)
@@ -1073,10 +1076,10 @@ export function AppLayout() {
                 ref={mobileExploreButtonRef}
                 className="icon-btn"
                 type="button"
-                aria-label="Más opciones"
+                aria-label={`Opciones de ${screenTitle(location.pathname)}`}
                 aria-expanded={isMobileExploreOpen}
                 aria-controls="mobile-explore-menu"
-                onClick={() => setIsMobileExploreOpen(true)}
+                onClick={() => {setMenuMode('section');setIsMobileExploreOpen(true)}}
               >
                 <MoreVertical />
               </button>
@@ -1144,7 +1147,7 @@ export function AppLayout() {
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mobile-explore-head">
-                <strong>Más opciones</strong>
+                <strong>{menuMode === 'section' ? screenTitle(location.pathname) : 'Explorar Novvin'}</strong>
                 <button
                   ref={mobileExploreCloseRef}
                   type="button"
@@ -1157,7 +1160,7 @@ export function AppLayout() {
                   Cerrar
                 </button>
               </div>
-              {secondaryNavItems.map((item) => (
+              {menuMode === 'section' ? sectionMenu(location.pathname).map(item => item.to ? <Link key={item.label} to={item.to} className="mobile-explore-link" onClick={()=>setIsMobileExploreOpen(false)}>{item.label}</Link> : <button key={item.label} type="button" className="mobile-explore-link" onClick={()=>{setIsMobileExploreOpen(false);window.dispatchEvent(new CustomEvent('novvin:voice-action',{detail:item.voiceAction}))}}>{item.label}</button>) : secondaryNavItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
@@ -1170,13 +1173,10 @@ export function AppLayout() {
                   {item.label}
                 </NavLink>
               ))}
-              {isSocialRoute ? <NavLink to="/app/social?tab=posts&advertising=1" className="mobile-explore-link" onClick={() => setIsMobileExploreOpen(false)}>
-                <Plus aria-hidden="true" />Publicidad · Crear y gestionar
-              </NavLink> : null}
-              <button className="mobile-explore-link" type="button" onClick={() => void signOut()}>
+              {menuMode === 'navigation' ? <button className="mobile-explore-link" type="button" onClick={() => void signOut()}>
                 <LogOut aria-hidden="true" />
                 Cerrar sesión
-              </button>
+              </button> : null}
             </nav>
           </div>
         )}

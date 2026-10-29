@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
+import { safeAccent, accentInk } from './accentColor'
 
 export type WebPreferences = {
   compactInbox: boolean
   lowDataMode: boolean
   themeMode: 'system' | 'light' | 'dark'
-  accentTheme: 'conectate' | 'ocean' | 'violet' | 'emerald' | 'midnight' | 'ruby' | 'cyan' | 'amber' | 'graphite'
+  accentTheme: 'conectate' | 'ocean' | 'violet' | 'emerald' | 'midnight' | 'ruby' | 'cyan' | 'amber' | 'graphite' | 'custom'
+  customAccent?: string
   textScale: 'compact' | 'normal' | 'large'
   language: string
 }
@@ -43,9 +45,10 @@ export function readWebPreferences(): WebPreferences {
         parsed.accentTheme === 'ruby' ||
         parsed.accentTheme === 'cyan' ||
         parsed.accentTheme === 'amber' ||
-        parsed.accentTheme === 'graphite'
+        parsed.accentTheme === 'graphite' || parsed.accentTheme === 'custom'
           ? parsed.accentTheme
           : 'conectate',
+      customAccent: safeAccent(parsed.customAccent),
       textScale:
         parsed.textScale === 'compact' || parsed.textScale === 'large' || parsed.textScale === 'normal'
           ? parsed.textScale
@@ -71,6 +74,8 @@ export function applyWebPreferences(preferences = readWebPreferences()) {
     if (/^(theme-|accent-|text-scale-)/.test(name)) root.classList.remove(name)
   }
   root.classList.add(`theme-${preferences.themeMode}`, `accent-${preferences.accentTheme}`, `text-scale-${preferences.textScale}`)
+  root.style.setProperty('--custom-accent-light', accentInk(preferences.customAccent || '#8acfff', false))
+  root.style.setProperty('--custom-accent-dark', accentInk(preferences.customAccent || '#8acfff', true))
 }
 
 export function useWebPreferences() {

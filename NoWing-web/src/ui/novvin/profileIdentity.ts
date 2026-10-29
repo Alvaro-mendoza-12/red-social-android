@@ -10,6 +10,7 @@ export function profileIdentity(row: GenericRow): ProfileIdentity {
     verified: yes(row.is_verified ?? row.isVerified ?? row.verified),
     admin:
       yes(row.is_admin ?? row.isAdmin) ||
+      (Array.isArray(row.badges) && row.badges.some(badge => badge && typeof badge === 'object' && yes((badge as GenericRow).is_admin_badge))) ||
       ['admin', 'super_admin', 'owner'].includes(
         textOf(row, ['admin_role', 'adminRole', 'role'], '').toLowerCase(),
       ),

@@ -1,7 +1,14 @@
-import { voiceMembershipRecovery, voiceTransportOptions } from '../../../features/voice/voiceTransportPolicy'
+import { voiceMembershipRecovery, voiceTransportOptions, voiceRecoveryNotice } from '../../../features/voice/voiceTransportPolicy'
 
 beforeEach(() => jest.useFakeTimers())
 afterEach(() => jest.useRealTimers())
+
+test('brief reconnects do not flash a persistent error and a sustained loss gets feedback',()=>{
+ const show=jest.fn(),notice=voiceRecoveryNotice(show,()=>true)
+ notice.schedule();jest.advanceTimersByTime(3999);expect(show).not.toHaveBeenCalled()
+ notice.clear();jest.advanceTimersByTime(1);expect(show).not.toHaveBeenCalled()
+ notice.schedule();jest.advanceTimersByTime(4000);expect(show).toHaveBeenCalledTimes(1)
+})
 
 test('HTTP admission starts before optional websocket upgrade', () => {
   expect(voiceTransportOptions.transports).toEqual(['polling', 'websocket'])

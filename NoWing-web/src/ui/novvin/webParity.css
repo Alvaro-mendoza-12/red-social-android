@@ -305,3 +305,8 @@
 .profile-hover-preview { max-width:calc(100vw - 24px); }
 .outbox-transfer-status { display:grid;gap:6px;margin:8px 0 4px;font-size:.8rem;min-width:150px;max-width:100%;color:var(--foreground,#fff); }
 .outbox-transfer-status progress { width:100%;height:5px;accent-color:var(--primary,#00cec9); }
+.profile-status-verified { display:inline-flex;position:relative;vertical-align:middle;flex-shrink:0;color:#329dff;width:18px;height:18px; }
+.profile-status-verified .verification-tick { position:absolute;left:3.5px;top:3.5px;color:#fff;stroke-width:3; }
+.profile-name-with-marks { display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
+.message-delivery-error { padding:8px 10px;border-radius:10px;background:var(--surface-alt,#292a33);color:var(--text-primary,#fff);max-width:min(30ch,100%);font-size:.78rem; }
+.sticker-bubble:has(.message-delivery-error) { max-width:min(280px,80%); }

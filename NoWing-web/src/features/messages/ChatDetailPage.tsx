@@ -1,3 +1,4 @@
+import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
 import { MessageTimestamp } from '../../components/MessageTimestamp'
 import { ContactMessageCard } from '../../components/ContactMessageCard'
 import { DirectMessageRequestNotice } from '../../components/DirectMessageRequestNotice'
@@ -2550,7 +2551,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
                   </MessageOptionsMenu>
                 ) : null}
 
-                {mine && message.status==='failed' && message.deliveryError ? <p className="message-delivery-error" role="status">{message.deliveryError}</p> : null}
+                {mine && message.status==='failed' ? <p className="message-delivery-error" role="status">{messageDeliveryFeedback(message.deliveryError)}</p> : null}
                 {mine && message.status==='pending' && message.mediaUrl ? <OutboxTransferStatus id={message.id}/> : null}
                 {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id)}/> : null}
               </article>

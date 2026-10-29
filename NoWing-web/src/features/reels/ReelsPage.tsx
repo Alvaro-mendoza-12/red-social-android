@@ -1,4 +1,5 @@
 import { VideoCommentsPanel } from '../../components/VideoCommentsPanel'
+import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
@@ -164,7 +165,7 @@ function ReelAvatar({ url, name, mediaType }: { url: string; name: string; media
   )
 }
 
-function ReelFeedCard({
+export function ReelFeedCard({
   item,
   eager,
   currentUserId,
@@ -193,6 +194,8 @@ function ReelFeedCard({
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [canLoad, setCanLoad] = useState(() => eager || typeof IntersectionObserver === 'undefined')
   const visibleRef = useRef(false)
+  const userPausedRef = useRef(false)
+  const [visible, setVisible] = useState(false)
   useEffect(() => {
     const node = videoRef.current
     if (!node || canLoad) return
@@ -212,14 +215,21 @@ function ReelFeedCard({
   const [paused, setPaused] = useState(false)
   const [buffering, setBuffering] = useState(true)
   const [playbackError, setPlaybackError] = useState(false)
+  const [showBuffering, setShowBuffering] = useState(false)
+  useEffect(() => {
+    if (!buffering || !visible || playbackError) return
+    const delay = setTimeout(() => setShowBuffering(true), 450)
+    const stalled = setTimeout(() => setPlaybackError(true), 15000)
+    return () => { clearTimeout(delay); clearTimeout(stalled); setShowBuffering(false) }
+  }, [buffering, visible, playbackError])
   useEffect(() => {
     const onVisibility = () => {
       if (document.hidden) videoRef.current?.pause()
-      else if (visibleRef.current && !paused) void videoRef.current?.play().catch(() => undefined)
+      else if (visibleRef.current && !userPausedRef.current) void videoRef.current?.play().catch(() => setPaused(true))
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [paused])
+  }, [])
   const [shareMenuOpen, setShareMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -228,9 +238,10 @@ function ReelFeedCard({
     const observer = new IntersectionObserver(
       ([entry]) => {
         visibleRef.current = Boolean(entry?.isIntersecting && entry.intersectionRatio >= 0.72)
+        setVisible(visibleRef.current)
         if (visibleRef.current) {
           activeCallback.current(item.id)
-          void video.play().catch(() => undefined)
+          if (!userPausedRef.current && !document.hidden) void video.play().catch(() => setPaused(true))
         } else {
           video.pause()
         }
@@ -247,9 +258,10 @@ function ReelFeedCard({
         ref={videoRef}
         onLoadedData={() => {
           setBuffering(false); setPlaybackError(false)
-          if (visibleRef.current) void videoRef.current?.play().catch(() => undefined)
+          if (visibleRef.current && !userPausedRef.current && !document.hidden) void videoRef.current?.play().catch(() => setPaused(true))
         }}
         onWaiting={() => setBuffering(true)}
+        onStalled={() => { if (visibleRef.current) setBuffering(true) }}
         onPlaying={() => { setBuffering(false); setPlaybackError(false) }}
         onError={() => { setBuffering(false); setPlaybackError(true) }}
         onSourceUnavailable={() => { setBuffering(false); setPlaybackError(true) }}
@@ -268,7 +280,8 @@ function ReelFeedCard({
         onClick={() => {
           const video = videoRef.current
           if (video) {
-            if (video.paused) void video.play().catch(() => undefined)
+            userPausedRef.current = !video.paused
+            if (video.paused) void video.play().catch(() => setPaused(true))
             else video.pause()
           }
         }}
@@ -278,17 +291,18 @@ function ReelFeedCard({
           if (event.key === ' ' || event.key === 'Enter') {
             event.preventDefault()
             const v = videoRef.current
+            userPausedRef.current = !v?.paused
             if (v?.paused) void v.play().catch(() => undefined)
             else v?.pause()
           }
         }}
         aria-label={`Reproducir o pausar ${item.title}`}
-        preload="metadata"
+        preload={visible ? 'auto' : 'metadata'}
         src={canLoad ? item.videoUrl : undefined}
         poster={canLoad ? item.coverUrl || undefined : undefined}
       />
       <div className="reel-feed-shade" />
-      {playbackError ? <div className="reel-media-status" role="status"><span>No se pudo cargar este video.</span><button className="ghost-btn" type="button" onClick={() => { setPlaybackError(false); setBuffering(true); videoRef.current?.load(); void videoRef.current?.play().catch(() => undefined) }}>Reintentar</button></div> : buffering && canLoad ? <div className="reel-media-status loading" role="status">Cargando video…</div> : null}
+      {playbackError ? <div className="reel-media-status" role="status"><span>El video está tardando en cargar.</span><button className="ghost-btn" type="button" onClick={() => { setPlaybackError(false); setBuffering(true); videoRef.current?.load(); void videoRef.current?.play().catch(() => undefined) }}>Reintentar</button></div> : showBuffering && canLoad ? <div className="reel-media-status loading" role="status">Cargando video…</div> : null}
       {paused ? (
         <span className="reel-play-indicator" aria-hidden="true">
           <Play fill="white" size={30} />
@@ -312,7 +326,7 @@ function ReelFeedCard({
               name={item.authorName || item.authorId}
             />
           ) : null}
-          <strong>@{item.authorName || item.authorId}</strong>
+          <strong>@{item.authorName || item.authorId} <ProfileStatusBadges profileId={item.authorId}/></strong>
         </Link>
         <h2>{item.title}</h2>
         {item.description ? <p>{item.description}</p> : null}

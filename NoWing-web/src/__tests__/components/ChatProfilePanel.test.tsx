@@ -9,6 +9,14 @@ jest.mock('../../core/fallbackData',()=>({loadFallbackPublicProfile:jest.fn()}))
 jest.mock('../../core/supabase',()=>({resolveSupabasePublicUrl:(bucket:string,path:string)=>path?`https://media.test/${bucket}/${path}`:''}))
 jest.mock('../../components/StreamingMedia',()=>({StreamingImage:(props:object)=><img {...props}/>,StreamingVideo:(props:object)=><video {...props}/>}))
 const load=loadFallbackPublicProfile as jest.Mock
+
+test('the contact preview includes verified, administrator and assigned awards',async()=>{
+ load.mockResolvedValue({profile:{display_name:'Con insignias',is_verified:true,badges:[{id:'admin',name:'Equipo Novvin',icon:'shield',is_admin_badge:true}]},stats:{}})
+ render(<MemoryRouter><ChatProfilePanel profileId="decorated" onClose={()=>{}}/></MemoryRouter>)
+ expect(await screen.findByLabelText('Cuenta verificada')).toBeInTheDocument()
+ expect(screen.getByLabelText('Administrador verificado')).toBeInTheDocument()
+ expect(screen.getByText('Equipo Novvin')).toBeInTheDocument()
+})
 test('the contact panel resolves relative avatar and banner fields just like the full profile',async()=>{
  load.mockResolvedValue({profile:{display_name:'Contacto',avatar_url:'user/avatar.webp',banner_url:'user/cover.webp'},stats:{followers:4,following:7}})
  const {container}=render(<MemoryRouter><ChatProfilePanel profileId="friend" onClose={()=>{}}/></MemoryRouter>)

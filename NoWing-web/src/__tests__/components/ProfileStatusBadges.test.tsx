@@ -24,3 +24,10 @@ test('does not render a late identity response for the previous account', async 
   await act(async () => { finish(new Map([['profile-b',{id:'profile-b',is_admin:true}]])); await new Promise(resolve => setTimeout(resolve, 5)) })
   expect(screen.queryByLabelText('Administrador verificado')).toBeNull()
 })
+
+test('verification and administrator award are both visible for the same public identity', async () => {
+  profiles.mockResolvedValue(new Map([['profile-c',{id:'profile-c',is_verified:true,badges:[{id:'admin',is_admin_badge:true}]}]]))
+  render(<ProfileStatusBadges profileId="profile-c"/>)
+  expect(await screen.findByLabelText('Cuenta verificada')).toBeInTheDocument()
+  expect(screen.getByLabelText('Administrador verificado')).toBeInTheDocument()
+})

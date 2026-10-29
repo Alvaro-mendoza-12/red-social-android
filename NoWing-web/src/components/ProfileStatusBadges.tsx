@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BadgeCheck } from 'lucide-react'
+import { ProfileIdentityMarks } from './ProfileIdentityMarks'
 import { useAuth } from '../core/auth/AuthProvider'
 import { publicProfileSummaries } from '../core/publicProfileSummaries'
 import { profileIdentity, type ProfileIdentity } from '../ui/novvin/profileIdentity'
@@ -27,7 +27,7 @@ function read(owner: string, id: string): Promise<ProfileIdentity | null> {
   })
 }
 /** Display only. Authorization always remains with the server. */
-export function ProfileStatusBadges({ profileId }: { profileId: string }) {
+export function ProfileStatusBadges({ profileId, initialIdentity }: { profileId: string; initialIdentity?: ProfileIdentity }) {
   const { user } = useAuth(), owner = user?.id || '', key = owner + ':' + profileId
   const [loaded, setLoaded] = useState<{ key: string; value: ProfileIdentity } | null>(null)
   useEffect(() => {
@@ -36,6 +36,6 @@ export function ProfileStatusBadges({ profileId }: { profileId: string }) {
     void read(owner, profileId).then(value => { if (active && value) setLoaded({ key, value }) })
     return () => { active = false }
   }, [owner, profileId, key])
-  const value = loaded?.key === key ? loaded.value : cache.get(key)?.value
-  return value?.admin ? <span className="novvin-admin-badge" aria-label="Administrador verificado"><BadgeCheck size={13} aria-hidden="true"/>ADMIN</span> : value?.verified ? <BadgeCheck className="profile-status-verified" size={16} aria-label="Cuenta verificada"/> : null
+  const value = loaded?.key === key ? loaded.value : cache.get(key)?.value || initialIdentity
+  return value ? <ProfileIdentityMarks identity={value}/> : null
 }
