@@ -2085,6 +2085,7 @@ class ChatViewModel @Inject constructor(
                 if (result.isSuccess) {
                     if (_editingMessage.value?.id == msg.id && textComposer.finishEditingIfUnchanged(snapshot)) {
                         _editingMessage.value = null
+                        stopTypingPresence()
                     }
                 } else { conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar la edición. Reintenta.") }
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }

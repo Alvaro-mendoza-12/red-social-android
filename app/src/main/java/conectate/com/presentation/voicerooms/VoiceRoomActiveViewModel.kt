@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
 import org.webrtc.VideoTrack
@@ -621,7 +622,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     private val settingsActions by lazy {
-        conectate.com.presentation.messages.CollectionActionRunner(viewModelScope, authService::getCurrentUserId) { _joinError.value = it }
+        conectate.com.presentation.messages.CollectionActionRunner(viewModelScope, authService::getCurrentUserId, { _joinError.value = it }, authService.currentSession.map { authService.getCurrentUserId() })
     }
     fun updateRoom(name: String, isPublic: Boolean, password: String?) {
         val room = _room.value ?: return

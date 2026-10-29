@@ -211,6 +211,11 @@ class ProfileViewModel @Inject constructor(
         val owner = authService.getCurrentUserId() to idToLoad
         contentSubscriptions.cancelAll()
         _contentLoadError.value = null
+        if (contentOwner?.first != owner.first) {
+            momentHighlightCache.clear()
+            loadedHighlightUserId = null
+            _momentHighlights.value = emptyList()
+        }
         if (contentOwner != owner) {
             contentOwner = owner
             _userVideos.value = emptyList(); _userPosts.value = emptyList()
@@ -357,18 +362,21 @@ class ProfileViewModel @Inject constructor(
     }
 
     private fun loadMomentHighlights(userId: String) {
+        val ticket = profileReadScope.snapshotFor(userId) ?: return
         if (loadedHighlightUserId != userId) {
             loadedHighlightUserId = userId
             _momentHighlights.value = momentHighlightCache[userId].orEmpty()
         }
         viewModelScope.launch {
-            momentHighlightRepository.getHighlightsForUser(userId)
+            conectate.com.core.network.runReadWithDeadline(10_000) { momentHighlightRepository.getHighlightsForUser(userId).getOrThrow() }
                 .onSuccess { highlights ->
+                    if (!profileReadScope.isCurrent(ticket)) return@onSuccess
                     val visible = highlights.filter { it.isPublic || userId == currentUserId }
                     momentHighlightCache[userId] = visible
                     if (loadedHighlightUserId == userId) _momentHighlights.value = visible
                 }
                 .onFailure { error ->
+                    if (!profileReadScope.isCurrent(ticket)) return@onFailure
                     android.util.Log.w("ProfileViewModel", "No se pudieron cargar los momentos destacados", error)
                     if (loadedHighlightUserId == userId && momentHighlightCache[userId] == null) {
                         _momentHighlights.value = emptyList()
