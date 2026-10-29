@@ -9,7 +9,6 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.net.InetAddress
 import java.net.URI
-import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
@@ -21,8 +20,6 @@ import java.util.concurrent.Executors
  */
 object PublicBackendDns : Dns {
     private const val TAG = "PublicBackendDns"
-    private const val CACHE_MS = 5 * 60 * 1000L
-    private const val MAX_STALE_MS = 15 * 60 * 1000L
     private val resolverExecutor = Executors.newFixedThreadPool(4) { task ->
         Thread(task, "NovvinPublicDns").apply { isDaemon = true }
     }
@@ -30,8 +27,7 @@ object PublicBackendDns : Dns {
         URI(BuildConfig.FALLBACK_API_URL.trim()).host.orEmpty().lowercase()
     }.getOrDefault("").takeIf { it.endsWith(".ts.net") }.orEmpty()
 
-    @Volatile private var cachedAddresses: List<InetAddress> = emptyList()
-    @Volatile private var cacheExpiresAtMs = 0L
+    private val addressCache = BackendAddressCache(backendHost, SystemClock::elapsedRealtime)
 
     private data class Resolver(val host: String, val path: String, val ip: ByteArray? = null)
 
@@ -46,28 +42,15 @@ object PublicBackendDns : Dns {
             return Dns.SYSTEM.lookup(hostname)
         }
 
-        val now = SystemClock.elapsedRealtime()
-        if (now < cacheExpiresAtMs && cachedAddresses.isNotEmpty()) return cachedAddresses
-
-        synchronized(this) {
-            val refreshedNow = SystemClock.elapsedRealtime()
-            if (refreshedNow < cacheExpiresAtMs && cachedAddresses.isNotEmpty()) {
-                return cachedAddresses
-            }
+        return addressCache.lookup {
             val lookups = listOf<() -> List<InetAddress>>({ Dns.SYSTEM.lookup(hostname).filter(::isPublicAddress) }) +
                 resolvers.map { resolver -> { resolveOverHttps(resolver, hostname).filter(::isPublicAddress) } }
             val addresses = firstSuccessfulDnsLookup(resolverExecutor, lookups, 4_000L)
             if (addresses.isNotEmpty()) {
-                cachedAddresses = addresses
-                cacheExpiresAtMs = SystemClock.elapsedRealtime() + CACHE_MS
                 Log.i(TAG, "Public backend address resolved; parallel resolver race complete")
-                return addresses
             }
+            addresses
         }
-        if (cachedAddresses.isNotEmpty() &&
-            SystemClock.elapsedRealtime() < cacheExpiresAtMs + MAX_STALE_MS
-        ) return cachedAddresses
-        throw UnknownHostException("No public address available for $hostname")
     }
 
     private fun resolveOverHttps(resolver: Resolver, hostname: String): List<InetAddress> {

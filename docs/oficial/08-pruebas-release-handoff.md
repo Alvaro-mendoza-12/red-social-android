@@ -2,14 +2,17 @@
 
 Este documento define cómo probar, publicar y entregar el proyecto a otro equipo o IA.
 
-La evidencia vigente, actualizada el 26/10/2026, está en la
-[auditoría del candidato 167](75-cierre-movil-167-2026-10-25.md).
-El candidato Android es **9.1.27 / 167**. La aceptación exige comprobar el artefacto
+La evidencia vigente del 29/10/2026 está en la
+[continuación móvil 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md),
+después de la [auditoría integral 84](84-auditoria-integral-movil-2026-10-29.md).
+El candidato Android es **9.1.30 / 170**, local; la compilación QA no sustituye un
+nuevo paquete release firmado. El último paquete firmado contrastado es **169**,
+documentado en la revisión 83. La aceptación exige comprobar el artefacto
 release concreto desde la primera pantalla, los tres recorridos de entrada y la
 restauración de sesión; una batería aislada de componentes no basta para aprobar
 el arranque completo. El documento vigente registra los resultados y límites.
 
-La [revisión 78](78-capacidad-host-y-acceso-web-2026-10-27.md) registra el host actualizado, capacidad y transporte autenticado web. La [revisión 79](79-indexacion-publica-2026-10-27.md) registra la publicación y 69 controles SEO aprobados. No sustituyen la aceptación física del APK ni resuelven el límite de carga observado.
+La revisión 85 registra la comparación de carga anterior/candidata y sus límites. Las revisiones 78/79 conservan la historia del host y de la publicación web; ninguna sustituye la aceptación física del APK ni acredita capacidad sostenida de todos los módulos.
 
 ## Estados permitidos
 

@@ -1,13 +1,13 @@
 # Novvin — Red social móvil
 
-Fecha de última revisión documental: 2026-10-27.
+Fecha de última revisión documental: 2026-10-29.
 
 > Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
 > Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
 
-Candidato actual de SEO: [auditoría, cambios y regresiones](docs/oficial/80-auditoria-seo-y-candidato-local-2026-10-27.md). Está preparado localmente; su publicación requiere autorización del propietario. La rama `main` está conectada a producción en Vercel.
+Auditoría móvil vigente: [conectividad, cancelación y carga](docs/oficial/85-conectividad-cancelacion-y-carga-movil-2026-10-29.md), continuación de la [revisión integral por módulos](docs/oficial/84-auditoria-integral-movil-2026-10-29.md). Candidato Android **9.1.30 / código 170**, local. La continuación registra 1.953 unitarias aprobadas, correcciones de red/reintentos y comparación de capacidad en una copia aislada; distingue estos resultados de las comprobaciones físicas y del artefacto firmado pendientes.
 
-Auditoría vigente: [acceso, emojis, avatares, vídeo, Social y música de perfil](docs/oficial/75-cierre-movil-167-2026-10-25.md). Candidato Android: **9.1.27 / código 167**. El documento distingue código implementado, regresiones automáticas, pruebas físicas y validación del artefacto firmado.
+Última publicación autorizada: [revisión 83](docs/oficial/83-capturas-chat-y-recuperacion-voz-2026-10-28.md), con web y aviso de momentos publicados y paquete Android **9.1.29 / 169** firmado. La indexación y sus comprobaciones están documentadas en esa continuidad y la [revisión SEO 80](docs/oficial/80-auditoria-seo-y-candidato-local-2026-10-27.md). La rama `main` está conectada a Vercel: no se sube una tanda nueva sin autorización del propietario.
 
 La [revisión del servidor](docs/oficial/76-auditoria-servidor-2026-10-26.md) y su [continuación del 27/10](docs/oficial/78-capacidad-host-y-acceso-web-2026-10-27.md) registran limpieza, restauración, Ubuntu actualizado y reiniciado, capacidad y transporte web público. La [revisión de indexación](docs/oficial/79-indexacion-publica-2026-10-27.md) recoge 19 páginas, seis imágenes nuevas y verificaciones de Vercel y buscadores. Las [instrucciones de continuidad](docs/oficial/77-prompt-continuidad-produccion-y-escalado.md) conservan los objetivos pendientes.
 

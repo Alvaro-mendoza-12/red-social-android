@@ -1,6 +1,9 @@
 package conectate.com.data.repository.collection
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 
 internal object CollectionPendingMessageRetrySupport {
     suspend fun retryPendingMessageSend(
@@ -18,13 +21,18 @@ internal object CollectionPendingMessageRetrySupport {
 
         for (attempt in 0 until maxAttempts) {
             try {
+                currentCoroutineContext().ensureActive()
                 val pushResult = sendAction()
+                currentCoroutineContext().ensureActive()
                 if (pushResult.isFailure) {
                     throw (pushResult.exceptionOrNull() ?: Exception("Unknown push error"))
                 }
                 onConfirmedSuccess()
                 return Result.success(Unit)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
                 lastError = e
 
                 if (isDuplicateKeyError(e)) {

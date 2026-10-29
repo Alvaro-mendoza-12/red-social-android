@@ -1,6 +1,9 @@
 package conectate.com.data.repository.collection
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 
 internal object CollectionDeleteRetrySupport {
     suspend fun retryRemoteDelete(
@@ -14,9 +17,14 @@ internal object CollectionDeleteRetrySupport {
 
         for (attempt in 0 until maxAttempts.coerceAtLeast(1)) {
             try {
+                currentCoroutineContext().ensureActive()
                 remoteDelete()
+                currentCoroutineContext().ensureActive()
                 return Result.success(Unit)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
                 lastError = e
                 val isLastAttempt = attempt == maxAttempts - 1
                 if (!isRetryableNetworkError(e) || isLastAttempt) {

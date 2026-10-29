@@ -538,12 +538,23 @@ async function importedRowsByFieldValues(pool, tableName, fieldNames, values, li
   const normalizedValues = Array.from(cleanSet(values))
   if (fields.length === 0 || normalizedValues.length === 0) return []
   const safeLimit = Math.max(1, Math.min(Number(limit) || 500, 10_000))
+  // Imported profiles may contain large JSON/text fields. Converting the whole
+  // row for each identity alias multiplies that work on every inbox/feed read.
+  // Materialization keeps missing legacy columns compatible while computing
+  // the JSON document once per row, without schema changes or a shared cache.
+  const materializeProfile = tableName === 'profiles' && fields.length > 1
+  const row = materializeProfile ? 'imported.row' : 'to_jsonb(t)'
   const matches = fields
-    .map((field) => `lower(COALESCE(to_jsonb(t)->>'${field}', '')) = ANY($1::text[])`)
+    .map((field) => `lower(COALESCE(${row}->>'${field}', '')) = ANY($1::text[])`)
     .join(' OR ')
+  const source = materializeProfile
+    ? `WITH imported_profiles AS MATERIALIZED (
+         SELECT to_jsonb(t) AS row FROM supabase_import.${quoteIdentifier(tableName)} AS t
+       )
+       SELECT imported.row FROM imported_profiles AS imported`
+    : `SELECT to_jsonb(t) AS row FROM supabase_import.${quoteIdentifier(tableName)} AS t`
   const { rows } = await pool.query(
-    `SELECT to_jsonb(t) AS row
-     FROM supabase_import.${quoteIdentifier(tableName)} AS t
+    `${source}
      WHERE ${matches}
      LIMIT $2`,
     [normalizedValues, safeLimit],
