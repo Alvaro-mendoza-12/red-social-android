@@ -63,7 +63,8 @@ class IntentRouterResolutionTest {
         assertEquals("video_player/video-1?resumeMs=12000",
             Screen.VideoPlayer.createRoute("video-1", resumeMs = 12_000L))
         val clipLink = Uri.parse("https://conectate.com/video/video-1?resumeMs=12000&endMs=20000")
-        assertEquals(clipLink.toString(), videoClipLink("video-1", VideoClipRange(12_000L, 20_000L)))
+        assertEquals("https://red-social-android.vercel.app/app/reels/video-1?resumeMs=12000&endMs=20000",
+            videoClipLink("video-1", VideoClipRange(12_000L, 20_000L)))
         assertEquals(20_000L, videoClipEndMsFromLink(clipLink))
         assertEquals(0L, videoClipEndMsFromLink(
             Uri.parse("https://conectate.com/video/video-1?resumeMs=12000&endMs=16000")))
