@@ -5,7 +5,7 @@ Fecha base: 2026-08-24
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Revisión actual: [83 — Capturas de chat y recuperación de voz](83-capturas-chat-y-recuperacion-voz-2026-10-28.md). Continúa la [tanda 82](82-carga-multimedia-emojis-y-candidato-169-2026-10-28.md): 816 pruebas web, 1.914 unitarias Android y 16 nativas aprobadas; **9.1.29 / 169** firmado y validado estructuralmente. El propietario autorizó publicar web y aviso de likes en momentos; este último ya se activó recreando únicamente API, con el resto de contenedores preservado. La comprobación final de la nueva web y del recorrido del paquete firmado se registra en la revisión 83. La [revisión 81](81-continuidad-seo-chats-y-release-168-2026-10-28.md) conserva las evidencias del paquete 168 y las publicaciones previas.
+Revisión actual: [83 — Capturas de chat y recuperación de voz](83-capturas-chat-y-recuperacion-voz-2026-10-28.md). Web y aviso de likes en momentos publicados con autorización; **90/90 controles públicos** y comprobación real de foco/avatares aprobados. **9.1.29 / 169** firmado, verificado y con recorrido de entrada aprobado en emulador; no subido a Play. Validación: 816 pruebas web, 1.914 unitarias Android y 16 nativas. La revisión 83 detalla las verificaciones físicas y de medios pendientes. La [revisión 81](81-continuidad-seo-chats-y-release-168-2026-10-28.md) conserva las evidencias del paquete 168 y las publicaciones previas.
 
 Servidor: [76 — Limpieza, actualización y verificación](76-auditoria-servidor-2026-10-26.md). Continuidad del proyecto en producción: [77 — Prompt de auditoría y escalado](77-prompt-continuidad-produccion-y-escalado.md).
 

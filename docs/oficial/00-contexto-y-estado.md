@@ -2,7 +2,7 @@
 
 ## Continuidad del 28/10/2026
 
-La [revisión 83](83-capturas-chat-y-recuperacion-voz-2026-10-28.md) registra las nuevas correcciones de geometría de mensajes/fotos, rutas de perfiles y recuperación de voz: 816 pruebas web, 1.914 unitarias Android y 16 nativas aprobadas. Continúa la [tanda 82](82-carga-multimedia-emojis-y-candidato-169-2026-10-28.md), con foco, avatares/visor, emojis, compartir, plazos de documentos y aviso de likes de momentos. El paquete 9.1.29 / 169 está firmado y validado estructuralmente. El propietario autorizó la publicación web/servidor y el aviso de momentos ya se activó únicamente en API. La revisión 83 indica la comprobación final de publicación y del recorrido firmado. Los apartados siguientes conservan su alcance histórico.
+La [revisión 83](83-capturas-chat-y-recuperacion-voz-2026-10-28.md) registra web y aviso de likes en momentos publicados con autorización; 90/90 verificaciones públicas y prueba real de foco/avatares aprobadas. Validación de código: 816 pruebas web, 1.914 unitarias Android y 16 nativas. El paquete 9.1.29 / 169 está firmado, verificado y con recorrido de entrada aprobado en emulador, sin subida automática a Play. Continúa la [tanda 82](82-carga-multimedia-emojis-y-candidato-169-2026-10-28.md) y detalla las comprobaciones físicas/audio/push pendientes. Los apartados siguientes conservan su alcance histórico.
 
 ## Actualización del 27/10/2026
 
