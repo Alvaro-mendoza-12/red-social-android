@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Revisión adicional del 29/10/2026
+
+La [revisión 88](88-reintento-video-e-identidades-completas-2026-10-29.md) reproduce y corrige un botón Reintentar que no recuperaba el origen protegido del video y una consulta que descartaba identidades después de cien perfiles. Aprueba 855 pruebas web y 96 Node. El recorrido real antes/después confirma recuperación y reproducción con la web corregida. Se publica y se sube a ambas ramas, conservando su igualdad. No cambia API ni Android; sus límites de distribución y aceptación física continúan vigentes.
+
 ## Continuación web del 29/10/2026
 
 La [revisión 87](87-web-insignias-chat-adaptable-y-estados-2026-10-29.md) registra la web publicada con verificados/ADMIN/insignias, conversaciones que recuperan la vista de escritorio al ampliar la ventana, menús por sección, color personalizado y recuperación/estados de video, voz y envíos. Aprueba 852 pruebas web, 96 Node y 90 controles públicos. Se comprobaron borrador y redimensionado en la web real, perfiles, selector de color, reproducción, menú de voz y recuperación de red. Los cambios están subidos a GitHub en ambas ramas. No hay nueva distribución Android ni despliegue de la optimización API aislada.
