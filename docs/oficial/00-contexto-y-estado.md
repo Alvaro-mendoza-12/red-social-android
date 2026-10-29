@@ -2,7 +2,9 @@
 
 ## Auditoría local del 29/10/2026
 
-La [revisión 84](84-auditoria-integral-movil-2026-10-29.md) continúa la estabilización móvil por módulos. El candidato 9.1.30 / 170 permanece local y en validación; incluye la corrección de la espera circular al abrir videos y protecciones de operaciones, borradores y cuentas. Ya aprobó 1.927 unitarias y 51 pruebas nativas aisladas; el documento diferencia estos resultados de los recorridos reales pendientes. No cambia por sí mismo la publicación de producción descrita en 83.
+La [continuación 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md) corrige cancelación en reintentos de grupos/comunidades, repetición de esperas DNS y coste de perfiles importados. Aprueba 1.953 unitarias y registra la comparación aislada de capacidad y sondas públicas reales. No se despliega una nueva API ni se publica Android; los límites y resultados de esta ejecución están en esa revisión.
+
+La [revisión 84](84-auditoria-integral-movil-2026-10-29.md) inició la estabilización móvil por módulos. El candidato 9.1.30 / 170 permanece local y en validación; incluye la corrección de la espera circular al abrir videos y protecciones de operaciones, borradores y cuentas. Esa tanda aprobó 1.931 unitarias y 51 pruebas nativas aisladas; la continuación 85 registra las ejecuciones nuevas. No cambia por sí mismo la publicación de producción descrita en 83.
 
 ## Continuidad del 28/10/2026
 

@@ -35,7 +35,7 @@ Referencia técnica: [PagerState, documentación oficial Android](https://develo
 
 - Búsqueda del feed, páginas de perfil, historial, Ver después y colecciones: lecturas con plazo; cancelación conservada; errores y reintento en páginas de perfil.
 - Colecciones: un borrado fallido conserva la colección seleccionada; salir de la selección libera el indicador de carga.
-- Ranking: videos, usuarios y publicaciones no tenían manejador de pulsación. Se conectan a sus destinos existentes. Las tres consultas paralelas mantienen el indicador hasta terminar y permiten resultados parciales con reintento.
+- Ranking: la variante secundaria `presentation.social.RankingScreen` tenía filas sin manejador de pulsación; se conectan a los destinos existentes. Sus tres consultas paralelas mantienen el indicador hasta terminar y permiten resultados parciales con reintento. **La navegación principal usa `presentation.ranking.RankingScreen`, que ya tenía sus pulsaciones conectadas**; se conserva. El fallo al abrir un video desde esa ruta se beneficia de la corrección compartida del pager, no se atribuye a una pulsación ausente en la pantalla principal.
 - Repeticiones LIVE: solicitud reemplazable por ID, lectura con plazo, error reiniciado y botón de reintento.
 - Se revisaron la resolución de medios, páginas del feed, comentarios/reacciones, subida y recuperación, caché, entradas desde perfil/notificación/búsqueda y preparación/admisión LIVE. No se iniciaron directos ni se emitió audio en producción para probarlos.
 
@@ -65,13 +65,45 @@ Se inventariaron seis fuentes y 81 funciones, y se inspeccionaron los recorridos
 
 ## Evidencias y estado de comprobación
 
-Estado de trabajo: **candidato local 9.1.30 / 170; pendiente de cierre del lint y del paquete firmado**, sin despliegue nuevo. Los resultados que siguen tienen su alcance específico.
+### Archivos principales
+
+Las rutas siguientes son relativas a la raíz del repositorio; el manifiesto local completo es `artifacts/mobile-audit-20261029/change-files.json`.
+
+| Área | Fuentes principales modificadas |
+|---|---|
+| Mensajes y administración | `presentation/messages/CollectionActionRunner.kt`, `CreateGroupViewModel.kt`, `CreateCommunityViewModel.kt`, `GroupDetailViewModel.kt`, `CommunityDetailViewModel.kt`, sus pantallas, los tres ViewModels de chat y `QueuedMessageComposer.kt` |
+| Voz | `presentation/messages/CreateVoiceRoomViewModel.kt`, `presentation/voicerooms/VoiceRoomActiveViewModel.kt`, `data/repository/VoiceRoomRepository.kt`, `data/localfallback/LocalFallbackApiClient.kt`; servidor: `infrastructure/local-fallback/api/src/voice-room-settings.js` y `data-routes.js` |
+| Videos | `presentation/video/PositionInitialVideoPage.kt`, `VideoFeedScreen.kt`, `VideoFeedViewModel.kt`, ViewModels de historial/Ver después/colecciones y `presentation/live/LiveReplayScreen.kt` |
+| Social | `presentation/social/RankingScreen.kt`, `RankingViewModel.kt`, ViewModels de Momentos/audiencia/Rondas y `data/repository/MomentDeletionRollback.kt`, `MomentRepository.kt`, `ChallengeRepository.kt` |
+| Juegos | `presentation/gaming/PlayMatchViewModel.kt` y `core/concurrency/AccountTasks.kt` |
+| Perfil y ajustes | `presentation/profile/ProfileContentSubscriptions.kt`, `ProfileViewModel.kt`, `ProfileScreen.kt`, `FollowListViewModel.kt` y `SettingsViewModel.kt` |
+
+Salvo la ruta de servidor indicada, esos prefijos comienzan en `app/src/main/java/conectate/com/`. Las regresiones nuevas están en `app/src/test/` y `app/src/androidTest/`. Se conserva la arquitectura y no se cambian dependencias del producto.
+
+### Alcance de los resultados
+
+| Conjunto | Comprobación realizada | Lo que no certifica |
+|---|---|---|
+| Mensajes/administración | Revisión de rutas/repositorios; regresiones de edición, confirmación, cuenta y recuperación; pruebas nativas de borradores, emojis, portapapeles, stickers, fotos, PDF y scroll | Intercambio de cada tipo de archivo entre todos los modelos de teléfono y cada red |
+| Videos/LIVE | Contrato HTTP real de búsqueda/detalle/archivo; efecto inicial del pager y callbacks de la variante secundaria de ranking ejecutados; navegación principal inspeccionada; primer fotograma desde caché | Ruta autenticada completa bloqueada por revisión automática; sesión LIVE real de dos extremos |
+| Social/Juegos/Perfil | Contratos de datos y navegación inspeccionados; regresiones de lectura, recuperación, aislamiento y acciones; componentes de perfil/momentos ejecutados | Cada operación de escritura ejecutada contra usuarios reales de producción |
+| Servidor | Suite completa y SQL ejecutado sobre base efímera con datos sintéticos | Capacidad máxima o concurrencia de conexiones reales; no se repiten pruebas de saturación de producción |
+
+### Reproducción
+
+La ejecución final usa `scripts/build-android-device-audit.ps1` con las tareas `:app:testAuditUnitTest`, `:app:lintAudit`, `:app:assembleRelease`, `:app:bundleRelease` y `-PnovvinInstrumentationBuildType=audit`. Ese helper crea y retira únicamente la configuración temporal del paquete QA; no debe ejecutarse en paralelo con otra compilación de auditoría.
+
+El servidor se comprueba con la suite `node --test` de `infrastructure/local-fallback/api/tests/`. La integración SQL local usa `sql-validation/voice-sql-integration.cjs`, que toma la definición de tabla y las funciones del código de producto; la dependencia de prueba queda exclusivamente dentro de los artefactos locales. Los verificadores existentes de firma, bundle, R8, páginas nativas y presupuesto de entrega se aplican a los artefactos finales, no a un APK anterior.
+
+Estado de trabajo: **candidato local 9.1.30 / 170; pendiente del paquete firmado**, sin despliegue nuevo. Los resultados que siguen tienen su alcance específico.
 
 - Servidor: la ejecución completa final aprobó **938 pruebas**, con 11 omitidas y cero fallos (949 en total). Incluye siete casos específicos de edición, permisos, contraseña, concurrencia y salas importadas.
-- Android: 1.927 unitarias / 409 suites, cero fallos en la primera ejecución completa. Incluye nuevos casos de confirmación/cancelación, revisión de edición, sesión de detalles, plazo de salas, lectura parcial de ranking, restauración de momentos y suscripciones de perfil.
+- Las 11 omisiones están identificadas: nueve necesitan conexiones PostgreSQL dedicadas (preguntas, historial, solicitudes privadas, música de perfil, sorteos, referencias de archivos, backfill antivirus, admisión de subidas y encuestas); dos son fixtures de shell Linux para restauración/monitor. El backfill también exige Linux. No se cuentan como aprobadas. El motor Docker local estaba detenido; la integración SQL de las consultas nuevas se ejecutó aparte en memoria, sin usar el servidor de producción.
+- SQL: **6/6 pruebas de integración adicionales** ejecutan las consultas y la definición de tabla del código de producción en PostgreSQL 17.5 mediante [PGlite](https://pglite.dev/docs/), en memoria y fuera de las dependencias del producto. Comprueban guardado, hash de contraseña real, permisos, importación con alias/canal, marca de borrado y rechazo de una captura de propietario obsoleta. No equivalen a una prueba de carga/concurrencia multiconexión del servidor real.
+- Android: **1.931 unitarias / 410 suites, cero fallos, errores u omisiones** en la ejecución final del código congelado `4b91db8b1bea`. Incluye nuevos casos de confirmación/cancelación, revisión de edición, sesión de detalles, plazo de salas, lectura parcial de ranking, restauración de momentos/salas y suscripciones de perfil.
 - Nativas aisladas en emulador API 35: **51/51 aprobadas**. Apertura inicial de video (2), navegación de ranking (3), borradores/emojis, portapapeles de texto/imagen, gestos de stickers, ancla y aislamiento de scroll, edición/exportación de imágenes, navegación de perfiles, visitas y cabecera de momentos; segunda tanda con PDF de 300 páginas y recuperación, audio WebM, primer fotograma de video en caché y distribución de emojis. No son 51 recorridos autenticados completos.
 - Desplazamiento: 400 burbujas reales con gestos nativos, 304 fotogramas; p50 30,18 ms, p95 51,82 ms, 72 plazos de fotograma incumplidos. Índice visible 381 → 318. **Emulador con GPU por software y compilación QA depurable: no demuestra 60 FPS en producción**. Se conserva el resultado, sin convertirlo en una aprobación de fluidez física.
-- Análisis de seguridad del repositorio: cero hallazgos y cero violaciones nuevas. El primer lint completo detectó dos errores de sangría nuevos en Rondas y 320 advertencias (268 sugerencias UseKtx). La sangría se corrigió; no se desactivan reglas ni se crea una línea base para ocultarla. La repetición está pendiente.
+- Análisis de seguridad del código final: cero hallazgos y cero violaciones nuevas. **Lint completo final: cero errores y 320 advertencias**, incluidas 268 sugerencias UseKtx. Los dos errores de sangría detectados inicialmente en Rondas quedaron corregidos y comprobados en la repetición. No se desactivaron reglas ni se creó una línea base. Las advertencias restantes se conservan: recursos, atributos y textos, convenciones Compose y avisos de API revisados; el visor web mantiene deshabilitados el acceso a archivos/contenido local y el contenido mixto.
 - Sonda autenticada no destructiva con cuenta sintética: diez GET respondieron 200. El video de muestra, con la misma reescritura de ruta pública utilizada por Android, respondió 206, `video/mp4`, 65.536 bytes en 519 ms. Es una muestra de red; no mide tiempo al primer fotograma en todos los dispositivos.
 - Los logs, resultados JUnit e inventario están en `artifacts/mobile-audit-20261029/`, fuera de Git. Ninguna credencial forma parte del informe.
 

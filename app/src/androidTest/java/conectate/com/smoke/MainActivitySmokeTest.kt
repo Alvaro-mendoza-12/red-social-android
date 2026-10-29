@@ -1,6 +1,7 @@
 package conectate.com.smoke
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -36,7 +37,10 @@ class MainActivitySmokeTest {
         val previous = prefs.getBoolean(key, false)
         prefs.edit().putBoolean(key, true).commit()
         try {
-            ActivityScenario.launch(MainActivity::class.java).use {
+            // Match the ACTION_MAIN intent retained after MainActivity consumes
+            // its entry intent, so ActivityScenario can track recreation/close.
+            val launchIntent = Intent(context, MainActivity::class.java).setAction(Intent.ACTION_MAIN)
+            ActivityScenario.launch<MainActivity>(launchIntent).use {
                 composeRule.waitUntil(45_000) { isPresent("main-home") || isPresent("auth-login") }
                 block()
             }

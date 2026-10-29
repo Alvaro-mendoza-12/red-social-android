@@ -2,7 +2,7 @@
 
 La app Android es el cliente principal de Novvin. Está desarrollada en Kotlin con Jetpack Compose y sigue una organización por capas, ViewModels, repositorios, servicios Android y módulos de datos.
 
-La revisión móvil vigente está en la [auditoría del candidato 167, actualizada el 26/10/2026](75-cierre-movil-167-2026-10-25.md). Incluye entrada, credenciales, registro, sesión guardada, invitado, multimedia, emojis, caché, perfiles, música y límites de LIVE. Distingue las pruebas de componentes del recorrido del APK release firmado.
+La revisión móvil vigente está en la [continuación 85 del 29/10/2026](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md), después de la [auditoría integral 84](84-auditoria-integral-movil-2026-10-29.md). El código es **9.1.30 / 170**, local y con validación QA; el último paquete firmado contrastado es **9.1.29 / 169**, documentado en 83. La revisión distingue pruebas automáticas, recorridos en emulador, artefactos firmados y pendientes físicos. Los cambios históricos siguientes conservan su fecha y alcance.
 
 Cambios del candidato 166 que afectan al arranque y a los medios:
 
@@ -27,8 +27,8 @@ Estado observado:
 - `compileSdk`: 36
 - `minSdk`: 24
 - `targetSdk`: 36
-- `versionCode`: 167
-- `versionName`: 9.1.27
+- `versionCode`: 170
+- `versionName`: 9.1.30
 - Java/Kotlin target: 17
 - Runtime de Gradle soportado: JDK 17–21. JDK 22+ se rechaza antes de compilar; el target de bytecode permanece en 17.
 - Android Gradle Plugin: 8.13.2

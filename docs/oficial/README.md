@@ -5,7 +5,7 @@ Fecha base: 2026-08-24
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Auditoría local actual: [84 — Auditoría integral móvil](84-auditoria-integral-movil-2026-10-29.md). Candidato 9.1.30 / 170 en validación, sin nueva publicación. Registra correcciones por módulo, 1.927 pruebas unitarias y 51 nativas aprobadas, y los límites de esas comprobaciones. El estado de producción se conserva debajo.
+Auditoría local actual: [85 — Conectividad, cancelación y carga móvil](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md), continuación de la [revisión integral 84](84-auditoria-integral-movil-2026-10-29.md). Candidato 9.1.30 / 170, sin nueva publicación. Registra 1.953 unitarias aprobadas, correcciones de DNS/reintentos y comparación antes/después de la carga aislada. La revisión distingue las comprobaciones automáticas de la aceptación física y del paquete firmado. El estado de producción se conserva debajo.
 
 Revisión actual: [83 — Capturas de chat y recuperación de voz](83-capturas-chat-y-recuperacion-voz-2026-10-28.md). Web y aviso de likes en momentos publicados con autorización; **90/90 controles públicos** y comprobación real de foco/avatares aprobados. **9.1.29 / 169** firmado, verificado y con recorrido de entrada aprobado en emulador; no subido a Play. Validación: 816 pruebas web, 1.914 unitarias Android y 16 nativas. La revisión 83 detalla las verificaciones físicas y de medios pendientes. La [revisión 81](81-continuidad-seo-chats-y-release-168-2026-10-28.md) conserva las evidencias del paquete 168 y las publicaciones previas.
 

@@ -20,6 +20,7 @@ import conectate.com.core.security.OperationGuard
 import conectate.com.data.repository.collection.CollectionAdminRemoteStore
 import conectate.com.data.repository.collection.CollectionCreationRemoteStore
 import conectate.com.data.repository.collection.CollectionDeleteRetrySupport
+import conectate.com.data.repository.collection.deleteCollectionMessage
 import conectate.com.data.repository.collection.CollectionGovernanceSupport
 import conectate.com.data.repository.collection.CollectionMediaStore
 import conectate.com.data.repository.collection.CollectionMessageEngagementStore
@@ -3172,106 +3173,70 @@ class CommunityRepository @Inject constructor(
 
     suspend fun deleteCommunityMessage(messageId: String, forEveryone: Boolean): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            var cleanUserId = userId.trim().lowercase()
-            var existing = communityDao.getMessageById(messageId)?.toDomain()
-            if (forEveryone && existing?.sender_id?.trim()?.lowercase() != cleanUserId) {
-                return@withContext Result.failure(IllegalStateException("Solo puedes eliminar para todos tus propios mensajes"))
-            }
-            val optimisticMessage = existing?.let { current ->
-                if (forEveryone) {
-                    current.copy(deleted_for_all = true)
-                } else {
-                    current.copy(
-                        deleted_by = (current.deleted_by + cleanUserId)
-                            .map { it.trim().lowercase() }
-                            .filter { it.isNotBlank() }
-                            .distinct()
-                    )
-                }
-            }
-
-            if (optimisticMessage != null) {
-                communityDao.insertMessages(
-                    listOf(conectate.com.data.local.entity.CommunityMessageEntity.fromDomain(optimisticMessage))
-                )
-                updateCommunityMessageInFlow(optimisticMessage.community_id, optimisticMessage)
-                conectate.com.util.DeletedMessageIdentity.create(cleanUserId, "community", optimisticMessage.community_id, optimisticMessage.id)?.let {
-                    MessageNotificationFactory.redactMessage(context, it, optimisticMessage.created_at, forEveryone = false)
-                }
-            }
-
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val token = authService.getAccessTokenAwait()
-                    ?: return@withContext Result.failure(Exception("No token"))
-                val communityId = existing?.community_id?.trim()?.lowercase()
-                    ?: return@withContext Result.failure(Exception("Mensaje no encontrado"))
-                val result = localFallbackApiClient.deleteCollectionMessage(
-                    accessToken = token,
-                    collection = "communities",
-                    roomId = communityId,
-                    messageId = messageId,
-                    forEveryone = forEveryone
-                )
-                if (result.isFailure) {
-                    communityDao.insertMessages(listOf(CommunityMessageEntity.fromDomain(existing)))
-                    updateCommunityMessageInFlow(communityId, existing)
-                }
-                return@withContext result
-            }
-
-            val remoteDeleteResult = CollectionDeleteRetrySupport.retryRemoteDelete(
-                logTag = "CommunityRepository",
-                messageId = messageId,
-                remoteDelete = {
-                    if (forEveryone) {
-                        var updateJson = buildJsonObject {
-                            put("deleted_for_all", true)
-                        }
-                        supabaseConfig.client.postgrest["community_messages"].update(updateJson) {
-                            filter { eq("id", messageId) }
-                        }
-                    } else {
-                        val updatedDeletedBy = optimisticMessage?.deleted_by
-                            ?: existing?.deleted_by
-                                ?.map { it.trim().lowercase() }
-                                ?.filter { it.isNotBlank() }
-                                ?.distinct()
-                            ?: emptyList()
-                        var updateJson = buildJsonObject {
-                            put("deleted_by", JsonArray(updatedDeletedBy.map { JsonPrimitive(it) }))
-                        }
-                        supabaseConfig.client.postgrest["community_messages"].update(updateJson) {
-                            filter { eq("id", messageId) }
-                        }
+            val userId = authService.getCurrentUserId()
+                ?: return@withContext Result.failure(Exception("Inicia sesión de nuevo."))
+            val normalizedUserId = userId.trim().lowercase()
+            val session = captureSessionSnapshot(normalizedUserId)
+            val useLocalApi = authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured
+            // Resolve credentials before hiding the message; an expired session must leave it visible.
+            val token = if (useLocalApi) authService.getAccessTokenAwait()
+                ?: return@withContext Result.failure(Exception("No se pudo renovar la sesión.")) else null
+            deleteCollectionMessage(
+                isCurrentSession = { isSessionSnapshotValid(session, "community-delete") },
+                load = { communityDao.getMessageById(messageId)?.toDomain() },
+                markDeleted = { message ->
+                    check(!forEveryone || message.sender_id.trim().lowercase() == normalizedUserId) {
+                        "Solo puedes eliminar para todos tus propios mensajes"
+                    }
+                    if (forEveryone) message.copy(deleted_for_all = true)
+                    else message.copy(deleted_by = (message.deleted_by + normalizedUserId)
+                        .map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct())
+                },
+                save = { message ->
+                    if (!isSessionSnapshotValid(session, "community-delete-save")) throw CancellationException("La cuenta cambió.")
+                    communityDao.insertMessages(listOf(CommunityMessageEntity.fromDomain(message)))
+                    if (!isSessionSnapshotValid(session, "community-delete-publish")) throw CancellationException("La cuenta cambió.")
+                    updateCommunityMessageInFlow(message.community_id, message)
+                },
+                onOptimistic = { message ->
+                    conectate.com.util.DeletedMessageIdentity.create(normalizedUserId, "community", message.community_id, message.id)?.let {
+                        MessageNotificationFactory.redactMessage(context, it, message.created_at, forEveryone = false)
                     }
                 },
-                isRetryableNetworkError = { error ->
-                    CollectionRepositorySupport.isRetryableNetworkError(error, transientNetworkRetryCodes)
-                }
+                remoteDelete = { message ->
+                    if (useLocalApi) {
+                        localFallbackApiClient.deleteCollectionMessage(
+                            accessToken = requireNotNull(token), collection = "communities", roomId = message.community_id,
+                            messageId = messageId, forEveryone = forEveryone,
+                        )
+                    } else {
+                        CollectionDeleteRetrySupport.retryRemoteDelete(
+                            logTag = "CommunityRepository", messageId = messageId,
+                            remoteDelete = {
+                                val payload = buildJsonObject {
+                                    if (forEveryone) put("deleted_for_all", true)
+                                    else put("deleted_by", kotlinx.serialization.json.JsonArray(message.deleted_by.map(::JsonPrimitive)))
+                                }
+                                supabaseConfig.client.postgrest["community_messages"].update(payload) {
+                                    filter {
+                                        eq("id", messageId)
+                                        if (forEveryone) eq("sender_id", normalizedUserId)
+                                    }
+                                }
+                            },
+                            isRetryableNetworkError = { error ->
+                                CollectionRepositorySupport.isRetryableNetworkError(error, transientNetworkRetryCodes)
+                            },
+                        )
+                    }
+                },
             )
-
-            try {
-                remoteDeleteResult.getOrThrow()
-                Result.success(Unit)
-            } catch (remoteError: Exception) {
-                if (optimisticMessage != null) {
-                    android.util.Log.w(
-                        "CommunityRepository",
-                        "Remote delete sync failed after optimistic local delete for $messageId",
-                        remoteError
-                    )
-                    Result.success(Unit)
-                } else {
-                    Result.failure(remoteError)
-                }
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
         }
     }
-
-
 
     suspend fun getCommunityMessageReadReceipts(messageId: String): Result<List<MessageReadReceipt>> = withContext(Dispatchers.IO) {
         var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
