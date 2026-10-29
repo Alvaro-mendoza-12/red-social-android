@@ -2589,44 +2589,43 @@ class VoiceRoomRepository @Inject constructor(
 
 
 
+    private val roomDeletesInFlight = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     suspend fun deleteRoom(roomId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val previousRooms = _activeRooms.value
+        val owner = authService.getCurrentUserId()?.trim()?.lowercase()
+            ?: return@withContext Result.failure(Exception("Inicia sesión para continuar."))
+        val id = roomId.trim().lowercase()
+        val key = "$owner:$id"
+        if (id.isBlank() || !roomDeletesInFlight.add(key)) return@withContext Result.failure(Exception("La eliminación ya está en curso."))
+        val removed = _activeRooms.value.firstOrNull { it.id.equals(id, true) }
+        fun sameAccount() = owner == authService.getCurrentUserId()?.trim()?.lowercase()
+        var confirmed = false
         try {
-            var normalizedRoomId = roomId.trim().lowercase()
-            _activeRooms.update { current ->
-                current.filterNot { it.id.trim().lowercase() == normalizedRoomId }
-            }
+            _activeRooms.update { current -> if (sameAccount()) current.filterNot { it.id.equals(id, true) } else current }
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 val token = authService.getAccessTokenAwait()
-                if (token == null) {
-                    _activeRooms.value = previousRooms
-                    return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
-                }
-                localFallbackApiClient.deleteVoiceRoom(token, roomId).getOrThrow()
-                if (activeRoomId?.trim()?.lowercase() == normalizedRoomId) {
-                    leaveRoom(roomId)
-                } else {
-                    scope.launch { refreshRooms() }
-                }
-                return@withContext Result.success(Unit)
-            }
-            supabaseConfig.client.postgrest["voice_rooms"].delete {
-                filter { eq("id", roomId) }
-            }
-            if (activeRoomId?.trim()?.lowercase() == normalizedRoomId) {
-                leaveRoom(roomId)
+                    ?: return@withContext Result.failure(Exception("Sesión Ubuntu no disponible."))
+                currentCoroutineContext().ensureActive()
+                if (!sameAccount()) throw CancellationException("Account changed before deleting the room")
+                localFallbackApiClient.deleteVoiceRoom(token, id).getOrThrow()
             } else {
-                scope.launch { refreshRooms() }
+                supabaseConfig.client.postgrest["voice_rooms"].delete { filter { eq("id", id) } }
             }
+            confirmed = true
+            currentCoroutineContext().ensureActive()
+            if (!sameAccount()) throw CancellationException("Account changed after deleting the room")
+            if (activeRoomId?.equals(id, true) == true) {
+                try { leaveRoom(roomId) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) { android.util.Log.w("VoiceRoomRepository", "Room deleted; local disconnection failed", error) }
+            } else scope.launch { refreshRooms() }
             Result.success(Unit)
-        } catch (e: Exception) {
-            android.util.Log.e("VoiceRoomRepository", "Error deleting room $roomId", e)
-            _activeRooms.value = previousRooms
-            Result.failure(e)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { Result.failure(error) }
+        finally {
+            if (!confirmed) _activeRooms.update { restoreFailedVoiceRoomDeletion(it, removed, owner, authService.getCurrentUserId()) }
+            roomDeletesInFlight.remove(key)
         }
     }
-
-
 
     private suspend fun subscribeToVoiceRooms() {
         if (authService.isLocalFallbackModeEnabled()) {
@@ -3060,3 +3059,9 @@ data class VoiceRoomSummary(
 
 
 
+
+/** A failed command cannot replace a refreshed directory or restore another account's rooms. */
+internal fun restoreFailedVoiceRoomDeletion(current: List<VoiceRoom>, removed: VoiceRoom?, owner: String?, currentOwner: String?): List<VoiceRoom> {
+    if (owner.isNullOrBlank() || !owner.equals(currentOwner?.trim(), true) || removed == null || current.any { it.id.equals(removed.id, true) }) return current
+    return (current + removed).sortedByDescending { it.updated_at.ifBlank { it.created_at } }
+}
