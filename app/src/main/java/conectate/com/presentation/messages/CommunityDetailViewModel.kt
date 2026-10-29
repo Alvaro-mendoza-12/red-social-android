@@ -12,6 +12,7 @@ import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -30,7 +31,7 @@ class CommunityDetailViewModel @Inject constructor(
 
     private val _actionMessage = MutableStateFlow<String?>(null)
     val actionMessage = _actionMessage.asStateFlow()
-    private val actions = CollectionActionRunner(viewModelScope, authService::getCurrentUserId) { _actionMessage.value = it }
+    private val actions = CollectionActionRunner(viewModelScope, authService::getCurrentUserId, { _actionMessage.value = it }, authService.currentSession.map { authService.getCurrentUserId() })
     val actionsBusy = actions.busy
 
     fun consumeActionMessage() {

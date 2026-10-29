@@ -9,6 +9,18 @@ import org.junit.Test
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class CollectionActionRunnerTest {
+    @Test fun switchingAccountCancelsAPendingCommandBeforeItCanContinueWithNewCredentials() = runTest {
+        val accounts = kotlinx.coroutines.flow.MutableStateFlow<String?>("a")
+        val gate = CompletableDeferred<Unit>()
+        var continued = false; var cancelled = false; var callbacks = 0
+        val runner = CollectionActionRunner(backgroundScope, { accounts.value }, { callbacks++ }, accounts)
+        runner.run("group", "Error", { true }, {
+            try { gate.await(); continued = true; Result.success(Unit) }
+            finally { cancelled = !continued }
+        }, { callbacks++ })
+        runCurrent(); accounts.value = "b"; runCurrent(); gate.complete(Unit); runCurrent()
+        assertTrue(cancelled); assertFalse(continued); assertEquals(0, callbacks); assertTrue(runner.busy.value.isEmpty())
+    }
     @Test fun aDoubleTapExecutesOneCommandAndOnlyConfirmedSuccessNavigates() = runTest {
         val completed = CompletableDeferred<Result<Unit>>()
         var requests = 0; var navigations = 0

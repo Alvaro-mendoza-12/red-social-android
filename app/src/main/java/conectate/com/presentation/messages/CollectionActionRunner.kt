@@ -4,6 +4,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -13,6 +17,7 @@ internal class CollectionActionRunner(
     private val scope: CoroutineScope,
     private val account: () -> String?,
     private val failed: (String) -> Unit,
+    private val accountUpdates: Flow<String?>? = null,
 ) {
     private val pending = MutableStateFlow<Set<String>>(emptySet())
     val busy = pending.asStateFlow()
@@ -25,7 +30,13 @@ internal class CollectionActionRunner(
         scope.launch {
             try {
                 if (account() != owner || !isCurrent()) return@launch
-                val result = action()
+                val result = coroutineScope {
+                    val command = async { action() }
+                    val watcher = accountUpdates?.let { updates ->
+                        launch { updates.first { it != owner }; command.cancel() }
+                    }
+                    try { command.await() } finally { watcher?.cancel() }
+                }
                 currentCoroutineContext().ensureActive()
                 (result.exceptionOrNull() as? CancellationException)?.let { throw it }
                 if (account() != owner || !isCurrent()) return@launch

@@ -25,6 +25,8 @@ La API nueva conserva el hash de contraseña privada si no se cambia, valida la 
 
 También se contrastaron los caminos existentes de envío/cola local, multimedia, borradores Unicode, portapapeles, respuestas, reacciones, reenvío, selección/borrado, paginación, canales, permisos y notificaciones con sus repositorios y pruebas. Eso no equivale a una conversación real entre dos dispositivos en cada caso; las comprobaciones físicas pendientes figuran abajo.
 
+Las operaciones de grupo, comunidad y configuración de voz cancelan además su solicitud pendiente al cambiar de cuenta, para impedir que continúe con credenciales de otra sesión. Una regresión específica comprueba la cancelación, la ausencia de callbacks tardíos y la liberación del indicador. La edición privada conserva la señal de fin de escritura al confirmar sin sobrescribir un borrador nuevo.
+
 ## 2. Videos y LIVE
 
 **Caso Mensajes → + → Buscar → Videos → abrir resultado.** La búsqueda real y el detalle del video de muestra respondieron correctamente y devolvieron el mismo ID con archivo reproducible. La causa de bloqueo localizada en código fue una espera circular: `VideoFeedScreen` ocultaba `VerticalPager` hasta posicionarlo, pero `scrollToPage` espera que ese pager haya completado su primer layout. Se usa ahora `requestScrollToPage`, que solicita la posición sin suspender antes de liberar la pantalla. Se añaden regresiones nativas para detalle ya cargado y detalle que llega después.
@@ -55,6 +57,7 @@ Se inventariaron seis fuentes y 81 funciones, y se inspeccionaron los recorridos
 
 - Las cinco suscripciones de contenido podían acumularse y una respuesta del perfil anterior reemplazaba listas actuales. Ahora cada pestaña tiene una suscripción reemplazable, vinculada al ticket de perfil/cuenta. Cambiar de propietario/destino vacía las listas anteriores; recargar el mismo conserva el contenido visible.
 - Los errores de contenido tienen aviso y reintento. Se mantienen los permisos del servidor para favoritos privados.
+- Los momentos destacados descartan respuestas de otro perfil/cuenta y tienen plazo de lectura. Su caché, incluida la visibilidad privada, se vacía al cambiar de cuenta.
 - La lista de seguidores/seguidos/amigos ya no falla por una ruta incompleta, cancela la solicitud anterior y termina con resultado o error acotado.
 - Ajustes cancela el trabajo de la cuenta anterior y elimina del estado visible códigos de recuperación, configuración 2FA y sesiones. Una entrada sin sesión termina con un mensaje.
 - Guardado de apariencia, 2FA, rotación de códigos y eliminación de cuenta bloquean antes de despachar y liberan sus indicadores en `finally`. El refresco posterior al guardado tiene plazo. Los cambios paralelos de preferencias usan la copia actual del perfil.
