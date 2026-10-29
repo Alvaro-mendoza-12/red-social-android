@@ -7,6 +7,14 @@ test('web API, signed media and signaling use public same-origin HTTPS', () => {
   expect(publicBackendTransportUrl(productionBackendOrigin + '/call', page)).toBe(page + '/call')
 })
 
+test('production voice port uses the public gateway without requesting local-network access', () => {
+  const page = 'https://red-social-android.vercel.app'
+  expect(publicBackendTransportUrl(productionBackendOrigin + ':8443', page)).toBe(page)
+  expect(publicBackendTransportUrl(productionBackendOrigin + ':8443/turn-credentials', page)).toBe(page + '/turn-credentials')
+  expect(publicBackendTransportUrl(productionBackendOrigin + ':8443/socket.io/?EIO=4&transport=polling', page)).toBe(page + '/socket.io/?EIO=4&transport=polling')
+  for (const value of [productionBackendOrigin + ':8444', 'https://other.ts.net:8443', 'https://user:secret@conectate.tail9b267c.ts.net:8443']) expect(publicBackendTransportUrl(value, page)).toBe(value)
+})
+
 test('preview deployments retain their own public origin for pre-promotion checks', () => {
   const page = 'https://red-social-android-ab123-alvaro-s-projects1.vercel.app'
   expect(publicBackendTransportUrl(productionBackendOrigin, page)).toBe(page)
