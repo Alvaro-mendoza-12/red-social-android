@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -112,10 +113,10 @@ fun LiveReplayScreen(
                 modifier = Modifier.fillMaxSize().padding(24.dp).padding(padding),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = error ?: "No se pudo cargar la repetición.",
-                    color = MaterialTheme.colorScheme.error
-                )
+                Column {
+                    Text(text = error ?: "No se pudo cargar la repetición.", color = MaterialTheme.colorScheme.error)
+                    TextButton(onClick = { viewModel.load(liveId) }) { Text("Reintentar") }
+                }
             }
             replay != null -> ReplayContent(
                 replay = replay!!,

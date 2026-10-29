@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 enum class GroupCreationStep {
@@ -49,6 +50,7 @@ class CreateGroupViewModel @Inject constructor(
     val currentStep: StateFlow<GroupCreationStep> = _currentStep.asStateFlow()
 
     private var searchJob: Job? = null
+    private var searchRevision = 0L
 
     fun setImageBytes(bytes: ByteArray?) {
         _selectedImageBytes.value = bytes
@@ -56,6 +58,10 @@ class CreateGroupViewModel @Inject constructor(
 
     fun searchUsers(query: String) {
         searchJob?.cancel()
+        val owner = authService.getCurrentUserId()
+        val revision = ++searchRevision
+        _isSearching.value = false
+        _searchResults.value = emptyList()
         if (query.isBlank()) {
             _searchResults.value = emptyList() // or load suggested
             return
@@ -63,19 +69,21 @@ class CreateGroupViewModel @Inject constructor(
 
         searchJob = viewModelScope.launch {
             _isSearching.value = true
-            delay(500) // Debounce
             try {
+                delay(350)
                 // Delegate to UserRepo which should support searching users from Supabase
-                val result = userRepository.searchUsers(query)
+                val result = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.searchUsers(query.trim()).getOrThrow() }
+                if (revision != searchRevision || owner != authService.getCurrentUserId()) return@launch
                 if (result.isSuccess) {
                     _searchResults.value = result.getOrNull() ?: emptyList()
                 } else {
                     _searchResults.value = emptyList()
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 _searchResults.value = emptyList()
             } finally {
-                _isSearching.value = false
+                if (revision == searchRevision) _isSearching.value = false
             }
         }
     }
@@ -108,21 +116,27 @@ class CreateGroupViewModel @Inject constructor(
 
     fun createGroup(name: String, description: String?, onSuccess: (String) -> Unit) {
         if (_isCreating.value) return
+        if (name.isBlank()) { _errorMessage.value = "El nombre es obligatorio"; return }
+        val owner = authService.getCurrentUserId() ?: run { _errorMessage.value = "Inicia sesión para continuar."; return }
+        val image = _selectedImageBytes.value
         val participants = _selectedUsers.value.map { it.id }
         if (participants.isEmpty()) {
             _errorMessage.value = "Selecciona al menos un participante"
             return
         }
 
+        _isCreating.value = true
+        _errorMessage.value = null
         viewModelScope.launch {
-            _isCreating.value = true
             try {
                 val result = groupRepository.createGroup(
                     name = name,
                     description = description,
-                    imageBytes = _selectedImageBytes.value,
+                    imageBytes = image,
                     members = participants
                 )
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (owner != authService.getCurrentUserId()) return@launch
                 if (result.isSuccess) {
                      val groupId = result.getOrNull()
                      if (groupId != null) {
@@ -131,7 +145,8 @@ class CreateGroupViewModel @Inject constructor(
                 } else {
                     _errorMessage.value = "Error al crear grupo: ${result.exceptionOrNull()?.message}"
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 _errorMessage.value = e.message
             } finally {
                 _isCreating.value = false

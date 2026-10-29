@@ -67,6 +67,8 @@ class PlayMatchViewModel @Inject constructor(
     private var inboxJob: Job? = null
     private var catalogSearchJob: Job? = null
     private var homeJob: Job? = null
+    private var playerLoadJob: Job? = null
+    private var sessionLoadJob: Job? = null
     private val accountTasks = PlayMatchAccountTasks(viewModelScope)
     private fun newDiscovery() = PlayMatchDiscoveryController(accountTasks.scope, _state) { query ->
         repository.players(query.text, query.game, query.platform, query.region, query.cursor, query.availableNow)
@@ -151,13 +153,13 @@ class PlayMatchViewModel @Inject constructor(
     fun loadProfile() {
         accountTasks.scope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            val capabilities = repository.capabilities().getOrElse { return@launch fail(it) }
+            val capabilities = boundedRequest { repository.capabilities() }.getOrElse { return@launch fail(it) }
             if (!capabilities.enabled) {
                 _state.update { it.copy(isLoading = false, capabilities = capabilities) }
                 return@launch
             }
-            val catalog = repository.popularGames().getOrElse { return@launch fail(it) }
-            repository.profile().fold(
+            val catalog = boundedRequest { repository.popularGames() }.getOrElse { return@launch fail(it) }
+            boundedRequest { repository.profile() }.fold(
                 onSuccess = { response -> _state.update { it.copy(isLoading = false, capabilities = capabilities, catalog = catalog.items, profile = response.profile, preferences = response.preferences) } },
                 onFailure = { fail(it) },
             )
@@ -330,9 +332,10 @@ class PlayMatchViewModel @Inject constructor(
     })
 
     fun loadPlayer(id: String) {
-        accountTasks.scope.launch {
+        playerLoadJob?.cancel()
+        playerLoadJob = accountTasks.scope.launch {
             _state.update { it.copy(isLoading = true, error = null, playerDetail = null) }
-            repository.player(id).fold(
+            boundedRequest { repository.player(id) }.fold(
                 onSuccess = { player -> _state.update { it.copy(isLoading = false, playerDetail = player) } },
                 onFailure = { fail(it) },
             )
@@ -358,9 +361,10 @@ class PlayMatchViewModel @Inject constructor(
 
     fun loadSession(id: String) {
         pollingJob?.cancel()
-        accountTasks.scope.launch {
+        sessionLoadJob?.cancel()
+        sessionLoadJob = accountTasks.scope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
-            repository.session(id).fold(
+            boundedRequest { repository.session(id) }.fold(
                 onSuccess = { response ->
                     _state.update { it.copy(isLoading = false, session = response.session) }
                     if (response.session.status in setOf("SEARCHING", "MATCH_FOUND")) pollSession(id)
@@ -429,7 +433,7 @@ class PlayMatchViewModel @Inject constructor(
         pollingJob = accountTasks.scope.launch {
             while (true) {
                 delay(2_000)
-                val result = repository.session(id)
+                val result = boundedRequest { repository.session(id) }
                 if (_state.value.session?.id != id || _state.value.isWorking) continue
                 if (result.isFailure) {
                     val error = result.exceptionOrNull() ?: IllegalStateException("PLAYMATCH_REQUEST_FAILED")
@@ -457,8 +461,8 @@ class PlayMatchViewModel @Inject constructor(
         inboxJob = accountTasks.scope.launch {
             while (true) {
                 delay(15_000)
-                repository.connections().onSuccess { response -> _state.update { it.copy(connections = response.items) } }
-                repository.matches().onSuccess { response -> _state.update { it.copy(matches = response.items) } }
+                boundedRequest { repository.connections() }.onSuccess { response -> _state.update { it.copy(connections = response.items) } }
+                boundedRequest { repository.matches() }.onSuccess { response -> _state.update { it.copy(matches = response.items) } }
             }
         }
     }

@@ -28,6 +28,7 @@ import io.github.jan.supabase.realtime.realtime
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.*
@@ -1510,43 +1511,35 @@ class MomentRepository @Inject constructor(
 
 
     suspend fun deleteMoment(momentId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val cleanMomentId = canonicalMomentId(momentId)
+        val id = canonicalMomentId(momentId)
+        val generation = momentAccountGeneration
+        val owner = authService.getCurrentUserId()
+        val token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Inicia sesión para continuar."))
+        if (id.isBlank()) return@withContext Result.failure(Exception("Momento inválido"))
+        if (!locallyDeletedMomentIds.add(id)) return@withContext Result.failure(Exception("La eliminación ya está en curso."))
+        val original = _moments.value.firstOrNull { canonicalMomentId(it.id) == id }
+        _moments.value = _moments.value.filterNot { canonicalMomentId(it.id) == id }
+        var confirmed = false
         try {
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            if (cleanMomentId.isBlank()) return@withContext Result.failure(Exception("Moment invalido"))
-            locallyDeletedMomentIds.add(cleanMomentId)
-            _moments.value = _moments.value.filterNot { canonicalMomentId(it.id) == cleanMomentId }
-
-            if (shouldUseUbuntuBackend()) {
-                val result = localFallbackApiClient.deleteMoment(accessToken, momentId)
-                if (result.isSuccess) {
-                    _moments.value = _moments.value.filterNot { canonicalMomentId(it.id) == cleanMomentId }
-                } else {
-                    locallyDeletedMomentIds.remove(cleanMomentId)
+            val result = if (shouldUseUbuntuBackend()) localFallbackApiClient.deleteMoment(token, momentId)
+            else {
+                val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/moments") {
+                    header("apikey", supabaseConfig.supabaseAnonKey)
+                    header("Authorization", "Bearer $token")
+                    parameter("id", "eq.$momentId")
                 }
-                return@withContext result
+                if (response.status.isSuccess()) Result.success(Unit) else Result.failure(Exception("No se pudo eliminar el momento."))
             }
-            
-            // Note: We might want to also delete the file from storage
-            // Fetch moment first to get storage path
-            
-            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/moments") {
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Authorization", "Bearer $accessToken")
-                parameter("id", "eq.$momentId")
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            confirmed = result.isSuccess
+            result
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) { Result.failure(error) }
+        finally {
+            if (!confirmed && generation == momentAccountGeneration && owner == authService.getCurrentUserId()) {
+                locallyDeletedMomentIds.remove(id)
+                _moments.value = restoreFailedMomentDeletion(_moments.value, original)
             }
-
-            if (response.status.isSuccess()) {
-                Result.success(Unit)
-            } else {
-                locallyDeletedMomentIds.remove(cleanMomentId)
-                Result.failure(Exception("Failed to delete moment"))
-            }
-        } catch (e: Exception) {
-            if (cleanMomentId.isNotBlank()) {
-                locallyDeletedMomentIds.remove(cleanMomentId)
-            }
-            Result.failure(e)
         }
     }
 

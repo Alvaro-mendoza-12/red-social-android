@@ -407,6 +407,7 @@ fun ProfileScreen(
     onLogout: () -> Unit
 ) {
     val profileState by viewModel.profileState.collectAsState()
+    val contentLoadError by viewModel.contentLoadError.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
     val userVideos by viewModel.userVideos.collectAsState()
     val userPosts by viewModel.userPosts.collectAsState()
@@ -824,6 +825,9 @@ fun ProfileScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize()) {
+            contentLoadError?.let { message ->
+                OfflineNoticeBar(message = message, onRetry = { viewModel.loadUserProfile(userId, forceNetwork = true) })
+            }
             if (!isConnected) {
                 OfflineNoticeBar(
                     message = "Sin conexión. Perfil cargado desde datos locales.",

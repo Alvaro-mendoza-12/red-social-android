@@ -620,13 +620,17 @@ class VoiceRoomActiveViewModel @Inject constructor(
         _room.value?.id?.let { roomId -> voiceRoomRepository.emitCinemaControl(roomId, action, position) }
     }
 
+    private val settingsActions by lazy {
+        conectate.com.presentation.messages.CollectionActionRunner(viewModelScope, authService::getCurrentUserId) { _joinError.value = it }
+    }
     fun updateRoom(name: String, isPublic: Boolean, password: String?) {
-        viewModelScope.launch {
-            _room.value?.id?.let { roomId ->
-                voiceRoomRepository.updateRoom(roomId, name, isPublic, password)
-            }
-            _room.value = _room.value?.copy(name = name, isPublic = isPublic, password = password)
-        }
+        val room = _room.value ?: return
+        if (name.isBlank()) { _joinError.value = "El nombre de la sala es obligatorio."; return }
+        settingsActions.run(room.id, "No se pudo guardar la sala. Revisa tus permisos y la conexión y reintenta.",
+            { _room.value?.id == room.id }, { voiceRoomRepository.updateRoom(room.id, name.trim(), isPublic, password) }, {
+                _room.value = _room.value?.copy(name = name.trim(), isPublic = isPublic)
+                _joinError.value = null
+            })
     }
 
     fun validatePassword(password: String) {

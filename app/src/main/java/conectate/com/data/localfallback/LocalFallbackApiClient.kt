@@ -6178,6 +6178,20 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    suspend fun updateVoiceRoom(accessToken: String, roomId: String, name: String, isPublic: Boolean, password: String?): Result<Unit> {
+        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
+        return try {
+            val response = supabaseConfig.httpClient.patch("$baseUrl/v1/data/voice/rooms/${urlEncode(roomId)}") {
+                localHeaders(accessToken)
+                contentType(ContentType.Application.Json)
+                setBody(buildJsonObject { put("name", name.trim()); put("isPublic", isPublic); if (password != null) put("password", password) })
+            }
+            val body = response.bodyAsText()
+            if (response.status.isSuccess()) Result.success(Unit) else Result.failure(toException(response, decodeError(body)))
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
     suspend fun loadVoiceRooms(accessToken: String): Result<List<VoiceRoom>> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return requestJson<LocalFallbackVoiceRoomsResponse>("$baseUrl/v1/data/voice/rooms", accessToken)

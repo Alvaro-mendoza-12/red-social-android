@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Auditoría local del 29/10/2026
+
+La [revisión 84](84-auditoria-integral-movil-2026-10-29.md) continúa la estabilización móvil por módulos. El candidato 9.1.30 / 170 permanece local y en validación; incluye la corrección de la espera circular al abrir videos y protecciones de operaciones, borradores y cuentas. Ya aprobó 1.927 unitarias y 51 pruebas nativas aisladas; el documento diferencia estos resultados de los recorridos reales pendientes. No cambia por sí mismo la publicación de producción descrita en 83.
+
 ## Continuidad del 28/10/2026
 
 La [revisión 83](83-capturas-chat-y-recuperacion-voz-2026-10-28.md) registra web y aviso de likes en momentos publicados con autorización; 90/90 verificaciones públicas y prueba real de foco/avatares aprobadas. Validación de código: 816 pruebas web, 1.914 unitarias Android y 16 nativas. El paquete 9.1.29 / 169 está firmado, verificado y con recorrido de entrada aprobado en emulador, sin subida automática a Play. Continúa la [tanda 82](82-carga-multimedia-emojis-y-candidato-169-2026-10-28.md) y detalla las comprobaciones físicas/audio/push pendientes. Los apartados siguientes conservan su alcance histórico.

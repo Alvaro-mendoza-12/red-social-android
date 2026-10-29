@@ -45,6 +45,17 @@ internal class QueuedMessageComposer<Reply> {
         updateText(previous)
     }
 
+    class EditSnapshot internal constructor(val text: String, internal val revision: Long)
+
+    fun captureEdit(): EditSnapshot = EditSnapshot(text.value, textRevision)
+
+    /** A late server acknowledgement cannot discard text typed or restored after submission. */
+    fun finishEditingIfUnchanged(snapshot: EditSnapshot): Boolean {
+        if (draftBeforeEdit == null || snapshot.revision != textRevision) return false
+        finishEditing()
+        return true
+    }
+
     class Submission<Reply> internal constructor(
         val text: String,
         val replyTo: Reply?,

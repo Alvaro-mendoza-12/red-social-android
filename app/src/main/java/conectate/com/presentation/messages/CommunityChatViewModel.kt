@@ -1176,22 +1176,27 @@ class CommunityChatViewModel @Inject constructor(
     }
 
     fun confirmEditMessage() {
+        if (_isSending.value) return
         val msg = _editingMessage.value ?: return
-        val newContent = _messageText.value
-        if (newContent.isBlank() || newContent == msg.content) {
-            cancelEdit()
-            return
-        }
-
+        val snapshot = textComposer.captureEdit()
+        if (snapshot.text.isBlank() || snapshot.text == msg.content) { cancelEdit(); return }
+        val owner = authService.getCurrentUserId() ?: return
+        val destination = communityId
+        fun current() = owner == authService.getCurrentUserId() && destination == communityId
+        _isSending.value = true
         viewModelScope.launch {
-            _isSending.value = true
-            val result = communityRepository.editCommunityMessage(msg.id, newContent)
-            if (result.isSuccess) {
-                cancelEdit()
-            } else {
-                _errorMessage.value = "Error al editar"
-            }
-            _isSending.value = false
+            try {
+                val result = communityRepository.editCommunityMessage(msg.id, snapshot.text)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (!current()) return@launch
+                if (result.isSuccess) {
+                    if (_editingMessage.value?.id == msg.id && textComposer.finishEditingIfUnchanged(snapshot)) {
+                        _editingMessage.value = null
+                    }
+                } else { _errorMessage.value = "No se pudo guardar la edición. Reintenta." }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { if (current()) { _errorMessage.value = "No se pudo guardar la edición. Reintenta." } }
+            finally { if (current()) _isSending.value = false }
         }
     }
 

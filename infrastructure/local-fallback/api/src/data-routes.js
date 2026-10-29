@@ -5453,7 +5453,7 @@ async function voiceRoomRowsByAliases(pool, roomAliases) {
     ),
     localVoiceRoomsByAliases(pool, aliases),
   ])
-  return mergeRowsById([...importedRooms, ...fallbackRooms])
+  return mergeRowsById([...importedRooms, ...fallbackRooms]).filter(row => boolOf(row, ['is_active'], true))
 }
 
 async function canAccessCommunityVoiceRoom(pool, user, room) {
@@ -9775,7 +9775,7 @@ function registerDataRoutes(app, {
           localVoiceParticipants(pool),
           localVoiceRooms(pool, 1000),
         ])
-        const rooms = mergeRowsById([...importedRooms, ...fallbackRooms]).filter(isStandaloneVoiceRoom)
+        const rooms = (await require('./voice-room-settings').visibleVoiceDirectoryRows(pool, mergeRowsById([...importedRooms, ...fallbackRooms]))).filter(isStandaloneVoiceRoom)
           .filter(row => boolOf(row, ['is_public', 'public'], true) || rowMatchesAny(row, ['creator_id', 'owner_id', 'user_id'], identity.ids))
         const voiceParticipants = fallbackParticipants
         const profilesById = indexProfiles(await publicProfilesByIds(pool, [
@@ -11943,7 +11943,7 @@ function registerDataRoutes(app, {
         localVoiceParticipants(pool),
         localVoiceRooms(pool, 1000),
       ])
-      const rooms = [...importedRooms, ...fallbackRooms]
+      const rooms = await require('./voice-room-settings').visibleVoiceDirectoryRows(pool, mergeRowsById([...importedRooms, ...fallbackRooms]))
       const profilesById = indexProfiles(await publicProfilesByIds(pool, [
         ...rooms.map((row) => textOf(row, ['creator_id', 'owner_id', 'user_id'], '')),
         ...fallbackParticipants.map((row) => textOf(row, ['user_id', 'profile_id'], '')),
@@ -12008,6 +12008,30 @@ function registerDataRoutes(app, {
         },
       })
     } catch (error) {
+      next(error)
+    }
+  })
+
+  app.patch('/v1/data/voice/rooms/:roomId', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
+      const identity = userIdentity(user)
+      const id = normalizeId(req.params.roomId)
+      const rooms = await voiceRoomRowsByAliases(pool, [id])
+      const room = rooms.find(value => voiceRoomMatches(value, id))
+      if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
+      const stored = await localVoiceRoomsByAliases(pool, [voiceRoomId(room)])
+      const updated = await require('./voice-room-settings').updateVoiceRoomSettings(pool, room, identity.ids, req.body || {}, undefined,
+        { allowLegacyInsert: stored.length === 0 && Boolean(validUuid(voiceRoomId(room))) })
+      clearVoiceCaches()
+      const participants = await localVoiceParticipants(pool, voiceRoomId(updated))
+      const profileIds = [...identity.values, ...participants.map(row => textOf(row, ['user_id', 'profile_id'], ''))]
+      const mapped = mapVoiceRoom(updated, indexProfiles(await publicProfilesByIds(pool, profileIds)), participants.length, participants)
+      void publishVoiceRoomsLiveEvent({ action: 'updated', roomId: mapped.id, room: mapped })
+      res.json({ room: mapped })
+    } catch (error) {
+      if (error.code?.startsWith('VOICE_ROOM_')) return res.status(error.status || 400).json({ error: error.code })
       next(error)
     }
   })
@@ -12313,15 +12337,8 @@ function registerDataRoutes(app, {
         return res.status(403).json({ error: 'VOICE_ROOM_DELETE_DENIED' })
       }
 
-      const uuidRoomId = validUuid(actualRoomId)
-      if (uuidRoomId) {
-        await pool.query(
-          `UPDATE fallback_voice_rooms
-           SET is_active = FALSE, updated_at = NOW()
-           WHERE lower(id::text) = $1`,
-          [actualRoomId],
-        )
-      }
+      if (!validUuid(actualRoomId)) return res.status(400).json({ error: 'VOICE_ROOM_ID_INVALID' })
+      await require('./voice-room-settings').deleteVoiceRoomRecord(pool, room, identity.ids)
       await pool.query(
         `DELETE FROM fallback_voice_room_participants
          WHERE lower(room_id) = $1`,
@@ -12331,6 +12348,7 @@ function registerDataRoutes(app, {
       void publishVoiceRoomsLiveEvent({ action: 'deleted', roomId: actualRoomId })
       res.json({ ok: true, roomId: actualRoomId, deleted: true })
     } catch (error) {
+      if (error.code?.startsWith('VOICE_ROOM_')) return res.status(error.status || 400).json({ error: error.code })
       next(error)
     }
   })

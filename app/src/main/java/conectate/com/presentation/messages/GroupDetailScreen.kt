@@ -40,6 +40,7 @@ fun GroupDetailScreen(
     val group by viewModel.group.collectAsState()
     val members by viewModel.members.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val loadError by viewModel.loadError.collectAsState()
     val currentUserId by viewModel.currentUserId.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val isDeleted by viewModel.isDeleted.collectAsState()
@@ -84,7 +85,7 @@ fun GroupDetailScreen(
             if (group?.is_deleted == true || (members.isNotEmpty() && !isStillMember)) {
                 showDeletedByOtherAlert = true
             }
-        } else if (!isLoading && group == null) {
+        } else if (!isLoading && group == null && loadError == null) {
             // Si no carga el grupo en absoluto (borrado total o id inválida)
             showDeletedByOtherAlert = true
         }
@@ -216,6 +217,12 @@ fun GroupDetailScreen(
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
+            }
+        } else if (group == null && loadError != null) {
+            Column(Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                Text(loadError.orEmpty())
+                Button(onClick = viewModel::retryGroupDetails) { Text("Reintentar") }
             }
         } else {
             LazyColumn(

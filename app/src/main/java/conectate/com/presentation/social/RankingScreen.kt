@@ -3,6 +3,7 @@ package conectate.com.presentation.social
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
@@ -20,6 +21,7 @@ import conectate.com.data.model.Post
 import conectate.com.data.model.User
 import conectate.com.data.model.Video
 import conectate.com.presentation.components.CircularProfileImage
+import conectate.com.presentation.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +36,7 @@ fun RankingScreen(
     val topUsers by viewModel.topUsers.collectAsState()
     val topPosts by viewModel.topPosts.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
 
     Scaffold(
         topBar = {
@@ -58,15 +61,19 @@ fun RankingScreen(
                 }
             }
 
+            error?.let { message ->
+                Text(message, modifier = Modifier.padding(horizontal = 16.dp))
+                TextButton(onClick = viewModel::loadRankings, enabled = !isLoading) { Text("Reintentar") }
+            }
             if (isLoading && topVideos.isEmpty() && topUsers.isEmpty() && topPosts.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
             } else {
                 when (selectedTabIndex) {
-                    0 -> VideoRanking(topVideos)
-                    1 -> UserRanking(topUsers)
-                    2 -> PostRanking(topPosts)
+                    0 -> VideoRanking(topVideos) { navController.navigate(Screen.VideoPlayer.createRoute(it.id)) }
+                    1 -> UserRanking(topUsers) { navController.navigate(Screen.UserProfile.createRoute(it.id)) }
+                    2 -> PostRanking(topPosts) { navController.navigate(Screen.PostDetail.createRoute(it.id)) }
                 }
             }
         }
@@ -74,10 +81,11 @@ fun RankingScreen(
 }
 
 @Composable
-fun VideoRanking(videos: List<Video>) {
+fun VideoRanking(videos: List<Video>, onOpen: (Video) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         itemsIndexed(videos) { index, video ->
             ListItem(
+                modifier = Modifier.clickable { onOpen(video) },
                 headlineContent = { Text(video.title.ifBlank { "Video #${index + 1}" }, fontWeight = FontWeight.Bold) },
                 supportingContent = { Text("${video.likeCount} likes • ${video.commentCount} comentarios") },
                 leadingContent = {
@@ -95,10 +103,11 @@ fun VideoRanking(videos: List<Video>) {
 }
 
 @Composable
-fun UserRanking(users: List<User>) {
+fun UserRanking(users: List<User>, onOpen: (User) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         itemsIndexed(users) { index, user ->
             ListItem(
+                modifier = Modifier.clickable { onOpen(user) },
                 headlineContent = { Text(user.username.orEmpty().ifBlank { "Usuario ${index + 1}" }) },
                 supportingContent = { Text("${user.followers_count ?: 0} seguidores") },
                 leadingContent = {
@@ -121,10 +130,11 @@ fun UserRanking(users: List<User>) {
 }
 
 @Composable
-fun PostRanking(posts: List<Post>) {
+fun PostRanking(posts: List<Post>, onOpen: (Post) -> Unit) {
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         itemsIndexed(posts) { index, post ->
             ListItem(
+                modifier = Modifier.clickable { onOpen(post) },
                 headlineContent = { Text(post.userName.ifBlank { "Post #${index + 1}" }) },
                 supportingContent = { Text("${post.shareCount} compartidos • ${post.likeCount} reacciones") },
                 leadingContent = {

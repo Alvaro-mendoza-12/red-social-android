@@ -90,7 +90,7 @@ class VideoCollectionsViewModel @Inject constructor(
                 realtime.updateAccessToken(token)
                 realtime.replaceUserSubscription(account)
             }
-            val result = repository.getVideoCollections()
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoCollections().getOrThrow() }
             if (account != bindAccount() || requestRevision != revision) return@launch
             result.fold(onSuccess = { catalog ->
                 val selected = _state.value.selectedId?.takeIf { id ->
@@ -112,7 +112,7 @@ class VideoCollectionsViewModel @Inject constructor(
         itemRevision++
         searchJob?.cancel()
         _state.value = _state.value.copy(selectedId = collectionId, videos = emptyList(),
-            nextOffset = null, search = "", error = null)
+            nextOffset = null, search = "", loadingVideos = false, error = null)
         if (collectionId != null) loadItems()
     }
 
@@ -140,7 +140,7 @@ class VideoCollectionsViewModel @Inject constructor(
         val requestRevision = itemRevision
         _state.value = _state.value.copy(loadingVideos = true, error = null)
         viewModelScope.launch {
-            val result = repository.getVideoCollectionItems(collectionId, query, offset)
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoCollectionItems(collectionId, query, offset).getOrThrow() }
             if (account != bindAccount() || requestRevision != itemRevision ||
                 collectionId != _state.value.selectedId || query != _state.value.search) return@launch
             result.fold(onSuccess = { page ->
@@ -201,7 +201,7 @@ class VideoCollectionsViewModel @Inject constructor(
             val result = repository.deleteVideoCollection(collectionId)
             if (account != bindAccount()) return@launch
             _state.value = _state.value.copy(working = false,
-                selectedId = _state.value.selectedId.takeUnless { it == collectionId },
+                selectedId = if (result.isSuccess) _state.value.selectedId.takeUnless { it == collectionId } else _state.value.selectedId,
                 error = result.exceptionOrNull()?.message)
             if (result.isSuccess) refresh(silent = true)
         }

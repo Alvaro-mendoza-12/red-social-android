@@ -78,6 +78,8 @@ class ProfileViewModel @Inject constructor(
 
     private val _profileState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val profileState: StateFlow<ProfileUiState> = _profileState.asStateFlow()
+    private val _contentLoadError = MutableStateFlow<String?>(null)
+    val contentLoadError = _contentLoadError.asStateFlow()
     val visibleMoments = momentRepository.moments
 
     private val _userVideos = MutableStateFlow<List<Video>>(emptyList())
@@ -144,6 +146,8 @@ class ProfileViewModel @Inject constructor(
     private var realtimeJob: kotlinx.coroutines.Job? = null
     private val profileMutationClock = ProfileMutationClock()
     private val profileReadScope = ProfileReadScope(authService::getCurrentUserId)
+    private val contentSubscriptions = ProfileContentSubscriptions(viewModelScope, profileReadScope)
+    private var contentOwner: Pair<String?, String>? = null
     private var profileLoadJob: kotlinx.coroutines.Job? = null
     private var profileBadgeJob: kotlinx.coroutines.Job? = null
 
@@ -203,6 +207,14 @@ class ProfileViewModel @Inject constructor(
         if (idToLoad == null) {
             _profileState.value = ProfileUiState.Error("No user logged in")
             return
+        }
+        val owner = authService.getCurrentUserId() to idToLoad
+        contentSubscriptions.cancelAll()
+        _contentLoadError.value = null
+        if (contentOwner != owner) {
+            contentOwner = owner
+            _userVideos.value = emptyList(); _userPosts.value = emptyList()
+            _sharedPosts.value = emptyList(); _sharedVideos.value = emptyList(); _favoriteVideos.value = emptyList()
         }
         val ticket = profileReadScope.begin(idToLoad)
         profileLoadJob?.cancel()
@@ -912,51 +924,19 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    private fun loadUserVideos(userId: String) {
-        viewModelScope.launch {
-            try {
-                videoRepository.getUserVideos(userId).collect { videos ->
-                    _userVideos.value = videos
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "Error loading videos", e)
-            }
-        }
-    }
+    private fun loadUserVideos(userId: String) = contentSubscriptions.observe("videos", userId,
+        { videoRepository.getUserVideos(userId) }, { _userVideos.value = it },
+        { _contentLoadError.value = "No se pudieron cargar los videos del perfil. Reintenta." })
 
-    private fun loadUserPosts(userId: String) {
-        viewModelScope.launch {
-            try {
-                postRepository.getUserPosts(userId).collect { posts ->
-                    _userPosts.value = posts
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "Error loading user posts", e)
-            }
-        }
-    }
+    private fun loadUserPosts(userId: String) = contentSubscriptions.observe("posts", userId,
+        { postRepository.getUserPosts(userId) }, { _userPosts.value = it },
+        { _contentLoadError.value = "No se pudieron cargar las publicaciones del perfil. Reintenta." })
 
     private fun loadSharedContent(userId: String) {
-        viewModelScope.launch {
-            try {
-                // Fetch shared posts for this user
-                postRepository.getSharedPosts(userId).collect { posts ->
-                    _sharedPosts.value = posts
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "Error loading shared posts", e)
-            }
-        }
-        viewModelScope.launch {
-            try {
-                // Fetch shared videos for this user
-                videoRepository.getSharedVideos(userId).collect { videos ->
-                    _sharedVideos.value = videos
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "Error loading shared videos", e)
-            }
-        }
+        contentSubscriptions.observe("sharedPosts", userId, { postRepository.getSharedPosts(userId) },
+            { _sharedPosts.value = it }, { _contentLoadError.value = "No se pudieron cargar los compartidos. Reintenta." })
+        contentSubscriptions.observe("sharedVideos", userId, { videoRepository.getSharedVideos(userId) },
+            { _sharedVideos.value = it }, { _contentLoadError.value = "No se pudieron cargar los videos compartidos. Reintenta." })
     }
 
     fun selectTab(index: Int) {
@@ -1161,18 +1141,9 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    private fun loadFavoriteVideos(userId: String) {
-        viewModelScope.launch {
-            try {
-                videoRepository.getFavoriteVideos(userId).collect { videos ->
-                    _favoriteVideos.value = videos
-                }
-            } catch (e: Exception) {
-                _favoriteVideos.value = emptyList()
-                android.util.Log.d("ProfileViewModel", "Favorite videos are unavailable for this profile: ${e.message}")
-            }
-        }
-    }
+    private fun loadFavoriteVideos(userId: String) = contentSubscriptions.observe("favorites", userId,
+        { videoRepository.getFavoriteVideos(userId) }, { _favoriteVideos.value = it },
+        { _favoriteVideos.value = emptyList(); _contentLoadError.value = "Los favoritos no están disponibles para este perfil." })
 
     fun reportPost(
         post: Post,

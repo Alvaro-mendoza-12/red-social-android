@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import conectate.com.core.network.runReadWithDeadline
 import javax.inject.Inject
 
 @HiltViewModel
@@ -66,7 +69,7 @@ class ChallengeViewModel @Inject constructor(
 
     private fun observeSession() {
         viewModelScope.launch {
-            authService.observeSession().collect { session ->
+            authService.observeSession().map { it?.user?.id }.distinctUntilChanged().collect { _ ->
                 android.util.Log.d("ChallengeViewModel", "Session changed, resetting local state")
                 resetLocalParticipationState()
                 loadActiveChallenge()
@@ -78,6 +81,8 @@ class ChallengeViewModel @Inject constructor(
 
     private fun resetLocalParticipationState() {
         android.util.Log.d("ChallengeViewModel", "Resetting local participation state for new challenge session")
+        participationJob?.cancel()
+        countdownJob?.cancel()
         submissionsJob?.cancel() 
         submissionsJob = null
         
@@ -120,11 +125,15 @@ class ChallengeViewModel @Inject constructor(
         }
     }
 
-    private fun checkParticipation(activeChallengeId: String, minCreatedAt: String? = null) {
+    private fun checkParticipation(challenge: ActiveChallenge) {
+        val activeChallengeId = challenge.id
+        val minCreatedAt = getSessionStartTime(challenge)
+        val owner = authService.getCurrentUserId()
         participationJob?.cancel()
         participationJob = viewModelScope.launch {
             android.util.Log.d("ChallengeViewModel", "=== checkParticipation START for $activeChallengeId (minTime: $minCreatedAt) ===")
-            challengeRepository.checkParticipation(activeChallengeId, minCreatedAt).onSuccess { participated ->
+            runReadWithDeadline(10_000) { challengeRepository.checkParticipation(activeChallengeId, minCreatedAt, challenge.challengeId).getOrThrow() }.onSuccess { participated ->
+                if (owner != authService.getCurrentUserId() || _activeChallenge.value?.id != activeChallengeId) return@onSuccess
                 android.util.Log.d("ChallengeViewModel", "checkParticipation RESULT: participated=$participated")
                 _hasParticipated.value = participated
                 if (participated) {
@@ -147,7 +156,9 @@ class ChallengeViewModel @Inject constructor(
         val startTime = getSessionStartTime(challenge)
         viewModelScope.launch {
             android.util.Log.d("ChallengeViewModel", "=== loadSubmissions MANUAL CALL for ${challenge.id} ===")
-            challengeRepository.getSubmissions(challenge.id, startTime).onSuccess { // FIXED: Use Instance ID
+            val owner = authService.getCurrentUserId()
+            runReadWithDeadline(10_000) { challengeRepository.getSubmissions(challenge.id, startTime).getOrThrow() }.onSuccess {
+                if (owner != authService.getCurrentUserId() || _activeChallenge.value?.id != challenge.id) return@onSuccess // FIXED: Use Instance ID
                 android.util.Log.d("ChallengeViewModel", "loadSubmissions SUCCESS: ${it.size} submissions")
                 _challengeSubmissions.value = it.sortedByDescending { sub -> sub.voteCount }
             }.onFailure {
@@ -156,83 +167,32 @@ class ChallengeViewModel @Inject constructor(
         }
     }
 
-    fun submitText(text: String) {
+    fun submitText(text: String) = submit("¡Respuesta enviada!") { challenge -> challengeRepository.submitText(challenge, text) }
+    fun submitMedia(uri: android.net.Uri, mimeType: String, extension: String) = submit("¡Reto multimedia cumplido!") { challenge -> challengeRepository.submitMedia(challenge, uri, mimeType, extension) }
+    fun submitAudio(file: java.io.File) = submit("¡Audio enviado!") { challenge -> challengeRepository.submitAudio(challenge, file) }
+    fun submitDrawing(lines: List<conectate.com.presentation.components.Line>) = submit("¡Reto cumplido!") { challenge -> challengeRepository.submitDrawing(challenge, lines) }
+
+    private fun submit(message: String, operation: suspend (ActiveChallenge) -> Result<Unit>) {
         val challenge = _activeChallenge.value ?: return
+        val owner = authService.getCurrentUserId() ?: return
         if (_isSubmittingChallenge.value) return
-        
         _isSubmittingChallenge.value = true
         viewModelScope.launch {
-            challengeRepository.submitText(challenge, text).onSuccess {
-                android.widget.Toast.makeText(context, "¡Respuesta enviada!", android.widget.Toast.LENGTH_SHORT).show()
-                _hasParticipated.value = true
-                
-                // CRITICAL FIX: Only activate observer, it will load and emit submissions automatically
-                observeSubmissions(challenge.id, getSessionStartTime(challenge)) // FIXED: Use Session ID
-                _isSubmittingChallenge.value = false
-            }.onFailure {
-                android.widget.Toast.makeText(context, "Error: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
-                _isSubmittingChallenge.value = false
-            }
-        }
-    }
-
-    fun submitMedia(uri: android.net.Uri, mimeType: String, extension: String) {
-        val challenge = _activeChallenge.value ?: return
-        if (_isSubmittingChallenge.value) return
-
-        _isSubmittingChallenge.value = true
-        viewModelScope.launch {
-            challengeRepository.submitMedia(challenge, uri, mimeType, extension).onSuccess {
-                android.widget.Toast.makeText(context, "¡Reto multimedia cumplido!", android.widget.Toast.LENGTH_SHORT).show()
-                _hasParticipated.value = true
-                
-                // CRITICAL FIX: Only activate observer, it will load and emit submissions automatically
-                observeSubmissions(challenge.id, getSessionStartTime(challenge)) // FIXED: Use Session ID
-                _isSubmittingChallenge.value = false
-            }.onFailure {
-                android.widget.Toast.makeText(context, "Error: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
-                _isSubmittingChallenge.value = false
-            }
-        }
-    }
-    
-    // Supporting the specific Audio recorder file submission if needed
-    fun submitAudio(file: java.io.File) {
-        val challenge = _activeChallenge.value ?: return
-        if (_isSubmittingChallenge.value) return
-
-        _isSubmittingChallenge.value = true
-        viewModelScope.launch {
-            challengeRepository.submitMedia(challenge, android.net.Uri.fromFile(file), "audio/mp4", "mp4").onSuccess {
-                android.widget.Toast.makeText(context, "¡Audio enviado!", android.widget.Toast.LENGTH_SHORT).show()
-                _hasParticipated.value = true
-                
-                // CRITICAL FIX: Only activate observer, it will load and emit submissions automatically
-                observeSubmissions(challenge.id, getSessionStartTime(challenge)) // FIXED: Use Session ID
-                _isSubmittingChallenge.value = false
-            }.onFailure {
-                android.widget.Toast.makeText(context, "Error: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
-                _isSubmittingChallenge.value = false
-            }
-        }
-    }
-
-    fun submitDrawing(lines: List<conectate.com.presentation.components.Line>) {
-        val challenge = _activeChallenge.value ?: return
-        if (_isSubmittingChallenge.value) return
-
-        _isSubmittingChallenge.value = true
-        viewModelScope.launch {
-            challengeRepository.submitDrawing(challenge, lines).onSuccess {
-                android.widget.Toast.makeText(context, "¡Reto cumplido!", android.widget.Toast.LENGTH_SHORT).show()
-                _hasParticipated.value = true
-                
-                // CRITICAL FIX: Only activate observer, it will load and emit submissions automatically
-                observeSubmissions(challenge.id, getSessionStartTime(challenge)) // FIXED: Use Session ID
-                _isSubmittingChallenge.value = false
-            }.onFailure {
-                android.widget.Toast.makeText(context, "Error: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
-                _isSubmittingChallenge.value = false
+            try {
+                val result = operation(challenge)
+                if (owner != authService.getCurrentUserId() || _activeChallenge.value?.id != challenge.id) return@launch
+                result.fold(onSuccess = {
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+                    _hasParticipated.value = true
+                    observeSubmissions(challenge.id, getSessionStartTime(challenge))
+                }, onFailure = {
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar la participación. Reintenta.")
+                })
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (owner == authService.getCurrentUserId()) conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar la participación. Reintenta.")
+            } finally {
+                if (owner == authService.getCurrentUserId() && _activeChallenge.value?.id == challenge.id) _isSubmittingChallenge.value = false
             }
         }
     }
@@ -317,31 +277,10 @@ class ChallengeViewModel @Inject constructor(
         }
     }
 
-    fun submitChallengeMediaFromUri(uri: android.net.Uri) {
-        val challenge = _activeChallenge.value ?: return
-        viewModelScope.launch {
-            _isSubmittingChallenge.value = true
-            try {
-                val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
-                val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "jpg"
-
-                challengeRepository.submitMedia(challenge, uri, mimeType, extension).onSuccess {
-                    android.widget.Toast.makeText(context, "¡Reto multimedia cumplido!", android.widget.Toast.LENGTH_SHORT).show()
-                    _hasParticipated.value = true
-                    
-                    // FIXED: Reload submissions immediately to populate the list
-                    observeSubmissions(challenge.id, getSessionStartTime(challenge))
-                    
-                    _isSubmittingChallenge.value = false
-                }.onFailure {
-                    android.widget.Toast.makeText(context, "Error: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
-                    _isSubmittingChallenge.value = false
-                }
-            } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "Error leyendo archivo", android.widget.Toast.LENGTH_SHORT).show()
-                _isSubmittingChallenge.value = false
-            }
-        }
+    fun submitChallengeMediaFromUri(uri: android.net.Uri) = submit("¡Reto multimedia cumplido!") { challenge ->
+        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        val extension = android.webkit.MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType) ?: "jpg"
+        challengeRepository.submitMedia(challenge, uri, mimeType, extension)
     }
 
     // Creating a challenge (for the dialog)
@@ -366,7 +305,7 @@ class ChallengeViewModel @Inject constructor(
             challengeRepository.getActiveChallenge().onSuccess { initial ->
                 _activeChallenge.value = initial
                 resetLocalParticipationState() 
-                checkParticipation(initial.challengeId, getSessionStartTime(initial)) 
+                checkParticipation(initial)
                 startMasterTimer(initial)
             }.onFailure {
                 android.util.Log.e("ChallengeViewModel", "Initial active challenge load failed", it)
@@ -379,7 +318,7 @@ class ChallengeViewModel @Inject constructor(
                 
                 if (previous?.id != updated.id) {
                     resetLocalParticipationState()
-                    checkParticipation(updated.challengeId, getSessionStartTime(updated))
+                    checkParticipation(updated)
                 }
                 
                 // Si el estado cambia a voting o completed, forzar recarga de participaciones
@@ -452,7 +391,7 @@ class ChallengeViewModel @Inject constructor(
                 
                 if (previous?.id != updated.id) {
                     resetLocalParticipationState()
-                    checkParticipation(updated.challengeId, getSessionStartTime(updated)) 
+                    checkParticipation(updated)
                 }
 
                 if (previous?.status != updated.status || previous?.id != updated.id || countdownJob?.isActive != true) {

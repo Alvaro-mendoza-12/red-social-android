@@ -37,7 +37,7 @@ internal class VoiceRoomSearchController(
         val attempt = generation
         mutableState.value = VoiceRoomSearchState.Searching
         searchJob = scope.launch {
-            val result = try { findRoom(cleanId) }
+            val result = try { conectate.com.core.network.runReadWithDeadline(10_000) { findRoom(cleanId).getOrThrow() } }
             catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { Result.failure(error) }
             if (attempt != generation) return@launch

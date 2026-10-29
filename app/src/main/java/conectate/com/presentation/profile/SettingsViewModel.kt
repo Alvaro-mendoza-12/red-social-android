@@ -15,7 +15,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 import java.time.Instant
 import conectate.com.data.model.UpdateProfileRequest
@@ -141,8 +144,26 @@ class SettingsViewModel @Inject constructor(
     val passwordRecoveryMessage: StateFlow<String?> = _passwordRecoveryMessage.asStateFlow()
     
     private var currentUser: User? = null
+    private val accountTasks = conectate.com.core.concurrency.AccountTasks(viewModelScope)
+    private var settingsAccount = authRepository.getCurrentUserId()
 
     init {
+        viewModelScope.launch {
+            authRepository.getAuthStateFlow().map { it?.user?.id }.distinctUntilChanged().collect { account ->
+                if (account != settingsAccount) {
+                    settingsAccount = account
+                    accountTasks.reset()
+                    currentUser = null
+                    _serverRecoveryCodes.value = emptyList(); _passwordRecoveryCodes.value = emptyList()
+                    _serverTwoFactorSetup.value = null; _serverTwoFactorStatus.value = null
+                    _webSessions.value = emptyList(); _additionalLoginEmails.value = emptyList()
+                    _webSessionsLoading.value = false; _twoFactorBusy.value = false; _passwordRecoveryBusy.value = false
+                    _appearanceSaving.value = false; _profileMusicUploading.value = false; _isDeletingAccount.value = false
+                    _privacyAccepted.value = false; _adminPanelAccess.value = false
+                    _settingsState.value = SettingsUiState.Error("La sesión cambió. Vuelve a abrir los ajustes.")
+                }
+            }
+        }
         loadUserSettings()
         loadServerTwoFactorStatus()
         loadPasswordRecoveryCodeStatus()
@@ -156,7 +177,7 @@ class SettingsViewModel @Inject constructor(
     private val _alvaroAdminId = MutableStateFlow<String?>(null)
 
     private fun resolveAdminIds() {
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val conectateAdminId = resolveSupportAdminId("novvin")
             _conectateAdminId.value = conectateAdminId
             android.util.Log.d("SettingsViewModel", "Resolved Novvin Admin ID: $conectateAdminId")
@@ -210,7 +231,7 @@ class SettingsViewModel @Inject constructor(
 
     fun contactSupport(adminName: String, navController: NavController, context: android.content.Context) {
         android.widget.Toast.makeText(context, "Conectando con $adminName...", android.widget.Toast.LENGTH_SHORT).show()
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             try {
                 val isNovvin = isNovvinSupportAdmin(adminName)
                 var adminId = if (isNovvin) _conectateAdminId.value else _alvaroAdminId.value
@@ -255,32 +276,17 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun loadUserSettings() {
-        viewModelScope.launch {
+        val userId = authRepository.getCurrentUserId() ?: run {
+            _settingsState.value = SettingsUiState.Error("Inicia sesión para abrir los ajustes."); return
+        }
+        accountTasks.scope.launch {
             _settingsState.value = SettingsUiState.Loading
-            // Assuming AuthRepository has getCurrentUserId or we need to use AuthService
-            // If AuthRepository wraps AuthService, it might be named differently
-            // For now, let's assume we injected the wrong thing or method is missing.
-            // Let's use userRepository if it helps, or fix AuthRepository.
-            // Actually, in ProfileViewModel we use AuthService. 
-            // In SettingsViewModel we injected AuthRepository.
-            // Let's change injection to AuthService for consistency or fix usage
-            val userId = authRepository.getCurrentUserId() // If this fails, AuthRepository is missing it.
-            if (userId != null) {
-                userRepository.getUserById(userId).fold(
-                    onSuccess = { user ->
-                        if (user != null) {
-                            currentUser = user
-                            _privacyAccepted.value = user.privacy_policy_accepted
-                            _settingsState.value = SettingsUiState.Success(user)
-                        } else {
-                            _settingsState.value = SettingsUiState.Error("User not found")
-                        }
-                    },
-                    onFailure = {
-                        _settingsState.value = SettingsUiState.Error(it.message ?: "Unknown error")
-                    }
-                )
-            }
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.getUserById(userId).getOrThrow() }
+            if (authRepository.getCurrentUserId() != userId) return@launch
+            result.fold(onSuccess = { user ->
+                if (user == null) _settingsState.value = SettingsUiState.Error("No se pudo encontrar tu perfil.")
+                else { currentUser = user; _privacyAccepted.value = user.privacy_policy_accepted; _settingsState.value = SettingsUiState.Success(user) }
+            }, onFailure = { _settingsState.value = SettingsUiState.Error("No se pudieron cargar los ajustes. Reintenta.") })
         }
     }
 
@@ -291,7 +297,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun refreshAdminPanelAccess() {
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val email = authRepository.getCurrentUserEmail()?.lowercase()?.trim().orEmpty()
             val isDesignatedAdmin = email in ALLOWED_ADMIN_EMAILS
             // Keep the entry visible while the backend verifies the immutable
@@ -314,7 +320,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun acceptPrivacyPolicy() {
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.acceptPrivacyPolicy()
             if (result.isSuccess) {
                 _privacyAccepted.value = true
@@ -350,8 +356,10 @@ class SettingsViewModel @Inject constructor(
             ?: "none"
         val normalizedWelcome = welcome.trim().take(120)
 
-        viewModelScope.launch {
-            _appearanceSaving.value = true
+        if (_appearanceSaving.value) return
+        _appearanceSaving.value = true
+        accountTasks.scope.launch {
+            try {
             val result = userRepository.updateProfile(
                 user.id,
                 UpdateProfileRequest(
@@ -364,7 +372,7 @@ class SettingsViewModel @Inject constructor(
                 // El servidor responde 2xx solo tras persistir el perfil; la verificación estricta
                 // por igualdad exacta daba falsos "no confirmó" por el round-trip JSON. Se confía en
                 // el éxito del servidor y se refresca la UI con el perfil persistido.
-                val persisted = userRepository.getUserById(user.id, forceNetwork = true).getOrNull()
+                val persisted = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.getUserById(user.id, forceNetwork = true).getOrThrow() }.getOrNull()
                     ?: userRepository.getCachedUserSnapshot(user.id)
                 if (persisted == null) {
                     _appearanceMessage.value = "El servidor guardó el perfil, pero no fue posible recargarlo."
@@ -377,7 +385,7 @@ class SettingsViewModel @Inject constructor(
                 _appearanceMessage.value =
                     result.exceptionOrNull()?.message ?: "No se pudo actualizar el perfil."
             }
-            _appearanceSaving.value = false
+            } finally { _appearanceSaving.value = false }
         }
     }
 
@@ -427,8 +435,10 @@ class SettingsViewModel @Inject constructor(
             normalizedGame to normalizedUrl
         }.toMap()
 
-        viewModelScope.launch {
-            _appearanceSaving.value = true
+        if (_appearanceSaving.value) return
+        _appearanceSaving.value = true
+        accountTasks.scope.launch {
+            try {
             val result = userRepository.updateProfile(
                 user.id,
                 UpdateProfileRequest(
@@ -453,7 +463,7 @@ class SettingsViewModel @Inject constructor(
                 // falsos "no confirmó" por diferencias de formato/orden del round-trip JSON aunque el
                 // guardado SÍ funcionara. Se confía en el éxito del servidor y se refresca la UI con
                 // el perfil persistido (fetch de red) cuando está disponible.
-                val persisted = userRepository.getUserById(user.id, forceNetwork = true).getOrNull()
+                val persisted = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.getUserById(user.id, forceNetwork = true).getOrThrow() }.getOrNull()
                     ?: userRepository.getCachedUserSnapshot(user.id)
                 if (persisted == null) {
                     _appearanceMessage.value = "El servidor guardó el perfil, pero no fue posible recargarlo."
@@ -466,7 +476,7 @@ class SettingsViewModel @Inject constructor(
                 _appearanceMessage.value =
                     result.exceptionOrNull()?.message ?: "No se pudo actualizar el perfil."
             }
-            _appearanceSaving.value = false
+            } finally { _appearanceSaving.value = false }
         }
     }
 
@@ -484,7 +494,7 @@ class SettingsViewModel @Inject constructor(
         }
         if (_profileMusicUploading.value) return
 
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             _profileMusicUploading.value = true
             _profileMusicUploadProgress.value = 0f
             _profileMusicSelectedName.value = displayName
@@ -548,7 +558,7 @@ class SettingsViewModel @Inject constructor(
 
     fun loadWebSessions() {
         if (_webSessionsLoading.value) return
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             _webSessionsLoading.value = true
             _webSessionMessage.value = null
             try {
@@ -574,7 +584,7 @@ class SettingsViewModel @Inject constructor(
     fun revokeWebSession(sessionId: String) {
         if (_webSessionsLoading.value) return
         _webSessionsLoading.value = true
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
             if (accessToken.isBlank()) {
                 _webSessionMessage.value = "Inicia sesión nuevamente para cerrar sesiones web."
@@ -597,7 +607,7 @@ class SettingsViewModel @Inject constructor(
     fun revokeAllWebSessions() {
         if (_webSessionsLoading.value) return
         _webSessionsLoading.value = true
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
             if (accessToken.isBlank()) {
                 _webSessionMessage.value = "Inicia sesión nuevamente para cerrar sesiones web."
@@ -620,7 +630,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun loadAdditionalLoginEmails() {
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.getAdditionalLoginEmails()
             if (result.isSuccess) {
                 _additionalLoginEmails.value = result.getOrDefault(emptyList())
@@ -647,7 +657,7 @@ class SettingsViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.addAdditionalLoginEmail(normalized)
             if (result.isSuccess) {
                 _emailSettingsMessage.value = "Correo adicional agregado."
@@ -659,7 +669,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun removeAdditionalLoginEmail(email: String) {
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.removeAdditionalLoginEmail(email)
             if (result.isSuccess) {
                 _emailSettingsMessage.value = "Correo eliminado."
@@ -678,10 +688,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updatePrivacy(isPrivate: Boolean, onResult: (Boolean) -> Unit = {}) {
         val user = currentUser ?: return onResult(false)
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.updateProfile(user.id, UpdateProfileRequest(is_private = isPrivate))
             if (result.isSuccess) {
-                val updatedUser = user.copy(is_private = isPrivate)
+                val updatedUser = (currentUser?.takeIf { it.id == user.id } ?: user).copy(is_private = isPrivate)
                 currentUser = updatedUser
                 _settingsState.value = SettingsUiState.Success(updatedUser)
             }
@@ -693,10 +703,10 @@ class SettingsViewModel @Inject constructor(
         val user = currentUser ?: return onResult(false)
         val normalized = visibility.takeIf { it in setOf("everyone", "connections") }
             ?: return onResult(false)
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.updateProfile(user.id, UpdateProfileRequest(profile_visibility = normalized))
             if (result.isSuccess) {
-                val updatedUser = user.copy(profile_visibility = normalized)
+                val updatedUser = (currentUser?.takeIf { it.id == user.id } ?: user).copy(profile_visibility = normalized)
                 currentUser = updatedUser
                 _settingsState.value = SettingsUiState.Success(updatedUser)
             }
@@ -706,13 +716,13 @@ class SettingsViewModel @Inject constructor(
 
     fun updateFavoritesVisibility(isPublic: Boolean, onResult: (Boolean) -> Unit = {}) {
         val user = currentUser ?: return onResult(false)
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.updateProfile(
                 user.id,
                 UpdateProfileRequest(favorites_public = isPublic)
             )
             if (result.isSuccess) {
-                val updatedUser = user.copy(favorites_public = isPublic)
+                val updatedUser = (currentUser?.takeIf { it.id == user.id } ?: user).copy(favorites_public = isPublic)
                 currentUser = updatedUser
                 _settingsState.value = SettingsUiState.Success(updatedUser)
             }
@@ -722,7 +732,7 @@ class SettingsViewModel @Inject constructor(
 
     fun loadServerTwoFactorStatus() {
         if (!localFallbackApiClient.isConfigured) return
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             authRepository.serverTwoFactorStatus().fold(
                 onSuccess = {
                     _serverTwoFactorStatus.value = it
@@ -738,21 +748,23 @@ class SettingsViewModel @Inject constructor(
 
     fun setupServerTwoFactor(password: String) {
         if (_twoFactorBusy.value) return
-        viewModelScope.launch {
-            _twoFactorBusy.value = true
+        _twoFactorBusy.value = true
+        accountTasks.scope.launch {
+            try {
             _twoFactorMessage.value = null
             authRepository.setupServerTwoFactor(password).fold(
                 onSuccess = { _serverTwoFactorSetup.value = it },
                 onFailure = { _twoFactorMessage.value = it.toUserFacingMessage() }
             )
-            _twoFactorBusy.value = false
+            } finally { _twoFactorBusy.value = false }
         }
     }
 
     fun enableServerTwoFactor(password: String, code: String) {
         if (_twoFactorBusy.value) return
-        viewModelScope.launch {
-            _twoFactorBusy.value = true
+        _twoFactorBusy.value = true
+        accountTasks.scope.launch {
+            try {
             _twoFactorMessage.value = null
             authRepository.enableServerTwoFactor(password, code).fold(
                 onSuccess = { codes ->
@@ -763,14 +775,15 @@ class SettingsViewModel @Inject constructor(
                 },
                 onFailure = { _twoFactorMessage.value = it.toUserFacingMessage() }
             )
-            _twoFactorBusy.value = false
+            } finally { _twoFactorBusy.value = false }
         }
     }
 
     fun disableServerTwoFactor(password: String, code: String) {
         if (_twoFactorBusy.value) return
-        viewModelScope.launch {
-            _twoFactorBusy.value = true
+        _twoFactorBusy.value = true
+        accountTasks.scope.launch {
+            try {
             _twoFactorMessage.value = null
             authRepository.disableServerTwoFactor(password, code).fold(
                 onSuccess = {
@@ -780,7 +793,7 @@ class SettingsViewModel @Inject constructor(
                 },
                 onFailure = { _twoFactorMessage.value = it.toUserFacingMessage() }
             )
-            _twoFactorBusy.value = false
+            } finally { _twoFactorBusy.value = false }
         }
     }
 
@@ -790,7 +803,7 @@ class SettingsViewModel @Inject constructor(
 
     fun loadPasswordRecoveryCodeStatus() {
         if (!localFallbackApiClient.isConfigured) return
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             authRepository.passwordRecoveryCodeStatus().fold(
                 onSuccess = { _passwordRecoveryRemaining.value = it.recoveryCodesRemaining },
                 onFailure = { _passwordRecoveryMessage.value = it.toUserFacingMessage() }
@@ -800,8 +813,9 @@ class SettingsViewModel @Inject constructor(
 
     fun rotatePasswordRecoveryCodes(password: String, secondFactorCode: String?) {
         if (_passwordRecoveryBusy.value) return
-        viewModelScope.launch {
-            _passwordRecoveryBusy.value = true
+        _passwordRecoveryBusy.value = true
+        accountTasks.scope.launch {
+            try {
             _passwordRecoveryMessage.value = null
             authRepository.rotatePasswordRecoveryCodes(password, secondFactorCode).fold(
                 onSuccess = { codes ->
@@ -812,7 +826,7 @@ class SettingsViewModel @Inject constructor(
                 },
                 onFailure = { _passwordRecoveryMessage.value = it.toUserFacingMessage() }
             )
-            _passwordRecoveryBusy.value = false
+            } finally { _passwordRecoveryBusy.value = false }
         }
     }
 
@@ -822,14 +836,14 @@ class SettingsViewModel @Inject constructor(
 
     fun updateProfileViewHistory(enabled: Boolean, onResult: (Boolean) -> Unit = {}) {
         val user = currentUser ?: return onResult(false)
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.updateProfile(
                 user.id,
                 UpdateProfileRequest(profile_view_history_enabled = enabled)
             )
             if (result.isSuccess) {
                 if (!enabled) userRepository.clearProfileViewHistory()
-                val updatedUser = user.copy(profile_view_history_enabled = enabled)
+                val updatedUser = (currentUser?.takeIf { it.id == user.id } ?: user).copy(profile_view_history_enabled = enabled)
                 currentUser = updatedUser
                 _settingsState.value = SettingsUiState.Success(updatedUser)
             }
@@ -841,13 +855,13 @@ class SettingsViewModel @Inject constructor(
         val user = currentUser ?: return onResult(false)
         val normalized = mode.takeIf { it in setOf("off", "mute", "hidden") }
             ?: return onResult(false)
-        viewModelScope.launch {
+        accountTasks.scope.launch {
             val result = userRepository.updateProfile(
                 user.id,
                 UpdateProfileRequest(break_mode = normalized)
             )
             if (result.isSuccess) {
-                val updatedUser = user.copy(break_mode = normalized)
+                val updatedUser = (currentUser?.takeIf { it.id == user.id } ?: user).copy(break_mode = normalized)
                 currentUser = updatedUser
                 _settingsState.value = SettingsUiState.Success(updatedUser)
             }
@@ -857,8 +871,9 @@ class SettingsViewModel @Inject constructor(
 
     fun deleteOwnAccount() {
         if (_isDeletingAccount.value) return
-        viewModelScope.launch {
-            _isDeletingAccount.value = true
+        _isDeletingAccount.value = true
+        accountTasks.scope.launch {
+            try {
             _deleteAccountMessage.value = null
             val result = userRepository.deleteOwnAccount()
             if (result.isSuccess) {
@@ -869,7 +884,7 @@ class SettingsViewModel @Inject constructor(
                 _deleteAccountMessage.value = result.exceptionOrNull()?.message
                     ?: "No se pudo eliminar la cuenta. Intenta nuevamente."
             }
-            _isDeletingAccount.value = false
+            } finally { _isDeletingAccount.value = false }
         }
     }
 

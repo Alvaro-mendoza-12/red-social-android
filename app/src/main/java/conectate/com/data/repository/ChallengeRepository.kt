@@ -94,6 +94,8 @@ class ChallengeRepository @Inject constructor(
             Result.failure(Exception("Upload Error: ${humanizeUploadError(error)}"))
         }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             Result.failure(e)
         }
     }
@@ -161,6 +163,8 @@ class ChallengeRepository @Inject constructor(
                                      avatar_url = avatarUrl
                                  )
                              } catch (e: Exception) {
+                                 if (e is kotlinx.coroutines.CancellationException) throw e
+
                                  android.util.Log.e("ChallengeRepository", "Error parsing user manually: $userJsonElement", e)
                                  null
                              }
@@ -194,6 +198,8 @@ class ChallengeRepository @Inject constructor(
                             user = user
                         )
                     } catch (e: Exception) {
+                        if (e is kotlinx.coroutines.CancellationException) throw e
+
                         android.util.Log.e("ChallengeRepository", "Error parsing submission: ${e.message}", e)
                         null
                     }
@@ -206,6 +212,8 @@ class ChallengeRepository @Inject constructor(
                 Result.failure(Exception("Error fetching submissions"))
             }
         } catch (e: Exception) { 
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             android.util.Log.e("ChallengeRepository", "getSubmissions EXCEPTION", e)
             Result.failure(e) 
         }
@@ -243,6 +251,8 @@ class ChallengeRepository @Inject constructor(
                 Result.failure(Exception("Error: $error"))
             }
         } catch (e: Exception) { 
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             android.util.Log.e("ChallengeRepository", "Exception in toggleVote", e)
             Result.failure(e) 
         }
@@ -291,6 +301,8 @@ class ChallengeRepository @Inject constructor(
                 Result.failure(Exception("Failed to fetch my submission"))
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             Result.failure(e)
         }
     }
@@ -326,7 +338,9 @@ class ChallengeRepository @Inject constructor(
 
             if (response.status.isSuccess()) Result.success(Unit)
             else Result.failure(Exception("Post failed"))
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+ Result.failure(e) }
     }
 
 
@@ -386,6 +400,8 @@ class ChallengeRepository @Inject constructor(
                 Result.failure(Exception("RPC failed: ${response.status} - $errorBody"))
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             android.util.Log.e("ChallengeRepository", "Error fetching challenge", e)
             Result.failure(e)
         }
@@ -429,7 +445,9 @@ class ChallengeRepository @Inject constructor(
                 android.util.Log.e("ChallengeRepository", "Create master failed: $error")
                 Result.failure(Exception("Failed to create master challenge"))
             }
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+ Result.failure(e) }
     }
 
 
@@ -454,7 +472,9 @@ class ChallengeRepository @Inject constructor(
                 val list: List<Challenge> = response.body()
                 Result.success(list)
             } else Result.failure(Exception("Fetch failed"))
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+ Result.failure(e) }
     }
 
 
@@ -475,7 +495,9 @@ class ChallengeRepository @Inject constructor(
             
             if (response.status.isSuccess()) Result.success(Unit)
             else Result.failure(Exception("Delete failed"))
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+ Result.failure(e) }
     }
 
 
@@ -538,6 +560,8 @@ class ChallengeRepository @Inject constructor(
                 Result.failure(Exception("Upload Error: ${humanizeUploadError(error)}"))
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             Result.failure(e)
         }
     }
@@ -553,6 +577,8 @@ class ChallengeRepository @Inject constructor(
             
             submitMedia(activeChallenge, bytes, mimeType, extension)
         } catch (e: Exception) { 
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             Result.failure(e) 
         }
     }
@@ -564,13 +590,15 @@ class ChallengeRepository @Inject constructor(
             var bytes = file.inputStream().use { it.readMediaBytesWithLimit(30L * 1024 * 1024) }
             submitMedia(activeChallenge, bytes, "audio/mp4", "mp4")
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             Result.failure(e)
         }
     }
 
 
 
-    suspend fun checkParticipation(activeChallengeId: String, minCreatedAt: String? = null): Result<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun checkParticipation(activeChallengeId: String, minCreatedAt: String? = null, masterChallengeId: String? = null): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
             var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
@@ -583,7 +611,7 @@ class ChallengeRepository @Inject constructor(
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("challenge_id", "eq.$activeChallengeId") // Filter by Master ID
+                parameter("challenge_id", "eq.${masterChallengeId ?: activeChallengeId}") // Legacy storage uses the master; Ubuntu uses the current round.
                 if (minCreatedAt != null) {
                     parameter("created_at", "gte.$minCreatedAt")
                 }
@@ -605,7 +633,9 @@ class ChallengeRepository @Inject constructor(
                 android.util.Log.e("ChallengeRepository", "checkParticipation FAILED: $error")
                 Result.failure(Exception("Check failed"))
             }
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+ Result.failure(e) }
     }
 
     suspend fun passTorch(challengeTitle: String, friendId: String): Result<Unit> {
@@ -644,6 +674,8 @@ class ChallengeRepository @Inject constructor(
                 }
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             android.util.Log.e("ChallengeRepository", "Error observing active challenge", e)
         }
     }
@@ -688,6 +720,8 @@ class ChallengeRepository @Inject constructor(
                 }
             }
         } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+
             android.util.Log.e("ChallengeRepository", "❌ Error in observeSubmissions flow", e)
         } finally {
             android.util.Log.d("ChallengeRepository", "🔌 Unsubscribing channel: $channelId")

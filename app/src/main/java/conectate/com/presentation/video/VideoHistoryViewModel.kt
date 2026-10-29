@@ -96,7 +96,7 @@ class VideoHistoryViewModel @Inject constructor(
                 realtime.updateAccessToken(token)
                 realtime.replaceUserSubscription(account)
             }
-            val result = repository.getVideoHistory(cursor)
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoHistory(cursor).getOrThrow() }
             if (requestRevision != revision || account != bindAccount()) return@launch
             result.fold(onSuccess = { page ->
                 val items = (if (cursor.isEmpty()) page.items else _state.value.items + page.items)
