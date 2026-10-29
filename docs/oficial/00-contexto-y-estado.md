@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Salas y publicación web del 29/10/2026
+
+La [revisión 86](86-salas-compartidas-voz-y-avatares-2026-10-29.md) continúa la auditoría con prioridad web autorizada por el propietario. Corrige la recuperación/carga de voz, añade enlaces compartidos con retorno tras autenticación y fallback Android/web, y resuelve el estado de avatares cuyo origen protegido falla. Registra la publicación web y los controles reales. Android 9.1.30 / 170 permanece como candidato local, con 1.956 unitarias aprobadas; faltan la firma/distribución del nuevo paquete y la huella de firma de Play para verificar HTTPS. No se despliega la optimización API aislada de 85.
+
 ## Auditoría local del 29/10/2026
 
 La [continuación 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md) corrige cancelación en reintentos de grupos/comunidades, repetición de esperas DNS y coste de perfiles importados. Aprueba 1.953 unitarias y registra la comparación aislada de capacidad y sondas públicas reales. No se despliega una nueva API ni se publica Android; los límites y resultados de esta ejecución están en esa revisión.

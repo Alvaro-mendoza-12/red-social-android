@@ -2,7 +2,7 @@
 
 La app Android es el cliente principal de Novvin. Está desarrollada en Kotlin con Jetpack Compose y sigue una organización por capas, ViewModels, repositorios, servicios Android y módulos de datos.
 
-La revisión móvil vigente está en la [continuación 85 del 29/10/2026](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md), después de la [auditoría integral 84](84-auditoria-integral-movil-2026-10-29.md). El código es **9.1.30 / 170**, local y con validación QA; el último paquete firmado contrastado es **9.1.29 / 169**, documentado en 83. La revisión distingue pruebas automáticas, recorridos en emulador, artefactos firmados y pendientes físicos. Los cambios históricos siguientes conservan su fecha y alcance.
+La revisión móvil vigente está en la [continuación 86 de salas compartidas](86-salas-compartidas-voz-y-avatares-2026-10-29.md), después de la [auditoría de conectividad 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md). El código es **9.1.30 / 170**, local y con validación QA (1.956 unitarias); el último paquete firmado contrastado es **9.1.29 / 169**, documentado en 83. Los enlaces de voz conservan el destino durante el acceso; la asociación HTTPS directa exige la huella de firma de Play pendiente. La revisión distingue pruebas automáticas, recorridos en emulador, artefactos firmados y pendientes físicos. Los cambios históricos siguientes conservan su fecha y alcance.
 
 Cambios del candidato 166 que afectan al arranque y a los medios:
 
