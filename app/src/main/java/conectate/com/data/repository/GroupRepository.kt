@@ -1893,7 +1893,7 @@ class GroupRepository @Inject constructor(
     private suspend fun retryPendingGroupMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
         val session = captureSessionSnapshot(userId)
-        val pending = if (targetMessageId == null) groupDao.getPendingOutgoingMessages(maxBatch)
+        val pending = if (targetMessageId == null) groupDao.getPendingOutgoingMessages(userId, maxBatch)
             else listOfNotNull(groupDao.getMessageById(targetMessageId)).filter { !it.is_synced && it.pending_action == "send" }
         if (!isSessionSnapshotValid(session, "group-pending-loaded")) return
         if (pending.isEmpty()) return
@@ -1903,7 +1903,7 @@ class GroupRepository @Inject constructor(
             if (originalEntity.sender_id.trim().lowercase() != userId) return@forEach
             messageSendCoordinator.withMessage(originalEntity.id) pendingMessage@ {
                 val fresh = groupDao.getMessageById(originalEntity.id) ?: return@pendingMessage
-                if (fresh.is_synced || fresh.pending_action != "send" || fresh.deleted_for_all || !fresh.sender_id.equals(userId, true)) return@pendingMessage
+                if (fresh.is_synced || fresh.pending_action != "send" || fresh.deleted_for_all || !fresh.sender_id.trim().equals(userId, true)) return@pendingMessage
                 if (!isSessionSnapshotValid(session, "group-pending-locked")) return@pendingMessage
                 var pendingEntity = fresh.copy(status = "sending")
                 groupDao.insertMessages(listOf(pendingEntity))

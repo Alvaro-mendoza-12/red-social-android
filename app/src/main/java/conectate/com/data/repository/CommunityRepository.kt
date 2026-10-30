@@ -2964,7 +2964,7 @@ class CommunityRepository @Inject constructor(
     private suspend fun retryPendingCommunityMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return
         val session = captureSessionSnapshot(userId)
-        val pending = if (targetMessageId == null) communityDao.getPendingOutgoingMessages(maxBatch)
+        val pending = if (targetMessageId == null) communityDao.getPendingOutgoingMessages(userId, maxBatch)
             else listOfNotNull(communityDao.getMessageById(targetMessageId)).filter { !it.is_synced && it.pending_action == "send" }
         if (!isSessionSnapshotValid(session, "community-pending-loaded")) return
         if (pending.isEmpty()) return
@@ -2974,7 +2974,7 @@ class CommunityRepository @Inject constructor(
             if (originalEntity.sender_id.trim().lowercase() != userId) return@forEach
             messageSendCoordinator.withMessage(originalEntity.id) pendingMessage@ {
                 val fresh = communityDao.getMessageById(originalEntity.id) ?: return@pendingMessage
-                if (fresh.is_synced || fresh.pending_action != "send" || fresh.deleted_for_all || !fresh.sender_id.equals(userId, true)) return@pendingMessage
+                if (fresh.is_synced || fresh.pending_action != "send" || fresh.deleted_for_all || !fresh.sender_id.trim().equals(userId, true)) return@pendingMessage
                 if (!isSessionSnapshotValid(session, "community-pending-locked")) return@pendingMessage
                 var pendingEntity = fresh.copy(status = "sending")
                 communityDao.insertMessages(listOf(pendingEntity))
