@@ -45,14 +45,14 @@ class NotificationRepository @Inject constructor(
     private val scope = newSafeScope("NotificationRepository", Dispatchers.IO)
     private var momentExpiryRefreshJob: Job? = null
     private var realtimeUnreadRefreshJob: Job? = null
-    private val _unreadCount = MutableStateFlow(0)
-    val unreadCount: StateFlow<Int> = _unreadCount.asStateFlow()
+    private val unreadCounter = NotificationUnreadCounter { authService.getCurrentUserId() }
+    val unreadCount: StateFlow<Int> = unreadCounter.unreadCount
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
     fun clearData() {
         momentExpiryRefreshJob?.cancel()
         realtimeUnreadRefreshJob?.cancel()
-        _unreadCount.value = 0
+        unreadCounter.clear()
     }
 
     private fun scheduleRealtimeUnreadRefresh(userId: String) {
@@ -148,15 +148,15 @@ class NotificationRepository @Inject constructor(
     suspend fun getNotifications(): Result<List<conectate.com.data.model.Notification>> {
         return try {
             if (authService.isLocalFallbackSession()) {
-                val owner = authService.getCurrentUserId()
+                val request = unreadCounter.begin()
                 val token = authService.getAccessToken()
                     ?: return Result.failure(Exception("No token"))
                 return localFallbackApiClient.loadNotifications(token)
                     .map { response ->
-                        if (owner != null && owner == authService.getCurrentUserId()) {
-                            _unreadCount.value = (response.unreadCount - response.items.count {
+                        val visibleUnread = (response.unreadCount - response.items.count {
                                 it.isRetiredNotification() && !it.isRead
                             }).coerceAtLeast(0)
+                        if (unreadCounter.publish(request, visibleUnread)) {
                             scheduleMomentExpiryRefresh(response.items)
                         }
                         response.items.filterNot { it.isRetiredNotification() }
@@ -379,10 +379,11 @@ class NotificationRepository @Inject constructor(
 
     suspend fun markAllAsRead(): Result<Unit> {
         if (authService.isLocalFallbackSession()) {
+            val request = unreadCounter.begin()
             val token = authService.getAccessToken()
                 ?: return Result.failure(Exception("No token"))
             return localFallbackApiClient.markAllNotificationsRead(token)
-                .onSuccess { _unreadCount.value = 0 }
+                .onSuccess { if (unreadCounter.isCurrent(request)) updateUnreadCount() }
         }
 
         return safeRepositoryCall("notifications.markAllAsRead") {
@@ -493,8 +494,8 @@ class NotificationRepository @Inject constructor(
     }
 
     suspend fun getUnreadCount(): Result<Int> {
+        val request = unreadCounter.begin()
         if (authService.isLocalFallbackSession()) {
-            val owner = authService.getCurrentUserId()
             val token = authService.getAccessToken()
                 ?: return Result.failure(Exception("No token"))
             return localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
@@ -502,8 +503,7 @@ class NotificationRepository @Inject constructor(
                     val visibleUnread = (response.unreadCount - response.items.count {
                         it.isRetiredNotification() && !it.isRead
                     }).coerceAtLeast(0)
-                    if (owner != null && owner == authService.getCurrentUserId()) {
-                        _unreadCount.value = visibleUnread
+                    if (unreadCounter.publish(request, visibleUnread)) {
                         scheduleMomentExpiryRefresh(response.items)
                     }
                     visibleUnread
@@ -530,7 +530,7 @@ class NotificationRepository @Inject constructor(
 
             val contentRange = response.headers["Content-Range"]
             val count = contentRange?.substringAfter("/")?.toIntOrNull() ?: 0
-            if (userId == authService.getCurrentUserId()) _unreadCount.value = count
+            unreadCounter.publish(request, count)
             count
         }
     }
@@ -835,9 +835,10 @@ class NotificationRepository @Inject constructor(
 
     suspend fun deleteAllNotifications(): Result<Unit> {
         if (authService.isLocalFallbackSession()) {
+            val request = unreadCounter.begin()
             val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
             return localFallbackApiClient.deleteAllNotifications(token)
-                .onSuccess { _unreadCount.value = 0 }
+                .onSuccess { if (unreadCounter.isCurrent(request)) updateUnreadCount() }
         }
 
         return safeRepositoryCall("notifications.deleteAll") {
