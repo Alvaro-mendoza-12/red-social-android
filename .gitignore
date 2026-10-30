@@ -55,6 +55,13 @@ compile*.txt
 .codex-tmp/
 .playwright-cli/
 /artifacts/qa/
+# Local audit workspaces and copied binaries are evidence/build output, not source.
+/artifacts/
+/audit/2026-10-07-integral/
+/output/verified-artifacts/
+/q/
+/NoWing-web/output/
+/NoWing-web/.playwright-cli/
 /audit/*-emulator-*.png
 hs_err_pid*.log
 replay_pid*.log
