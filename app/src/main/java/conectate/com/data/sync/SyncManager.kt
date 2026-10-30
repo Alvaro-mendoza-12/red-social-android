@@ -147,13 +147,15 @@ class SyncManager @Inject constructor(
             throw PendingSyncRetryException("Network unavailable before sync")
         }
 
-        var userId = authService.getCurrentUserId()
-        if (userId == null) {
-            logger.d(TAG, "syncNow skipped: no authenticated user ($reason)")
-            return
-        }
-
         syncMutex.withLock {
+            // Resolve after acquiring the lock: another cycle can keep us waiting
+            // while the user switches accounts.
+            val userId = authService.getCurrentUserId()?.takeIf { it.isNotBlank() }
+            if (userId == null) {
+                logger.d(TAG, "syncNow skipped: no authenticated user ($reason)")
+                return@withLock
+            }
+            val stage = AccountSyncStage(userId, authService::getCurrentUserId)
             val startedAt = System.currentTimeMillis()
             telemetry.track(
                 TelemetryEvent(
@@ -167,7 +169,7 @@ class SyncManager @Inject constructor(
             val failures = mutableListOf<String>()
             var pendingRetry: Throwable? = null
 
-            var retriedMessages = chatSyncDataSource.retryPendingMessages().getOrElse { error ->
+            var retriedMessages = stage.run { chatSyncDataSource.retryPendingMessages() }.getOrElse { error ->
                 if (error is CancellationException) throw error
                 pendingRetry = error
                 failures += "retryPendingMessages:${error.message.orEmpty()}"
@@ -175,7 +177,7 @@ class SyncManager @Inject constructor(
                 0
             }
 
-            var retriedDeletes = chatSyncDataSource.retryPendingDeletes().getOrElse { error ->
+            var retriedDeletes = stage.run { chatSyncDataSource.retryPendingDeletes() }.getOrElse { error ->
                 if (error is CancellationException) throw error
                 pendingRetry = error
                 failures += "retryPendingDeletes:${error.message.orEmpty()}"
@@ -183,25 +185,25 @@ class SyncManager @Inject constructor(
                 0
             }
 
-            val processedScheduled = advancedMessagingRepository.processDueScheduledJobs().getOrElse { error ->
+            val processedScheduled = stage.run { advancedMessagingRepository.processDueScheduledJobs() }.getOrElse { error ->
                 failures += "processDueScheduledJobs:${error.message.orEmpty()}"
                 logger.w(TAG, "processDueScheduledJobs failed", error)
                 0
             }
 
-            val processedAutoDestruct = advancedMessagingRepository.processDueAutoDestructTasks().getOrElse { error ->
+            val processedAutoDestruct = stage.run { advancedMessagingRepository.processDueAutoDestructTasks() }.getOrElse { error ->
                 failures += "processDueAutoDestructTasks:${error.message.orEmpty()}"
                 logger.w(TAG, "processDueAutoDestructTasks failed", error)
                 0
             }
 
-            if (chatSyncDataSource.syncChats().isFailure) {
+            if (stage.run { chatSyncDataSource.syncChats() }.isFailure) {
                 failures += "syncChats"
             }
-            if (groupSyncDataSource.syncGroups().isFailure) {
+            if (stage.run { groupSyncDataSource.syncGroups() }.isFailure) {
                 failures += "syncGroups"
             }
-            if (communitySyncDataSource.syncCommunities().isFailure) {
+            if (stage.run { communitySyncDataSource.syncCommunities() }.isFailure) {
                 failures += "syncCommunities"
             }
 

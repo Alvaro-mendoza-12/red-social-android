@@ -612,13 +612,13 @@ export function AppLayout() {
             (mutation.payload as { notificationId?: string }).notificationId ?? '',
           )
           if (notificationId) {
-            await markFallbackNotificationRead(notificationId)
+            await markFallbackNotificationRead(notificationId, user.id)
           }
           return
         }
 
         if (mutation.type === 'notification_mark_all') {
-          await markAllFallbackNotificationsRead()
+          await markAllFallbackNotificationsRead(user.id)
           return
         }
       }
@@ -733,7 +733,7 @@ export function AppLayout() {
     let isCancelled = false
 
     const flush = async () => {
-      const result = await flushDeferredMutations(executeDeferredMutation, user.id)
+      const result = await flushDeferredMutations(executeDeferredMutation, user.id, 50, () => !isCancelled)
       if (isCancelled) return
       setPendingDeferredMutations(result.remaining)
       if (result.processed > 0) {
