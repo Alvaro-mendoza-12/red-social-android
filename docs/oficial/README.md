@@ -5,9 +5,9 @@ Fecha base: 2026-08-24
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Auditoría móvil actual: [96 — Segundo plano, subidas, video y perfiles](96-segundo-plano-subidas-y-perfiles-2026-10-30.md) y [97 — Segunda revisión: cancelación y continuidad de la cola push](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md). Registro push persistente, cancelación, reanudación real de 8 MiB desde 6 MiB, preparación por lote del feed y paneles adaptables. Aprueban **1.979 unitarias**, **70 casos nativos únicos seleccionados** y lint con **cero errores/312 advertencias**, con alcances e incidencias iniciales conservados. **APK/AAB 9.1.32 / 172 firmados y verificados**, con actualización desde 171 y recorrido del paquete firmado en AOSP 35. La optimización SQL de perfiles ya está aplicada al servidor, sin cambios de esquema. No publicado en Play; siguen pendientes las comunicaciones FCM/LIVE/llamadas entre equipos físicos y la huella administrada por Play.
+Auditoría móvil actual: [98 — Colas y carpetas por cuenta](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md). 2.000 unitarias/419 suites, lint sin errores (311 advertencias, motor K1), APK/AAB 9.1.33/173 firmados y actualización desde 172 en AOSP 35. Conserva el alcance y límites de las [revisiones 96](96-segundo-plano-subidas-y-perfiles-2026-10-30.md) y [97](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md). No publicado en Play; comunicaciones entre teléfonos físicos pendientes.
 
-Auditoría web actual: [94 — Reacciones y recorrido](94-reacciones-y-recorrido-web-2026-10-30.md). Corrige emojis guardados que quedaban invisibles en chats, grupos y comunidades. Publicada y comprobada con reacciones reales entre cuentas sintéticas, recarga y retirada. Aprueba 865 pruebas web, 96 Node y 90 controles públicos; documenta tiempos, navegación y límites de la muestra.
+Auditoría web actual: [98 — Concurrencia y acciones pendientes](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md), publicada con 875 pruebas, 96 Node, 90 controles públicos, siete rutas autenticadas y prueba local de dos pestañas con Web Locks. Continúa la [revisión 94](94-reacciones-y-recorrido-web-2026-10-30.md).
 
 Limpieza local: [93 — Carpetas y Git](93-limpieza-local-y-git-2026-10-30.md). Ambas carpetas pasan de 244,45/62,66 GiB a 7,91/2,67 GiB, sin seguir enlaces. Se recuperan aproximadamente 295 GiB físicos, conservando fuentes, claves y entregas vigentes; Git pasa su comprobación de integridad.
 
@@ -128,6 +128,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 99. [Auditoría móvil: notificaciones, actualización y reconexión](95-auditoria-apk-notificaciones-y-reconexion-2026-10-30.md)
 100. [Segundo plano, subidas, video y perfiles](96-segundo-plano-subidas-y-perfiles-2026-10-30.md)
 101. [Segunda revisión: cancelación y continuidad de la cola push](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md)
+102. [Colas web y carpetas de chats por cuenta](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md)
 
 ## Reglas para quien trabaje en este proyecto
 
