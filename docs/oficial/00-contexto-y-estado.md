@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Portadas, stickers y contador web
+
+La [revisión 92](92-miniaturas-portada-y-contadores-inmediatos-2026-10-29.md) distingue el límite de red de la espera introducida por el código: el evento realtime actualizaba el mensaje, pero el contador esperaba otra consulta HTTP. Corrige esa proyección, solicita portadas estáticas de 640 px con caché por cuenta y miniaturas de stickers estáticos de 160 px, conservando originales/animaciones. Está publicada y aprueba 862 pruebas web, 96 Node, 90 controles públicos y lint sin errores. El navegador comprobó contador con la consulta retrasada y miniaturas de portada/sticker mediante un fixture sintético explícito. No cambia el APK/AAB 170, la API ni los pagos.
+
 ## Preferencias posteriores al cierre
 
 El [plan 91](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md) actualiza el presupuesto con cable de 30 m y dominio más correo de pago. El propietario pospone UPS y respaldo fuera del local, conservando las copias existentes. Prefiere investigar otro proveedor en lugar de PayPal: dLocal encaja con su descripción, pero falta confirmarlo y no está integrado ni habilitado. No hay cambios funcionales ni una nueva distribución de la versión 170 en esta actualización documental.
