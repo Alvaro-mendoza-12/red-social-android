@@ -81,7 +81,7 @@ export function ZoomableImage({ src, title, onError }: { src: string; title: str
       }}
       onPointerUp={event => pointers.current.delete(event.pointerId)} onPointerCancel={event => pointers.current.delete(event.pointerId)} onLostPointerCapture={event => pointers.current.delete(event.pointerId)}>
       {!loaded && cachedPreview && !cachedOriginal ? <img className="image-zoom-preview" src={cachedPreview.url} alt="" aria-hidden="true" draggable={false}/> : null}
-      <StreamingImage key={requestKey} ref={picture} src={cachedOriginal?.url || src} alt={title} draggable={false} onError={onError} onLoad={() => { setLoadedKey(requestKey); update(view.current.scale) }} style={{ transform: `translate(${state.x}px, ${state.y}px) scale(${state.scale})` }} />
+      <StreamingImage key={requestKey} ref={picture} src={cachedOriginal?.url || src} alt={title} draggable={false} onError={onError} onSourceUnavailable={onError} onLoad={() => { setLoadedKey(requestKey); update(view.current.scale) }} style={{ transform: `translate(${state.x}px, ${state.y}px) scale(${state.scale})` }} />
     </div>
   </div>
 }
