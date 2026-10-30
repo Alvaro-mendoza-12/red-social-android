@@ -1663,7 +1663,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           const pollMeta = pollRows[0]
           const consumed = consumedViewOnce[message.id] === true
           const receipts = receiptsByMessage[message.id] ?? []
-          const activeReactions = ['👍', '❤️', '😂'].filter(
+          const activeReactions = Object.keys(message.reactions).filter(
             (emoji) => reactionCount(message.reactions, emoji) > 0,
           )
           const inlinePhoto = Boolean(message.mediaUrl && !message.deletedForAll && !['sticker', 'location', 'contact', 'birthday_card', 'poll', 'raffle', 'question'].includes(message.contentType) && !isViewOnceType(message.contentType) && attachmentKind(message.contentType, message.mediaUrl) === 'image')
