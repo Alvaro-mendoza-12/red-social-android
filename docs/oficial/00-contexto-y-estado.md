@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Preferencias posteriores al cierre
+
+El [plan 91](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md) actualiza el presupuesto con cable de 30 m y dominio más correo de pago. El propietario pospone UPS y respaldo fuera del local, conservando las copias existentes. Prefiere investigar otro proveedor en lugar de PayPal: dLocal encaja con su descripción, pero falta confirmarlo y no está integrado ni habilitado. No hay cambios funcionales ni una nueva distribución de la versión 170 en esta actualización documental.
+
 ## Cierre de auditoría del 29/10/2026
 
 La [revisión 90](90-cierre-produccion-red-y-presupuesto-2026-10-29.md) registra servidor operativo, 256 tablas restauradas desde el respaldo externo, dependencias runtime sin vulnerabilidades conocidas y correo autenticado tras un timeout transitorio. Confirma que la conexión del servidor negocia a 100 Mbps, con tarjeta que admite gigabit; prioriza switch/cableado, dominio y continuidad con S/300. APK y AAB **9.1.30 / 170** están firmados y verificados, con recorrido de entrada del APK release aprobado en AOSP 35, sin publicación en Play. La web aprueba 90 controles públicos nuevos. No se cambió la API, no se activaron retiros y no se certifica capacidad masiva ni aceptación física entre redes.
