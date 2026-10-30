@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="qr_torch_enable">Encender linterna</string>
+    <string name="qr_torch_disable">Apagar linterna</string>
+    <string name="qr_torch_unavailable">Linterna no disponible</string>
     <string name="widget_novvin_description">Abre Videos, Momentos y Mensajes desde la pantalla de inicio.</string>
     <string name="widget_chat_title">Mensajes</string>
     <string name="widget_chat_subtitle">Abre tus conversaciones de Novvin</string>

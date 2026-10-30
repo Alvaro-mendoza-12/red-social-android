@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="qr_torch_enable">開啟手電筒</string>
+    <string name="qr_torch_disable">關閉手電筒</string>
+    <string name="qr_torch_unavailable">手電筒無法使用</string>
+</resources>

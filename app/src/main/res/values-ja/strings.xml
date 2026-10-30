@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="qr_torch_enable">ライトをオン</string>
+    <string name="qr_torch_disable">ライトをオフ</string>
+    <string name="qr_torch_unavailable">ライトは利用できません</string>
     <string name="language_settings_title">アプリの言語</string>
     <string name="language_settings_description">変更はすぐに反映され、対応する Android の言語設定にも同期されます。</string>
     <string name="language_system">自動</string>
