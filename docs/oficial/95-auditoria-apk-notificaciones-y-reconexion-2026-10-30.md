@@ -54,6 +54,8 @@ No se registró un crash de Novvin en ese recorrido. El buffer también contení
 
 En una instalación limpia Google APIs **API 36**, con 3 GiB y cuatro CPU, se comprobaron bienvenida, formulario de acceso, primer paso de registro sin enviar datos, invitado, perfil de invitado, salida y reapertura del APK firmado. **El primer intento mostró «System UI isn't responding»** con pantalla física de 1080×2400 a 420 dpi. Se conservó esa captura, se eligió «Wait» y se pasó a 720×1600 a 280 dpi, manteniendo el ancho lógico de teléfono. El recorrido posterior y la reapertura terminaron sin crash ni ANR registrado de Novvin. No se atribuye la causa inicial a la app ni se presenta el primer intento como limpio; estas dos acciones y el tiempo de arranque del sistema no permiten aislar una causa. Tampoco se repitieron las 65 pruebas nativas completas en API 36.
 
+Se realizó después otra reapertura con el emulador reiniciado y la resolución original restaurada, **1080×2400 a 420 dpi**: apareció la bienvenida y no reapareció el aviso de falta de respuesta ni se registró un crash de Novvin. Esta repetición reduce la incertidumbre sobre un fallo persistente, pero conserva la incidencia del primer arranque y no permite atribuirle una causa.
+
 Las correcciones funcionales están subidas en `b2de5e88` de `feature/live-gifts` y `4fa11412` de `main`. Las fuentes de ambas ramas son idénticas; la entrega 170 anterior se conserva. No se subió un mapping de una versión aún no publicada a Crashlytics ni se modificó el número mínimo exigido por el servidor.
 
 ## Alcance y referencias
