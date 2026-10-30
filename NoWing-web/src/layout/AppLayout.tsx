@@ -47,7 +47,8 @@ import { subscribeUbuntuRealtime } from '../core/ubuntuRealtime'
 import {applyInboxUnreadSnapshot,applyRemoteConversationRead,inboxActivityEvent,inboxMessageTarget,invalidateInboxPreview,notifyInboxMessage,useInboxUnreadCounts} from '../core/inboxActivity'
 import { textOf, type GenericRow } from '../core/utils'
 import { useAuth } from '../core/auth/AuthProvider'
-import { changeFallbackPassword, ensureFallbackAccessToken } from '../core/auth/fallbackAuth'
+import { changeFallbackPassword, ensureFallbackAccessToken, readFallbackSession } from '../core/auth/fallbackAuth'
+import { fallbackAccountMatches } from '../core/auth/fallbackSessionPersistence'
 import { CallControlClient, type CallLeaveAction } from '../features/calls/callControl'
 import {
   loadFallbackMessagesInbox,
@@ -733,7 +734,8 @@ export function AppLayout() {
     let isCancelled = false
 
     const flush = async () => {
-      const result = await flushDeferredMutations(executeDeferredMutation, user.id, 50, () => !isCancelled)
+      const result = await flushDeferredMutations(executeDeferredMutation, user.id, 50, () =>
+        !isCancelled && (!isFallbackSession || fallbackAccountMatches(readFallbackSession()?.user, user.id)))
       if (isCancelled) return
       setPendingDeferredMutations(result.remaining)
       if (result.processed > 0) {
