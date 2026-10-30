@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Cierre de auditoría del 29/10/2026
+
+La [revisión 90](90-cierre-produccion-red-y-presupuesto-2026-10-29.md) registra servidor operativo, 256 tablas restauradas desde el respaldo externo, dependencias runtime sin vulnerabilidades conocidas y correo autenticado tras un timeout transitorio. Confirma que la conexión del servidor negocia a 100 Mbps, con tarjeta que admite gigabit; prioriza switch/cableado, dominio y continuidad con S/300. APK y AAB **9.1.30 / 170** están firmados y verificados, con recorrido de entrada del APK release aprobado en AOSP 35, sin publicación en Play. La web aprueba 90 controles públicos nuevos. No se cambió la API, no se activaron retiros y no se certifica capacidad masiva ni aceptación física entre redes.
+
 ## Continuación web y APK del 29/10/2026
 
 La [revisión 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md) corrige la selección de pendientes de grupos/comunidades, que podía quedar ocupada por otra cuenta o mensajes borrados, y la recuperación del visor web cuando no se resolvía el origen protegido. La web está publicada, con 857 pruebas web, 96 Node y 90 controles públicos aprobados; se comprobó la recuperación real de una imagen en el navegador. Android aprueba 1.956 unitarias, ocho nativas en AOSP 35 y lint sin errores, con 320 advertencias existentes. Las correcciones están comiteadas y subidas a ambas ramas. El candidato 170 no se distribuye a Play y no se cambia la API de producción.
