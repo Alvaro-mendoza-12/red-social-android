@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Reacciones y recorrido web del 30/10/2026
+
+La [revisión 94](94-reacciones-y-recorrido-web-2026-10-30.md) corrige un filtro que ocultaba 😮, 😢 y 🙏 ya guardados, en chats, grupos y comunidades. La corrección está publicada; el navegador comprobó los tres emojis, la persistencia de la última reacción al recargar y su retirada. Se documenta la regla existente de una reacción por persona y mensaje, el recorrido de las pantallas principales y secundarias y las mediciones, sin atribuir toda espera a internet. Aprueba 865 pruebas web, 96 Node y 90 controles públicos. No cambia API ni APK 170.
+
 ## Limpieza local del 30/10/2026
 
 La [revisión 93](93-limpieza-local-y-git-2026-10-30.md) registra la retirada de resultados de auditoría y compilación obsoletos de ambas carpetas, con unos 295 GiB físicos recuperados. Conserva fuentes, configuración protegida, respaldos de fuentes y las entregas Android 169/170; Git mantiene sus referencias y pasa `fsck`. Las exclusiones de archivos generados quedan en ambas ramas. No cambia el servidor ni la aplicación publicada.
