@@ -2,7 +2,7 @@
 
 La app Android es el cliente principal de Novvin. Está desarrollada en Kotlin con Jetpack Compose y sigue una organización por capas, ViewModels, repositorios, servicios Android y módulos de datos.
 
-La revisión móvil vigente está en el [cierre 90](90-cierre-produccion-red-y-presupuesto-2026-10-29.md), después de la [continuación 89 de colas por cuenta](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md), las [salas compartidas de 86](86-salas-compartidas-voz-y-avatares-2026-10-29.md) y la [auditoría de conectividad 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md). El código y los últimos **APK/AAB firmados y contrastados son 9.1.30 / 170**: R8, objetivo API 36, empaquetado de 16 KiB y recorrido de entrada del APK release aprobados en emulador. Siguen vigentes las 1.956 unitarias, ocho nativas de 89 y lint sin errores (320 advertencias existentes). El código está subido en ambas ramas. **No hay una nueva distribución en Play**; antes de subir el AAB debe comprobarse el código de versión vigente en la consola. Los enlaces de voz conservan el destino durante el acceso; la asociación HTTPS directa exige la huella de firma real de Play pendiente. Se distinguen pruebas automáticas, emulador, artefactos firmados y pendientes físicos. Los cambios históricos siguientes conservan su fecha y alcance.
+La revisión móvil vigente es la [auditoría 95](95-auditoria-apk-notificaciones-y-reconexion-2026-10-30.md), que continúa el [cierre 90](90-cierre-produccion-red-y-presupuesto-2026-10-29.md), las [colas por cuenta de 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md), las [salas compartidas de 86](86-salas-compartidas-voz-y-avatares-2026-10-29.md) y la [conectividad de 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md). Los últimos **APK/AAB firmados y contrastados son 9.1.31 / 171**: R8, objetivo API 36 y empaquetado de 16 KiB verificados; actualización con sesión conservada y envío pendiente tras cierre/reconexión comprobados en AOSP 35. Aprueba 1.963 unitarias, 65 nativas y lint sin errores (320 advertencias existentes). En API 36 se completó un recorrido de entrada posterior a una incidencia inicial de System UI del emulador, documentada con sus condiciones. El código está subido en ambas ramas. **No hay una nueva distribución en Play**; antes de subir el AAB debe comprobarse el código de versión vigente en la consola. Los enlaces de voz conservan el destino durante el acceso; la asociación HTTPS directa exige la huella real de firma de Play pendiente. Se distinguen pruebas automáticas, emulador, artefactos firmados y pendientes físicos. Los cambios históricos siguientes conservan su fecha y alcance.
 
 Cambios del candidato 166 que afectan al arranque y a los medios:
 
@@ -27,8 +27,8 @@ Estado observado:
 - `compileSdk`: 36
 - `minSdk`: 24
 - `targetSdk`: 36
-- `versionCode`: 170
-- `versionName`: 9.1.30
+- `versionCode`: 171
+- `versionName`: 9.1.31
 - Java/Kotlin target: 17
 - Runtime de Gradle soportado: JDK 17–21. JDK 22+ se rechaza antes de compilar; el target de bytecode permanece en 17.
 - Android Gradle Plugin: 8.13.2

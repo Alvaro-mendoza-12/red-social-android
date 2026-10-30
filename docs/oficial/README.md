@@ -5,6 +5,8 @@ Fecha base: 2026-08-24
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
+Auditoría móvil actual: [95 — Notificaciones, actualización y reconexión](95-auditoria-apk-notificaciones-y-reconexion-2026-10-30.md). Corrige respuestas tardías del contador y operaciones de otra sesión. Aprueba 1.963 unitarias, 65 nativas y lint sin errores. **APK/AAB 9.1.31 / 171 firmados y verificados**, con actualización desde 170 y envío pendiente tras cierre/reconexión comprobados en AOSP 35. API 36 aprueba el recorrido de entrada posterior a una incidencia inicial de System UI del emulador, conservada en el informe. No publicado en Play.
+
 Auditoría web actual: [94 — Reacciones y recorrido](94-reacciones-y-recorrido-web-2026-10-30.md). Corrige emojis guardados que quedaban invisibles en chats, grupos y comunidades. Publicada y comprobada con reacciones reales entre cuentas sintéticas, recarga y retirada. Aprueba 865 pruebas web, 96 Node y 90 controles públicos; documenta tiempos, navegación y límites de la muestra.
 
 Limpieza local: [93 — Carpetas y Git](93-limpieza-local-y-git-2026-10-30.md). Ambas carpetas pasan de 244,45/62,66 GiB a 7,91/2,67 GiB, sin seguir enlaces. Se recuperan aproximadamente 295 GiB físicos, conservando fuentes, claves y entregas vigentes; Git pasa su comprobación de integridad.

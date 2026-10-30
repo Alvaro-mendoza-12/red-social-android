@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Auditoría móvil del 30/10/2026
+
+La [revisión 95](95-auditoria-apk-notificaciones-y-reconexion-2026-10-30.md) corrige el contador de notificaciones para descartar respuestas anteriores o de sesiones invalidadas. Aprueba 1.963 unitarias en 415 suites, 65 nativas en AOSP 35 y lint con cero errores/320 advertencias existentes. **APK y AAB 9.1.31 / 171 firmados**, con R8/alineación de 16 KiB contrastados. La actualización conservó la sesión y un mensaje enviado sin red sobrevivió al cierre, llegó una sola vez al reconectar y se limpió. En API 36 se completó el recorrido de entrada después de recuperar un aviso inicial de System UI del emulador; no se oculta esa incidencia ni se certifica el primer intento. No se distribuyó en Play ni se cambió la API, los pagos o el esquema de datos.
+
 ## Reacciones y recorrido web del 30/10/2026
 
 La [revisión 94](94-reacciones-y-recorrido-web-2026-10-30.md) corrige un filtro que ocultaba 😮, 😢 y 🙏 ya guardados, en chats, grupos y comunidades. La corrección está publicada; el navegador comprobó los tres emojis, la persistencia de la última reacción al recargar y su retirada. Se documenta la regla existente de una reacción por persona y mensaje, el recorrido de las pantallas principales y secundarias y las mediciones, sin atribuir toda espera a internet. Aprueba 865 pruebas web, 96 Node y 90 controles públicos. No cambia API ni APK 170.
