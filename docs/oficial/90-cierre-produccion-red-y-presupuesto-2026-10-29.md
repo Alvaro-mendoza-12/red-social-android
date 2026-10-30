@@ -2,6 +2,8 @@
 
 Fecha: 29/10/2026, Bogotá. Continúa la [revisión 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md). El propietario solicita una revisión final, preparación para dominio/correo propio y prioridades de compra con un presupuesto de S/300. Informa que usa WIN, aproximadamente S/60 mensuales, y recuerda una velocidad cercana a «200»; no se dispone del contrato ni del modelo del router/switch. No se realizaron compras ni cambios de plan.
 
+**Actualización posterior de preferencias:** el [plan 91](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md) reemplaza el presupuesto orientativo de esta revisión: cable de 30 m, dominio con una casilla de pago, UPS y respaldo fuera del local pospuestos por el propietario, y dLocal como alternativa probable por confirmar. Los resultados técnicos de auditoría escritos debajo conservan su fecha y alcance; no se ha integrado ni activado dLocal.
+
 ## Servidor y red comprobados
 
 La mini PC tiene **14 contenedores operativos**, saludables todos los que tienen healthcheck, y cero unidades systemd fallidas. La instantánea muestra aproximadamente **11 GiB de RAM disponibles**, 104 GB libres en raíz, 385 GB en el almacenamiento de Docker y 399 GB en el disco de respaldo. No se observa presión de CPU, RAM o disco en la muestra. Estos valores describen esa instantánea, no una certificación bajo carga sostenida.
