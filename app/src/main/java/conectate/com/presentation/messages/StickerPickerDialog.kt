@@ -424,6 +424,10 @@ fun StickerItemCard(
                         onToggleFavorite()
                     }
                 )
+                DropdownMenuItem(text = { Text("Eliminar de mis stickers") }, onClick = {
+                    menuExpanded = false
+                    onDelete()
+                })
             }
         }
     }

@@ -1349,11 +1349,12 @@ private fun SavedAccountsSection(
                     ) {
                         OutlinedButton(
                             onClick = { onRemoveAccount(account) },
+                            enabled = switchingAccountId == null,
                             modifier = Modifier.weight(1f),
                         ) { Text(stringResource(R.string.auth_remove_account)) }
                         Button(
                             onClick = { onUseAccount(account) },
-                            enabled = switchingAccountId != account.id,
+                            enabled = switchingAccountId == null,
                             modifier = Modifier.weight(1f),
                         ) {
                             if (switchingAccountId == account.id) {

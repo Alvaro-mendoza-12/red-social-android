@@ -121,6 +121,7 @@ fun LiveHostScreen(
     val liveMusic by viewModel.liveMusic.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
+    val extraTools = liveExtraTools(liveId, true, activeGuests.map { it.userId }, viewModel)
     var hostStartRequested by remember(liveId) { mutableStateOf(false) }
     var autoStarted by remember(liveId) { mutableStateOf(false) }
     var showEndDialog by remember { mutableStateOf(false) }
@@ -730,6 +731,9 @@ fun LiveHostScreen(
         onRemoveMusic = viewModel::clearLiveMusic,
         onSettings = { showSettingsDialog = true },
         onModeration = { showModerationDialog = true },
+        onDrawGuess = extraTools.drawGuess,
+        onChannelPoints = extraTools.channelPoints,
+        onCommentOptions = extraTools.commentOptions,
         onMoment = { showMomentDialog = true },
         onSwitchCamera = { viewModel.switchCamera() },
         onCameraToggle = {

@@ -72,6 +72,7 @@ fun VideoEditorScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val previewPlayer = remember(viewModel, context) { viewModel.getPlayer(context) }
+    var previewAspectRatio by remember(previewPlayer) { mutableFloatStateOf(9f / 16f) }
     var lifecycleResumed by remember(lifecycleOwner) {
         mutableStateOf(
             lifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
@@ -265,6 +266,8 @@ fun VideoEditorScreen(
                 val mainVideoClip = selectedClipId
                     ?.let { selectedId -> timeline.tracks.flatMap { it.clips }.firstOrNull { it.id == selectedId } }
                     ?.takeIf { it.type == ClipType.VIDEO }
+                    ?: timeline.tracks.find { it.type == TrackType.VIDEO }?.clips
+                        ?.firstOrNull { currentTimeMs >= it.startMs && currentTimeMs < it.endMs }
                     ?: timeline.tracks.find { it.type == TrackType.VIDEO }?.clips?.firstOrNull()
                 if (mainVideoClip != null) {
                     val player = previewPlayer
@@ -272,6 +275,11 @@ fun VideoEditorScreen(
 
                     DisposableEffect(player) {
                         val listener = object : Player.Listener {
+                            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                                if (videoSize.width > 0 && videoSize.height > 0) {
+                                    previewAspectRatio = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                                }
+                            }
                             override fun onIsPlayingChanged(playing: Boolean) {
                                 isPlaying = playing
                             }
@@ -395,60 +403,12 @@ fun VideoEditorScreen(
                     }
                 }
 
-                // Render Overlays based on currentTimeMs
-                timeline.tracks.forEach { track ->
-                    track.clips.filter { it.startMs <= currentTimeMs && it.endMs >= currentTimeMs }.forEach { clip ->
-                        when (clip.type) {
-                            ClipType.TEXT -> {
-                                Box(
-                                    modifier = Modifier
-                                        .offset { IntOffset(clip.x.roundToInt(), clip.y.roundToInt()) }
-                                        .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                                        .padding(4.dp)
-                                        .pointerInput(clip.id) {
-                                            detectDragGestures { change, dragAmount ->
-                                                change.consume()
-                                                viewModel.updateClipPosition(clip.id, clip.x + dragAmount.x, clip.y + dragAmount.y)
-                                            }
-                                        }
-                                        .border(
-                                            if (selectedClipId == clip.id) 2.dp else 0.dp,
-                                            MaterialTheme.colorScheme.primary,
-                                            RoundedCornerShape(4.dp)
-                                        )
-                                        .clickable { viewModel.selectClip(context, clip.id) }
-                                ) {
-                                    Text(
-                                        text = clip.text ?: "",
-                                        color = Color(clip.color),
-                                        fontSize = clip.fontSize.sp
-                                    )
-                                }
-                            }
-                            ClipType.STICKER -> {
-                                Box(
-                                    modifier = Modifier
-                                        .offset { IntOffset(clip.x.roundToInt(), clip.y.roundToInt()) }
-                                        .pointerInput(clip.id) {
-                                            detectDragGestures { change, dragAmount ->
-                                                change.consume()
-                                                viewModel.updateClipPosition(clip.id, clip.x + dragAmount.x, clip.y + dragAmount.y)
-                                            }
-                                        }
-                                        .clickable { viewModel.selectClip(context, clip.id) }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Face,
-                                        contentDescription = null,
-                                        tint = Color.Unspecified,
-                                        modifier = Modifier.size(60.dp)
-                                    )
-                                }
-                            }
-                            else -> {}
-                        }
-                    }
-                }
+                EditorOverlayPreview(
+                    timeline = timeline, timeMs = currentTimeMs, selectedClipId = selectedClipId,
+                    aspectRatio = mainVideoClip?.aspectRatio?.ratio ?: previewAspectRatio,
+                    onMove = viewModel::updateClipPosition,
+                    onSelect = { viewModel.selectClip(context, it) },
+                )
 
                 if (isExporting) {
                     Box(

@@ -1295,11 +1295,6 @@ class CommunityChatViewModel @Inject constructor(
                 }
             }
         }
-        if (_selectedChannel.value?.isDefault == false) {
-            _errorMessage.value = "Por ahora las encuestas se crean en el canal General."
-            return
-        }
-        if (writableChannelOrNull() == null && _selectedChannel.value != null) return
     }
     
     fun sendCurrentRecording() {

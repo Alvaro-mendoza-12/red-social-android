@@ -528,6 +528,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun selectVideo(url: String, title: String) {
+        if (_room.value?.creatorId?.trim()?.equals(getCurrentUserId().trim(), ignoreCase = true) != true) return
         val state = CinemaState(
             isCinemaMode = true,
             videoUrl = url,
@@ -550,9 +551,8 @@ class VoiceRoomActiveViewModel @Inject constructor(
         }
     }
 
-    fun resolveUniversalLink(url: String): VoiceRoomRepository.CinemaResolvedItem? {
-        return VoiceRoomRepository.CinemaResolvedItem(url, url, null)
-    }
+    suspend fun resolveUniversalLink(url: String): VoiceRoomRepository.CinemaResolvedItem =
+        voiceRoomRepository.resolveUniversalLink(url)
 
     fun sendReaction(emoji: String) {
         val reaction = ReactionEvent(

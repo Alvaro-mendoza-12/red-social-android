@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -227,7 +228,7 @@ fun StickerEditor(
                         Box(
                             modifier = Modifier
                                 .size(320.dp)
-                                .pointerInput(Unit) {
+                                .pointerInput(editMode) {
                                     if (editMode == StickerEditMode.DRAW) {
                                         detectDragGestures(
                                             onDragStart = { start ->
@@ -283,6 +284,19 @@ fun StickerEditor(
                                     .scale(transform.scale)
                             )
                             Canvas(modifier = Modifier.fillMaxSize()) {
+                                val overlayScale = size.width / 512f
+                                fun drawOverlay(value: String, fontSize: Float, baseline: Float) {
+                                    if (value.isBlank()) return
+                                    val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                                        color = android.graphics.Color.WHITE
+                                        textAlign = android.graphics.Paint.Align.CENTER
+                                        textSize = fontSize * overlayScale
+                                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                        setShadowLayer(8f * overlayScale, 0f, 0f, android.graphics.Color.BLACK)
+                                    }
+                                    drawContext.canvas.nativeCanvas.drawText(value, size.width / 2f,
+                                        baseline * overlayScale, paint)
+                                }
                                 val strokeWidth = 5.dp.toPx()
                                 drawStrokes.forEach { stroke ->
                                     if (stroke.size > 1) {
@@ -308,6 +322,8 @@ fun StickerEditor(
                                         )
                                     }
                                 }
+                                drawOverlay(overlayEmoji.take(6), 64f, 424f)
+                                drawOverlay(overlayText.take(40), 34f, 472f)
                             }
                         }
                     }

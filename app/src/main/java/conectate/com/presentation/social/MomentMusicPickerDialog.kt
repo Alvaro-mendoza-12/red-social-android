@@ -58,6 +58,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -693,6 +694,20 @@ fun MomentMusicPickerDialog(
                                 if (playingId == track.id && playingSelection) player.seekTo(range.start.toLong())
                             },
                         )
+                        Text("Volumen de la música: ${(musicVolume * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelLarge)
+                        Slider(value = musicVolume, onValueChange = { musicVolume = it; player.volume = it },
+                            valueRange = 0f..1f)
+                        if (hasOriginalAudio) {
+                            Text("Audio del video: ${(originalVolume * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelLarge)
+                            Slider(value = originalVolume, onValueChange = { originalVolume = it }, valueRange = 0f..1f)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Bajar el audio del video mientras suena la música", Modifier.weight(1f),
+                                    style = MaterialTheme.typography.bodySmall)
+                                Switch(checked = duckOriginal, onCheckedChange = { duckOriginal = it })
+                            }
+                        }
                         val cues = remember(track.lyrics, track.durationMs) { timedMusicLyrics(track.lyrics, track.durationMs) }
                         if (cues.isEmpty()) Text("Esta pista no incluye letras sincronizadas.",
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -76,6 +76,13 @@ object IntentRouter {
                 handleUriIntent(incomingIntent, navController, clearIntent)
             }) return true
         if (handleIncomingShareIntent(incomingIntent, navController, clearIntent)) return true
+        // A malformed/unknown payload is still consumed: retaining it would keep
+        // Splash waiting for navigation that this router can never perform.
+        if (hasPendingNavigationIntent(incomingIntent)) {
+            clearIntent()
+            AppFeedbackBus.show("No se pudo abrir este contenido. Puedes continuar en la aplicación.")
+            return true
+        }
         return false
     }
 
@@ -535,17 +542,17 @@ object IntentRouter {
         } else if (uri.scheme == "conectate") {
             when (uri.host) {
                 "videos" -> {
-                    navController.navigate(Screen.Home.createRoute(startTab = Screen.Videos.route))
+                    navController.openHomeTab(Screen.Videos.route)
                     clearIntent()
                     return true
                 }
                 "social" -> {
-                    navController.navigate(Screen.Home.createRoute(startTab = Screen.Social.route))
+                    navController.openHomeTab(Screen.Social.route)
                     clearIntent()
                     return true
                 }
                 "messages" -> {
-                    navController.navigate(Screen.Home.createRoute(startTab = Screen.Messages.route))
+                    navController.openHomeTab(Screen.Messages.route)
                     clearIntent()
                     return true
                 }
@@ -640,6 +647,16 @@ object IntentRouter {
         clearIntent()
         return true
     }
+}
+
+private fun NavHostController.openHomeTab(tab: String) {
+    navigate(Screen.Home.createRoute(startTab = tab)) {
+        popUpTo(Screen.Home.route) { inclusive = false }
+        launchSingleTop = true
+    }
+    // A repeated widget tap may carry exactly the same route arguments even
+    // after the user selected another inner tab. Consume it as a new request.
+    getBackStackEntry(Screen.Home.route).savedStateHandle["pending_home_tab"] = tab
 }
 
 internal fun resolveLiveReturnRoute(liveId: String?, role: String?): String? {

@@ -1675,7 +1675,8 @@ class PostRepository @Inject constructor(
                             isVerified = isVerified,
                             isMine = cUserId == currentUserId,
                             parentId = parentId,
-                            audioUrl = audioUrl
+                            audioUrl = audioUrl,
+                            mediaType = getSafeString("media_type")
                         )
                     }
                     emit(comments)

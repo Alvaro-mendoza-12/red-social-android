@@ -104,4 +104,5 @@
     <string name="room_link_error_hint">Vérifiez votre connexion ou réessayez. Vous pouvez fermer cette fenêtre et rester dans le salon.</string>
     <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
     <string name="widget_minimal_actions_title">Novvin · Minimaliste</string>
+    <string name="auth_email_delivery_unknown_hint">Nous ne pouvons pas confirmer l’envoi. Si vous recevez un code à six chiffres, saisissez-le ici ou demandez-en un autre.</string>
 </resources>

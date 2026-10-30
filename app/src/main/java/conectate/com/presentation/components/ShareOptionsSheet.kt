@@ -20,7 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.Send
 @Composable
 fun ShareOptionsSheet(
     onDismiss: () -> Unit,
-    onSendToFriend: () -> Unit,
+    onSendToFriend: (() -> Unit)?,
     onExternalShare: () -> Unit,
     onToggleProfileShare: () -> Unit,
     isSharedToProfile: Boolean,
@@ -45,7 +45,7 @@ fun ShareOptionsSheet(
             
             Spacer(modifier = Modifier.height(8.dp))
             
-            ShareOptionItem(
+            if (onSendToFriend != null) ShareOptionItem(
                 icon = Icons.AutoMirrored.Filled.Send,
                 label = "Enviar a amigo",
                 onClick = {

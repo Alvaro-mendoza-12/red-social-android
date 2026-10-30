@@ -34,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -88,6 +89,7 @@ fun CommunityMusicUploadDialog(
     val scope = rememberCoroutineScope()
     var sourceStartMs by remember(initialAudio?.uri) { mutableLongStateOf(initialAudio?.sourceStartMs ?: 0L) }
     var lyrics by remember(audioUri) { mutableStateOf("") }
+    var acceptedRights by remember(audioUri) { mutableStateOf(false) }
     var lyricsError by remember(audioUri) { mutableStateOf<String?>(null) }
     var readingLyrics by remember { mutableStateOf(false) }
     var showLyricsPicker by remember { mutableStateOf(false) }
@@ -250,9 +252,18 @@ fun CommunityMusicUploadDialog(
                         )
                     }
 
-                    // El título, artista, álbum y duración se detectan del
-                    // archivo seleccionado. La declaración legal se confirma
-                    // al pulsar publicar para mantener el flujo corto.
+                    OutlinedTextField(value = title, onValueChange = { title = it.take(140) },
+                        label = { Text("Título") }, singleLine = true, enabled = !state.isUploading,
+                        modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(value = detectedArtist, onValueChange = { detectedArtist = it.take(140) },
+                        label = { Text("Artista o autor") }, singleLine = true, enabled = !state.isUploading,
+                        modifier = Modifier.fillMaxWidth())
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(checked = acceptedRights,
+                            onCheckedChange = { acceptedRights = it }, enabled = !state.isUploading)
+                        Text("Soy titular de esta música y autorizo que se publique para su uso en Novvin.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
 
                     CommunityMusicLyricsSection(
                         lyrics = lyrics, durationMs = durationMs, reading = readingLyrics,
@@ -292,11 +303,11 @@ fun CommunityMusicUploadDialog(
                                     allowRemix = false,
                                     explicit = false,
                                     instrumental = false,
-                                    acceptedRights = true,
+                                    acceptedRights = acceptedRights,
                                 ),
                             )
                         },
-                        enabled = !state.isUploading && !readingMetadata && !readingLyrics && audioUri != null && title.isNotBlank() && CommunityMusicPolicy.acceptsDuration(durationMs),
+                        enabled = !state.isUploading && !readingMetadata && !readingLyrics && acceptedRights && audioUri != null && title.isNotBlank() && CommunityMusicPolicy.acceptsDuration(durationMs),
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Publicar para la Comunidad")

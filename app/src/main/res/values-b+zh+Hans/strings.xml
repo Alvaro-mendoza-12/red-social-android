@@ -104,4 +104,5 @@
     <string name="room_link_error_hint">请检查网络连接或重试。你可以关闭此窗口并继续留在房间中。</string>
     <string name="live_overlay_bubble_idle">LIVE\n聊天</string>
     <string name="widget_minimal_actions_title">Novvin · 极简</string>
+    <string name="auth_email_delivery_unknown_hint">无法确认发送。如果收到六位验证码，请在此输入，或重新申请验证码。</string>
 </resources>

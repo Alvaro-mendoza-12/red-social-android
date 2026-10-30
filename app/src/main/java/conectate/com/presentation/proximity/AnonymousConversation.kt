@@ -67,6 +67,10 @@ internal fun AnonymousConversation(
     }
     if (showStickerPicker) StickerPickerDialog(
         onDismiss = { showStickerPicker = false },
+        onEmojiSelected = { emoji ->
+            onSend(emoji)
+            showStickerPicker = false
+        },
         onStickerSelected = { sticker ->
             onSendSticker(sticker.media_url, sticker.title.ifBlank { "Sticker" })
             showStickerPicker = false

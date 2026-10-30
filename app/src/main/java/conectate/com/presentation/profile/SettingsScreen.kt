@@ -484,6 +484,15 @@ fun SettingsScreen(
 
 
             SettingsSection(title = "Cuenta y seguridad") {
+                OutlinedButton(
+                    onClick = { showDeleteAccountDialog = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("Solicitar eliminación de mi cuenta")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 FilledTonalButton(
                     onClick = { navController.navigate(Screen.AccountSettings.route) },
                     modifier = Modifier.fillMaxWidth()
@@ -1264,11 +1273,8 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
 
-                // La eliminación de cuenta se retira del ajuste del usuario final: ahora es una
-                // operación exclusiva del panel de administración (los administradores buscan la
-                // cuenta y la eliminan por completo mediante el hard-delete del backend). Esto evita
-                // bajas accidentales/irreversibles por parte de usuarios y centraliza la operación
-                // sensible en administradores, como requiere el flujo de producción.
+                // Account deletion requests are available in Cuenta y seguridad;
+                // the destructive operation is still performed by an administrator.
             }
         }
     }
@@ -1345,22 +1351,25 @@ fun SettingsScreen(
     if (showDeleteAccountDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteAccountDialog = false },
-            title = { Text("Eliminar cuenta") },
+            title = { Text("Solicitar eliminación de cuenta") },
             text = {
                 Text(
-                    "Esta accion es irreversible. Se eliminaran tu perfil, publicaciones, " +
-                        "videos, mensajes y archivos asociados a la cuenta."
+                    "Abriremos el chat oficial de soporte con tu solicitud preparada. " +
+                        "Envíala para pedir la eliminación de tu cuenta y sus datos asociados. " +
+                        "Soporte confirmará tu identidad y el resultado por ese chat. Abrirlo no borra tu cuenta."
                 )
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         showDeleteAccountDialog = false
-                        viewModel.deleteOwnAccount()
+                        viewModel.contactSupport("novvin", mainNavController, screenContext,
+                            initialMessage = "Solicito la eliminación de mi cuenta Novvin y de sus datos asociados. " +
+                                "Por favor, indíquenme cómo confirmar mi identidad y avísenme cuando termine el proceso.")
                     },
                     enabled = !isDeletingAccount
                 ) {
-                    Text("Eliminar definitivamente", color = MaterialTheme.colorScheme.error)
+                    Text("Continuar con la solicitud")
                 }
             },
             dismissButton = {

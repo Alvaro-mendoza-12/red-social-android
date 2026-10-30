@@ -214,6 +214,8 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
         _timelineThumbnails.value = emptyList()
     }
 
+    private fun nextClipId(): Long = nextEditorEntityId(_timeline.value.tracks.flatMap { it.clips }.map { it.id })
+
     fun setExportQuality(quality: ExportQuality) {
         _selectedExportQuality.value = quality
     }
@@ -271,7 +273,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
         val initialDurationMs = durationMs.coerceAtMost(MAX_EXPORT_DURATION_MS)
         val mainTrack = EditorTrack(type = TrackType.VIDEO)
         val initialClip = EditorClip(
-            id = System.currentTimeMillis(),
+            id = nextClipId(),
             uri = uri,
             durationMs = initialDurationMs,
             sourceDurationMs = durationMs
@@ -298,7 +300,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
             .map { uri ->
                 val sourceDurationMs = resolveDurationMs(context, uri)
                 EditorClip(
-                    id = System.nanoTime(),
+                    id = nextClipId(),
                     uri = uri,
                     durationMs = sourceDurationMs,
                     sourceDurationMs = sourceDurationMs
@@ -558,7 +560,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
         val current = _timeline.value
         val updated = current.duplicateClipAfter(
             clipId = clipId,
-            newClipId = System.currentTimeMillis() + (0..1000).random()
+            newClipId = nextClipId()
         )
         if (updated != current) {
             if (updated.durationMs() > MAX_EXPORT_DURATION_MS) {
@@ -580,7 +582,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
         val updated = current.splitClipAt(
             clipId = clipId,
             atTimeMs = atTimeMs,
-            newClipId = System.currentTimeMillis() + 1L
+            newClipId = nextClipId()
         )
         if (updated != current) {
             _timeline.value = updated
@@ -608,11 +610,15 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
     }
 
     fun updateClipPosition(clipId: Long, x: Float, y: Float) {
-        _timeline.value = _timeline.value.updateClip(clipId) { it.copy(x = x, y = y) }
+        _timeline.value = _timeline.value.updateClip(clipId) {
+            it.copy(x = editorOverlayCoordinate(x), y = editorOverlayCoordinate(y))
+        }
     }
 
     fun updateTextOverlay(clipId: Long, text: String, x: Float, y: Float) {
-        _timeline.value = _timeline.value.updateClip(clipId) { it.copy(text = text, x = x, y = y) }
+        _timeline.value = _timeline.value.updateClip(clipId) {
+            it.copy(text = text.take(140), x = editorOverlayCoordinate(x), y = editorOverlayCoordinate(y))
+        }
     }
 
     fun updateClipVolume(clipId: Long, volume: Float) {
@@ -694,7 +700,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
             textTrackIndex = tracks.size - 1
         }
         val newClip = EditorClip(
-            id = System.currentTimeMillis(),
+            id = nextClipId(),
             type = ClipType.TEXT,
             text = cleanText,
             startMs = overlayStartMs,
@@ -724,7 +730,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
             stickerTrackIndex = tracks.size - 1
         }
         val newClip = EditorClip(
-            id = System.currentTimeMillis(),
+            id = nextClipId(),
             type = ClipType.STICKER,
             resId = resId,
             startMs = overlayStartMs,
@@ -1233,15 +1239,37 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
             .filter { overlay -> overlay.startMs < clip.endMs && overlay.endMs > clip.startMs }
             .take(profile.editorOverlayLimit)
             .forEach { overlay ->
-                val bitmap = if (overlay.type == ClipType.TEXT) {
-                    createBitmapFromText(overlay.text ?: "", overlay.fontSize.coerceIn(16f, 56f), overlay.color)
-                } else {
-                    createStickerBitmap(context, overlay.resId ?: android.R.drawable.star_on)
+                val (xPos, yPos) = editorOverlayAnchor(overlay.x, overlay.y)
+                val settings = StaticOverlaySettings.Builder()
+                    .setBackgroundFrameAnchor(xPos, yPos)
+                    .setOverlayFrameAnchor(-1f, 1f)
+                    .build()
+                val bitmapOverlay = object : BitmapOverlay() {
+                    private var rendered: Bitmap? = null
+                    override fun configure(videoSize: androidx.media3.common.util.Size) {
+                        super.configure(videoSize)
+                        val next = if (overlay.type == ClipType.TEXT) {
+                            createBitmapFromText(overlay.text.orEmpty(),
+                                editorOverlayFontPixels(overlay.fontSize, videoSize.width.toFloat()), overlay.color,
+                                videoSize.width)
+                        } else {
+                            val source = createStickerBitmap(context, overlay.resId ?: android.R.drawable.star_on)
+                            val size = (videoSize.width / 6f).roundToInt().coerceAtLeast(1)
+                            Bitmap.createScaledBitmap(source, size, size, true).also {
+                                if (it !== source) source.recycle()
+                            }
+                        }
+                        rendered?.recycle()
+                        rendered = next
+                    }
+                    override fun getBitmap(presentationTimeUs: Long): Bitmap = checkNotNull(rendered)
+                    override fun getOverlaySettings(presentationTimeUs: Long): StaticOverlaySettings = settings
+                    override fun release() {
+                        super.release()
+                        rendered?.recycle()
+                        rendered = null
+                    }
                 }
-                val xPos = ((overlay.x / 500f) - 1f).coerceIn(-1f, 1f)
-                val yPos = (1f - (overlay.y / 500f)).coerceIn(-1f, 1f)
-                val settings = StaticOverlaySettings.Builder().setBackgroundFrameAnchor(xPos, yPos).build()
-                val bitmapOverlay = BitmapOverlay.createStaticBitmapOverlay(bitmap, settings)
                 val visibleStartMs = (maxOf(overlay.startMs, clip.startMs) - clip.startMs)
                     .coerceAtLeast(0L)
                 val visibleEndMs = (minOf(overlay.endMs, clip.endMs) - clip.startMs)
@@ -1334,13 +1362,13 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
         }
     }
 
-    private fun createBitmapFromText(text: String, fontSize: Float, color: Int): android.graphics.Bitmap {
+    private fun createBitmapFromText(text: String, fontSize: Float, color: Int, maxWidth: Int): android.graphics.Bitmap {
         val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
         paint.textSize = fontSize
         paint.color = color
         paint.textAlign = android.graphics.Paint.Align.LEFT
         val baseline = -paint.ascent()
-        val width = (paint.measureText(text) + 0.5f).toInt().coerceAtLeast(1)
+        val width = (paint.measureText(text) + 0.5f).toInt().coerceIn(1, maxWidth.coerceAtLeast(1))
         val height = (baseline + paint.descent() + 0.5f).toInt().coerceAtLeast(1)
         val image = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
         android.graphics.Canvas(image).drawText(text, 0f, baseline, paint)
@@ -1454,7 +1482,7 @@ class VideoEditorViewModel @Inject constructor(private val savedStateHandle: Sav
                 ?.maxOfOrNull { it.endMs }
                 ?: 30_000L
             val musicClip = EditorClip(
-                id = System.currentTimeMillis(),
+                id = nextClipId(),
                 type = ClipType.AUDIO,
                 uri = musicUri,
                 startMs = 0,
@@ -1503,7 +1531,7 @@ data class EditorTimeline(
 }
 
 data class EditorTrack(
-    val id: Long = System.currentTimeMillis() + (0..1000).random(),
+    val id: Long = nextEditorEntityId(),
     val type: TrackType,
     val clips: List<EditorClip> = emptyList()
 )

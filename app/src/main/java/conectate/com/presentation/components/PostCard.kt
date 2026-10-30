@@ -62,16 +62,16 @@ fun PostCard(
     onDeleteClick: () -> Unit = {},
     onVisibilityClick: (String) -> Unit = {},
     onEditClick: () -> Unit = {},
-    onUrlClick: (String) -> Unit = {},
+    onUrlClick: ((String) -> Unit)? = null,
     onPostClick: () -> Unit = {},
-    onSendToFriend: () -> Unit = {},
-    onWhyThisPost: () -> Unit = {},
-    onNotInterested: () -> Unit = {},
-    onSaveClick: () -> Unit = {},
+    onSendToFriend: (() -> Unit)? = null,
+    onWhyThisPost: (() -> Unit)? = null,
+    onNotInterested: (() -> Unit)? = null,
+    onSaveClick: (() -> Unit)? = null,
     onReportClick: () -> Unit = {},
-    onRemixClick: (String) -> Unit = {},
+    onRemixClick: ((String) -> Unit)? = null,
     onRemixPermissionClick: (Boolean, String) -> Unit = { _, _ -> },
-    onOriginalPostClick: (String) -> Unit = {},
+    onOriginalPostClick: ((String) -> Unit)? = null,
     showOwnerActions: Boolean = true,
     showReportAction: Boolean = false,
     authorFollowState: conectate.com.data.model.AuthorFollowState? = null,
@@ -82,6 +82,15 @@ fun PostCard(
     onMentionClick: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val openUrl: (String) -> Unit = { url ->
+        if (onUrlClick != null) onUrlClick(url) else {
+            val uri = android.net.Uri.parse(url)
+            if (uri.scheme in setOf("https", "http")) {
+                runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)) }
+                    .onFailure { conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo abrir el enlace.") }
+            }
+        }
+    }
     val windowHeightDp = with(LocalDensity.current) {
         LocalWindowInfo.current.containerSize.height.toDp().value.roundToInt()
     }
@@ -106,7 +115,7 @@ fun PostCard(
 
     fullScreenImageIndex?.let { initialIndex ->
         FullScreenImageDialog(
-            mediaItems = images.mapIndexed { index, url -> MediaItem("${post.id}:$index", url, "image") },
+            mediaItems = images.mapIndexed { index, url -> MediaItem("${post.id}:$index", url, postMediaType(url)) },
             initialIndex = initialIndex,
             bottomOverlay = { page ->
                 Column(
@@ -213,7 +222,7 @@ fun PostCard(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onRemixClick(remixComment.trim())
+                        onRemixClick?.invoke(remixComment.trim())
                         remixComment = ""
                         showRemixDialog = false
                     }
@@ -355,7 +364,7 @@ fun PostCard(
                                     colors = MenuDefaults.itemColors(textColor = Color.Red)
                                 )
                             } else {
-                                DropdownMenuItem(
+                                if (onWhyThisPost != null) DropdownMenuItem(
                                     text = { Text("¿Por qué veo esto?") },
                                     onClick = {
                                         onWhyThisPost()
@@ -365,7 +374,7 @@ fun PostCard(
                                         Icon(Icons.Default.Info, contentDescription = null)
                                     }
                                 )
-                                DropdownMenuItem(
+                                if (onNotInterested != null) DropdownMenuItem(
                                     text = { Text("No me interesa") },
                                     onClick = {
                                         onNotInterested()
@@ -389,7 +398,7 @@ fun PostCard(
                                         )
                                     }
                                 )
-                                if (remixAvailable) {
+                                if (remixAvailable && onRemixClick != null) {
                                     DropdownMenuItem(
                                         text = { Text("Crear remix") },
                                         onClick = {
@@ -402,7 +411,7 @@ fun PostCard(
                                     )
                                 }
                             }
-                            DropdownMenuItem(
+                            if (onSaveClick != null) DropdownMenuItem(
                                 text = { Text("Guardar en colección") },
                                 onClick = {
                                     onSaveClick()
@@ -422,7 +431,14 @@ fun PostCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 12.dp, vertical = 6.dp)
-                        .clickable { onOriginalPostClick(sourcePostId) },
+                        .clickable {
+                            if (onOriginalPostClick != null) onOriginalPostClick(sourcePostId)
+                            else runCatching {
+                                context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse("conectate://post/${android.net.Uri.encode(sourcePostId)}"))
+                                    .setPackage(context.packageName))
+                            }.onFailure { conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo abrir la publicación original.") }
+                        },
                     color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -478,7 +494,7 @@ fun PostCard(
                             onTextLayout = { layout ->
                                 if (!contentExpanded) contentHasOverflow = layout.hasVisualOverflow
                             },
-                            onUrlClick = onUrlClick,
+                            onUrlClick = openUrl,
                             onTextClick = onPostClick,
                             onMentionClick = onMentionClick,
                         )
@@ -495,101 +511,28 @@ fun PostCard(
                         }
                     }
 
-                    // Content Image(s)
                     if (images.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                if (images.size == 1) {
-                    val image = images.first()
-                    val request = remember(image) {
-                        MediaImageRequestFactory.preview(context, image)
-                    }
-                    SubcomposeAsyncImage(
-                        model = request,
-                        contentDescription = "Imagen de publicación",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 220.dp, max = 420.dp)
-                            .inlinePhotoZoom(image)
-                              .clickable { fullScreenImageIndex = 0 },
-                        contentScale = ContentScale.Crop,
-                        loading = {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.height(8.dp))
+                        if (images.size == 1) {
+                            PostMediaTile(images.first(), Modifier.fillMaxWidth().height(300.dp)) {
+                                fullScreenImageIndex = 0
                             }
-                        },
-                        error = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.BrokenImage,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    )
-                } else {
-                    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { images.size })
-                    Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                        androidx.compose.foundation.pager.HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier.fillMaxSize()
-                        ) { page ->
-                            val image = images[page]
-                            val request = remember(image) {
-                                MediaImageRequestFactory.preview(context, image)
-                            }
-                            SubcomposeAsyncImage(
-                                model = request,
-                                contentDescription = "Imagen de publicación",
-                                modifier = Modifier.fillMaxSize().inlinePhotoZoom(image).clickable { fullScreenImageIndex = page },
-                                contentScale = ContentScale.Crop,
-                                loading = {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                                    }
-                                },
-                                error = {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.BrokenImage,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                        } else {
+                            val pagerState = rememberPagerState(pageCount = { images.size })
+                            Box(Modifier.fillMaxWidth().height(300.dp)) {
+                                HorizontalPager(pagerState, modifier = Modifier.fillMaxSize()) { page ->
+                                    PostMediaTile(images[page], Modifier.fillMaxSize()) { fullScreenImageIndex = page }
+                                }
+                                Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+                                    horizontalArrangement = Arrangement.Center) {
+                                    repeat(images.size) { index ->
+                                        Box(Modifier.padding(2.dp).clip(CircleShape)
+                                            .background(if (pagerState.currentPage == index) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = .5f))
+                                            .size(6.dp))
                                     }
                                 }
-                            )
-                        }
-                        
-                        // Page Indicator
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            repeat(images.size) { iteration ->
-                                val color = if (pagerState.currentPage == iteration) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f)
-                                Box(
-                                    modifier = Modifier
-                                        .padding(2.dp)
-                                        .clip(CircleShape)
-                                        .background(color)
-                                        .size(6.dp)
-                                )
                             }
                         }
-                    }
-                }
                     }
                 }
             }
@@ -740,9 +683,7 @@ fun PostCard(
                     if (showShareSheet) {
                         ShareOptionsSheet(
                             onDismiss = { showShareSheet = false },
-                            onSendToFriend = {
-                                onSendToFriend()
-                            },
+                            onSendToFriend = onSendToFriend,
                             onExternalShare = {
                                 val sendIntent = android.content.Intent().apply {
                                     action = android.content.Intent.ACTION_SEND

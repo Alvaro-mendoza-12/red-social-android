@@ -11,6 +11,8 @@ data class EmailRecoveryDraft(
     val resetToken: String = "",
     val expiresAt: Long,
     val resendAt: Long = 0,
+    // API acknowledgement, not a guarantee that the message reached the inbox.
+    val deliveryConfirmed: Boolean = true,
 ) {
     val verified: Boolean get() = resetToken.isNotBlank()
 }
@@ -28,12 +30,14 @@ class EmailRecoveryDraftStore(context: Context) {
         val raw = preferences.getString("draft", null) ?: return@runCatching null
         val data = JSONObject(raw)
         val draft = EmailRecoveryDraft(data.getString("email"), data.optString("code"),
-            data.optString("resetToken"), data.getLong("expiresAt"), data.optLong("resendAt"))
+            data.optString("resetToken"), data.getLong("expiresAt"), data.optLong("resendAt"),
+            data.optBoolean("deliveryConfirmed", false))
         if (draft.expiresAt <= System.currentTimeMillis()) { clear(); null } else draft
     }.getOrNull()
     fun save(draft: EmailRecoveryDraft) {
         val data = JSONObject().put("email", draft.email).put("code", draft.code)
             .put("resetToken", draft.resetToken).put("expiresAt", draft.expiresAt).put("resendAt", draft.resendAt)
+            .put("deliveryConfirmed", draft.deliveryConfirmed)
         check(preferences.edit().putString("draft", data.toString()).commit()) { "No se pudo guardar el avance de recuperación." }
     }
     fun clear() { check(preferences.edit().remove("draft").commit()) }

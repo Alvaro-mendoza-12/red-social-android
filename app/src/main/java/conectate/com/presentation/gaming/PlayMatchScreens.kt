@@ -344,7 +344,7 @@ fun GamingProfileScreen(
                         gamerAvatarMediaType = gamerAvatarMediaType,
                         gamerBio = bio.trim(), regionCode = region.trim(),
                         languages = languages.split(',').map(String::trim).filter(String::isNotBlank),
-                        playStyle = playStyle, voicePreference = voice, discoveryLevel = profile.discoveryLevel,
+                        playStyle = playStyle, voicePreference = voice, discoveryLevel = discoveryLevel.toInt(),
                         discoverable = discoverable, adultConfirmed = adult,
                         gameIdVisibility = gameVisibility, photosVisibility = profile.photosVisibility ?: "connections",
                         availabilityVisibility = availabilityVisibility, photos = profile.photos, timezone = timezone.trim(),
@@ -396,7 +396,15 @@ fun GamingProfileScreen(
         }
         item { SectionTitle("Disponibilidad", action = "Agregar horario", onAction = { showAvailabilityEditor = true }) }
         if (profile.availability.isEmpty()) item { EmptyInline("Añade horarios para mejorar las coincidencias.") }
-        items(profile.availability, key = { it.id ?: "${it.dayOfWeek}-${it.startMinute}-${it.endMinute}" }) { slot -> AvailabilityRow(slot) }
+        items(profile.availability, key = { it.id ?: "${it.dayOfWeek}-${it.startMinute}-${it.endMinute}" }) { slot ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { AvailabilityRow(slot) }
+                IconButton(onClick = { viewModel.saveAvailability(profile.availability.filterNot { it == slot }) },
+                    enabled = !state.isWorking) {
+                    Icon(Icons.Default.Delete, "Eliminar horario", tint = PlayMatchColors.SecondaryText)
+                }
+            }
+        }
     }
     if (showAvailabilityEditor && profile != null) AvailabilityDialog(
         onDismiss = { showAvailabilityEditor = false },
@@ -1312,7 +1320,9 @@ private fun PlayerMetaChips(player: PlayMatchProfile) {
 
 @Composable private fun AvailabilityDialog(onDismiss: () -> Unit, onSave: (PlayMatchAvailability) -> Unit) {
     var day by rememberSaveable { mutableIntStateOf(1) }; var start by rememberSaveable { mutableStateOf("19:00") }; var end by rememberSaveable { mutableStateOf("22:00") }
-    val valid = parseMinute(start) != null && parseMinute(end) != null
+    val startMinute = parseMinute(start)
+    val endMinute = parseMinute(end)
+    val valid = startMinute != null && endMinute != null && endMinute > startMinute
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Agregar disponibilidad") }, text = { Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { ChoiceRow("Día", (0..6).map(::dayLabel), dayLabel(day)) { day = (0..6).first { index -> dayLabel(index) == it } }; OutlinedTextField(start, { start = it.take(5) }, label = { Text("Inicio (HH:mm)") }); OutlinedTextField(end, { end = it.take(5) }, label = { Text("Fin (HH:mm)") }); Text("Se guardará en ${java.util.TimeZone.getDefault().id}", style = MaterialTheme.typography.bodySmall) } }, confirmButton = { Button(onClick = { onSave(PlayMatchAvailability(dayOfWeek = day, startMinute = parseMinute(start)!!, endMinute = parseMinute(end)!!, timezone = java.util.TimeZone.getDefault().id)) }, enabled = valid) { Text("Guardar") } }, dismissButton = { TextButton(onDismiss) { Text("Cancelar") } })
 }
 

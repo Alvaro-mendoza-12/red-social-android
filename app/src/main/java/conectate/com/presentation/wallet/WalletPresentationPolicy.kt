@@ -10,29 +10,33 @@ import java.util.Locale
 
 data class WalletSpendSnapshot(
     val spentTodayCoins: Int,
-    val spentWeekCoins: Int
+    val spentWeekCoins: Int,
+    val historyComplete: Boolean = true,
 )
 
 internal fun calculateWalletSpend(
     transactions: List<WalletTransaction>,
-    now: Instant = Instant.now()
+    now: Instant = Instant.now(),
+    hasMore: Boolean = false,
 ): WalletSpendSnapshot {
     val oneDayAgo = now.minusSeconds(24 * 60 * 60)
     val oneWeekAgo = now.minusSeconds(7 * 24 * 60 * 60)
     var today = 0
     var week = 0
+    var coversWeekBoundary = false
     transactions.forEach { transaction ->
-        if (transaction.amountDiamonds >= 0 || !transaction.isGiftDebit()) return@forEach
         val createdAt = transaction.createdAt?.let { value ->
             runCatching { Instant.parse(value) }
                 .recoverCatching { OffsetDateTime.parse(value).toInstant() }
                 .getOrNull()
         } ?: return@forEach
+        if (!createdAt.isAfter(oneWeekAgo)) coversWeekBoundary = true
+        if (transaction.amountDiamonds >= 0 || !transaction.isGiftDebit()) return@forEach
         val debit = -transaction.amountDiamonds
         if (!createdAt.isBefore(oneWeekAgo)) week += debit
         if (!createdAt.isBefore(oneDayAgo)) today += debit
     }
-    return WalletSpendSnapshot(today.coerceAtLeast(0), week.coerceAtLeast(0))
+    return WalletSpendSnapshot(today.coerceAtLeast(0), week.coerceAtLeast(0), !hasMore || coversWeekBoundary)
 }
 
 internal fun WalletTransaction.isGiftDebit(): Boolean = when (type.lowercase(Locale.ROOT)) {

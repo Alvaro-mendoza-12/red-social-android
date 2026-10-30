@@ -64,6 +64,7 @@ internal fun novvinBottomNavItems(): List<BottomNavItem> = listOf(
 @Composable
 fun HomeScreen(
     mainNavController: NavController,
+    homeBackStackEntry: androidx.navigation.NavBackStackEntry,
     authViewModel: AuthViewModel = conectate.com.core.observability.startupViewModel("home auth model"),
     homeViewModel: HomeViewModel = conectate.com.core.observability.startupViewModel("home model"),
     startTab: String? = null,
@@ -80,7 +81,34 @@ fun HomeScreen(
     val items = remember { novvinBottomNavItems() }
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
-    val isVideoFeed = currentDestination?.hierarchy?.any { it.route == Screen.Videos.route } == true
+    val isVideoFeed = currentDestination?.hierarchy?.any {
+        it.route == Screen.Videos.route || it.route == Screen.VideoDiscovery.route ||
+            it.route == Screen.ProfileVideoFeed.route
+    } == true
+    val showBottomNavigation = currentDestination == null || items.any { it.route == currentDestination.route }
+    val homeEntry = homeBackStackEntry
+    val pendingTab by homeEntry.savedStateHandle.getStateFlow<String?>("pending_home_tab", null).collectAsStateWithLifecycle()
+    LaunchedEffect(pendingTab) {
+        val target = pendingTab?.takeIf { tab -> items.any { it.route == tab } } ?: return@LaunchedEffect
+        if (navController.currentDestination?.route != target) {
+            navController.navigate(target) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+        homeEntry.savedStateHandle["pending_home_tab"] = null
+    }
+    LaunchedEffect(startTab) {
+        val target = startTab?.takeIf { tab -> items.any { it.route == tab } } ?: return@LaunchedEffect
+        if (navController.currentDestination?.route != target) {
+            navController.navigate(target) {
+                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
     val isPlayMatch = currentDestination?.hierarchy?.any { destination ->
         destination.route == Screen.Games.route || destination.route?.startsWith("games_") == true
     } == true
@@ -104,7 +132,7 @@ fun HomeScreen(
     Scaffold(
         modifier = Modifier.testTag("main-home"),
         bottomBar = {
-            NavigationBar(
+            if (showBottomNavigation) NavigationBar(
                 containerColor = if (isPlayMatch) PlayMatchColors.Surface else MaterialTheme.colorScheme.surface,
                 // Tonal elevation mixed the red accent with the dark surface and produced brown.
                 tonalElevation = 0.dp,

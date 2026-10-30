@@ -246,6 +246,10 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                     }
                     TextButton(onClick = {
                         restrictedAction = null; viewModel.clearPendingProfile()
+                        navController.navigate(Screen.Login.route)
+                    }, modifier = Modifier.fillMaxWidth()) { Text("Ya tengo cuenta · Iniciar sesión") }
+                    TextButton(onClick = {
+                        restrictedAction = null; viewModel.clearPendingProfile()
                     }, modifier = Modifier.fillMaxWidth()) { Text("Seguir explorando") }
                 }
             },
@@ -406,7 +410,12 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                 when (section) {
                     "videos" -> if (busy == 0 || videos.isNotEmpty()) GuestContentList(
                         videos, "Aún no hay videos públicos",
-                        onOpen = { video -> if (!video.videoUrl.isNullOrBlank()) playingVideo = video.videoUrl },
+                        onOpen = { video ->
+                            val url = video.videoUrl?.takeIf { it.isNotBlank() }
+                                ?: video.mediaUrl?.takeIf { it.isNotBlank() }
+                            if (url != null) playingVideo = url
+                            else conectate.com.presentation.common.AppFeedbackBus.showError("Este video no está disponible. Prueba con otro.")
+                        },
                         onProfile = { viewModel.openProfile(it.userId) },
                         onComments = { video -> commentTarget = "videos" to video.id; viewModel.loadComments("videos", video.id) },
                         onRestricted = { restrictedAction = it },

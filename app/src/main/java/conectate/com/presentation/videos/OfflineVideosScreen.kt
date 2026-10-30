@@ -194,6 +194,7 @@ fun OfflineVideosScreen(
     val targetCount by viewModel.targetCount.collectAsState()
     val isConnected by connectivityViewModel.isConnected.collectAsState()
     var showFeed by remember { mutableStateOf(!isConnected && videos.isNotEmpty()) }
+    var initialVideoId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(isConnected, videos.size) {
         if (!isConnected && videos.isNotEmpty()) showFeed = true
@@ -203,6 +204,7 @@ fun OfflineVideosScreen(
     if (showFeed && videos.isNotEmpty()) {
         OfflineSwipeFeed(
             videos = videos,
+            initialVideoId = initialVideoId,
             onBack = { showFeed = false },
             onCycleCompleted = viewModel::markCycleCompleted
         )
@@ -217,7 +219,8 @@ fun OfflineVideosScreen(
         onBack = { navController.popBackStack() },
         onConfigureTarget = viewModel::configureTarget,
         onReplenish = viewModel::replenishNow,
-        onPlayFeed = { showFeed = true },
+        onPlayFeed = { initialVideoId = null; showFeed = true },
+        onPlayVideo = { initialVideoId = it; showFeed = true },
         onDelete = viewModel::remove,
         onDeleteAll = viewModel::removeAll
     )
@@ -234,6 +237,7 @@ private fun OfflineVideoLibraryScreen(
     onConfigureTarget: (Int) -> Unit,
     onReplenish: () -> Unit,
     onPlayFeed: () -> Unit,
+    onPlayVideo: (String) -> Unit,
     onDelete: (String) -> Unit,
     onDeleteAll: () -> Unit
 ) {
@@ -415,7 +419,7 @@ private fun OfflineVideoLibraryScreen(
                     }
                 }
                 items(videos, key = { it.video.id }) { entry ->
-                    OfflineVideoRow(entry = entry, onDelete = { onDelete(entry.video.id) })
+                    OfflineVideoRow(entry = entry, onPlay = { onPlayVideo(entry.video.id) }, onDelete = { onDelete(entry.video.id) })
                 }
             }
         }
@@ -450,9 +454,11 @@ private fun OfflineVideoLibraryScreen(
 @Composable
 private fun OfflineVideoRow(
     entry: OfflineVideoEntry,
+    onPlay: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
+        onClick = onPlay,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -505,12 +511,16 @@ private fun OfflineVideoRow(
 @Composable
 private fun OfflineSwipeFeed(
     videos: List<OfflineVideoEntry>,
+    initialVideoId: String?,
     onBack: () -> Unit,
     onCycleCompleted: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val pagerState = rememberPagerState(pageCount = { videos.size + 1 })
+    val pagerState = rememberPagerState(
+        initialPage = videos.indexOfFirst { it.video.id == initialVideoId }.coerceAtLeast(0),
+        pageCount = { videos.size + 1 }
+    )
     var playbackRequested by remember { mutableStateOf(true) }
     var playbackSpeed by remember { mutableStateOf(1f) }
     var isForeground by remember {

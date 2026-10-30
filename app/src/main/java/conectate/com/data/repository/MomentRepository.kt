@@ -311,11 +311,12 @@ class MomentRepository @Inject constructor(
             var visibilityType = json["visibility_type"]?.jsonPrimitive?.content ?: "public"
             var userId = json["user_id"]?.jsonPrimitive?.content ?: ""
             
-            if (visibilityType == "silent" && userId != currentUserId) return
-            if (visibilityType == "private" && userId != currentUserId) return
-
             var excluded = json["excluded_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.content } ?: emptyList()
-            if (excluded.contains(currentUserId) && userId != currentUserId) return
+            val audience = json["visibility"]?.jsonPrimitive?.contentOrNull ?: "all"
+            val audienceIds = json["audience_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+            if (!conectate.com.data.repository.moment.canDisplayMomentAudience(
+                    userId, currentUserId, visibilityType, audience, excluded, audienceIds
+                )) return
 
             // Check if expired
             var expiresAt = json["expires_at"]?.jsonPrimitive?.content
@@ -623,14 +624,12 @@ class MomentRepository @Inject constructor(
                         var momentId = json["id"]?.jsonPrimitive?.content ?: ""
                         if (locallyDeletedMomentIds.contains(canonicalMomentId(momentId))) return@mapNotNull null
                         
-                        if (visibilityType == "silent" && userId != currentUserId) return@mapNotNull null
-                        if (visibilityType == "private" && userId != currentUserId) return@mapNotNull null
-
                         var excluded = json["excluded_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.content } ?: emptyList()
                         val audienceIds = json["audience_ids"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
-                        if (excluded.contains(currentUserId) && userId != currentUserId) return@mapNotNull null
                         val audience = json["visibility"]?.jsonPrimitive?.contentOrNull ?: "all"
-                        if (audience == "only_selected" && userId != currentUserId && currentUserId !in audienceIds) return@mapNotNull null
+                        if (!conectate.com.data.repository.moment.canDisplayMomentAudience(
+                                userId, currentUserId, visibilityType, audience, excluded, audienceIds
+                            )) return@mapNotNull null
 
                         var profileElement = json["user"]
                         var profile = when {

@@ -74,11 +74,11 @@ fun CommentItem(
                     }
                     
                     // Audio Player for Comments
-                    if (comment.mediaType == "sticker" && !comment.audioUrl.isNullOrEmpty()) {
+                    if (comment.mediaType in setOf("sticker", "image", "gif") && !comment.audioUrl.isNullOrEmpty()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         coil.compose.AsyncImage(
                             model = comment.audioUrl,
-                            contentDescription = "Sticker",
+                            contentDescription = if (comment.mediaType == "sticker") "Sticker" else "Imagen del comentario",
                             modifier = Modifier.size(120.dp),
                             contentScale = androidx.compose.ui.layout.ContentScale.Fit
                         )

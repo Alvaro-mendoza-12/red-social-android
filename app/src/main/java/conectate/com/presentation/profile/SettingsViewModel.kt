@@ -229,7 +229,8 @@ class SettingsViewModel @Inject constructor(
         return resolveSupportAdmin(adminName)?.id?.trim()?.takeIf { it.isNotBlank() }
     }
 
-    fun contactSupport(adminName: String, navController: NavController, context: android.content.Context) {
+    fun contactSupport(adminName: String, navController: NavController, context: android.content.Context,
+        initialMessage: String = "Hola $adminName, necesito ayuda con la aplicación.") {
         android.widget.Toast.makeText(context, "Conectando con $adminName...", android.widget.Toast.LENGTH_SHORT).show()
         accountTasks.scope.launch {
             try {
@@ -251,7 +252,7 @@ class SettingsViewModel @Inject constructor(
                         .onSuccess {
                             val route = Screen.Chat.createRoute(
                                 userId = targetAdminId,
-                                initialMessage = "Hola $adminName, necesito ayuda con la aplicación."
+                                initialMessage = initialMessage
                             )
                             navController.navigate(route)
                         }

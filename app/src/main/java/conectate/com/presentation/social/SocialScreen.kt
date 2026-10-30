@@ -280,6 +280,7 @@ fun SocialScreen(
     var newCollectionName by remember { mutableStateOf("") }
     var showSavedLibrary by remember { mutableStateOf(false) }
     var savedSearch by remember { mutableStateOf("") }
+    var savedCollectionFilter by remember { mutableStateOf<String?>(null) }
     var challengesUnlocked by remember { mutableStateOf(false) }
     var showDrawingCanvas by remember { mutableStateOf(false) }
     var showTextChallengeEntry by remember { mutableStateOf(false) }
@@ -607,7 +608,7 @@ fun SocialScreen(
                     Text("Silenciar una palabra o tema")
                 }
                 Text(
-                    "Puedes restaurar estas preferencias desde el botón de ajustes junto a Descubrir y Seguidos.",
+                    "Puedes cambiar estas decisiones desde Mi algoritmo en tu perfil.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -737,6 +738,7 @@ fun SocialScreen(
                         showFeedPreferences = false
                         showSavedLibrary = true
                         savedSearch = ""
+                        savedCollectionFilter = null
                         viewModel.clearSavedLibraryMessage()
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -878,6 +880,9 @@ fun SocialScreen(
     }
 
     if (showSavedLibrary) {
+        val filteredSavedItems = remember(savedLibrary.items, savedCollectionFilter) {
+            savedLibrary.items.filter { savedCollectionFilter == null || it.collectionId == savedCollectionFilter }
+        }
         ModalBottomSheet(onDismissRequest = { showSavedLibrary = false }) {
             Column(
                 modifier = Modifier
@@ -896,10 +901,15 @@ fun SocialScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item {
+                        FilterChip(selected = savedCollectionFilter == null,
+                            onClick = { savedCollectionFilter = null }, label = { Text("Todos") })
+                    }
                     items(savedLibrary.collections, key = { it.id }) { collection ->
-                        AssistChip(
+                        FilterChip(
+                            selected = savedCollectionFilter == collection.id,
                             onClick = {
-                                savedSearch = collection.name
+                                savedCollectionFilter = collection.id
                             },
                             label = { Text("${collection.name} · ${collection.itemCount}") },
                             leadingIcon = { Icon(Icons.Default.Folder, null, Modifier.size(18.dp)) }
@@ -908,7 +918,7 @@ fun SocialScreen(
                 }
                 when {
                     savedLibraryLoading -> LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                    savedLibrary.items.isEmpty() -> Text(
+                    filteredSavedItems.isEmpty() -> Text(
                         if (savedSearch.isBlank()) "Todavía no has guardado publicaciones."
                         else "No encontramos guardados que coincidan con la búsqueda.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -918,7 +928,7 @@ fun SocialScreen(
                         modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(savedLibrary.items, key = { it.id }) { item ->
+                        items(filteredSavedItems, key = { it.id }) { item ->
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2286,7 +2296,8 @@ fun SocialScreen(
                 )
             },
             confirmButton = {
-                Button(onClick = {
+                Button(enabled = editContent.isNotBlank() || postToEdit?.mediaUrls?.isNotEmpty() == true ||
+                    !postToEdit?.mediaUrlLegacy.isNullOrBlank(), onClick = {
                     postToEdit?.id?.let { pid ->
                         viewModel.updatePostContent(pid, editContent)
                     }
@@ -3712,13 +3723,14 @@ fun TextSubmissionDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
         text = { 
             OutlinedTextField(
                 value = text, 
-                onValueChange = { text = it }, 
+                onValueChange = { text = it.take(500) },
+                supportingText = { Text("${text.length}/500") },
                 label = { Text("Escribe aquí...") },
                 modifier = Modifier.fillMaxWidth().height(150.dp)
             ) 
         },
         confirmButton = {
-            Button(onClick = { onSubmit(text) }, enabled = text.isNotBlank()) {
+            Button(onClick = { onSubmit(text.trim()) }, enabled = text.isNotBlank()) {
                 Text("ENVIAR")
             }
         },

@@ -285,7 +285,10 @@ fun CreatorEarningsScreen(
                         } else {
                             showWithdrawalInfo = true
                         }
-                    }
+                    },
+                    onEditAccount = if (payoutSummary?.configured == true && payoutSummary?.account != null) {
+                        { showAccountDialog = true }
+                    } else null
                 )
             }
 
@@ -366,7 +369,7 @@ fun CreatorEarningsScreen(
     if (showAccountDialog) {
         AlertDialog(
             onDismissRequest = { showAccountDialog = false },
-            title = { Text("Cuenta PayPal del creador") },
+            title = { Text(if (payoutSummary?.account == null) "Cuenta PayPal del creador" else "Actualizar cuenta PayPal") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Usa el correo verificado de PayPal. La app lo envía cifrado al backend y solo muestra una referencia enmascarada.")
@@ -511,7 +514,8 @@ private fun PayoutAccountCard(
     status: String?,
     reference: String?,
     currency: String,
-    onOpenInfo: () -> Unit
+    onOpenInfo: () -> Unit,
+    onEditAccount: (() -> Unit)? = null,
 ) {
     Card(shape = RoundedCornerShape(20.dp)) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -533,6 +537,11 @@ private fun PayoutAccountCard(
             }
             OutlinedButton(onClick = onOpenInfo, modifier = Modifier.fillMaxWidth()) {
                 Text(if (provider.isNullOrBlank()) "Cómo verificar la cuenta" else "Ver estado de la cuenta")
+            }
+            if (onEditAccount != null) {
+                OutlinedButton(onClick = onEditAccount, modifier = Modifier.fillMaxWidth()) {
+                    Text("Editar cuenta")
+                }
             }
             Text(
                 "La gestión de la cuenta ocurre fuera de Novvin y nunca almacena PAN ni CVV.",

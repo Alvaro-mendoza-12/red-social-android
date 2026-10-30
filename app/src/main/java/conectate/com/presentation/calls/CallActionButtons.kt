@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -107,10 +108,12 @@ fun CallActionButtons(
     invitedUserIds: List<String>,
     contextType: String,
     contextId: String?,
-    viewModel: CallLauncherViewModel = hiltViewModel()
+    viewModel: CallLauncherViewModel = hiltViewModel(),
+    onCallStarted: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val onCallStartedLatest by rememberUpdatedState(onCallStarted)
     var pendingVideoCall by remember { mutableStateOf<Boolean?>(null) }
 
     fun launchCall(isVideo: Boolean) {
@@ -156,6 +159,7 @@ fun CallActionButtons(
 
     LaunchedEffect(Unit) {
         viewModel.navigation.collect { callId ->
+            onCallStartedLatest?.invoke()
             navController.navigate(Screen.Call.createRoute(callId)) { launchSingleTop = true }
         }
     }

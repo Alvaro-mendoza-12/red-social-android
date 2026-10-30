@@ -396,8 +396,12 @@ class LiveSetupViewModel @Inject constructor(
         }
     }
 
-    override fun onCleared() {
+    fun releaseUnusedPreview() {
         if (!openingLiveHost) liveRepository.stopSetupCameraPreviewAsync()
+    }
+
+    override fun onCleared() {
+        releaseUnusedPreview()
         super.onCleared()
     }
 

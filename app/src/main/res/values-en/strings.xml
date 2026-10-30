@@ -104,4 +104,5 @@
     <string name="room_link_error_hint">Check your connection or try again. You can close this window and stay in the room.</string>
     <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
     <string name="widget_minimal_actions_title">Novvin · Minimal</string>
+    <string name="auth_email_delivery_unknown_hint">We could not confirm delivery. If you receive a six-digit code, enter it here or request another one.</string>
 </resources>

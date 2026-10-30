@@ -112,4 +112,5 @@
     <string name="room_link_error">No se pudo abrir el enlace</string>
     <string name="room_link_error_hint">Comprueba tu conexión o vuelve a intentarlo. Puedes cerrar esta ventana y seguir en la sala.</string>
     <string name="widget_minimal_actions_title">Novvin · Minimalista</string>
+    <string name="auth_email_delivery_unknown_hint">No pudimos confirmar el envío. Si recibes un código de seis dígitos, escríbelo aquí o vuelve a solicitarlo.</string>
 </resources>

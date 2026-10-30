@@ -10,6 +10,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WalletPresentationPolicyTest {
+    @Test fun `recent partial page is not presented as the complete spending window`() {
+        val now = Instant.parse("2026-08-02T18:00:00Z")
+        val page = (1..50).map { transaction("$it", "virtual_gift", -10, "2026-08-02T17:00:00Z") }
+        assertEquals(false, calculateWalletSpend(page, now, hasMore = true).historyComplete)
+    }
+    @Test fun `history window is complete once descending pages reach the week boundary`() {
+        val now = Instant.parse("2026-08-02T18:00:00Z")
+        val page = listOf(transaction("recent", "virtual_gift", -10, "2026-08-02T17:00:00Z"),
+            transaction("boundary", "deposit", 100, "2026-07-26T18:00:00Z"))
+        assertTrue(calculateWalletSpend(page, now, hasMore = true).historyComplete)
+    }
     @Test
     fun `spend snapshot counts only committed gift debits in each window`() {
         val now = Instant.parse("2026-08-02T18:00:00Z")

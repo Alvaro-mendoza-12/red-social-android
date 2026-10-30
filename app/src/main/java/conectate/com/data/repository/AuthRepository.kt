@@ -157,10 +157,10 @@ class AuthRepository @Inject constructor(
             .takeIf { value ->
                 runCatching {
                     val parsed = java.time.LocalDate.parse(value)
-                    !parsed.isAfter(java.time.LocalDate.now())
+                    conectate.com.data.model.isRegistrationBirthDateAllowed(parsed)
                 }.getOrDefault(false)
             }
-            ?: return Result.failure(Exception("Selecciona una fecha de nacimiento válida."))
+            ?: return Result.failure(Exception("Debes tener al menos 13 años y seleccionar una fecha de nacimiento válida."))
 
         val signUpResult = authService.pendingRegistrationFor(email)
             ?.let { Result.success(it) }

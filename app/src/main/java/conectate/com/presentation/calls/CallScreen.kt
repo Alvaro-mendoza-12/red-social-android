@@ -358,7 +358,9 @@ fun CallScreen(
                         .weight(1f),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (hasVideoContent) {
+                    if (hasVideoContent && remoteParticipants.size > 1) {
+                        CallVideoGrid(remoteParticipants, remoteVideoTracks, localVideoTrack, viewModel.eglContext)
+                    } else if (hasVideoContent) {
                         val remoteVideoTrack = primaryRemote?.takeIf { it.isVideoEnabled }?.let { participant ->
                             remoteVideoTracks[participant.socketId]
                                 ?: remoteVideoTracks[participant.userId]

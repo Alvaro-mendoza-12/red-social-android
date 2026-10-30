@@ -2016,7 +2016,7 @@ class ChatViewModel @Inject constructor(
                 chatTargets.remove(current)
             }
 
-            if (chatTargets.isEmpty()) {
+            if (chatTargets.isEmpty() && groupTargets.isEmpty() && communityTargets.isEmpty()) {
                 conectate.com.presentation.common.AppFeedbackBus.showError(
                     "No hay destino válido para reenviar"
                 )
@@ -2032,6 +2032,25 @@ class ChatViewModel @Inject constructor(
                 if (result.isSuccess) {
                     successCount += result.getOrNull() ?: 0
                 }
+            }
+
+            for (target in groupTargets) {
+                if (authService.getCurrentUserId()?.trim()?.lowercase() != ownerAccountId) break
+                groupRepository.sendGroupMessage(
+                    groupId = target, content = message.content.ifBlank { "Mensaje reenviado" },
+                    contentType = message.content_type, mediaUrl = message.media_url,
+                    isForwarded = true, forwardedFromMessageId = message.id,
+                    forwardedFromUserId = message.sender_id
+                ).onSuccess { successCount++ }
+            }
+            for (target in communityTargets) {
+                if (authService.getCurrentUserId()?.trim()?.lowercase() != ownerAccountId) break
+                communityRepository.sendCommunityMessage(
+                    communityId = target, content = message.content.ifBlank { "Mensaje reenviado" },
+                    contentType = message.content_type, mediaUrl = message.media_url,
+                    isForwarded = true, forwardedFromMessageId = message.id,
+                    forwardedFromUserId = message.sender_id
+                ).onSuccess { successCount++ }
             }
 
             if (successCount > 0) {

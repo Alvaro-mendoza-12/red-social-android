@@ -104,7 +104,7 @@ fun RegisterScreen(
     val parsedBirthDate = remember(birthDate) {
         runCatching { LocalDate.parse(birthDate) }.getOrNull()
     }
-    val birthDateIsValid = parsedBirthDate?.let { !it.isAfter(LocalDate.now()) } == true
+    val birthDateIsValid = parsedBirthDate?.let { conectate.com.data.model.isRegistrationBirthDateAllowed(it) } == true
     val privacyAcceptedFromDocument by registerBackStackEntry.savedStateHandle
         .getStateFlow("registration_privacy_accepted", false)
         .collectAsState()
@@ -294,7 +294,7 @@ fun RegisterScreen(
                         onValueChange = {
                             autoSuggestUsername = false
                             usernameEditedManually = true
-                            username = it.removePrefix("@").lowercase(Locale.ROOT).take(25)
+                            username = it.removePrefix("@").lowercase(Locale.ROOT).take(24)
                             viewModel.resetAuthState()
                         },
                         label = { Text("Identificador único") },
@@ -669,7 +669,7 @@ fun RegisterScreen(
                     if (birthDate.isBlank() || birthDateIsValid) {
                         "Usaremos el día para avisar a tus amigos cuando sea tu cumpleaños."
                     } else {
-                        "Selecciona una fecha válida."
+                          "Debes tener al menos 13 años para crear una cuenta."
                     }
                 )
             },
@@ -714,7 +714,7 @@ fun RegisterScreen(
             password != confirmPassword -> "Las contraseñas no coinciden."
             country.isBlank() -> "Selecciona tu país."
             birthDate.isBlank() -> "Selecciona tu fecha de nacimiento."
-            !birthDateIsValid -> "Selecciona una fecha de nacimiento válida."
+            !birthDateIsValid -> "Debes tener al menos 13 años para crear una cuenta."
             !acceptedPrivacyPolicy -> "Acepta las políticas de privacidad para crear tu cuenta."
             else -> null
         }

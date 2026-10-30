@@ -37,7 +37,8 @@ class EmailRecoveryUiAuditTest {
     @get:Rule val compose = createComposeRule()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
-    private fun show(verified: Boolean = false, loading: Boolean = false, password: String = "", confirmation: String = "") {
+    private fun show(verified: Boolean = false, loading: Boolean = false, password: String = "", confirmation: String = "",
+        deliveryConfirmed: Boolean = true) {
         val configuration = android.content.res.Configuration(context.resources.configuration)
             .apply { setLocale(Locale.forLanguageTag("es")) }
         val localized = context.createConfigurationContext(configuration)
@@ -49,7 +50,7 @@ class EmailRecoveryUiAuditTest {
                             EmailRecoverySteps(
                                 draft = EmailRecoveryDraft("qa@example.invalid", code = "001234",
                                     resetToken = if (verified) "synthetic-grant-only" else "",
-                                    expiresAt = System.currentTimeMillis() + 60_000),
+                                    expiresAt = System.currentTimeMillis() + 60_000, deliveryConfirmed = deliveryConfirmed),
                                 loading = loading, newPassword = password, confirmation = confirmation,
                                 onCodeChange = {}, onVerify = {}, onNewPasswordChange = {}, onConfirmationChange = {},
                                 onSavePassword = {}, onResend = {}, onChangeEmail = {}
@@ -100,6 +101,23 @@ class EmailRecoveryUiAuditTest {
         compose.onNodeWithTag("email_recovery_verify").assertIsNotEnabled()
     }
 
+    @Test fun uncertainDeliveryKeepsCodeEntryWithoutPromisingAnEmail() {
+        show(deliveryConfirmed = false)
+        compose.onNodeWithTag("email_recovery_code").assertIsDisplayed()
+        val configuration = android.content.res.Configuration(context.resources.configuration)
+            .apply { setLocale(Locale.forLanguageTag("es")) }
+        val localized = context.createConfigurationContext(configuration)
+        compose.onNodeWithText(localized.getString(R.string.auth_email_delivery_unknown_hint)).assertIsDisplayed()
+        compose.onNodeWithText(localized.getString(R.string.auth_email_code_sent_hint)).assertDoesNotExist()
+        compose.onNodeWithTag("email_recovery_resend").assertIsEnabled()
+    }
+
+    @Test fun verifiedGrantDoesNotOfferResendThatWouldInvalidateIt() {
+        show(verified = true, deliveryConfirmed = false)
+        compose.onNodeWithTag("email_recovery_resend").assertDoesNotExist()
+        compose.onNodeWithTag("email_recovery_password").assertIsDisplayed()
+    }
+
     @Test fun mismatchedPasswordsCannotBeSubmitted() {
         show(verified = true, password = "QA-example-only", confirmation = "Different-example-only")
         compose.onNodeWithTag("email_recovery_save").assertIsNotEnabled()
@@ -113,7 +131,8 @@ class EmailRecoveryUiAuditTest {
                 context.getSharedPreferences(name, mode)
         }
         try {
-            val draft = EmailRecoveryDraft("qa@example.invalid", code = "001234", expiresAt = System.currentTimeMillis() + 60_000)
+            val draft = EmailRecoveryDraft("qa@example.invalid", code = "001234", expiresAt = System.currentTimeMillis() + 60_000,
+                deliveryConfirmed = false)
             EmailRecoveryDraftStore(isolated).save(draft)
             assertEquals(draft, EmailRecoveryDraftStore(isolated).read())
             val verified = draft.copy(code = "", resetToken = "synthetic-grant-only")
