@@ -240,6 +240,7 @@ fun ProximityScreen(
                         radiusSlider = it
                         viewModel.setRadius(it.toDouble())
                     },
+                    onRadiusChangeFinished = { if (nearbyEnabled) viewModel.refreshNearby() },
                     onEnable = { requestLocation() },
                     locating = locating,
                     onRefresh = viewModel::refreshNearby,
@@ -279,6 +280,7 @@ private fun NearbyTab(
     enabled: Boolean,
     radius: Float,
     onRadiusChange: (Float) -> Unit,
+    onRadiusChangeFinished: () -> Unit,
     onEnable: () -> Unit,
     locating: Boolean,
     onRefresh: () -> Unit,
@@ -299,7 +301,7 @@ private fun NearbyTab(
             Spacer(Modifier.height(12.dp))
             ProximityPrivacyNotice()
             Spacer(Modifier.height(12.dp))
-            RadiusControl(radius, onRadiusChange)
+            RadiusControl(radius, onRadiusChange, onRadiusChangeFinished)
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
@@ -496,11 +498,12 @@ private fun ProximityPrivacyNotice() {
 }
 
 @Composable
-private fun RadiusControl(radius: Float, onRadiusChange: (Float) -> Unit) {
+private fun RadiusControl(radius: Float, onRadiusChange: (Float) -> Unit, onRadiusChangeFinished: () -> Unit) {
     Text("Radio: ${radius.toInt()} km", fontWeight = FontWeight.SemiBold)
     androidx.compose.material3.Slider(
         value = radius,
         onValueChange = onRadiusChange,
+        onValueChangeFinished = onRadiusChangeFinished,
         valueRange = 1f..20f,
         steps = 18,
         modifier = Modifier.fillMaxWidth()

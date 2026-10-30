@@ -447,6 +447,7 @@ class AuthViewModel @Inject constructor(
 
     fun requestMigratedPasswordCode(email: String) {
         if (_authState.value is AuthState.Loading) return
+        if (_emailRecovery.value?.verified == true) return
         val normalizedEmail = email.trim().lowercase()
         if (!android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) {
             _authState.value = AuthState.Error("Ingresa un correo válido de tu cuenta.")
@@ -457,10 +458,12 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             // Save the address before sending, so an in-flight email is still usable after process death.
             val pending = EmailRecoveryDraft(normalizedEmail, expiresAt = System.currentTimeMillis() + 15 * 60_000L,
-                resendAt = System.currentTimeMillis() + 60_000)
+                resendAt = System.currentTimeMillis() + 60_000, deliveryConfirmed = false)
             _emailRecovery.value = pending
+            var requestStarted = false
             val result = runCatching {
                 persistEmailRecovery(pending)
+                requestStarted = true
                 authRepository.requestLocalFallbackPasswordReset(normalizedEmail).getOrThrow()
             }
             if (generation != emailRecoveryGeneration) return@launch
@@ -469,7 +472,8 @@ class AuthViewModel @Inject constructor(
                     clearEmailRecovery()
                     _authState.value = AuthState.Error("El envío por correo no está disponible. Usa la ayuda para recuperar tu cuenta.")
                 } else if (response.codeLength == 6) {
-                    val next = pending.copy(expiresAt = System.currentTimeMillis() + (response.expiresInMinutes ?: 15) * 60_000L)
+                    val next = pending.copy(expiresAt = System.currentTimeMillis() + (response.expiresInMinutes ?: 15) * 60_000L,
+                        deliveryConfirmed = true)
                     _emailRecovery.value = next
                     runCatching { persistEmailRecovery(next) }
                     _authState.value = AuthState.Idle
@@ -477,7 +481,20 @@ class AuthViewModel @Inject constructor(
                     clearEmailRecovery()
                     _authState.value = AuthState.MigrationPasswordCodeSent(normalizedEmail, response.resetToken, response.delivery, response.expiresInMinutes)
                 }
-            }, onFailure = { _authState.value = AuthState.Error(mapAuthError(it)) })
+            }, onFailure = {
+                if (it is kotlinx.coroutines.CancellationException) throw it
+                if (requestStarted) {
+                    // A lost response does not mean the email was not sent. Keep any arriving code usable.
+                    val uncertain = pending.copy(resendAt = 0, deliveryConfirmed = false)
+                    _emailRecovery.value = uncertain
+                    runCatching { persistEmailRecovery(uncertain) }
+                    _authState.value = AuthState.Error("No pudimos confirmar el envío. Si llega el código, puedes usarlo aquí o volver a solicitarlo.")
+                } else {
+                    _emailRecovery.value = null
+                    runCatching { persistEmailRecovery(null) }
+                    _authState.value = AuthState.Error(mapAuthError(it))
+                }
+            })
         }
     }
 

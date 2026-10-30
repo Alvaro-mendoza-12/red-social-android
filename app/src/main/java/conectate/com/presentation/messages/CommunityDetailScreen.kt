@@ -201,7 +201,7 @@ fun CommunityDetailScreen(
                                 text = { Text("Borrar de mi lista") },
                                 onClick = {
                                     showMenu = false
-                                    viewModel.deleteCommunity {
+                                    viewModel.deleteCommunityLocally {
                                         navController.navigate(conectate.com.presentation.navigation.Screen.Messages.route) {
                                             popUpTo(conectate.com.presentation.navigation.Screen.Messages.route) { inclusive = false }
                                             launchSingleTop = true

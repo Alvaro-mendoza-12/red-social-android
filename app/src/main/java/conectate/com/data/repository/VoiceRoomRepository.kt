@@ -2928,7 +2928,7 @@ class VoiceRoomRepository @Inject constructor(
     fun emitCinemaSync(roomId: String, isPlaying: Boolean, position: Long) {
         scope.launch {
             // v7.2.3: Defensive check to avoid signaling storms
-            if (roomChannel == null) return@launch 
+            if (getCurrentRoomId() != roomId || socket?.connected() != true) return@launch
             
             try {
                 socket?.emit("cinema-sync", org.json.JSONObject().apply {

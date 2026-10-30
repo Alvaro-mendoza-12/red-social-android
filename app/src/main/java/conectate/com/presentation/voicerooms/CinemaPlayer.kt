@@ -341,7 +341,7 @@ fun CinemaPlayer(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
+                        if (isCreator) IconButton(
                             onClick = onChangeVideo,
                             modifier = Modifier.background(Color.White.copy(alpha = 0.1f), CircleShape)
                         ) {

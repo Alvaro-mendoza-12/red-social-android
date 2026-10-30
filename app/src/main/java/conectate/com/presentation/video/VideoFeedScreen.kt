@@ -2205,7 +2205,7 @@ fun VideoFeedScreen(
                                 .clickable { viewModel.onTabSelected(0) }
                         )
                     }
-                    IconButton(onClick = onNavigateToSearch, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = { viewModel.toggleSearchMode(true) }, modifier = Modifier.size(40.dp)) {
                         Icon(Icons.Default.Search, contentDescription = "Buscar videos", tint = Color.White)
                     }
                     }

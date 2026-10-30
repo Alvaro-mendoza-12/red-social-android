@@ -120,6 +120,7 @@ class RankingRepository @Inject constructor(
                 "${supabaseConfig.supabaseUrl}/rest/v1/videos"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("is_public", "eq.true")
                 parameter("select", "*")
                 parameter("order", "$orderColumn.desc")
                 parameter("limit", "100")
@@ -174,6 +175,7 @@ class RankingRepository @Inject constructor(
                 "${supabaseConfig.supabaseUrl}/rest/v1/posts"
             ) {
                 header("apikey", supabaseConfig.supabaseAnonKey)
+                parameter("visibility", "eq.public")
                 parameter("select", "*")
                 parameter("order", "$orderColumn.desc")
                 parameter("limit", "100")

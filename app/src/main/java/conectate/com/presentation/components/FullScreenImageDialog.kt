@@ -890,7 +890,9 @@ private fun VideoViewerItem(
         onDispose { exoPlayer.release() }
     }
 
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.fillMaxSize().testTag(
+        when { errorMessage != null -> "video_viewer_error"; isVideoReady -> "video_viewer_ready"; else -> "video_viewer_pending" }
+    ), contentAlignment = Alignment.Center) {
         AndroidView(
             factory = { playerContext ->
                 PlayerView(playerContext).apply {

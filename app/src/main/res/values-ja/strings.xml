@@ -104,4 +104,5 @@
     <string name="room_link_error_hint">接続を確認するか、もう一度お試しください。このウィンドウを閉じてもルームに残れます。</string>
     <string name="live_overlay_bubble_idle">LIVE\nチャット</string>
     <string name="widget_minimal_actions_title">Novvin · ミニマル</string>
+    <string name="auth_email_delivery_unknown_hint">送信を確認できませんでした。6桁のコードが届いたらここに入力するか、再送をリクエストしてください。</string>
 </resources>

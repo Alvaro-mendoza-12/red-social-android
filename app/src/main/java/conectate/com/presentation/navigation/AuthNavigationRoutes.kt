@@ -63,8 +63,19 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                     }
                     android.util.Log.d("MainActivity", "Splash: Navigating to ${if (isLoggedIn) "Home" else "Login"}")
                     withContext(Dispatchers.Main.immediate) {
+                        if (targetRoute == Screen.AddAccountLogin.route) {
+                            // Recovery may be restored while another account is active.
+                            // Keep a valid destination beneath its Back button.
+                            navController.navigate(Screen.Home.createRoute()) {
+                                popUpTo(Screen.Splash.route) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
                         navController.navigate(targetRoute) {
-                            popUpTo(Screen.Splash.route) { inclusive = true }
+                            if (targetRoute != Screen.AddAccountLogin.route) {
+                                popUpTo(Screen.Splash.route) { inclusive = true }
+                            }
+                            launchSingleTop = true
                         }
                     }
                 } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
@@ -196,6 +207,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.home.HomeScreen(
                 mainNavController = navController,
+                homeBackStackEntry = backStackEntry,
                 startTab = startTab,
                 sharedText = sharedText,
                 sharedUri = sharedUri

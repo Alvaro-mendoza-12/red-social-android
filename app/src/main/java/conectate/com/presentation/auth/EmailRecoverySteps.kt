@@ -43,7 +43,8 @@ fun EmailRecoverySteps(
             style = MaterialTheme.typography.titleLarge)
         Text(draft.email, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!draft.verified) {
-            Text(stringResource(R.string.auth_email_code_sent_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(stringResource(if (draft.deliveryConfirmed) R.string.auth_email_code_sent_hint
+                else R.string.auth_email_delivery_unknown_hint), color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(
                 value = draft.code,
                 onValueChange = onCodeChange,
@@ -87,8 +88,8 @@ fun EmailRecoverySteps(
                 else Text(stringResource(R.string.auth_recovery_save_and_sign_in))
             }
         }
-        OutlinedButton(onClick = onResend, enabled = !loading && seconds == 0,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+        if (!draft.verified) OutlinedButton(onClick = onResend, enabled = !loading && seconds == 0,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("email_recovery_resend")) {
             Text(if (seconds > 0) stringResource(R.string.auth_recovery_resend_wait, seconds)
                 else stringResource(R.string.auth_recovery_resend_email_code))
         }

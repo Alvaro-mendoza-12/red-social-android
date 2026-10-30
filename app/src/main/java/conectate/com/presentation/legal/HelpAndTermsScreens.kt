@@ -40,7 +40,7 @@ fun HelpCenterScreen(navController: NavController) {
 @Composable
 fun TermsAndConditionsScreen(navController: NavController) {
     val sections = listOf(
-        DocumentSection("1. Uso del servicio", "Debes proporcionar datos reales, proteger tu cuenta y utilizar Novvin de manera legal y respetuosa."),
+        DocumentSection("1. Uso del servicio", "Debes tener al menos 13 años para registrarte, proporcionar datos reales, proteger tu cuenta y utilizar Novvin de manera legal y respetuosa. Si tu país exige una edad superior o autorización adicional, debes cumplir esos requisitos."),
         DocumentSection("2. Contenido y convivencia", "Conservas la responsabilidad sobre lo que publicas o transmites. No se permite acoso, fraude, explotación, suplantación, amenazas ni contenido ilegal."),
         DocumentSection("3. Monedas y regalos", "Las monedas son bienes digitales consumibles, no dinero retirable. Los precios y cobros se procesan mediante la tienda aplicable. Los reembolsos pueden revertir las monedas o generar un ajuste de saldo."),
         DocumentSection("4. Ganancias de creadores", "Solo los regalos elegibles comprados con dinero real pueden generar ganancias. Se aplican verificación, retención, revisión antifraude, mínimos y condiciones del proveedor de pagos."),

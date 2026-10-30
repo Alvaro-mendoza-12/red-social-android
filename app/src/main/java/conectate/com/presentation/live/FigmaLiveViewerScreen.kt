@@ -68,6 +68,7 @@ fun LiveViewerScreen(
     var rechargeMinimumCoins by remember(liveId) { mutableStateOf<Int?>(null) }
 
     val context = LocalContext.current
+    val extraTools = liveExtraTools(liveId, false, activeGuests.map { it.userId }, viewModel)
     val stream = session?.stream
     val currentUserId = remember { viewModel.getCurrentUserId()?.trim().orEmpty() }
     val guestSocketIds = remember(activeGuests) { activeGuests.mapTo(mutableSetOf()) { it.socketId } }
@@ -278,6 +279,9 @@ fun LiveViewerScreen(
         onGuestSwitchCamera = { viewModel.switchCamera() },
         onLeaveGuest = viewModel::leaveGuestSeat,
         onBattleResponse = viewModel::respondToBattle,
-        onModerate = { showModerationDialog = true }
+        onModerate = { showModerationDialog = true },
+        onDrawGuess = extraTools.drawGuess,
+        onChannelPoints = extraTools.channelPoints,
+        onCommentOptions = extraTools.commentOptions,
     )
 }

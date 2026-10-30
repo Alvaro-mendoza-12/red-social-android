@@ -983,7 +983,15 @@ fun ChatScreen(
                                 // PRIORIDAD: Flow Reactivo > State estático
                                 val currentOtherUser = otherUserReactive ?: otherUser
                                 
-                                if (chat?.is_group != true && currentOtherUser != null) {
+                                val typingParticipants by viewModel.typingParticipants.collectAsStateWithLifecycle()
+                                if (typingParticipants.isNotEmpty()) {
+                                    Row(verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Text("Escribiendo…", style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary)
+                                        TypingIndicatorMinimal()
+                                    }
+                                } else if (chat?.is_group != true && currentOtherUser != null) {
                                     val isActuallyOnline = currentOtherUser.is_online &&
                                         TimeUtils.isRecentlyOnline(currentOtherUser.lastSeen)
                                     val statusText = if (isActuallyOnline) {
@@ -1093,7 +1101,7 @@ fun ChatScreen(
                                     )
                                 }
                                 DropdownMenuItem(
-                                    text = { Text("Resumen del chat") },
+                                        text = { Text("Actividad reciente del chat") },
                                     onClick = {
                                         showMenu = false
                                         viewModel.generateChatSummary()
@@ -2206,7 +2214,7 @@ fun ChatScreen(
     if (chatSummary != null) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissChatSummary() },
-            title = { Text("Resumen del chat") },
+            title = { Text("Actividad reciente del chat") },
             text = { Text(chatSummary?.summary ?: "") },
             confirmButton = {
                 TextButton(onClick = { viewModel.dismissChatSummary() }) {

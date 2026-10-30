@@ -83,6 +83,7 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.TipsAndUpdates
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
@@ -90,6 +91,8 @@ import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.automirrored.filled.VolumeDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -177,6 +180,7 @@ fun LiveSetupScreen(
 ) {
     val title by viewModel.title.collectAsStateWithLifecycle()
     val category by viewModel.category.collectAsStateWithLifecycle()
+    val hashtags by viewModel.hashtags.collectAsStateWithLifecycle()
     val source by viewModel.source.collectAsStateWithLifecycle()
     val micEnabled by viewModel.micEnabled.collectAsStateWithLifecycle()
     val allowGuests by viewModel.allowGuestRequests.collectAsStateWithLifecycle()
@@ -300,7 +304,7 @@ fun LiveSetupScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose { if (!isStarting) viewModel.setSource(source) }
+        onDispose { viewModel.releaseUnusedPreview() }
     }
     BackHandler(enabled = practiceMode || panel != null || infoTopic != null) {
         when {
@@ -439,6 +443,11 @@ fun LiveSetupScreen(
     if (panel != null) {
         CreatorPanelSheet(
             panel = panel,
+            hashtags = hashtags,
+            category = category,
+            onHashtags = viewModel::setHashtags,
+            onCategory = viewModel::setCategory,
+            onOpenEarnings = { panelName = null; navController.navigate(Screen.CreatorEarnings.route) },
             quality = quality,
             micEnabled = micEnabled,
             allowGuests = allowGuests,
@@ -1131,6 +1140,11 @@ private fun PracticeControl(icon: ImageVector, label: String, onClick: () -> Uni
 @Composable
 private fun CreatorPanelSheet(
     panel: CreatorPanel,
+    hashtags: String,
+    category: String,
+    onHashtags: (String) -> Unit,
+    onCategory: (String) -> Unit,
+    onOpenEarnings: () -> Unit,
     quality: LiveQuality,
     micEnabled: Boolean,
     allowGuests: Boolean,
@@ -1168,7 +1182,7 @@ private fun CreatorPanelSheet(
         Box(Modifier.fillMaxWidth().widthIn(max = 560.dp).align(Alignment.CenterHorizontally)) {
             when (panel) {
                 CreatorPanel.CENTER -> LiveCenterPanel(onPractice, onStart, onInfo)
-                CreatorPanel.REWARDS -> LiveRewardsPanel(onInfo)
+                CreatorPanel.REWARDS -> LiveRewardsPanel(onOpenEarnings, onInfo)
                 CreatorPanel.MUSIC -> LiveMusicPanel(
                     musicState,
                     onPickSong,
@@ -1182,6 +1196,7 @@ private fun CreatorPanelSheet(
                 CreatorPanel.SETTINGS -> LiveSettingsPanel(
                     quality, micEnabled, allowGuests, giftsEnabled,
                     onQuality, onMic, onAllowGuests, onGiftsEnabled, onInfo,
+                    hashtags, category, onHashtags, onCategory,
                 )
                 CreatorPanel.SERVICE -> LiveServicePanel(onShareLive, onOpenMusic, onOpenStudio, onInfo)
             }
@@ -1233,52 +1248,14 @@ private fun LiveCenterPanel(
 }
 
 @Composable
-private fun LiveRewardsPanel(onInfo: (CreatorInfoTopic) -> Unit) {
-    var weekly by rememberSaveable { mutableStateOf(true) }
-    LazyColumn(
-        modifier = Modifier.fillMaxWidth().heightIn(max = 690.dp).navigationBarsPadding(),
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 26.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        item { PanelTitle("Recompensas LIVE", "Consulta diamantes, misiones y progreso") }
-        item {
-            Row(Modifier.fillMaxWidth()) {
-                listOf(false to "Este LIVE", true to "Esta semana").forEach { (value, label) ->
-                    Column(Modifier.weight(1f).clickable { weekly = value }.padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(label, color = if (weekly == value) Color.White else LiveMutedText, fontWeight = FontWeight.Bold)
-                        Spacer(Modifier.height(8.dp))
-                        Box(Modifier.fillMaxWidth().height(2.dp).background(if (weekly == value) Color.White else Color.Transparent))
-                    }
-                }
-            }
-        }
-        item {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(LiveSheetSurface).padding(18.dp)) {
-                Text("Recompensas de la misión semanal", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
-                Text("Diamantes totales: 💎 0", color = LiveMutedText, fontSize = 13.sp)
-                Spacer(Modifier.height(22.dp))
-                Box(Modifier.fillMaxWidth().height(130.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(progress = { 0.13f }, modifier = Modifier.size(124.dp), color = LiveActionPink, trackColor = Color(0xFF555558), strokeWidth = 12.dp)
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("USD", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        Text("0.00", color = Color.White, fontWeight = FontWeight.Black, fontSize = 34.sp)
-                    }
-                }
-                Text("Sugerencia: cuantos más Regalos y comentarios destacados reciba tu LIVE, más Diamantes podrás conseguir.", color = Color.White, fontSize = 13.sp, lineHeight = 18.sp, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFF3B3B3E)).padding(12.dp))
-            }
-        }
-        item {
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(LiveSheetSurface).padding(18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Misiones", color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp, modifier = Modifier.weight(1f))
-                    Text("0%", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                Spacer(Modifier.height(16.dp))
-                PanelCardRow(Icons.Default.Videocam, "Días válidos de emisión LIVE", "Emite al menos 25 minutos para que el día cuente.") { onInfo(CreatorInfoTopic.REWARD_MISSION) }
-                Spacer(Modifier.height(10.dp))
-                LinearProgressIndicator(progress = { 0f }, modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape), color = LiveActionPink, trackColor = Color(0xFF555558))
-            }
-        }
+private fun LiveRewardsPanel(onOpenEarnings: () -> Unit, onInfo: (CreatorInfoTopic) -> Unit) {
+    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        PanelTitle("Recompensas LIVE", "Consulta tus ganancias confirmadas")
+        Text("El saldo y los movimientos reales están en Ganancias del creador. Las campañas y misiones aparecerán cuando estén disponibles para tu cuenta.",
+            color = LiveMutedText)
+        PanelCardRow(Icons.Default.Star, "Ganancias del creador", "Ver regalos confirmados y movimientos", onOpenEarnings)
+        PanelCardRow(Icons.Default.Campaign, "Campañas", "Consultar disponibilidad") { onInfo(CreatorInfoTopic.CAMPAIGNS) }
     }
 }
 
@@ -1458,12 +1435,26 @@ private fun LiveSettingsPanel(
     onAllowGuests: (Boolean) -> Unit,
     onGiftsEnabled: (Boolean) -> Unit,
     onInfo: (CreatorInfoTopic) -> Unit,
+    hashtags: String,
+    category: String,
+    onHashtags: (String) -> Unit,
+    onCategory: (String) -> Unit,
 ) {
     Column(
         Modifier.fillMaxWidth().heightIn(max = 620.dp).verticalScroll(rememberScrollState())
             .navigationBarsPadding().padding(horizontal = 20.dp, vertical = 4.dp)
     ) {
         PanelTitle("Ajustes de LIVE", "Configura la emisión antes de comenzar")
+        OutlinedTextField(value = hashtags, onValueChange = onHashtags,
+            label = { Text("Etiquetas") }, placeholder = { Text("#música #conversación") },
+            modifier = Modifier.fillMaxWidth(), singleLine = true)
+        Text("Categoría", color = Color.White, fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(top = 12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(LIVE_CATEGORIES) { item ->
+                FilterChip(selected = category == item, onClick = { onCategory(item) }, label = { Text(item) })
+            }
+        }
         TogglePanelRow("Micrófono", "Puedes cambiarlo durante el LIVE", micEnabled, onMic)
         TogglePanelRow("Solicitudes de invitados", "Permite que espectadores pidan unirse", allowGuests, onAllowGuests)
         TogglePanelRow(
@@ -1571,7 +1562,7 @@ private fun creatorInfoContent(topic: CreatorInfoTopic): Pair<String, String> = 
     CreatorInfoTopic.MUSIC_REWARDS -> "Recompensas musicales" to
         "Las campañas musicales aparecerán en Recompensas cuando exista una convocatoria activa y tu cuenta cumpla sus requisitos."
     CreatorInfoTopic.MODERATION -> "Moderación" to
-        "Durante el LIVE puedes silenciar, expulsar, bloquear o denunciar espectadores desde el menú de cada mensaje. Las solicitudes de invitados se pueden desactivar antes de emitir."
+        "Si eres anfitrión o moderador autorizado, mantén pulsado un comentario para expulsar o bloquear a su autor. El panel de moderación permite gestionar moderadores, palabras bloqueadas y pausar el chat. Las solicitudes de invitados se pueden desactivar antes de emitir."
     CreatorInfoTopic.NOTIFICATIONS -> "Notificaciones de LIVE" to
         "Los avisos de regalos, invitados y batallas respetan la configuración general de notificaciones de Novvin y el modo No molestar de Android."
     CreatorInfoTopic.STUDIO -> "Novvin LIVE Studio" to

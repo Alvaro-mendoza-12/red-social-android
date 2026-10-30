@@ -1051,6 +1051,9 @@ internal fun MomentEditorView(
                     onClick = {
                         if (!isUploading && (!audience.requiresPeople || selectedAudienceUsers.isNotEmpty())) {
                             onPost()
+                        } else if (!isUploading && audience.requiresPeople && selectedAudienceUsers.isEmpty()) {
+                            conectate.com.presentation.common.AppFeedbackBus.showError("Elige al menos una persona para compartir este momento.")
+                            showPeopleDialog = true
                         }
                     },
                     containerColor = MaterialTheme.colorScheme.primary,

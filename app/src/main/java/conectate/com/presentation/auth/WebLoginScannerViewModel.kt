@@ -96,6 +96,7 @@ class WebLoginScannerViewModel @Inject constructor(
     }
 
     fun selectCurrentSession() {
+        if (uiState.value.isSubmitting) return
         _uiState.update {
             it.copy(
                 selectedAccountId = null,
@@ -106,6 +107,7 @@ class WebLoginScannerViewModel @Inject constructor(
     }
 
     fun selectStoredAccount(accountId: String) {
+        if (uiState.value.isSubmitting) return
         _uiState.update {
             it.copy(
                 selectedAccountId = accountId,
@@ -237,8 +239,7 @@ class WebLoginScannerViewModel @Inject constructor(
                 return@launch
             }
 
-            val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
-            val refreshToken = authRepository.getCurrentRefreshToken()?.trim().orEmpty()
+            val (accessToken, refreshToken) = sessionReady.getOrThrow()
             if (!webPairingApprovalSessionValid(accessToken, refreshToken, webLoginPairingRepository.requiresRefreshTokenForApproval)) {
                 _uiState.update {
                     it.copy(
@@ -329,7 +330,7 @@ class WebLoginScannerViewModel @Inject constructor(
                 return@launch
             }
 
-            val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
+            val accessToken = sessionReady.getOrThrow().first
             if (accessToken.isBlank()) {
                 _uiState.update {
                     it.copy(
@@ -368,38 +369,16 @@ class WebLoginScannerViewModel @Inject constructor(
         }
     }
 
-    private suspend fun ensureApprovalSession(): Result<Unit> {
+    private suspend fun ensureApprovalSession(): Result<Pair<String, String>> {
         val state = uiState.value
-        val selectedAccount = state.selectedAccountId
-            ?.let { selectedId -> state.storedAccounts.firstOrNull { it.id == selectedId } }
-
-        if (selectedAccount == null) {
-            val accessToken = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
-            return if (accessToken.isNotBlank()) {
-                Result.success(Unit)
-            } else {
-                Result.failure(
-                    IllegalStateException(
-                        "Necesitas una cuenta activa o guardada para aprobar el acceso web."
-                    )
-                )
-            }
-        }
-
-        val currentUserId = authRepository.getCurrentUserId()
-        val currentUserEmail = authRepository.getCurrentUserEmail()
-        val sameAccount =
-            (!selectedAccount.user_id.isNullOrBlank() && selectedAccount.user_id == currentUserId) ||
-                selectedAccount.email.equals(currentUserEmail, ignoreCase = true)
-
-        if (!sameAccount) {
-            return authRepository.switchAccount(selectedAccount.id)
-                .fold(
-                    onSuccess = { Result.success(Unit) },
-                    onFailure = { Result.failure(it) }
-                )
-        }
-
-        return Result.success(Unit)
+        return resolveWebPairingApprovalSession(
+            selectedAccountId = state.selectedAccountId,
+            storedAccounts = state.storedAccounts,
+            currentIdentity = { authRepository.getCurrentUserId() to authRepository.getCurrentUserEmail() },
+            currentCredentials = {
+                authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty() to
+                    authRepository.getCurrentRefreshToken()?.trim().orEmpty()
+            },
+        )
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
@@ -180,7 +181,10 @@ internal fun NovvinLiveViewerExperience(
     onGuestSwitchCamera: () -> Unit,
     onLeaveGuest: () -> Unit,
     onBattleResponse: (Boolean) -> Unit,
-    onModerate: () -> Unit
+    onModerate: () -> Unit,
+    onDrawGuess: (() -> Unit)? = null,
+    onChannelPoints: (() -> Unit)? = null,
+    onCommentOptions: ((LiveComment) -> Unit)? = null,
 ) {
     var message by remember { mutableStateOf("") }
     var panel by remember { mutableStateOf<ViewerPanel?>(null) }
@@ -216,6 +220,7 @@ internal fun NovvinLiveViewerExperience(
         egl = sharedEglContext,
         scaling = if (source == LiveSource.SCREEN) RendererCommon.ScalingType.SCALE_ASPECT_FIT else RendererCommon.ScalingType.SCALE_ASPECT_FILL,
         comments = comments,
+        onCommentOptions = onCommentOptions,
         reactions = reactions,
         battle = battle,
         top = { metrics ->
@@ -311,6 +316,8 @@ internal fun NovvinLiveViewerExperience(
         )
         ViewerPanel.MORE -> ViewerMoreSheet(
             canModerate = canModerate,
+            onDrawGuess = onDrawGuess?.let { action -> { panel = null; action() } },
+            onChannelPoints = onChannelPoints?.let { action -> { panel = null; action() } },
             onModerate = { panel = null; onModerate() },
             onShare = { panel = null; onShare() },
             onExit = { panel = null; onClose() },
@@ -389,6 +396,9 @@ internal fun NovvinLiveHostExperience(
     onRefreshBattleCandidates: () -> Unit,
     onBattleResponse: (Boolean) -> Unit,
     onEnd: () -> Unit,
+    onDrawGuess: (() -> Unit)? = null,
+    onChannelPoints: (() -> Unit)? = null,
+    onCommentOptions: ((LiveComment) -> Unit)? = null,
     floatingOverlay: @Composable BoxScope.() -> Unit = {}
 ) {
     var message by remember { mutableStateOf("") }
@@ -417,6 +427,7 @@ internal fun NovvinLiveHostExperience(
         egl = egl,
         scaling = if (source == LiveSource.SCREEN) RendererCommon.ScalingType.SCALE_ASPECT_FIT else RendererCommon.ScalingType.SCALE_ASPECT_FILL,
         comments = comments,
+        onCommentOptions = onCommentOptions,
         reactions = reactions,
         battle = battle,
         top = { metrics ->
@@ -529,6 +540,8 @@ internal fun NovvinLiveHostExperience(
             onPauseResume = { panel = null; onPauseResume() },
             onSettings = { panel = null; onSettings() },
             onModeration = { panel = null; onModeration() },
+            onDrawGuess = onDrawGuess?.let { action -> { panel = null; action() } },
+            onChannelPoints = onChannelPoints?.let { action -> { panel = null; action() } },
             onMoment = { panel = null; onMoment() },
             onSwitchCamera = { panel = null; onSwitchCamera() },
             onCameraToggle = { panel = null; onCameraToggle() },
@@ -842,6 +855,7 @@ internal fun LiveExperienceFrame(
     actions: @Composable (LiveResponsiveMetrics) -> Unit,
     bottom: @Composable (LiveResponsiveMetrics) -> Unit,
     hostComposer: @Composable (() -> Unit)? = null,
+    onCommentOptions: ((LiveComment) -> Unit)? = null,
     floatingOverlay: @Composable BoxScope.() -> Unit = {}
 ) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
@@ -928,7 +942,8 @@ internal fun LiveExperienceFrame(
                     CompactChat(
                         comments,
                         visibleChatHeight,
-                        Modifier.padding(horizontal = metrics.horizontalPadding).fillMaxWidth(0.90f)
+                        Modifier.padding(horizontal = metrics.horizontalPadding).fillMaxWidth(0.90f),
+                        onCommentOptions,
                     )
                     Box(Modifier.fillMaxWidth().padding(horizontal = metrics.horizontalPadding)) {
                         hostComposer()
@@ -938,7 +953,7 @@ internal fun LiveExperienceFrame(
             } else {
                 LiveViewerOverlayLayout(
                     metrics = interactionMetrics,
-                    chat = { CompactChat(comments, visibleChatHeight, Modifier.fillMaxWidth()) },
+                    chat = { CompactChat(comments, visibleChatHeight, Modifier.fillMaxWidth(), onCommentOptions) },
                     actions = { actions(interactionMetrics) },
                     composer = { bottom(metrics) },
                     onBottomAreaMeasured = { measuredViewerBottomPx = it },
@@ -1744,6 +1759,8 @@ private fun GuestSetupSheet(
 @Composable
 private fun ViewerMoreSheet(
     canModerate: Boolean,
+    onDrawGuess: (() -> Unit)?,
+    onChannelPoints: (() -> Unit)?,
     onModerate: () -> Unit,
     onShare: () -> Unit,
     onExit: () -> Unit,
@@ -1760,6 +1777,8 @@ private fun ViewerMoreSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             LiveSheetHeader("Más opciones", "Acciones del directo", Icons.Filled.MoreHoriz, onDismiss)
+            if (onDrawGuess != null) SheetActionRow(Icons.Filled.Star, "Dibuja y adivina", "Participa con el anfitrión y sus invitados", onDrawGuess)
+            if (onChannelPoints != null) SheetActionRow(Icons.Filled.Star, "Puntos del canal", "Consulta puntos y recompensas", onChannelPoints)
             SheetActionRow(Icons.Filled.Share, "Compartir directo", "Invita a otras personas", onShare)
             if (canModerate) {
                 SheetActionRow(Icons.Filled.Shield, "Moderación", "Gestiona el chat y los usuarios", onModerate)
@@ -2564,6 +2583,8 @@ private fun HostToolsSheet(
     onMusic: () -> Unit,
     onFloating: () -> Unit,
     onNotifications: () -> Unit,
+    onDrawGuess: (() -> Unit)?,
+    onChannelPoints: (() -> Unit)?,
     onEnd: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -2578,6 +2599,8 @@ private fun HostToolsSheet(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             LiveSheetHeader("Herramientas LIVE", "Control de transmisión", Icons.Filled.MoreHoriz, onDismiss)
+            if (onDrawGuess != null) SheetActionRow(Icons.Filled.Star, "Dibuja y adivina", "Crea una partida con tus invitados", onDrawGuess)
+            if (onChannelPoints != null) SheetActionRow(Icons.Filled.Star, "Puntos del canal", "Gestiona recompensas gratuitas", onChannelPoints)
             SheetActionRow(
                 if (paused) Icons.Filled.PlayArrow else Icons.Filled.Pause,
                 if (paused) "Reanudar directo" else "Pausar directo",
@@ -2760,11 +2783,13 @@ internal fun BattleScoreOverlay(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun CompactChat(
     comments: List<LiveComment>,
     height: Dp,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCommentOptions: ((LiveComment) -> Unit)? = null,
 ) {
     val visible = comments.takeLast(60)
     val listState = rememberLazyListState()
@@ -2794,6 +2819,10 @@ private fun CompactChat(
                     .widthIn(max = 310.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color.Black.copy(alpha = 0.43f))
+                    .then(if (onCommentOptions != null) Modifier.combinedClickable(
+                        onClick = {}, onLongClickLabel = "Moderar este comentario",
+                        onLongClick = { onCommentOptions(comment) }
+                    ) else Modifier)
                     .padding(horizontal = 8.dp, vertical = 5.dp),
                 fontSize = 11.sp,
                 lineHeight = 14.sp,

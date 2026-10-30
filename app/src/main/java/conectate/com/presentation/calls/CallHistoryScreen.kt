@@ -171,6 +171,7 @@ fun CallHistoryScreen(
     val filter by viewModel.filter.collectAsState()
     var entryPendingDelete by remember { mutableStateOf<CallHistoryEntry?>(null) }
     var showClearAllDialog by remember { mutableStateOf(false) }
+    var redialEntry by remember { mutableStateOf<CallHistoryEntry?>(null) }
 
     Scaffold(
         topBar = {
@@ -238,6 +239,10 @@ fun CallHistoryScreen(
                         CallHistoryRow(
                             entry = entry,
                             onDelete = { entryPendingDelete = entry },
+                            onRedial = if (!entry.peerUserId.isNullOrBlank() &&
+                                entry.contextType.trim().lowercase() !in setOf("group", "community")) {
+                                { redialEntry = entry }
+                            } else null,
                             onClick = {
                                 when (entry.contextType.trim().lowercase()) {
                                     "group" -> entry.contextId?.let {
@@ -259,6 +264,19 @@ fun CallHistoryScreen(
                 }
             }
         }
+    }
+
+    redialEntry?.let { entry ->
+        AlertDialog(onDismissRequest = { redialEntry = null }, title = { Text("Volver a llamar") },
+            text = { Text("${entry.peerName ?: entry.title}: elige una llamada de voz o una videollamada.") },
+            confirmButton = {
+                Row {
+                    CallActionButtons(navController = navController, title = entry.peerName ?: entry.title,
+                        invitedUserIds = listOfNotNull(entry.peerUserId), contextType = "dm", contextId = entry.contextId,
+                        onCallStarted = { redialEntry = null })
+                }
+            },
+            dismissButton = { TextButton(onClick = { redialEntry = null }) { Text("Cancelar") } })
     }
 
     entryPendingDelete?.let { entry ->
@@ -300,7 +318,8 @@ fun CallHistoryScreen(
 private fun CallHistoryRow(
     entry: CallHistoryEntry,
     onDelete: () -> Unit,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onRedial: (() -> Unit)? = null,
 ) {
     val (icon, tint) = when (entry.status) {
         CallHistoryStatus.ANSWERED, CallHistoryStatus.ENDED ->
@@ -355,6 +374,9 @@ private fun CallHistoryRow(
         }
         Column(horizontalAlignment = Alignment.End) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onRedial != null) IconButton(onClick = onRedial) {
+                    Icon(Icons.Default.Call, "Volver a llamar")
+                }
                 IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                     Icon(
                         Icons.Default.Delete,

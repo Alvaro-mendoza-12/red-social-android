@@ -88,7 +88,9 @@ fun CoinsAndPaymentsScreen(
     var playProducts by remember(capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
     var catalogIssues by remember(capabilities.products) { mutableStateOf<List<PlayCatalogIssue>>(emptyList()) }
     var catalogLoading by remember(capabilities.enabled) { mutableStateOf(capabilities.enabled) }
-    val spending = remember(transactions) { calculateWalletSpend(transactions) }
+    val spending = remember(transactions, transactionsHasMore) {
+        calculateWalletSpend(transactions, hasMore = transactionsHasMore)
+    }
 
     val billingController = remember(capabilities.enabled, capabilities.products, accountId) {
         if (!capabilities.enabled || accountId.isBlank()) null else GooglePlayBillingController(
@@ -214,6 +216,7 @@ fun CoinsAndPaymentsScreen(
                 SpendingProtectionCard(
                     spentToday = spending.spentTodayCoins,
                     spentWeek = spending.spentWeekCoins,
+                    historyComplete = spending.historyComplete,
                     dailyLimit = capabilities.giftLimits.maxCoinsPerDay,
                     weeklyLimit = capabilities.giftLimits.maxCoinsPerWeek,
                     onOpen = { showLimits = true }
@@ -551,6 +554,7 @@ private fun CoinPackageCard(
 private fun SpendingProtectionCard(
     spentToday: Int,
     spentWeek: Int,
+    historyComplete: Boolean,
     dailyLimit: Int,
     weeklyLimit: Int,
     onOpen: () -> Unit
@@ -565,16 +569,21 @@ private fun SpendingProtectionCard(
                 Text("Control de gasto", fontWeight = FontWeight.Black, modifier = Modifier.weight(1f))
                 TextButton(onClick = onOpen) { Text("Ver límites") }
             }
-            Text("Hoy: ${formatCoins(spentToday)} de ${formatCoins(safeLimit)} monedas")
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
-            Text(
+            if (historyComplete) {
+                Text("Últimas 24 horas: ${formatCoins(spentToday)} de ${formatCoins(safeLimit)} monedas")
+                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                Text(
                 if (weeklyLimit > 0) {
                     "Últimos 7 días: ${formatCoins(spentWeek)} de ${formatCoins(weeklyLimit)} monedas"
                 } else {
                     "Últimos 7 días: ${formatCoins(spentWeek)} monedas · límite semanal no configurado"
                 },
                 style = MaterialTheme.typography.bodySmall
-            )
+                )
+            } else {
+                Text("Faltan movimientos por cargar para calcular tu gasto. Usa Ver más en el historial.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
             Text(
                 "El servidor aplica el límite antes del débito; un rechazo no descuenta saldo.",
                 style = MaterialTheme.typography.bodySmall,

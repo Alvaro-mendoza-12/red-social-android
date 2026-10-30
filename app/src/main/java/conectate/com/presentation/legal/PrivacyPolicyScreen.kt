@@ -52,11 +52,11 @@ fun PrivacyPolicyScreen(
         "10. Retención, acceso y eliminación" to
             "Conservamos los datos mientras la cuenta esté activa o durante el tiempo necesario para seguridad, obligaciones legales y resolución de disputas. Puedes actualizar tus datos y solicitar desde la app la eliminación de la cuenta y sus datos asociados; solo se conservará lo estrictamente necesario por ley, seguridad o prevención de fraude, con la finalidad y el plazo aplicables.",
         "11. Usuarios menores y fecha real" to
-            "Debes indicar tu fecha de nacimiento real. Novvin no cambia ni falsifica la edad declarada. Cuando la legislación local requiera autorización o protecciones adicionales para menores, se aplicarán los controles correspondientes sin ocultar la edad proporcionada.",
+            "La edad mínima para registrarse es de 13 años. Debes indicar tu fecha de nacimiento real; Novvin no cambia ni falsifica la edad declarada. Si tu país exige una edad superior o autorización adicional, debes cumplir esos requisitos. Las funciones con límites de edad adicionales mantienen sus propias restricciones.",
         "12. Normas de la comunidad" to
             "No se permite contenido ilegal, explotación, amenazas, acoso grave, suplantación, fraude, violencia extrema, material sexual no consentido ni vulneraciones reiteradas de derechos. Podemos limitar alcance, retirar contenido, suspender cuentas y recibir apelaciones.",
         "13. Cambios y contacto" to
-            "Estas políticas se actualizaron el 13 de agosto de 2026 para reflejar las funciones actuales de Novvin. Los cambios importantes se comunicarán dentro de la aplicación. Las solicitudes de privacidad, acceso, corrección, eliminación o soporte pueden realizarse por los canales oficiales indicados en la app.",
+            "Estas políticas se actualizaron el 30 de octubre de 2026 para reflejar las funciones actuales de Novvin. Los cambios importantes se comunicarán dentro de la aplicación. Las solicitudes de privacidad, acceso, corrección, eliminación o soporte pueden realizarse por los canales oficiales indicados en la app.",
         "14. Aceptación" to
             "Al pulsar “Aceptar y volver” confirmas que leíste estas políticas y las normas de la comunidad. Puedes volver al formulario sin perder los datos que ya escribiste."
     )
