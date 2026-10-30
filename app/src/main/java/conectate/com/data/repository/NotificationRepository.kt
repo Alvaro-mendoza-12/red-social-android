@@ -686,13 +686,16 @@ class NotificationRepository @Inject constructor(
                 return Result.failure(IllegalArgumentException("FCM token is blank"))
             }
 
-            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            val userId = authService.getCurrentUserId() ?: return Result.success(Unit)
             // A Play Store update or a backend migration can remove the remote row while the
             // device still has the same Firebase token. Always upsert it for the active session;
             // the local cache is only useful for logout bookkeeping, never as proof that the
             // server still owns the token.
-            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
-            if (!pushSession.isValid(session)) throw CancellationException("Push session changed")
+            val accessToken = authService.getAccessTokenAwait()
+            currentCoroutineContext().ensureActive()
+            // Obsolete work must finish normally so an appended current-session pass can run.
+            if (!pushSession.isValid(session)) return Result.success(Unit)
+            if (accessToken == null) return Result.failure(Exception("No token"))
             val normalizedUserId = userId.trim().lowercase()
             val cacheKey = buildFcmRegistrationCacheKey(normalizedUserId, cleanToken)
 
@@ -722,6 +725,8 @@ class NotificationRepository @Inject constructor(
             }
             else Result.failure(Exception("Error registering token: ${response.status}"))
         } catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            if (!pushSession.isValid(session)) return Result.success(Unit)
             throw cancelled
         } catch (e: Exception) {
             Result.failure(e)
