@@ -2,6 +2,8 @@
 
 El backend Ubuntu es el servidor principal de Conéctate. Corre sobre una mini PC con Ubuntu Server, Docker Compose y servicios systemd/watchdog.
 
+El [cierre 90 del 29/10](90-cierre-produccion-red-y-presupuesto-2026-10-29.md) comprueba 14 contenedores operativos, canario público correcto, restauración aislada de 256 tablas del respaldo externo y ausencia de vulnerabilidades npm conocidas en la imagen API activa. Confirma enlace Ethernet a 100 Mbps con NIC gigabit, registra un timeout SMTP transitorio seguido de autenticación correcta y mantiene los retiros desactivados. No despliega la optimización SQL candidata ni modifica el ingreso Funnel; el documento detalla dominio, presupuesto y límites de crecimiento.
+
 Las revisiones del host son la [auditoría 76](76-auditoria-servidor-2026-10-26.md) y su [continuación 78 del 27/10](78-capacidad-host-y-acceso-web-2026-10-27.md): servicios Node en 22.23.4, dependencias corregidas, Ubuntu actualizado y reiniciado, 14 contenedores operativos y transporte público web. La [revisión móvil 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md) registra nuevas sondas públicas y la optimización candidata de consultas de perfiles, contrastada con PostgreSQL y carga aislada; todavía no se despliega en producción ni se aprueba capacidad masiva. Los estados escritos debajo corresponden a sus fechas históricas.
 
 ## Ubicación

@@ -2,15 +2,18 @@
 
 Este documento define cómo probar, publicar y entregar el proyecto a otro equipo o IA.
 
-La evidencia vigente del 29/10/2026 está en la
-[continuación móvil 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md),
-después de la [auditoría integral 84](84-auditoria-integral-movil-2026-10-29.md).
-El candidato Android es **9.1.30 / 170**, local; la compilación QA no sustituye un
-nuevo paquete release firmado. El último paquete firmado contrastado es **169**,
-documentado en la revisión 83. La aceptación exige comprobar el artefacto
-release concreto desde la primera pantalla, los tres recorridos de entrada y la
-restauración de sesión; una batería aislada de componentes no basta para aprobar
-el arranque completo. El documento vigente registra los resultados y límites.
+La evidencia vigente del 29/10/2026 está en el
+[cierre 90](90-cierre-produccion-red-y-presupuesto-2026-10-29.md), después de la
+[revisión 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md) y la
+[continuación móvil 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md).
+Los últimos APK y AAB firmados y contrastados son **9.1.30 / 170**, locales y
+sin publicación en Play. Firma, R8, objetivo API 36 y empaquetado de 16 KiB
+aprobaron; el APK release abrió bienvenida/acceso/registro inicial, entró y salió
+como invitado y volvió a bienvenida después del reinicio en AOSP 35. No equivale
+a registro/login completos, restauración autenticada ni aceptación física entre
+redes. Antes de distribuir, contrastar la versión disponible en Play, la firma
+real de instalación y los pendientes de los recorridos; las pruebas QA no
+sustituyen esos controles. El cierre 90 registra los hashes y alcances concretos.
 
 La revisión 85 registra la comparación de carga anterior/candidata y sus límites. Las revisiones 78/79 conservan la historia del host y de la publicación web; ninguna sustituye la aceptación física del APK ni acredita capacidad sostenida de todos los módulos.
 
