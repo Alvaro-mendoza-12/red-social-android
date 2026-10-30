@@ -159,6 +159,7 @@ class StorageService @Inject constructor(
                     )
                 } else {
                     val error = upload.exceptionOrNull() ?: Exception("No se pudo subir el archivo al servidor Ubuntu.")
+                    if (error is CancellationException) throw error
                     appMetrics.recordFailure(
                         metric = "media_upload",
                         throwable = error,
@@ -225,6 +226,8 @@ class StorageService @Inject constructor(
                     )
                 )
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("StorageService", "Exception uploading file", e)
             appMetrics.recordFailure(
@@ -431,6 +434,8 @@ class StorageService @Inject constructor(
                     )
                 )
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             recordStreamUploadTiming(
                 startedElapsedMs = startedElapsedMs,
