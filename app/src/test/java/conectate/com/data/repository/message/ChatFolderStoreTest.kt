@@ -142,4 +142,14 @@ class ChatFolderStoreTest {
         try { store.withAccount<Unit> { throw cancellation }; fail("must cancel") }
         catch (caught: CancellationException) { assertSame(cancellation, caught) }
     }
+
+    @Test fun `observing from the UI thread reads and decodes the cache on IO`() = runTest {
+        var readThread: Thread? = null
+        val observed = ChatFolderStore(prefs) { readThread = Thread.currentThread(); "a" }
+        observed.replace("a", listOf(folder()))
+        readThread = null
+        assertEquals(listOf(folder()), observed.observe(MutableStateFlow("a")).first())
+        assertNotNull(readThread)
+        assertNotSame(Thread.currentThread(), readThread)
+    }
 }
