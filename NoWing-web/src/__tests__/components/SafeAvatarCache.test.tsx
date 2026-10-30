@@ -1,5 +1,19 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
-import { SafeAvatar } from '../../components/SafeAvatar'
+import { CachedProfileImage, SafeAvatar } from '../../components/SafeAvatar'
+
+test('contact covers request a bounded 640px preview and reuse the same account-scoped decoded source after reopening',async()=>{
+ const first=render(<CachedProfileImage src="https://owned.test/cover.jpg" mediaType="" previewWidth={640} alt="Portada QA" onSourceUnavailable={()=>{}}/>)
+ await waitFor(()=>expect(screen.getByAltText('Portada QA').getAttribute('src')).toMatch(/^blob:/))
+ expect(readBoundedStorageBlob).toHaveBeenCalledWith(expect.objectContaining({url:'https://owned.test/cover.jpg?width=640'}))
+ const source=screen.getByAltText('Portada QA').getAttribute('src'),calls=(readBoundedStorageBlob as jest.Mock).mock.calls.length
+ first.unmount()
+ render(<CachedProfileImage src="https://owned.test/cover.jpg" mediaType="" previewWidth={640} alt="Portada QA" onSourceUnavailable={()=>{}}/>)
+ expect(screen.getByAltText('Portada QA')).toHaveAttribute('src',source)
+ expect(readBoundedStorageBlob).toHaveBeenCalledTimes(calls)
+ act(()=>updateStorageReadIdentity('cover-other-account','fallback'))
+ expect(screen.getByAltText('Portada QA')).not.toHaveAttribute('src',source)
+ await waitFor(()=>expect(readBoundedStorageBlob).toHaveBeenCalledTimes(calls+1))
+})
 import { readBoundedStorageBlob } from '../../core/media/boundedStorageRead'
 import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 

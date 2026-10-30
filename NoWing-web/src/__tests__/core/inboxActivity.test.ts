@@ -1,5 +1,44 @@
 import {renderHook,act} from '@testing-library/react'
 import {applyRemoteConversationRead,applyInboxUnreadSnapshot,confirmInboxConversationRead,currentInboxUnreadCount,hasUnrepresentedInboxUnread,inboxUnreadCount,markInboxConversationRead,useInboxUnreadCounts,useInboxUnreadMessageTotal,notifyInboxMessage,latestInboxMessage,inboxMessageTarget} from '../../core/inboxActivity'
+
+test('a created incoming message updates row, navigation and title counts before the follow-up HTTP response',()=>{
+ const account='realtime-immediate',item={id:'chat',unreadCount:0,updatedAt:'2026-10-29T18:00:00Z'}
+ const {result}=renderHook(()=>({nav:useInboxUnreadCounts(account),total:useInboxUnreadMessageTotal(account)}))
+ act(()=>applyInboxUnreadSnapshot(account,'chat',[item],Date.now()-1000))
+ const event={id:'new-message',sender_id:'peer',created_at:'2026-10-29T18:00:01Z',status:'sent'}
+ act(()=>notifyInboxMessage(account,'chat','chat',event,true))
+ expect(currentInboxUnreadCount(account,'chat',item)).toBe(1)
+ expect(result.current.nav.chats).toBe(1);expect(result.current.total).toBe(1)
+ act(()=>notifyInboxMessage(account,'chat','chat',event,true))
+ expect(result.current.total).toBe(1)
+ act(()=>notifyInboxMessage(account,'chat','chat',{...event,id:'second',created_at:'2026-10-29T18:00:02Z'},true))
+ expect(result.current.total).toBe(2);expect(result.current.nav.chats).toBe(1)
+})
+
+test('an HTTP request started before the realtime event cannot roll its unread badge back',()=>{
+ const account='realtime-response-race',item={id:'chat',unreadCount:0,updatedAt:'2026-10-29T18:00:00Z'},started=Date.now()-100
+ applyInboxUnreadSnapshot(account,'chat',[item],started-10)
+ notifyInboxMessage(account,'chat','chat',{id:'incoming',sender_id:'peer',created_at:'2026-10-29T18:00:01Z'},true)
+ expect(applyInboxUnreadSnapshot(account,'chat',[item],started)).toBe(false)
+ expect(currentInboxUnreadCount(account,'chat',item)).toBe(1)
+ applyInboxUnreadSnapshot(account,'chat',[{...item,unreadCount:1,updatedAt:'2026-10-29T18:00:01Z',unreadMessageIds:['incoming']}],Date.now()+10)
+ notifyInboxMessage(account,'chat','chat',{id:'incoming',sender_id:'peer',created_at:'2026-10-29T18:00:01Z'},true)
+ expect(currentInboxUnreadCount(account,'chat',item)).toBe(1)
+})
+
+test('created events exclude outgoing, deleted, read and historical messages and retain archived separation',()=>{
+ const account='realtime-filter',item={id:'chat',unreadCount:0,updatedAt:'2026-10-29T18:00:00Z',isArchived:true}
+ const {result}=renderHook(()=>useInboxUnreadCounts(account))
+ act(()=>applyInboxUnreadSnapshot(account,'chat',[item],Date.now()-1000))
+ const event={id:'message',sender_id:'peer',created_at:'2026-10-29T18:00:01Z'}
+ for(const change of [{sender_id:account},{deleted_for_all:true},{status:'read'},{read_at:'2026-10-29T18:00:01Z'},{created_at:'2026-10-29T17:00:00Z'}])act(()=>notifyInboxMessage(account,'chat','chat',{...event,...change},true))
+ expect(result.current.archivedChats).toBe(0)
+ act(()=>notifyInboxMessage(account,'chat','chat',{...event,id:'valid'},true))
+ expect(result.current.chats).toBe(0);expect(result.current.archivedChats).toBe(1)
+ act(()=>markInboxConversationRead(account,'chat','chat'))
+ expect(result.current.archivedChats).toBe(0)
+ expect(currentInboxUnreadCount('different-account','chat',item)).toBe(0)
+})
 import {dedupeInboxConversations} from '../../features/messages/conversationInboxSupport'
 
 test('reloading keeps confirmed incoming IDs read after our own outgoing activity',()=>{

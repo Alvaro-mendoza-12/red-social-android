@@ -42,13 +42,13 @@ function acceptsInline(kind: ChatAttachmentKind, mime: string): boolean {
 
 
 export function ChatAttachmentMedia({
-  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, preserveAnimation = false, allowRetry = true, inlineDownload = true, overlay,
+  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, preserveAnimation = false, previewWidth, allowRetry = true, inlineDownload = true, overlay,
 }: {
-  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; preserveAnimation?: boolean; allowRetry?: boolean; inlineDownload?: boolean; overlay?: ReactNode
+  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; preserveAnimation?: boolean; previewWidth?: number; allowRetry?: boolean; inlineDownload?: boolean; overlay?: ReactNode
 }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const rewritten = rewriteRuntimeStorageUrl(url)
-  const source = kind === 'image' && !preserveAnimation && !/\.(gif|webp)(?:[?#]|$)/i.test(rewritten) ? runtimeStoragePreviewUrl(rewritten, 640, 75) : rewritten
+  const source = kind === 'image' && !preserveAnimation && (previewWidth !== undefined || !/\.(gif|webp)(?:[?#]|$)/i.test(rewritten)) ? runtimeStoragePreviewUrl(rewritten, previewWidth ?? 640, 75) : rewritten
   const backendBase = trustedStorageBackend(source)
   const ownStorage = Boolean(backendBase)
   const maxBytes = kind === 'image' ? STORAGE_PREVIEW_MAX_BYTES : STORAGE_SHORT_MEDIA_MAX_BYTES
@@ -168,7 +168,7 @@ export function ChatAttachmentMedia({
   } else if ((kind === 'file' || kind === 'pdf') && !viewerOpen) {
     content = <div className="chat-file-card"><span className="chat-file-icon">{kind === 'pdf' ? 'PDF' : extension}</span><span><strong>{title}</strong><small>{extension}{size > 0 ? ` · ${Math.ceil(size / 1024)} KB` : ''}</small><span className="chat-document-actions"><button className="mini-action-btn" type="button" onClick={() => { setReadRequested(true); setViewerOpen(true) }}>Abrir documento</button><button className="mini-action-btn" type="button" disabled={downloadPreparing} onClick={() => void downloadOriginal()}>{downloadPreparing ? 'Preparando…' : 'Descargar'}</button></span></span></div>
   } else if (!playbackUrl) {
-    content = <div className="chat-file-card chat-file-card-loading" role="status"><span><strong>Preparando archivo</strong><small>{title}</small></span></div>
+    content = <div className="chat-file-card chat-file-card-loading" role="status"><span><strong>{kind === 'image' ? 'Cargando imagen…' : 'Preparando archivo'}</strong><small>{title}</small></span></div>
   } else if (kind === 'image') {
     // The observer already controls which private images are fetched. Once the
     // Blob is ready, a second lazy gate only delays decoding an on-screen photo.

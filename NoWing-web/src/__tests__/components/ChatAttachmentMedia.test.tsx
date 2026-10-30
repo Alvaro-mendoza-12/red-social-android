@@ -5,7 +5,7 @@ import {attachmentKind} from '../../core/attachmentKind'
 import { readBoundedStorageBlob } from '../../core/media/boundedStorageRead'
 import { invalidateStorageReadIdentity, updateStorageReadIdentity, getStorageReadIdentity } from '../../core/media/storageReadSession'
 
-jest.mock('../../core/runtimeBackend', () => ({ rewriteRuntimeStorageUrl: (url: string) => url, runtimeStoragePreviewUrl: (url: string) => url }))
+jest.mock('../../core/runtimeBackend', () => ({ rewriteRuntimeStorageUrl: (url: string) => url, runtimeStoragePreviewUrl: (url: string, width: number) => width === 160 ? `${url}?width=160` : url }))
 jest.mock('../../components/DocumentPreview', () => ({ DocumentPreview: () => <section aria-label="Vista previa del documento" /> }))
 jest.mock('../../core/media/browserStreaming', () => ({ cachedBrowserStreamingSource: jest.fn(() => undefined), browserStreamingSource: jest.fn(async () => '/__novvin_media/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), subscribeBrowserStreamingRecovery: jest.fn(() => () => {}) }))
 jest.mock('../../core/media/storageReadClient', () => ({
@@ -19,13 +19,23 @@ jest.mock('../../core/media/boundedStorageRead', () => ({
 const privateUrl = 'https://backend.test/storage/v1/object/public/chat-media/a/file.png'
 const readBlob = readBoundedStorageBlob as jest.MockedFunction<typeof readBoundedStorageBlob>
 
+test('small static sticker tiles use a thumbnail while animated stickers retain the exact original',async()=>{
+ readBlob.mockResolvedValue(new Blob(['sticker'],{type:'image/webp'}))
+ render(<ChatAttachmentMedia url={privateUrl.replace('.png','.webp')} kind="image" title="Estático" previewWidth={160} imageLink={false}/>)
+ await screen.findByAltText('Estático')
+ expect(readBlob).toHaveBeenCalledWith(expect.objectContaining({url:privateUrl.replace('.png','.webp')+'?width=160'}))
+ render(<ChatAttachmentMedia url={privateUrl.replace('.png','.gif')} kind="image" title="Animado" previewWidth={160} preserveAnimation imageLink={false}/>)
+ await screen.findByAltText('Animado')
+ expect(readBlob).toHaveBeenCalledWith(expect.objectContaining({url:privateUrl.replace('.png','.gif')}))
+})
+
 test('images reserve the same frame while awaiting and after receiving their bytes', async () => {
   let finish!: (value: Blob) => void
   readBlob.mockImplementation(() => new Promise(resolve => { finish = resolve }))
   const { container } = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto estable" inlineDownload={false}/>)
   await waitFor(() => expect(readBlob).toHaveBeenCalledTimes(1))
   const frame = container.querySelector('.chat-attachment-image-frame')
-  expect(frame).toContainElement(screen.getByText('Preparando archivo'))
+  expect(frame).toContainElement(screen.getByText('Cargando imagen…'))
   await act(async () => finish(new Blob(['photo'], { type: 'image/png' })))
   expect(frame).toContainElement(await screen.findByAltText('Foto estable'))
   expect(container.querySelector('.chat-attachment-image-frame')).toBe(frame)
@@ -92,7 +102,7 @@ test('keeps private URLs out of DOM before an authorized read completes', async 
   const { container } = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto" />)
   await waitFor(() => expect(readBlob).toHaveBeenCalledTimes(1))
   expect(container.querySelector('img,a,video,audio,iframe')).toBeNull()
-  expect(screen.getByText('Preparando archivo')).toBeInTheDocument()
+  expect(screen.getByText('Cargando imagen…')).toBeInTheDocument()
 })
 
 test('retains authorized image on remount and revokes it on account invalidation', async () => {

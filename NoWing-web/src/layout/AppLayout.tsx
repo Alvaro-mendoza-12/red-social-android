@@ -425,7 +425,7 @@ export function AppLayout() {
           }
           if(event.payload?.event==='message'){
             const target=inboxMessageTarget(event.payload.chatId)
-            if(target){if(event.payload.action==='deleted')invalidateInboxPreview(user.id,target.scope,target.id);else notifyInboxMessage(user.id,target.scope,target.id,(event.payload.message||{}) as GenericRow)}
+            if(target){if(event.payload.action==='deleted')invalidateInboxPreview(user.id,target.scope,target.id);else notifyInboxMessage(user.id,target.scope,target.id,(event.payload.message||{}) as GenericRow,event.payload.action==='created')}
           }
           if (event.payload?.event === 'call_response' || event.payload?.event === 'call_cancel') {
             const callId = String(event.payload.callId ?? '').trim()
