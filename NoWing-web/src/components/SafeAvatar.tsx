@@ -8,10 +8,10 @@ import { prepareStorageReadAccessToken, trustedStorageBackend } from '../core/me
 import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../core/media/storageReadSession'
 
 /** Reuse the existing account-scoped Blob cache, including its decoded browser resource. */
-function CachedAvatarImage({ src, mediaType, onSourceUnavailable, ...props }: ImgHTMLAttributes<HTMLImageElement> & { src: string; mediaType: string; onSourceUnavailable: () => void }) {
+export function CachedProfileImage({ src, mediaType, previewWidth = 160, onSourceUnavailable, ...props }: ImgHTMLAttributes<HTMLImageElement> & { src: string; mediaType: string; previewWidth?: number; onSourceUnavailable: () => void }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const source = /\.(gif|webp|apng)(?:[?#]|$)/i.test(src) || /gif|webp|apng/i.test(mediaType)
-    ? rewriteRuntimeStorageUrl(src) : runtimeStoragePreviewUrl(src, 160, 75)
+    ? rewriteRuntimeStorageUrl(src) : runtimeStoragePreviewUrl(src, previewWidth, 75)
   const backendBase = trustedStorageBackend(source)
   const cache = backendBase && identity.accountId ? cachedStorageImagePreview(source, identity, STORAGE_PREVIEW_MAX_BYTES) : undefined
   const [ready, setReady] = useState<typeof cache>()
@@ -140,7 +140,7 @@ export function SafeAvatar({
 
   if (canRenderMedia) {
     return (
-      <CachedAvatarImage
+      <CachedProfileImage
         className={combinedClassName}
         src={trimmedUrl}
         mediaType={normalizedMediaType}

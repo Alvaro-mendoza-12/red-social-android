@@ -16,6 +16,7 @@ type AccountState = {
   seen: Map<string, number>
   latest: Map<string, GenericRow>
   remoteReads: Map<string, Set<string>>
+  createdMessages: Set<string>
   listeners: Set<() => void>
 }
 const empty: InboxCounts = { chats: 0, groups: 0, communities: 0, archivedChats: 0 }
@@ -29,7 +30,7 @@ const millis = (value: unknown) => Date.parse(String(value || '')) || 0
 function state(accountId: string) {
   let value = states.get(accountId)
   if (!value) {
-    value = { counts: empty, unread: new Map(), snapshots: new Map(), archived: new Set(), read: new Map(), seen: new Map(), latest: new Map(), remoteReads: new Map(), listeners: new Set() }
+    value = { counts: empty, unread: new Map(), snapshots: new Map(), archived: new Set(), read: new Map(), seen: new Map(), latest: new Map(), remoteReads: new Map(), createdMessages: new Set(), listeners: new Set() }
     try {
       const saved=JSON.parse(localStorage.getItem(`novvin:read-cursors:${accountId}`)||'[]')
       if(Array.isArray(saved))for(const entry of saved.slice(-500))if(Array.isArray(entry)&&/^(chat|group|community):[\w-]{1,160}$/.test(entry[0])&&Number.isFinite(entry[1])&&entry[1]>Date.now()-30*86400000&&entry[1]<=Date.now()+86400000){
@@ -169,9 +170,30 @@ export function confirmInboxConversationRead(accountId: string, scope: InboxScop
   }
 }
 
-export function notifyInboxMessage(accountId: string, scope: InboxScope, id: string, message: GenericRow) {
+export function notifyInboxMessage(accountId: string, scope: InboxScope, id: string, message: GenericRow, created = false) {
   if (!accountId || !id) return
   const s = state(accountId), k = key(scope, id), old = s.latest.get(k), time = millis(message.created_at || message.createdAt)
+  if (created) {
+    const messageId = cleanId(String(message.id || '')), sender = cleanId(String(message.sender_id || message.senderId || ''))
+    const eventKey = `${k}:${messageId}`, snapshot = s.snapshots.get(scope), item = snapshot?.items.get(cleanId(id))
+    // Only creation events for known conversations can add unread. Updates,
+    // outgoing sends and replayed events must never fabricate another message.
+    if (messageId && sender && sender !== cleanId(accountId) && time && item && snapshot &&
+      !s.createdMessages.has(eventKey) && !item.unreadMessageIds?.some(value => cleanId(value) === messageId) &&
+      time > millis(item.updatedAt) && !message.deleted_for_all && !message.deletedForAll && !message.read_at && !message.readAt &&
+      !['pending', 'failed', 'read', 'seen'].includes(String(message.status || '').toLowerCase())) {
+      s.createdMessages.add(eventKey)
+      while (s.createdMessages.size > 4096) s.createdMessages.delete(s.createdMessages.values().next().value!)
+      const count = inboxUnreadCount(accountId, scope, item, snapshot.requestedAt)
+      const readIds = s.remoteReads.get(k)
+      const ids = count > 0 ? (item.unreadMessageIds || []).filter(value => !readIds?.has(cleanId(value))) : []
+      snapshot.items.set(cleanId(id), { ...item, unreadCount: count + 1, updatedAt: String(message.created_at || message.createdAt), unreadMessageIds: [...ids, messageId] })
+      // An HTTP response already in flight predates this event. Keep the local
+      // projection until the next request, which still reconciles with the server.
+      snapshot.requestedAt = Math.max(snapshot.requestedAt, Date.now() + 1)
+      publish(accountId, scope)
+    }
+  }
   if (old && millis(old.created_at || old.createdAt) > time) return
   if (message.status !== 'pending') s.seen.set(k, Math.max(s.seen.get(k) || 0, time))
   s.latest.set(k, message); emit({ accountId, scope, id, action: 'message', message })
