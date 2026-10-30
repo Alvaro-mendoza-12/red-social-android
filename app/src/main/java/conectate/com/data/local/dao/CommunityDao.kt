@@ -148,8 +148,8 @@ interface CommunityDao {
     @Query("SELECT * FROM community_messages WHERE id = :messageId")
     suspend fun getMessageById(messageId: String): CommunityMessageEntity?
 
-    @Query("SELECT * FROM community_messages WHERE is_synced = 0 AND pending_action = 'send' ORDER BY created_at ASC LIMIT :limit")
-    suspend fun getPendingOutgoingMessages(limit: Int): List<CommunityMessageEntity>
+    @Query("SELECT * FROM community_messages WHERE is_synced = 0 AND pending_action = 'send' AND deleted_for_all = 0 AND LOWER(TRIM(sender_id)) = LOWER(TRIM(:senderId)) ORDER BY created_at ASC, id ASC LIMIT :limit")
+    suspend fun getPendingOutgoingMessages(senderId: String, limit: Int): List<CommunityMessageEntity>
 
     @Query("UPDATE community_messages SET is_synced = :isSynced, pending_action = :pendingAction WHERE id = :messageId")
     suspend fun updateMessageSyncStatus(messageId: String, isSynced: Boolean, pendingAction: String?)

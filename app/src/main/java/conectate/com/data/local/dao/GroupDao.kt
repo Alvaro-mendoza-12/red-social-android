@@ -167,8 +167,8 @@ interface GroupDao {
     @Query("SELECT * FROM group_messages WHERE id = :messageId")
     suspend fun getMessageById(messageId: String): GroupMessageEntity?
 
-    @Query("SELECT * FROM group_messages WHERE is_synced = 0 AND pending_action = 'send' ORDER BY created_at ASC LIMIT :limit")
-    suspend fun getPendingOutgoingMessages(limit: Int): List<GroupMessageEntity>
+    @Query("SELECT * FROM group_messages WHERE is_synced = 0 AND pending_action = 'send' AND deleted_for_all = 0 AND LOWER(TRIM(sender_id)) = LOWER(TRIM(:senderId)) ORDER BY created_at ASC, id ASC LIMIT :limit")
+    suspend fun getPendingOutgoingMessages(senderId: String, limit: Int): List<GroupMessageEntity>
 
     @Query("UPDATE group_messages SET status = :status, is_synced = :isSynced, pending_action = :pendingAction WHERE id = :messageId")
     suspend fun updateMessageSyncStatus(messageId: String, status: String, isSynced: Boolean, pendingAction: String?)
