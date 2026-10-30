@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Continuación del 30/10: colas y cuentas
+
+La [revisión 98](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md) separa las carpetas por cuenta, conserva cancelación entre etapas y corrige acciones pendientes web. Aprueban 2.000 unitarias Android, lint sin errores con K1 (311 advertencias) y paquetes 173 firmados, con comprobación de actualización/entrada en AOSP 35. Web publicada, 875 pruebas y 90 controles públicos aprobados. El trabajo de correciones se conserva aparte para el otro chat; los siguientes apartados mantienen sus fechas y alcances históricos.
+
 ## Cierre de los cinco puntos y segunda revisión
 
 La [revisión 96](96-segundo-plano-subidas-y-perfiles-2026-10-30.md) y la [segunda revisión 97](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md) cierran los cinco puntos solicitados: segundo plano, interrupción/reanudación de archivos, preparación del feed, consulta de perfiles del servidor y advertencias Android. Aprueban 1.979 unitarias en 417 suites y 70 casos nativos únicos seleccionados en 25 clases, en tandas con alcances diferenciados. Lint: cero errores y 312 advertencias, sin desactivar reglas. **APK/AAB 9.1.32 / 172 firmados**, con firma/R8/16 KiB y actualización desde 171 comprobados en AOSP 35. La consulta SQL está en producción: 26,007→3,154 ms de media en muestras de ejecución SQL, sin equipararlos a latencia completa. El informe conserva un timeout nativo inicial y la variabilidad del video; no certifica todos los escenarios. No publicado en Play ni verificado FCM/LIVE/llamadas entre teléfonos físicos.
