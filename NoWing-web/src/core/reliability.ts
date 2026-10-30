@@ -218,42 +218,81 @@ export type FlushDeferredQueueResult = {
   remaining: number
 }
 
-export async function flushDeferredMutations(
+const activeFlushes = new Map<string, Promise<FlushDeferredQueueResult>>()
+
+export function flushDeferredMutations(
   executor: FlushMutationExecutor,
   accountId: string,
   maxPerRun = 50,
+  shouldContinue: () => boolean = () => true,
+): Promise<FlushDeferredQueueResult> {
+  const owner = accountId.trim().toLowerCase()
+  const key = queueStorageKey(owner)
+  const active = activeFlushes.get(key)
+  if (active) return active
+  const run = () => flushDeferredQueue(executor, owner, maxPerRun, shouldContinue)
+  // Serialize between tabs when available; in-process sharing also covers
+  // browsers without Web Locks and overlapping lifecycle/poll callbacks.
+  const pending = Promise.resolve().then(async (): Promise<FlushDeferredQueueResult> => {
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      return await navigator.locks.request(key, { ifAvailable: true }, async lock => lock
+        ? await run()
+        : { processed: 0, failed: 0, remaining: getDeferredMutationCount(owner) })
+    }
+    return run()
+  }).finally(() => {
+      if (activeFlushes.get(key) === pending) activeFlushes.delete(key)
+    })
+  activeFlushes.set(key, pending)
+  return pending
+}
+
+async function flushDeferredQueue(
+  executor: FlushMutationExecutor,
+  accountId: string,
+  maxPerRun: number,
+  shouldContinue: () => boolean,
 ): Promise<FlushDeferredQueueResult> {
   const queue = readQueue(accountId)
   if (queue.length === 0) {
     return { processed: 0, failed: 0, remaining: 0 }
   }
 
-  const survivors: DeferredMutation[] = []
   let processed = 0
   let failed = 0
 
-  for (const mutation of queue.slice(0, maxPerRun)) {
+  const limit = Number.isFinite(maxPerRun) ? Math.max(0, Math.floor(maxPerRun)) : 50
+  for (const mutation of queue.slice(0, limit)) {
+    if (!shouldContinue()) break
+    // A different tab may have already completed an item from our snapshot.
+    if (!readQueue(accountId).some(item => item.id === mutation.id)) continue
+    let replacement: DeferredMutation | undefined
     try {
       await executor(mutation)
       processed += 1
     } catch (error) {
+      // Leaving the account is not a failed delivery attempt. Keep this item.
+      if (!shouldContinue()) break
       failed += 1
       const attempts = mutation.attempts + 1
       if (attempts < maxMutationAttempts) {
-        survivors.push({
+        replacement = {
           ...mutation,
           attempts,
           lastError: stableErrorMessage(error),
-        })
+        }
       }
     }
+    // Reconcile only the attempted item against the CURRENT queue. Replacing
+    // the original snapshot here would erase actions enqueued during await.
+    writeQueue(accountId, readQueue(accountId).flatMap(item => item.id === mutation.id
+      ? replacement ? [replacement] : []
+      : [item]))
   }
 
-  const untouched = queue.slice(maxPerRun)
-  writeQueue(accountId, [...survivors, ...untouched])
   return {
     processed,
     failed,
-    remaining: survivors.length + untouched.length,
+    remaining: getDeferredMutationCount(accountId),
   }
 }

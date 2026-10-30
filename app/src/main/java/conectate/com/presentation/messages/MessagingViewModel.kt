@@ -96,6 +96,18 @@ class MessagingViewModel @Inject constructor(
     private val _uiMessage = MutableStateFlow<String?>(null)
     val uiMessage: StateFlow<String?> = _uiMessage.asStateFlow()
 
+    init {
+        viewModelScope.launch {
+            authService.currentSession.map { it?.user?.id?.trim()?.lowercase() }.distinctUntilChanged().collect {
+                _selectedFolderId.value = null
+                _searchQuery.value = ""
+                _selectedListFilter.value = ChatListFilter.ALL
+                _hiddenChatIds.value = emptySet()
+                _uiMessage.value = null
+            }
+        }
+    }
+
     fun onTabSelected(index: Int) {
         _selectedTabIndex.value = index
         if (isScreenActive) startRefresh(forceInbox = false, includeCollections = false)

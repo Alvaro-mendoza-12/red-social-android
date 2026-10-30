@@ -14,6 +14,7 @@ import conectate.com.data.model.ChatTranslationSettings
 import conectate.com.data.model.Message
 import conectate.com.data.model.ScheduledMessageJob
 import conectate.com.data.repository.message.ScheduledMessageStore
+import conectate.com.data.repository.message.ChatFolderStore
 import conectate.com.data.repository.message.ScheduledMessagesKey
 import conectate.com.data.repository.message.ScheduledMessagesReader
 import conectate.com.data.repository.message.ScheduledMessagesSnapshot
@@ -36,9 +37,10 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -78,7 +80,6 @@ class AdvancedMessagingRepository @Inject constructor(
 
     companion object {
         private const val PREFS = "advanced_messaging_prefs"
-        private const val KEY_FOLDERS = "folders_json"
         private const val KEY_AUTODESTRUCT = "autodestruct_json"
         private const val KEY_SUMMARY = "summary_json"
         // Production hardening: do not send user message content to public translation services.
@@ -87,8 +88,8 @@ class AdvancedMessagingRepository @Inject constructor(
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true; isLenient = true }
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
-    private val _folders = MutableStateFlow(loadFoldersLocal())
-    val folders: StateFlow<List<ChatFolder>> = _folders.asStateFlow()
+    private val folderStore by lazy { ChatFolderStore(prefs, authService::getCurrentUserId) }
+    val folders: Flow<List<ChatFolder>> = folderStore.observe(authService.currentSession.map { it?.user?.id })
     private val translationCache = linkedMapOf<String, ChatTranslationSettings>()
     private val scheduledStore by lazy { ScheduledMessageStore(prefs) }
     private val scheduledMutations = Mutex()
@@ -117,117 +118,94 @@ class AdvancedMessagingRepository @Inject constructor(
 
 
 
-    suspend fun refreshFolders(): Result<List<ChatFolder>> = withContext(Dispatchers.IO) {
-        var token = authService.getAccessToken() ?: return@withContext Result.success(_folders.value)
-        runCatching {
-            val fr = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("select", "id,name,color_hex")
-            }
-            if (!fr.status.isSuccess()) return@runCatching _folders.value
-            var folders = runCatching { json.decodeFromString<List<FolderRow>>(fr.bodyAsText()) }.getOrDefault(emptyList())
+    suspend fun refreshFolders(): Result<List<ChatFolder>> = withFolderAccount { account ->
+        val token = folderToken(account) ?: return@withFolderAccount folderStore.read(account)
+        val fr = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
+            header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+            parameter("select", "id,name,color_hex")
+        }
+        requireFolderAccount(account)
+        check(fr.status.isSuccess()) { "No se pudieron actualizar tus carpetas. Revisa tu conexión e inténtalo de nuevo." }
+        val folders = json.decodeFromString<List<FolderRow>>(fr.bodyAsText())
 
-            val lr = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("select", "folder_id,chat_id")
-            }
-            val links = if (lr.status.isSuccess()) runCatching { json.decodeFromString<List<FolderLinkRow>>(lr.bodyAsText()) }.getOrDefault(emptyList()) else emptyList()
-            val byFolder = links.groupBy { it.folder_id }.mapValues { (_, v) -> v.map { it.chat_id.trim().lowercase() }.distinct() }
-            val mapped = folders.map { ChatFolder(id = it.id, name = it.name, color_hex = it.color_hex, chat_ids = byFolder[it.id].orEmpty()) }
-            _folders.value = mapped
-            prefs.edit().putString(KEY_FOLDERS, json.encodeToString(mapped)).apply()
-            mapped
-        }.fold(
-            onSuccess = { Result.success(it) },
-            onFailure = { Result.failure(it as? Exception ?: Exception("No se pudieron cargar carpetas")) }
-        )
+        val lr = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
+            header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+            parameter("select", "folder_id,chat_id")
+        }
+        requireFolderAccount(account)
+        check(lr.status.isSuccess()) { "No se pudieron actualizar los chats de tus carpetas." }
+        val links = json.decodeFromString<List<FolderLinkRow>>(lr.bodyAsText())
+        val byFolder = links.groupBy { it.folder_id }.mapValues { (_, v) -> v.map { it.chat_id.trim().lowercase() }.distinct() }
+        val mapped = folders.map { ChatFolder(id = it.id, name = it.name, color_hex = it.color_hex, chat_ids = byFolder[it.id].orEmpty()) } +
+            folderStore.read(account).filter { it.id.startsWith("local-") }
+        folderStore.replace(account, mapped)
+        mapped
     }
 
 
 
-    suspend fun createFolder(name: String, colorHex: String? = null): Result<ChatFolder> = withContext(Dispatchers.IO) {
+    suspend fun createFolder(name: String, colorHex: String? = null): Result<ChatFolder> = withFolderAccount { account ->
         val clean = name.trim().replace(Regex("\\s+"), " ").take(60)
-        if (clean.isBlank()) return@withContext Result.failure(Exception("Nombre requerido"))
+        require(clean.isNotBlank()) { "Nombre requerido" }
 
         val normalizedName = clean.lowercase(Locale.US)
-        val alreadyExists = _folders.value.any { it.name.trim().lowercase(Locale.US) == normalizedName }
+        val alreadyExists = folderStore.read(account).any { it.name.trim().lowercase(Locale.US) == normalizedName }
         if (alreadyExists) {
-            return@withContext Result.failure(Exception("Ya existe una carpeta con ese nombre."))
+            error("Ya existe una carpeta con ese nombre.")
         }
 
         val cleanColor = colorHex?.trim()?.ifBlank { null }
-        var token = authService.getAccessToken()
-        var userId = authService.getCurrentUserId()
-            ?.trim()
-            ?.lowercase()
-            ?.ifBlank { null }
-            ?: decodeUserIdFromAccessToken(token)
-        runCatching {
-            if (token.isNullOrBlank()) {
-                val localFolder = ChatFolder(
-                    id = "local-${UUID.randomUUID()}",
-                    name = clean,
-                    color_hex = cleanColor
-                )
-                var merged = (_folders.value + localFolder).distinctBy { it.id }
-                _folders.value = merged
-                persistFolders(merged)
-                return@runCatching localFolder
-            }
-            if (userId.isNullOrBlank()) {
-                throw Exception("No se pudo identificar el usuario actual. Vuelve a iniciar sesión.")
-            }
-            val resolvedUserId = userId
-
-            var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
-                header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json"); header("Prefer", "return=representation")
-                setBody(
-                    buildJsonObject {
-                        put("name", clean)
-                        put("user_id", resolvedUserId)
-                        cleanColor?.let { put("color_hex", it) }
-                    }
-                )
-            }
-
-            if (!response.status.isSuccess()) {
-                var body = runCatching { response.bodyAsText() }.getOrDefault("")
-                val lowerBody = body.lowercase(Locale.US)
-                if (
-                    lowerBody.contains("duplicate key") ||
-                    lowerBody.contains("23505") ||
-                    lowerBody.contains("chat_folders_user_id_name_key")
-                ) {
-                    throw Exception("Ya existe una carpeta con ese nombre.")
-                }
-                if (response.status.value == 403 || lowerBody.contains("permission denied") || lowerBody.contains("policy")) {
-                    val rpcFolder = tryCreateFolderViaRpc(token, clean, cleanColor)
-                    if (rpcFolder != null) {
-                        var merged = (_folders.value + rpcFolder).distinctBy { it.id }
-                        _folders.value = merged
-                        persistFolders(merged)
-                        return@runCatching rpcFolder
-                    }
-                    throw Exception("No tienes permiso para crear carpetas en este momento.")
-                }
-                throw Exception("No se pudo crear carpeta (${response.status.value}).")
-            }
-
-            var row = runCatching { json.decodeFromString<List<FolderRow>>(response.bodyAsText()).firstOrNull() }.getOrNull()
-            var folder = ChatFolder(
-                id = row?.id ?: UUID.randomUUID().toString(),
-                name = row?.name ?: clean,
-                color_hex = row?.color_hex ?: cleanColor
+        val token = folderToken(account)
+        if (token.isNullOrBlank()) {
+            val localFolder = ChatFolder(
+                id = "local-${UUID.randomUUID()}",
+                name = clean,
+                color_hex = cleanColor
             )
-            var merged = (_folders.value + folder).distinctBy { it.id }
-            _folders.value = merged
-            persistFolders(merged)
-            folder
-        }.fold(
-            onSuccess = { Result.success(it) },
-            onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo crear carpeta")) }
-        )
+            folderStore.replace(account, (folderStore.read(account) + localFolder).distinctBy { it.id })
+            return@withFolderAccount localFolder
+        }
+
+        var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
+            header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
+            header("Content-Type", "application/json"); header("Prefer", "return=representation")
+            setBody(
+                buildJsonObject {
+                    put("name", clean)
+                    put("user_id", account)
+                    cleanColor?.let { put("color_hex", it) }
+                }
+            )
+        }
+
+        requireFolderAccount(account)
+        if (!response.status.isSuccess()) {
+            val body = response.bodyAsText()
+            requireFolderAccount(account)
+            val lowerBody = body.lowercase(Locale.US)
+            if (
+                lowerBody.contains("duplicate key") ||
+                lowerBody.contains("23505") ||
+                lowerBody.contains("chat_folders_user_id_name_key")
+            ) {
+                throw Exception("Ya existe una carpeta con ese nombre.")
+            }
+            if (response.status.value == 403 || lowerBody.contains("permission denied") || lowerBody.contains("policy")) {
+                val rpcFolder = tryCreateFolderViaRpc(account, token, clean, cleanColor)
+                requireFolderAccount(account)
+                if (rpcFolder != null) {
+                    folderStore.replace(account, (folderStore.read(account) + rpcFolder).distinctBy { it.id })
+                    return@withFolderAccount rpcFolder
+                }
+                throw Exception("No tienes permiso para crear carpetas en este momento.")
+            }
+            throw Exception("No se pudo crear carpeta (${response.status.value}).")
+        }
+
+        val folder = parseFolderFromBody(response.bodyAsText(), clean, cleanColor)
+            ?: error("No se pudo confirmar la creación de la carpeta. Actualiza la lista antes de volver a intentarlo.")
+        folderStore.replace(account, (folderStore.read(account) + folder).distinctBy { it.id })
+        folder
     }
 
     private fun decodeUserIdFromAccessToken(token: String?): String? {
@@ -250,12 +228,14 @@ class AdvancedMessagingRepository @Inject constructor(
     }
 
     private suspend fun tryCreateFolderViaRpc(
+        account: String,
         token: String,
         folderName: String,
         colorHex: String?
     ): ChatFolder? {
         val rpcNames = listOf("secure_create_chat_folder", "secure_create_folder")
         rpcNames.forEach { rpcName ->
+            requireFolderAccount(account)
             var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/$rpcName") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -268,21 +248,11 @@ class AdvancedMessagingRepository @Inject constructor(
                     }
                 )
             }
-            if (response.status.isSuccess()) {
-                var body = runCatching { response.bodyAsText() }.getOrDefault("")
-                parseFolderFromBody(body, folderName, colorHex)?.let { return it }
-                return ChatFolder(
-                    id = UUID.randomUUID().toString(),
-                    name = folderName,
-                    color_hex = colorHex
-                )
-            }
-            var body = runCatching { response.bodyAsText() }.getOrDefault("")
+            val body = response.bodyAsText()
+            requireFolderAccount(account)
+            if (response.status.isSuccess()) return parseFolderFromBody(body, folderName, colorHex)
             if (!isMissingRpcFunction(response.status.value, body, rpcName)) {
-                android.util.Log.w(
-                    "AdvancedMessagingRepository",
-                    "RPC $rpcName failed (${response.status.value}): $body"
-                )
+                return null
             }
         }
         return null
@@ -302,9 +272,10 @@ class AdvancedMessagingRepository @Inject constructor(
         } else {
             null
         }
-        var row = fromList ?: fromObject ?: return null
+        val row = fromList ?: fromObject ?: return null
+        if (row.id.isBlank()) return null
         return ChatFolder(
-            id = row.id.ifBlank { UUID.randomUUID().toString() },
+            id = row.id,
             name = row.name.ifBlank { fallbackName },
             color_hex = row.color_hex ?: fallbackColor
         )
@@ -320,86 +291,71 @@ class AdvancedMessagingRepository @Inject constructor(
 
 
 
-    suspend fun addChatToFolder(folderId: String, chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        var cleanFolder = folderId.trim()
-        var cleanChat = chatId.trim().lowercase()
-        if (cleanFolder.isBlank() || cleanChat.isBlank()) return@withContext Result.failure(Exception("Datos inválidos"))
-        runCatching {
-            _folders.value = _folders.value.map {
-                if (it.id == cleanFolder) it.copy(chat_ids = (it.chat_ids + cleanChat).distinct()) else it
-            }
-            persistFolders(_folders.value)
-
-            var token = authService.getAccessToken()
-            if (token.isNullOrBlank()) return@runCatching
-
-            var r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
+    suspend fun addChatToFolder(folderId: String, chatId: String): Result<Unit> = withFolderAccount { account ->
+        val cleanFolder = folderId.trim()
+        val cleanChat = chatId.trim().lowercase(Locale.US)
+        require(cleanFolder.isNotBlank() && cleanChat.isNotBlank()) { "Datos inválidos" }
+        val previous = folderStore.read(account)
+        require(previous.any { it.id == cleanFolder }) { "La carpeta ya no está disponible. Actualiza la lista." }
+        val token = if (cleanFolder.startsWith("local-")) null else folderToken(account)
+        if (!cleanFolder.startsWith("local-")) {
+            check(!token.isNullOrBlank()) { "No se pudo confirmar el cambio. Revisa tu conexión e inténtalo de nuevo." }
+            val r = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
                 header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Content-Type", "application/json"); header("Prefer", "resolution=merge-duplicates,return=minimal")
                 parameter("on_conflict", "folder_id,chat_id")
                 setBody(buildJsonObject { put("folder_id", cleanFolder); put("chat_id", cleanChat) })
             }
-            if (!r.status.isSuccess()) {
-                android.util.Log.w("AdvancedMessagingRepository", "addChatToFolder remote sync failed: ${r.status}")
-            }
-        }.fold(onSuccess = { Result.success(Unit) }, onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo asignar carpeta")) })
+            requireFolderAccount(account)
+            check(r.status.isSuccess()) { "No se pudo añadir el chat a la carpeta. Revisa tu conexión e inténtalo de nuevo." }
+        }
+        folderStore.replace(account, previous.map {
+            if (it.id == cleanFolder) it.copy(chat_ids = (it.chat_ids + cleanChat).distinct()) else it
+        })
     }
 
 
 
-    suspend fun removeChatFromFolder(folderId: String, chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        var cleanFolder = folderId.trim()
-        var cleanChat = chatId.trim().lowercase()
-        if (cleanFolder.isBlank() || cleanChat.isBlank()) return@withContext Result.failure(Exception("Datos inválidos"))
-        runCatching {
-            _folders.value = _folders.value.map { if (it.id == cleanFolder) it.copy(chat_ids = it.chat_ids.filterNot { id -> id == cleanChat }) else it }
-            persistFolders(_folders.value)
-
-            var token = authService.getAccessToken()
-            if (token.isNullOrBlank()) return@runCatching
-
-            var r = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
+    suspend fun removeChatFromFolder(folderId: String, chatId: String): Result<Unit> = withFolderAccount { account ->
+        val cleanFolder = folderId.trim()
+        val cleanChat = chatId.trim().lowercase(Locale.US)
+        require(cleanFolder.isNotBlank() && cleanChat.isNotBlank()) { "Datos inválidos" }
+        val previous = folderStore.read(account)
+        require(previous.any { it.id == cleanFolder }) { "La carpeta ya no está disponible. Actualiza la lista." }
+        val token = if (cleanFolder.startsWith("local-")) null else folderToken(account)
+        if (!cleanFolder.startsWith("local-")) {
+            check(!token.isNullOrBlank()) { "No se pudo confirmar el cambio. Revisa tu conexión e inténtalo de nuevo." }
+            val r = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folder_chats") {
                 header("Authorization", "Bearer $token"); header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("folder_id", "eq.$cleanFolder"); parameter("chat_id", "eq.$cleanChat")
             }
-            if (!r.status.isSuccess()) {
-                android.util.Log.w("AdvancedMessagingRepository", "removeChatFromFolder remote sync failed: ${r.status}")
-            }
-        }.fold(onSuccess = { Result.success(Unit) }, onFailure = { Result.failure(it as? Exception ?: Exception("No se pudo quitar carpeta")) })
+            requireFolderAccount(account)
+            check(r.status.isSuccess()) { "No se pudo quitar el chat de la carpeta. Revisa tu conexión e inténtalo de nuevo." }
+        }
+        folderStore.replace(account, previous.map { if (it.id == cleanFolder) it.copy(chat_ids = it.chat_ids.filterNot { id -> id == cleanChat }) else it })
     }
 
 
 
-    suspend fun deleteFolder(folderId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        var cleanFolder = folderId.trim()
-        if (cleanFolder.isBlank()) return@withContext Result.failure(Exception("Carpeta inválida"))
-
-        val previousFolders = _folders.value
-        runCatching {
-            _folders.value = previousFolders.filterNot { it.id == cleanFolder }
-            persistFolders(_folders.value)
-
-            var token = authService.getAccessToken()
-            if (token.isNullOrBlank() || cleanFolder.startsWith("local-")) return@runCatching
-
-            var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
+    suspend fun deleteFolder(folderId: String): Result<Unit> = withFolderAccount { account ->
+        val cleanFolder = folderId.trim()
+        require(cleanFolder.isNotBlank()) { "Carpeta inválida" }
+        val previous = folderStore.read(account)
+        val token = if (cleanFolder.startsWith("local-")) null else folderToken(account)
+        if (!cleanFolder.startsWith("local-")) {
+            check(!token.isNullOrBlank()) { "No se pudo confirmar el cambio. Revisa tu conexión e inténtalo de nuevo." }
+            val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/chat_folders") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 parameter("id", "eq.$cleanFolder")
             }
 
-            if (!response.status.isSuccess() && response.status.value != 404) {
-                var body = runCatching { response.bodyAsText() }.getOrDefault("")
-                throw Exception("No se pudo eliminar carpeta (${response.status.value}). $body")
+            requireFolderAccount(account)
+            check(response.status.isSuccess() || response.status.value == 404) {
+                "No se pudo eliminar la carpeta. Revisa tu conexión e inténtalo de nuevo."
             }
-        }.fold(
-            onSuccess = { Result.success(Unit) },
-            onFailure = {
-                _folders.value = previousFolders
-                persistFolders(previousFolders)
-                Result.failure(it as? Exception ?: Exception("No se pudo eliminar carpeta"))
-            }
-        )
+        }
+        folderStore.replace(account, previous.filterNot { it.id == cleanFolder })
     }
 
 
@@ -778,8 +734,24 @@ class AdvancedMessagingRepository @Inject constructor(
         }
     }
 
-    private fun persistFolders(items: List<ChatFolder>) {
-        prefs.edit().putString(KEY_FOLDERS, json.encodeToString(items)).apply()
+    private suspend fun requireFolderAccount(account: String) {
+        currentCoroutineContext().ensureActive()
+        if (authService.getCurrentUserId()?.trim()?.lowercase(Locale.US) != account) {
+            throw CancellationException("Folder account changed")
+        }
+    }
+
+    private suspend fun folderToken(account: String): String? {
+        val token = authService.getAccessTokenAwait()
+        requireFolderAccount(account)
+        // Migrated Ubuntu accounts can use a public profile ID while JWT.sub is
+        // their local ID. AuthService guards token refresh; bind this operation
+        // to the captured active account instead of equating those two IDs.
+        return token
+    }
+
+    private suspend fun <T> withFolderAccount(operation: suspend (String) -> T): Result<T> = folderStore.withAccount { account ->
+        withContext(Dispatchers.IO) { operation(account) }
     }
 
     private fun normalizeLanguageCode(raw: String?): String? {
@@ -856,10 +828,6 @@ class AdvancedMessagingRepository @Inject constructor(
         }
     }
 
-    private fun loadFoldersLocal(): List<ChatFolder> {
-        var raw = prefs.getString(KEY_FOLDERS, null) ?: return emptyList()
-        return runCatching { json.decodeFromString<List<ChatFolder>>(raw) }.getOrDefault(emptyList())
-    }
     private fun loadAutoDestruct(): List<AutoDestructTask> {
         var raw = prefs.getString(KEY_AUTODESTRUCT, null) ?: return emptyList()
         return runCatching { json.decodeFromString<List<AutoDestructTask>>(raw) }.getOrDefault(emptyList())

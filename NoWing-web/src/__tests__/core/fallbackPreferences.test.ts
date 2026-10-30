@@ -1,7 +1,7 @@
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { saveFallbackChatPreferences, markFallbackNotificationRead, updateFallbackLiveState } from '../../core/fallbackData'
 
-jest.mock('../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn() }))
+jest.mock('../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn(), readFallbackSession: () => ({ user: { id: 'owner' } }) }))
 const api = fallbackApiJson as jest.Mock
 beforeEach(() => api.mockReset().mockResolvedValue({ ok: true }))
 
@@ -30,7 +30,7 @@ test('refreshes notification badges after the server confirms reading', async ()
   window.addEventListener('novvin:notifications-updated', listener)
   try {
     await markFallbackNotificationRead('notice')
-    expect(api).toHaveBeenCalledWith('/v1/data/notifications/notice/read', { method: 'PATCH', body: '{}' })
+    expect(api).toHaveBeenCalledWith('/v1/data/notifications/notice/read', { method: 'PATCH', expectedAccountId: 'owner', body: '{}' })
     expect(listener).toHaveBeenCalledTimes(1)
   } finally { window.removeEventListener('novvin:notifications-updated', listener) }
 })

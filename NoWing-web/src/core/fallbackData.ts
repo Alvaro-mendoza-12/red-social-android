@@ -327,11 +327,12 @@ export async function hideFallbackChat(chatId: string) {
   return result
 }
 
-export async function markFallbackNotificationRead(notificationId: string): Promise<{ ok: boolean }> {
+export async function markFallbackNotificationRead(notificationId: string, expectedAccountId = outboxOwner()): Promise<{ ok: boolean }> {
   const result = await fallbackApiJson<{ ok: boolean }>(
     `/v1/data/notifications/${encodeURIComponent(notificationId)}/read`,
     {
       method: 'PATCH',
+      expectedAccountId,
       body: JSON.stringify({}),
     },
   )
@@ -339,9 +340,10 @@ export async function markFallbackNotificationRead(notificationId: string): Prom
   return result
 }
 
-export async function markAllFallbackNotificationsRead(): Promise<{ ok: boolean }> {
+export async function markAllFallbackNotificationsRead(expectedAccountId = outboxOwner()): Promise<{ ok: boolean }> {
   const result = await fallbackApiJson<{ ok: boolean }>('/v1/data/notifications/read-all', {
     method: 'POST',
+    expectedAccountId,
     body: JSON.stringify({}),
   })
   window.dispatchEvent(new Event('novvin:notifications-updated'))

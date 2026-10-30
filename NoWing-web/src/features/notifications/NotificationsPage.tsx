@@ -355,10 +355,10 @@ export function NotificationsPage() {
     }
     if (isUsingFallback) {
       if (markAll) {
-        await markAllFallbackNotificationsRead()
+        await markAllFallbackNotificationsRead(user.id)
         return
       }
-      await Promise.all(notificationIds.map((notificationId) => markFallbackNotificationRead(notificationId)))
+      await Promise.all(notificationIds.map((notificationId) => markFallbackNotificationRead(notificationId, user.id)))
       return
     }
     if (!supabase) {
