@@ -4,11 +4,13 @@ import android.content.SharedPreferences
 import conectate.com.data.model.ChatFolder
 import java.util.Locale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
@@ -50,7 +52,7 @@ internal class ChatFolderStore(
 
     fun observe(accounts: Flow<String?>): Flow<List<ChatFolder>> = combine(accounts, revision) { _, _ ->
         read(currentAccount())
-    }
+    }.flowOn(Dispatchers.IO)
 
     @Synchronized
     fun read(account: String?): List<ChatFolder> {
