@@ -120,6 +120,16 @@ test.each(['chat', 'group', 'community'] as const)('%s pastes native text and st
   expect(sendFallbackRoomMessage).not.toHaveBeenCalled()
 })
 
+test.each(['chat', 'group', 'community'] as const)('%s renders every saved emoji reaction, including the last three quick choices', async scope => {
+  const loader = (scope === 'chat' ? loadFallbackChat : loadFallbackRoomChat) as jest.Mock
+  const reactions = { '👍': ['friend'], '❤️': ['friend'], '😂': ['friend'], '😮': ['friend', 'account-a'], '😢': ['friend'], '🙏': ['friend'], '🎉': ['friend'], '👎': [] }
+  loader.mockResolvedValue({ ...response, messages: [{ ...incoming, reactions }] })
+  open(scope)
+  const message = (await screen.findByText('Mensaje recibido')).closest('article')!
+  const chips = Array.from(message.querySelectorAll('.reaction-chip')).map(chip => chip.textContent)
+  expect(chips).toEqual(['👍 1', '❤️ 1', '😂 1', '😮 2', '😢 1', '🙏 1', '🎉 1'])
+})
+
 test('notification entry renders cached nickname and avatar while the server is still pending', async () => {
   writeCachedValue('messages:account-a:chats', [{ id: 'room-a', profileId: 'friend', title: 'Apodo privado', avatarUrl: 'https://example.test/avatar.gif' }])
   let finish!: (value: typeof response) => void

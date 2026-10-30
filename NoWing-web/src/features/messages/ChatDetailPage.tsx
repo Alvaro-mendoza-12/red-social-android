@@ -2416,7 +2416,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(message.createdAt)
           const deliveryState = mine ? mineDeliveryState(message, readByOther) : null
           const showMessageText = message.contentType !== 'sticker' && shouldRenderMessageText(message)
-          const activeReactions = ['👍', '❤️', '😂'].filter(
+          const activeReactions = Object.keys(message.reactions).filter(
             (emoji) => reactionCount(message.reactions, emoji) > 0,
           )
 
