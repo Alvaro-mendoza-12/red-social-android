@@ -73,6 +73,19 @@ Otras tres pruebas nativas dirigidas aprueban cola push sin conexión, primer fo
 
 La primera medición adicional de video se detuvo antes de leer el feed por una configuración incorrecta de acceso al grafo de dependencias del test. Se corrigió con una entrada compartida para las variantes debug/audit/auditRelease, excluida de release y accesible desde el componente de aplicación correspondiente, según el [patrón de Hilt](https://dagger.dev/hilt/entry-points.html); no se interpreta como un fallo del servidor. Se conservan los registros de los intentos y la medición solo se acepta cuando finaliza sin omisiones.
 
-El candidato es **9.1.32 / 172**. El análisis estático completo aprobó sin errores; el recuento definitivo de advertencias se registrará después de reconstruir los recursos y cerrar la segunda revisión. Los artefactos firmados se documentarán al completar sus verificaciones. La entrega anterior 171 se conserva; ninguna de estas tareas publica automáticamente en Play.
+La entrega es **9.1.32 / 172**, con 1.979 unitarias aprobadas de nuevo después de la segunda revisión y lint final con **cero errores y 312 advertencias**, frente a las 320 iniciales. Los recursos de idioma quedaron reconstruidos. La entrega anterior 171 se conserva y no se publica en Play.
+
+## Paquetes firmados y cierre
+
+APK y AAB generados con el código `c36765ecc9d6` (equivalente funcional de main: `973d51555676`), configuración de producción, mínimo API 24 y objetivo API 36, sin debuggable. Se verifica la misma firma de subida de las entregas anteriores; esto no sustituye la huella de firma administrada por Play. R8 conserva los 17 componentes del manifiesto y el nuevo PushRegistrationWorker; MediaAuditEntryPoint queda excluido del release. Se comprueban catorce ELF de 64 bits con alineación de al menos 16 KiB, zipalign -P 16, validación del AAB y PAGE_ALIGNMENT_16K. No se ejecuta hardware físico de páginas de 16 KiB.
+
+| Archivo | Bytes | SHA-256 |
+| --- | ---: | --- |
+| APK 172 | 221169433 | `4d1f1975bc36f2845c824f0dc42b0c3734b723fc5d8dba13f7a81e86544a1568` |
+| AAB 172 | 131956613 | `19e51090a50adfe1468c4dba7bdf136df83eae4229f4d788f0987f6c123cdbff` |
+
+Se instala el APK normal firmado sobre la versión 171 sin borrar datos, con sesión sintética confirmada antes y después de actualizar. Se recorren las cinco secciones principales y se vuelve a abrir la aplicación; la comprobación termina sin crash ni ANR de Novvin registrado en ese recorrido. El resultado no extiende las pruebas anteriores de API 36 a este paquete ni confirma comunicaciones entre dos teléfonos. No se sube el mapping de una versión todavía no publicada a Crashlytics.
+
+El seguimiento final del servidor confirma la identidad del despliegue, 12 servicios del conjunto principal saludables y ausencia de los patrones graves buscados en los últimos treinta minutos de registros. Es una comprobación acotada, no un análisis exhaustivo de cada petición.
 
 Siguen fuera de la evidencia disponible las llamadas/LIVE y notificaciones FCM entre teléfonos físicos/redes distintas, la asociación HTTPS con la huella administrada por Play y el comportamiento en todos los fabricantes. Las compras pospuestas por el propietario y la integración de retiros no forman parte de estos cambios.

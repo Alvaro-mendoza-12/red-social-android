@@ -5,7 +5,7 @@ Fecha base: 2026-08-24
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Auditoría móvil actual: [95 — Notificaciones, actualización y reconexión](95-auditoria-apk-notificaciones-y-reconexion-2026-10-30.md). Corrige respuestas tardías del contador y operaciones de otra sesión. Aprueba 1.963 unitarias, 65 nativas y lint sin errores. **APK/AAB 9.1.31 / 171 firmados y verificados**, con actualización desde 170 y envío pendiente tras cierre/reconexión comprobados en AOSP 35. API 36 aprueba el recorrido de entrada posterior a una incidencia inicial de System UI del emulador, conservada en el informe. No publicado en Play.
+Auditoría móvil actual: [96 — Segundo plano, subidas, video y perfiles](96-segundo-plano-subidas-y-perfiles-2026-10-30.md) y [97 — Segunda revisión: cancelación y continuidad de la cola push](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md). Registro push persistente, cancelación, reanudación real de 8 MiB desde 6 MiB, preparación por lote del feed y paneles adaptables. Aprueban **1.979 unitarias**, **70 casos nativos únicos seleccionados** y lint con **cero errores/312 advertencias**, con alcances e incidencias iniciales conservados. **APK/AAB 9.1.32 / 172 firmados y verificados**, con actualización desde 171 y recorrido del paquete firmado en AOSP 35. La optimización SQL de perfiles ya está aplicada al servidor, sin cambios de esquema. No publicado en Play; siguen pendientes las comunicaciones FCM/LIVE/llamadas entre equipos físicos y la huella administrada por Play.
 
 Auditoría web actual: [94 — Reacciones y recorrido](94-reacciones-y-recorrido-web-2026-10-30.md). Corrige emojis guardados que quedaban invisibles en chats, grupos y comunidades. Publicada y comprobada con reacciones reales entre cuentas sintéticas, recarga y retirada. Aprueba 865 pruebas web, 96 Node y 90 controles públicos; documenta tiempos, navegación y límites de la muestra.
 
@@ -15,7 +15,7 @@ Continuación web: [92 — Miniaturas, portada y contadores inmediatos](92-minia
 
 Preferencias de compra vigentes: [91 — Cable de 30 m, dominio/correo y opción dLocal](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md). UPS y respaldo fuera del local pospuestos por el propietario. Se distingue la opción dLocal probable de una integración implementada; el proveedor de retiros sigue pendiente de elección/habilitación.
 
-Continuación actual: [90 — Cierre de auditoría, red y presupuesto](90-cierre-produccion-red-y-presupuesto-2026-10-29.md). Servidor operativo con 14 contenedores, respaldo externo restaurado en 256 tablas, canario correcto y 90 controles web aprobados. Confirma enlace Ethernet limitado a 100 Mbps pese a tarjeta gigabit, diagnostica un timeout SMTP transitorio y documenta prioridades de compra con S/300. **APK y AAB 9.1.30 / 170 firmados**, con R8/16 KiB verificados y recorrido de entrada del APK normal aprobado en emulador; no publicados en Play. Siguen vigentes las 857 pruebas web, 96 Node, 1.956 unitarias Android y ocho nativas de la [revisión 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md). Continúa las revisiones [88](88-reintento-video-e-identidades-completas-2026-10-29.md), [87](87-web-insignias-chat-adaptable-y-estados-2026-10-29.md) y [86](86-salas-compartidas-voz-y-avatares-2026-10-29.md). La [auditoría móvil 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md) conserva las mediciones de capacidad aislada; su optimización API sigue sin desplegarse. No se certifica capacidad masiva ni comunicaciones entre dispositivos físicos/redes distintas.
+Continuación actual: [90 — Cierre de auditoría, red y presupuesto](90-cierre-produccion-red-y-presupuesto-2026-10-29.md). Servidor operativo con 14 contenedores, respaldo externo restaurado en 256 tablas, canario correcto y 90 controles web aprobados. Confirma enlace Ethernet limitado a 100 Mbps pese a tarjeta gigabit, diagnostica un timeout SMTP transitorio y documenta prioridades de compra con S/300. **APK y AAB 9.1.30 / 170 firmados**, con R8/16 KiB verificados y recorrido de entrada del APK normal aprobado en emulador; no publicados en Play. Siguen vigentes las 857 pruebas web, 96 Node, 1.956 unitarias Android y ocho nativas de la [revisión 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md). Continúa las revisiones [88](88-reintento-video-e-identidades-completas-2026-10-29.md), [87](87-web-insignias-chat-adaptable-y-estados-2026-10-29.md) y [86](86-salas-compartidas-voz-y-avatares-2026-10-29.md). La [auditoría móvil 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md) conserva las mediciones de capacidad aislada; el despliegue acotado de su consulta de perfiles se cerró en la [revisión 96](96-segundo-plano-subidas-y-perfiles-2026-10-30.md). No se certifica capacidad masiva ni comunicaciones entre dispositivos físicos/redes distintas.
 
 Publicación anterior: [83 — Capturas de chat y recuperación de voz](83-capturas-chat-y-recuperacion-voz-2026-10-28.md). Web y aviso de likes en momentos publicados con autorización; **90/90 controles públicos** y comprobación real de foco/avatares aprobados. **9.1.29 / 169** firmado, verificado y con recorrido de entrada aprobado en emulador; no subido a Play. Validación: 816 pruebas web, 1.914 unitarias Android y 16 nativas. La revisión 83 detalla las verificaciones físicas y de medios pendientes. La [revisión 81](81-continuidad-seo-chats-y-release-168-2026-10-28.md) conserva las evidencias del paquete 168 y las publicaciones previas.
 
@@ -111,6 +111,23 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 82. [Host actualizado, capacidad y acceso público web — 2026-10-27](78-capacidad-host-y-acceso-web-2026-10-27.md)
 83. [Indexación pública e imágenes — 2026-10-27](79-indexacion-publica-2026-10-27.md)
 84. [Auditoría SEO y candidato local, pendiente de autorización — 2026-10-27](80-auditoria-seo-y-candidato-local-2026-10-27.md)
+85. [SEO, imágenes, chats y candidato Android 168](81-continuidad-seo-chats-y-release-168-2026-10-28.md)
+86. [Carga multimedia, emojis y candidato 169](82-carga-multimedia-emojis-y-candidato-169-2026-10-28.md)
+87. [Correcciones de las nuevas capturas de chat y voz](83-capturas-chat-y-recuperacion-voz-2026-10-28.md)
+88. [Auditoría móvil integral y candidato 170](84-auditoria-integral-movil-2026-10-29.md)
+89. [Conectividad, cancelación y carga del cliente móvil](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md)
+90. [Salas compartidas, recuperación de voz y avatares](86-salas-compartidas-voz-y-avatares-2026-10-29.md)
+91. [Web: insignias, chat adaptable y estados comprensibles](87-web-insignias-chat-adaptable-y-estados-2026-10-29.md)
+92. [Reintento de video e identidades completas](88-reintento-video-e-identidades-completas-2026-10-29.md)
+93. [Colas por cuenta y recuperación del visor](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md)
+94. [Cierre de auditoría, red y presupuesto](90-cierre-produccion-red-y-presupuesto-2026-10-29.md)
+95. [Cable de 30 m, dominio/correo y opción dLocal](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md)
+96. [Miniaturas, portada y contadores inmediatos](92-miniaturas-portada-y-contadores-inmediatos-2026-10-29.md)
+97. [Limpieza local de las dos carpetas y de Git](93-limpieza-local-y-git-2026-10-30.md)
+98. [Reacciones visibles y auditoría de navegación web](94-reacciones-y-recorrido-web-2026-10-30.md)
+99. [Auditoría móvil: notificaciones, actualización y reconexión](95-auditoria-apk-notificaciones-y-reconexion-2026-10-30.md)
+100. [Segundo plano, subidas, video y perfiles](96-segundo-plano-subidas-y-perfiles-2026-10-30.md)
+101. [Segunda revisión: cancelación y continuidad de la cola push](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md)
 
 ## Reglas para quien trabaje en este proyecto
 

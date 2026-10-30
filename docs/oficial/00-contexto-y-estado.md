@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Cierre de los cinco puntos y segunda revisión
+
+La [revisión 96](96-segundo-plano-subidas-y-perfiles-2026-10-30.md) y la [segunda revisión 97](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md) cierran los cinco puntos solicitados: segundo plano, interrupción/reanudación de archivos, preparación del feed, consulta de perfiles del servidor y advertencias Android. Aprueban 1.979 unitarias en 417 suites y 70 casos nativos únicos seleccionados en 25 clases, en tandas con alcances diferenciados. Lint: cero errores y 312 advertencias, sin desactivar reglas. **APK/AAB 9.1.32 / 172 firmados**, con firma/R8/16 KiB y actualización desde 171 comprobados en AOSP 35. La consulta SQL está en producción: 26,007→3,154 ms de media en muestras de ejecución SQL, sin equipararlos a latencia completa. El informe conserva un timeout nativo inicial y la variabilidad del video; no certifica todos los escenarios. No publicado en Play ni verificado FCM/LIVE/llamadas entre teléfonos físicos.
+
 ## Auditoría móvil del 30/10/2026
 
 La [revisión 95](95-auditoria-apk-notificaciones-y-reconexion-2026-10-30.md) corrige el contador de notificaciones para descartar respuestas anteriores o de sesiones invalidadas. Aprueba 1.963 unitarias en 415 suites, 65 nativas en AOSP 35 y lint con cero errores/320 advertencias existentes. **APK y AAB 9.1.31 / 171 firmados**, con R8/alineación de 16 KiB contrastados. La actualización conservó la sesión y un mensaje enviado sin red sobrevivió al cierre, llegó una sola vez al reconectar y se limpió. En API 36 se completó el recorrido de entrada después de recuperar un aviso inicial de System UI del emulador; no se oculta esa incidencia ni se certifica el primer intento. No se distribuyó en Play ni se cambió la API, los pagos o el esquema de datos.

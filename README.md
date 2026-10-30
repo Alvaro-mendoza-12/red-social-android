@@ -1,13 +1,13 @@
 # Novvin — Red social móvil
 
-Fecha de última revisión documental: 2026-10-29.
+Fecha de última revisión documental: 2026-10-30.
 
 > Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
 > Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
 
-Continuación vigente: [reintento real de video e identidades completas](docs/oficial/88-reintento-video-e-identidades-completas-2026-10-29.md), publicada y subida a GitHub en ambas ramas; 855 pruebas web aprobadas y comparación antes/después en navegador. Continúa la [revisión web 87](docs/oficial/87-web-insignias-chat-adaptable-y-estados-2026-10-29.md), las [salas compartidas 86](docs/oficial/86-salas-compartidas-voz-y-avatares-2026-10-29.md) y la [auditoría móvil 85](docs/oficial/85-conectividad-cancelacion-y-carga-movil-2026-10-29.md). Candidato Android **9.1.30 / código 170**, local: 1.956 unitarias aprobadas. La apertura HTTPS directa requiere la huella de firma de Play; la optimización API aislada no se despliega con la web. Los cierres distinguen producción web, pruebas QA y distribución móvil pendiente.
+Continuación vigente: [auditoría de los cinco puntos](docs/oficial/96-segundo-plano-subidas-y-perfiles-2026-10-30.md) y [segunda revisión móvil](docs/oficial/97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md), subidas en ambas ramas. **APK/AAB 9.1.32 / 172 firmados y comprobados**, con 1.979 pruebas unitarias, 70 casos nativos únicos seleccionados y lint sin errores (312 advertencias revisadas). La optimización de perfiles ya está aplicada al servidor. Los informes distinguen las muestras de rendimiento, el emulador, las verificaciones físicas pendientes y la distribución en Play aún no realizada. La [revisión web 94](docs/oficial/94-reacciones-y-recorrido-web-2026-10-30.md) conserva el último cierre funcional de la web.
 
-La [revisión 83](docs/oficial/83-capturas-chat-y-recuperacion-voz-2026-10-28.md) conserva la publicación anterior, el aviso de momentos y el último paquete Android **9.1.29 / 169** firmado. La indexación y sus comprobaciones están documentadas en esa continuidad y la [revisión SEO 80](docs/oficial/80-auditoria-seo-y-candidato-local-2026-10-27.md). La rama `main` está conectada a Vercel: la tanda 86 tiene autorización del propietario para publicar la web y subir los commits.
+La [revisión 83](docs/oficial/83-capturas-chat-y-recuperacion-voz-2026-10-28.md) conserva la publicación anterior, el aviso de momentos y el paquete histórico Android **9.1.29 / 169** firmado. La indexación y sus comprobaciones están documentadas en esa continuidad y la [revisión SEO 80](docs/oficial/80-auditoria-seo-y-candidato-local-2026-10-27.md). La rama `main` está conectada a Vercel: la tanda 86 tiene autorización del propietario para publicar la web y subir los commits.
 
 La [revisión del servidor](docs/oficial/76-auditoria-servidor-2026-10-26.md) y su [continuación del 27/10](docs/oficial/78-capacidad-host-y-acceso-web-2026-10-27.md) registran limpieza, restauración, Ubuntu actualizado y reiniciado, capacidad y transporte web público. La [revisión de indexación](docs/oficial/79-indexacion-publica-2026-10-27.md) recoge 19 páginas, seis imágenes nuevas y verificaciones de Vercel y buscadores. Las [instrucciones de continuidad](docs/oficial/77-prompt-continuidad-produccion-y-escalado.md) conservan los objetivos pendientes.
 
@@ -43,13 +43,13 @@ Novvin está en beta pública. Las pruebas y comentarios honestos de usuarios re
 
 ### Prerequisites
 
-1. **Android Studio** (Hedgehog o superior recomendado)
+1. **Android Studio** compatible con Android Gradle Plugin 8.13.2
 2. **JDK 17–21** para ejecutar Gradle (el bytecode Java/Kotlin sigue dirigido a 17). JDK 22 o superior falla de forma explícita para evitar builds incompatibles.
 3. **VM/servidor Ubuntu** con Docker y Docker Compose para backend principal.
 
 ### Paso 1: Clonar el Proyecto
 
-El proyecto ya está en `d:\RED SOCIAL`
+Clona el repositorio y abre su carpeta en Android Studio. Los worktrees locales comparten el caché habitual de Gradle.
 
 ### Paso 2: Configurar Ubuntu como backend principal
 
@@ -67,15 +67,9 @@ SUPABASE_ANON_KEY=
 
 Guia oficial: `docs/CONECTATE_UBUNTU_OFFICIAL_RUNBOOK_2026.md`.
 
-### Paso 3: Configurar Servidor de Señalización de Voz
+### Paso 3: Configurar la señalización de voz
 
-El sistema de salas de voz usa un servidor personalizado Socket.io para la señalización WebRTC.
-
-1. Navega a `signaling-server/`
-2. Instala dependencias: `npm install`
-3. Inicia el servidor: `npm start`
-4. Expón el servidor usando **ngrok** (si pruebas en dispositivo real): `ngrok http 3001`
-5. Configura la URL resultante en `VoiceRoomRepository.kt` (`SIGNALING_URL`).
+El despliegue Ubuntu integra señalización, realtime y TURN. Android resuelve el origen mediante `RuntimeBackendEndpoint` y `SignalingConfig`; configura el backend y sus credenciales de TURN siguiendo el [runbook oficial](docs/oficial/06-operaciones-runbook.md). Las instrucciones históricas de levantar un servidor separado con un túnel temporal no describen el despliegue actual.
 
 ### Paso 4: Sync de Gradle
 
@@ -218,7 +212,7 @@ El proyecto ya no está en estado inicial. Hoy cuenta con:
 
 - autenticación, perfil y storage sobre Ubuntu;
 - mensajería, grupos, comunidades y salas de voz con Android nativo;
-- feed de video, perfil y social en producción de desarrollo;
+- feed de video, perfil y Social en beta pública;
 - Hilt, Compose, navegación y repositorios ya integrados;
 - validación local con `compileDebugKotlin`, `testDebugUnitTest` y `lintDebug`.
 
@@ -230,11 +224,11 @@ Puntos importantes sobre el estado real:
 - `wallet` y el descubrimiento público por hashtags quedaron **feature-gateados** para evitar rutas rotas mientras se terminan sus contratos reales.
 - La base ya es funcional, pero todavía sigue en fase de **saneamiento estructural**: repositorios grandes, tests insuficientes y deuda SQL/RLS todavía abierta.
 - A nivel Android, la base ya quedó bastante más consistente para seguir con nuevas funcionalidades sin cargar otra vez tanta duplicación entre `mensajes`, `grupos` y `comunidades`.
-- La referencia técnica viva para esa base está en `docs/ANDROID_CODEBASE_BASELINE_2026.md`.
+- La línea base histórica para esa estructura está en `docs/ANDROID_CODEBASE_BASELINE_2026.md`.
 - La guía de orden del repositorio y clasificación de carpetas está en `docs/REPO_STRUCTURE_GUIDE_2026.md`.
 - En Windows, el gate local de debug, herramientas y seguridad se ejecuta con `.\tools\quality_gate.ps1 -DebugOnly`; el release completo requiere la configuración de firma original descrita en `docs/oficial/08-pruebas-release-handoff.md`.
 
-Validación local cerrada el `2026-04-26`:
+Validación histórica cerrada el `2026-04-26` (el cierre vigente del 30/10 está en las revisiones 96/97):
 
 - `:app:compileDebugKotlin`
 - `:app:assembleDebug`

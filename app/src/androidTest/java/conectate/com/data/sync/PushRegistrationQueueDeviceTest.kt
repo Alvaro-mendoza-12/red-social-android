@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit
 class PushRegistrationQueueDeviceTest {
     @Test fun offlineRefreshQueuesAFollowupPassInsteadOfLosingTheWakeup() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        check(context.packageName.endsWith(".qa"))
+        assumeTrue(context.packageName.endsWith(".qa"))
         assumeTrue(context.getSystemService(ConnectivityManager::class.java).activeNetwork == null)
         val manager = WorkManager.getInstance(context)
         manager.cancelUniqueWork(PushRegistrationScheduler.WORK_NAME).result.get(5, TimeUnit.SECONDS)
