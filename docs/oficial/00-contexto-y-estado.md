@@ -1,5 +1,9 @@
 # 00 — Contexto y estado actual
 
+## Continuación web y APK del 29/10/2026
+
+La [revisión 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md) corrige la selección de pendientes de grupos/comunidades, que podía quedar ocupada por otra cuenta o mensajes borrados, y la recuperación del visor web cuando no se resolvía el origen protegido. La web está publicada, con 857 pruebas web, 96 Node y 90 controles públicos aprobados; se comprobó la recuperación real de una imagen en el navegador. Android aprueba 1.956 unitarias, ocho nativas en AOSP 35 y lint sin errores, con 320 advertencias existentes. Las correcciones están comiteadas y subidas a ambas ramas. El candidato 170 no se distribuye a Play y no se cambia la API de producción.
+
 ## Revisión adicional del 29/10/2026
 
 La [revisión 88](88-reintento-video-e-identidades-completas-2026-10-29.md) reproduce y corrige un botón Reintentar que no recuperaba el origen protegido del video y una consulta que descartaba identidades después de cien perfiles. Aprueba 855 pruebas web y 96 Node. El recorrido real antes/después confirma recuperación y reproducción con la web corregida. Se publica y se sube a ambas ramas, conservando su igualdad. No cambia API ni Android; sus límites de distribución y aceptación física continúan vigentes.
