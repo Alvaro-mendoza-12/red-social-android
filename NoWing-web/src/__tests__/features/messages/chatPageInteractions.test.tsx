@@ -122,7 +122,7 @@ test.each(['chat', 'group', 'community'] as const)('%s pastes native text and st
 
 test.each(['chat', 'group', 'community'] as const)('%s renders every saved emoji reaction, including the last three quick choices', async scope => {
   const loader = (scope === 'chat' ? loadFallbackChat : loadFallbackRoomChat) as jest.Mock
-  const reactions = { '👍': ['friend'], '❤️': ['friend'], '😂': ['friend'], '😮': ['friend', 'account-a'], '😢': ['friend'], '🙏': ['friend'], '🎉': ['friend'], '👎': [] }
+  const reactions = { '👍': ['friend-1'], '❤️': ['friend-2'], '😂': ['friend-3'], '😮': ['friend-4', 'account-a'], '😢': ['friend-5'], '🙏': ['friend-6'], '🎉': ['friend-7'], '👎': [] }
   loader.mockResolvedValue({ ...response, messages: [{ ...incoming, reactions }] })
   open(scope)
   const message = (await screen.findByText('Mensaje recibido')).closest('article')!
