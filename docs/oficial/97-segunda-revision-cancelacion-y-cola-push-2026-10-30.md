@@ -16,6 +16,8 @@ Ahora la ausencia de cuenta o la invalidación de su guardián termina ese regis
 
 Este segundo hallazgo procede de revisar el código y la dependencia entre trabajos. No se afirma haber reproducido una entrega FCM entre equipos físicos. Las regresiones existentes comprueban cambio de cuenta, invalidación de generación, resolución del token vigente y cancelación; la prueba nativa de cola comprueba las restricciones y la pasada dependiente sin registrar un token ficticio.
 
+La prueba de cola exige la variante aislada QA y ausencia de red mediante condiciones de ejecución: otros builds o una red activa la omiten, en vez de informar un fallo de aplicación por no cumplir sus requisitos. Este ajuste de alcance afecta solamente a androidTest y no al paquete de producción; su compilación dirigida terminó correctamente después del cierre del APK firmado.
+
 ## Verificación de cierre
 
-Se repite la suite unitaria sobre estas correcciones y se reconstruye el paquete firmado 9.1.32 / 172, con comprobación de firma, R8 y empaquetado. El análisis estático final debe usar los recursos reconstruidos. Los resultados definitivos se incorporan al cierre de la revisión 96; no se publica en Play desde esta tarea.
+La suite repetida aprueba **1.979 pruebas en 417 suites**, sin fallos, errores ni omisiones. El cierre final confirma lint con cero errores/312 advertencias y el APK/AAB **9.1.32 / 172 firmado**, con firma, R8, 16 KiB y actualización desde 171 comprobados. El detalle de muestras, alcance nativo y paquetes está en la revisión 96. Ambas tandas funcionales están comiteadas y subidas en las dos ramas, con fuentes idénticas; no se publica en Play.

@@ -2,7 +2,7 @@
 
 La app Android es el cliente principal de Novvin. Está desarrollada en Kotlin con Jetpack Compose y sigue una organización por capas, ViewModels, repositorios, servicios Android y módulos de datos.
 
-La revisión móvil vigente es la [auditoría 95](95-auditoria-apk-notificaciones-y-reconexion-2026-10-30.md), que continúa el [cierre 90](90-cierre-produccion-red-y-presupuesto-2026-10-29.md), las [colas por cuenta de 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md), las [salas compartidas de 86](86-salas-compartidas-voz-y-avatares-2026-10-29.md) y la [conectividad de 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md). Los últimos **APK/AAB firmados y contrastados son 9.1.31 / 171**: R8, objetivo API 36 y empaquetado de 16 KiB verificados; actualización con sesión conservada y envío pendiente tras cierre/reconexión comprobados en AOSP 35. Aprueba 1.963 unitarias, 65 nativas y lint sin errores (320 advertencias existentes). En API 36 se completó un recorrido de entrada posterior a una incidencia inicial de System UI del emulador, documentada con sus condiciones. El código está subido en ambas ramas. **No hay una nueva distribución en Play**; antes de subir el AAB debe comprobarse el código de versión vigente en la consola. Los enlaces de voz conservan el destino durante el acceso; la asociación HTTPS directa exige la huella real de firma de Play pendiente. Se distinguen pruebas automáticas, emulador, artefactos firmados y pendientes físicos. Los cambios históricos siguientes conservan su fecha y alcance.
+La [revisión 96](96-segundo-plano-subidas-y-perfiles-2026-10-30.md) y la [segunda revisión 97](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md) cierran los cinco puntos solicitados: segundo plano, interrupción/reanudación de archivos, preparación del feed, consulta de perfiles del servidor y advertencias Android. Aprueban 1.979 unitarias en 417 suites y 70 casos nativos únicos seleccionados en 25 clases, en tandas con alcances diferenciados. Lint: cero errores y 312 advertencias, sin desactivar reglas. **APK/AAB 9.1.32 / 172 firmados**, con firma/R8/16 KiB y actualización desde 171 comprobados en AOSP 35. La consulta SQL está en producción: 26,007→3,154 ms de media en muestras de ejecución SQL, sin equipararlos a latencia completa. El informe conserva un timeout nativo inicial y la variabilidad del video; no certifica todos los escenarios. No publicado en Play ni verificado FCM/LIVE/llamadas entre teléfonos físicos. El destino de los enlaces de voz se conserva durante el acceso; la asociación HTTPS directa requiere la huella real de firma de Play pendiente. El historial siguiente conserva su fecha y alcance.
 
 Cambios del candidato 166 que afectan al arranque y a los medios:
 
@@ -27,8 +27,8 @@ Estado observado:
 - `compileSdk`: 36
 - `minSdk`: 24
 - `targetSdk`: 36
-- `versionCode`: 171
-- `versionName`: 9.1.31
+- `versionCode`: 172
+- `versionName`: 9.1.32
 - Java/Kotlin target: 17
 - Runtime de Gradle soportado: JDK 17–21. JDK 22+ se rechaza antes de compilar; el target de bytecode permanece en 17.
 - Android Gradle Plugin: 8.13.2
