@@ -6,7 +6,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import conectate.com.data.community.CommunityQuestion
@@ -25,7 +26,7 @@ internal fun QuestionAnswerSheet(question: CommunityQuestion?, prompt: String, i
     LaunchedEffect(mine?.content){if(!edited)draft=mine?.content.orEmpty()}
     val limit=question?.maxLength ?: 40
     ModalBottomSheet(onDismissRequest=onClose, sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
-        Column(Modifier.fillMaxWidth().height((LocalConfiguration.current.screenHeightDp * .75f).dp).imePadding().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().height(with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * .75f).imePadding().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Row { Text(prompt,Modifier.weight(1f),style=MaterialTheme.typography.titleLarge,maxLines=3,overflow=TextOverflow.Ellipsis);TextButton(onClick=onClose){Text("Cerrar")}}
             TabRow(selectedTabIndex=tab) {
                 Tab(selected=tab==0,onClick={tab=0},text={Text("Tu respuesta")})

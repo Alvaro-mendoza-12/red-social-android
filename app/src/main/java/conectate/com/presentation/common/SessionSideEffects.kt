@@ -6,13 +6,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
-import com.google.firebase.messaging.FirebaseMessaging
+import androidx.compose.ui.platform.LocalContext
+import conectate.com.data.sync.PushRegistrationScheduler
 import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.model.Notification
 import conectate.com.data.repository.AuthRepository
@@ -36,7 +36,7 @@ fun SessionSideEffects(
     onSuspensionDetected: (suspensionEndDate: String?, reason: String?) -> Unit,
     onForceLogout: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
+    val applicationContext = LocalContext.current.applicationContext
     val processLifecycle = remember { ProcessLifecycleOwner.get().lifecycle }
     val latestOnSuspensionDetected by rememberUpdatedState(onSuspensionDetected)
     val latestOnForceLogout by rememberUpdatedState(onForceLogout)
@@ -83,25 +83,9 @@ fun SessionSideEffects(
         latestOnForceLogout()
     }
 
-    LaunchedEffect(isLoggedIn, activeUserId) {
-        if (!isLoggedIn || activeUserId.isNullOrBlank()) return@LaunchedEffect
-        runCatching {
-            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    val token = task.result?.trim().orEmpty()
-                    if (token.isBlank()) return@addOnCompleteListener
-                    scope.launch {
-                        notificationRepository.registerFcmToken(token)
-                            .onFailure {
-                                android.util.Log.w("MainActivity", "FCM token registration failed", it)
-                            }
-                    }
-                } else {
-                    android.util.Log.w("MainActivity", "FCM token task was not successful", task.exception)
-                }
-            }
-        }.onFailure { error ->
-            android.util.Log.e("MainActivity", "Error in FCM setup", error)
+    LaunchedEffect(isLoggedIn, activeUserId, isAppInForeground) {
+        if (isLoggedIn && !activeUserId.isNullOrBlank() && isAppInForeground) {
+            PushRegistrationScheduler.enqueue(applicationContext)
         }
     }
 

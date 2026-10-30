@@ -6,8 +6,33 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertThrows
+import java.io.ByteArrayInputStream
 
 class ResumableUploadProtocolTest {
+    @Test fun `new session location cannot send credentials outside the upload endpoint`() {
+        val endpoint = "https://uploads.example.test/storage/v1/upload/resumable".toHttpUrl()
+        assertEquals("https://uploads.example.test/storage/v1/upload/resumable/session", resolveTusSessionUrl(endpoint, "/storage/v1/upload/resumable/session").toString())
+        for (location in listOf("https://attacker.test/session", "http://uploads.example.test/storage/v1/upload/resumable/session", "/v1/auth/session", "https://user:pass@uploads.example.test/storage/v1/upload/resumable/session", "/storage/v1/upload/resumable/session?redirect=1")) {
+            assertThrows(IllegalArgumentException::class.java) { resolveTusSessionUrl(endpoint, location) }
+        }
+    }
+
+    @Test fun `same length replacement has a different resumable source identity`() = runTest {
+        val original = uploadSourceSha256(ByteArrayInputStream(byteArrayOf(1, 2, 3)), 3)
+        val replacement = uploadSourceSha256(ByteArrayInputStream(byteArrayOf(1, 2, 4)), 3)
+        assertNotEquals(original, replacement)
+        assertEquals(original, uploadSourceSha256(ByteArrayInputStream(byteArrayOf(1, 2, 3)), 3))
+    }
+
+    @Test fun `source truncated before retry does not acquire a resumable identity`() = runTest {
+        try {
+            uploadSourceSha256(ByteArrayInputStream(byteArrayOf(1, 2)), 3)
+            org.junit.Assert.fail("Changed local file must be rejected")
+        } catch (_: IllegalArgumentException) { }
+    }
 
     @Test
     fun `only local large media opts into resumable transport`() {

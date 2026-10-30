@@ -319,6 +319,16 @@ class VideoRepository @Inject constructor(
         )
     }
 
+    private suspend fun mergeServerVideoPage(videos: List<Video>): List<Video> {
+        val now = System.currentTimeMillis()
+        val stats = videoStatsDao.mergeServerPage(videos.map { video ->
+            VideoStatsEntity(video.id, video.likeCount, video.commentCount, video.shareCount, video.views, now)
+        }).associateBy { it.videoId }
+        return videos.map { video ->
+            video.normalizedStorageUrls().copy(views = maxOf(video.views, stats[canonicalVideoId(video.id)]?.viewCount ?: 0))
+        }
+    }
+
     private suspend fun validateUploadVideo(
         videoUri: VideoUriType,
         requireAudioTrack: Boolean = false,
@@ -487,10 +497,7 @@ class VideoRepository @Inject constructor(
                     )
                     if (result.isSuccess) {
                         val videos = result.getOrThrow()
-                        videos.forEach { video ->
-                            updateLocalVideoStats(video.id, video.views, video.likeCount, video.commentCount, video.shareCount)
-                        }
-                        val deliveredVideos = videos.map { mergeWithLocalVideoStats(it.normalizedStorageUrls()) }
+                        val deliveredVideos = mergeServerVideoPage(videos)
                         _videoFeedError.value = null
                         if (offset == 0) persistLocalFeed("public", deliveredVideos, feedOwnerId)
                         if (deliveredVideos.isNotEmpty() || !hasFallbackEmission) emit(deliveredVideos)

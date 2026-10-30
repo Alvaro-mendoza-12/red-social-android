@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="qr_torch_enable">Activer la lampe torche</string>
+    <string name="qr_torch_disable">Désactiver la lampe torche</string>
+    <string name="qr_torch_unavailable">Lampe torche indisponible</string>
     <string name="language_settings_title">Langue de l\'application</string>
     <string name="language_settings_description">Le changement s\'applique immédiatement et se synchronise avec les paramètres de langue Android compatibles.</string>
     <string name="language_system">Automatique</string>

@@ -24,6 +24,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.withLock
 import android.util.Log
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
@@ -46,6 +47,8 @@ class NotificationRepository @Inject constructor(
     private var momentExpiryRefreshJob: Job? = null
     private var realtimeUnreadRefreshJob: Job? = null
     private val unreadCounter = NotificationUnreadCounter { authService.getCurrentUserId() }
+    private val pushSession = SessionWriteGuard { authService.getCurrentUserId() }
+    private val pushRegistrationMutex = kotlinx.coroutines.sync.Mutex()
     val unreadCount: StateFlow<Int> = unreadCounter.unreadCount
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
@@ -53,6 +56,7 @@ class NotificationRepository @Inject constructor(
         momentExpiryRefreshJob?.cancel()
         realtimeUnreadRefreshJob?.cancel()
         unreadCounter.clear()
+        pushSession.invalidate()
     }
 
     private fun scheduleRealtimeUnreadRefresh(userId: String) {
@@ -674,7 +678,8 @@ class NotificationRepository @Inject constructor(
         }
     }
 
-    suspend fun registerFcmToken(token: String): Result<Unit> {
+    suspend fun registerFcmToken(token: String): Result<Unit> = pushRegistrationMutex.withLock {
+        val session = pushSession.capture()
         return try {
             val cleanToken = token.trim()
             if (cleanToken.isBlank()) {
@@ -687,13 +692,14 @@ class NotificationRepository @Inject constructor(
             // the local cache is only useful for logout bookkeeping, never as proof that the
             // server still owns the token.
             var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No token"))
+            if (!pushSession.isValid(session)) throw CancellationException("Push session changed")
             val normalizedUserId = userId.trim().lowercase()
             val cacheKey = buildFcmRegistrationCacheKey(normalizedUserId, cleanToken)
 
             if (authService.isLocalFallbackSession()) {
                 return localFallbackApiClient.registerFcmToken(accessToken, cleanToken)
                     .onSuccess {
-                        prefs.edit().putString(KEY_LAST_REGISTERED_FCM, cacheKey).apply()
+                        if (pushSession.isValid(session)) prefs.edit().putString(KEY_LAST_REGISTERED_FCM, cacheKey).apply()
                     }
             }
 
@@ -711,10 +717,12 @@ class NotificationRepository @Inject constructor(
             }
 
             if (response.status.isSuccess()) {
-                prefs.edit().putString(KEY_LAST_REGISTERED_FCM, cacheKey).apply()
+                if (pushSession.isValid(session)) prefs.edit().putString(KEY_LAST_REGISTERED_FCM, cacheKey).apply()
                 Result.success(Unit)
             }
             else Result.failure(Exception("Error registering token: ${response.status}"))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Result.failure(e)
         }

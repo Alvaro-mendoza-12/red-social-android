@@ -14,7 +14,7 @@ class PortraitQrCaptureActivity : CaptureActivity() {
         var enabled = false
         val button = android.widget.Button(this).apply {
             tag = "qr-torch-toggle"
-            text = "Encender linterna"
+            setText(conectate.com.R.string.qr_torch_enable)
             setOnClickListener {
                 val activeScanner = scanner ?: return@setOnClickListener
                 if (isFinishing || isDestroyed) return@setOnClickListener
@@ -22,9 +22,9 @@ class PortraitQrCaptureActivity : CaptureActivity() {
                     val next = !enabled
                     if (next) activeScanner.setTorchOn() else activeScanner.setTorchOff()
                     enabled = next
-                    text = if (enabled) "Apagar linterna" else "Encender linterna"
+                    setText(if (enabled) conectate.com.R.string.qr_torch_disable else conectate.com.R.string.qr_torch_enable)
                 } catch (_: RuntimeException) {
-                    android.widget.Toast.makeText(this@PortraitQrCaptureActivity, "La linterna no está disponible. Puedes seguir escaneando.", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this@PortraitQrCaptureActivity, conectate.com.R.string.qr_torch_unavailable, android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
         }

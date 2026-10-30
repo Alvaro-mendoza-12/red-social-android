@@ -9,7 +9,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -65,7 +66,7 @@ fun SocialPromotionManager(state: PromotionState, onClose: () -> Unit) {
     val ready = title.isNotBlank() && cards.all { it.title.isNotBlank() && it.imageUrl.isNotBlank() && it.cta.isNotBlank() &&
         (it.destination.startsWith("https://") || it.destination in listOf("/app/messages", "/app/videos", "/app/social", "/app/games")) }
     ModalBottomSheet(onDismissRequest = { if (!busy) onClose() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().height((LocalConfiguration.current.screenHeightDp * .88f).dp).imePadding().padding(horizontal = 20.dp)) {
+        Column(Modifier.fillMaxWidth().height(with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * .88f).imePadding().padding(horizontal = 20.dp)) {
             Row { Text(if (creating) "Crear anuncio" else "Publicidad", Modifier.weight(1f), style = MaterialTheme.typography.headlineSmall)
                 TextButton(enabled = !busy, onClick = onClose) { Text("Cerrar") } }
             if (!loaded) { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Cargando tus anuncios…"); return@Column }

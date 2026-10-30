@@ -15,6 +15,9 @@ import io.ktor.http.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -373,7 +376,7 @@ class StorageService @Inject constructor(
             .build()
 
         try {
-            largeUploadClient.newCall(request).execute().use { response ->
+            largeUploadClient.newCall(request).awaitStorageResponse().use { response ->
                 val responseText = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     recordStreamUploadTiming(
@@ -513,9 +516,10 @@ class StorageService @Inject constructor(
         val endpoint = "${localFallbackApiClient.baseUrl.trimEnd('/')}/storage/v1/upload/resumable"
             .toHttpUrlOrNull()
             ?: return null
-        if (!serverSupportsTus(endpoint, accessToken)) return null
-
         return try {
+            val sourceHash = context.contentResolver.openInputStream(sourceUri)?.use {
+                uploadSourceSha256(it, sizeBytes)
+            } ?: throw IOException("No se pudo abrir el archivo seleccionado.")
             val sessionKey = resumableSessionKey(
                 accountId = authService.getCurrentUserId().orEmpty(),
                 endpoint = endpoint,
@@ -524,6 +528,7 @@ class StorageService @Inject constructor(
                 sizeBytes = sizeBytes,
                 contentType = contentType,
                 allowOverwrite = allowOverwrite,
+                sourceHash = sourceHash,
             )
             var sessionUrl = loadPersistedTusSession(sessionKey, endpoint)?.url
             var initialStatus = sessionUrl?.let { persistedUrl ->
@@ -558,7 +563,7 @@ class StorageService @Inject constructor(
                     sizeBytes = sizeBytes,
                     contentType = contentType,
                     allowOverwrite = allowOverwrite,
-                )
+                ) ?: return null
                 sessionUrl = createdSessionUrl
                 persistTusSession(sessionKey, createdSessionUrl)
                 initialStatus = readTusUploadStatus(createdSessionUrl, accessToken)
@@ -569,6 +574,7 @@ class StorageService @Inject constructor(
             var offset = initialStatus?.offset ?: 0L
             var recoveries = 0
             while (offset < sizeBytes) {
+                currentCoroutineContext().ensureActive()
                 try {
                     val nextOffset = uploadTusChunk(
                         sessionUrl = activeSessionUrl,
@@ -605,6 +611,8 @@ class StorageService @Inject constructor(
                     ContentType = contentType,
                 ),
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             Result.failure(error)
         }
@@ -618,6 +626,7 @@ class StorageService @Inject constructor(
         sizeBytes: Long,
         contentType: String,
         allowOverwrite: Boolean,
+        sourceHash: String,
     ): String {
         val identity = listOf(
             accountId.trim().lowercase(),
@@ -629,6 +638,7 @@ class StorageService @Inject constructor(
             sizeBytes.toString(),
             contentType,
             allowOverwrite.toString(),
+            sourceHash,
         ).joinToString("\u001f")
         return sha256Hex(identity.toByteArray(Charsets.UTF_8))
     }
@@ -661,24 +671,7 @@ class StorageService @Inject constructor(
             .apply()
     }
 
-    private fun serverSupportsTus(endpoint: HttpUrl, accessToken: String): Boolean {
-        val request = Request.Builder()
-            .url(endpoint)
-            .method("OPTIONS", null)
-            .header("Authorization", "Bearer $accessToken")
-            .header("apikey", config.supabaseAnonKey)
-            .build()
-        return try {
-            largeUploadClient.newCall(request).execute().use { response ->
-                response.isSuccessful &&
-                    response.header("Tus-Resumable") == RESUMABLE_UPLOAD_PROTOCOL_VERSION
-            }
-        } catch (_: IOException) {
-            false
-        }
-    }
-
-    private fun createTusUploadSession(
+    private suspend fun createTusUploadSession(
         endpoint: HttpUrl,
         accessToken: String,
         bucketName: String,
@@ -686,7 +679,7 @@ class StorageService @Inject constructor(
         sizeBytes: Long,
         contentType: String,
         allowOverwrite: Boolean,
-    ): HttpUrl {
+    ): HttpUrl? {
         val metadata = tusMetadataHeader(
             linkedMapOf(
                 "bucketName" to bucketName,
@@ -705,14 +698,7 @@ class StorageService @Inject constructor(
             .header("Upload-Metadata", metadata)
             .header("x-upsert", allowOverwrite.toString())
             .build()
-        largeUploadClient.newCall(request).execute().use { response ->
-            if (response.code != 201) {
-                throw TusUploadHttpException(response.code, "No se pudo crear la sesión de subida reanudable.")
-            }
-            val location = response.header("Location")?.trim().orEmpty()
-            return location.toHttpUrlOrNull() ?: endpoint.resolve(location)
-                ?: throw IOException("El servidor devolvió una sesión de subida inválida.")
-        }
+        return largeUploadClient.newCall(request).createTusSessionOrNull(endpoint)
     }
 
     private suspend fun recoverTusOffset(
@@ -748,7 +734,7 @@ class StorageService @Inject constructor(
         throw IOException("El servidor no terminó de procesar el archivo subido.")
     }
 
-    private fun readTusUploadStatus(sessionUrl: HttpUrl, accessToken: String): TusUploadStatus {
+    private suspend fun readTusUploadStatus(sessionUrl: HttpUrl, accessToken: String): TusUploadStatus {
         val request = Request.Builder()
             .url(sessionUrl)
             .head()
@@ -756,7 +742,7 @@ class StorageService @Inject constructor(
             .header("apikey", config.supabaseAnonKey)
             .header("Tus-Resumable", RESUMABLE_UPLOAD_PROTOCOL_VERSION)
             .build()
-        largeUploadClient.newCall(request).execute().use { response ->
+        largeUploadClient.newCall(request).awaitStorageResponse().use { response ->
             if (!response.isSuccessful) {
                 throw TusUploadHttpException(response.code, "No se pudo consultar el progreso de la subida.")
             }
@@ -773,7 +759,7 @@ class StorageService @Inject constructor(
         }
     }
 
-    private fun uploadTusChunk(
+    private suspend fun uploadTusChunk(
         sessionUrl: HttpUrl,
         accessToken: String,
         sourceUri: Uri,
@@ -811,7 +797,7 @@ class StorageService @Inject constructor(
             .header("Tus-Resumable", RESUMABLE_UPLOAD_PROTOCOL_VERSION)
             .header("Upload-Offset", offsetBytes.toString())
             .build()
-        largeUploadClient.newCall(request).execute().use { response ->
+        largeUploadClient.newCall(request).awaitStorageResponse().use { response ->
             if (response.code != 204) {
                 throw TusUploadHttpException(response.code, "No se pudo enviar un fragmento de la subida.")
             }

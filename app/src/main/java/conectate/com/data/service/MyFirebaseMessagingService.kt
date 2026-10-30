@@ -105,13 +105,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         android.util.Log.d(TAG, "FCM token refreshed successfully")
         
-        serviceScope.launch {
-            try {
-                notificationRepository.registerFcmToken(token)
-            } catch (e: Exception) {
-                android.util.Log.e(TAG, "Error registering token", e)
-            }
-        }
+        conectate.com.data.sync.PushRegistrationScheduler.enqueue(applicationContext)
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {

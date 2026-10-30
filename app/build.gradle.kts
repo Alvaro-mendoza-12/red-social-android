@@ -93,8 +93,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 171
-        versionName = "9.1.31"
+        versionCode = 172
+        versionName = "9.1.32"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
         val props = Properties()
@@ -287,6 +287,9 @@ android {
     }
 
     sourceSets {
+        listOf("debug", "audit", "auditRelease").forEach { variant ->
+            getByName(variant).java.srcDir("src/auditSupport/java")
+        }
         getByName("main") {
             manifest.srcFile("src/main/AndroidManifest.xml")
             java.setSrcDirs(listOf("src/main/java"))

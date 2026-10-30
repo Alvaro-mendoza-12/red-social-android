@@ -40,7 +40,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,7 +69,7 @@ fun UniversalShareHost(
     val destinations = if (videoRequest == null) knownDestinations else (knownDestinations + people).distinctBy { it.key }
     val actionState by viewModel.actionState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val maximumDialogHeight = (LocalConfiguration.current.screenHeightDp * 0.9f).dp
+    val maximumDialogHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * 0.9f
     val activeKey = videoRequest?.requestId ?: forwardRequest?.requestId ?: incomingShare?.id.orEmpty()
     var query by remember(activeKey) { mutableStateOf("") }
     var selectedKeys by remember(activeKey) { mutableStateOf<Set<String>>(emptySet()) }
