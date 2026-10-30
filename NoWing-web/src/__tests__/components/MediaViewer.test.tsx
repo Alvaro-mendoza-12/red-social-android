@@ -5,8 +5,8 @@ beforeAll(()=>{global.ResizeObserver=class { observe(){} unobserve(){} disconnec
 jest.mock('../../components/DocumentPreview', () => ({ DocumentPreview: ({ title, pdf }: { title:string; pdf:boolean }) => <section aria-label="Documento PDF" data-pdf={String(pdf)}>{title}</section> }))
 
 jest.mock('../../components/StreamingMedia', () => ({
-  StreamingImage: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props}/>,
-  StreamingVideo: (props: React.VideoHTMLAttributes<HTMLVideoElement>) => <video {...props}/>,
+  StreamingImage: ({onSourceUnavailable,...props}: React.ImgHTMLAttributes<HTMLImageElement> & {onSourceUnavailable?:()=>void}) => {void onSourceUnavailable;return <img {...props}/>},
+  StreamingVideo: ({onSourceUnavailable,...props}: React.VideoHTMLAttributes<HTMLVideoElement> & {onSourceUnavailable?:()=>void}) => {void onSourceUnavailable;return <video {...props}/>},
 }))
 
 test('shows selected image, zooms and moves between gallery items', () => {

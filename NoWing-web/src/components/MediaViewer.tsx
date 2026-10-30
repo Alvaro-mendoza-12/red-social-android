@@ -35,6 +35,7 @@ export function MediaViewer({
   })
   const index = Math.max(0, items.findIndex(entry => keyOf(entry) === selectedKey))
   const [failedKey, setFailedKey] = useState<string|null>(null)
+  const [attempt, setAttempt] = useState(0)
   const [visibleThumbnails, setVisibleThumbnails] = useState(() => new Set<string>())
   const item = items[index]
   const failed = item && failedKey === keyOf(item)
@@ -123,24 +124,25 @@ export function MediaViewer({
         }}
       >
         {failed ? (
-          <p role="status">
-            No se pudo mostrar este archivo.
-            {item.downloadUrl ? ' Puedes descargarlo desde el botón de arriba.' : ''}
-          </p>
+          <div className="media-viewer-error" role="status">
+            <p>No se pudo mostrar este archivo. Puedes reintentar o descargarlo desde el botón de arriba.</p>
+            <button className="ghost-btn" type="button" onClick={() => {setFailedKey(null);setAttempt(value => value + 1)}}>Volver a cargar</button>
+          </div>
         ) : item.type === 'pdf' || item.type === 'document' ? (
           <DocumentPreview key={item.url} url={item.url} title={item.documentName || item.title || 'Documento'} pdf={item.type === 'pdf'} />
         ) : item.type === 'video' ? (
           <StreamingVideo
-            key={item.url}
+            key={`${item.url}/${attempt}`}
             src={item.url}
             controls
             autoPlay
             playsInline
             preload="metadata"
             onError={() => setFailedKey(keyOf(item))}
+            onSourceUnavailable={() => setFailedKey(keyOf(item))}
           />
         ) : (
-          <ZoomableImage key={keyOf(item)} src={item.url} title={item.title || 'Imagen ampliada'} onError={() => setFailedKey(keyOf(item))} />
+          <ZoomableImage key={`${keyOf(item)}/${attempt}`} src={item.url} title={item.title || 'Imagen ampliada'} onError={() => setFailedKey(keyOf(item))} />
         )}
       </div>
       {items.length>1?<nav ref={strip} className="media-viewer-filmstrip" aria-label="Archivos de la conversación">{items.map((entry,i)=><button type="button" key={`${entry.url}-${i}`} data-media-key={keyOf(entry)} aria-label={`Ver archivo ${i+1}`} aria-current={i===index?'true':undefined} onClick={()=>setIndex(i)}>{entry.type==='image'?(Math.abs(i-index)<=3||visibleThumbnails.has(keyOf(entry))?<StreamingImage src={runtimeStoragePreviewUrl(entry.url,160,65)} alt="" loading="lazy"/>:<ImageIcon size={24}/>):entry.type==='video'&&Math.abs(i-index)<=1?<StreamingVideo src={entry.url} muted preload="metadata" playsInline/>:<Film size={24}/>}<small>{i+1}</small></button>)}</nav>:null}
