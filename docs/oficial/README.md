@@ -1,9 +1,11 @@
 # Novvin — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-10-29 (Bogotá; cada evidencia indica su fecha y alcance)
+Última actualización de la fuente canónica: 2026-10-30 (Bogotá; cada evidencia indica su fecha y alcance)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
+
+Limpieza local: [93 — Carpetas y Git](93-limpieza-local-y-git-2026-10-30.md). Ambas carpetas pasan de 244,45/62,66 GiB a 7,91/2,67 GiB, sin seguir enlaces. Se recuperan aproximadamente 295 GiB físicos, conservando fuentes, claves y entregas vigentes; Git pasa su comprobación de integridad.
 
 Continuación web: [92 — Miniaturas, portada y contadores inmediatos](92-miniaturas-portada-y-contadores-inmediatos-2026-10-29.md). Publicada, con 862 pruebas web, 96 Node, 90 controles públicos y lint sin errores. El navegador comprueba el contador antes de terminar la consulta HTTP retrasada y la carga/reutilización de miniaturas de portada y sticker en un fixture propio. Ambas ramas contienen las correcciones. No modifica API ni los paquetes Android 170 firmados.
 
