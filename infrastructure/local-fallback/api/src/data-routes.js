@@ -7,6 +7,7 @@ const { patchImportedRow, deleteImportedRow, deleteImportedPost } = require('./i
 const { isRetiredNotification } = require('./retired-notifications')
 const { isServerManagedNotification } = require('./notification-event-policy')
 const { publicFeedPage } = require('./public-feed-page')
+const { profilePostShareCandidates, postShareProjection } = require('./profile-post-shares')
 const { publicSearchPage, searchPageOptions } = require('./public-search-page')
 const { historyPageOptions, conversationHistoryPage } = require('./conversation-history-page')
 const { deniedPublicCreatorIds, publicCreatorVisibility } = require('./public-creator-visibility')
@@ -4863,7 +4864,7 @@ async function loadPostDetailPayload(pool, user, rawPostId, { includeComments = 
   const { counts: likeCounts, mine: likedPostIds } = countPostInteractions(relevantLikes, identity)
   const reactionState = buildPostReactionState(relevantLikes, identity)
   const commentCounts = new Map([[postId, relevantComments.length]])
-  const { counts: shareCounts, mine: sharedPostIds } = countPostInteractions(relevantShares, identity)
+  const { counts: shareCounts, mine: sharedPostIds } = postShareProjection(relevantShares, identity.ids)
   const enrichedPost = enrichPost(
     post,
     profilesById,
@@ -4877,7 +4878,7 @@ async function loadPostDetailPayload(pool, user, rawPostId, { includeComments = 
   return {
     post: {
       ...enrichedPost,
-      share_count: numberOf(enrichedPost, ['share_count', 'shares_count'], shareCounts.get(postId) || 0),
+      share_count: shareCounts.get(postId) || 0,
       shared_by_me: sharedPostIds.has(postId),
     },
     comments: relevantComments
@@ -8671,6 +8672,8 @@ function registerDataRoutes(app, {
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 60, 200))
       const offset = Math.max(0, Math.min(Math.floor(Number(req.query.offset) || 0), 10_000))
       const requestedUserId = normalizeId(req.query.userId || req.query.user_id || '')
+      const sharedBy = normalizeId(req.query.sharedBy || '')
+      if (sharedBy && requestedUserId) return res.status(400).json({ error: 'AMBIGUOUS_PROFILE_FILTER' })
       const mode = normalizeFeedMode(req.query.mode)
       const [importedFollows, fallbackFollows] = await Promise.all([
         importedRowsByFieldValues(
@@ -8699,8 +8702,28 @@ function registerDataRoutes(app, {
         : mode === 'following'
           ? cleanSet([...identity.values, ...followingIds])
           : new Set()
+      const sharingProfileIds = cleanSet([sharedBy])
+      if (sharedBy) {
+        const profiles = await publicProfilesByIds(pool, sharingProfileIds)
+        for (const profile of profiles) profileAliasSet(profile).forEach(alias => sharingProfileIds.add(alias))
+        const deniedIds = await deniedPublicCreatorIds(pool, { profiles, ownerIds: sharingProfileIds, viewerIds: identity.ids })
+        const visible = publicCreatorVisibility({ profiles, viewerIds: identity.ids, followingIds, deniedIds })
+        if (!visible(sharedBy)) return res.status(404).json({ error: 'PROFILE_NOT_FOUND' })
+      }
       let creatorVisible = () => false
       const readCandidates = async candidateReadLimit => {
+        if (sharedBy) {
+          const groups = await profilePostShareCandidates(pool, sharingProfileIds, candidateReadLimit, {
+            importedShares: (ids, count) => importedRowsByFieldValues(pool, 'shares', ['user_id', 'userId', 'profile_id'], ids, count),
+            importedPosts: ids => importedRowsByFieldValues(pool, 'posts', ['id'], ids, ids.length),
+            localPosts: ids => localPostsByIds(pool, ids),
+          })
+          const ownerIds = cleanSet(groups.flat().filter(row => !row.missing_share).map(postOwnerId))
+          const profiles = await publicProfilesByIds(pool, ownerIds)
+          const deniedIds = await deniedPublicCreatorIds(pool, { profiles, ownerIds, viewerIds: identity.ids })
+          creatorVisible = publicCreatorVisibility({ profiles, viewerIds: identity.ids, followingIds, deniedIds })
+          return groups
+        }
         const importedPostRead = requestedOwnerIds.size > 0
           ? importedRowsByFieldValues(
             pool,
@@ -8722,9 +8745,9 @@ function registerDataRoutes(app, {
         return groups
       }
       const page = await publicFeedPage({ read: readCandidates, offset, limit,
-        visible: row => creatorVisible(postOwnerId(row)) &&
+        visible: row => !row.missing_share && creatorVisible(postOwnerId(row)) &&
           feedPostVisible(row, { identityIds: identity.ids, followingIds, mode, requestedUserId }),
-        order: rows => sortByDateDesc(rows, ['created_at', 'updated_at']),
+        order: rows => sortByDateDesc(rows, sharedBy ? ['profile_shared_at', 'created_at'] : ['created_at', 'updated_at']),
       })
       const pagePosts = page.items
       const postIds = pagePosts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
@@ -8732,13 +8755,15 @@ function registerDataRoutes(app, {
         ...identity.values,
         ...pagePosts.map((row) => postOwnerId(row)),
       ])
-      const [publicProfiles, likes, reactions, comments, fallbackLikes, fallbackComments] = await Promise.all([
+      const [publicProfiles, likes, reactions, comments, fallbackLikes, fallbackComments, importedShares, localShares] = await Promise.all([
         publicProfilesByIds(pool, authorIds),
         importedRowsByFieldValues(pool, 'post_likes', ['post_id', 'postId'], postIds, 10_000),
         importedRowsByFieldValues(pool, 'post_reactions', ['post_id', 'postId'], postIds, 10_000),
         importedRowsByFieldValues(pool, 'post_comments', ['post_id', 'postId'], postIds, 10_000),
         localPostReactions(pool, postIds, 10_000),
         localPostComments(pool, postIds, 10_000),
+        importedRowsByFieldValues(pool, 'shares', ['post_id', 'postId'], postIds, 50_000),
+        localPostShares(pool, postIds, 50_000),
       ])
 
       const profilesById = indexProfiles(publicProfiles)
@@ -8763,7 +8788,8 @@ function registerDataRoutes(app, {
       }
       const reactionState = buildPostReactionState(allReactionRows, identity)
 
-      const items = pagePosts.map((row) => enrichPost(
+      const shareState = postShareProjection([...importedShares, ...localShares], identity.ids)
+      const items = pagePosts.map((row) => ({ ...enrichPost(
           row,
           profilesById,
           likeCounts,
@@ -8771,7 +8797,8 @@ function registerDataRoutes(app, {
           likedPostIds,
           reactionState.counts,
           reactionState.mine,
-        ))
+        ), share_count: shareState.counts.get(normalizeId(row.id)) || 0,
+          shared_by_me: shareState.mine.has(normalizeId(row.id)) }))
 
       res.json({ items, hasMore: page.hasMore, nextOffset: page.nextOffset,
         candidateLimitReached: page.candidateLimitReached })
@@ -9678,13 +9705,14 @@ function registerDataRoutes(app, {
       if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
 
       const identity = userIdentity(user)
-      await pool.query(
+      if (existing.post.shared_by_me) return res.json({ ok: true, post: existing.post })
+      const inserted = await pool.query(
         `INSERT INTO fallback_shares(user_id, post_id, content_type, created_at)
          VALUES ($1, $2, 'post', NOW())
          ON CONFLICT (user_id, post_id, content_type) DO NOTHING`,
         [identity.displayUserId, postId],
       )
-      await createLocalNotificationBestEffort(pool, {
+      if (inserted.rowCount > 0) await createLocalNotificationBestEffort(pool, {
         recipientId: normalizeId(textOf(existing.post, ['user_id', 'owner_id', 'author_id', 'creator_id'], '')),
         actorId: identity.displayUserId,
         actorName: user.display_name || user.email || 'Usuario',
@@ -9713,6 +9741,16 @@ function registerDataRoutes(app, {
       if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
 
       const identity = userIdentity(user)
+      const oldShares = await importedRowsByFieldValues(pool, 'shares', ['post_id', 'postId'], [postId], 50_000)
+      for (const share of oldShares) {
+        if (postIdOf(share) === postId && !share.video_id &&
+            ['', 'post'].includes(textOf(share, ['content_type'], '').toLowerCase()) &&
+            rowMatchesAny(share, ['user_id', 'userId', 'profile_id'], identity.ids)) {
+          const id = textOf(share, ['id'], '')
+          if (id) await deleteImportedRow(pool, 'shares', id)
+        }
+      }
+      clearImportedRowCaches('shares')
       await pool.query(
         `DELETE FROM fallback_shares
          WHERE lower(user_id) = $1 AND lower(post_id) = $2 AND content_type = 'post'`,

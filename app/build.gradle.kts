@@ -93,8 +93,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 174
-        versionName = "9.1.34"
+        versionCode = 175
+        versionName = "9.1.35"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
         val props = Properties()
@@ -163,6 +163,7 @@ android {
         }
         if (providers.gradleProperty("communicationValidationOnly").orNull == "true") {
             getByName("androidTest").java.setSrcDirs(listOf("src/communicationValidationTest/java"))
+            getByName("androidTest").manifest.srcFile("src/communicationValidationTest/AndroidManifest.xml")
         }
         if (providers.gradleProperty("audioValidationOnly").orNull == "true") {
             getByName("androidTest").java.setSrcDirs(

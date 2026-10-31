@@ -717,7 +717,10 @@ fun CommunityChatScreen(
                                             else android.widget.Toast.makeText(context, "No se encontró un perfil único para esa mención.", android.widget.Toast.LENGTH_SHORT).show()
                                         } },
                                         onUrlClick = { url ->
-                                            if (!openCollectionInvitation(url)) conectate.com.data.model.videoIdFromSharedLink(url)?.let { id ->
+                                            val content = conectate.com.presentation.navigation.sharedContentDestination(url)
+                                            if (openCollectionInvitation(url)) Unit
+                                            else if (content != null) navController.navigate(content.route)
+                                            else conectate.com.data.model.videoIdFromSharedLink(url)?.let { id ->
                                                 navController.navigate(conectate.com.presentation.navigation.Screen.VideoPlayer.createRoute(id))
                                             }
                                         },

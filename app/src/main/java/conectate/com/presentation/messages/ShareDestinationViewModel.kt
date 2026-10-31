@@ -34,7 +34,7 @@ enum class SharePublishDestination {
 sealed interface ShareActionState {
     data object Idle : ShareActionState
     data class Running(val completed: Int, val total: Int) : ShareActionState
-    data class Completed(val message: String, val hadFailures: Boolean) : ShareActionState
+    data class Completed(val message: String, val hadFailures: Boolean, val openDestination: ShareDestination? = null) : ShareActionState
     data class Failed(val message: String) : ShareActionState
 }
 
@@ -116,14 +116,16 @@ class ShareDestinationViewModel @Inject constructor(
     fun resetActionState() {
         incomingSendGeneration++
         peopleSearch?.cancel()
-        completedVideoDestinations.clear()
+        contentSendJob?.cancel()
+        internalContentSender.reset()
         videoPeople.value = emptyList()
         _actionState.value = ShareActionState.Idle
     }
 
     val videoPeople = MutableStateFlow<List<ShareDestination>>(emptyList())
     private var peopleSearch: kotlinx.coroutines.Job? = null
-    private val completedVideoDestinations = mutableSetOf<String>()
+    private val internalContentSender = InternalContentShareSender()
+    private var contentSendJob: kotlinx.coroutines.Job? = null
 
     fun searchVideoPeople(query: String) {
         peopleSearch?.cancel()
@@ -137,44 +139,47 @@ class ShareDestinationViewModel @Inject constructor(
             if (authRepository.getCurrentUserId() == account) videoPeople.value = users.distinctBy { it.id }
                 .filter { !it.id.equals(account, true) && it.id.trim().lowercase() !in knownPeers }.take(12).map { user ->
                     ShareDestination("person:${user.id}", ShareDestinationType.CHAT, user.displayName,
-                        user.avatar_url, "@${conectate.com.data.model.profilePublicHandle(user)} · Persona")
+                        user.avatar_url, "@${conectate.com.data.model.profilePublicHandle(user)} · Persona", peerUserId = user.id)
                 }
         }
     }
 
-    fun shareInternalVideo(request: InternalVideoShareRequest, targets: List<ShareDestination>, caption: String) {
+    fun shareInternalVideo(request: InternalVideoShareRequest, targets: List<ShareDestination>, caption: String) =
+        shareInternalContent(request.requestId, conectate.com.data.model.videoWebLink(request.video.id), targets, caption)
+
+    fun shareInternalPost(request: InternalPostShareRequest, targets: List<ShareDestination>, caption: String) =
+        shareInternalContent(request.requestId, conectate.com.presentation.navigation.postShareLink(request.post.id), targets, caption)
+
+    private fun shareInternalContent(requestId: String, link: String, targets: List<ShareDestination>, caption: String) {
         if (_actionState.value is ShareActionState.Running) return
-        val account = authRepository.getCurrentUserId() ?: return
+        val account = authRepository.getCurrentUserId() ?: run {
+            _actionState.value = ShareActionState.Failed("Inicia sesión para compartir.")
+            return
+        }
         if (targets.isEmpty() || targets.size > MAX_FORWARD_DESTINATIONS) {
             _actionState.value = ShareActionState.Failed("Selecciona entre 1 y $MAX_FORWARD_DESTINATIONS destinos")
             return
         }
-        val content = conectate.com.data.model.videoWebLink(request.video.id) +
-            caption.trim().take(800).takeIf(String::isNotBlank)?.let { "\n$it" }.orEmpty()
-        viewModelScope.launch {
-            var done = 0
-            _actionState.value = ShareActionState.Running(0, targets.size)
-            for (target in targets) {
-                if (account != authRepository.getCurrentUserId()) {
-                    _actionState.value = ShareActionState.Failed("La cuenta cambió. Abre Compartir de nuevo.")
-                    return@launch
-                }
-                if (target.key in completedVideoDestinations) { done++; continue }
-                val destination = if (target.id.startsWith("person:")) {
-                    messageRepository.getOrCreateChat(target.id.removePrefix("person:")).getOrNull()
-                        ?.let { target.copy(id = it.id) }
-                } else target
-                if (account != authRepository.getCurrentUserId()) {
-                    _actionState.value = ShareActionState.Failed("La cuenta cambió. Abre Compartir de nuevo.")
-                    return@launch
-                }
-                if (destination != null && sendText(destination, content).isSuccess) {
-                    completedVideoDestinations += target.key; done++
-                }
-                _actionState.value = ShareActionState.Running(done, targets.size)
+        val generation = ++incomingSendGeneration
+        val content = link + caption.trim().take(800).takeIf(String::isNotBlank)?.let { "\n$it" }.orEmpty()
+        _actionState.value = ShareActionState.Running(0, targets.size)
+        contentSendJob = viewModelScope.launch {
+            try {
+                val result = internalContentSender.send(requestId, account, targets, content,
+                    currentAccount = authRepository::getCurrentUserId,
+                    resolvePerson = { id -> messageRepository.getOrCreateChat(id).getOrNull()?.let { chat ->
+                        ShareDestination(chat.id, ShareDestinationType.CHAT, "Chat", peerUserId = id)
+                    } }, send = ::sendText)
+                if (generation != incomingSendGeneration || account != authRepository.getCurrentUserId()) return@launch
+                _actionState.value = if (result.sent == result.total)
+                    ShareActionState.Completed("Compartido en ${result.sent} destino(s)", false, result.lastDestination)
+                else ShareActionState.Failed("Se compartió en ${result.sent} de ${result.total} destinos. Reintenta para enviar solo los pendientes.")
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) {
+                if (generation == incomingSendGeneration) _actionState.value = ShareActionState.Failed(
+                    if (account != authRepository.getCurrentUserId()) "La cuenta cambió. Abre Compartir de nuevo."
+                    else "No se pudo completar el envío. Puedes reintentar los destinos pendientes.")
             }
-            _actionState.value = if (done == targets.size) ShareActionState.Completed("Video añadido a $done destino(s)", false)
-                else ShareActionState.Failed("Se añadió a $done de ${targets.size} destinos. Puedes reintentar los pendientes.")
         }
     }
 
@@ -356,15 +361,16 @@ class ShareDestinationViewModel @Inject constructor(
         }
     }
 
-    private suspend fun sendText(destination: ShareDestination, content: String): Result<Unit> {
+    private suspend fun sendText(destination: ShareDestination, content: String, messageId: String? = null): Result<Unit> {
         return when (destination.type) {
             ShareDestinationType.CHAT -> messageRepository.sendMessage(
                 chatId = destination.id,
                 content = content,
+                messageId = messageId,
                 allowRapidMediaBatch = true
             ).map { Unit }
-            ShareDestinationType.GROUP -> groupRepository.sendGroupMessage(destination.id, content)
-            ShareDestinationType.COMMUNITY -> communityRepository.sendCommunityMessage(destination.id, content)
+            ShareDestinationType.GROUP -> groupRepository.sendGroupMessage(destination.id, content, messageId = messageId)
+            ShareDestinationType.COMMUNITY -> communityRepository.sendCommunityMessage(destination.id, content, messageId = messageId)
         }
     }
 

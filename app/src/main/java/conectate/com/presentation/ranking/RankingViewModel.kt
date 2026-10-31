@@ -55,6 +55,11 @@ class RankingViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            shareRepository.postChanges.collect { change ->
+                if (change.actorId == authService.getCurrentUserId()) _posts.value = _posts.value.map(change::applyTo)
+            }
+        }
+        viewModelScope.launch {
             authService.currentSession.map { it?.user?.id }.distinctUntilChanged().collect {
                 _users.value = emptyList()
                 _videos.value = emptyList()

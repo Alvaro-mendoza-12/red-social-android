@@ -89,6 +89,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     composable(Screen.Login.route) {
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
+                if (navController.openPendingSharedContent()) return@LaunchedEffect
                 withContext(Dispatchers.Main.immediate) {
                     navController.navigate(PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
                         popUpTo(Screen.Login.route) { inclusive = true }
@@ -104,6 +105,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     composable(Screen.Guest.route) {
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
+                if (navController.openPendingSharedContent()) return@LaunchedEffect
                 withContext(Dispatchers.Main.immediate) {
                     navController.navigate(PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
                         popUpTo(navController.graph.id) { inclusive = false }
@@ -118,6 +120,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
         val guestViewModel: GuestModeViewModel = hiltViewModel()
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
+                if (navController.openPendingSharedContent()) return@LaunchedEffect
                 val pendingProfile = guestViewModel.consumePendingProfile()
                 withContext(Dispatchers.Main.immediate) {
                     navController.navigate(

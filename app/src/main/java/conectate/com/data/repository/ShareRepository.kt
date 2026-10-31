@@ -7,6 +7,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+
 import kotlinx.serialization.Serializable
 import conectate.com.data.supabase.AuthService
 import io.ktor.client.request.*
@@ -16,6 +20,12 @@ import kotlinx.serialization.json.*
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import conectate.com.data.localfallback.LocalFallbackApiClient
+
+data class PostShareChange(val actorId: String, val postId: String, val shared: Boolean, val count: Int? = null) {
+    fun applyTo(post: conectate.com.data.model.Post): conectate.com.data.model.Post = if (post.id != postId) post else
+        post.copy(sharedByMe = shared, shareCount = count ?: (post.shareCount +
+            if (post.sharedByMe == shared) 0 else if (shared) 1 else -1).coerceAtLeast(0))
+}
 
 @Serializable
 data class Share(
@@ -32,6 +42,11 @@ class ShareRepository @Inject constructor(
     private val authService: AuthService,
     private val localFallbackApiClient: LocalFallbackApiClient
 ) {
+    private val _postChanges = MutableSharedFlow<PostShareChange>(extraBufferCapacity = 32)
+    val postChanges = _postChanges.asSharedFlow()
+    private fun changed(user: String, type: String, id: String, shared: Boolean, count: Int? = null) {
+        if (type == "post" && user == authService.getCurrentUserId()) _postChanges.tryEmit(PostShareChange(user, id, shared, count))
+    }
 
     private fun shouldUseUbuntuBackend(): Boolean =
         localFallbackApiClient.isConfigured &&
@@ -41,11 +56,12 @@ class ShareRepository @Inject constructor(
     suspend fun shareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "shareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            val accessToken = authService.getAccessTokenAwait() ?: return@withContext Result.failure(Exception("Inicia sesión para compartir."))
+            if (userId != authService.getCurrentUserId()) return@withContext Result.failure(Exception("La cuenta cambió. Abre Compartir de nuevo."))
 
             if (shouldUseUbuntuBackend()) {
                 return@withContext when (contentType.trim().lowercase()) {
-                    "post" -> localFallbackApiClient.sharePost(accessToken, targetId).map { Unit }
+                    "post" -> localFallbackApiClient.sharePost(accessToken, targetId).map { changed(userId, "post", targetId, it.sharedByMe, it.shareCount) }
                     "video" -> localFallbackApiClient.shareVideo(accessToken, targetId).map { Unit }
                     else -> Result.failure(Exception("Tipo de contenido no compatible para compartir."))
                 }
@@ -65,19 +81,22 @@ class ShareRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
+                changed(userId, contentType, targetId, true)
                 android.util.Log.d("ShareRepository", "shareContent: SUCCESS")
                 Result.success(Unit)
             } else {
                 val errorBody = response.bodyAsText()
                 android.util.Log.e("ShareRepository", "shareContent: FAILED status=${response.status}, error=$errorBody")
                 if (errorBody.contains("duplicate key")) {
+                    changed(userId, contentType, targetId, true)
                     android.util.Log.d("ShareRepository", "shareContent: Already shared, treating as success")
                     Result.success(Unit)
                 } else {
                     Result.failure(Exception("Failed to share: ${response.status}"))
                 }
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("ShareRepository", "shareContent: EXCEPTION", e)
             Result.failure(e)
         }
@@ -88,11 +107,12 @@ class ShareRepository @Inject constructor(
     suspend fun unshareContent(userId: String, contentType: String, targetId: String): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             android.util.Log.d("ShareRepository", "unshareContent: userId=$userId, contentType=$contentType, targetId=$targetId")
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            val accessToken = authService.getAccessTokenAwait() ?: return@withContext Result.failure(Exception("Inicia sesión para compartir."))
+            if (userId != authService.getCurrentUserId()) return@withContext Result.failure(Exception("La cuenta cambió. Abre Compartir de nuevo."))
 
             if (shouldUseUbuntuBackend()) {
                 return@withContext when (contentType.trim().lowercase()) {
-                    "post" -> localFallbackApiClient.unsharePost(accessToken, targetId).map { Unit }
+                    "post" -> localFallbackApiClient.unsharePost(accessToken, targetId).map { changed(userId, "post", targetId, it.sharedByMe, it.shareCount) }
                     "video" -> localFallbackApiClient.unshareVideo(accessToken, targetId).map { Unit }
                     else -> Result.failure(Exception("Tipo de contenido no compatible para dejar de compartir."))
                 }
@@ -107,13 +127,15 @@ class ShareRepository @Inject constructor(
             }
             
             if (response.status.isSuccess()) {
+                changed(userId, contentType, targetId, false)
                 android.util.Log.d("ShareRepository", "unshareContent: SUCCESS")
                 Result.success(Unit)
             } else {
                 android.util.Log.e("ShareRepository", "unshareContent: FAILED status=${response.status}")
                 Result.failure(Exception("Failed to unshare: ${response.status}"))
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("ShareRepository", "unshareContent: EXCEPTION", e)
             Result.failure(e)
         }

@@ -198,6 +198,11 @@ class SocialViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            shareRepository.postChanges.collect { change ->
+                if (change.actorId == authService.getCurrentUserId()) _posts.value = _posts.value.map(change::applyTo)
+            }
+        }
+        viewModelScope.launch {
             authService.currentSession
                 .map { session -> session?.accessToken.orEmpty().trim() }
                 .distinctUntilChanged()
@@ -1042,9 +1047,10 @@ class SocialViewModel @Inject constructor(
 
     fun togglePostShare(post: Post) {
         if (!shareRequestsInFlight.add(post.id)) return
+        val account = authService.getCurrentUserId()
         viewModelScope.launch {
             try {
-                val userId = authService.getCurrentUserId() ?: return@launch
+                val userId = account?.takeIf { it == authService.getCurrentUserId() } ?: return@launch
                 val wasShared = post.sharedByMe
                 val newShareCount = if (wasShared) maxOf(0, post.shareCount - 1) else post.shareCount + 1
                 
@@ -1065,6 +1071,7 @@ class SocialViewModel @Inject constructor(
                     shareRepository.shareContent(userId, "post", post.id)
                 }
 
+                if (account != authService.getCurrentUserId()) return@launch
                 if (result.isFailure) {
                     android.util.Log.e("SocialViewModel", "togglePostShare FAILED", result.exceptionOrNull())
                     android.widget.Toast.makeText(
@@ -1081,7 +1088,9 @@ class SocialViewModel @Inject constructor(
                     val message = if (wasShared) "Eliminado de tu perfil" else "Añadido a tu perfil"
                     android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (e: Exception) {
+                if (account != authService.getCurrentUserId()) return@launch
                 android.util.Log.e("SocialViewModel", "Error toggling post share", e)
                 _posts.value = _posts.value.map {
                     if (it.id == post.id) it.copy(sharedByMe = post.sharedByMe, shareCount = post.shareCount) else it

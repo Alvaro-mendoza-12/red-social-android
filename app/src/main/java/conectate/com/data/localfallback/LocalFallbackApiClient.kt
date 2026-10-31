@@ -3127,7 +3127,8 @@ class LocalFallbackApiClient @Inject constructor(
         limit: Int = 60,
         offset: Int = 0,
         userId: String? = null,
-        mode: String? = null
+        mode: String? = null,
+        sharedBy: String? = null,
     ): Result<LocalFallbackFeedResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         val query = buildString {
@@ -3138,6 +3139,7 @@ class LocalFallbackApiClient @Inject constructor(
             mode?.trim()?.lowercase()?.takeIf { it in setOf("discover", "following") }?.let {
                 append("&mode=${urlEncode(it)}")
             }
+            sharedBy?.trim()?.takeIf(String::isNotBlank)?.let { append("&sharedBy=${urlEncode(it)}") }
         }
         return runReadWithDeadline(InteractiveReadDeadlines.FirstPageMillis) {
             requestJson<LocalFallbackRawFeedResponse>(query, accessToken).getOrThrow()
@@ -5016,7 +5018,8 @@ class LocalFallbackApiClient @Inject constructor(
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
-                Result.success(json.decodeFromString<LocalFallbackRawVideoShareResponse>(body).normalized(defaultSharedByMe = true))
+                val post = json.decodeFromString<LocalFallbackRawPostResponse>(body).post?.let { mapPost(it) }
+                Result.success(LocalFallbackVideoShareResult(post?.shareCount, post?.sharedByMe ?: true))
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }
@@ -5033,7 +5036,8 @@ class LocalFallbackApiClient @Inject constructor(
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
-                Result.success(json.decodeFromString<LocalFallbackRawVideoShareResponse>(body).normalized(defaultSharedByMe = false))
+                val post = json.decodeFromString<LocalFallbackRawPostResponse>(body).post?.let { mapPost(it) }
+                Result.success(LocalFallbackVideoShareResult(post?.shareCount, post?.sharedByMe ?: false))
             } else {
                 Result.failure(toException(response, decodeError(body)))
             }

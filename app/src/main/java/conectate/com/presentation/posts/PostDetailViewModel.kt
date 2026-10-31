@@ -71,6 +71,13 @@ class PostDetailViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            shareRepository.postChanges.collect { change ->
+                if (change.actorId == authService.getCurrentUserId()) _uiState.update { state ->
+                    state.copy(post = state.post?.let(change::applyTo))
+                }
+            }
+        }
+        viewModelScope.launch {
             authService.currentSession.map { authService.getCurrentUserId() }.distinctUntilChanged().collect { account ->
                 if (account != activeAccountId) {
                     val target = selectedPostId
@@ -181,34 +188,19 @@ class PostDetailViewModel @Inject constructor(
     }
 
     fun toggleShare(postId: String) {
-        val state = _uiState.value
-        val post = state.post ?: return
+        val post = _uiState.value.post?.takeIf { it.id == postId } ?: return
+        val account = authService.getCurrentUserId() ?: return
         if (!shareRequestsInFlight.add(postId)) return
-        
         viewModelScope.launch {
             try {
-                val userId = authService.getCurrentUserId() ?: return@launch
-                val wasShared = post.sharedByMe
-                val newShareCount = if (wasShared) maxOf(0, post.shareCount - 1) else post.shareCount + 1
-
-                _uiState.value = state.copy(
-                    post = post.copy(sharedByMe = !wasShared, shareCount = newShareCount)
-                )
-
-                val result = if (wasShared) {
-                    shareRepository.unshareContent(userId, "post", postId)
-                } else {
-                    shareRepository.shareContent(userId, "post", postId)
-                }
-
-                if (result.isFailure) {
-                    _uiState.value = state.copy(post = post)
-                }
-            } catch (e: Exception) {
-                _uiState.value = state.copy(post = post)
-            } finally {
-                shareRequestsInFlight.remove(postId)
-            }
+                val result = if (post.sharedByMe) shareRepository.unshareContent(account, "post", postId)
+                    else shareRepository.shareContent(account, "post", postId)
+                if (account != authService.getCurrentUserId()) return@launch
+                conectate.com.presentation.common.AppFeedbackBus.show(
+                    if (result.isSuccess) { if (post.sharedByMe) "Quitado de tu perfil" else "Añadido a tu perfil" }
+                    else "No se pudo guardar el cambio. Vuelve a intentarlo.")
+            } catch (cancelled: CancellationException) { throw cancelled }
+            finally { shareRequestsInFlight.remove(postId) }
         }
     }
 

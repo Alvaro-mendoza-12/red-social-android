@@ -82,6 +82,8 @@ fun PostCard(
     onMentionClick: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val internalShare = conectate.com.presentation.messages.LocalUniversalForwardCoordinator.current
+    val sendToFriend = onSendToFriend ?: internalShare?.let { coordinator -> { coordinator.openPost(post) } }
     val openUrl: (String) -> Unit = { url ->
         if (onUrlClick != null) onUrlClick(url) else {
             val uri = android.net.Uri.parse(url)
@@ -683,20 +685,30 @@ fun PostCard(
                     if (showShareSheet) {
                         ShareOptionsSheet(
                             onDismiss = { showShareSheet = false },
-                            onSendToFriend = onSendToFriend,
+                            onSendToFriend = sendToFriend,
                             onExternalShare = {
                                 val sendIntent = android.content.Intent().apply {
                                     action = android.content.Intent.ACTION_SEND
-                                    putExtra(android.content.Intent.EXTRA_TEXT, "¡Mira esta publicación en Novvin!\nhttps://conectate.com/post/${post.id}\n\nO abre directamente en la app:\nconectate://post/${post.id}\n\n${post.content.take(100)}...")
+                                    putExtra(android.content.Intent.EXTRA_TEXT,
+                                        "¡Mira esta publicación en Novvin!\n${conectate.com.presentation.navigation.postShareLink(post.id)}" +
+                                            post.content.take(100).takeIf(String::isNotBlank)?.let { "\n\n$it" }.orEmpty())
                                     type = "text/plain"
                                 }
                                 val shareIntent = android.content.Intent.createChooser(sendIntent, "Compartir publicación")
-                                context.startActivity(shareIntent)
+                                runCatching { context.startActivity(shareIntent) }.onFailure {
+                                    conectate.com.presentation.common.AppFeedbackBus.show("No se pudo abrir Compartir. Vuelve a intentarlo.")
+                                }
                             },
                             onToggleProfileShare = {
                                 onShareClick() // Existing toggle logic
                             },
-                            isSharedToProfile = post.sharedByMe
+                            isSharedToProfile = post.sharedByMe,
+                            onCopyLink = {
+                                val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Publicación de Novvin",
+                                    conectate.com.presentation.navigation.postShareLink(post.id)))
+                                conectate.com.presentation.common.AppFeedbackBus.show("Enlace copiado")
+                            }
                         )
                     }
                 }

@@ -444,13 +444,18 @@ object IntentRouter {
         clearIntent: () -> Unit
     ): Boolean {
         val uri = incomingIntent.data ?: return false
-        if (!isTrustedExternalDeepLinkOrigin(uri.scheme, uri.host)) {
+        if (!isTrustedExternalDeepLinkOrigin(uri.scheme, uri.host) || uri.userInfo != null || uri.port != -1) {
             android.util.Log.w("IntentRouter", "Rejected untrusted deep-link origin")
             clearIntent()
             return true
         }
         voiceRoomFromLink(uri)?.let { roomId ->
             navController.navigate(Screen.RoomDetail.createRoute(roomId)) { launchSingleTop = true }
+            clearIntent()
+            return true
+        }
+        sharedContentDestination(uri.toString())?.let { destination ->
+            navController.navigate(destination.route) { launchSingleTop = true }
             clearIntent()
             return true
         }

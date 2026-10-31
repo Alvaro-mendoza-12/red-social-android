@@ -7,7 +7,7 @@ import java.util.regex.Pattern
 
 internal data class WebTextLink(val start: Int, val end: Int, val url: String)
 
-private val webTextPattern: Pattern = Pattern.compile(Patterns.WEB_URL.pattern(), Pattern.CASE_INSENSITIVE)
+private val webTextPattern: Pattern by lazy { Pattern.compile(Patterns.WEB_URL.pattern(), Pattern.CASE_INSENSITIVE) }
 
 /** Email spans are separate from web addresses so their domains are never linked twice. */
 internal fun findMessageTextLinks(text: String): List<WebTextLink> {
@@ -61,10 +61,5 @@ internal fun findWebTextLinks(text: String): List<WebTextLink> {
 
 /** A copied external URL must not become an internal route just by containing our hostname. */
 internal fun postIdFromSharedLink(url: String): String? {
-    val uri = runCatching { URI(url) }.getOrNull() ?: return null
-    if (uri.scheme?.lowercase() !in setOf("http", "https") ||
-        uri.host?.lowercase() !in setOf("conectate.com", "www.conectate.com")) return null
-    val segments = uri.path.orEmpty().trim('/').split('/')
-    if (segments.size != 2 || segments[0] != "post") return null
-    return segments[1].takeIf { it.matches(Regex("[A-Za-z0-9_-]{8,100}")) }
+    return conectate.com.presentation.navigation.sharedContentDestination(url)?.takeIf { it.kind == "post" }?.id
 }
