@@ -1,5 +1,9 @@
 # 02 — Aplicación Android
 
+## Actualización 9.1.34 / 174
+
+La [revisión 99](99-contraste-auditoria-movil-y-candidato-174-2026-10-30.md) contrasta los 53 hallazgos del informe móvil de Antigravity y corrige los confirmados en acceso, navegación, Social, editor, chats, salas, LIVE y controles de gasto. Por decisión del propietario, Registro Android exige 13 años y Ajustes permite solicitar la eliminación por soporte. Aprueban 2.030 unitarias, 14 casos nativos seleccionados y lint sin errores (314 advertencias, K1). **APK/AAB 9.1.34 / 174 firmados**, con firma/R8/16 KiB y actualización desde 173 comprobadas en AOSP 35. No se cambia la API de producción ni se habilitan retiros. No publicado en Play; comunicaciones entre teléfonos físicos pendientes. `correciones` queda para el otro chat.
+
 ## Actualización 9.1.33 / 173
 
 La [revisión 98](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md) separa las carpetas por cuenta, conserva cancelación entre etapas y corrige acciones pendientes web. Aprueban 2.000 unitarias Android, lint sin errores con K1 (311 advertencias) y paquetes 173 firmados, con comprobación de actualización/entrada en AOSP 35. Web publicada, 875 pruebas y 90 controles públicos aprobados. El trabajo de correciones se conserva aparte para el otro chat; los siguientes apartados mantienen sus fechas y alcances históricos.

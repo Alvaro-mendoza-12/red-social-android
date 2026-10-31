@@ -5,7 +5,7 @@ Fecha base: 2026-08-24
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Auditoría móvil actual: [98 — Colas y carpetas por cuenta](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md). 2.000 unitarias/419 suites, lint sin errores (311 advertencias, motor K1), APK/AAB 9.1.33/173 firmados y actualización desde 172 en AOSP 35. Conserva el alcance y límites de las [revisiones 96](96-segundo-plano-subidas-y-perfiles-2026-10-30.md) y [97](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md). No publicado en Play; comunicaciones entre teléfonos físicos pendientes.
+Auditoría móvil actual: La [revisión 99](99-contraste-auditoria-movil-y-candidato-174-2026-10-30.md) contrasta los 53 hallazgos del informe móvil de Antigravity y corrige los confirmados en acceso, navegación, Social, editor, chats, salas, LIVE y controles de gasto. Por decisión del propietario, Registro Android exige 13 años y Ajustes permite solicitar la eliminación por soporte. Aprueban 2.030 unitarias, 14 casos nativos seleccionados y lint sin errores (314 advertencias, K1). **APK/AAB 9.1.34 / 174 firmados**, con firma/R8/16 KiB y actualización desde 173 comprobadas en AOSP 35. No se cambia la API de producción ni se habilitan retiros. No publicado en Play; comunicaciones entre teléfonos físicos pendientes. `correciones` queda para el otro chat.
 
 Auditoría web actual: [98 — Concurrencia y acciones pendientes](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md), publicada con 875 pruebas, 96 Node, 90 controles públicos, siete rutas autenticadas y prueba local de dos pestañas con Web Locks. Continúa la [revisión 94](94-reacciones-y-recorrido-web-2026-10-30.md).
 
@@ -129,6 +129,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 100. [Segundo plano, subidas, video y perfiles](96-segundo-plano-subidas-y-perfiles-2026-10-30.md)
 101. [Segunda revisión: cancelación y continuidad de la cola push](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md)
 102. [Colas web y carpetas de chats por cuenta](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md)
+103. [Contraste de auditoría móvil y candidato 174](99-contraste-auditoria-movil-y-candidato-174-2026-10-30.md)
 
 ## Reglas para quien trabaje en este proyecto
 
