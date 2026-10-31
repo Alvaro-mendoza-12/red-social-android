@@ -1,0 +1,681 @@
+{
+  "date": "2026-10-30",
+  "timezone": "America/Bogota",
+  "sourceCommit": "c728323c3b5c57245e5a56b8a4f044b47876593a",
+  "versionName": "9.1.34",
+  "versionCode": 174,
+  "findingsReviewed": 53,
+  "decisions": [
+    {
+      "id": "2.1-1",
+      "severity": "CRÍTICO",
+      "claim": "Bloqueo infinito en `SplashScreen` ante notificaciones con `type` desconocido o incompleto",
+      "verdict": "corregido",
+      "decision": "Un payload desconocido o incompleto ya se consume y libera el arranque. Se mantienen las firmas de confianza de notificaciones."
+    },
+    {
+      "id": "2.1-2",
+      "severity": "ALTO",
+      "claim": "Timeout prematuro de 4s en `AuthService`",
+      "verdict": "matizado",
+      "decision": "El plazo de cuatro segundos es una salida deliberada frente a restauraciones atascadas, no una espera de red. La sesión durable se publica antes de renovarla. No se elimina el watchdog sin una reproducción de Keystore lento; podría haber una transición breve a acceso y queda como limitación."
+    },
+    {
+      "id": "2.1-3",
+      "severity": "ALTO",
+      "claim": "Pila de navegación vacía al pulsar \"Atrás\" si `recoveryPending && loggedIn`",
+      "verdict": "corregido",
+      "decision": "La recuperación iniciada con otra cuenta activa conserva Home debajo de Añadir cuenta para que Volver tenga un destino."
+    },
+    {
+      "id": "2.2-1",
+      "severity": "ALTO",
+      "claim": "Videos que no se reproducen al tocarlos en la pestaña `\"Videos\"` del modo invitado",
+      "verdict": "corregido",
+      "decision": "El video invitado usa videoUrl o mediaUrl y comunica la ausencia de ambas."
+    },
+    {
+      "id": "2.2-2",
+      "severity": "MEDIO",
+      "claim": "`pending_profile_id` queda sucio si el invitado cierra el perfil",
+      "verdict": "no_reproducido",
+      "decision": "El código actual ya limpia el perfil pendiente al cerrar el aviso restringido o elegir Seguir explorando. El modal impide pulsar la barra situada detrás. No se añade un borrado que pierda el destino de un registro deliberado."
+    },
+    {
+      "id": "2.2-3",
+      "severity": "MEJORA",
+      "claim": "Falta botón `\"Iniciar sesión\"` en el diálogo de acción restringida",
+      "verdict": "mejora_implementada",
+      "decision": "El aviso restringido permite iniciar sesión con una cuenta existente además de registrarse."
+    },
+    {
+      "id": "2.3-1",
+      "severity": "CRÍTICO",
+      "claim": "Sistema 2FA dividido e incompatible en modo Supabase",
+      "verdict": "legado",
+      "decision": "El hallazgo describe la rama Supabase antigua; producción usa el desafío 2FA del servidor Ubuntu. No se habilita ni se presenta el TOTP local como una segunda barrera segura del servidor. El legado exige revisión independiente antes de reactivarse."
+    },
+    {
+      "id": "2.3-2",
+      "severity": "ALTO",
+      "claim": "Recuperación por correo avanza al paso de código de 6 dígitos aunque falle el envío del email",
+      "verdict": "corregido",
+      "decision": "El envío no confirmado se distingue del envío confirmado. Se conserva el avance útil tras una respuesta perdida y se permite reintentar; no se promete que el correo fue enviado solo por haber iniciado la petición."
+    },
+    {
+      "id": "2.3-3",
+      "severity": "ALTO",
+      "claim": "Botón `\"Reenviar código\"` sigue visible tras haber verificado el código (`EmailRecoverySteps.kt`)",
+      "verdict": "corregido",
+      "decision": "Se oculta Reenviar después de verificar y el ViewModel rechaza ese reenvío para proteger el token de cambio de contraseña."
+    },
+    {
+      "id": "2.3-4",
+      "severity": "ALTO",
+      "claim": "Bloqueo de login con `@usuario` en `LoginScreen.kt`",
+      "verdict": "contrato_actual",
+      "decision": "La pantalla y /v1/auth/login aceptan correo. El servidor rechaza un identificador sin formato de email; habilitar solo el botón para @usuario no arreglaría el acceso. No se anuncia una modalidad de login todavía inexistente."
+    },
+    {
+      "id": "2.3-5",
+      "severity": "MEDIO",
+      "claim": "`confirmAssistedContact` desconectado y carrera visual en `SavedAccountsSection`",
+      "verdict": "parcial",
+      "decision": "Se bloquean todos los botones Usar/Quitar durante un cambio de cuenta. confirmAssistedContact pertenece a un contacto previo no emitido por el alta actual: el flujo vigente ya permite introducir el código de recuperación que entrega un administrador después de revisar el caso."
+    },
+    {
+      "id": "2.4-1",
+      "severity": "CRÍTICO",
+      "claim": "Aprobar un QR Web con una cuenta secundaria cambia forzosamente la cuenta activa de toda la app móvil",
+      "verdict": "corregido",
+      "decision": "La aprobación y rechazo de QR usan las credenciales de la cuenta elegida sin importar su sesión en el teléfono. Se rechazan selecciones desaparecidas y cambios de cuenta durante la preparación. Una sesión secundaria expirada exige volver a autenticarla, sin cambios globales silenciosos."
+    },
+    {
+      "id": "2.4-2",
+      "severity": "ALTO",
+      "claim": "Sin validación de edad mínima en el Registro",
+      "verdict": "corregido_por_decision",
+      "decision": "El propietario eligió 13 años. Se valida la fecha en Registro y en AuthRepository antes de crear la cuenta Android, con pruebas del cumpleaños exacto. Esta validación del cliente no acredita una política de edad universal aplicada a la API o a la web."
+    },
+    {
+      "id": "2.4-3",
+      "severity": "BAJO",
+      "claim": "Límite de `@usuario` trunca a 25 caracteres en UI pero la política rechaza >24",
+      "verdict": "corregido",
+      "decision": "El campo y la política comparten el máximo de 24 caracteres."
+    },
+    {
+      "id": "3.-1",
+      "severity": "ALTO",
+      "claim": "`startTab` en `HomeScreen` se ignora cuando `HomeScreen` ya existe y los widgets apilan múltiples `HomeScreen`",
+      "verdict": "corregido",
+      "decision": "Los widgets reutilizan Home y emiten una petición de pestaña consumible; funciona incluso al repetir el mismo enlace después de cambiar de pestaña dentro de Home."
+    },
+    {
+      "id": "3.-2",
+      "severity": "ALTO",
+      "claim": "24 rutas duplicadas entre el `NavHost` raíz y el `NavHost` anidado de `HomeScreen`",
+      "verdict": "parcial",
+      "decision": "Se oculta la barra inferior en detalles y se ajustan los visores de video. La repetición de registros en dos grafos no prueba por sí sola 24 fallos: borrar rutas en bloque rompería entradas existentes. No se hace esa eliminación."
+    },
+    {
+      "id": "4.1-1",
+      "severity": "CRÍTICO",
+      "claim": "Desconexión entre `\"No recomendar este creador\"` / `\"Silenciar tema\"` y el diálogo `\"Preferencias del feed\"`",
+      "verdict": "matizado",
+      "decision": "Las decisiones se guardaban en Mi algoritmo del servidor; no estaban destinadas al almacenamiento local del otro diálogo. Se corrige el texto que indicaba un lugar de restauración equivocado, sin crear dos fuentes incompatibles de preferencias."
+    },
+    {
+      "id": "4.1-2",
+      "severity": "CRÍTICO",
+      "claim": "Múltiples botones de `PostCard` dentro de `PostDetailScreen` y `RankingScreen` no hacen nada (No-Ops silenciosos)",
+      "verdict": "corregido",
+      "decision": "Las acciones opcionales solo se ofrecen con un controlador real; no se abre un remix ni se ofrece guardar/enviar si ese contexto no lo gestiona. Enlaces y publicación original tienen salida funcional. Seguir ya estaba condicionado a un estado de seguimiento y las menciones sin controlador se renderizan como texto; no eran todos los botones descritos."
+    },
+    {
+      "id": "4.1-3",
+      "severity": "CRÍTICO",
+      "claim": "`PostCard` no tiene reproductor de video aunque `CreatePostScreen` permite subir videos",
+      "verdict": "corregido",
+      "decision": "Las extensiones de video generan un control de reproducción y el visor recibe tipo video. Reutiliza el reproductor existente sin iniciar varios videos automáticamente en el feed."
+    },
+    {
+      "id": "4.1-4",
+      "severity": "ALTO",
+      "claim": "Chips de colecciones en `\"Biblioteca de guardados\"` filtran por texto en vez de por colección",
+      "verdict": "corregido",
+      "decision": "Las colecciones se eligen por id; el texto conserva su búsqueda independiente y hay opción Todos."
+    },
+    {
+      "id": "4.1-5",
+      "severity": "ALTO",
+      "claim": "Comentarios con stickers/imágenes se interpretan como audio en la ruta Supabase",
+      "verdict": "corregido_legado",
+      "decision": "El mapper antiguo conserva media_type y el comentario distingue imagen, GIF o sticker de audio. No se atribuye este defecto a la ruta Ubuntu sin prueba."
+    },
+    {
+      "id": "4.1-6",
+      "severity": "MEDIO",
+      "claim": "Modal de reto de texto con validación (`showTextChallengeEntry`) es código muerto y `EditPostDialog` no se usa",
+      "verdict": "parcial",
+      "decision": "La entrada de texto activa limita a 500 caracteres y se impide dejar vacío un post solo de texto. Se permite borrar una leyenda si la publicación tiene medios. Que exista otro diálogo sin referencias no exige sustituir una interfaz funcional."
+    },
+    {
+      "id": "4.2-1",
+      "severity": "CRÍTICO",
+      "claim": "Las Historias Destacadas (`Highlights`) caducan y desaparecen a las 24 horas",
+      "verdict": "decision_producto",
+      "decision": "La caducidad se confirma, pero la revisión 31 y sus pruebas exigen original legible y vigente. No se leen copias huérfanas para reexponer contenido eliminado o con permisos cambiados. Un destacado permanente requiere un contrato de publicación y borrado propio; no basta eliminar isActiveAt."
+    },
+    {
+      "id": "4.2-2",
+      "severity": "CRÍTICO",
+      "claim": "Fuga de privacidad en Realtime para momentos `\"only_selected\"`",
+      "verdict": "corregido",
+      "decision": "Carga y actualización realtime comparten la regla only_selected, exclusiones y estados privado/silent. Es una protección de presentación; el informe no demuestra por sí solo una fuga autorizada por el servidor."
+    },
+    {
+      "id": "4.2-3",
+      "severity": "ALTO",
+      "claim": "El zoom/encuadre en el editor de Momentos y el volumen en `MomentMusicPickerDialog` no se aplican",
+      "verdict": "parcial",
+      "decision": "Se comunica la falta de personas elegidas y se abre el selector. Se añaden controles de mezcla al selector musical. El zoom de revisión no se trata como un recorte exportable: el flujo ya tiene recorte explícito y una mezcla externa; no se afirma que esos controles nunca existieran."
+    },
+    {
+      "id": "4.2-4",
+      "severity": "MEDIO",
+      "claim": "`CommunityMusicUploadDialog.kt` no tiene campos de título/artista ni checkbox legal",
+      "verdict": "corregido",
+      "decision": "Título y artista se pueden revisar y la declaración de titularidad se acepta expresamente antes de publicar; no se envía acceptedRights=true de manera incondicional."
+    },
+    {
+      "id": "5.-1",
+      "severity": "CRÍTICO",
+      "claim": "El botón `\"Buscar videos\"` de la barra superior abre el buscador de usuarios en lugar del buscador de videos",
+      "verdict": "corregido",
+      "decision": "La lupa activa el buscador de videos; ya no abre Buscar personas."
+    },
+    {
+      "id": "5.-2",
+      "severity": "CRÍTICO",
+      "claim": "Tres fallos en el Editor de Video (`VideoEditorScreen.kt` y `VideoEditorViewModel.kt`)",
+      "verdict": "parcial",
+      "decision": "Se usa el recurso real del sticker y posiciones comunes entre el cuadro de video visible y la exportación, con origen y escala coherentes. El filtro/LUT ya usaba buildColorEffects en previa y exportación: esa parte del informe era inexacta."
+    },
+    {
+      "id": "5.-3",
+      "severity": "ALTO",
+      "claim": "Los videos descargados en `OfflineVideosScreen.kt` no se pueden reproducir",
+      "verdict": "corregido",
+      "decision": "Una descarga se puede tocar y el feed sin conexión empieza en ese video."
+    },
+    {
+      "id": "6.-1",
+      "severity": "CRÍTICO",
+      "claim": "El indicador `\"Escribiendo...\"` (`TypingIndicatorMinimal`) nunca se muestra en el chat privado",
+      "verdict": "corregido",
+      "decision": "El encabezado privado observa y muestra los participantes que están escribiendo."
+    },
+    {
+      "id": "6.-2",
+      "severity": "CRÍTICO",
+      "claim": "El reenvío de mensajes a Grupos y Comunidades desde `ChatViewModel` descarta los destinos",
+      "verdict": "corregido",
+      "decision": "El reenvío incluye grupos y comunidades, conserva procedencia y no descarta una selección por no tener chats privados."
+    },
+    {
+      "id": "6.-3",
+      "severity": "CRÍTICO",
+      "claim": "El Editor de Stickers (`StickerEditor.kt`) tiene rotos los modos Dibujar, Borrar y la vista previa de Texto/Emoji",
+      "verdict": "corregido",
+      "decision": "El gesto cambia con el modo, se ven texto y emoji antes de exportar y el menú permite quitar un sticker del catálogo propio."
+    },
+    {
+      "id": "6.-4",
+      "severity": "ALTO",
+      "claim": "Bug de copy-paste al terminar de grabar una nota de voz en Comunidades (`CommunityChatViewModel.kt`)",
+      "verdict": "corregido",
+      "decision": "Terminar un audio no ejecuta una validación de encuestas; se mantienen las comprobaciones del canal al enviar."
+    },
+    {
+      "id": "6.-5",
+      "severity": "ALTO",
+      "claim": "`\"Borrar de mi lista\"` en Comunidades llama al borrado global del servidor en vez del local",
+      "verdict": "corregido",
+      "decision": "Borrar de mi lista usa el borrado local; el creador conserva su acción separada para eliminar la comunidad completa."
+    },
+    {
+      "id": "6.-6",
+      "severity": "MEDIO",
+      "claim": "`\"Resumen del chat\"` es solo un contador de mensajes y el texto compartido desde otras apps se ignora",
+      "verdict": "matizado",
+      "decision": "El contador se etiqueta Actividad reciente del chat; no se ofrece como síntesis de IA. Los compartidos actuales pasan por IncomingSharePayload y UniversalShareHost; un parámetro de compatibilidad sin uso no demuestra que todo texto externo se ignore."
+    },
+    {
+      "id": "7.-1",
+      "severity": "CRÍTICO",
+      "claim": "El resolvedor de enlaces de Cine (Google Drive / Archive.org) está puenteado por un stub en el ViewModel",
+      "verdict": "corregido",
+      "decision": "El ViewModel espera el resolvedor real del repositorio, incluidos sus límites y errores, en lugar de devolver el enlace original como si estuviera resuelto."
+    },
+    {
+      "id": "7.-2",
+      "severity": "CRÍTICO",
+      "claim": "Cualquier oyente puede cambiar la película del Modo Cine para toda la sala y `emitCinemaSync` está bloqueado en Ubuntu",
+      "verdict": "corregido",
+      "decision": "Cambiar video se limita al creador en interfaz y ViewModel; el pulso de sincronización exige sala activa y socket conectado, sin depender de un canal Supabase ausente. No se atribuye un fallo de autorización del backend sin comprobarlo."
+    },
+    {
+      "id": "7.-3",
+      "severity": "ALTO",
+      "claim": "En el Historial de Llamadas (`CallHistoryScreen.kt`) tocar una llamada no permite llamar",
+      "verdict": "mejora_implementada",
+      "decision": "El historial directo ofrece devolver la llamada de voz o video mediante el flujo existente de permisos. Los grupos/comunidades conservan la entrada a su chat, donde se resuelve el contexto y los miembros actuales."
+    },
+    {
+      "id": "7.-4",
+      "severity": "MEDIO",
+      "claim": "Videollamadas grupales solo muestran 1 cámara remota y `joinExistingCall` fuerza `isVideo = false`",
+      "verdict": "parcial",
+      "decision": "Las cámaras remotas múltiples tienen cuadrícula. Entrar inicialmente sin publicar cámara se mantiene: cambiar isVideo=false de forma indiscriminada activaría video sin la elección y permisos del usuario."
+    },
+    {
+      "id": "8.-1",
+      "severity": "CRÍTICO",
+      "claim": "\"Dibuja y Adivina\" (`LiveDrawGuessDialog`) y \"Puntos del Canal\" (`LiveChannelPointsDialog`) están 100% desconectados de las pantallas activas `FigmaLive*`",
+      "verdict": "corregido",
+      "decision": "Las pantallas activas conectan Dibuja y adivina y Puntos del canal, respetando disponibilidad. La acumulación del espectador sigue el estado visible y se detiene al salir o quedar en segundo plano. No acredita una prueba física de LIVE."
+    },
+    {
+      "id": "8.-2",
+      "severity": "ALTO",
+      "claim": "El panel `\"Centro LIVE\"` en `FigmaLiveSetupScreen.kt` muestra datos falsos hardcodeados",
+      "verdict": "corregido",
+      "decision": "Se quitan saldos, porcentajes y pestañas de periodos ficticios. El panel abre Ganancias del creador con los movimientos reales y describe las campañas cuando estén disponibles."
+    },
+    {
+      "id": "8.-3",
+      "severity": "ALTO",
+      "claim": "Opciones perdidas en `FigmaLiveSetupScreen.kt` y fuga de cámara al cambiar a Publicar/Crear",
+      "verdict": "parcial",
+      "decision": "Se libera la previa al abandonar la preparación sin interrumpir el traspaso al anfitrión; etiquetas y categoría existentes se pueden configurar en Ajustes. Portada y meta no tienen un contrato completo en el ViewModel actual: no se inventan controles que aparenten guardarlas."
+    },
+    {
+      "id": "8.-4",
+      "severity": "ALTO",
+      "claim": "Moderación por pulsación larga en comentarios del directo prometida pero no implementada",
+      "verdict": "parcial",
+      "decision": "Mantener pulsado un comentario abre acciones de expulsar/bloquear para anfitrión o moderador. El texto se ajusta a las acciones reales. No se presenta una opción de silencio individual o denuncia que no esté conectada."
+    },
+    {
+      "id": "9.-1",
+      "severity": "CRÍTICO",
+      "claim": "El diálogo `\"Solicitar retiro\"` es 100% inalcanzable en `CreatorEarningsScreen.kt`",
+      "verdict": "decision_producto",
+      "decision": "Los retiros están desactivados deliberadamente por el proveedor aún pendiente. El dueño ya rechazó elegir PayPal automáticamente. No se habilita movimiento de dinero ni se considera un P0 el botón Próximamente."
+    },
+    {
+      "id": "9.-2",
+      "severity": "ALTO",
+      "claim": "Imposibilidad de editar o corregir la cuenta PayPal una vez registrada",
+      "verdict": "corregido_condicional",
+      "decision": "Se conserva Ver estado y se ofrece editar una cuenta registrada cuando el servidor indica proveedor configurado. No se activa el proveedor ni se eluden sus verificaciones."
+    },
+    {
+      "id": "9.-3",
+      "severity": "MEDIO",
+      "claim": "Barras de límite de gasto diario/semanal calculadas solo con los primeros 50 movimientos",
+      "verdict": "corregido",
+      "decision": "Una página reciente incompleta no se presenta como gasto total ni llena barras engañosas. Los totales solo se muestran cuando el historial cubre la ventana o no hay más páginas; los límites siguen siendo del servidor."
+    },
+    {
+      "id": "10.-1",
+      "severity": "CRÍTICO",
+      "claim": "El Ranking en modo Supabase expone videos y publicaciones privadas",
+      "verdict": "defensa_legado",
+      "decision": "El ranking Supabase incorpora filtros públicos explícitos. Sin inspeccionar RLS no se puede afirmar una exposición real. La ruta de producción usa el feed autorizado de Ubuntu y no cambia en esta tanda."
+    },
+    {
+      "id": "10.-2",
+      "severity": "ALTO",
+      "claim": "En `PlayMatchScreens.kt`, el botón `\"Guardar perfil\"` ignora el slider `\"Nivel de exploración\"` y no se pueden borrar horarios",
+      "verdict": "corregido",
+      "decision": "Se guarda el nivel elegido, se pueden quitar horarios propios y el fin debe ser posterior al inicio."
+    },
+    {
+      "id": "10.-3",
+      "severity": "ALTO",
+      "claim": "En `ProximityScreen.kt` (Radar), mover el slider de distancia (`1–20 km`) no actualiza la búsqueda",
+      "verdict": "corregido",
+      "decision": "El radio actualiza la búsqueda al terminar de mover el control, sin una petición por cada píxel. El chat anónimo también acepta emojis del selector."
+    },
+    {
+      "id": "10.-4",
+      "severity": "MEDIO",
+      "claim": "Cabecera `X-Survey-Account` en `SurveysScreen.kt` confía en el JSON del WebView",
+      "verdict": "no_es_autoridad",
+      "decision": "El servidor ya compara X-Survey-Account con req.auth.sub y rechaza discordancias con 409. La cabecera es una guardia de cambio de sesión. Sustituirla por el id público de un perfil migrado puede romper cuentas cuyo subject local es distinto."
+    },
+    {
+      "id": "11.-1",
+      "severity": "ALTO",
+      "claim": "Eliminación de cuenta propia desconectada en `SettingsScreen.kt` (incumplimiento de política de Google Play y contradicción con textos legales)",
+      "verdict": "corregido_por_decision",
+      "decision": "El dueño eligió solicitud, no borrado directo. Ajustes abre soporte oficial con un borrador de eliminación que el usuario debe enviar. No se genera una solicitud real durante QA ni se certifica por ello todo el cumplimiento de Play."
+    },
+    {
+      "id": "11.-2",
+      "severity": "MEDIO",
+      "claim": "`@username` programado como editable en `EditProfileScreen.kt` pero bloqueado con `readOnly = true` en `ProfileEditSections.kt`",
+      "verdict": "decision_producto",
+      "decision": "El identificador público es permanente por contrato y por validación del servidor. La interfaz de solo lectura es correcta; hacerlo editable provocaría rechazos y contradiría esa decisión."
+    },
+    {
+      "id": "11.-3",
+      "severity": "MEDIO",
+      "claim": "Conflicto entre `CustomizeAppScreen.kt` y `EditProfileScreen.kt` al editar la música del perfil",
+      "verdict": "no_demostrado",
+      "decision": "El recorte del perfil se sube como un archivo nuevo completo y ambos apartados guardan favorite_music_url. Cambiar deliberadamente el enlace cambia la canción; no demuestra que un recorte pierda metadatos separados, que no existen en ese contrato. Se mantiene el selector de audio ya presente."
+    }
+  ],
+  "validation": {
+    "unit": {
+      "tests": 2030,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 425
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 314,
+      "rules": {
+        "ApplySharedPref": 1,
+        "UnusedAttribute": 15,
+        "ModifierParameter": 5,
+        "UseCompatTextViewDrawableXml": 6,
+        "Untranslatable": 2,
+        "PluralsCandidate": 2,
+        "SetJavaScriptEnabled": 1,
+        "UnusedResources": 8,
+        "UsableSpace": 1,
+        "IconXmlAndPng": 2,
+        "UseKtx": 270,
+        "UseTomlInstead": 1
+      },
+      "engine": "K1 via official AGP option android.lint.useK2Uast=false; no baseline or severity changes"
+    },
+    "sourceSnapshot": {
+      "base": "a3d711e7ef8bba6fd554697485c41156cef39da2",
+      "digest": "521f3678ed421380ac780216b43e111f59540fab10b1fae7b06a82fc6ae02b3c",
+      "newSourceFiles": [
+        "app/src/communicationValidationTest/java/conectate/com/Audit99MobileUiTest.kt",
+        "app/src/main/java/conectate/com/data/model/RegistrationAgePolicy.kt",
+        "app/src/main/java/conectate/com/data/repository/moment/MomentAudiencePolicy.kt",
+        "app/src/main/java/conectate/com/presentation/calls/CallVideoGrid.kt",
+        "app/src/main/java/conectate/com/presentation/components/PostMediaTile.kt",
+        "app/src/main/java/conectate/com/presentation/live/LiveExtraTools.kt",
+        "app/src/main/java/conectate/com/presentation/videos/EditorEntityIds.kt",
+        "app/src/main/java/conectate/com/presentation/videos/EditorOverlayGeometry.kt",
+        "app/src/main/java/conectate/com/presentation/videos/EditorOverlayPreview.kt",
+        "app/src/test/java/conectate/com/data/model/RegistrationAgePolicyTest.kt",
+        "app/src/test/java/conectate/com/data/repository/moment/MomentAudiencePolicyTest.kt",
+        "app/src/test/java/conectate/com/presentation/auth/WebApprovalAccountIsolationTest.kt",
+        "app/src/test/java/conectate/com/presentation/components/PostMediaTypeTest.kt",
+        "app/src/test/java/conectate/com/presentation/videos/EditorEntityIdsTest.kt",
+        "app/src/test/java/conectate/com/presentation/videos/EditorOverlayGeometryTest.kt"
+      ]
+    },
+    "log": "audit99-validation2-build.log",
+    "qaPackagesBuilt": true
+  },
+  "native": {
+    "passed": true,
+    "tests": 14,
+    "failures": 0,
+    "ignored": 0,
+    "classes": 3,
+    "cases": [
+      {
+        "class": "conectate.com.Audit99MobileUiTest",
+        "test": "nativeExportKeepsStickerAndTextAtTheirNormalizedPositions"
+      },
+      {
+        "class": "conectate.com.Audit99MobileUiTest",
+        "test": "overlayPositionStaysRelativeToTheVideoAcrossPreviewSizes"
+      },
+      {
+        "class": "conectate.com.Audit99MobileUiTest",
+        "test": "aContinuousOverlayDragAccumulatesEveryMovement"
+      },
+      {
+        "class": "conectate.com.Audit99MobileUiTest",
+        "test": "aLocalPostVideoOpensTheVideoViewerInsteadOfAnImageDecoder"
+      },
+      {
+        "class": "conectate.com.Audit99MobileUiTest",
+        "test": "unavailableActionsNeverOfferAnEmptySuccessFlow"
+      },
+      {
+        "class": "conectate.com.Audit99MobileUiTest",
+        "test": "connectedSaveActionIsOfferedAndRunsOnce"
+      },
+      {
+        "class": "conectate.com.EditorColorLutDeviceAuditTest",
+        "test": "importedColorFilterIsVisibleAndRenderedIntoTheExport"
+      },
+      {
+        "class": "conectate.com.EmailRecoveryUiAuditTest",
+        "test": "mismatchedPasswordsCannotBeSubmitted"
+      },
+      {
+        "class": "conectate.com.EmailRecoveryUiAuditTest",
+        "test": "codeStepIsSeparateFromPasswordAndReadableInSpanish"
+      },
+      {
+        "class": "conectate.com.EmailRecoveryUiAuditTest",
+        "test": "verifiedGrantDoesNotOfferResendThatWouldInvalidateIt"
+      },
+      {
+        "class": "conectate.com.EmailRecoveryUiAuditTest",
+        "test": "verifiedStepHasTwoPasswordFieldsAndSaveAction"
+      },
+      {
+        "class": "conectate.com.EmailRecoveryUiAuditTest",
+        "test": "uncertainDeliveryKeepsCodeEntryWithoutPromisingAnEmail"
+      },
+      {
+        "class": "conectate.com.EmailRecoveryUiAuditTest",
+        "test": "encryptedDraftSurvivesStoreRecreationAndExpiredProgressIsCleared"
+      },
+      {
+        "class": "conectate.com.EmailRecoveryUiAuditTest",
+        "test": "loadingDisablesRepeatedVerification"
+      }
+    ],
+    "attempts": 1,
+    "api": 35,
+    "device": "emulator-5572",
+    "avd": "NovvinAudit99",
+    "scope": "Selected synthetic/offline QA component and native Media3 export tests; no authenticated production writes or physical communications",
+    "log": "audit99-native-first.log",
+    "qaPackageSha256": {
+      "app-audit.apk": "36edabe8511187b029ef541fdb4f421d86f5141b8c00dab2fe2f32135e796330",
+      "app-audit-androidTest.apk": "7e7890003306de9b0276a2297ba08d341f185c068ee155227e33d08730d9b42b"
+    },
+    "exportFrameVisuallyReviewed": true,
+    "evidence": [
+      "audit99-overlay-export-frame.png",
+      "audit99-native-captures/"
+    ]
+  },
+  "artifacts": {
+    "versionName": "9.1.34",
+    "versionCode": 174,
+    "applicationId": "conectate.com",
+    "minSdk": 24,
+    "targetSdk": 36,
+    "debuggable": false,
+    "environment": "production",
+    "embeddedBuildCommit": "c728323c3b5c",
+    "signedWithPreviousReleaseCertificate": true,
+    "certificateMeaning": "Local release/upload certificate from signed version 169; not proof of the Play app-signing certificate.",
+    "r8": {
+      "passed": true,
+      "mappingClassCount": 44633,
+      "applicationComponentCount": 17,
+      "applicationComponents": [
+        "conectate.com.MainActivity",
+        "conectate.com.SocialApp",
+        "conectate.com.data.service.IncomingCallActionReceiver",
+        "conectate.com.data.service.MessageNotificationActionReceiver",
+        "conectate.com.data.service.MyFirebaseMessagingService",
+        "conectate.com.presentation.auth.PortraitQrCaptureActivity",
+        "conectate.com.presentation.calls.IncomingCallActivity",
+        "conectate.com.services.CallForegroundService",
+        "conectate.com.services.IncomingCallForegroundService",
+        "conectate.com.services.LiveChatHeadService",
+        "conectate.com.services.LiveForegroundService",
+        "conectate.com.services.VoiceForegroundService",
+        "conectate.com.widgets.NovvinChatWidgetProvider",
+        "conectate.com.widgets.NovvinMinimalActionsWidgetProvider",
+        "conectate.com.widgets.NovvinMomentsWidgetProvider",
+        "conectate.com.widgets.NovvinQuickActionsWidgetProvider",
+        "conectate.com.widgets.NovvinVideosWidgetProvider"
+      ],
+      "missingComponents": [],
+      "renamedComponents": [],
+      "missingCriticalClasses": [],
+      "renamedKeepNameClasses": [],
+      "forbiddenBlanketKeeps": []
+    },
+    "nativeLibraries64Bit": [
+      {
+        "library": "lib/arm64-v8a/libandroidx.graphics.path.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/arm64-v8a/libdatastore_shared_counter.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/arm64-v8a/libimage_processing_util_jni.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/arm64-v8a/libjingle_peerconnection_so.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/arm64-v8a/liblkjingle_peerconnection_so.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/arm64-v8a/libsurface_util_jni.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/arm64-v8a/libxeno_native.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/x86_64/libandroidx.graphics.path.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/x86_64/libdatastore_shared_counter.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/x86_64/libimage_processing_util_jni.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/x86_64/libjingle_peerconnection_so.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/x86_64/liblkjingle_peerconnection_so.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/x86_64/libsurface_util_jni.so",
+        "minimumLoadAlignment": 16384
+      },
+      {
+        "library": "lib/x86_64/libxeno_native.so",
+        "minimumLoadAlignment": 16384
+      }
+    ],
+    "zipAlignment16KiB": true,
+    "bundleValidation": true,
+    "bundleAlignment": "PAGE_ALIGNMENT_16K",
+    "artifacts": {
+      "apk": {
+        "sha256": "8bffc23aa35193707f580eae34ac7e91128930f7b029fc2ed030b760c6874472",
+        "bytes": 221236501,
+        "file": "D:\\red social - live-gifts\\app\\build\\outputs\\apk\\release\\app-release.apk"
+      },
+      "aab": {
+        "sha256": "adbdaeaffbf5269417f3e771226f967a9a56f083cb064b1a26b8d2ce6f3e1080",
+        "bytes": 132085354,
+        "file": "D:\\red social - live-gifts\\app\\build\\outputs\\bundle\\release\\app-release.aab"
+      }
+    }
+  },
+  "releaseSmoke": {
+    "passed": true,
+    "atUtc": "2026-10-31T02:26:55.015015+00:00",
+    "versionCode": 174,
+    "baselineVersionCode": 173,
+    "api": 35,
+    "ownedAvd": "NovvinAudit99",
+    "signedUpdateInstalled": true,
+    "reopenPassed": true,
+    "loginScreenAndBackPassed": true,
+    "unknownIntentLeavesSplash": true,
+    "crashBufferHasApplicationCrash": false,
+    "sessionRetentionTested": false,
+    "visualReview": true,
+    "scope": "Fresh release app data in task AVD, normal signed 173 to 174 update; no authenticated session or physical communications",
+    "evidence": [
+      "audit99-signed174-entry.png",
+      "audit99-signed174-reopen.png",
+      "audit99-signed174-login.png",
+      "audit99-signed174-back.png",
+      "audit99-signed174-unknown-intent.png"
+    ],
+    "visualReviewEvidenceCount": 5
+  },
+  "apiContracts": {
+    "scope": "Local mocked API contract scripts, no production deployment or production load",
+    "checks": [
+      {
+        "command": "node tests/live-points-routes.test.js",
+        "exitCode": 0,
+        "output": "live points route tests passed"
+      },
+      {
+        "command": "node tests/live-draw-guess-routes.test.js",
+        "exitCode": 0,
+        "output": "live draw/guess route tests passed (13 suites)"
+      }
+    ]
+  },
+  "originalReportSha256": "929ddf3521922ac6514ff2a26d1021ce44598d5a9880ac1c76777e02f5854373",
+  "notTested": [
+    "Physical multi-device calls, LIVE and FCM across different networks",
+    "All authenticated production flows and every server capability",
+    "Universal age enforcement by API/web and full Play account-deletion compliance",
+    "Production load or mass concurrency"
+  ],
+  "productionServerChanged": false,
+  "playUploaded": false,
+  "excludedBranch": "correciones",
+  "artifactVerificationIncidents": [
+    "The first AAB check could not decode localized Java text under Python UTF-8 mode; Java tool output was normalized to UTF-8/English and all cryptographic/source/compatibility checks passed without rebuilding or changing the app."
+  ],
+  "releaseBuildIncidents": [
+    "First release packaging was interrupted during R8 without a completion result; the incomplete log is preserved and final packaging resumes from the same audited commit."
+  ]
+}
