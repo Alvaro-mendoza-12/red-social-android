@@ -50,7 +50,7 @@ fun LinkText(
                 if (onCollectionInvitationClick != null && conectate.com.presentation.messages.CollectionQrParser.parse(url).isSuccess) {
                     onCollectionInvitationClick(url)
                 } else if (onUrlClick != null &&
-                    (postIdFromSharedLink(url) != null || videoIdFromSharedLink(url) != null)
+                    (conectate.com.presentation.navigation.sharedContentDestination(url) != null || videoIdFromSharedLink(url) != null)
                 ) {
                     onUrlClick(url)
                 } else {

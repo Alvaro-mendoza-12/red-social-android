@@ -129,17 +129,17 @@ for(const [route,file,label] of publicRoutes){
  })
 }
 
-test('group, community and voice invitations remain private without displacing global security headers',()=>{
+test('group, community, voice and post invitations remain private without displacing global security headers',()=>{
  for(const file of ['vercel.json','../vercel.json']){
   const deployment=JSON.parse(fs.readFileSync(path.join(root,file),'utf8'))
-  const headers=deployment.headers.find(rule=>rule.source==='/(group|community|voice)/:path*')?.headers
+  const headers=deployment.headers.find(rule=>rule.source==='/(group|community|voice|post)/:path*')?.headers
   assert.ok(headers,'Invitation headers are required in '+file)
   assert.equal(headers.find(header=>header.key==='Cache-Control')?.value,'no-store')
   assert.equal(headers.find(header=>header.key==='X-Robots-Tag')?.value,'noindex, nofollow, noarchive')
   const global=deployment.headers.find(rule=>rule.source==='/(.*)')?.headers
   assert.equal(global?.find(header=>header.key==='X-Content-Type-Options')?.value,'nosniff')
   assert.ok(global?.find(header=>header.key==='Content-Security-Policy')?.value)
-  assert.equal(deployment.rewrites.find(rule=>rule.source==='/voice/:path*')?.destination,'/app-shell.html')
+  for (const kind of ['voice','group','community','post']) assert.equal(deployment.rewrites.find(rule=>rule.source===`/${kind}/:path*`)?.destination,'/app-shell.html')
  }
 })
 test('each public title and description is unique',()=>{

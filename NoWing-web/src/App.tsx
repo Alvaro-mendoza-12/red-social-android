@@ -10,6 +10,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 import { StatusView } from './components/StatusView'
 import { AuthProvider, GuestOnlyRoute, RequireAuth, useAuth } from './core/auth/AuthProvider'
 import { VoiceRoomInvitePage } from './features/voice/VoiceRoomInvitePage'
+import { PostInvitePage } from './features/social/PostInvitePage'
 import { LoginPage } from './pages/auth/LoginPage'
 import { RegisterPage } from './pages/auth/RegisterPage'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
@@ -187,6 +188,7 @@ function AppRouter() {
       <Routes>
         <Route path="/" element={<RootRoute />} />
         <Route path="/voice/:roomId" element={<VoiceRoomInvitePage />} />
+        <Route path="/post/:postId" element={<PostInvitePage />} />
         <Route path="/group/:roomId" element={<RequireAuth><RouteSuspense><CollectionInvitePage kind="group" /></RouteSuspense></RequireAuth>} />
         <Route path="/community/:roomId" element={<RequireAuth><RouteSuspense><CollectionInvitePage kind="community" /></RouteSuspense></RequireAuth>} />
         <Route path="/que-es-novvin" element={<PublicInfo path="/que-es-novvin" />} />

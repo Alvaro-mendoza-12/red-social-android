@@ -20,6 +20,17 @@ internal inline fun RequireLoggedIn(
         val guestViewModel: GuestModeViewModel = hiltViewModel()
         LaunchedEffect(Unit) {
             val entry = navController.currentBackStackEntry
+            val contentKind = when (entry?.destination?.route) {
+                Screen.PostDetail.route -> "post"
+                Screen.UserProfile.route -> "profile"
+                else -> null
+            }
+            if (contentKind != null) {
+                entry?.arguments?.getString(if (contentKind == "post") "postId" else "userId")?.let { id ->
+                    PendingSharedContentDestination.remember(contentKind, id,
+                        navController.getBackStackEntry(navController.graph.id).savedStateHandle)
+                }
+            }
             if (entry?.destination?.route == Screen.RoomDetail.route) {
                 entry.arguments?.getString("roomId")?.let { id ->
                     PendingVoiceRoomDestination.remember(id,

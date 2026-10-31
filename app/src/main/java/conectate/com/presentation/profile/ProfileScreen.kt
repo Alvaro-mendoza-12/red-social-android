@@ -1,5 +1,6 @@
 package conectate.com.presentation.profile
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import android.content.Intent
 import android.content.ClipData
@@ -412,6 +413,9 @@ fun ProfileScreen(
     val userVideos by viewModel.userVideos.collectAsState()
     val userPosts by viewModel.userPosts.collectAsState()
     val sharedPosts by viewModel.sharedPosts.collectAsState()
+    val sharedPostsLoading by viewModel.sharedPostsLoading.collectAsStateWithLifecycle()
+    val hasMoreSharedPosts by viewModel.hasMoreSharedPosts.collectAsStateWithLifecycle()
+
     val sharedVideos by viewModel.sharedVideos.collectAsState()
     val favoriteVideos by viewModel.favoriteVideos.collectAsState()
     val momentHighlights by viewModel.momentHighlights.collectAsState()
@@ -444,7 +448,6 @@ fun ProfileScreen(
     val isConnected by connectivityViewModel.isConnected.collectAsState()
     
     var showCreatePostDialog by remember { mutableStateOf(false) }
-    var postToShare by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     
     // Comments Sheet State
     var showCommentsSheet by remember { mutableStateOf(false) }
@@ -1321,9 +1324,9 @@ fun ProfileScreen(
                                                 }
                                             },
                                             onUrlClick = { url ->
-                                                if (url.contains("conectate.com/post/")) {
-                                                    val postId = url.substringAfter("post/")
-                                                    navController.navigate(conectate.com.presentation.navigation.Screen.PostDetail.createRoute(postId))
+                                                val destination = conectate.com.presentation.navigation.sharedContentDestination(url)
+                                                if (destination != null) {
+                                                    navController.navigate(destination.route)
                                                 } else {
                                                     conectate.com.data.model.videoIdFromSharedLink(url)?.let { videoId ->
                                                         navController.navigate(conectate.com.presentation.navigation.Screen.VideoPlayer.createRoute(videoId))
@@ -1332,9 +1335,6 @@ fun ProfileScreen(
                                             },
                                             onPostClick = {
                                                 navController.navigate(Screen.PostDetail.createRoute(post.id))
-                                            },
-                                            onSendToFriend = {
-                                                postToShare = post
                                             },
                                             onReportClick = { postToReport = post },
                                             showReportAction = true
@@ -1346,7 +1346,7 @@ fun ProfileScreen(
                                 if (sharedPosts.isEmpty() && sharedVideos.isEmpty()) {
                                     item {
                                         Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                                            Text("No has compartido nada aún", color = Color.Gray)
+                                            Text(if (sharedPostsLoading) "Cargando compartidos…" else "Este perfil aún no tiene compartidos visibles", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 } else {
@@ -1393,20 +1393,23 @@ fun ProfileScreen(
                                                 },
                                                 onShareClick = { viewModel.togglePostShare(post) },
                                                 onUserClick = { 
-                                                    if (it != viewModel.currentUserId) navController.navigate(Screen.UserProfile.createRoute(it))
+                                                    navController.navigate(Screen.UserProfile.createRoute(it)) { launchSingleTop = true }
                                                 },
                                                 isOwner = post.userId == viewModel.currentUserId,
                                                 showOwnerActions = false,
                                                 onPostClick = {
                                                     navController.navigate(Screen.PostDetail.createRoute(post.id))
                                                 },
-                                                onSendToFriend = {
-                                                    postToShare = post
-                                                },
                                                 onReportClick = { postToReport = post },
                                                 showReportAction = true
                                             )
                                         }
+                                    }
+                                }
+                                if (hasMoreSharedPosts) item(key = "more-shared-posts") {
+                                    OutlinedButton(onClick = viewModel::loadMoreSharedPosts,
+                                        enabled = !sharedPostsLoading, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+                                        Text(if (sharedPostsLoading) "Cargando…" else "Cargar más publicaciones compartidas")
                                     }
                                 }
                             }
@@ -1547,21 +1550,6 @@ fun ProfileScreen(
                 ) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                 }
-            }
-            
-            postToShare?.let { post ->
-                conectate.com.presentation.components.InternalShareDialog(
-                    userRepository = viewModel.userRepository,
-                    onDismiss = { postToShare = null },
-                    onShareWithUser = { user ->
-                        postToShare = null
-                        scope.launch {
-                             val postLink = "https://conectate.com/post/${post.id}"
-                             val route = Screen.Chat.createRoute(user.id, initialMessage = "Compartió una publicación:\n$postLink\n\n${post.content.take(50)}...")
-                             (mainNavController ?: navController).navigate(route)
-                        }
-                    }
-                )
             }
             
             if (showEditPostDialog && postToEdit != null) {

@@ -25,7 +25,8 @@ fun ShareOptionsSheet(
     onToggleProfileShare: () -> Unit,
     isSharedToProfile: Boolean,
     onReportVideo: (() -> Unit)? = null,
-    isReported: Boolean = false
+    isReported: Boolean = false,
+    onCopyLink: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -44,6 +45,9 @@ fun ShareOptionsSheet(
             )
             
             Spacer(modifier = Modifier.height(8.dp))
+            if (onCopyLink != null) ShareOptionItem(
+                icon = Icons.Default.ContentCopy, label = "Copiar enlace", onClick = { onCopyLink(); onDismiss() }
+            )
             
             if (onSendToFriend != null) ShareOptionItem(
                 icon = Icons.AutoMirrored.Filled.Send,

@@ -61,24 +61,26 @@ fun UniversalShareHost(
 ) {
     val forwardRequest = forwardCoordinator.request
     val videoRequest = forwardCoordinator.videoRequest
-    if (incomingShare == null && forwardRequest == null && videoRequest == null) return
+    val postRequest = forwardCoordinator.postRequest
+    val internalContent = videoRequest != null || postRequest != null
+    if (incomingShare == null && forwardRequest == null && videoRequest == null && postRequest == null) return
 
     val viewModel: ShareDestinationViewModel = hiltViewModel()
     val knownDestinations by viewModel.destinations.collectAsStateWithLifecycle()
     val people by viewModel.videoPeople.collectAsStateWithLifecycle()
-    val destinations = if (videoRequest == null) knownDestinations else (knownDestinations + people).distinctBy { it.key }
+    val destinations = if (!internalContent) knownDestinations else (knownDestinations + people).distinctBy { it.key }
     val actionState by viewModel.actionState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val maximumDialogHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * 0.9f
-    val activeKey = videoRequest?.requestId ?: forwardRequest?.requestId ?: incomingShare?.id.orEmpty()
+    val activeKey = postRequest?.requestId ?: videoRequest?.requestId ?: forwardRequest?.requestId ?: incomingShare?.id.orEmpty()
     var query by remember(activeKey) { mutableStateOf("") }
     var selectedKeys by remember(activeKey) { mutableStateOf<Set<String>>(emptySet()) }
     var selectedPeople by remember(activeKey) { mutableStateOf<Map<String, ShareDestination>>(emptyMap()) }
-    var caption by remember(activeKey) { mutableStateOf(if (videoRequest != null) "" else incomingShare?.text ?: incomingShare?.subject.orEmpty()) }
+    var caption by remember(activeKey) { mutableStateOf(if (internalContent) "" else incomingShare?.text ?: incomingShare?.subject.orEmpty()) }
 
     fun close() {
         viewModel.resetActionState()
-        if (forwardRequest != null || videoRequest != null) {
+        if (forwardRequest != null || internalContent) {
             forwardCoordinator.dismiss()
         } else {
             onIncomingShareConsumed()
@@ -90,14 +92,15 @@ fun UniversalShareHost(
         viewModel.refreshDestinations()
     }
 
-    LaunchedEffect(query, videoRequest?.requestId) {
-        if (videoRequest != null) viewModel.searchVideoPeople(query)
+    LaunchedEffect(query, activeKey) {
+        if (internalContent) viewModel.searchVideoPeople(query)
     }
 
     LaunchedEffect(actionState) {
         val completed = actionState as? ShareActionState.Completed ?: return@LaunchedEffect
         Toast.makeText(context, completed.message, Toast.LENGTH_SHORT).show()
         close()
+        completed.openDestination?.let(onOpenConversation)
     }
 
     val filtered = remember(destinations, query) {
@@ -112,8 +115,9 @@ fun UniversalShareHost(
         }
     }
     val isRunning = actionState is ShareActionState.Running
-    val preview = remember(incomingShare, forwardRequest, videoRequest) {
+    val preview = remember(incomingShare, forwardRequest, videoRequest, postRequest) {
         when {
+            postRequest != null -> postRequest.post.content.take(100).ifBlank { "Publicación de Novvin" }
             videoRequest != null -> videoRequest.video.title.ifBlank { "Video de Novvin" }
             forwardRequest != null -> {
                 val count = forwardRequest.candidates.size
@@ -165,7 +169,7 @@ fun UniversalShareHost(
                     }
                 }
 
-                if (incomingShare?.items?.isNotEmpty() == true || videoRequest != null) {
+                if (incomingShare?.items?.isNotEmpty() == true || internalContent) {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = caption,
@@ -241,12 +245,16 @@ fun UniversalShareHost(
                     )
                 }
 
-                if (videoRequest != null && selectedKeys.any { it.startsWith("chat:person:") }) Text(
+                if (internalContent && selectedKeys.any { it.startsWith("chat:person:") }) Text(
                     "Si aún no han conversado, enviarás una solicitud de mensaje. Solo puedes enviar uno hasta que te respondan.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(
                     onClick = {
-                        if (videoRequest != null) {
+                        if (postRequest != null) {
+                            viewModel.shareInternalPost(postRequest, selectedKeys.mapNotNull { key ->
+                                selectedPeople[key] ?: destinations.firstOrNull { it.key == key }
+                            }, caption)
+                        } else if (videoRequest != null) {
                             viewModel.shareInternalVideo(videoRequest, selectedKeys.mapNotNull { key ->
                                 selectedPeople[key] ?: destinations.firstOrNull { it.key == key }
                             }, caption)

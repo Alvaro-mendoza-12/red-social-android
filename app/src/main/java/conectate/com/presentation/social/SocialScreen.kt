@@ -265,8 +265,6 @@ fun SocialScreen(
     if(showPromotionManager)SocialPromotionManager(promotionState){showPromotionManager=false}
     var postToEdit by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
-    var showInternalShareDialog by remember { mutableStateOf(false) }
-    var selectedPostForShare by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var reactionPost by remember { mutableStateOf<Post?>(null) }
     var explanationPost by remember { mutableStateOf<Post?>(null) }
     var notInterestedPost by remember { mutableStateOf<Post?>(null) }
@@ -2013,14 +2011,10 @@ fun SocialScreen(
                                                 navController.navigate(Screen.PostDetail.createRoute(post.id))
                                             },
                                             onShareClick = { viewModel.togglePostShare(post) },
-                                            onUserClick = { userId -> if (userId != viewModel.currentUserId) navController.navigate(Screen.UserProfile.createRoute(userId)) },
+                                            onUserClick = { userId -> navController.navigate(Screen.UserProfile.createRoute(userId)) { launchSingleTop = true } },
                                             onPostClick = {
                                                 viewModel.recordPostOpen(post)
                                                 navController.navigate(Screen.PostDetail.createRoute(post.id))
-                                            },
-                                            onSendToFriend = {
-                                                selectedPostForShare = post
-                                                showInternalShareDialog = true
                                             },
                                             onReportClick = { postToReport = post },
                                             onWhyThisPost = { explanationPost = post },
@@ -2314,19 +2308,7 @@ fun SocialScreen(
         )
     }
 
-    // Diálogo de Compartir Interno (Movido fuera del Scaffold para evitar problemas de refresco de UI)
-    if (showInternalShareDialog && selectedPostForShare != null) {
-        conectate.com.presentation.components.InternalShareDialog(
-            userRepository = viewModel.userRepository,
-            onDismiss = { showInternalShareDialog = false; selectedPostForShare = null },
-            onShareWithUser = { user ->
-                showInternalShareDialog = false
-                val route = Screen.Chat.createRoute(user.id, initialMessage = "¡Mira esto!\nhttps://conectate.com/post/${selectedPostForShare?.id}")
-                selectedPostForShare = null
-                navController.navigate(route)
-            }
-        )
-    }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

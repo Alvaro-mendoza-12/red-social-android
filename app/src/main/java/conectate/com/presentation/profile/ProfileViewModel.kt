@@ -148,10 +148,32 @@ class ProfileViewModel @Inject constructor(
     private val profileReadScope = ProfileReadScope(authService::getCurrentUserId)
     private val contentSubscriptions = ProfileContentSubscriptions(viewModelScope, profileReadScope)
     private var contentOwner: Pair<String?, String>? = null
+    private val postSharesInFlight = mutableSetOf<String>()
+    private val sharedPostsPager = ProfileSharedPostsPager(viewModelScope, profileReadScope,
+        postRepository::getSharedPostsPage,
+        { page, reset -> _sharedPosts.value = (if (reset) page else _sharedPosts.value + page).distinctBy { it.id } },
+        { _contentLoadError.value = "No se pudieron cargar los compartidos. Reintenta." })
+    val sharedPostsLoading = sharedPostsPager.loading
+    val hasMoreSharedPosts = sharedPostsPager.hasMore
+    fun loadMoreSharedPosts() = sharedPostsPager.load()
+
     private var profileLoadJob: kotlinx.coroutines.Job? = null
     private var profileBadgeJob: kotlinx.coroutines.Job? = null
 
     init {
+        viewModelScope.launch {
+            shareRepository.postChanges.collect { change ->
+                if (change.actorId != authService.getCurrentUserId()) return@collect
+                _userPosts.value = _userPosts.value.map(change::applyTo)
+                _sharedPosts.value = _sharedPosts.value.map(change::applyTo)
+                val displayed = (_profileState.value as? ProfileUiState.Success)?.user?.id
+                if (displayed == change.actorId) {
+                    if (!change.shared) _sharedPosts.value = _sharedPosts.value.filterNot { it.id == change.postId }
+                    sharedPostsPager.refresh(displayed)
+                }
+            }
+        }
+
         viewModelScope.launch {
             realtime.events.filter { it.event == "profile_views_changed" }.collect { event ->
                 val account = authService.getCurrentUserId() ?: return@collect
@@ -210,6 +232,7 @@ class ProfileViewModel @Inject constructor(
         }
         val owner = authService.getCurrentUserId() to idToLoad
         contentSubscriptions.cancelAll()
+        sharedPostsPager.clear()
         _contentLoadError.value = null
         if (contentOwner?.first != owner.first) {
             momentHighlightCache.clear()
@@ -941,8 +964,7 @@ class ProfileViewModel @Inject constructor(
         { _contentLoadError.value = "No se pudieron cargar las publicaciones del perfil. Reintenta." })
 
     private fun loadSharedContent(userId: String) {
-        contentSubscriptions.observe("sharedPosts", userId, { postRepository.getSharedPosts(userId) },
-            { _sharedPosts.value = it }, { _contentLoadError.value = "No se pudieron cargar los compartidos. Reintenta." })
+        sharedPostsPager.refresh(userId)
         contentSubscriptions.observe("sharedVideos", userId, { videoRepository.getSharedVideos(userId) },
             { _sharedVideos.value = it }, { _contentLoadError.value = "No se pudieron cargar los videos compartidos. Reintenta." })
     }
@@ -1104,48 +1126,18 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun togglePostShare(post: Post) {
+        val account = authService.getCurrentUserId() ?: return
+        if (!postSharesInFlight.add(post.id)) return
         viewModelScope.launch {
             try {
-                val userId = authService.getCurrentUserId() ?: return@launch
-                val wasShared = post.sharedByMe
-                val newShareCount = if (wasShared) maxOf(0, post.shareCount - 1) else post.shareCount + 1
-                
-                // Optimistic Update
-                fun updateList(list: List<Post>): List<Post> {
-                    return list.map { 
-                        if (it.id == post.id) {
-                            it.copy(sharedByMe = !wasShared, shareCount = newShareCount)
-                        } else {
-                            it
-                        }
-                    }
-                }
-                _userPosts.value = updateList(_userPosts.value)
-                _sharedPosts.value = if (wasShared) {
-                    _sharedPosts.value.filter { it.id != post.id }
-                } else {
-                    _sharedPosts.value + post.copy(sharedByMe = true, shareCount = newShareCount)
-                }
-
-                val result = if (wasShared) {
-                    shareRepository.unshareContent(userId, "post", post.id)
-                } else {
-                    shareRepository.shareContent(userId, "post", post.id)
-                }
-
-                if (result.isFailure) {
-                    // Revert on failure
-                    updatePostInLists(post.id) {
-                        it.copy(sharedByMe = wasShared, shareCount = post.shareCount)
-                    }
-                    if (!wasShared) {
-                        _sharedPosts.value = _sharedPosts.value.filterNot { it.id == post.id }
-                    }
-                    loadSharedContent(userId) // Reload to be sure
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "Error toggling post share", e)
-            }
+                val result = if (post.sharedByMe) shareRepository.unshareContent(account, "post", post.id)
+                    else shareRepository.shareContent(account, "post", post.id)
+                if (account != authService.getCurrentUserId()) return@launch
+                conectate.com.presentation.common.AppFeedbackBus.show(
+                    if (result.isSuccess) { if (post.sharedByMe) "Quitado de tu perfil" else "Añadido a tu perfil" }
+                    else "No se pudo guardar el cambio. Vuelve a intentarlo.")
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            finally { postSharesInFlight.remove(post.id) }
         }
     }
 

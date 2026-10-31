@@ -67,8 +67,9 @@ export function auditBuiltSeo({ read, exists, configs }) {
   assert(/noindex/i.test(meta(shell, 'robots')) && /type="module"/.test(shell), 'Interactive app shell was removed or made indexable')
   assert(/noindex/i.test(meta(notFound, 'robots')) && !/rel="canonical"/.test(notFound), '404 is indexable or points to home')
   for (const config of configs) {
+    assert(config.rewrites.some(rule => rule.source === '/post/:path*' && rule.destination === '/app-shell.html'), 'Shared publication route cannot load the application')
     assert(!config.rewrites.some(rule => ['/(.*)', '/:path*'].includes(rule.source)), 'Unknown URLs would become soft 404s')
-    for (const privateRoute of ['/app/messages', '/explore/videos', '/u/example', '/group/example', '/community/example']) {
+    for (const privateRoute of ['/app/messages', '/explore/videos', '/u/example', '/group/example', '/community/example', '/post/12345678']) {
       const headers = config.headers.filter(rule => matches(rule.source, privateRoute)).flatMap(rule => rule.headers)
       assert(headers.some(header => header.key.toLowerCase() === 'x-robots-tag' && /noindex/i.test(header.value)), 'Private route lost noindex: ' + privateRoute)
     }

@@ -1327,11 +1327,11 @@ fun ChatScreen(
                                         state.otherUser?.badges ?: emptyList()
                                     },
                                     onUrlClick = { url ->
-                                        val postId = conectate.com.presentation.components.postIdFromSharedLink(url)
+                                        val sharedContent = conectate.com.presentation.navigation.sharedContentDestination(url)
                                         if (openCollectionInvitation(url)) {
                                             // The shared invitation host shows a preview before joining.
-                                        } else if (postId != null) {
-                                            navController.navigate(conectate.com.presentation.navigation.Screen.PostDetail.createRoute(postId))
+                                        } else if (sharedContent != null) {
+                                            navController.navigate(sharedContent.route)
                                         } else {
                                             conectate.com.data.model.videoIdFromSharedLink(url)?.let { videoId ->
                                                 navController.navigate(conectate.com.presentation.navigation.Screen.VideoPlayer.createRoute(videoId))

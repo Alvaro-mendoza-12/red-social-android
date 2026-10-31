@@ -472,14 +472,12 @@ class PostRepository @Inject constructor(
             
             if (accessToken != null) {
                 if (supabaseConfig.isLocalFallbackPrimary) {
-                    val result = localFallbackApiClient.loadFeed(accessToken, limit = 120, offset = 0)
+                    val result = localFallbackApiClient.loadFeed(accessToken, limit = 40, offset = 0, sharedBy = userId)
                     if (result.isFailure) {
                         android.util.Log.e("PostRepository", "Error fetching Ubuntu shared posts", result.exceptionOrNull())
-                        emit(emptyList())
-                        return@flow
+                        throw result.exceptionOrNull() ?: IllegalStateException("No se pudieron cargar los compartidos")
                     }
                     val posts = result.getOrThrow().items
-                        .filter { it.sharedByMe || userId == currentUserId && it.sharedByMe }
                     emit(posts)
                     return@flow
                 }
@@ -514,11 +512,29 @@ class PostRepository @Inject constructor(
                 
                 emit(posts)
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("PostRepository", "Error fetching shared posts", e)
-            emit(emptyList())
+            throw e
         }
     }.flowOn(kotlinx.coroutines.Dispatchers.IO)
+
+    suspend fun getSharedPostsPage(userId: String, offset: Int): Result<conectate.com.data.localfallback.LocalFallbackFeedResponse> =
+        withContext(Dispatchers.IO) {
+            try {
+                if (usesLocalFallbackBackend()) {
+                    val token = authService.getAccessTokenAwait()
+                        ?: return@withContext Result.failure(IllegalStateException("Inicia sesión para ver los compartidos."))
+                    localFallbackApiClient.loadFeed(token, limit = 40, offset = offset, sharedBy = userId)
+                } else {
+                    val all = getSharedPosts(userId).last()
+                    val items = all.drop(offset).take(40)
+                    val next = (offset + items.size).takeIf { it < all.size }
+                    Result.success(conectate.com.data.localfallback.LocalFallbackFeedResponse(items, next != null, next))
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { Result.failure(error) }
+        }
 
 
 

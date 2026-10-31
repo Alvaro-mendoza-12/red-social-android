@@ -6,7 +6,7 @@
   "outputDirectory": "dist",
   "headers": [
     {
-      "source": "/(group|community|voice)/:path*",
+      "source": "/(group|community|voice|post)/:path*",
       "headers": [
         {
           "key": "X-Robots-Tag",
@@ -197,6 +197,10 @@
     },
     {
       "source": "/community/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/post/:path*",
       "destination": "/app-shell.html"
     },
     {

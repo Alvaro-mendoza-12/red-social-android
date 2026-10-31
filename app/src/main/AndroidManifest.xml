@@ -104,6 +104,10 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/voice/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/post/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/feed/post/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/profile/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/u/" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

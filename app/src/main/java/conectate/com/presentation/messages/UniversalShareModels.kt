@@ -57,11 +57,19 @@ data class UniversalForwardRequest(
 )
 
 data class InternalVideoShareRequest(val video: conectate.com.data.model.Video, val requestId: String = UUID.randomUUID().toString())
+data class InternalPostShareRequest(val post: conectate.com.data.model.Post, val requestId: String = UUID.randomUUID().toString())
 
 class UniversalForwardCoordinator {
+    var postRequest by mutableStateOf<InternalPostShareRequest?>(null)
+        private set
+    fun openPost(post: conectate.com.data.model.Post) {
+        dismiss()
+        postRequest = InternalPostShareRequest(post)
+    }
     var videoRequest by mutableStateOf<InternalVideoShareRequest?>(null)
         private set
     fun openVideo(video: conectate.com.data.model.Video) {
+        postRequest = null
         request = null
         videoRequest = InternalVideoShareRequest(video)
     }
@@ -84,6 +92,7 @@ class UniversalForwardCoordinator {
         val eligibleIds = eligible.mapTo(mutableSetOf(), ForwardMessagePayload::id)
         val initial = initiallySelectedIds.intersect(eligibleIds).ifEmpty { setOf(eligible.last().id) }
         videoRequest = null
+        postRequest = null
         request = UniversalForwardRequest(
             candidates = eligible,
             initiallySelectedIds = initial
@@ -93,6 +102,7 @@ class UniversalForwardCoordinator {
     fun dismiss() {
         request = null
         videoRequest = null
+        postRequest = null
     }
 }
 
