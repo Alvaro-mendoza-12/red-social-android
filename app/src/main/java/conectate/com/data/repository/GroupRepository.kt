@@ -2601,20 +2601,20 @@ class GroupRepository @Inject constructor(
      */
 
 
-    suspend fun createGroup(name: String, description: String?, imageBytes: ByteArray?, members: List<String>): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun createGroup(name: String, description: String?, imageBytes: ByteArray?, members: List<String>, expectedAccountId: String? = null): Result<String> = conectate.com.data.repository.collection.withCollectionCreationAccount(
+        lease = authService.captureAccountLease(), expectedAccountId = expectedAccountId,
+        tokenForAccount = authService::getAccessTokenForAccountAwait,
+    ) { creatorId, token, requireCurrent ->
         try {
-            android.util.Log.d("GroupRepository", "[GOD] Creando grupo: $name para integrantes: $members")
-            var creatorId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            
             val groupId = UUID.randomUUID().toString().lowercase()
-            android.util.Log.d("GroupRepository", "[GOD] Generando nuevo groupId: $groupId")
             
             var imageUrl: String? = null
             if (imageBytes != null) {
-                var uploadResult = uploadGroupImage(groupId, imageBytes)
-                if (uploadResult.isSuccess) {
-                    imageUrl = uploadResult.getOrNull()
-                }
+                imageUrl = collectionMediaStore.uploadImage(
+                    ownerId = groupId, bytes = imageBytes, bucketName = "groups",
+                    filePrefix = "group", expectedAccountId = creatorId,
+                ).getOrThrow()
+                requireCurrent()
             }
 
             // Usar JsonObject explícito para evitar fallos por campos nulos o inesperados
@@ -2633,7 +2633,6 @@ class GroupRepository @Inject constructor(
                 .map { it.trim().lowercase() }
                 .filter { it.isNotBlank() }
                 .distinct()
-            android.util.Log.d("GroupRepository", "[GOD] Insertando ${allMembers.size} miembros en Supabase...")
             var membershipPayloads = allMembers.map { uid ->
                 buildJsonObject {
                     put("group_id", groupId)
@@ -2643,8 +2642,7 @@ class GroupRepository @Inject constructor(
                 }
             }
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val token = authService.getAccessTokenAwait()
-                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                requireCurrent()
                 localFallbackApiClient.createGroup(
                     accessToken = token,
                     id = groupId,
@@ -2653,6 +2651,7 @@ class GroupRepository @Inject constructor(
                     imageUrl = imageUrl,
                     memberIds = allMembers
                 ).getOrThrow()
+                requireCurrent()
                 val optimisticGroup = GroupEntity(
                     id = groupId,
                     name = name,
@@ -2665,22 +2664,22 @@ class GroupRepository @Inject constructor(
                     is_member = true,
                     is_deleted = false
                 )
-                groupDao.upsertGroup(optimisticGroup)
-                groupDao.insertMembers(allMembers.map { uid ->
+                groupDao.saveCreatedGroup(optimisticGroup, allMembers.map { uid ->
                     GroupMemberEntity(
                         group_id = groupId,
                         user_id = uid,
                         role = if (uid == creatorId.trim().lowercase()) "owner" else "member",
                         joined_at = now
                     )
-                })
-                return@withContext Result.success(groupId)
+                }, requireCurrent)
+                return@withCollectionCreationAccount Result.success(groupId)
             }
             collectionCreationRemoteStore.createCollectionWithMemberships(
                 collectionTable = "groups",
                 collectionPayload = groupJson,
                 membershipTable = "group_members",
-                membershipPayloads = membershipPayloads
+                membershipPayloads = membershipPayloads,
+                requireCurrent = requireCurrent,
             ).getOrThrow()
 
             try {
@@ -2696,24 +2695,22 @@ class GroupRepository @Inject constructor(
                     is_member = true,
                     is_deleted = false
                 )
-                groupDao.upsertGroup(optimisticGroup)
-
-                groupDao.insertMembers(allMembers.map { uid ->
+                groupDao.saveCreatedGroup(optimisticGroup, allMembers.map { uid ->
                     conectate.com.data.local.entity.GroupMemberEntity(
                         group_id = groupId,
                         user_id = uid,
                         role = if (uid == creatorId.trim().lowercase()) "owner" else "member",
                         joined_at = now
                     )
-                })
-                android.util.Log.d("GroupRepository", "[GOD] Inserción local optimista exitosa para $groupId")
-            } catch (e: Exception) {
+                }, requireCurrent)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 android.util.Log.e("GroupRepository", "Fallo inserción local optimista", e)
             }
 
-            android.util.Log.d("GroupRepository", "[GOD] Creación completada. Realtime sincronizará automáticamente.")
             Result.success(groupId)
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("GroupRepository", "[GOD] ERROR AL CREAR GRUPO", e)
             Result.failure(e)
         }

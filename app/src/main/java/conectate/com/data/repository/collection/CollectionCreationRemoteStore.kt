@@ -13,14 +13,20 @@ internal class CollectionCreationRemoteStore(
         collectionTable: String,
         collectionPayload: JsonObject,
         membershipTable: String,
-        membershipPayloads: List<JsonObject>
+        membershipPayloads: List<JsonObject>,
+        requireCurrent: () -> Unit = {},
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            requireCurrent()
             supabaseConfig.client.postgrest[collectionTable].insert(collectionPayload)
+            requireCurrent()
             if (membershipPayloads.isNotEmpty()) {
                 supabaseConfig.client.postgrest[membershipTable].insert(membershipPayloads)
             }
+            requireCurrent()
             Result.success(Unit)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Result.failure(e)
         }

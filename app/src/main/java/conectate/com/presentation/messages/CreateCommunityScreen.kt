@@ -3,6 +3,8 @@ package conectate.com.presentation.messages
 import conectate.com.core.media.readMediaBytesWithLimit
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -37,18 +39,29 @@ fun CreateCommunityScreen(
     navController: NavController,
     viewModel: CreateCommunityViewModel = hiltViewModel()
 ) {
-    var name by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var category by remember { mutableStateOf("") }
-    var isPublic by remember { mutableStateOf(true) }
+    val sessionCurrent by viewModel.sessionCurrent.collectAsStateWithLifecycle()
+    if (!sessionCurrent || !viewModel.isSessionCurrent()) {
+        CollectionCreationSessionNotice { navController.popBackStack() }
+        return
+    }
+    key(viewModel.ownerAccountId) { CreateCommunityForm(navController, viewModel) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreateCommunityForm(navController: NavController, viewModel: CreateCommunityViewModel) {
+    var name by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
+    var category by rememberSaveable { mutableStateOf("") }
+    var isPublic by rememberSaveable { mutableStateOf(true) }
     var showMediaPicker by remember { mutableStateOf(false) }
 
-    val isCreating by viewModel.isCreating.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val selectedImageBytes by viewModel.selectedImageBytes.collectAsState()
+    val isCreating by viewModel.isCreating.collectAsStateWithLifecycle()
+    val isPreparingImage by viewModel.isPreparingImage.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val selectedImageBytes by viewModel.selectedImageBytes.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     if (showMediaPicker) {
         MessageMediaComposer(
@@ -64,21 +77,13 @@ fun CreateCommunityScreen(
             onSend = { selected, _ ->
                 val media = selected.firstOrNull() ?: return@MessageMediaComposer
                 showMediaPicker = false
-                scope.launch {
-                    val bytes = withContext(Dispatchers.IO) {
-                        if (media.type == "video") {
-                            VideoUtils.generateVideoThumbnail(context, media.uri)
-                        } else {
-                            runCatching { context.contentResolver.openInputStream(media.uri)?.use { it.readMediaBytesWithLimit(60L * 1024 * 1024) } }.getOrNull()
+                viewModel.prepareImage {
+                    withContext(Dispatchers.IO) {
+                        val raw = if (media.type == "video") VideoUtils.generateVideoThumbnail(context.applicationContext, media.uri)
+                        else context.contentResolver.openInputStream(media.uri)?.use {
+                            it.readMediaBytesWithLimit(60L * 1024 * 1024)
                         }
-                    }
-                    viewModel.setImageBytes(bytes)
-                    if (bytes == null) {
-                        android.widget.Toast.makeText(
-                            context,
-                            "No se pudo preparar ese archivo. Elige otro.",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
+                        raw?.let { conectate.com.core.media.normalizeCollectionIcon(it).bytes }
                     }
                 }
             }
@@ -111,6 +116,10 @@ fun CreateCommunityScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (isPreparingImage) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text("Preparando icono…", style = MaterialTheme.typography.bodySmall)
+            }
             // Image Picker
             Box(
                 modifier = Modifier
@@ -123,7 +132,7 @@ fun CreateCommunityScreen(
                         .size(100.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { showMediaPicker = true },
+                        .clickable(enabled = !isCreating && !isPreparingImage) { showMediaPicker = true },
                     contentAlignment = Alignment.Center
                 ) {
                     if (selectedImageBytes != null) {
@@ -145,6 +154,7 @@ fun CreateCommunityScreen(
 
             OutlinedTextField(
                 value = name,
+                enabled = !isCreating,
                 onValueChange = { name = it },
                 label = { Text("Nombre de la comunidad") },
                 modifier = Modifier.fillMaxWidth(),
@@ -153,6 +163,7 @@ fun CreateCommunityScreen(
 
             OutlinedTextField(
                 value = description,
+                enabled = !isCreating,
                 onValueChange = { description = it },
                 label = { Text("Descripción") },
                 modifier = Modifier.fillMaxWidth(),
@@ -161,6 +172,7 @@ fun CreateCommunityScreen(
 
             OutlinedTextField(
                 value = category,
+                enabled = !isCreating,
                 onValueChange = { category = it },
                 label = { Text("Categoría (ej: Gaming, Música, Tech)") },
                 modifier = Modifier.fillMaxWidth(),
@@ -172,7 +184,7 @@ fun CreateCommunityScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text("Pública", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "Cualquiera puede unirse y ver mensajes",
@@ -180,7 +192,7 @@ fun CreateCommunityScreen(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                     )
                 }
-                Switch(checked = isPublic, onCheckedChange = { isPublic = it })
+                Switch(enabled = !isCreating, checked = isPublic, onCheckedChange = { isPublic = it })
             }
 
             if (error != null) {
@@ -200,10 +212,10 @@ fun CreateCommunityScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                enabled = !isCreating && name.isNotBlank(),
+                enabled = !isCreating && !isPreparingImage && name.isNotBlank(),
                 shape = MaterialTheme.shapes.medium
             ) {
-                if (isCreating) {
+                if (isCreating || isPreparingImage) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
                         color = MaterialTheme.colorScheme.onPrimary

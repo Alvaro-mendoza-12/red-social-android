@@ -2133,6 +2133,7 @@ fun SocialScreen(
     
     
     if (showChallengeMediaPicker && challengeState.ownerId != null) {
+        key(challengeState.ownerId, challengeState.sessionEpoch, challengeEntry?.challenge?.id) {
         ChallengeMediaPicker(
             activeChallenge = challengeEntry?.challenge,
             busy = isSubmittingChallenge,
@@ -2191,6 +2192,7 @@ fun SocialScreen(
                 micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
             }
         )
+        }
     }
 
     // Diálogo de Edición de Post
