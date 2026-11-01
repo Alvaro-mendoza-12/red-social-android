@@ -2096,27 +2096,7 @@ async function challengeWinnerIds(pool, activeChallengeId, limit = 3) {
 }
 
 async function purgeChallengeSession(pool, activeChallengeId) {
-  const activeId = normalizeId(activeChallengeId)
-  if (!activeId) return
-  await pool.query(
-    `DELETE FROM fallback_challenge_votes
-     WHERE lower(submission_id) IN (
-       SELECT lower(id::text)
-       FROM fallback_challenge_submissions
-       WHERE lower(active_challenge_id) = $1
-     )`,
-    [activeId],
-  )
-  await pool.query(
-    `DELETE FROM fallback_challenge_submissions
-     WHERE lower(active_challenge_id) = $1`,
-    [activeId],
-  )
-  await pool.query(
-    `DELETE FROM fallback_active_challenges
-     WHERE lower(id::text) = $1`,
-    [activeId],
-  )
+  return require('./challenge-mutations').purgeChallengeRound(pool, activeChallengeId)
 }
 
 async function ensureDefaultChallengeMasters(pool, creatorId = 'system') {
@@ -2157,10 +2137,25 @@ async function hasChallengeSubmissions(pool, activeChallengeId) {
 }
 
 async function ensureActiveChallenge(pool, user) {
+  return require('./challenge-mutations').withChallengeTransaction(pool, client => ensureActiveChallengeRecord(client, user))
+}
+
+async function ensureActiveChallengeRecord(pool, user) {
   const now = new Date()
   const identity = userIdentity(user)
   let masters = await ensureDefaultChallengeMasters(pool, identity.displayUserId)
-  const activeRows = await localActiveChallenges(pool, 50)
+  let activeRows = await localActiveChallenges(pool, 50)
+  // An expired round without responses has no vote/podium to show. Start the
+  // next usable round instead of making the first returning user wait 36 seconds.
+  const emptyExpired = new Set()
+  for (const row of activeRows) {
+    if (textOf(row, ['status'], '').toLowerCase() === 'active' && toMillis(row.expires_at) &&
+        toMillis(row.expires_at) <= now.getTime() && !(await hasChallengeSubmissions(pool, row.id))) {
+      await purgeChallengeSession(pool, row.id)
+      emptyExpired.add(normalizeId(row.id))
+    }
+  }
+  activeRows = activeRows.filter(row => !emptyExpired.has(normalizeId(row.id)))
   const existing = activeRows.find((row) => {
     const status = textOf(row, ['status'], '').toLowerCase()
     const expiresAt = toMillis(row.expires_at)
@@ -13860,6 +13855,7 @@ function registerDataRoutes(app, {
       const master = masters.find((row) => challengeId(row) === normalizeId(textOf(active, ['challenge_id'], '')))
       res.json({ activeChallenge: mapActiveChallenge(active, master) })
     } catch (error) {
+      if (error.code?.startsWith('CHALLENGE_')) return res.status(error.status || 400).json({ error: error.code })
       next(error)
     }
   })
@@ -13903,14 +13899,11 @@ function registerDataRoutes(app, {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
-      const { rowCount } = await pool.query(
-        `DELETE FROM fallback_challenges_master
-         WHERE lower(id::text) = $1 AND lower(creator_id) = $2`,
-        [normalizeId(req.params.challengeId), identity.displayUserId],
-      )
+      const { rowCount } = await require('./challenge-mutations').deleteChallengeMaster(pool, identity, req.params.challengeId)
       if (rowCount === 0) return res.status(404).json({ error: 'CHALLENGE_NOT_FOUND' })
       res.json({ ok: true })
     } catch (error) {
+      if (error.code?.startsWith('CHALLENGE_')) return res.status(error.status || 400).json({ error: error.code })
       next(error)
     }
   })
@@ -13963,34 +13956,15 @@ function registerDataRoutes(app, {
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
       const activeId = normalizeId(req.params.activeChallengeId)
-      const activeRows = await localActiveChallenges(pool, 500)
-      const active = activeRows.find((row) => normalizeId(textOf(row, ['id'], '')) === activeId)
-      const challengeIdValue = String(req.body?.challengeId || req.body?.challenge_id || textOf(active || {}, ['challenge_id']) || activeId).trim()
-      const contentUrl = String(req.body?.contentUrl || req.body?.content_url || '').trim() || null
-      const textContent = String(req.body?.textContent || req.body?.text_content || '').trim() || null
-      if (!activeId || (!contentUrl && !textContent)) {
-        return res.status(400).json({ error: 'ACTIVE_CHALLENGE_AND_CONTENT_REQUIRED' })
-      }
-      if (contentUrl && !(await currentUserOwnsStorageObject(pool, user.id, contentUrl, ['challenges']))) {
-        return res.status(403).json({ error: 'CHALLENGE_MEDIA_STORAGE_OWNERSHIP_REQUIRED' })
-      }
-      const { rows } = await pool.query(
-        `INSERT INTO fallback_challenge_submissions(challenge_id, active_challenge_id, user_id, content_url, text_content)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (active_challenge_id, user_id)
-         DO UPDATE SET
-            challenge_id = EXCLUDED.challenge_id,
-            content_url = EXCLUDED.content_url,
-            text_content = EXCLUDED.text_content,
-            updated_at = NOW()
-         RETURNING id::text, challenge_id, active_challenge_id, user_id, content_url, text_content, created_at, updated_at`,
-        [challengeIdValue, activeId, identity.displayUserId, contentUrl, textContent],
-      )
+      const submission = await require('./challenge-mutations').submitChallenge(pool, identity, activeId, req.body || {},
+        url => currentUserOwnsStorageObject(pool, user.id, url, ['challenges']))
       const profilesById = indexProfiles(await publicProfilesByIds(pool, [identity.displayUserId]))
       res.status(201).json({
-        submission: mapChallengeSubmission(normalizeImportedRow(rows[0]), profilesById, new Map(), new Set()),
+        submission: mapChallengeSubmission(normalizeImportedRow(submission), profilesById, new Map(), new Set()),
       })
     } catch (error) {
+      if (error.code?.startsWith('CHALLENGE_') || error.code === 'ACTIVE_CHALLENGE_AND_CONTENT_REQUIRED')
+        return res.status(error.status || 400).json({ error: error.code })
       next(error)
     }
   })
@@ -14045,37 +14019,9 @@ function registerDataRoutes(app, {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
-      const submissionId = normalizeId(req.params.submissionId)
-      const existing = await pool.query(
-        `SELECT 1 FROM fallback_challenge_votes
-         WHERE lower(submission_id) = $1 AND lower(voter_id) = $2
-         LIMIT 1`,
-        [submissionId, identity.displayUserId],
-      )
-      let votedByMe = true
-      if (existing.rows.length > 0) {
-        await pool.query(
-          `DELETE FROM fallback_challenge_votes
-           WHERE lower(submission_id) = $1 AND lower(voter_id) = $2`,
-          [submissionId, identity.displayUserId],
-        )
-        votedByMe = false
-      } else {
-        await pool.query(
-          `INSERT INTO fallback_challenge_votes(submission_id, voter_id)
-           VALUES ($1, $2)
-           ON CONFLICT (submission_id, voter_id) DO NOTHING`,
-          [submissionId, identity.displayUserId],
-        )
-      }
-      const { rows } = await pool.query(
-        `SELECT COUNT(*)::int AS total
-         FROM fallback_challenge_votes
-         WHERE lower(submission_id) = $1`,
-        [submissionId],
-      )
-      res.json({ vote_count: Number(rows[0]?.total || 0), voted_by_me: votedByMe })
+      res.json(await require('./challenge-mutations').setChallengeVote(pool, identity, req.params.submissionId, req.body || {}))
     } catch (error) {
+      if (error.code?.startsWith('CHALLENGE_')) return res.status(error.status || 400).json({ error: error.code })
       next(error)
     }
   })
@@ -15160,6 +15106,7 @@ module.exports = {
   normalizeProfileSectionVisibility,
   normalizeProfileForPublic,
   trustedSupportCandidate,
+  ensureActiveChallenge,
   normalizeProfileVisibility,
   normalizeSocialLinks,
   parsePublicStorageObjectUrl,
