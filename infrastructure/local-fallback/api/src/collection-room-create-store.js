@@ -33,4 +33,37 @@ async function upsertOwnedCollectionRoom(pool, room, actorIds, importedIdExists)
   return rows[0]
 }
 
-module.exports = { upsertOwnedCollectionRoom }
+/** A room and all of its initial memberships become visible together, including a retried request. */
+async function createOwnedCollectionRoom(pool, room, actorIds, memberIds, importedIdExists) {
+  const client = await pool.connect()
+  let begun = false
+  try {
+    await client.query('BEGIN')
+    begun = true
+    await client.query("SET LOCAL lock_timeout = '5s'")
+    const row = await upsertOwnedCollectionRoom(client, room, actorIds,
+      importedIdExists ? (kind, id) => importedIdExists(client, kind, id) : null)
+    // A replay after identity migration keeps the original creator's membership instead of adding
+    // a second owner row for an alias of the very same person.
+    const creator = String(row.creator_id || room.creatorId).trim().toLowerCase()
+    const actors = new Set([...actorIds].map(id => String(id).trim().toLowerCase()))
+    const members = new Set([creator, ...memberIds.map(id => String(id).trim().toLowerCase())
+      .filter(Boolean).map(id => actors.has(id) ? creator : id)])
+    for (const member of members) {
+      await client.query(
+        `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at)
+         VALUES ($1, $2, $3, $4, NOW())
+         ON CONFLICT (room_kind, room_id, user_id) DO NOTHING`,
+        [room.kind, row.id, member, member === creator ? 'owner' : 'member'],
+      )
+    }
+    await client.query('COMMIT')
+    begun = false
+    return row
+  } catch (error) {
+    if (begun) await client.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally { client.release() }
+}
+
+module.exports = { upsertOwnedCollectionRoom, createOwnedCollectionRoom }

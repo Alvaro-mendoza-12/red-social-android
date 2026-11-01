@@ -53,7 +53,7 @@ const { safeErrorLogDetails } = require('./request-observability')
 const { isDeletedForAll, redactDeletedMessage, mergeMessageRows, deleteMessageForAll, refreshChatSummary, ensureMessageDeletionTables, processMessageDeletionOutbox } = require('./message-deletion-policy')
 const { insertMessageOnce } = require('./message-insert-store')
 const { insertWithCommunityBudget } = require('./community-message-budget')
-const { upsertOwnedCollectionRoom } = require('./collection-room-create-store')
+const { createOwnedCollectionRoom } = require('./collection-room-create-store')
 const { mayReuseMessageMedia } = require('./message-media-access')
 const { cleanStorageRow } = require('./storage-scan-coordinator')
 const { trustedStorageUrl, scanEnforcementEnabled, readyStorageSql } = require('./storage-media-reference')
@@ -10591,25 +10591,16 @@ function registerDataRoutes(app, {
         : false
       const memberIds = Array.from(cleanSet([...asArray(req.body?.members), ...asArray(req.body?.memberIds), identity.displayUserId]))
 
-      const roomRow = await upsertOwnedCollectionRoom(
+      const roomRow = await createOwnedCollectionRoom(
         pool,
         { id: requestedId, kind: config.kind, name, image, description, category,
           isPublic, creatorId: identity.displayUserId },
         identity.ids,
-        async (kind, id) => (await importedRowsByFieldValues(pool,
+        memberIds,
+        async (client, kind, id) => (await importedRowsByFieldValues(client,
           collectionConfig(kind).roomTable, ['id'], [id], 1)).length > 0,
       )
       const roomId = textOf(normalizeImportedRow(roomRow), ['id'], '')
-
-      for (const memberId of memberIds) {
-        await pool.query(
-          `INSERT INTO fallback_collection_members(room_kind, room_id, user_id, role, joined_at)
-           VALUES ($1, $2, $3, $4, NOW())
-           ON CONFLICT (room_kind, room_id, user_id)
-           DO NOTHING`,
-          [config.kind, roomId, memberId, memberId === identity.displayUserId ? 'owner' : 'member'],
-        )
-      }
 
       res.status(201).json({ room: normalizeImportedRow(roomRow), id: roomId })
     } catch (error) {
