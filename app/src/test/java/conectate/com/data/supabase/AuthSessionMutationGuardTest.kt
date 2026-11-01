@@ -7,6 +7,31 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 class AuthSessionMutationGuardTest {
+    @Test fun anAccountLeaseSurvivesBackgroundRenewalButNotAnExplicitLoginOfTheSameIdentity() {
+        val guard = AuthSessionMutationGuard()
+        var account: String? = "a"
+        val lease = guard.captureAccountLease { account }
+        assertEquals("a", lease.accountId)
+        assertTrue(lease.isCurrent())
+        guard.commitIfCurrent(guard.snapshot()) { /* background access-token renewal */ }
+        assertTrue(lease.isCurrent())
+        guard.invalidate { account = "a" }
+        assertFalse(lease.isCurrent())
+        assertTrue(runCatching { lease.requireCurrent() }.exceptionOrNull() is kotlinx.coroutines.CancellationException)
+        assertTrue(guard.captureAccountLease { account }.isCurrent())
+    }
+
+    @Test fun aChangedAccountOrLogoutCannotReadThroughAnOldAccountLease() {
+        val guard = AuthSessionMutationGuard()
+        var account: String? = "a"
+        val lease = guard.captureAccountLease { account }
+        account = "b"
+        assertFalse(lease.isCurrent())
+        guard.invalidate { account = null }
+        assertFalse(lease.isCurrent())
+        assertFalse(guard.captureAccountLease { account }.isCurrent())
+    }
+
     @Test fun aTransitionCanAdvanceItsOwnLeaseAcrossPauseAndActivation() {
         val guard = AuthSessionMutationGuard()
         val lease = guard.openTransition()

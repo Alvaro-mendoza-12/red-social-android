@@ -19,6 +19,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import conectate.com.core.concurrency.AccountTasks
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.*
@@ -34,7 +38,23 @@ class AdminPanelViewModel @Inject constructor(
         const val TAG = "AdminPanelViewModel"
     }
 
+    private val accountLease = authService.captureAccountLease()
+    private val adminTasks = AccountTasks(viewModelScope)
+    val sessionState = authService.currentSession
+    internal fun hasCurrentSession() = accountLease.isCurrent()
+
+    private suspend fun panelAccessToken(): Result<String> = try {
+        accountLease.requireCurrent()
+        val token = authService.getAccessTokenForAccountAwait(checkNotNull(accountLease.accountId))
+            ?: error("Inicia sesión de nuevo para abrir la administración.")
+        currentCoroutineContext().ensureActive()
+        accountLease.requireCurrent()
+        Result.success(token)
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (error: Exception) { Result.failure(error) }
+
     private fun adminError(error: Throwable?, fallback: String): String {
+        if (error is CancellationException) throw error
         val raw = error?.message.orEmpty().trim()
         val normalized = raw.lowercase()
         return when {
@@ -158,14 +178,23 @@ class AdminPanelViewModel @Inject constructor(
     val deleteCandidate: StateFlow<AdminUser?> = _deleteCandidate.asStateFlow()
     private val decorationMutationLocks = mutableMapOf<String, Mutex>()
     private var userSearchJob: Job? = null
+    private var userListRevision = 0L
     private var statsRefreshJob: Job? = null
+    private val recoveryAccountLookup by lazy { AdminRecoveryAccountLookup(
+        scope = { adminTasks.scope }, isCurrentSession = accountLease::isCurrent,
+        read = { query -> localFallbackApiClient.adminFindRecoveryAccounts(panelAccessToken().getOrThrow(), query) },
+        publish = { _recoveryAccounts.value = it },
+        failure = { _errorMessage.value = adminError(it, "No se pudieron buscar las cuentas. Reintenta.") },
+    ) }
 
     fun checkAdminAccess() {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _isLoading.value = true
             _errorMessage.value = null
+            _isAdmin.value = false
+            _adminAccess.value = AdminAccessInfo()
             try {
-                val token = authService.ensureValidAccessToken()
+                val token = panelAccessToken()
                     .getOrElse {
                         _errorMessage.value = adminError(
                             it,
@@ -180,6 +209,10 @@ class AdminPanelViewModel @Inject constructor(
                     val access = result.getOrThrow()
                     _adminAccess.value = access
                     _isAdmin.value = access.isAdmin
+                    if (!access.isAdmin) {
+                        _errorMessage.value = "No tienes permisos para abrir la administración."
+                        return@launch
+                    }
                     loadStats(token)
                     loadCatalog(token)
                     loadUsers(token, _userSearch.value)
@@ -215,12 +248,12 @@ class AdminPanelViewModel @Inject constructor(
 
     fun startStatsAutoRefresh() {
         if (statsRefreshJob?.isActive == true) return
-        statsRefreshJob = viewModelScope.launch {
+        statsRefreshJob = adminTasks.scope.launch {
             var refreshCycle = 0
             while (true) {
                 delay(4_000L)
                 if (!_isAdmin.value) continue
-                authService.ensureValidAccessToken()
+                panelAccessToken()
                     .onSuccess { token ->
                         loadStats(token)
                         refreshCycle += 1
@@ -249,7 +282,12 @@ class AdminPanelViewModel @Inject constructor(
     }
 
     private suspend fun loadUsers(token: String, search: String) {
-        localFallbackApiClient.adminGetUsers(token, search)
+        val revision = ++userListRevision
+        val result = localFallbackApiClient.adminGetUsers(token, search)
+        currentCoroutineContext().ensureActive()
+        accountLease.requireCurrent()
+        if (revision != userListRevision || search != _userSearch.value) return
+        result
             .onSuccess { page ->
                 _users.value = page.items
                 val selectedId = _selectedUser.value?.id
@@ -259,11 +297,7 @@ class AdminPanelViewModel @Inject constructor(
             }
             .onFailure {
                 Log.w(TAG, "No se pudieron cargar usuarios", it)
-                _errorMessage.value = if (it.message.orEmpty().contains("404")) {
-                    "El servidor público está desactualizado y aún no publica admin_users_v1. Actualiza la API; no es un fallo de tu cuenta ni del buscador."
-                } else {
-                    adminError(it, "No se pudieron cargar los usuarios. Inténtalo nuevamente.")
-                }
+                _errorMessage.value = adminError(it, "No se pudieron cargar los usuarios. Inténtalo nuevamente.")
             }
     }
 
@@ -307,12 +341,13 @@ class AdminPanelViewModel @Inject constructor(
 
     fun setUserSearch(value: String) {
         _userSearch.value = value.take(120)
+        userListRevision++
         userSearchJob?.cancel()
         if (!_isAdmin.value) return
-        userSearchJob = viewModelScope.launch {
+        userSearchJob = adminTasks.scope.launch {
             delay(300L)
             runCatching {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 loadUsers(token, _userSearch.value)
             }.onFailure { error ->
                 _errorMessage.value = adminError(error, "No se pudo completar la búsqueda.")
@@ -321,11 +356,11 @@ class AdminPanelViewModel @Inject constructor(
     }
 
     fun searchUsers() {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 loadUsers(token, _userSearch.value)
             } catch (e: Exception) {
                 _errorMessage.value = adminError(e, "No se pudo completar la búsqueda.")
@@ -347,10 +382,10 @@ class AdminPanelViewModel @Inject constructor(
         }
         val revision = userDetailsRevision
         _selectedUser.value = _users.value.firstOrNull { it.id == userId }
-        userDetailsJob = viewModelScope.launch {
+        userDetailsJob = adminTasks.scope.launch {
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 val details = localFallbackApiClient.adminGetUser(token, userId).getOrThrow()
                 if (revision == userDetailsRevision) _selectedUser.value = details
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
@@ -364,11 +399,11 @@ class AdminPanelViewModel @Inject constructor(
     }
 
     fun loadUserDetails(userId: String) {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 localFallbackApiClient.adminGetUser(token, userId)
                     .onSuccess { _selectedUser.value = it }
                     .onFailure {
@@ -389,11 +424,11 @@ class AdminPanelViewModel @Inject constructor(
      */
     fun prepareUserDeletion(userId: String) {
         if (userId.isBlank()) return
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 val target = localFallbackApiClient.adminGetUser(token, userId).getOrThrow()
                 when {
                     !target.isTestAccount && !target.isSuspended -> {
@@ -429,10 +464,14 @@ class AdminPanelViewModel @Inject constructor(
             }
     }
 
-    suspend fun downloadRecoveryEvidence(caseId: String, evidenceId: String): Result<ByteArray> = runCatching {
-        val token = authService.ensureValidAccessToken().getOrThrow()
-        localFallbackApiClient.adminDownloadRecoveryEvidence(token, caseId, evidenceId).getOrThrow()
-    }
+    suspend fun downloadRecoveryEvidence(caseId: String, evidenceId: String): Result<ByteArray> = try {
+        val token = panelAccessToken().getOrThrow()
+        val bytes = localFallbackApiClient.adminDownloadRecoveryEvidence(token, caseId, evidenceId).getOrThrow()
+        currentCoroutineContext().ensureActive()
+        accountLease.requireCurrent()
+        Result.success(bytes)
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (error: Exception) { Result.failure(error) }
 
     fun setRecoverySearch(value: String) {
         _recoverySearch.value = value.take(120)
@@ -459,10 +498,10 @@ class AdminPanelViewModel @Inject constructor(
         val requestedRevision = ++recoveryListRevision
         _recoveryPageLoading.value = true
         recoveryListJob?.cancel()
-        recoveryListJob = viewModelScope.launch {
+        recoveryListJob = adminTasks.scope.launch {
             if (debounce) delay(300)
             try {
-                loadRecoveryCases(authService.ensureValidAccessToken().getOrThrow())
+                loadRecoveryCases(panelAccessToken().getOrThrow())
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (requestedRevision == recoveryListRevision) {
@@ -493,33 +532,24 @@ class AdminPanelViewModel @Inject constructor(
         } finally { if (revision == recoveryListRevision) _recoveryPageLoading.value = false }
     }
 
-    fun findRecoveryAccounts(query: String) {
-        if (query.trim().length < 3) return
-        viewModelScope.launch {
-            authService.ensureValidAccessToken().onSuccess { token ->
-                localFallbackApiClient.adminFindRecoveryAccounts(token, query.trim())
-                    .onSuccess { _recoveryAccounts.value = it }
-                    .onFailure { _errorMessage.value = adminError(it, "No se encontraron cuentas.") }
-            }
-        }
-    }
+    fun findRecoveryAccounts(query: String) = recoveryAccountLookup.search(query)
 
     fun clearRecoverySecret() {
         _recoverySecret.value = null
         _recoverySecretCaseId.value = null
         _recoverySecretAction.value = null
     }
-    fun clearRecoveryAccounts() { _recoveryAccounts.value = emptyList() }
+    fun clearRecoveryAccounts() = recoveryAccountLookup.clear()
 
     fun recoveryAction(caseId: String, action: String, userId: String = "", evidence: String = "", resetTwoFactor: Boolean = false) {
         if (_recoveryBusy.value) return
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _recoveryBusy.value = true
             clearRecoverySecret()
             _statusMessage.value = null
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 val body = buildJsonObject {
                     put("userId", userId)
                     put("reviewedBy", authService.getCurrentUserId().orEmpty())
@@ -562,11 +592,11 @@ class AdminPanelViewModel @Inject constructor(
     }
 
     fun createBadge(name: String, description: String, icon: String, color: String) {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 localFallbackApiClient.adminCreateBadge(
                     accessToken = token,
                     name = name,
@@ -591,11 +621,11 @@ class AdminPanelViewModel @Inject constructor(
 
     fun deleteBadge(badgeId: String) {
         if (badgeId.isBlank()) return
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 localFallbackApiClient.adminDeleteBadge(token, badgeId)
                     .onSuccess {
                         _catalog.value = _catalog.value.copy(
@@ -627,11 +657,11 @@ class AdminPanelViewModel @Inject constructor(
         }
         val normalized = accessLevel.lowercase().takeIf { it in setOf("none", "view", "write", "full") }
             ?: return
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 localFallbackApiClient.adminUpdateUserAccess(token, userId, normalized)
                     .onSuccess { updated ->
                         replaceUser(updated)
@@ -664,13 +694,13 @@ class AdminPanelViewModel @Inject constructor(
         badgeMutation: Pair<String, Boolean>? = null,
         profileFrame: String? = null
     ) {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             val lock = decorationMutationLocks.getOrPut(userId) { Mutex() }
             lock.withLock {
                 _isLoading.value = true
                 _errorMessage.value = null
                 try {
-                    val token = authService.ensureValidAccessToken().getOrThrow()
+                    val token = panelAccessToken().getOrThrow()
                     val badgeIds = badgeMutation?.let { (badgeId, enabled) ->
                         val current = _selectedUser.value?.takeIf { it.id == userId }
                             ?: _users.value.firstOrNull { it.id == userId || it.localId == userId }
@@ -718,10 +748,10 @@ class AdminPanelViewModel @Inject constructor(
         severity: String,
         evidence: List<String>
     ) {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             try {
                 _isLoading.value = true
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 _errorMessage.value = null
                 _statusMessage.value = null
                 val result = localFallbackApiClient.adminSuspendUser(
@@ -754,11 +784,11 @@ class AdminPanelViewModel @Inject constructor(
     }
 
     fun unsuspendUser(userId: String) {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             try {
                 _isLoading.value = true
                 _errorMessage.value = null
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 val result = localFallbackApiClient.adminUnsuspendUser(
                     token,
                     userId,
@@ -785,10 +815,10 @@ class AdminPanelViewModel @Inject constructor(
     }
 
     fun updateReportStatus(reportId: String, status: String, type: String) {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             try {
                 _isLoading.value = true
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 val result = localFallbackApiClient.adminUpdateReportStatus(token, reportId, status, type)
                 if (result.isSuccess) {
                     _statusMessage.value = "Estado de reporte actualizado."
@@ -812,11 +842,11 @@ class AdminPanelViewModel @Inject constructor(
         outcome: String,
         note: String
     ) {
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 localFallbackApiClient.adminReviewModerationAppeal(
                     token,
                     appealId,
@@ -862,11 +892,11 @@ class AdminPanelViewModel @Inject constructor(
             _errorMessage.value = "ID de usuario inválido."
             return
         }
-        viewModelScope.launch {
+        adminTasks.scope.launch {
             try {
                 _isLoading.value = true
                 _errorMessage.value = null
-                val token = authService.ensureValidAccessToken().getOrThrow()
+                val token = panelAccessToken().getOrThrow()
                 // Revalidación obligatoria inmediatamente antes del borrado:
                 // permisos, suspensión, correo e ID deben seguir vigentes.
                 val target = localFallbackApiClient.adminGetUser(token, userId).getOrThrow()
@@ -914,7 +944,21 @@ class AdminPanelViewModel @Inject constructor(
         }
     }
 
+    init {
+        viewModelScope.launch {
+            sessionState.collect {
+                if (!accountLease.isCurrent()) {
+                    adminTasks.close()
+                    _isAdmin.value = false
+                    _adminAccess.value = AdminAccessInfo()
+                    clearRecoverySecret()
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
+        adminTasks.close()
         userSearchJob?.cancel()
         statsRefreshJob?.cancel()
         super.onCleared()
