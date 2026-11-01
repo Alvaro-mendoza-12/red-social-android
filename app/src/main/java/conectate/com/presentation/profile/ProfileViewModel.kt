@@ -124,15 +124,6 @@ class ProfileViewModel @Inject constructor(
 
     val isAdmin: Boolean
         get() {
-            // 1. Check email first (failsafe)
-            val email = authService.getCurrentUserEmail()?.lowercase()?.trim() ?: ""
-            val isDesignatedAdmin = email == "gamergamerff004@gmail.com" ||
-                                   email == "alvaromendozamarin004@gmail.com" ||
-                                   email == "gamergamerff017@gmail.com"
-            
-            if (isDesignatedAdmin) return true
-
-            // 2. Check database flag
             val state = _profileState.value
             if (state is ProfileUiState.Success) {
                 if (state.user.id == authService.getCurrentUserId()) {

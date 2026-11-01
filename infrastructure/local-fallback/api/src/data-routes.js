@@ -3525,6 +3525,21 @@ async function localProfileOverride(pool, userId) {
   return normalizeImportedRow(rows[0]?.profile || {})
 }
 
+async function trustedSupportCandidate(pool, rows, viewerIds = new Set(), resolveAccess = appAdminAccess) {
+  const belongsToViewer = row => viewerIds.has(normalizeId(row.local_id)) || viewerIds.has(normalizeId(row.public_id))
+  const ordered = [...rows.filter(row => !belongsToViewer(row)), ...rows.filter(belongsToViewer)]
+  for (const row of ordered) {
+    const values = Array.from(cleanSet([row.local_id, row.public_id]))
+    if (values.length === 0) continue
+    const access = await resolveAccess(pool, {
+      localUserId: normalizeId(row.local_id), preferredUserId: normalizeId(row.public_id),
+      values, ids: new Set(values),
+    })
+    if (['view', 'write', 'full'].includes(access?.level)) return row
+  }
+  return null
+}
+
 function normalizeProfileForPublic(row, fallbackId = '') {
   const id = profileId(row) || normalizeId(fallbackId)
   const lastSeenVisibility = textOf(row, ['last_seen_visibility', 'lastSeenVisibility'], 'everyone')
@@ -9821,10 +9836,8 @@ function registerDataRoutes(app, {
          ORDER BY array_position($1::text[], lower(email)), updated_at DESC NULLS LAST`,
         [candidateEmails],
       )
-      const target = rows.find((row) => (
-        !identity.ids.has(normalizeId(row.local_id)) &&
-        !identity.ids.has(normalizeId(row.public_id))
-      )) || rows[0]
+      // Matching a mutable email is insufficient: support must still have an authorized role.
+      const target = await trustedSupportCandidate(pool, rows, identity.ids)
       if (!target) return res.status(404).json({ error: 'SUPPORT_ADMIN_NOT_FOUND' })
 
       res.setHeader('Cache-Control', 'private, no-store')
@@ -15146,6 +15159,7 @@ module.exports = {
   normalizeProfileSectionOrder,
   normalizeProfileSectionVisibility,
   normalizeProfileForPublic,
+  trustedSupportCandidate,
   normalizeProfileVisibility,
   normalizeSocialLinks,
   parsePublicStorageObjectUrl,
