@@ -49,9 +49,10 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,29 +80,33 @@ fun NovvinChatScreen(
     onBack: () -> Unit,
     viewModel: NovvinChatViewModel = hiltViewModel()
 ) {
-    val messages by viewModel.messages.collectAsState()
-    val conversations by viewModel.conversations.collectAsState()
-    val currentConversationId by viewModel.currentConversationId.collectAsState()
-    val isThinking by viewModel.isThinking.collectAsState()
-    val isHistoryLoading by viewModel.isHistoryLoading.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    val canRetry by viewModel.canRetry.collectAsState()
+    val accountId by viewModel.accountId.collectAsStateWithLifecycle()
+    val rawState by viewModel.uiState.collectAsStateWithLifecycle()
+    val state = rawState.forAccount(accountId)
+    val messages = state.messages
+    val conversations = state.conversations
+    val currentConversationId = state.currentConversationId
+    val isThinking = state.isThinking
+    val isHistoryLoading = state.historyLoading
+    val errorMessage = state.errorMessage
+    val canRetry = state.canRetry
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var draft by rememberSaveable(currentConversationId) { mutableStateOf("") }
-    var showHistory by rememberSaveable { mutableStateOf(false) }
+    var draft by rememberSaveable(accountId, currentConversationId) { mutableStateOf("") }
+    var showHistory by rememberSaveable(accountId) { mutableStateOf(false) }
 
     fun submitDraft() {
         val value = draft.trim()
         if (value.isNotEmpty() && !isThinking && !isHistoryLoading) {
-            viewModel.send(value)
-            draft = ""
+            if (viewModel.send(value)) draft = ""
         }
     }
 
-    LaunchedEffect(messages.lastOrNull()?.id, isThinking) {
+    LaunchedEffect(messages.lastOrNull()?.id, isThinking, state.historyError, state.saveError, isHistoryLoading) {
         if (messages.isNotEmpty()) {
-            val targetIndex = if (messages.size == 1) 1 else messages.lastIndex
+            val leadingRows = (if (isHistoryLoading) 1 else 0) + (if (state.historyError != null) 1 else 0) +
+                (if (state.saveError != null) 1 else 0) + (if (messages.size == 1) 1 else 0)
+            val targetIndex = messages.lastIndex + leadingRows + (if (isThinking) 1 else 0)
             runCatching { listState.animateScrollToItem(targetIndex) }
         }
     }
@@ -117,7 +122,7 @@ fun NovvinChatScreen(
         }
     }
 
-    if (showHistory) {
+    if (showHistory && state.editable) {
         NovvinHistorySheet(
             conversations = conversations,
             selectedId = currentConversationId,
@@ -171,10 +176,10 @@ fun NovvinChatScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showHistory = true }) {
+                    IconButton(onClick = { showHistory = true }, enabled = state.editable) {
                         Icon(Icons.Default.History, contentDescription = "Chats anteriores")
                     }
-                    IconButton(onClick = viewModel::startNewChat) {
+                    IconButton(onClick = viewModel::startNewChat, enabled = state.editable) {
                         Icon(Icons.Default.AddComment, contentDescription = "Nuevo chat")
                     }
                 }
@@ -210,7 +215,7 @@ fun NovvinChatScreen(
                         onValueChange = { if (it.text.length <= 1000) { spellingDraft = it; draft = it.text } },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("Escribe a Novvin") },
-                        enabled = !isHistoryLoading,
+                        enabled = state.editable,
                         minLines = 1,
                         maxLines = 4,
                         keyboardOptions = KeyboardOptions(
@@ -233,7 +238,7 @@ fun NovvinChatScreen(
                     Spacer(Modifier.width(8.dp))
                     FilledIconButton(
                         onClick = { submitDraft() },
-                        enabled = draft.isNotBlank() && !isThinking && !isHistoryLoading,
+                        enabled = draft.isNotBlank() && !isThinking && state.editable,
                         modifier = Modifier.size(48.dp)
                     ) {
                         Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
@@ -250,11 +255,36 @@ fun NovvinChatScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            if (isHistoryLoading) {
+                item(key = "history-loading") {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text("Abriendo tus chats…")
+                    }
+                }
+            }
+            state.historyError?.let { error ->
+                item(key = "history-error") {
+                    Column {
+                        Text(error, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = viewModel::retryHistory) { Text("Reintentar historial") }
+                    }
+                }
+            }
+            state.saveError?.let { error ->
+                item(key = "history-save-error") {
+                    Column {
+                        Text(error, color = MaterialTheme.colorScheme.error)
+                        TextButton(onClick = viewModel::retrySave) { Text("Reintentar guardado") }
+                    }
+                }
+            }
             if (messages.size == 1) {
                 item(key = "novvin-mark") { NovvinMark() }
             }
             items(messages, key = { it.id }) { message ->
-                NovvinBubble(message = message, onSuggestion = viewModel::send)
+                NovvinBubble(message = message, suggestionsEnabled = state.editable && !isThinking,
+                    onSuggestion = { viewModel.send(it) })
             }
             if (isThinking) {
                 item(key = "novvin-thinking") {
@@ -263,6 +293,11 @@ fun NovvinChatScreen(
                         Spacer(Modifier.width(10.dp))
                         Text("Novvin esta pensando...", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                }
+            }
+            if (canRetry && !isThinking) {
+                item(key = "novvin-retry") {
+                    TextButton(onClick = viewModel::retryLastMessage) { Text("Reintentar respuesta") }
                 }
             }
         }
@@ -352,7 +387,7 @@ private fun NovvinMark() {
 }
 
 @Composable
-private fun NovvinBubble(message: NovvinMessage, onSuggestion: (String) -> Unit) {
+private fun NovvinBubble(message: NovvinMessage, suggestionsEnabled: Boolean, onSuggestion: (String) -> Unit) {
     val horizontalAlignment = if (message.fromNovvin) Alignment.Start else Alignment.End
     val background = if (message.fromNovvin) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary
     val foreground = if (message.fromNovvin) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
@@ -396,6 +431,7 @@ private fun NovvinBubble(message: NovvinMessage, onSuggestion: (String) -> Unit)
             ) {
                 message.suggestions.take(3).forEach { suggestion ->
                     AssistChip(
+                        enabled = suggestionsEnabled,
                         onClick = { onSuggestion(suggestion) },
                         label = { Text(suggestion, maxLines = 1) },
                         colors = AssistChipDefaults.assistChipColors(
