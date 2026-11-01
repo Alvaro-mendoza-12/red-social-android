@@ -6,14 +6,16 @@ sealed class Screen(val route: String) {
     object Register : Screen("register")
     object Guest : Screen("guest")
     object PhoneVerification : Screen("phone_verification")
-    object Home : Screen("home?startTab={startTab}&sharedText={sharedText}&sharedUri={sharedUri}") {
-        fun createRoute(startTab: String? = null, sharedText: String? = null, sharedUri: String? = null): String {
+    object Home : Screen("home?startTab={startTab}&sharedText={sharedText}&sharedUri={sharedUri}&socialPage={socialPage}") {
+        fun roundsRoute(): String = createRoute(startTab = Social.route, socialPage = 2)
+        fun createRoute(startTab: String? = null, sharedText: String? = null, sharedUri: String? = null, socialPage: Int? = null): String {
             return buildString {
                 append("home")
                 val params = mutableListOf<String>()
                 if (startTab != null) params.add("startTab=$startTab")
                 if (sharedText != null) params.add("sharedText=${android.net.Uri.encode(sharedText)}")
                 if (sharedUri != null) params.add("sharedUri=${android.net.Uri.encode(sharedUri)}")
+                if (socialPage != null) params.add("socialPage=${socialPage.coerceIn(0, 2)}")
                 if (params.isNotEmpty()) {
                     append("?")
                     append(params.joinToString("&"))

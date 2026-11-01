@@ -5369,7 +5369,7 @@ class LocalFallbackApiClient @Inject constructor(
         ).map { it.participating }
     }
 
-    suspend fun toggleChallengeVote(accessToken: String, submissionId: String): Result<Pair<Int, Boolean>> {
+    suspend fun toggleChallengeVote(accessToken: String, submissionId: String, desired: Boolean? = null, activeChallengeId: String? = null): Result<Pair<Int, Boolean>> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.post(
@@ -5377,6 +5377,10 @@ class LocalFallbackApiClient @Inject constructor(
             ) {
                 localHeaders(accessToken)
                 contentType(ContentType.Application.Json)
+                setBody(buildJsonObject {
+                    desired?.let { put("votedByMe", it) }
+                    activeChallengeId?.let { put("activeChallengeId", it) }
+                })
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
@@ -6665,6 +6669,18 @@ class LocalFallbackApiClient @Inject constructor(
     private fun toException(response: HttpResponse, error: LocalFallbackErrorResponse): Exception {
         val code = (error.error ?: error.message).orEmpty().trim()
         return when (code) {
+            "CHALLENGE_NOT_FOUND", "CHALLENGE_ROUND_CHANGED" ->
+                conectate.com.data.model.ChallengeActionException("La ronda cambió. Actualiza para ver la que está abierta.")
+            "CHALLENGE_SUBMISSION_ENDED" ->
+                conectate.com.data.model.ChallengeActionException("El tiempo para participar terminó. Actualiza para ver los resultados.")
+            "CHALLENGE_VOTING_ENDED" ->
+                conectate.com.data.model.ChallengeActionException("La votación terminó. Actualiza para ver el resultado.")
+            "CHALLENGE_IN_USE" ->
+                conectate.com.data.model.ChallengeActionException("Esta consigna está en una ronda en curso. Podrás eliminarla cuando termine.")
+            "CHALLENGE_BUSY" ->
+                conectate.com.data.model.ChallengeActionException("Estamos actualizando la ronda. Reintenta en unos segundos.")
+            "CHALLENGE_TEXT_TOO_LONG" ->
+                conectate.com.data.model.ChallengeActionException("La respuesta es demasiado larga. Acórtala y vuelve a enviarla.")
             "PROFILE_MUSIC_UNAVAILABLE" -> conectate.com.data.model.ProfileMusicUnavailableException()
             "PROFILE_MUSIC_CHANGED" -> conectate.com.data.model.ProfileMusicChangedException()
             "COMMUNITY_WEEKLY_MESSAGE_LIMIT_REACHED" -> Exception("Alcanzaste el cupo semanal de esta comunidad. Se renueva el lunes a las 00:00 UTC.")

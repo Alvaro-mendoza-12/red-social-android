@@ -209,6 +209,10 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 type = NavType.StringType
                 nullable = true
                 defaultValue = null
+            },
+            navArgument("socialPage") {
+                type = NavType.IntType
+                defaultValue = 0
             }
         )
     ) { backStackEntry ->
@@ -221,7 +225,8 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 homeBackStackEntry = backStackEntry,
                 startTab = startTab,
                 sharedText = sharedText,
-                sharedUri = sharedUri
+                sharedUri = sharedUri,
+                socialPage = backStackEntry.arguments?.getInt("socialPage") ?: 0,
             )
         }
     }

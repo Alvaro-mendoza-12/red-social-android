@@ -688,7 +688,7 @@ fun handleNotificationNavigation(navController: NavController, n: Notification) 
             navController.navigate(Screen.AdminPanel.route)
         }
         "challenge_invite" -> {
-            navController.navigate(Screen.Social.route)
+            navController.navigate(Screen.Home.roundsRoute())
         }
         "account_suspended", "account_enabled" -> {
             navController.navigate(Screen.Profile.route)
