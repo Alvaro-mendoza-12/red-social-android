@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
-const { upsertOwnedCollectionRoom, createOwnedCollectionRoom } = require('../src/collection-room-create-store')
+const { upsertOwnedCollectionRoom, createOwnedCollectionRoom, createOwnedCollectionRoomOnce } = require('../src/collection-room-create-store')
 
 const room = { id: '11111111-1111-4111-8111-111111111111', kind: 'group', name: 'QA group',
   image: null, description: null, category: null, isPublic: false, creatorId: 'owner' }
@@ -134,4 +134,66 @@ test('rollback failure still releases the connection and preserves the original 
   const f = transactionalPool(sql => sql === 'ROLLBACK' || sql.includes('INSERT INTO fallback_collection_members'))
   await assert.rejects(createOwnedCollectionRoom(f.pool, room, actors, []), /fixture failure/)
   assert.equal(f.released(), 1)
+})
+
+function oncePool({ existing, failMember = false } = {}) {
+  const calls = []
+  const actualMembers = [{ user_id: 'owner', role: 'owner', joined_at: '2026-11-01T12:00:00Z' }]
+  let released = 0
+  const current = existing || { ...room, creator_id: 'owner', room_kind: 'group', is_deleted: false }
+  const client = { query: async (sql, params) => {
+    calls.push({ sql, params })
+    if (failMember && sql.includes('INSERT INTO fallback_collection_members')) throw new Error('member failed')
+    if (sql.startsWith('INSERT INTO fallback_collection_rooms')) return { rows: existing ? [] : [current] }
+    if (sql.startsWith('SELECT * FROM fallback_collection_rooms')) return { rows: [current] }
+    if (sql.includes('SELECT user_id, role, joined_at')) return { rows: actualMembers }
+    return { rows: [] }
+  }, release: () => { released++ } }
+  return { pool: { connect: async () => client }, calls, current, actualMembers, released: () => released }
+}
+
+test('opt-in creation inserts initial members only when it really creates the room', async () => {
+  const f = oncePool()
+  const result = await createOwnedCollectionRoomOnce(f.pool, room, actors, ['friend'])
+  assert.equal(result.created, true)
+  assert.equal(result.room, f.current)
+  assert.equal(result.initialMembers, f.actualMembers)
+  assert.equal(f.calls.filter(call => call.sql.includes('INSERT INTO fallback_collection_members')).length, 2)
+  assert.equal(f.calls.at(-1).sql, 'COMMIT')
+  assert.equal(f.released(), 1)
+})
+
+test('an old opt-in retry returns the current room and members without reverting later edits or removals', async () => {
+  const f = oncePool({ existing: { id: room.id, creator_id: 'owner', room_kind: 'group', is_deleted: false, name: 'Edited later' } })
+  const result = await createOwnedCollectionRoomOnce(f.pool, room, actors, ['removed-friend'])
+  assert.equal(result.created, false)
+  assert.equal(result.room.name, 'Edited later')
+  assert.equal(result.initialMembers, f.actualMembers)
+  assert.ok(f.calls.some(call => call.sql.endsWith('FOR UPDATE')))
+  assert.ok(!f.calls.some(call => call.sql.includes('INSERT INTO fallback_collection_members')))
+  assert.ok(!f.calls.some(call => /DO UPDATE|UPDATE fallback_collection_rooms/.test(call.sql)))
+  assert.equal(f.released(), 1)
+})
+
+for (const difference of [{ creator_id: 'other' }, { room_kind: 'community' }, { is_deleted: true }]) {
+  test(`opt-in replay rejects conflicting room state ${JSON.stringify(difference)}`, async () => {
+    const f = oncePool({ existing: { id: room.id, creator_id: 'owner', room_kind: 'group', is_deleted: false, ...difference } })
+    await assert.rejects(createOwnedCollectionRoomOnce(f.pool, room, actors, []), { message: 'ROOM_ID_CONFLICT', status: 409 })
+    assert.equal(f.calls.at(-1).sql, 'ROLLBACK')
+    assert.ok(!f.calls.some(call => call.sql.includes('INSERT INTO fallback_collection_members')))
+    assert.equal(f.released(), 1)
+  })
+}
+
+test('initial opt-in member failure rolls back the room instead of leaving an uneditable partial intent', async () => {
+  const f = oncePool({ failMember: true })
+  await assert.rejects(createOwnedCollectionRoomOnce(f.pool, room, actors, []), /member failed/)
+  assert.equal(f.calls.at(-1).sql, 'ROLLBACK')
+  assert.equal(f.released(), 1)
+})
+
+test('opt-in creation requires a stable ID and a valid creator before acquiring a connection', async () => {
+  const pool = { connect: () => assert.fail('Invalid creation must not start') }
+  await assert.rejects(createOwnedCollectionRoomOnce(pool, { ...room, id: null }, actors, []), /ROOM_ID_CONFLICT/)
+  await assert.rejects(createOwnedCollectionRoomOnce(pool, { ...room, creatorId: 'other' }, actors, []), /ROOM_ID_CONFLICT/)
 })
