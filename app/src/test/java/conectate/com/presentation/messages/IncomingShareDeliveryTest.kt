@@ -50,7 +50,36 @@ class IncomingShareDeliveryTest {
         val old = gate.publish(gate.beginIntent(), "same persisted ID")!!
         val next = gate.publish(gate.beginIntent(), "same persisted ID")!!
         assertNull(gate.consume(old))
+        assertNotEquals(old.requestId, next.requestId)
         assertSame(next, gate.consume(next)?.delivery)
+    }
+
+    @Test fun recreatingTheMatchingCaptureRestoresItsRequestId() {
+        val first = IncomingShareDeliveryGate<String>()
+        val previous = first.publish(first.beginIntent(), "persisted")!!
+        val restored = restoredShareRequestId("persisted", previous.payload, previous.requestId)
+        val recreated = IncomingShareDeliveryGate<String>()
+        val current = recreated.publish(recreated.beginIntent(), "persisted", checkNotNull(restored))!!
+        assertEquals(previous.requestId, current.requestId)
+        assertNotSame(previous, current)
+    }
+
+    @Test fun aNewIntentCannotBorrowAnUnrelatedTasksSavedRequestId() {
+        assertNull(restoredShareRequestId("new", "old", "old-request"))
+    }
+
+    @Test fun incompleteSavedStateCannotBecomeARequestIdentity() {
+        assertNull(restoredShareRequestId("id", null, "request"))
+        assertNull(restoredShareRequestId("id", "id", null))
+        assertNull(restoredShareRequestId("id", "id", " "))
+    }
+
+    @Test fun aNewArrivalUsesANewIdEvenIfTheCallerReusesTheSamePayloadObject() {
+        val gate = IncomingShareDeliveryGate<Any>()
+        val payload = Any()
+        val first = gate.publish(gate.beginIntent(), payload)!!
+        val second = gate.publish(gate.beginIntent(), payload)!!
+        assertNotEquals(first.requestId, second.requestId)
     }
 
     @Test fun anOlderCaptureCannotReplaceANewerCompletedCapture() {

@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContract
 import conectate.com.util.IncomingSharePayload
 import conectate.com.util.IncomingSharedItem
+import conectate.com.util.MAX_INCOMING_SHARE_ITEMS
 import conectate.com.util.canonicalizeMediaContentType
 import conectate.com.util.classifyIncomingShareKind
 import conectate.com.util.guessMimeTypeFromFileName
@@ -60,8 +61,11 @@ fun isIncomingShareIntent(intent: Intent?): Boolean {
 }
 
 fun hasCapturedIncomingShare(intent: Intent?): Boolean {
-    return !intent?.getStringExtra(EXTRA_CAPTURED_SHARE_ID).isNullOrBlank()
+    return capturedIncomingShareId(intent) != null
 }
+
+internal fun capturedIncomingShareId(intent: Intent?): String? =
+    intent?.getStringExtra(EXTRA_CAPTURED_SHARE_ID)?.trim()?.takeIf { it.isNotBlank() }
 
 fun incomingShareText(intent: Intent): String? {
     val explicit = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
@@ -103,14 +107,14 @@ fun parseIncomingShareIntent(context: Context, intent: Intent): IncomingSharePay
         intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString(),
         intent.getCharSequenceExtra(Intent.EXTRA_TITLE)?.toString()
     ).firstOrNull { !it.isNullOrBlank() }?.trim()?.take(500)
-    val capturedId = intent.getStringExtra(EXTRA_CAPTURED_SHARE_ID)?.trim()?.takeIf { it.isNotBlank() }
-    if (uris.isEmpty() && text.isNullOrBlank() && capturedId == null) return null
+    val capturedId = capturedIncomingShareId(intent)
+    if (uris.isEmpty() && text.isNullOrBlank() && subject.isNullOrBlank() && capturedId == null) return null
 
     val capturedMimeTypes = intent.getStringArrayListExtra(EXTRA_CAPTURED_SHARE_MIME_TYPES) ?: emptyList()
     val capturedDisplayNames = intent.getStringArrayListExtra(EXTRA_CAPTURED_SHARE_DISPLAY_NAMES) ?: emptyList()
     val capturedSizes = intent.getLongArrayExtra(EXTRA_CAPTURED_SHARE_SIZES) ?: LongArray(0)
     val fallbackMime = canonicalizeMediaContentType(intent.type)
-    val items = uris.mapIndexed { index, uri ->
+    val items = uris.take(MAX_INCOMING_SHARE_ITEMS).mapIndexed { index, uri ->
         val providerMime = canonicalizeMediaContentType(capturedMimeTypes.getOrNull(index))
             ?: canonicalizeMediaContentType(runCatching { context.contentResolver.getType(uri) }.getOrNull())
             ?: fallbackMime
@@ -141,7 +145,8 @@ fun parseIncomingShareIntent(context: Context, intent: Intent): IncomingSharePay
             EXTRA_CAPTURED_SHARE_RECEIVED_AT,
             System.currentTimeMillis()
         ),
-        failedItemCount = intent.getIntExtra(EXTRA_CAPTURED_SHARE_FAILED_COUNT, 0).coerceAtLeast(0),
+        failedItemCount = (intent.getIntExtra(EXTRA_CAPTURED_SHARE_FAILED_COUNT, 0).coerceAtLeast(0).toLong() +
+            (uris.size - MAX_INCOMING_SHARE_ITEMS).coerceAtLeast(0)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
         captureError = intent.getStringExtra(EXTRA_CAPTURED_SHARE_ERROR)?.takeIf { it.isNotBlank() }
     )
 }
@@ -179,6 +184,7 @@ fun takeIncomingSharePersistablePermissions(context: Context, intent: Intent) {
     val canRead = intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0
     if (!canPersist || !canRead) return
     incomingShareUris(intent)
+        .take(MAX_INCOMING_SHARE_ITEMS)
         .filter { it.scheme.equals("content", ignoreCase = true) }
         .forEach { uri ->
             runCatching {

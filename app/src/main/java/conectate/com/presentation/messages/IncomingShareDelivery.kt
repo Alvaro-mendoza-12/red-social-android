@@ -7,7 +7,7 @@ enum class ShareDismissal(val consumed: Boolean, val mayNavigate: Boolean) {
     SUPERSEDED(true, false),
 }
 
-internal class IncomingShareDelivery<T> internal constructor(val generation: Long, val payload: T)
+internal class IncomingShareDelivery<T> internal constructor(val generation: Long, val payload: T, val requestId: String)
 internal data class ConsumedIncomingShare<T>(val delivery: IncomingShareDelivery<T>, val dismissal: ShareDismissal)
 
 /** Main-thread ownership of intent deliveries; equal payload IDs still represent different arrivals. */
@@ -18,9 +18,10 @@ internal class IncomingShareDeliveryGate<T> {
     fun beginIntent(): Long = ++generation
     fun isCurrentCapture(capture: Long) = capture == generation
 
-    fun publish(capture: Long, payload: T): IncomingShareDelivery<T>? {
+    fun publish(capture: Long, payload: T, requestId: String = java.util.UUID.randomUUID().toString()): IncomingShareDelivery<T>? {
         if (!isCurrentCapture(capture)) return null
-        return IncomingShareDelivery(capture, payload).also { current = it }
+        require(requestId.isNotBlank())
+        return IncomingShareDelivery(capture, payload, requestId).also { current = it }
     }
 
     fun consume(expected: IncomingShareDelivery<T>?): ConsumedIncomingShare<T>? {
@@ -31,3 +32,7 @@ internal class IncomingShareDeliveryGate<T> {
         return ConsumedIncomingShare(expected, if (latest) ShareDismissal.CURRENT else ShareDismissal.SUPERSEDED)
     }
 }
+
+/** Only this task's saved, matching capture restores an existing user action. */
+internal fun restoredShareRequestId(payloadId: String, savedPayloadId: String?, savedRequestId: String?): String? =
+    savedRequestId?.takeIf { it.isNotBlank() && savedPayloadId == payloadId }

@@ -19,6 +19,9 @@ import conectate.com.presentation.messages.takeIncomingSharePersistablePermissio
 import conectate.com.presentation.messages.toCapturedShareIntent
 import conectate.com.presentation.messages.IncomingShareDelivery
 import conectate.com.presentation.messages.IncomingShareDeliveryGate
+import conectate.com.presentation.messages.IncomingShareCleanupQueue
+import conectate.com.presentation.messages.restoredShareRequestId
+import conectate.com.presentation.messages.capturedIncomingShareId
 import conectate.com.presentation.messages.ShareDismissal
 import conectate.com.presentation.theme.RedSocialTheme
 import conectate.com.services.LiveChatHeadService
@@ -38,6 +41,8 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val PROCESS_INSTANCE_KEY = "novvin_process_instance"
         private const val SHARE_CONSUMED_KEY = "novvin_incoming_share_consumed"
+        private const val SHARE_REQUEST_ID_KEY = "novvin_incoming_share_request_id"
+        private const val SHARE_PAYLOAD_ID_KEY = "novvin_incoming_share_payload_id"
         private val processInstanceId = java.util.UUID.randomUUID().toString()
     }
 
@@ -48,6 +53,8 @@ class MainActivity : ComponentActivity() {
     private val intentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
     private val incomingShareState = androidx.compose.runtime.mutableStateOf<IncomingShareDelivery<IncomingSharePayload>?>(null)
     private val incomingShareDeliveries = IncomingShareDeliveryGate<IncomingSharePayload>()
+    private val incomingShareCleanup = IncomingShareCleanupQueue<IncomingSharePayload> { it.id }
+    private var incomingCaptureJob: Job? = null
     private var pendingShareIntent: Intent? = null
     private var presenceHeartbeatJob: Job? = null
     private var presenceOfflineJob: Job? = null
@@ -100,11 +107,13 @@ class MainActivity : ComponentActivity() {
         val restoredIntent = intent
         val replayedShare = isIncomingShareIntent(restoredIntent) && !shouldAcceptRestoredShare(
             fromHistory = restoredIntent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0,
-            alreadyConsumed = savedInstanceState?.getBoolean(SHARE_CONSUMED_KEY, false) == true
+            alreadyConsumed = savedInstanceState?.getBoolean(SHARE_CONSUMED_KEY, false) == true,
+            knownPendingCapture = restoredShareRequestId(capturedIncomingShareId(restoredIntent).orEmpty(),
+                savedInstanceState?.getString(SHARE_PAYLOAD_ID_KEY), savedInstanceState?.getString(SHARE_REQUEST_ID_KEY)) != null
         )
         acceptIncomingIntent(if (replayedShare) {
             Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java)
-        } else restoredIntent)
+        } else restoredIntent, savedInstanceState?.getString(SHARE_PAYLOAD_ID_KEY), savedInstanceState?.getString(SHARE_REQUEST_ID_KEY))
 
         lifecycleScope.launch {
             moderationNoticeCenter.notices.collect { notice ->
@@ -144,6 +153,7 @@ class MainActivity : ComponentActivity() {
                         currentIntent = currentIntent,
                         onIntentConsumed = { consumeIncomingIntent(currentIntent) },
                         incomingShare = incomingShare,
+                        incomingShareRequestId = incomingDelivery?.requestId,
                         onIncomingShareConsumed = { discardIncomingShare(incomingDelivery) },
                         authRepository = authRepository,
                         notificationRepositoryProvider = notificationRepository,
@@ -165,6 +175,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(PROCESS_INSTANCE_KEY, processInstanceId)
+        outState.putString(SHARE_REQUEST_ID_KEY, incomingShareState.value?.requestId)
+        outState.putString(SHARE_PAYLOAD_ID_KEY, incomingShareState.value?.payload?.id)
         outState.putBoolean(SHARE_CONSUMED_KEY, !isIncomingShareIntent(intent) && incomingShareState.value == null)
         super.onSaveInstanceState(outState)
     }
@@ -186,10 +198,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun acceptIncomingIntent(incomingIntent: Intent) {
+    private fun acceptIncomingIntent(incomingIntent: Intent, savedPayloadId: String? = null, savedRequestId: String? = null) {
         // A new link/notification also supersedes an unfinished file capture.
         // Otherwise that old capture can replace the new destination when it finishes.
         val generation = incomingShareDeliveries.beginIntent()
+        // Pin the new capture before cancelling the old one: it may read that old capture's files.
+        val capture = if (isIncomingShareIntent(incomingIntent)) incomingShareCleanup.beginCapture() else null
+        incomingCaptureJob?.cancel()
+        incomingCaptureJob = null
         setIntent(incomingIntent)
         if (!isIncomingShareIntent(incomingIntent)) {
             intentState.value = incomingIntent
@@ -197,14 +213,26 @@ class MainActivity : ComponentActivity() {
         }
 
         intentState.value = null
-        lifecycleScope.launch {
-            val parsed = parseIncomingShareIntent(this@MainActivity, incomingIntent)
+        val captureJob = lifecycleScope.launch {
+            val parsed = try {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    parseIncomingShareIntent(this@MainActivity, incomingIntent)?.also {
+                        takeIncomingSharePersistablePermissions(this@MainActivity, incomingIntent)
+                    }
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (incomingShareDeliveries.isCurrentCapture(generation)) {
+                    android.util.Log.w("MainActivity", "Cannot read incoming share", error)
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo preparar lo compartido. Vuelve a adjuntarlo.")
+                }
+                null
+            }
             if (parsed == null) {
                 if (incomingShareDeliveries.isCurrentCapture(generation)) intentState.value = incomingIntent
                 return@launch
             }
 
-            takeIncomingSharePersistablePermissions(this@MainActivity, incomingIntent)
             val captured = PendingOutgoingMediaStore.persistIncomingShare(this@MainActivity, parsed)
                 .getOrElse { error ->
                     parsed.copy(
@@ -214,10 +242,10 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-            val delivery = incomingShareDeliveries.publish(generation, captured)
+            val delivery = incomingShareDeliveries.publish(generation, captured,
+                restoredShareRequestId(captured.id, savedPayloadId, savedRequestId) ?: java.util.UUID.randomUUID().toString())
             if (delivery == null) {
-                if (incomingShareState.value?.payload?.id != captured.id)
-                    PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, captured)
+                cleanupIncomingShare(captured)
                 return@launch
             }
 
@@ -228,9 +256,25 @@ class MainActivity : ComponentActivity() {
             setIntent(capturedIntent)
             intentState.value = capturedIntent
             // Publish without a suspending cleanup between the generation check and UI delivery.
-            if (previous != null) lifecycleScope.launch {
-                PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, previous)
+            if (previous != null) cleanupIncomingShare(previous)
+        }
+        incomingCaptureJob = captureJob
+        captureJob.invokeOnCompletion {
+            runOnUiThread {
+                if (incomingCaptureJob === captureJob) incomingCaptureJob = null
+                cleanReadyIncomingShares(incomingShareCleanup.finishCapture(checkNotNull(capture), incomingShareState.value?.payload?.id))
             }
+        }
+    }
+
+    private fun cleanupIncomingShare(payload: IncomingSharePayload) {
+        cleanReadyIncomingShares(incomingShareCleanup.enqueue(payload, incomingShareState.value?.payload?.id))
+    }
+
+    private fun cleanReadyIncomingShares(payloads: List<IncomingSharePayload>) {
+        if (payloads.isEmpty()) return
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            payloads.forEach { PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, it) }
         }
     }
 
@@ -244,9 +288,7 @@ class MainActivity : ComponentActivity() {
             intentState.value = null
             setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
         }
-        lifecycleScope.launch {
-            PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, payload)
-        }
+        cleanupIncomingShare(payload)
         return consumed.dismissal
     }
 

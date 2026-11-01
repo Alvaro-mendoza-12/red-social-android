@@ -59,53 +59,47 @@ data class UniversalForwardRequest(
 data class InternalVideoShareRequest(val video: conectate.com.data.model.Video, val requestId: String = UUID.randomUUID().toString())
 data class InternalPostShareRequest(val post: conectate.com.data.model.Post, val requestId: String = UUID.randomUUID().toString())
 
-class UniversalForwardCoordinator {
+class UniversalForwardCoordinator internal constructor(
+    private val captureAccountLease: (() -> conectate.com.data.supabase.AuthSessionLease)? = null,
+) {
+    private var accountLease: conectate.com.data.supabase.AuthSessionLease? = null
+    private var activePost by mutableStateOf<InternalPostShareRequest?>(null)
+    private var activeVideo by mutableStateOf<InternalVideoShareRequest?>(null)
+    private var activeForward by mutableStateOf<UniversalForwardRequest?>(null)
+    private fun isCurrent() = captureAccountLease == null || accountLease?.isCurrent() == true
+    val postRequest: InternalPostShareRequest? get() = activePost.takeIf { isCurrent() }
+    val videoRequest: InternalVideoShareRequest? get() = activeVideo.takeIf { isCurrent() }
+    val request: UniversalForwardRequest? get() = activeForward.takeIf { isCurrent() }
     val activeRequestId: String? get() = postRequest?.requestId ?: videoRequest?.requestId ?: request?.requestId
-    var postRequest by mutableStateOf<InternalPostShareRequest?>(null)
-        private set
-    fun openPost(post: conectate.com.data.model.Post) {
+
+    private fun begin(): Boolean {
         dismiss()
-        postRequest = InternalPostShareRequest(post)
+        accountLease = captureAccountLease?.invoke()
+        return isCurrent()
     }
-    var videoRequest by mutableStateOf<InternalVideoShareRequest?>(null)
-        private set
+
+    fun openPost(post: conectate.com.data.model.Post) {
+        if (begin()) activePost = InternalPostShareRequest(post)
+    }
     fun openVideo(video: conectate.com.data.model.Video) {
-        postRequest = null
-        request = null
-        videoRequest = InternalVideoShareRequest(video)
+        if (begin()) activeVideo = InternalVideoShareRequest(video)
     }
-
-    var request by mutableStateOf<UniversalForwardRequest?>(null)
-        private set
-
-    fun open(
-        candidates: List<ForwardMessagePayload>,
-        initiallySelectedIds: Set<String>
-    ) {
-        val eligible = candidates
-            .asSequence()
-            .filterNot(ForwardMessagePayload::deletedForAll)
-            .distinctBy(ForwardMessagePayload::id)
-            .sortedBy(ForwardMessagePayload::timestampMs)
-            .take(MAX_FORWARD_CANDIDATES)
-            .toList()
+    fun open(candidates: List<ForwardMessagePayload>, initiallySelectedIds: Set<String>) {
+        val eligible = candidates.asSequence().filterNot(ForwardMessagePayload::deletedForAll)
+            .distinctBy(ForwardMessagePayload::id).sortedBy(ForwardMessagePayload::timestampMs)
+            .take(MAX_FORWARD_CANDIDATES).toList()
         if (eligible.isEmpty()) return
         val eligibleIds = eligible.mapTo(mutableSetOf(), ForwardMessagePayload::id)
         val initial = initiallySelectedIds.intersect(eligibleIds).ifEmpty { setOf(eligible.last().id) }
-        videoRequest = null
-        postRequest = null
-        request = UniversalForwardRequest(
-            candidates = eligible,
-            initiallySelectedIds = initial
-        )
+        if (begin()) activeForward = UniversalForwardRequest(candidates = eligible, initiallySelectedIds = initial)
     }
-
+    fun validateSession() { if (!isCurrent()) dismiss() }
     fun dismiss() {
-        request = null
-        videoRequest = null
-        postRequest = null
+        activeForward = null
+        activeVideo = null
+        activePost = null
+        accountLease = null
     }
-
     fun dismiss(requestId: String): ShareDismissal {
         if (activeRequestId != requestId) return ShareDismissal.IGNORED
         dismiss()

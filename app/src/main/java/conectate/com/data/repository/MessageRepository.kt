@@ -137,8 +137,6 @@ class MessageRepository @Inject constructor(
 ) : ChatSyncDataSource {
     companion object {
         private const val MAX_FORWARD_TARGETS_PER_BATCH = 20
-        private const val MAX_PENDING_CHAT_MEDIA_BYTES = 100L * 1024L * 1024L
-        private const val MIN_PENDING_MEDIA_FREE_BYTES = 32L * 1024L * 1024L
     }
 
     private val deletedMessageStore by lazy { conectate.com.util.DeletedMessageStore(context) }
@@ -2628,6 +2626,8 @@ class MessageRepository @Inject constructor(
             var pendingMediaUri: Uri? = null
             if (mediaUri != null) {
                 val pendingMedia = persistPendingChatMedia(
+                    accountId = userId,
+                    requireCurrent = ::requireCurrentSession,
                     sourceUri = mediaUri,
                     messageId = id,
                     mediaType = mediaType
@@ -5146,68 +5146,19 @@ class MessageRepository @Inject constructor(
     )
 
     private suspend fun persistPendingChatMedia(
+        accountId: String,
+        requireCurrent: () -> Unit,
         sourceUri: Uri,
         messageId: String,
-        mediaType: String
-    ): Result<PendingChatMedia> = withContext(Dispatchers.IO) {
-        runCatching {
-            val accountId = authService.getCurrentUserId()
-                ?.trim()
-                ?.lowercase()
-                ?.takeIf { it.isNotBlank() }
-                ?: error("No hay una cuenta activa")
-            val headerBytes = readUriHeaderBytes(sourceUri) ?: error("No se pudo leer el archivo")
-            val (_, extension) = resolveMediaUploadMeta(mediaType, sourceUri, headerBytes)
-            val directory = File(
-                context.filesDir,
-                "pending-message-media/${safePendingPathPart(accountId)}"
-            ).apply { mkdirs() }
-            val baseName = safePendingPathPart(messageId).ifBlank { UUID.randomUUID().toString() }
-            val finalFile = File(directory, "$baseName$extension")
-            val partialFile = File(directory, "$baseName$extension.part")
-            partialFile.delete()
-
-            val declaredSize = queryUriSizeBytes(sourceUri)
-            require(declaredSize <= 0L || declaredSize <= MAX_PENDING_CHAT_MEDIA_BYTES) {
-                "El archivo supera el límite de 100 MB"
-            }
-            val availableBytes = android.os.StatFs(directory.absolutePath).availableBytes
-            require(declaredSize <= 0L || availableBytes >= declaredSize + MIN_PENDING_MEDIA_FREE_BYTES) {
-                "No hay espacio suficiente para guardar el mensaje"
-            }
-
-            var copied = 0L
-            try {
-                context.contentResolver.openInputStream(sourceUri)?.buffered()?.use { input ->
-                    partialFile.outputStream().buffered().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            copied += read
-                            require(copied <= MAX_PENDING_CHAT_MEDIA_BYTES) {
-                                "El archivo supera el límite de 100 MB"
-                            }
-                            output.write(buffer, 0, read)
-                        }
-                        output.flush()
-                    }
-                } ?: error("No se pudo abrir el archivo")
-                require(copied > 0L) { "El archivo está vacío" }
-                if (!partialFile.renameTo(finalFile)) {
-                    partialFile.copyTo(finalFile, overwrite = true)
-                    partialFile.delete()
-                }
-                PendingChatMedia(Uri.fromFile(finalFile), copied)
-            } catch (error: Exception) {
-                partialFile.delete()
-                finalFile.delete()
-                throw error
-            }
-        }
-    }
+        mediaType: String,
+    ): Result<PendingChatMedia> = conectate.com.util.PendingOutgoingMediaStore.persist(
+        context = context, accountId = accountId, namespace = "chat", messageId = messageId,
+        sourceUri = sourceUri, preferredMediaType = mediaType, requireCurrent = requireCurrent,
+    ).map { PendingChatMedia(it.uri, it.sizeBytes) }
 
     private fun pendingChatMediaUri(value: String?): Uri? {
+        conectate.com.util.PendingOutgoingMediaStore.resolve(context, value)?.let { return it }
+        // Pending rows from installed versions still refer to this original directory.
         val uri = value?.trim()?.takeIf { it.isNotBlank() }?.let(Uri::parse) ?: return null
         if (!uri.scheme.equals("file", ignoreCase = true)) return null
         val path = uri.path ?: return null
@@ -5219,12 +5170,6 @@ class MessageRepository @Inject constructor(
     private fun deletePendingChatMedia(uri: Uri) {
         pendingChatMediaUri(uri.toString())?.path?.let { path -> runCatching { File(path).delete() } }
     }
-
-    private fun safePendingPathPart(value: String): String = value
-        .trim()
-        .lowercase()
-        .replace(Regex("[^a-z0-9._-]"), "_")
-        .take(100)
 
     private fun isRetryableNetworkFailure(message: String?): Boolean {
         val normalized = message?.trim()?.lowercase().orEmpty()
