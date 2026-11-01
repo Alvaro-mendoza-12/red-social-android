@@ -11,13 +11,12 @@ import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -66,8 +65,9 @@ class AccountSessionRepository @Inject constructor(
     private val prefsOrNull: SharedPreferences?
         get() = securePrefsState.prefs
 
-    private val _accounts = MutableStateFlow(loadAccounts())
-    val accounts: StateFlow<List<StoredAccountSession>> = _accounts.asStateFlow()
+    private val accountStore = StoredAccountsStore(loadAccounts(), ::persist)
+    private val _accounts = accountStore.state
+    val accounts: StateFlow<List<StoredAccountSession>> = _accounts
     private val repositoryScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, throwable ->
             android.util.Log.e("AccountSessionRepository", "Stored account sync failed", throwable)
@@ -77,8 +77,11 @@ class AccountSessionRepository @Inject constructor(
     init {
         repositoryScope.launch {
             authService.observeSession().collect { session ->
-                val snapshot = buildActiveSessionSnapshot(session) ?: return@collect
-                syncActiveSessionSnapshot(snapshot)
+                try {
+                    val snapshot = buildActiveSessionSnapshot(session) ?: return@collect
+                    syncActiveSessionSnapshot(snapshot)
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) { android.util.Log.w("AccountSessionRepository", "Could not persist the active account", error) }
             }
         }
     }
@@ -102,32 +105,35 @@ class AccountSessionRepository @Inject constructor(
 
     suspend fun captureCurrentAccount(
         displayName: String? = null,
-        avatarUrl: String? = null
+        avatarUrl: String? = null,
+        expectedUserId: String? = null,
     ): Result<StoredAccountSession> = withContext(Dispatchers.IO) {
         ensureSecureStorageAvailable().getOrElse { return@withContext Result.failure(it) }
+        val owner = expectedUserId ?: authService.getCurrentUserId()
         val access = authService.getAccessTokenAwait()?.trim().orEmpty()
-        val refresh = authService.getRefreshToken()?.trim().orEmpty()
-        if (access.isBlank() || refresh.isBlank()) {
+        if (access.isBlank()) {
             return@withContext Result.failure(Exception("No hay sesión activa para guardar"))
         }
-
-        var userId = authService.getCurrentUserId()?.trim()?.lowercase()
-        var email = authService.getCurrentUserEmail()?.trim()?.lowercase().orEmpty()
-        if (email.isBlank()) {
-            return@withContext Result.failure(Exception("No se pudo resolver email de sesión"))
-        }
-
-        var entry = StoredAccountSession(
-            user_id = userId,
-            email = email,
-            access_token = access,
-            refresh_token = refresh,
-            display_name = displayName?.trim()?.ifBlank { null },
-            avatar_url = avatarUrl?.trim()?.ifBlank { null },
-            last_used_at = System.currentTimeMillis()
-        )
-
-        Result.success(storeAccountSnapshot(entry))
+        try {
+            var stored: StoredAccountSession? = null
+            val accepted = authService.commitForCurrentAccount(owner, access) {
+                val refresh = authService.getRefreshToken()?.trim().orEmpty()
+                val email = authService.getCurrentUserEmail()?.trim()?.lowercase().orEmpty()
+                check(refresh.isNotBlank() && email.isNotBlank()) { "No se pudo leer la sesión para guardar la cuenta." }
+                stored = storeAccountSnapshot(StoredAccountSession(
+                    user_id = owner?.trim()?.lowercase(),
+                    email = email,
+                    access_token = access,
+                    refresh_token = refresh,
+                    display_name = displayName?.trim()?.ifBlank { null },
+                    avatar_url = avatarUrl?.trim()?.ifBlank { null },
+                    last_used_at = System.currentTimeMillis(),
+                ))
+            }
+            if (!accepted) throw CancellationException("La cuenta cambió antes de guardar su sesión.")
+            Result.success(checkNotNull(stored))
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { Result.failure(error) }
     }
 
     suspend fun switchAccount(accountId: String): Result<StoredAccountSession> = withContext(Dispatchers.IO) {
@@ -139,11 +145,8 @@ class AccountSessionRepository @Inject constructor(
 
         if (TestRuntimeOverrides.isEnabled(context)) {
             var touched = target.copy(last_used_at = System.currentTimeMillis())
-            var updated = upsert(touched, _accounts.value).sortedByDescending { it.last_used_at }
             TestRuntimeOverrides.activateStoredAccount(context, touched)
-            _accounts.value = updated
-            persist(updated)
-            return@withContext Result.success(touched)
+            return@withContext Result.success(storeAccountSnapshot(touched))
         }
 
         return@withContext runCatching {
@@ -232,23 +235,20 @@ class AccountSessionRepository @Inject constructor(
         )
     }
 
-    fun removeAccount(accountId: String) {
+    fun removeAccount(accountId: String): Result<Unit> = runCatching {
         var clean = accountId.trim()
-        if (clean.isBlank()) return
-        var updated = _accounts.value.filterNot { it.id == clean }
-        _accounts.value = updated
-        persist(updated)
+        if (clean.isNotBlank()) accountStore.update { accounts -> accounts.filterNot { it.id == clean } }
+        Unit
     }
 
-    fun removeCurrentAccount() {
+    fun removeCurrentAccount(): Result<Unit> = runCatching {
         val uid = authService.getCurrentUserId()?.trim()?.lowercase()
         var email = authService.getCurrentUserEmail()?.trim()?.lowercase()
-        var updated = _accounts.value.filterNot { entry ->
+        accountStore.update { accounts -> accounts.filterNot { entry ->
             (!uid.isNullOrBlank() && entry.user_id == uid) ||
                 (!email.isNullOrBlank() && entry.email.equals(email, ignoreCase = true))
-        }
-        _accounts.value = updated
-        persist(updated)
+        } }
+        Unit
     }
 
     private fun upsert(entry: StoredAccountSession, source: List<StoredAccountSession>): List<StoredAccountSession> {
@@ -276,7 +276,8 @@ class AccountSessionRepository @Inject constructor(
         var decoded = runCatching { json.decodeFromString<List<StoredAccountSession>>(raw) }.getOrDefault(emptyList())
         var sanitized = sanitizeAccounts(decoded)
         if (sanitized != decoded) {
-            persist(sanitized)
+            runCatching { persist(sanitized) }
+                .onFailure { android.util.Log.w("AccountSessionRepository", "Could not save normalized accounts", it) }
         }
         return sanitized
     }
@@ -291,7 +292,10 @@ class AccountSessionRepository @Inject constructor(
         // Session refresh credentials are security-critical. A synchronous
         // commit prevents losing the newest token when Android kills the
         // process immediately after a refresh or the user closes the app.
-        prefsOrNull?.edit()?.putString(KEY_ACCOUNTS, json.encodeToString(sanitized))?.commit()
+        val prefs = prefsOrNull ?: error("El almacenamiento seguro no está disponible para guardar cuentas.")
+        check(prefs.edit().putString(KEY_ACCOUNTS, json.encodeToString(sanitized)).commit()) {
+            "No se pudo guardar el cambio de cuentas en este dispositivo. Inténtalo de nuevo."
+        }
     }
 
     private suspend fun buildActiveSessionSnapshot(
@@ -307,55 +311,61 @@ class AccountSessionRepository @Inject constructor(
         if (accessToken.isBlank() || refreshToken.isBlank() || email.isBlank()) return null
 
         val profileSeed = authService.getCurrentUserProfileSeed()
-        return ActiveSessionSnapshot(
-            userId = userId,
-            email = email,
-            accessToken = accessToken,
-            refreshToken = refreshToken,
-            displayName = profileSeed?.displayName?.trim()?.ifBlank { null }
-                ?: profileSeed?.fullName?.trim()?.ifBlank { null },
-            avatarUrl = profileSeed?.avatarUrl?.trim()?.ifBlank { null }
-        )
+        if (profileSeed != null && !profileSeed.id.equals(userId, ignoreCase = true)) return null
+        var snapshot: ActiveSessionSnapshot? = null
+        authService.commitForCurrentAccount(userId, accessToken) {
+            snapshot = ActiveSessionSnapshot(
+                userId = userId,
+                email = email,
+                accessToken = accessToken,
+                refreshToken = refreshToken,
+                displayName = profileSeed?.displayName?.trim()?.ifBlank { null }
+                    ?: profileSeed?.fullName?.trim()?.ifBlank { null },
+                avatarUrl = profileSeed?.avatarUrl?.trim()?.ifBlank { null }
+            )
+        }
+        return snapshot
     }
 
     private fun syncActiveSessionSnapshot(snapshot: ActiveSessionSnapshot) {
         if (!TestRuntimeOverrides.isEnabled(context) && prefsOrNull == null) return
-        // A queued observer emission can arrive after a synchronous local logout.
-        if (!authService.isLoggedIn() ||
-            (!snapshot.userId.isNullOrBlank() && !snapshot.userId.equals(authService.getCurrentUserId(), true))) return
+        authService.commitForCurrentAccount(snapshot.userId, snapshot.accessToken) {
+            // A queued observer emission can arrive after a synchronous local logout.
+            if (!authService.isLoggedIn() ||
+                (!snapshot.userId.isNullOrBlank() && !snapshot.userId.equals(authService.getCurrentUserId(), true))) return@commitForCurrentAccount
 
-        var existing = _accounts.value.firstOrNull {
-            (!snapshot.userId.isNullOrBlank() && it.user_id == snapshot.userId) ||
-                it.email.equals(snapshot.email, ignoreCase = true)
+            var existing = _accounts.value.firstOrNull {
+                (!snapshot.userId.isNullOrBlank() && it.user_id == snapshot.userId) ||
+                    it.email.equals(snapshot.email, ignoreCase = true)
+            }
+            val refreshedEntry = StoredAccountSession(
+                id = existing?.id ?: java.util.UUID.randomUUID().toString(),
+                user_id = snapshot.userId,
+                email = snapshot.email,
+                access_token = snapshot.accessToken,
+                refresh_token = snapshot.refreshToken,
+                display_name = snapshot.displayName ?: existing?.display_name,
+                avatar_url = snapshot.avatarUrl ?: existing?.avatar_url,
+                last_used_at = maxOf(existing?.last_used_at ?: 0L, System.currentTimeMillis())
+            )
+            val shouldPersist = existing == null ||
+                existing.user_id != refreshedEntry.user_id ||
+                !existing.email.equals(refreshedEntry.email, ignoreCase = true) ||
+                existing.access_token != refreshedEntry.access_token ||
+                existing.refresh_token != refreshedEntry.refresh_token ||
+                existing.display_name != refreshedEntry.display_name ||
+                existing.avatar_url != refreshedEntry.avatar_url
+
+            if (!shouldPersist) return@commitForCurrentAccount
+            storeAccountSnapshot(refreshedEntry)
         }
-        val refreshedEntry = StoredAccountSession(
-            id = existing?.id ?: java.util.UUID.randomUUID().toString(),
-            user_id = snapshot.userId,
-            email = snapshot.email,
-            access_token = snapshot.accessToken,
-            refresh_token = snapshot.refreshToken,
-            display_name = snapshot.displayName ?: existing?.display_name,
-            avatar_url = snapshot.avatarUrl ?: existing?.avatar_url,
-            last_used_at = maxOf(existing?.last_used_at ?: 0L, System.currentTimeMillis())
-        )
-        val shouldPersist = existing == null ||
-            existing.user_id != refreshedEntry.user_id ||
-            !existing.email.equals(refreshedEntry.email, ignoreCase = true) ||
-            existing.access_token != refreshedEntry.access_token ||
-            existing.refresh_token != refreshedEntry.refresh_token ||
-            existing.display_name != refreshedEntry.display_name ||
-            existing.avatar_url != refreshedEntry.avatar_url
-
-        if (!shouldPersist) return
-        storeAccountSnapshot(refreshedEntry)
     }
 
     private fun storeAccountSnapshot(entry: StoredAccountSession): StoredAccountSession {
-        var updated = upsert(entry, _accounts.value)
+        val updated = accountStore.update { accounts -> upsert(entry, accounts)
             .sortedByDescending { it.last_used_at }
             .take(6)
-        _accounts.value = updated
-        persist(updated)
+        }
         return updated.firstOrNull {
             (!entry.user_id.isNullOrBlank() && it.user_id == entry.user_id) ||
                 it.email.equals(entry.email, ignoreCase = true)

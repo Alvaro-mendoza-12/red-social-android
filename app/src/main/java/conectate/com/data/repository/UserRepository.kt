@@ -1552,7 +1552,7 @@ class UserRepository @Inject constructor(
             var acceptedAt = java.time.OffsetDateTime.now().toString()
             localStateStore.setLocalPrivacyAccepted(uid, acceptedAt, pendingSync = true)
 
-            var token = authService.getAccessTokenAwait()
+            var token = authService.getAccessTokenForAccountAwait(uid)
             if (token.isNullOrBlank()) {
                 android.util.Log.w("UserRepository", "acceptPrivacyPolicy: No token. Keeping local acceptance queued.")
                 return Result.success(Unit)
@@ -1589,20 +1589,20 @@ class UserRepository @Inject constructor(
 
             if (response.status.isSuccess()) {
                 localStateStore.clearPrivacyPending(uid)
-                syncPrivacyAcceptanceToAuthMetadata(acceptedAt)
+                syncPrivacyAcceptanceToAuthMetadata(uid, acceptedAt)
                 Result.success(Unit)
             } else {
                 if (isMissingPrivacyColumn(errBody)) {
                     // Backward-compat: if column missing, treat as accepted to avoid blocking the user.
                     localStateStore.clearPrivacyPending(uid)
-                    syncPrivacyAcceptanceToAuthMetadata(acceptedAt)
+                    syncPrivacyAcceptanceToAuthMetadata(uid, acceptedAt)
                     Result.success(Unit)
                 } else {
                     android.util.Log.w(
                         "UserRepository",
                         "Privacy acceptance queued (${response.status.value}): ${errBody.take(200)}"
                     )
-                    syncPrivacyAcceptanceToAuthMetadata(acceptedAt)
+                    syncPrivacyAcceptanceToAuthMetadata(uid, acceptedAt)
                     Result.success(Unit)
                 }
             }
@@ -1612,14 +1612,15 @@ class UserRepository @Inject constructor(
         }
     }
 
-    private suspend fun syncPrivacyAcceptanceToAuthMetadata(acceptedAt: String) {
+    private suspend fun syncPrivacyAcceptanceToAuthMetadata(userId: String, acceptedAt: String) {
         authService.updateUserMetadata(
             fullName = null,
             avatarUrl = null,
             displayName = null,
             country = null,
             privacyPolicyAccepted = true,
-            privacyPolicyAcceptedAt = acceptedAt
+            privacyPolicyAcceptedAt = acceptedAt,
+            expectedUserId = userId,
         ).onFailure {
             android.util.Log.w("UserRepository", "Failed to sync privacy acceptance to auth metadata", it)
         }
@@ -1796,9 +1797,9 @@ class UserRepository @Inject constructor(
     ): Result<Unit> {
         val identityRequest = captureProfileIdentityRequest()
         return try {
-            var token = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token"))
             var normalizedUserId = normalizePrivacyUserId(userId)
+            val token = authService.getAccessTokenForAccountAwait(normalizedUserId)
+                ?: return Result.failure(Exception("Inicia sesión para guardar el perfil."))
 
             if (request.is_private != null || request.profile_visibility != null) {
                 localStateStore.setLocalProfileVisibility(
@@ -1853,6 +1854,8 @@ class UserRepository @Inject constructor(
                 )
 
                 response.onSuccess { profileResponse ->
+                    if (!authService.commitForCurrentAccount(normalizedUserId, token) {})
+                        throw CancellationException("La cuenta cambió antes de guardar el perfil.")
                     val previousUser = getCachedUserById(normalizedUserId)
                     val updatedUser = mapLocalFallbackProfile(
                         response = profileResponse,
@@ -1866,7 +1869,8 @@ class UserRepository @Inject constructor(
                         return Result.failure(Exception("El servidor no confirmó el campo actualizado: $mismatch"))
                     }
                     userDao.insertUser(conectate.com.data.local.entity.UserEntity.fromDomain(updatedUser))
-                    saveProfileLocally(updatedUser)
+                    if (!authService.commitForCurrentAccount(normalizedUserId, token) { saveProfileLocally(updatedUser) })
+                        throw CancellationException("La cuenta cambió antes de guardar el perfil.")
                     warmProfileIdentityImage(updatedUser, identityRequest)
                     _profileUpdates.emit(updatedUser)
                     return Result.success(Unit)
@@ -1991,7 +1995,8 @@ class UserRepository @Inject constructor(
                     fullName = request.display_name,
                     avatarUrl = request.avatar_url,
                     displayName = request.display_name,
-                    country = request.country
+                    country = request.country,
+                    expectedUserId = normalizedUserId,
                 )
                 
                 Result.success(Unit)

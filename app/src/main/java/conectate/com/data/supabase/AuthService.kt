@@ -1090,31 +1090,34 @@ class AuthService @Inject constructor(
         displayName: String? = fullName,
         country: String? = null,
         privacyPolicyAccepted: Boolean? = null,
-        privacyPolicyAcceptedAt: String? = null
+        privacyPolicyAcceptedAt: String? = null,
+        expectedUserId: String? = null,
     ): Result<Unit> {
+        val owner = expectedUserId ?: getCurrentUserId()
+        val generation = localSessionMutationGuard.snapshot()
         return try {
             if (isLocalFallbackSession() || isLocalFallbackModeEnabled()) {
                 val prefs = authPrefsOrNull
                     ?: return Result.failure(Exception("El almacenamiento seguro no está disponible."))
                 val stored = withContext(Dispatchers.IO) {
-                    prefs.edit().apply {
-                        (displayName ?: fullName)?.let {
-                            putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, it)
+                    var stored = false
+                    val accepted = localSessionMutationGuard.commitIfCurrent(generation,
+                        eligible = { !owner.isNullOrBlank() && owner.equals(getCurrentUserId(), ignoreCase = true) }) {
+                        stored = prefs.edit().apply {
+                            (displayName ?: fullName)?.let { putString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, it) }
+                            avatarUrl?.let { putString(KEY_LOCAL_FALLBACK_AVATAR_URL, it) }
+                            country?.let { putString(KEY_LOCAL_FALLBACK_COUNTRY, it) }
+                        }.commit()
+                        if (stored) {
+                            val recovered = recoverPersistedLocalFallbackSession()
+                            if (recovered != null && !registrationInProgress) _currentSession.value = recovered
                         }
-                        avatarUrl?.let {
-                            putString(KEY_LOCAL_FALLBACK_AVATAR_URL, it)
-                        }
-                        country?.let {
-                            putString(KEY_LOCAL_FALLBACK_COUNTRY, it)
-                        }
-                    }.commit()
+                    }
+                    if (!accepted) throw CancellationException("La cuenta cambió antes de guardar el perfil.")
+                    stored
                 }
                 if (!stored) {
                     return Result.failure(Exception("No se pudieron guardar los datos del perfil en el dispositivo."))
-                }
-                val recovered = recoverPersistedLocalFallbackSession()
-                if (recovered != null && !registrationInProgress) {
-                    _currentSession.value = recovered
                 }
                 return Result.success(Unit)
             }
@@ -1139,7 +1142,8 @@ class AuthService @Inject constructor(
             }
             Log.d("AuthService", "User metadata updated successfully")
             Result.success(Unit)
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Log.e("AuthService", "Update metadata error: ${e.message}", e)
             Result.failure(e)
         }
@@ -1340,6 +1344,22 @@ class AuthService @Inject constructor(
     }
 
     fun isLoggedIn(): Boolean = !registrationInProgress && getCurrentUserId() != null
+
+    /** Keep a snapshot/store operation on one account and credential pair. No suspension inside. */
+    internal fun commitForCurrentAccount(
+        accountId: String?,
+        accessToken: String? = null,
+        mutation: () -> Unit,
+    ): Boolean = localSessionMutationGuard.commitForAccount(
+        accountId, accessToken, ::getCurrentUserId, ::getAccessToken, mutation,
+    )
+
+    internal suspend fun getAccessTokenForAccountAwait(accountId: String): String? {
+        val token = getAccessTokenAwait() ?: return null
+        if (!commitForCurrentAccount(accountId, token) {})
+            throw CancellationException("La cuenta cambió durante la operación.")
+        return token
+    }
 
     /**
      * Ensures a valid, non-expired access token is returned.
@@ -1832,7 +1852,10 @@ class AuthService @Inject constructor(
         )
     }
 
-    private fun getLocalFallbackProfileSeed(): CurrentUserProfileSeed? {
+    private fun getLocalFallbackProfileSeed(): CurrentUserProfileSeed? =
+        localSessionMutationGuard.readCurrent { readLocalFallbackProfileSeed() }
+
+    private fun readLocalFallbackProfileSeed(): CurrentUserProfileSeed? {
         if (!isLocalFallbackSession()) return null
         val prefs = authPrefsOrNull ?: return null
         val displayName = prefs.getString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, null)
