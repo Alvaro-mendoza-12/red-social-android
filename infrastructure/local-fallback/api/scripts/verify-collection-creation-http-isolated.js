@@ -34,7 +34,7 @@ async function register(label) {
   return { token, user: result.user }
 }
 async function members(id) {
-  return (await pool.query('SELECT user_id,role FROM fallback_collection_members WHERE room_id=$1 ORDER BY user_id', [id])).rows
+  return (await pool.query('SELECT user_id,role FROM fallback_collection_members WHERE room_id=$1 AND is_deleted=FALSE ORDER BY user_id', [id])).rows
 }
 async function withMemberFailure(roomId, userId, operation) {
   assert.match(roomId, /^[0-9a-f-]{36}$/i); assert.match(userId, /^[0-9a-f-]{36}$/i)
@@ -96,11 +96,12 @@ async function main() {
     assert.equal((await members(id)).length, 2, 'A migrated alias must not add a second owner membership')
     assert.equal((await members(id)).filter(member => member.role === 'owner').length, 1)
     await pool.query('UPDATE fallback_collection_rooms SET name=$2 WHERE id=$1', [id, 'Edited after creation'])
-    await pool.query('DELETE FROM fallback_collection_members WHERE room_id=$1 AND user_id=$2', [id, b.user.id])
+    await request('/v1/data/messages/groups/' + id + '/leave', { method: 'POST', token: b.token, body: {} })
     const recovered = await request('/v1/data/messages/groups', { method: 'POST', token: a.token, body: original, status: 201 })
     assert.equal(recovered.room.name, 'Edited after creation')
     assert.equal(recovered.initialMembers.length, 1)
     assert.equal((await members(id)).length, 1, 'Old retries must never re-invite removed members')
+    assert.equal((await pool.query('SELECT is_deleted FROM fallback_collection_members WHERE room_id=$1 AND user_id=$2', [id, b.user.id])).rows[0].is_deleted, true)
 
     const communityId = randomUUID()
     const community = { id: communityId, name: 'Private community', description: 'Private original', category: 'QA', isPublic: false, createOnly: true }
@@ -117,11 +118,23 @@ async function main() {
     await pool.query('UPDATE fallback_collection_rooms SET is_deleted=TRUE WHERE id=$1', [communityId])
     await request('/v1/data/messages/communities', { method: 'POST', token: a.token, body: community, status: 409 })
     assert.equal((await pool.query('SELECT is_deleted FROM fallback_collection_rooms WHERE id=$1', [communityId])).rows[0].is_deleted, true)
+    // A creator who has since left must not regain membership through an old pending creation.
+    await request('/v1/data/messages/groups/' + failedId + '/leave', { method: 'POST', token: a.token, body: {} })
+    await request('/v1/data/messages/groups', { method: 'POST', token: a.token, body: interrupted, status: 409 })
+    assert.equal((await pool.query('SELECT creator_id FROM fallback_collection_rooms WHERE id=$1', [failedId])).rows[0].creator_id, b.user.id)
+    const soleId = randomUUID(), sole = { ...community, id: soleId, name: 'Sole creator departure' }
+    await request('/v1/data/messages/communities', { method: 'POST', token: a.token, body: sole, status: 201 })
+    await request('/v1/data/messages/communities/' + soleId + '/leave', { method: 'POST', token: a.token, body: {} })
+    await request('/v1/data/messages/communities', { method: 'POST', token: a.token, body: sole, status: 409 })
+    const retained = await request('/v1/data/messages/communities/' + soleId, { token: a.token })
+    assert.equal(retained.historyAccess.isMember, false)
+    assert.equal(retained.historyAccess.canReadHistory, true)
     return { ok: true, scope: 'isolated-api-and-postgres', productionDataTouched: false, requests, accounts: 3,
       lostAcknowledgementRecovered: true, concurrentRetries: 20, singleRoomAndMemberships: true,
       wholeCreationRollback: true, failedReplayPreservesPreviousData: true, migratedOwnerIsNotDuplicated: true,
       privateCommunityPreserved: true, foreignAndKindConflictsDenied: true, deletedRoomNotResurrected: true,
       recoveryPreservesLaterEdits: true, recoveryDoesNotReinviteRemovedMembers: true,
+      realMemberDeparturePreserved: true, creatorDepartureCannotBeReplayed: true, retainedHistoryPreserved: true,
       elapsedMillis: Date.now() - started }
   } finally { await pool.end() }
 }

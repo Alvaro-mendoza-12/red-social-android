@@ -65,9 +65,15 @@ async function insertInitialMembers(client, row, room, actorIds, memberIds) {
   }
 }
 
+async function lockCollectionMembership(client, room) {
+  if (room.id) await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+    [`membership/${room.kind}/${String(room.id).trim().toLowerCase()}`])
+}
+
 /** A room and all initial memberships become visible together; preserves the installed client contract. */
 async function createOwnedCollectionRoom(pool, room, actorIds, memberIds, importedIdExists) {
   return withCollectionTransaction(pool, async client => {
+    await lockCollectionMembership(client, room)
     const row = await upsertOwnedCollectionRoom(client, room, actorIds,
       importedIdExists ? (kind, id) => importedIdExists(client, kind, id) : null)
     await insertInitialMembers(client, row, room, actorIds, memberIds)
@@ -80,6 +86,7 @@ async function createOwnedCollectionRoomOnce(pool, room, actorIds, memberIds, im
   const actors = [...actorIds].map(id => String(id).trim().toLowerCase()).filter(Boolean)
   if (!['group', 'community'].includes(room.kind) || !actors.includes(String(room.creatorId).trim().toLowerCase()) || !room.id) throw conflict()
   return withCollectionTransaction(pool, async client => {
+    await lockCollectionMembership(client, room)
     if (importedIdExists) {
       const imported = await Promise.all(['group', 'community'].map(kind => importedIdExists(client, kind, room.id)))
       if (imported.some(Boolean)) throw conflict()
@@ -99,10 +106,14 @@ async function createOwnedCollectionRoomOnce(pool, room, actorIds, memberIds, im
       'SELECT * FROM fallback_collection_rooms WHERE id=$1::uuid FOR UPDATE', [room.id],
     )).rows[0]
     if (!row || row.room_kind !== room.kind || row.is_deleted || !actors.includes(String(row.creator_id).trim().toLowerCase())) throw conflict()
+    if (!created && (await client.query(
+      `SELECT 1 AS departed FROM fallback_collection_members WHERE room_kind=$1 AND room_id=$2
+       AND lower(trim(user_id))=ANY($3::text[]) AND is_deleted=TRUE LIMIT 1`, [room.kind, row.id, actors],
+    )).rows.length) throw conflict()
     if (created) await insertInitialMembers(client, row, room, actorIds, memberIds)
     const members = (await client.query(
       `SELECT user_id, role, joined_at FROM fallback_collection_members
-       WHERE room_kind=$1 AND room_id=$2 ORDER BY (user_id=$3) DESC, user_id`,
+       WHERE room_kind=$1 AND room_id=$2 AND is_deleted IS NOT TRUE ORDER BY (user_id=$3) DESC, user_id`,
       [room.kind, row.id, row.creator_id],
     )).rows
     return { room: row, created, initialMembers: members }

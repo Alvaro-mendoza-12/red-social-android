@@ -75,7 +75,10 @@ interface GroupDao {
     @Transaction
     suspend fun saveCreatedGroup(group: GroupEntity, members: List<GroupMemberEntity>, requireCurrent: () -> Unit) {
         requireCurrent()
-        upsertGroup(group)
+        val previous = getGroupById(group.id)
+        upsertGroup(group.copy(last_message = previous?.last_message ?: group.last_message,
+            last_message_at = previous?.last_message_at ?: group.last_message_at, unread_count = previous?.unread_count ?: group.unread_count))
+        clearCreatedGroupMembers(group.id)
         insertMembers(members)
         requireCurrent() // Throwing rolls back both rows if the session changed during E/S.
     }
@@ -125,6 +128,9 @@ interface GroupDao {
 
 
     // MEMBERS
+    @Query("DELETE FROM group_members WHERE group_id = :groupId")
+    suspend fun clearCreatedGroupMembers(groupId: String)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMembers(members: List<GroupMemberEntity>)
 

@@ -45,13 +45,20 @@ interface CommunityDao {
     @Transaction
     suspend fun saveCreatedCommunity(community: CommunityEntity, members: List<CommunityMemberEntity>, requireCurrent: () -> Unit) {
         requireCurrent()
-        insertCommunities(listOf(community))
+        val previous = getCommunityById(community.id)
+        val confirmed = community.copy(last_message = previous?.last_message ?: community.last_message,
+            last_message_at = previous?.last_message_at ?: community.last_message_at, unread_count = previous?.unread_count ?: community.unread_count)
+        if (previous == null) insertCommunities(listOf(confirmed)) else updateCommunity(confirmed)
+        clearCreatedCommunityMembers(community.id)
         insertMembers(members)
         requireCurrent()
     }
 
     @Update
     suspend fun updateCommunity(community: CommunityEntity)
+
+    @Query("DELETE FROM community_members WHERE community_id = :communityId")
+    suspend fun clearCreatedCommunityMembers(communityId: String)
 
     @Query("UPDATE communities SET last_message = :lastMsg, last_message_at = :lastTime WHERE id = :communityId")
     suspend fun updateMetadata(communityId: String, lastMsg: String?, lastTime: String?)
