@@ -18,4 +18,12 @@ class IncomingShareLaunchPolicyTest {
     @Test fun rotationKeepsAnUnconsumedDelivery() {
         assertTrue(shouldAcceptRestoredShare(fromHistory = false, alreadyConsumed = false))
     }
+
+    @Test fun recentsCanRestoreAMatchingUnconsumedCaptureSavedByThisTask() {
+        assertTrue(shouldAcceptRestoredShare(fromHistory = true, alreadyConsumed = false, knownPendingCapture = true))
+    }
+
+    @Test fun aSavedCaptureNeverReplaysAfterItWasConsumed() {
+        assertFalse(shouldAcceptRestoredShare(fromHistory = true, alreadyConsumed = true, knownPendingCapture = true))
+    }
 }

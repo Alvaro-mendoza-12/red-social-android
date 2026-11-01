@@ -77,6 +77,7 @@ fun MainActivityContent(
     currentIntent: Intent?,
     onIntentConsumed: () -> Unit,
     incomingShare: IncomingSharePayload?,
+    incomingShareRequestId: String? = null,
     onIncomingShareConsumed: () -> conectate.com.presentation.messages.ShareDismissal,
     authRepository: AuthRepository,
     notificationRepositoryProvider: Lazy<NotificationRepository>,
@@ -95,7 +96,7 @@ fun MainActivityContent(
         color = MaterialTheme.colorScheme.background
     ) {
         val navController = rememberNavController()
-        val universalForwardCoordinator = remember { UniversalForwardCoordinator() }
+        val universalForwardCoordinator = remember { UniversalForwardCoordinator(authRepository::captureAccountLease) }
 
         val isInitializing by authRepository.isInitializing.collectAsStateWithLifecycle()
         LaunchedEffect(currentIntent, isInitializing) {
@@ -134,6 +135,10 @@ fun MainActivityContent(
             android.util.Log.d("StartupTiming", "connectivity model completed in ${android.os.SystemClock.elapsedRealtime() - connectivityStarted} ms")
         }
         val accountSwitchState by authRepository.accountSwitchUiState.collectAsStateWithLifecycle()
+        LaunchedEffect(session, accountSwitchState.isSwitching) {
+            if (accountSwitchState.isSwitching) universalForwardCoordinator.dismiss()
+            else universalForwardCoordinator.validateSession()
+        }
         var accountSwitchSnapshot by remember { mutableStateOf<AccountSwitchUiState?>(null) }
         var showAccountSwitchOverlay by remember { mutableStateOf(false) }
         var showForcedSuspensionDialog by remember { mutableStateOf(false) }
@@ -356,9 +361,10 @@ fun MainActivityContent(
                     }
                 }
 
-                if (isLoggedIn) {
+                if (isLoggedIn && !accountSwitchState.isSwitching) {
                     UniversalShareHost(
                         incomingShare = incomingShare,
+                        incomingShareRequestId = incomingShareRequestId,
                         forwardCoordinator = universalForwardCoordinator,
                         onIncomingShareConsumed = onIncomingShareConsumed,
                         onOpenConversation = { destination ->

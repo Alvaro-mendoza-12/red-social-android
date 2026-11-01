@@ -1,11 +1,11 @@
 # Novvin — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-10-31 (Bogotá; cada evidencia indica su fecha y alcance)
+Última actualización de la fuente canónica: 2026-11-01 (Bogotá; cada evidencia indica su fecha y alcance)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Auditoría móvil actual: La [revisión 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md) corrige los compartidos de Social y Perfil de principio a fin, el enlace alterado en comunidades, el regreso al original tras iniciar sesión y las confirmaciones parciales de amistades. Aprueban 2.069 unitarias en 432 suites y cinco recorridos nativos con entrega real a cuentas QA; lint tiene cero errores y 319 advertencias (K1). **APK/AAB 9.1.35 / 175 firmados**, con firma/R8/16 KiB y actualización normal desde 174 comprobadas en AOSP 35. Web publicada: documentos y Reintentar reparados, 20 formatos enviados/descargados sin alterar bytes, 916 pruebas web y 90 controles públicos aprobados. Se publicaron cambios acotados en el servidor para compartidos de perfiles y listado de archivos. Los datos QA se retiraron. No publicado en Play; comunicaciones físicas y certificado de firma de Play pendientes. Esta ruta de archivos usa HTTPS y no implementa cifrado de extremo a extremo. `correciones` permanece para el otro chat.
+Auditoría móvil actual: La [revisión 101](101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md) continúa la corrección del código Android, primero móvil y después web. Sigue abierta la revisión integral; sus resultados no equivalen a una APK nueva ni a cobertura completa del aplicativo. La entrega firmada anterior es **9.1.35 / 175**, documentada en la [revisión 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md). La validación física entre dispositivos permanece pendiente por decisión del propietario; `correciones` sigue reservada al otro chat.
 
 Auditoría web actual: [100 — Documentos y compartidos](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md), con 916 pruebas web, 96 Node, 90 controles públicos y recuperación real de un envío pendiente PPTX. La [revisión 98](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md) conserva la comprobación anterior de colas y cuentas.
 

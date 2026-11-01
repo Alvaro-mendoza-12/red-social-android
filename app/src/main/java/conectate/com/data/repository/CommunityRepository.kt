@@ -2410,6 +2410,19 @@ class CommunityRepository @Inject constructor(
         val id = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
         return conectate.com.data.repository.message.executeOwnedMessageSend(accountLease, sessionWriteGuard, onQueued) { session, queued ->
             messageSendCoordinator.withMessage(id) {
+                sessionWriteGuard.requireValid(session)
+                val existing = communityDao.getMessageById(id)
+                sessionWriteGuard.requireValid(session)
+                if (existing != null) {
+                    if (existing.sender_id.trim().lowercase() != session.accountId || existing.community_id.trim().lowercase() != communityId.trim().lowercase()) {
+                        return@withMessage Result.failure(IllegalArgumentException("El mensaje pertenece a otra conversación."))
+                    }
+                    if (existing.deleted_for_all) return@withMessage Result.failure(IllegalStateException("No se puede reenviar un mensaje eliminado."))
+                    if (existing.is_synced && conectate.com.core.messaging.messageSendConfirmation(
+                            synced = true, status = existing.status, pendingAction = existing.pending_action).isSuccess) {
+                        return@withMessage Result.success(Unit)
+                    }
+                }
                 if (!isSessionSnapshotValid(session, "collection-foreground-send")) {
                     Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 } else sendCommunityMessageInternal(
@@ -3117,13 +3130,23 @@ class CommunityRepository @Inject constructor(
         val session = sessionWriteGuard.capture(accountLease, kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job])
         sessionWriteGuard.requireValid(session)
         val messageId = stableMessageId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: UUID.randomUUID().toString()
+        val existing = if (stableMessageId != null) communityDao.getMessageById(messageId) else null
+        sessionWriteGuard.requireValid(session)
+        if (existing != null && (existing.is_synced || existing.deleted_for_all ||
+                existing.sender_id.trim().lowercase() != session.accountId || existing.community_id.trim().lowercase() != communityId.trim().lowercase() ||
+                existing.media_url?.let { it.startsWith("https://", true) || it.startsWith("http://", true) } == true)) {
+            return sendCommunityMessage(accountLease = accountLease, communityId = communityId, content = content,
+                contentType = contentType, mediaUrl = existing.media_url, messageId = messageId,
+                replyToId = replyToId, replyTo = replyTo, channelId = channelId, onQueued = onQueued)
+        }
         val pending = PendingOutgoingMediaStore.persist(
             context = context,
             accountId = accountId,
             namespace = "community",
             messageId = messageId,
             sourceUri = sourceUri,
-            preferredMediaType = contentType
+            preferredMediaType = contentType,
+            requireCurrent = { sessionWriteGuard.requireValid(session) },
         ).getOrElse { return Result.failure(it) }
         if (!isSessionSnapshotValid(session, "community-media-persisted")) {
             return Result.failure(IllegalStateException("La cuenta cambió durante el envío."))

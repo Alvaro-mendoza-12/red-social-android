@@ -6,6 +6,11 @@ import android.os.StatFs
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 data class PendingOutgoingMedia(
@@ -22,6 +27,8 @@ enum class IncomingShareKind {
     AUDIO,
     DOCUMENT
 }
+
+internal const val MAX_INCOMING_SHARE_ITEMS = 20
 
 data class IncomingSharedItem(
     val uri: Uri,
@@ -51,10 +58,10 @@ data class IncomingSharePayload(
     val captureError: String? = null
 ) {
     val hasContent: Boolean
-        get() = !text.isNullOrBlank() || items.isNotEmpty()
+        get() = !text.isNullOrBlank() || !subject.isNullOrBlank() || items.isNotEmpty()
 
     val isTextOnly: Boolean
-        get() = items.isEmpty() && !text.isNullOrBlank()
+        get() = items.isEmpty() && (!text.isNullOrBlank() || !subject.isNullOrBlank())
 }
 
 fun classifyIncomingShareKind(mimeType: String?, displayName: String?): IncomingShareKind {
@@ -75,9 +82,12 @@ object PendingOutgoingMediaStore {
     private const val INCOMING_ROOT_DIRECTORY = "pending-incoming-share"
     private const val MAX_BYTES = 100L * 1024L * 1024L
     private const val MAX_INCOMING_TOTAL_BYTES = 300L * 1024L * 1024L
-    private const val MAX_INCOMING_ITEMS = 20
     private const val MIN_FREE_BYTES = 32L * 1024L * 1024L
     private const val INCOMING_TTL_MS = 48L * 60L * 60L * 1000L
+    // Bounded stripes serialize only colliding file keys; uploads never rewrite a durable source.
+    private val writeLocks = Array(64) { Mutex() }
+    private fun writeLock(key: String) = writeLocks[key.hashCode() and (writeLocks.size - 1)]
+
 
     suspend fun persist(
         context: Context,
@@ -85,61 +95,63 @@ object PendingOutgoingMediaStore {
         namespace: String,
         messageId: String,
         sourceUri: Uri,
-        preferredMediaType: String
+        preferredMediaType: String,
+        requireCurrent: () -> Unit = {},
     ): Result<PendingOutgoingMedia> = withContext(Dispatchers.IO) {
-        runCatching {
-            val header = context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                val buffer = ByteArray(512)
-                val read = input.read(buffer)
-                if (read > 0) buffer.copyOf(read) else null
-            } ?: error("No se pudo leer el archivo")
-            val meta = resolveMediaMeta(
-                preferredMediaType = preferredMediaType,
-                declaredMime = context.contentResolver.getType(sourceUri),
-                guessedMime = guessMimeTypeFromUri(sourceUri),
-                inferredMime = inferMimeTypeFromBytes(header)
-            )
-            val directory = File(
-                context.filesDir,
-                "$ROOT_DIRECTORY/${safePart(accountId)}/${safePart(namespace)}"
-            ).apply { mkdirs() }
-            val baseName = safePart(messageId).ifBlank { UUID.randomUUID().toString() }
-            val finalFile = File(directory, "$baseName${meta.extensionWithDot}")
-            val partialFile = File(directory, "$baseName${meta.extensionWithDot}.part")
-            partialFile.delete()
-
-            val declaredSize = querySize(context, sourceUri)
-            require(declaredSize <= 0L || declaredSize <= MAX_BYTES) { "El archivo supera el límite de 100 MB" }
-            require(declaredSize <= 0L || StatFs(directory.absolutePath).availableBytes >= declaredSize + MIN_FREE_BYTES) {
-                "No hay espacio suficiente para guardar el mensaje"
-            }
-
-            var copied = 0L
+        val directory = File(context.filesDir, "$ROOT_DIRECTORY/${safePart(accountId)}/${safePart(namespace)}")
+        val baseName = safePart(messageId).ifBlank { UUID.randomUUID().toString() }
+        writeLock("${directory.absolutePath}/$baseName").withLock {
             try {
-                context.contentResolver.openInputStream(sourceUri)?.buffered()?.use { input ->
-                    partialFile.outputStream().buffered().use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read < 0) break
-                            copied += read
-                            require(copied <= MAX_BYTES) { "El archivo supera el límite de 100 MB" }
-                            output.write(buffer, 0, read)
-                        }
-                        output.flush()
-                    }
-                } ?: error("No se pudo abrir el archivo")
-                require(copied > 0L) { "El archivo está vacío" }
-                if (!partialFile.renameTo(finalFile)) {
-                    partialFile.copyTo(finalFile, overwrite = true)
-                    partialFile.delete()
+                currentCoroutineContext().ensureActive(); requireCurrent()
+                // A retry may arrive after its source permission expired. Its durable copy is authoritative.
+                val existing = directory.listFiles()?.firstOrNull {
+                    it.isFile && it.name.startsWith("$baseName.") && !it.name.endsWith(".part") && it.length() > 0L
                 }
-                PendingOutgoingMedia(Uri.fromFile(finalFile), copied, meta.mimeType)
-            } catch (error: Exception) {
-                partialFile.delete()
-                finalFile.delete()
-                throw error
-            }
+                if (existing != null) {
+                    val mime = guessMimeTypeFromFileName(existing.name) ?: "application/octet-stream"
+                    return@withLock Result.success(PendingOutgoingMedia(Uri.fromFile(existing), existing.length(), mime))
+                }
+                require(directory.isDirectory || directory.mkdirs()) { "No se pudo preparar el archivo" }
+                val header = context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    val buffer = ByteArray(512)
+                    val read = input.read(buffer)
+                    if (read > 0) buffer.copyOf(read) else null
+                } ?: error("No se pudo leer el archivo")
+                currentCoroutineContext().ensureActive(); requireCurrent()
+                val meta = resolveMediaMeta(preferredMediaType, context.contentResolver.getType(sourceUri),
+                    guessMimeTypeFromUri(sourceUri), inferMimeTypeFromBytes(header))
+                val finalFile = File(directory, "$baseName${meta.extensionWithDot}")
+                val partialFile = File(directory, "${finalFile.name}.${UUID.randomUUID()}.part")
+                val declaredSize = querySize(context, sourceUri)
+                require(declaredSize <= 0L || declaredSize <= MAX_BYTES) { "El archivo supera el límite de 100 MB" }
+                require(declaredSize <= 0L || StatFs(directory.absolutePath).availableBytes >= declaredSize + MIN_FREE_BYTES) {
+                    "No hay espacio suficiente para guardar el mensaje"
+                }
+                var copied = 0L
+                try {
+                    context.contentResolver.openInputStream(sourceUri)?.buffered()?.use { input ->
+                        partialFile.outputStream().buffered().use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            while (true) {
+                                currentCoroutineContext().ensureActive(); requireCurrent()
+                                val read = input.read(buffer)
+                                if (read < 0) break
+                                copied += read
+                                require(copied <= MAX_BYTES) { "El archivo supera el límite de 100 MB" }
+                                output.write(buffer, 0, read)
+                            }
+                            output.flush()
+                        }
+                    } ?: error("No se pudo abrir el archivo")
+                    require(copied > 0L) { "El archivo está vacío" }
+                    currentCoroutineContext().ensureActive(); requireCurrent()
+                    check(partialFile.renameTo(finalFile)) { "No se pudo conservar el archivo. Intenta otra vez." }
+                    Result.success(PendingOutgoingMedia(Uri.fromFile(finalFile), copied, meta.mimeType))
+                } finally {
+                    partialFile.delete() // This attempt only owns its unique unfinished copy.
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { Result.failure(error) }
         }
     }
 
@@ -147,9 +159,11 @@ object PendingOutgoingMediaStore {
         context: Context,
         payload: IncomingSharePayload
     ): Result<IncomingSharePayload> = withContext(Dispatchers.IO) {
-        runCatching {
+        writeLock("incoming:${safePart(payload.id)}").withLock {
+          try {
+            currentCoroutineContext().ensureActive()
             cleanupExpiredIncomingShares(context)
-            val sourceItems = payload.items.take(MAX_INCOMING_ITEMS)
+            val sourceItems = payload.items.take(MAX_INCOMING_SHARE_ITEMS)
             val directory = incomingShareDirectory(context, payload.id).apply { mkdirs() }
             require(directory.isDirectory) { "No se pudo preparar el almacenamiento temporal" }
 
@@ -157,7 +171,11 @@ object PendingOutgoingMediaStore {
             var failures = payload.failedItemCount + (payload.items.size - sourceItems.size).coerceAtLeast(0)
             var firstError = payload.captureError
             val copiedItems = sourceItems.mapIndexedNotNull { index, item ->
-                val alreadyPersisted = resolveIncoming(context, item.uri)
+                currentCoroutineContext().ensureActive()
+                val alreadyPersisted = resolveIncoming(context, item.uri)?.takeIf {
+                    it.parentFile?.canonicalFile == directory.canonicalFile &&
+                        it.length() in 1..MAX_BYTES && totalBytes + it.length() <= MAX_INCOMING_TOTAL_BYTES
+                }
                 if (alreadyPersisted != null) {
                     totalBytes += alreadyPersisted.length()
                     return@mapIndexedNotNull item.copy(
@@ -198,8 +216,7 @@ object PendingOutgoingMediaStore {
                         ?.takeIf { it.isNotBlank() }
                         ?: "archivo"
                     val finalFile = File(directory, "${index}_${cleanBaseName}${resolved.extensionWithDot}")
-                    val partialFile = File(directory, "${finalFile.name}.part")
-                    partialFile.delete()
+                    val partialFile = File(directory, "${finalFile.name}.${UUID.randomUUID()}.part")
 
                     var copied = 0L
                     try {
@@ -207,6 +224,7 @@ object PendingOutgoingMediaStore {
                             partialFile.outputStream().buffered().use { output ->
                                 val buffer = ByteArray(64 * 1024)
                                 while (true) {
+                                    currentCoroutineContext().ensureActive()
                                     val read = input.read(buffer)
                                     if (read < 0) break
                                     copied += read
@@ -220,14 +238,10 @@ object PendingOutgoingMediaStore {
                             }
                         } ?: error("No se pudo abrir el archivo compartido")
                         require(copied > 0L) { "El archivo compartido está vacío" }
-                        if (!partialFile.renameTo(finalFile)) {
-                            partialFile.copyTo(finalFile, overwrite = true)
-                            partialFile.delete()
-                        }
-                    } catch (error: Exception) {
+                        currentCoroutineContext().ensureActive()
+                        check(partialFile.renameTo(finalFile)) { "No se pudo conservar el archivo compartido. Intenta otra vez." }
+                    } finally {
                         partialFile.delete()
-                        finalFile.delete()
-                        throw error
                     }
 
                     totalBytes += copied
@@ -240,6 +254,7 @@ object PendingOutgoingMediaStore {
                         kind = finalKind
                     )
                 }.getOrElse { error ->
+                    if (error is CancellationException) throw error
                     failures += 1
                     if (firstError.isNullOrBlank()) {
                         firstError = error.message ?: "No se pudo conservar un archivo compartido"
@@ -248,11 +263,10 @@ object PendingOutgoingMediaStore {
                 }
             }
 
-            payload.copy(
-                items = copiedItems,
-                failedItemCount = failures,
-                captureError = firstError
-            )
+            currentCoroutineContext().ensureActive()
+            Result.success(payload.copy(items = copiedItems, failedItemCount = failures, captureError = firstError))
+          } catch (cancelled: CancellationException) { throw cancelled }
+          catch (error: Exception) { Result.failure(error) }
         }
     }
 
@@ -292,11 +306,12 @@ object PendingOutgoingMediaStore {
     }
 
     private fun querySize(context: Context, uri: Uri): Long {
-        runCatching {
+        try {
             context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
                 if (descriptor.length > 0L) return descriptor.length
             }
-        }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { /* Providers may legitimately omit their length. */ }
         return 0L
     }
 
@@ -316,6 +331,7 @@ object PendingOutgoingMediaStore {
     private fun safePart(value: String): String = value.trim().lowercase()
         .replace(Regex("[^a-z0-9._-]"), "_")
         .take(100)
+        .trim('.')
 
     private val IncomingShareKind.preferredMediaType: String
         get() = when (this) {

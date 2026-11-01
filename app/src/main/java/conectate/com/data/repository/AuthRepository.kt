@@ -829,6 +829,8 @@ class AuthRepository @Inject constructor(
     suspend fun importSession(accessToken: String, refreshToken: String) {
         authService.importSession(accessToken, refreshToken)
     }
+    internal fun captureAccountLease() = authService.captureAccountLease()
+
     fun getCurrentUserId(): String? = authService.getCurrentUserId()
     
     fun getCurrentUserEmail(): String? = authService.getCurrentUserEmail()
