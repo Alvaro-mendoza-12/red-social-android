@@ -32,6 +32,7 @@ fun FriendRequestsScreen(
     val acceptedRequests by viewModel.acceptedRequests.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val loadError by viewModel.loadError.collectAsState()
+    val recentLoadError by viewModel.recentLoadError.collectAsState()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
 
     LaunchedEffect(lifecycleState) {
@@ -76,12 +77,20 @@ fun FriendRequestsScreen(
                         Text("Reintentar")
                     }
                 }
+            } else if (recentLoadError && requests.isEmpty()) {
+                RecentFriendRequestsError(
+                    modifier = Modifier.align(Alignment.Center),
+                    onRetry = { viewModel.loadRequests() },
+                )
             } else if (requests.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("No tienes solicitudes pendientes", color = Color.Gray)
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    if (recentLoadError) item(key = "recent-load-error") {
+                        RecentFriendRequestsError(onRetry = { viewModel.loadRequests() })
+                    }
                     items(requests, key = { it.id }) { user ->
                         val acceptedTimestamp = acceptedRequests[user.id]
                         val isConfirmed = acceptedTimestamp != null
@@ -166,5 +175,17 @@ fun FriendRequestsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun RecentFriendRequestsError(modifier: Modifier = Modifier, onRetry: () -> Unit) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("No pudimos actualizar las amistades confirmadas. Inténtalo de nuevo.")
+        OutlinedButton(onClick = onRetry) { Text("Reintentar") }
     }
 }

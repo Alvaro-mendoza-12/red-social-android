@@ -78,4 +78,27 @@ class InternalContentShareSenderTest {
         assertEquals(2, ids.size)
         assertEquals(ids[0], ids[1])
     }
+    @Test fun aQueuedDirectMessageIsNotACompletedShareAndRetryReusesTheSameId() = runTest {
+        val sender = InternalContentShareSender(); val ids = mutableListOf<String>()
+        var pending = true
+        val send: suspend (ShareDestination, String, String) -> Result<Unit> = { _, _, id ->
+            ids += id
+            confirmedDirectContentShare(conectate.com.data.model.Message(id = id, status = if (pending) "sending" else "sent"))
+        }
+        assertEquals(0, sender.send("r", "a", listOf(chat), "original", { "a" }, { null }, send).sent)
+        pending = false
+        assertEquals(1, sender.send("r", "a", listOf(chat), "original", { "a" }, { null }, send).sent)
+        assertEquals(ids[0], ids[1])
+    }
+
+    @Test fun acceptedDirectMessageStatesCanCompleteSharing() {
+        for (state in listOf("sent", "delivered", "read", " SENT "))
+            assertTrue(confirmedDirectContentShare(conectate.com.data.model.Message(status = state)).isSuccess)
+    }
+
+    @Test fun pendingFailedUnknownOrDeletedMessagesCannotBeReportedAsShared() {
+        for (state in listOf("sending", "pending", "failed", "unknown"))
+            assertTrue(confirmedDirectContentShare(conectate.com.data.model.Message(status = state)).isFailure)
+        assertTrue(confirmedDirectContentShare(conectate.com.data.model.Message(status = "sent", deleted_for_all = true)).isFailure)
+    }
 }

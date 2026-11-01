@@ -368,9 +368,11 @@ class ShareDestinationViewModel @Inject constructor(
                 content = content,
                 messageId = messageId,
                 allowRapidMediaBatch = true
-            ).map { Unit }
-            ShareDestinationType.GROUP -> groupRepository.sendGroupMessage(destination.id, content, messageId = messageId)
-            ShareDestinationType.COMMUNITY -> communityRepository.sendCommunityMessage(destination.id, content, messageId = messageId)
+            ).fold(onSuccess = ::confirmedDirectContentShare, onFailure = { Result.failure(it) })
+            ShareDestinationType.GROUP -> groupRepository.sendGroupMessage(destination.id, content, messageId = messageId,
+                requireServerAcknowledgement = true)
+            ShareDestinationType.COMMUNITY -> communityRepository.sendCommunityMessage(destination.id, content, messageId = messageId,
+                requireServerAcknowledgement = true)
         }
     }
 

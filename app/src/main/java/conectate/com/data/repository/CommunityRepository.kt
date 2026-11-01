@@ -2425,6 +2425,7 @@ class CommunityRepository @Inject constructor(
         forwardedFromUserId: String? = null,
         messageId: String? = null,
         channelId: String? = null,
+        requireServerAcknowledgement: Boolean = false,
         onQueued: suspend () -> Unit = {}
     ): Result<Unit> {
         val id = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
@@ -2448,7 +2449,19 @@ class CommunityRepository @Inject constructor(
                 messageId = id,
                 channelId = channelId,
                 onQueued = onQueued
-            )
+            ).let { result ->
+                if (result.isFailure || !requireServerAcknowledgement) result else {
+                    val persisted = communityDao.getMessageById(id)
+                    if (!isSessionSnapshotValid(session, "collection-share-confirmation")) {
+                        Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                    } else conectate.com.core.messaging.messageSendConfirmation(
+                        synced = persisted?.is_synced == true,
+                        status = persisted?.status.orEmpty(),
+                        pendingAction = persisted?.pending_action,
+                        deletedForAll = persisted?.deleted_for_all == true,
+                    )
+                }
+            }
         }
     }
 

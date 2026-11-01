@@ -63,6 +63,8 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                     }
                     android.util.Log.d("MainActivity", "Splash: Navigating to ${if (isLoggedIn) "Home" else "Login"}")
                     withContext(Dispatchers.Main.immediate) {
+                        // Recovery preferences are read off the UI thread. Preserve a link opened meanwhile.
+                        if (navController.currentDestination?.route != Screen.Splash.route) return@withContext
                         if (targetRoute == Screen.AddAccountLogin.route) {
                             // Recovery may be restored while another account is active.
                             // Keep a valid destination beneath its Back button.
@@ -89,6 +91,8 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     composable(Screen.Login.route) {
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
+                // A link can replace this entry while the authentication update is queued.
+                if (navController.currentDestination?.route != Screen.Login.route) return@LaunchedEffect
                 if (navController.openPendingSharedContent()) return@LaunchedEffect
                 withContext(Dispatchers.Main.immediate) {
                     navController.navigate(PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
@@ -105,6 +109,8 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     composable(Screen.Guest.route) {
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
+                // A link can replace this entry while the authentication update is queued.
+                if (navController.currentDestination?.route != Screen.Guest.route) return@LaunchedEffect
                 if (navController.openPendingSharedContent()) return@LaunchedEffect
                 withContext(Dispatchers.Main.immediate) {
                     navController.navigate(PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
@@ -120,6 +126,8 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
         val guestViewModel: GuestModeViewModel = hiltViewModel()
         if (isLoggedIn) {
             LaunchedEffect(isLoggedIn) {
+                // A link can replace this entry while the authentication update is queued.
+                if (navController.currentDestination?.route != Screen.Register.route) return@LaunchedEffect
                 if (navController.openPendingSharedContent()) return@LaunchedEffect
                 val pendingProfile = guestViewModel.consumePendingProfile()
                 withContext(Dispatchers.Main.immediate) {
