@@ -11,7 +11,9 @@ data class CommentAuthor(
     @SerialName("full_name")
     val fullName: String? = null,
     @SerialName("avatar_url")
-    val avatarUrl: String? = null
+    val avatarUrl: String? = null,
+    @SerialName("is_admin") val isAdmin: Boolean = false,
+    @SerialName("is_verified") val isVerified: Boolean = false,
 )
 
 @Serializable
@@ -40,5 +42,7 @@ data class VideoComment(
     @SerialName("updated_at")
     val updatedAt: String = "",
     // Add the join field
-    val profiles: CommentAuthor? = null
+    val profiles: CommentAuthor? = null,
+    @SerialName("is_admin") val isAdmin: Boolean = false,
+    @SerialName("is_verified") val isVerified: Boolean = false,
 )

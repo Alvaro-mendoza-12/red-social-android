@@ -49,7 +49,6 @@ import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.AdminBadge
 import conectate.com.presentation.components.TypingIndicatorMinimal
-import conectate.com.presentation.components.isUserAdmin
 import conectate.com.presentation.components.MessageBubble
 import conectate.com.presentation.components.ImageMessageBubble
 import conectate.com.presentation.components.VideoMessageBubble
@@ -964,7 +963,7 @@ fun ChatScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    if (chat?.is_group != true && (otherUser?.is_admin == true || isUserAdmin(otherUser?.username, otherUser?.email))) {
+                                    if (chat?.is_group != true && otherUser?.is_admin == true) {
                                         Spacer(modifier = Modifier.width(4.dp))
                                         AdminBadge(showVerifiedLine = false)
                                     }

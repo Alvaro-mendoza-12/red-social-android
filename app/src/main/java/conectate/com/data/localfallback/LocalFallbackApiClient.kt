@@ -7242,7 +7242,7 @@ class LocalFallbackApiClient @Inject constructor(
             extraData = (row["extra_data"] ?: row["extraData"]) as? JsonObject
         )
 
-    private fun mapVideo(row: JsonObject): Video =
+    internal fun mapVideo(row: JsonObject): Video =
         Video(
             id = textOf(row, "id").ifBlank { "video-${System.currentTimeMillis()}" },
             userId = textOf(row, "user_id", "userId"),
@@ -7273,6 +7273,7 @@ class LocalFallbackApiClient @Inject constructor(
             favoriteCount = intOf(row, "favorite_count", "favoriteCount"),
             favoritedByMe = boolOf(row, "favorited_by_me", "favoritedByMe"),
             isVerified = boolOf(row, "is_verified", "isVerified", "verified"),
+            isAdmin = boolOf(row, "is_admin", "isAdmin"),
             soundId = textOf(row, "sound_id", "soundId").ifBlank { null },
             soundSourceVideoId = textOf(row, "sound_source_video_id", "soundSourceVideoId").ifBlank { null },
             soundTitle = textOf(row, "sound_title", "soundTitle").ifBlank { null },
@@ -7369,7 +7370,7 @@ class LocalFallbackApiClient @Inject constructor(
             isVerified = boolOf(row, "is_verified", "isVerified", "verified")
         )
 
-    private fun mapVideoComment(row: JsonObject, fallbackVideoId: String): VideoComment =
+    internal fun mapVideoComment(row: JsonObject, fallbackVideoId: String): VideoComment =
         VideoComment(
             id = textOf(row, "id").ifBlank { "video-comment-${System.currentTimeMillis()}" },
             videoId = textOf(row, "video_id", "videoId").ifBlank { fallbackVideoId },
@@ -7386,7 +7387,9 @@ class LocalFallbackApiClient @Inject constructor(
                 value.jsonPrimitive.intOrNull ?: 0
             }.orEmpty(),
             myReaction = textOf(row, "my_reaction", "myReaction").ifBlank { null },
-            updatedAt = textOf(row, "updated_at", "updatedAt")
+            updatedAt = textOf(row, "updated_at", "updatedAt"),
+            isAdmin = boolOf(row, "is_admin", "isAdmin"),
+            isVerified = boolOf(row, "is_verified", "isVerified"),
         )
 
     private fun normalizedParentCommentId(raw: String?): String? {

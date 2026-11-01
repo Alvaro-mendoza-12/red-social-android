@@ -932,12 +932,9 @@ fun ProfileScreen(
                                             accent = profileColors.accent,
                                             onOpenId = { identityDialogUser = user },
                                             isAdmin = user.is_admin ||
-                                                conectate.com.presentation.components.isUserAdmin(user.username, user.email) ||
                                                 (isOwnProfile && viewModel.isAdmin),
                                         )
                                         conectate.com.presentation.components.BadgeRow(
-                                            userName = user.username,
-                                            userEmail = user.email,
                                             badges = user.badges ?: emptyList(),
                                             includeAdmin = false,
                                         )

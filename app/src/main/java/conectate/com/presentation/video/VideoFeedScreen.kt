@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import conectate.com.presentation.components.AdminBadge
-import conectate.com.presentation.components.isUserAdmin
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Alignment
@@ -3035,7 +3034,7 @@ fun VideoItem(
                         modifier = Modifier.size(16.dp)
                     )
                 }
-                if (isUserAdmin(video.userName)) {
+                if (video.isAdmin) {
                     AdminBadge(showVerifiedLine = false)
                 }
                 Spacer(modifier = Modifier.width(8.dp))

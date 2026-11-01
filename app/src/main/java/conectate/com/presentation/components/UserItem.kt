@@ -71,7 +71,7 @@ fun UserItem(
                     )
                 }
 
-                if (user.is_admin || isUserAdmin(user.username, user.email)) {
+                if (user.is_admin) {
                     Spacer(modifier = Modifier.width(6.dp))
                     AdminBadge(showVerifiedLine = false)
                 }
