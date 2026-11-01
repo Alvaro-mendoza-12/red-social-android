@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.RawQuery
+import androidx.room.Transaction
 import conectate.com.data.local.entity.MessageEntity
 import conectate.com.data.model.Message
 import kotlinx.coroutines.flow.Flow
@@ -14,6 +15,20 @@ import kotlinx.coroutines.flow.map
 interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
+
+    @Transaction
+    suspend fun insertMessageOwned(message: MessageEntity, requireCurrent: () -> Unit) {
+        requireCurrent()
+        insertMessage(message)
+        requireCurrent()
+    }
+
+    @Transaction
+    suspend fun markPendingSendFailedOwned(messageId: String, requireCurrent: () -> Unit) {
+        requireCurrent()
+        markPendingSendFailed(messageId)
+        requireCurrent()
+    }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<MessageEntity>)

@@ -646,7 +646,8 @@ class MessageRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    private suspend fun updateChatInList(currentChats: MutableList<ChatWithLastMessage>, index: Int, msg: Message, currentUserId: String) {
+    private suspend fun updateChatInList(currentChats: MutableList<ChatWithLastMessage>, index: Int, msg: Message, currentUserId: String, requireCurrent: () -> Unit = {}) {
+        requireCurrent()
         var existing = currentChats[index]
         
         // Unread Count: Normalize IDs to prevent case-sensitivity issues
@@ -680,15 +681,18 @@ class MessageRepository @Inject constructor(
                 last_message_at = previewMessage.created_at
             )
         )
+        requireCurrent()
         _userChats.value = sortChatsByPriority(currentChats)
 
         // Persist immediately so Room emits the reordered list without waiting on a nested launch.
         var chatId = msg.chat_id.trim().lowercase()
         try {
-            chatDao.updateLastMessage(chatId, preview, previewMessage.safeCreatedAt, previewMessage.id, previewMessage.sender_id)
+            chatDao.updateLastMessageOwned(chatId, preview, previewMessage.safeCreatedAt, previewMessage.id, previewMessage.sender_id) { requireCurrent() }
             if (shouldIncrementUnread) {
                 chatDao.incrementUnreadCount(chatId)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("MessageRepository", "Global insert Room update failed", e)
         }
@@ -2460,9 +2464,38 @@ class MessageRepository @Inject constructor(
         forwardedFromUserId: String? = null,
         allowRapidMediaBatch: Boolean = false,
         onQueued: suspend () -> Unit = {}
-    ): Result<Message> = executeMessageSend(onQueued = onQueued) { queued ->
+    ): Result<Message> = sendMessage(
+        accountLease = authService.captureAccountLease(),
+        chatId = chatId,
+        content = content,
+        replyToId = replyToId,
+        mediaUri = mediaUri,
+        mediaType = mediaType,
+        messageId = messageId,
+        existingMediaUrl = existingMediaUrl,
+        isForwarded = isForwarded,
+        forwardedFromMessageId = forwardedFromMessageId,
+        forwardedFromUserId = forwardedFromUserId,
+        allowRapidMediaBatch = allowRapidMediaBatch,
+        onQueued = onQueued,
+    )
+
+    internal suspend fun sendMessage(
+        accountLease: conectate.com.data.supabase.AuthSessionLease,
+        chatId: String,
+        content: String,
+        replyToId: String? = null,
+        mediaUri: Uri? = null,
+        mediaType: String = "text",
+        messageId: String? = null,
+        existingMediaUrl: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null,
+        allowRapidMediaBatch: Boolean = false,
+        onQueued: suspend () -> Unit = {}
+    ): Result<Message> = conectate.com.data.repository.message.executeOwnedMessageSend(accountLease, sessionWriteGuard, onQueued) { session, queued ->
         val id = messageId ?: UUID.randomUUID().toString()
-        val session = captureSessionSnapshot()
         messageSendCoordinator.withMessage(id) {
             if (!isSessionSnapshotValid(session, "sendMessage:lock")) {
                 return@withMessage Result.failure(CancellationException("Session changed"))
@@ -2520,7 +2553,7 @@ class MessageRepository @Inject constructor(
         }
         
         return try {
-            var userId = (authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))).trim().lowercase()
+            val userId = checkNotNull(session.accountId)
             requireCurrentSession()
             auditUserId = userId
 
@@ -2644,10 +2677,12 @@ class MessageRepository @Inject constructor(
                     isSynced = false,
                     pendingAction = "send"
                 )
-                messageDao.insertMessage(optimisticEntity)
+                messageDao.insertMessageOwned(optimisticEntity) { requireCurrentSession() }
                 recordSendStage("persisted")
                 PendingMessageSyncScheduler.enqueue(context, "direct_message_pending")
                 android.util.Log.d("MessageRepository", "✅ Optimistic Message saved to Room: ${msg.id}")
+            } catch (error: CancellationException) {
+                throw error
             } catch (error: Exception) {
                 pendingMediaUri?.let(::deletePendingChatMedia)
                 return Result.failure(IllegalStateException("No se pudo guardar el mensaje en el dispositivo", error))
@@ -2664,13 +2699,13 @@ class MessageRepository @Inject constructor(
                 it.chat.id.trim().lowercase() == cleanId
             }
             if (optimisticChatIndex >= 0) {
-                updateChatInList(optimisticChats, optimisticChatIndex, msg, userId)
+                updateChatInList(optimisticChats, optimisticChatIndex, msg, userId, ::requireCurrentSession)
             } else {
                 // Room may already know this chat even if the in-memory inbox is
                 // still hydrating after launch.
                 val preview = buildPreviewForContentType(msg.content_type, msg.content)
                 runCatching {
-                    chatDao.updateLastMessage(cleanId, preview, msg.safeCreatedAt, msg.id, userId)
+                    chatDao.updateLastMessageOwned(cleanId, preview, msg.safeCreatedAt, msg.id, userId) { requireCurrentSession() }
                 }
             }
             android.util.Log.d("MessageRepository", "🔄 Optimistic update applied to flow")
@@ -2685,8 +2720,11 @@ class MessageRepository @Inject constructor(
             }
 
             recordSendStage("token_requested")
-            val token = authService.ensureValidAccessToken().getOrElse { error ->
+            val token = runCatching {
+                authService.getAccessTokenForAccountAwait(userId) ?: error("No se pudo renovar la sesión.")
+            }.getOrElse { error ->
                 if (error is CancellationException) throw error
+                requireCurrentSession()
                 android.util.Log.w("MessageRepository", "Message queued until the session can reconnect", error)
                 runCatching {
                     operationGuard.audit(
@@ -2713,7 +2751,7 @@ class MessageRepository @Inject constructor(
                         if (isRetryableNetworkFailure(error.message)) {
                             return Result.success(msg)
                         }
-                        messageDao.markPendingSendFailed(id)
+                        messageDao.markPendingSendFailedOwned(id) { requireCurrentSession() }
                         updateMessageInFlow(cleanId, msg.copy(status = "failed"))
                         return Result.failure(Exception(reason))
                     }
@@ -2725,13 +2763,13 @@ class MessageRepository @Inject constructor(
                     media_size = mediaUpload.sizeBytes
                 )
                 queuedMessage = msg
-                messageDao.insertMessage(
+                messageDao.insertMessageOwned(
                     conectate.com.data.local.entity.MessageEntity.fromDomain(
                         msg = msg,
                         isSynced = false,
                         pendingAction = "send"
                     )
-                )
+                ) { requireCurrentSession() }
                 requireCurrentSession()
                 addMessageToFlow(cleanId, msg)
                 deletePendingChatMedia(pendingMediaUri)
@@ -2767,8 +2805,10 @@ class MessageRepository @Inject constructor(
                         returnedMsg,
                         isSynced = true
                     )
-                    messageDao.insertMessage(entity)
+                    messageDao.insertMessageOwned(entity) { requireCurrentSession() }
                     android.util.Log.d("MessageRepository", "✅ Room Updated to SENT: ${returnedMsg.id}")
+                } catch (error: CancellationException) {
+                    throw error
                 } catch (error: Exception) {
                     android.util.Log.e("MessageRepository", "❌ Failed to cache acknowledged message", error)
                 }
@@ -2777,9 +2817,10 @@ class MessageRepository @Inject constructor(
                 addMessageToFlow(cleanId, returnedMsg)
                 recordSendStage("acknowledged")
 
+                val followUpSession = session.copy(operationJob = null)
                 scope.launch {
                     try {
-                        requireCurrentSession()
+                        sessionWriteGuard.requireValid(followUpSession)
                         val preview = buildPreviewForContentType(returnedMsg.content_type, returnedMsg.content)
                         updateChatLastMessageInternal(
                             cleanId,
@@ -2797,12 +2838,12 @@ class MessageRepository @Inject constructor(
                  // Proactive Chat List Update (Existing Logic - Optimized)
                  scope.launch {
                      try {
-                         requireCurrentSession()
+                         sessionWriteGuard.requireValid(followUpSession)
                          var currentChats = _userChats.value.toMutableList()
                          var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
                          if (idx != -1) {
                             // Update existing
-                            updateChatInList(currentChats, idx, returnedMsg, userId)
+                            updateChatInList(currentChats, idx, returnedMsg, userId) { sessionWriteGuard.requireValid(followUpSession) }
                          } else {
                             // Handle New Chat placeholder (Keep existing logic if needed or simplified)
                             // ... (Omitting complex creation logic for brevity, relying on standard refresh loop for new chats usually)
@@ -2858,7 +2899,7 @@ class MessageRepository @Inject constructor(
 
                 // A server-side validation or permission error remains visible, but
                 // must not be auto-retried as if it were a connectivity failure.
-                messageDao.markPendingSendFailed(id)
+                messageDao.markPendingSendFailedOwned(id) { requireCurrentSession() }
                 updateMessageInFlow(cleanId, msg.copy(status = "failed"))
 
                 runCatching {
@@ -2891,7 +2932,7 @@ class MessageRepository @Inject constructor(
                 return Result.success(pending)
             }
              // Update Room to FAILED status
-            runCatching { messageDao.markPendingSendFailed(id) }
+            runCatching { messageDao.markPendingSendFailedOwned(id) { requireCurrentSession() } }
             if (pending != null && isSessionSnapshotValid(session, "send-failed-flow")) {
                 updateMessageInFlow(cleanId, pending.copy(status = "failed"))
             }
@@ -3715,13 +3756,14 @@ class MessageRepository @Inject constructor(
     /**
      * Cache a chat locally after finding it remotely
      */
-    private suspend fun cacheChat(chat: Chat) {
-        val session = captureSessionSnapshot()
+    private suspend fun cacheChat(chat: Chat, origin: SessionWriteGuard.Snapshot = captureSessionSnapshot()) {
+        sessionWriteGuard.requireValid(origin)
+        val session = origin.copy(operationJob = null)
         cacheChatMembership(chat, session)
         scope.launch {
             try {
                 if (!isSessionSnapshotValid(session, "cacheChat:start")) return@launch
-                var userId = authService.getCurrentUserId() ?: return@launch
+                val userId = session.accountId ?: return@launch
                 if (chat.participants.none { it.trim().lowercase() == userId.trim().lowercase() }) return@launch
                 var otherId = chat.participants.firstOrNull { 
                     it.trim().lowercase() != userId.trim().lowercase() 
@@ -3768,8 +3810,10 @@ class MessageRepository @Inject constructor(
                     clearedAt = chat.cleared_at
                 )
                 if (!isSessionSnapshotValid(session, "cacheChat:write")) return@launch
-                chatDao.insertChat(entity)
+                chatDao.insertChatOwned(entity) { sessionWriteGuard.requireValid(session) }
                 android.util.Log.d("MessageRepository", "Cached chat locally: ${chat.id}")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.e("MessageRepository", "Failed to cache chat", e)
             }
@@ -3777,10 +3821,15 @@ class MessageRepository @Inject constructor(
     }
     
     
-    suspend fun getOrCreateChat(targetUserId: String): Result<Chat> {
-        val userId = currentSessionUserId()
-            ?: return Result.failure(Exception("No user"))
-        val session = captureSessionSnapshot(userId)
+    suspend fun getOrCreateChat(targetUserId: String): Result<Chat> =
+        getOrCreateChat(authService.captureAccountLease(), targetUserId)
+
+    internal suspend fun getOrCreateChat(
+        accountLease: conectate.com.data.supabase.AuthSessionLease, targetUserId: String,
+    ): Result<Chat> {
+        val userId = accountLease.accountId ?: return Result.failure(Exception("Inicia sesión para conversar."))
+        val session = sessionWriteGuard.capture(accountLease, kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job])
+        sessionWriteGuard.requireValid(session)
         val cleanTargetUserId = targetUserId.trim().lowercase()
         if (cleanTargetUserId.isBlank() || cleanTargetUserId.startsWith("placeholder_")) {
             return Result.failure(Exception("Usuario destino invalido"))
@@ -3791,7 +3840,7 @@ class MessageRepository @Inject constructor(
         if (cached != null) return Result.success(cached.toDomain())
 
         if (shouldUseUbuntuBackend()) {
-            val token = authService.ensureValidAccessToken().getOrElse { return Result.failure(it) }
+            val token = authService.getAccessTokenForAccountAwait(userId) ?: return Result.failure(Exception("Vuelve a iniciar sesión para conversar."))
             if (!isSessionSnapshotValid(session, "getOrCreateChat:token")) throw CancellationException("Session changed")
             val canonicalTargetId = userRepository.getUserById(cleanTargetUserId)
                 .getOrNull()
@@ -3807,7 +3856,7 @@ class MessageRepository @Inject constructor(
             val result = localFallbackApiClient.createDirectChat(token, canonicalTargetId)
             if (!isSessionSnapshotValid(session, "getOrCreateChat:remote")) throw CancellationException("Session changed")
             result.getOrNull()?.let { chat ->
-                cacheChat(chat)
+                cacheChat(chat, session)
                 getUserChats()
             }
             return result
@@ -3830,7 +3879,7 @@ class MessageRepository @Inject constructor(
             android.util.Log.d("MessageRepository", "Found existing chat: ${chat.id}")
             
             // Cache it locally
-            cacheChat(chat)
+            cacheChat(chat, session)
             return existingChat
         }
         
@@ -4212,11 +4261,11 @@ class MessageRepository @Inject constructor(
         val otherId = chat.participants.firstOrNull { it.trim().lowercase() != session.accountId }
         val identity = otherId?.let { userDao.getUser(it.trim().lowercase()) }
         if (!isSessionSnapshotValid(session, "cacheChatMembership")) throw CancellationException("Session changed")
-        chatDao.insertChat(ChatEntity.fromDomain(
+        chatDao.insertChatOwned(ChatEntity.fromDomain(
             chat, displayName = identity?.full_name ?: chat.group_name,
             displayImage = identity?.avatar_url ?: chat.group_image, unreadCount = 0,
             lastMsg = chat.last_message, lastTime = chat.last_message_at, otherUserId = otherId
-        ))
+        )) { sessionWriteGuard.requireValid(session) }
     }
 
     fun getChatFlow(id: String): Flow<Chat?> {

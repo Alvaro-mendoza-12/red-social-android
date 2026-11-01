@@ -15,6 +15,20 @@ interface ChatDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChat(chat: ChatEntity)
 
+    @androidx.room.Transaction
+    suspend fun insertChatOwned(chat: ChatEntity, requireCurrent: () -> Unit) {
+        requireCurrent()
+        insertChat(chat)
+        requireCurrent()
+    }
+
+    @androidx.room.Transaction
+    suspend fun updateLastMessageOwned(chatId: String, content: String, timestamp: String, messageId: String?, senderId: String?, requireCurrent: () -> Unit) {
+        requireCurrent()
+        updateLastMessage(chatId, content, timestamp, messageId, senderId)
+        requireCurrent()
+    }
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChats(chats: List<ChatEntity>)
 

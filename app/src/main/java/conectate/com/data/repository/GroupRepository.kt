@@ -1499,44 +1499,77 @@ class GroupRepository @Inject constructor(
         messageId: String? = null,
         requireServerAcknowledgement: Boolean = false,
         onQueued: suspend () -> Unit = {}
+    ): Result<Unit> = sendGroupMessage(
+        accountLease = authService.captureAccountLease(),
+        groupId = groupId,
+        content = content,
+        replyToId = replyToId,
+        replyTo = replyTo,
+        contentType = contentType,
+        mediaUrl = mediaUrl,
+        pollId = pollId,
+        isForwarded = isForwarded,
+        forwardedFromMessageId = forwardedFromMessageId,
+        forwardedFromUserId = forwardedFromUserId,
+        messageId = messageId,
+        requireServerAcknowledgement = requireServerAcknowledgement,
+        onQueued = onQueued,
+    )
+
+    internal suspend fun sendGroupMessage(
+        accountLease: conectate.com.data.supabase.AuthSessionLease,
+        groupId: String,
+        content: String,
+        replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
+        contentType: String = "text",
+        mediaUrl: String? = null,
+        pollId: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null,
+        messageId: String? = null,
+        requireServerAcknowledgement: Boolean = false,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> {
         val id = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
-        val account = authService.getCurrentUserId()?.trim()?.lowercase()
-            ?: return Result.failure(Exception("Inicia sesión de nuevo."))
-        val session = captureSessionSnapshot(account)
-        return messageSendCoordinator.withMessage(id) {
-            if (!isSessionSnapshotValid(session, "collection-foreground-send")) {
-                Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
-            } else sendGroupMessageInternal(
-                groupId = groupId,
-                content = content,
-                replyToId = replyToId,
-                replyTo = replyTo,
-                contentType = contentType,
-                mediaUrl = mediaUrl,
-                pollId = pollId,
-                isForwarded = isForwarded,
-                forwardedFromMessageId = forwardedFromMessageId,
-                forwardedFromUserId = forwardedFromUserId,
-                messageId = id,
-                onQueued = onQueued
-            ).let { result ->
-                if (result.isFailure || !requireServerAcknowledgement) result else {
-                    val persisted = groupDao.getMessageById(id)
-                    if (!isSessionSnapshotValid(session, "collection-share-confirmation")) {
-                        Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
-                    } else conectate.com.core.messaging.messageSendConfirmation(
-                        synced = persisted?.is_synced == true,
-                        status = persisted?.status.orEmpty(),
-                        pendingAction = persisted?.pending_action,
-                        deletedForAll = persisted?.deleted_for_all == true,
-                    )
+        return conectate.com.data.repository.message.executeOwnedMessageSend(accountLease, sessionWriteGuard, onQueued) { session, queued ->
+            messageSendCoordinator.withMessage(id) {
+                if (!isSessionSnapshotValid(session, "collection-foreground-send")) {
+                    Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                } else sendGroupMessageInternal(
+                    session = session,
+                    groupId = groupId,
+                    content = content,
+                    replyToId = replyToId,
+                    replyTo = replyTo,
+                    contentType = contentType,
+                    mediaUrl = mediaUrl,
+                    pollId = pollId,
+                    isForwarded = isForwarded,
+                    forwardedFromMessageId = forwardedFromMessageId,
+                    forwardedFromUserId = forwardedFromUserId,
+                    messageId = id,
+                    onQueued = queued
+                ).let { result ->
+                    if (result.isFailure || !requireServerAcknowledgement) result else {
+                        val persisted = groupDao.getMessageById(id)
+                        if (!isSessionSnapshotValid(session, "collection-share-confirmation")) {
+                            Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                        } else conectate.com.core.messaging.messageSendConfirmation(
+                            synced = persisted?.is_synced == true,
+                            status = persisted?.status.orEmpty(),
+                            pendingAction = persisted?.pending_action,
+                            deletedForAll = persisted?.deleted_for_all == true,
+                        )
+                    }
                 }
             }
         }
     }
 
     private suspend fun sendGroupMessageInternal(
+        session: SessionWriteGuard.Snapshot,
         groupId: String,
         content: String,
         replyToId: String? = null,
@@ -1552,9 +1585,8 @@ class GroupRepository @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         try {
-            var userId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return@withContext Result.failure(Exception("No user"))
-            val session = captureSessionSnapshot(userId)
+            sessionWriteGuard.requireValid(session)
+            val userId = checkNotNull(session.accountId)
             var cleanId = groupId.trim().lowercase()
 
             val guardDecision = operationGuard.acquire(
@@ -1628,7 +1660,8 @@ class GroupRepository @Inject constructor(
             )
             
             // 1. Insert Optimistic (Instant UI update)
-            groupDao.insertMessages(
+            sessionWriteGuard.requireValid(session)
+            groupDao.insertMessagesOwned(
                 listOf(
                     conectate.com.data.local.entity.GroupMessageEntity.fromDomain(
                         msg = msg,
@@ -1638,15 +1671,16 @@ class GroupRepository @Inject constructor(
                         lastRetryAt = null
                     )
             )
-            )
+            ) { sessionWriteGuard.requireValid(session) }
             PendingMessageSyncScheduler.enqueue(context, "group_message_pending")
+            sessionWriteGuard.requireValid(session)
             updateGroupMessageInFlow(cleanId, msg)
             onQueued()
             if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)
                 ?: CollectionMessageSyncSupport.buildMetadataPreview(contentType, finalContent)
-            groupDao.updateMetadataIfNewer(cleanId, preview, now)
+            groupDao.updateMetadataOwned(cleanId, preview, now) { sessionWriteGuard.requireValid(session) }
 
             try {
                 operationGuard.audit(
@@ -1680,14 +1714,15 @@ class GroupRepository @Inject constructor(
                     )
                     markPendingGroupMessageFailed(msgId, session)
                     if (retryable) return@withContext Result.success(Unit)
-                    groupDao.updateMessageSyncStatus(msgId, status = "failed", isSynced = false, pendingAction = "send")
+                    groupDao.updateMessageSyncStatusOwned(msgId, status = "failed", isSynced = false, pendingAction = "send") { sessionWriteGuard.requireValid(session) }
                     return@withContext Result.failure(error)
                 }
                 if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 msg = msg.copy(media_url = outgoingMediaUrl)
-                groupDao.insertMessages(
+                groupDao.insertMessagesOwned(
                     listOf(GroupMessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send"))
-                )
+                ) { sessionWriteGuard.requireValid(session) }
+                sessionWriteGuard.requireValid(session)
                 updateGroupMessageInFlow(cleanId, msg)
                 PendingOutgoingMediaStore.delete(context, localMediaUri)
             }
@@ -1708,7 +1743,7 @@ class GroupRepository @Inject constructor(
             }
 
             val syncResult = if (authService.isLocalFallbackSession()) {
-                val token = authService.getAccessTokenAwait()
+                val token = authService.getAccessTokenForAccountAwait(userId)
                 if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 if (token.isNullOrBlank()) {
                     Result.failure(Exception("Sesion Ubuntu no disponible"))
@@ -1734,7 +1769,7 @@ class GroupRepository @Inject constructor(
                             ),
                             local = msg
                         )
-                        groupDao.insertMessages(
+                        groupDao.insertMessagesOwned(
                             listOf(
                                 GroupMessageEntity.fromDomain(
                                     msg = synced,
@@ -1742,12 +1777,13 @@ class GroupRepository @Inject constructor(
                                     pendingAction = null
                                 )
                             )
-                        )
-                        groupDao.updateMetadataIfNewer(
+                        ) { sessionWriteGuard.requireValid(session) }
+                        groupDao.updateMetadataOwned(
                             cleanId,
                             CollectionMessageSyncSupport.buildMetadataPreview(synced.content_type, synced.content),
                             synced.created_at
-                        )
+                        ) { sessionWriteGuard.requireValid(session) }
+                        sessionWriteGuard.requireValid(session)
                         updateGroupMessageInFlow(cleanId, synced)
                         Unit
                     }
@@ -1755,6 +1791,7 @@ class GroupRepository @Inject constructor(
             } else {
                 insertGroupMessageWithRetry(msgId, msgJson, isCurrentSession = { isSessionSnapshotValid(session, "group-foreground-retry") })
             }
+            sessionWriteGuard.requireValid(session)
             if (syncResult.isSuccess) {
                 android.util.Log.d("GroupRepository", "✅ [SERVER-ACK] Mensaje $msgId sincronizado")
                 try {
@@ -1786,7 +1823,7 @@ class GroupRepository @Inject constructor(
                         transientNetworkRetryCodes
                     ))
                 if (shouldRemainQueued) {
-                    groupDao.updateMessageSyncStatus(msgId, status = "sending", isSynced = false, pendingAction = "send")
+                    groupDao.updateMessageSyncStatusOwned(msgId, status = "sending", isSynced = false, pendingAction = "send") { sessionWriteGuard.requireValid(session) }
                     groupDao.getMessageById(msgId)?.toDomain()?.let { queued -> updateGroupMessageInFlow(cleanId, queued) }
                     runCatching {
                         operationGuard.audit(
@@ -1901,7 +1938,8 @@ class GroupRepository @Inject constructor(
         val current = groupDao.getMessageById(messageId) ?: return
         if (current.is_synced || current.deleted_for_all || current.pending_action != "send") return
         val failed = current.copy(status = "failed", retry_count = current.retry_count + 1, last_retry_at = java.time.Instant.now().toString())
-        groupDao.insertMessages(listOf(failed))
+        groupDao.insertMessagesOwned(listOf(failed)) { sessionWriteGuard.requireValid(session) }
+        sessionWriteGuard.requireValid(session)
         updateGroupMessageInFlow(failed.group_id, failed.toDomain())
     }
     private suspend fun retryPendingGroupMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
@@ -3160,11 +3198,32 @@ class GroupRepository @Inject constructor(
         replyToId: String? = null,
         replyTo: conectate.com.data.model.Message? = null,
         onQueued: suspend () -> Unit = {}
+    ): Result<Unit> = sendGroupMediaMessage(
+        accountLease = authService.captureAccountLease(),
+        groupId = groupId,
+        sourceUri = sourceUri,
+        contentType = contentType,
+        content = content,
+        replyToId = replyToId,
+        replyTo = replyTo,
+        onQueued = onQueued,
+    )
+
+    internal suspend fun sendGroupMediaMessage(
+        accountLease: conectate.com.data.supabase.AuthSessionLease,
+        groupId: String,
+        sourceUri: android.net.Uri,
+        contentType: String,
+        content: String,
+        replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
+        stableMessageId: String? = null,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> {
-        val accountId = authService.getCurrentUserId()?.trim()?.lowercase()
-            ?: return Result.failure(Exception("No user"))
-        val session = captureSessionSnapshot(accountId)
-        val messageId = UUID.randomUUID().toString()
+        val accountId = accountLease.accountId ?: return Result.failure(Exception("Inicia sesión para enviar mensajes."))
+        val session = sessionWriteGuard.capture(accountLease, kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job])
+        sessionWriteGuard.requireValid(session)
+        val messageId = stableMessageId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: UUID.randomUUID().toString()
         val pending = PendingOutgoingMediaStore.persist(
             context = context,
             accountId = accountId,
@@ -3177,6 +3236,7 @@ class GroupRepository @Inject constructor(
             return Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
         }
         return sendGroupMessage(
+            accountLease = accountLease,
             groupId = groupId,
             content = content,
             contentType = contentType,
