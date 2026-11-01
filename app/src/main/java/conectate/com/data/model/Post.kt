@@ -32,10 +32,6 @@ data class Post(
     @SerialName("remix_source_user_name") val remixSourceUserName: String? = null,
     @SerialName("remix_depth") val remixDepth: Int = 0,
     @SerialName("survey_id") val surveyId: String? = null,
-    @SerialName("survey_response_count") val surveyResponseCount: Int = 0
-) {
-    // Kept outside the primary constructor so older cached/external callers of
-    // the stable Post constructor remain binary compatible.
-    @SerialName("is_sensitive")
-    var isSensitive: Boolean = false
-}
+    @SerialName("survey_response_count") val surveyResponseCount: Int = 0,
+    @SerialName("is_sensitive") var isSensitive: Boolean = false,
+)
