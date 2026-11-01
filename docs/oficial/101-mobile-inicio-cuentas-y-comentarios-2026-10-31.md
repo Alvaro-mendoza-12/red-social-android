@@ -87,3 +87,15 @@ El modelo observa la cuenta, cancela su trabajo anterior y separa lista, búsque
 Los filtros se desplazan dentro de la lista para dejar accesible la búsqueda y aprovechar el espacio con teclado. Estas modificaciones de presentación siguen pendientes de comprobación visual. Se comprobaron **25 pruebas seleccionadas, 2 clases, sin fallos, errores u omisiones**: once regresiones de guardados y catorce de acceso a conversaciones. No se repitió todavía la suite completa tras este bloque.
 
 SSH ya se renovó. La comparación del código activo identificó además ajustes y eliminación de salas de voz presentes en el repositorio pero ausentes de la imagen desplegada, incluido el endpoint usado para guardar su configuración. Se continúa con ese contrato de servidor y con la activación de insignias; no se declara cerrado el móvil ni se pasa todavía a web.
+
+## Octavo bloque: contrato activado en el servidor
+
+Se compararon los archivos de la imagen activa con el padre de la corrección de insignias. La diferencia de salas de voz era real: faltaban la ruta de actualización, el módulo de ajustes y el manejo de bajas de salas importadas. El candidato conserva la base `storage100` y añade únicamente los archivos de identidad y ese soporte de voz que ya estaba versionado en ambas ramas.
+
+La nueva imagen es `novvin-api:audit101-mobile-20261101`, SHA-256 `dad88b6e0aa9621c5f27400689c627428435bfcc5dbfe18fe11a42a591c7f348`. Su código de estos archivos corresponde al commit `e0e7f78d`; se verificaron sus hashes dentro de la imagen y las dependencias resueltas antes de activarla. Las pruebas de identidad y voz se ejecutaron en un contenedor aislado sin red.
+
+También se contrastaron contra PostgreSQL **13 perfiles: 4 administradores y 9 cuentas ordinarias**, comprobando que el rol público coincide con la autorización y que no se exponen campos internos. Una sala temporal se probó dentro de una transacción: rechazo de un no propietario, contraseña cifrada como hash, conservación de identidad/canal, cambio de nombre, conservación de contraseña y baja que no reaparece en el directorio. La transacción se revirtió y se comprobó que no quedó el registro temporal.
+
+La activación pasó la comprobación local y pública de disponibilidad; la ruta de ajustes exige autenticación y responde 401 sin credenciales. No se cambió el esquema ni se enviaron mensajes a contactos. Se conservan la imagen anterior y el punto de reversión `/home/alvaro/novvin-candidates/audit101-mobile/backup`. El primer intento de SSH quedó sin ejecutar el proceso remoto; se verificó esa ausencia y se sustituyó únicamente esa conexión antes de validar y desplegar.
+
+Esto cierra el despliegue pendiente de insignias y de ese contrato de voz. Todavía no se generó una APK nueva y siguen abiertas las comprobaciones visuales y el resto de módulos móviles; no es el cierre de producción de toda la aplicación.
