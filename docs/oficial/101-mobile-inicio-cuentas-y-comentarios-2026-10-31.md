@@ -23,3 +23,15 @@ No se generó una APK nueva, no se usó emulador en esta tanda y no se ejecutaro
 ## Continuación obligatoria
 
 Quedan por cerrar, entre otros, el borrador al responder, la disponibilidad de comentarios posteriores al número 50 y las respuestas atrasadas del resumen del hilo. Después continúa la lectura de los módulos móviles pendientes y sus contratos de servidor, manteniendo una matriz de cobertura por archivo y recorrido. No se pasa a web hasta completar la fase móvil.
+
+## Segundo bloque comprobado
+
+Se completaron esos tres pendientes de comentarios: responder conserva el texto; una revisión del borrador impide que un ACK viejo borre texto nuevo, incluso cuando se reescribe lo mismo; y las lecturas de resumen se cancelan/invalidadan al cambiar cuenta, publicación o contenido. Las menciones y el cierre de comentarios del perfil invalidan también sus lecturas anteriores.
+
+El móvil estaba recortando a 50 un resultado que el servidor Ubuntu ya había enviado completo. Ahora conserva el resultado acotado existente del servidor y presenta ventanas de 50 mediante «Ver más comentarios», sin añadir peticiones. Una notificación puede revelar directamente un comentario posterior a esa primera ventana. No se amplió el máximo de 50.000 filas que ya aplica ese endpoint; paginar también la consulta del servidor sigue siendo una mejora pendiente para publicaciones masivas.
+
+El envío de stickers de comentario conserva la respuesta hasta confirmación y evita envíos simultáneos. El detalle guarda el texto ante recreación y separa borradores y diálogos por cuenta y publicación. Los errores visibles de estas acciones usan mensajes habituales.
+
+Se ejecutó después **toda la suite Android: 2.092 pruebas, 439 clases, 0 fallos, 0 errores, 0 omisiones**. Incluye las pruebas nuevas de ventanas, destino de notificación fuera de la primera página y conservación del borrador ante ACK atrasado. La invalidación de resumen/menciones está verificada por lectura de flujo y compilación; no se afirma una prueba instrumental nueva de esos controles. Continúan pendientes la revisión de otros módulos, la comprobación visual y una APK nueva.
+
+La lectura siguiente identificó concurrencia pendiente de corregir en captura/persistencia de cuentas guardadas. Ese hallazgo y los demás módulos revisables mantienen abierta la fase móvil.

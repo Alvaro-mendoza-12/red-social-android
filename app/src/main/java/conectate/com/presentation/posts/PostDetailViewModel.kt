@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import javax.inject.Inject
 
 data class PostDetailUiState(
@@ -61,6 +63,7 @@ class PostDetailViewModel @Inject constructor(
     private var loadJob: Job? = null
     private var commentsJob: Job? = null
     private var mentionSearchJob: Job? = null
+    private var summaryJob: Job? = null
     private val shareRequestsInFlight = mutableSetOf<String>()
     private var selectedPostId: String? = null
     private var postReadEpoch = 0L
@@ -92,6 +95,8 @@ class PostDetailViewModel @Inject constructor(
                     reactionLoader.clear()
                     loadJob?.cancel()
                     commentsJob?.cancel()
+                    clearMentionSuggestions()
+                    invalidateThreadSummary()
                     _uiState.value = PostDetailUiState()
                     _commentPosting.value = false
                     commentPostRevision++
@@ -108,15 +113,24 @@ class PostDetailViewModel @Inject constructor(
     val mentionSuggestions: StateFlow<List<conectate.com.data.model.User>> = _mentionSuggestions.asStateFlow()
 
     fun resolvePublicMention(handle: String, onResolved: (String?) -> Unit) {
-        viewModelScope.launch { onResolved(userRepository.resolvePublicMention(handle)?.id) }
+        val postId = selectedPostId ?: return
+        val account = authService.getCurrentUserId()
+        val epoch = postReadEpoch
+        viewModelScope.launch {
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.resolvePublicMention(handle)?.id }
+            currentCoroutineContext().ensureActive()
+            if (isCurrentPost(postId, account, epoch)) onResolved(result.getOrNull())
+        }
     }
 
     val currentUserId: String?
         get() = authService.getCurrentUserId()
 
     fun loadPost(postId: String) {
+        invalidateThreadSummary()
         val currentState = _uiState.value
         if (selectedPostId != postId) {
+            clearMentionSuggestions()
             _commentPosting.value = false
             commentPostRevision++
             _commentEditing.value = false
@@ -196,6 +210,22 @@ class PostDetailViewModel @Inject constructor(
 
     fun retryComments() { selectedPostId?.let(::loadComments) }
 
+    fun closePost(postId: String) {
+        if (selectedPostId != postId) return
+        selectedPostId = null
+        postReadEpoch++
+        commentPostRevision++
+        commentEditRevision++
+        loadJob?.cancel()
+        commentsJob?.cancel()
+        clearMentionSuggestions()
+        invalidateThreadSummary()
+        _commentPosting.value = false
+        _commentEditing.value = false
+        commentReactionsInFlight.clear()
+        _uiState.value = PostDetailUiState()
+    }
+
     fun toggleLike(postId: String) {
         val post = _uiState.value.post?.takeIf { it.id == postId } ?: return
         setReaction(postId, if (post.myReaction != null || post.likedByMe) null else "LIKE")
@@ -231,12 +261,18 @@ class PostDetailViewModel @Inject constructor(
         }
 
         mentionSearchJob?.cancel()
+        val postId = selectedPostId ?: return
+        val account = authService.getCurrentUserId()
+        val epoch = postReadEpoch
         mentionSearchJob = viewModelScope.launch {
-            userRepository.searchMentionCandidates(
+            val result = userRepository.searchMentionCandidates(
                 query = query,
                 excludeUserId = authService.getCurrentUserId(),
                 limit = 6
-            ).onSuccess { users ->
+            )
+            currentCoroutineContext().ensureActive()
+            if (!isCurrentPost(postId, account, epoch)) return@launch
+            result.onSuccess { users ->
                 _mentionSuggestions.value = users
             }.onFailure {
                 _mentionSuggestions.value = emptyList()
@@ -245,6 +281,7 @@ class PostDetailViewModel @Inject constructor(
     }
 
     fun clearMentionSuggestions() {
+        mentionSearchJob?.cancel()
         _mentionSuggestions.value = emptyList()
     }
 
@@ -258,6 +295,7 @@ class PostDetailViewModel @Inject constructor(
             postRepository.addComment(postId, content, parentId)
                 .onSuccess { newComment ->
                     if (selectedPostId != postId || account != authService.getCurrentUserId()) return@onSuccess
+                    invalidateThreadSummary()
                     val current = _uiState.value
                     val currentPost = current.post
                     val nextComments = current.comments
@@ -278,22 +316,33 @@ class PostDetailViewModel @Inject constructor(
                     if (selectedPostId != postId || account != authService.getCurrentUserId()) return@onFailure
                     android.widget.Toast.makeText(
                         context,
-                        it.message ?: "No se pudo enviar el comentario",
+                        it.toUserFacingMessage("No se pudo enviar el comentario. Inténtalo de nuevo."),
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
                 }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (selectedPostId == postId && account == authService.getCurrentUserId())
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar el comentario. Tu texto sigue aquí.")
             } finally {
                 if (request == commentPostRevision) _commentPosting.value = false
             }
         }
     }
 
-    fun addStickerComment(postId: String, stickerUrl: String, parentId: String? = null) {
+    fun addStickerComment(postId: String, stickerUrl: String, parentId: String? = null, onSent: () -> Unit = {}) {
+        if (_commentPosting.value || selectedPostId != postId) return
         val account = authService.getCurrentUserId()
+        val revision = ++commentPostRevision
+        _commentPosting.value = true
         viewModelScope.launch {
-            postRepository.addStickerComment(postId, stickerUrl, parentId)
+            try {
+            val result = postRepository.addStickerComment(postId, stickerUrl, parentId)
+            currentCoroutineContext().ensureActive()
+            result
                 .onSuccess { newComment ->
                     if (selectedPostId != postId || account != authService.getCurrentUserId()) return@onSuccess
+                    invalidateThreadSummary()
                     val current = _uiState.value
                     _uiState.value = current.copy(
                         comments = current.comments.filterNot { it.id == newComment.id } + newComment,
@@ -302,16 +351,25 @@ class PostDetailViewModel @Inject constructor(
                         threadSummary = null,
                         threadSummaryError = null
                     )
+                    onSent()
                     loadComments(postId)
                     refreshPostSnapshot(postId)
                 }
                 .onFailure {
+                    if (selectedPostId != postId || account != authService.getCurrentUserId()) return@onFailure
                     android.widget.Toast.makeText(
                         context,
-                        it.message ?: "No se pudo enviar el sticker",
+                        it.toUserFacingMessage("No se pudo enviar el sticker. Inténtalo de nuevo."),
                         android.widget.Toast.LENGTH_SHORT
                     ).show()
                 }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (selectedPostId == postId && account == authService.getCurrentUserId())
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar el sticker. Inténtalo de nuevo.")
+            } finally {
+                if (revision == commentPostRevision) _commentPosting.value = false
+            }
         }
     }
 
@@ -322,6 +380,7 @@ class PostDetailViewModel @Inject constructor(
             postRepository.deleteComment(commentId)
                 .onSuccess {
                     if (selectedPostId != postId || account != authService.getCurrentUserId()) return@onSuccess
+                    invalidateThreadSummary()
                     android.util.Log.d("PostDetailViewModel", "Comment deleted successfully")
                     android.widget.Toast.makeText(context, "Comentario eliminado", android.widget.Toast.LENGTH_SHORT).show()
                     val current = _uiState.value
@@ -339,8 +398,9 @@ class PostDetailViewModel @Inject constructor(
                     refreshPostSnapshot(postId)
                 }
                 .onFailure {
+                    if (selectedPostId != postId || account != authService.getCurrentUserId()) return@onFailure
                     android.util.Log.e("PostDetailViewModel", "Error deleting comment", it)
-                    android.widget.Toast.makeText(context, "Error al eliminar: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, it.toUserFacingMessage("No se pudo eliminar el comentario. Inténtalo de nuevo."), android.widget.Toast.LENGTH_SHORT).show()
                 }
         }
     }
@@ -356,6 +416,7 @@ class PostDetailViewModel @Inject constructor(
             postRepository.updateCommentContent(commentId, newContent)
                 .onSuccess {
                     if (revision != commentEditRevision || selectedPostId != postId || account != authService.getCurrentUserId()) return@onSuccess
+                    invalidateThreadSummary()
                     android.util.Log.d("PostDetailViewModel", "Comment updated successfully")
                     android.widget.Toast.makeText(context, "Comentario editado", android.widget.Toast.LENGTH_SHORT).show()
                     _uiState.value = _uiState.value.copy(
@@ -414,7 +475,16 @@ class PostDetailViewModel @Inject constructor(
         }
     }
 
+    private fun invalidateThreadSummary() {
+        summaryJob?.cancel()
+        summaryJob = null
+        _uiState.update { it.copy(threadSummary = null, isSummarizingThread = false, threadSummaryError = null) }
+    }
+
     fun requestThreadSummary(postId: String) {
+        if (selectedPostId != postId || _uiState.value.isSummarizingThread) return
+        val account = authService.getCurrentUserId()
+        val epoch = postReadEpoch
         val textCommentCount = _uiState.value.comments.count { it.content.trim().length >= 3 }
         if (textCommentCount < 3) {
             _uiState.value = _uiState.value.copy(
@@ -425,12 +495,15 @@ class PostDetailViewModel @Inject constructor(
             return
         }
 
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
+        _uiState.value = _uiState.value.copy(
                 isSummarizingThread = true,
                 threadSummaryError = null
             )
-            postRepository.summarizePostThread(postId)
+        summaryJob = viewModelScope.launch {
+            val result = conectate.com.core.network.runReadWithDeadline(30_000) { postRepository.summarizePostThread(postId).getOrThrow() }
+            currentCoroutineContext().ensureActive()
+            if (!isCurrentPost(postId, account, epoch)) return@launch
+            result
                 .onSuccess { summary ->
                     _uiState.value = _uiState.value.copy(
                         threadSummary = summary,

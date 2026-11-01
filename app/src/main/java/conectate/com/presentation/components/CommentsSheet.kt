@@ -21,6 +21,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import conectate.com.data.model.Comment
+import conectate.com.presentation.posts.POST_COMMENT_PAGE_SIZE
+import conectate.com.presentation.posts.PostCommentDraftRevision
+import conectate.com.presentation.posts.postCommentWindow
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -49,6 +52,8 @@ fun CommentsSheet(
     showReportAction: Boolean = false
 ) {
     var commentText by rememberSaveable { mutableStateOf("") }
+    val draftRevision = remember { PostCommentDraftRevision() }
+    var visibleLimit by rememberSaveable { mutableIntStateOf(POST_COMMENT_PAGE_SIZE) }
     var replyingTo by remember { mutableStateOf<Comment?>(null) }
     var editing by remember { mutableStateOf<Comment?>(null) }
 
@@ -57,7 +62,7 @@ fun CommentsSheet(
             onSave = { text -> onEditComment(comment, text) { editing = null } })
     }
     
-    val threads = remember(comments) { conectate.com.presentation.posts.organizeThreaded(comments) }
+    val window = remember(comments, visibleLimit) { postCommentWindow(comments, visibleLimit) }
 
     Column(
         modifier = Modifier
@@ -109,12 +114,12 @@ fun CommentsSheet(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(threads, key = { it.first.id }) { (comment, level) ->
+                    items(window.rows, key = { it.first.id }) { (comment, level) ->
                         CommentItem(
                             comment = comment,
                             level = level,
                             isPostOwner = isPostOwner,
-                            onReplyClick = { replyingTo = comment; commentText = "" },
+                            onReplyClick = { draftRevision.changed(); replyingTo = comment },
                             onDeleteClick = { onDeleteComment(comment.id) },
                             onEditClick = { editing = comment },
                             onLikeClick = { onReactComment(comment, "LIKE") },
@@ -124,6 +129,11 @@ fun CommentsSheet(
                             showReportAction = showReportAction,
                             onProfileClick = { onNavigateToProfile(comment.userId) },
                         )
+                    }
+                    if (window.hasMore) item(key = "more-comments") {
+                        TextButton(onClick = { visibleLimit = window.nextLimit }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Ver más comentarios")
+                        }
                     }
                 }
             }
@@ -142,11 +152,14 @@ fun CommentsSheet(
                 ) {
                     Text(
                         text = "Respondiendo a ${reply.userName}",
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.Gray
                     )
-                    IconButton(onClick = { replyingTo = null }, modifier = Modifier.size(20.dp)) {
-                        Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(14.dp))
+                    IconButton(onClick = { draftRevision.changed(); replyingTo = null }) {
+                        Icon(Icons.Default.Close, contentDescription = "Cancelar respuesta")
                     }
                 }
             }
@@ -161,7 +174,7 @@ fun CommentsSheet(
             ) {
                 OutlinedTextField(
                     value = commentText,
-                    onValueChange = { commentText = it },
+                    onValueChange = { draftRevision.changed(); commentText = it },
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Escribe un comentario...") },
                     shape = RoundedCornerShape(24.dp),
@@ -181,9 +194,10 @@ fun CommentsSheet(
                         if (commentText.isNotBlank()) {
                             val submittedText = commentText
                             val submittedParent = replyingTo?.id
+                            val submittedRevision = draftRevision.snapshot()
                             onSendComment(submittedText, submittedParent) {
                                 // A late acknowledgement must not erase a newer draft.
-                                if (commentText == submittedText && replyingTo?.id == submittedParent) {
+                                if (draftRevision.acknowledge(submittedRevision)) {
                                     commentText = ""
                                     replyingTo = null
                                 }
