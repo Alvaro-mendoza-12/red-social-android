@@ -40,3 +40,8 @@ internal class InternalContentShareSender {
             destination.takeIf { total == 1 })
     }
 }
+
+/** A durable local outbox entry is not a server acknowledgement of an internal share. */
+internal fun confirmedDirectContentShare(message: conectate.com.data.model.Message): Result<Unit> =
+    conectate.com.core.messaging.messageSendConfirmation(synced = true, status = message.status,
+        deletedForAll = message.deleted_for_all)

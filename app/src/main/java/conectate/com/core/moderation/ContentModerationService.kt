@@ -153,46 +153,43 @@ class SimpleContentModerationService @Inject constructor(
             )
         }
 
-        var sanitized = normalized
-        var flags = mutableSetOf<String>()
-
-        if (containsControlChars) {
-            sanitized = sanitized.filter { it.code >= 32 || it == '\n' || it == '\t' }
-            flags += "control_chars_removed"
-        }
-
-        if (repeatedChars) {
-            sanitized = "(.)\\1{4,}".toRegex().replace(sanitized) { match ->
-                match.value.take(4)
+        val flags = mutableSetOf<String>()
+        // UUIDs in our content URLs are identifiers, not telephone numbers. Keep
+        // those links intact while all block/spam checks still inspect the full text.
+        var masked = preservingAppLinks(normalized) { prose ->
+            var sanitized = prose
+            if (containsControlChars) {
+                sanitized = sanitized.filter { it.code >= 32 || it == '\n' || it == '\t' }
+                flags += "control_chars_removed"
             }
-            flags += "repeat_spam"
-        }
-
-        if (heavyUppercase) {
-            sanitized = sanitized.lowercase()
-            flags += "caps_spam"
-        }
-
-        var masked = sanitized
-        maskedPatterns.forEach { regex ->
-            if (regex.containsMatchIn(masked)) {
-                masked = regex.replace(masked) { "***" }
-                flags += "masked_term"
+            if (repeatedChars) {
+                sanitized = "(.)\\1{4,}".toRegex().replace(sanitized) { match -> match.value.take(4) }
+                flags += "repeat_spam"
             }
-        }
-
-        val isPublicSurface = context == ModerationContext.POST_CONTENT ||
-            context == ModerationContext.COMMENT_CONTENT ||
-            context == ModerationContext.COMMUNITY_MESSAGE
-        if (isPublicSurface) {
-            val redactedPhone = phoneRegex.replace(masked) { match ->
-                flags += "contact_redacted"
-                maskToken(match.value)
+            if (heavyUppercase) {
+                sanitized = sanitized.lowercase()
+                flags += "caps_spam"
             }
-            masked = emailRegex.replace(redactedPhone) { match ->
-                flags += "contact_redacted"
-                maskToken(match.value)
+            maskedPatterns.forEach { regex ->
+                if (regex.containsMatchIn(sanitized)) {
+                    sanitized = regex.replace(sanitized) { "***" }
+                    flags += "masked_term"
+                }
             }
+            val isPublicSurface = context == ModerationContext.POST_CONTENT ||
+                context == ModerationContext.COMMENT_CONTENT ||
+                context == ModerationContext.COMMUNITY_MESSAGE
+            if (isPublicSurface) {
+                sanitized = phoneRegex.replace(sanitized) { match ->
+                    flags += "contact_redacted"
+                    maskToken(match.value)
+                }
+                sanitized = emailRegex.replace(sanitized) { match ->
+                    flags += "contact_redacted"
+                    maskToken(match.value)
+                }
+            }
+            sanitized
         }
 
         val maxLength = maxLengthFor(context)
@@ -212,6 +209,23 @@ class SimpleContentModerationService @Inject constructor(
             sanitizedText = masked,
             flags = flags
         )
+    }
+
+    private val appLinkRegex = Regex(
+        "(?i:https://(?:red-social-android\\.vercel\\.app|(?:www\\.)?conectate\\.com))/" +
+            "(?:post|u|profile|video|room|voice|app/feed/post|app/profile)/" +
+            "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}" +
+            "(?=$|[\\s.,!?;:()\\[\\]{}<>?#])"
+    )
+
+    private fun preservingAppLinks(text: String, transform: (String) -> String): String = buildString {
+        var end = 0
+        for (link in appLinkRegex.findAll(text)) {
+            append(transform(text.substring(end, link.range.first)))
+            append(link.value)
+            end = link.range.last + 1
+        }
+        append(transform(text.substring(end)))
     }
 
     private fun maxLengthFor(context: ModerationContext): Int {

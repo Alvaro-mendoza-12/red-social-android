@@ -36,6 +36,8 @@ class FriendRequestsViewModel @Inject constructor(
 
     private val _loadError = MutableStateFlow(false)
     val loadError: StateFlow<Boolean> = _loadError.asStateFlow()
+    private val _recentLoadError = MutableStateFlow(false)
+    val recentLoadError: StateFlow<Boolean> = _recentLoadError.asStateFlow()
     private val _unseenRequestCount = MutableStateFlow(0)
     val unseenRequestCount: StateFlow<Int> = _unseenRequestCount.asStateFlow()
     private var pendingIds: Set<String> = emptySet()
@@ -76,6 +78,7 @@ class FriendRequestsViewModel @Inject constructor(
                 _acceptedRequests.value = emptyMap()
                 _unseenRequestCount.value = 0
                 _loadError.value = false
+                _recentLoadError.value = false
                 _isLoading.value = false
                 return@launch
             }
@@ -86,6 +89,7 @@ class FriendRequestsViewModel @Inject constructor(
                 _unseenRequestCount.value = 0
             }
             _isLoading.value = true
+            _recentLoadError.value = false
             if (_requests.value.isEmpty()) {
                 _requests.value = friendRepository.cachedPendingRequests().orEmpty()
             }
@@ -94,37 +98,31 @@ class FriendRequestsViewModel @Inject constructor(
                     val recent = async { friendRepository.getRecentFriends(10) }
                     val pendingList = friendRepository.getPendingRequests().getOrNull()
                         ?.distinctBy { it.id.lowercase() }
-                    if (authService.getCurrentUserId() != ownerId || pendingList == null) {
+                    if (generation != loadGeneration || authService.getCurrentUserId() != ownerId || pendingList == null) {
                         recent.cancel()
-                        if (authService.getCurrentUserId() == ownerId) _loadError.value = true
+                        if (generation == loadGeneration && authService.getCurrentUserId() == ownerId) _loadError.value = true
                         return@coroutineScope
                     }
                     pendingOwnerId = ownerId
                     pendingIds = pendingList.map { it.id }.toSet()
-                    _requests.value = pendingList
-                    _acceptedRequests.value = emptyMap()
+                    val dismissedIds = dismissedRequestsPreferences.getDismissedRequests()
+                    // Keep already confirmed people visible while their independent read is pending.
+                    val retained = mergeFriendRequests(pendingList, null, _requests.value, _acceptedRequests.value, dismissedIds)
+                    _requests.value = retained.users
+                    _acceptedRequests.value = retained.confirmations
                     _loadError.value = false
                     updateUnseenCount()
                     // Pending requests can be shown immediately. If that list is empty,
                     // wait for recent confirmations before declaring the screen empty.
                     if (pendingList.isNotEmpty()) _isLoading.value = false
 
-                    val recentList = recent.await().getOrNull().orEmpty()
-                    if (authService.getCurrentUserId() != ownerId) return@coroutineScope
-                    val dismissedIds = dismissedRequestsPreferences.getDismissedRequests()
-                    val pendingKeyIds = pendingIds.map { it.lowercase() }.toSet()
-                    // Imported and local relationships may both refer to the same
-                    // account. Each profile must have one row/key, with pending first.
-                    val visibleRecent = recentList
-                        .distinctBy { it.first.id.lowercase() }
-                        .filter { it.first.id !in dismissedIds &&
-                            it.first.id.lowercase() !in pendingKeyIds }
-                    _acceptedRequests.value = visibleRecent.associate { (user, dateStr) ->
-                        val time = runCatching { java.time.Instant.parse(dateStr).toEpochMilli() }
-                            .getOrElse { System.currentTimeMillis() }
-                        user.id to time
-                    }
-                    _requests.value = pendingList + visibleRecent.map { it.first }
+                    val recentResult = recent.await()
+                    if (generation != loadGeneration || authService.getCurrentUserId() != ownerId) return@coroutineScope
+                    val refreshed = mergeFriendRequests(pendingList, recentResult, retained.users, retained.confirmations,
+                        dismissedRequestsPreferences.getDismissedRequests())
+                    _requests.value = refreshed.users
+                    _acceptedRequests.value = refreshed.confirmations
+                    _recentLoadError.value = refreshed.recentFailed
                 }
             } finally {
                 if (generation == loadGeneration) _isLoading.value = false
