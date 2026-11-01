@@ -1589,7 +1589,9 @@ class PostRepository @Inject constructor(
     }
 
 
-    suspend fun getPostComments(postId: String, limit: Int = 50): Flow<List<conectate.com.data.model.Comment>> = flow {
+    // The API already returns the complete bounded snapshot. Display paging belongs
+    // to the UI; truncating it to 50 hid later replies and notification targets.
+    suspend fun getPostComments(postId: String, limit: Int = 50_000): Flow<List<conectate.com.data.model.Comment>> = flow {
         try {
             val accessToken = authService.getAccessTokenAwait()
             if (accessToken != null) {

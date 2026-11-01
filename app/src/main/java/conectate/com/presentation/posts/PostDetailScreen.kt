@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -43,10 +44,13 @@ fun PostDetailScreen(
     viewModel: PostDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val accountId = viewModel.currentUserId
     val commentPosting by viewModel.commentPosting.collectAsStateWithLifecycle()
-    var commentText by remember { mutableStateOf("") }
-    var showReactions by remember(postId) { mutableStateOf(false) }
-    var reactionFilter by remember(postId) { mutableStateOf<String?>(null) }
+    var commentText by rememberSaveable(postId, accountId) { mutableStateOf("") }
+    val draftRevision = remember(postId, accountId) { PostCommentDraftRevision() }
+    var visibleLimit by rememberSaveable(postId, accountId) { mutableIntStateOf(POST_COMMENT_PAGE_SIZE) }
+    var showReactions by remember(postId, accountId) { mutableStateOf(false) }
+    var reactionFilter by remember(postId, accountId) { mutableStateOf<String?>(null) }
     val reactionState by viewModel.reactionUsersState.collectAsStateWithLifecycle()
     LaunchedEffect(postId, showReactions, reactionFilter) {
         if (showReactions) viewModel.loadPostReactions(postId, reactionFilter) else viewModel.clearPostReactions()
@@ -58,29 +62,31 @@ fun PostDetailScreen(
                 navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId)) },
             { showReactions = false; viewModel.clearPostReactions() })
     }
-    var replyingTo by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
-    var commentToEdit by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
-    var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
-    var commentToReport by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
-    var showStickerPicker by remember { mutableStateOf(false) }
+    var replyingTo by remember(postId, accountId) { mutableStateOf<conectate.com.data.model.Comment?>(null) }
+    var commentToEdit by remember(postId, accountId) { mutableStateOf<conectate.com.data.model.Comment?>(null) }
+    var postToReport by remember(postId, accountId) { mutableStateOf<conectate.com.data.model.Post?>(null) }
+    var commentToReport by remember(postId, accountId) { mutableStateOf<conectate.com.data.model.Comment?>(null) }
+    var showStickerPicker by remember(postId, accountId) { mutableStateOf(false) }
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsStateWithLifecycle()
     val commentEditing by viewModel.commentEditing.collectAsStateWithLifecycle()
     
-    val threadedComments = remember(uiState.comments) {
-        organizeThreaded(uiState.comments)
+    val commentsWindow = remember(uiState.comments, visibleLimit, focusCommentId) {
+        postCommentWindow(uiState.comments, visibleLimit, focusCommentId)
     }
+    val threadedComments = commentsWindow.rows
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     val summaryItemVisible = uiState.isSummarizingThread ||
         uiState.threadSummary != null ||
         uiState.threadSummaryError != null
-    var focusResolved by remember(focusCommentId) { mutableStateOf(focusCommentId.isNullOrBlank()) }
+    var focusResolved by remember(postId, accountId, focusCommentId) { mutableStateOf(focusCommentId.isNullOrBlank()) }
 
     LaunchedEffect(postId) {
         viewModel.loadPost(postId)
     }
 
-    LaunchedEffect(threadedComments, focusCommentId, summaryItemVisible) {
+    LaunchedEffect(postId, accountId, threadedComments, focusCommentId, summaryItemVisible,
+        uiState.isLoadingComments, uiState.commentsError, uiState.error) {
         if (focusResolved || focusCommentId.isNullOrBlank()) return@LaunchedEffect
         val idx = threadedComments.indexOfFirst { (comment, _) ->
             comment.id.equals(focusCommentId, ignoreCase = true)
@@ -89,7 +95,7 @@ fun PostDetailScreen(
             // 0 = post, 1 = comments header, 2 = optional summary, then comments.
             listState.scrollToItem(idx + 2 + if (summaryItemVisible) 1 else 0)
             focusResolved = true
-        } else if (!uiState.isLoadingComments) {
+        } else if (!uiState.isLoadingComments && uiState.commentsError == null && uiState.error == null) {
             focusResolved = true
             AppFeedbackBus.show("Ese comentario fue eliminado o ya no está disponible.")
         }
@@ -130,8 +136,7 @@ fun PostDetailScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             IconButton(
-                                onClick = { replyingTo = null },
-                                modifier = Modifier.size(24.dp)
+                                onClick = { draftRevision.changed(); replyingTo = null },
                             ) {
                                 Icon(
                                     Icons.Default.Close,
@@ -160,6 +165,7 @@ fun PostDetailScreen(
                                         val username = conectate.com.data.model.profilePublicHandle(user)
                                         Row(
                                             modifier = Modifier.fillMaxWidth().clickable {
+                                                draftRevision.changed()
                                                 commentText = replaceActiveMention(commentText, username)
                                                 viewModel.clearMentionSuggestions()
                                             }.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -186,6 +192,7 @@ fun PostDetailScreen(
                             TextField(
                                 value = commentText,
                                 onValueChange = {
+                                    draftRevision.changed()
                                     commentText = it
                                     viewModel.onCommentDraftChanged(it)
                                 },
@@ -212,10 +219,13 @@ fun PostDetailScreen(
                                     val content = commentText.trim()
                                     if (content.isNotEmpty()) {
                                         val replyId = replyingTo?.id
+                                        val submittedRevision = draftRevision.snapshot()
                                         viewModel.addComment(postId, content, replyId) {
-                                            if (commentText.trim() == content) commentText = ""
-                                            if (replyingTo?.id == replyId) replyingTo = null
-                                            viewModel.clearMentionSuggestions()
+                                            if (draftRevision.acknowledge(submittedRevision)) {
+                                                commentText = ""
+                                                replyingTo = null
+                                                viewModel.clearMentionSuggestions()
+                                            }
                                         }
                                     }
                                 },
@@ -425,8 +435,8 @@ fun PostDetailScreen(
                                     }
                                 },
                                 onReplyClick = {
+                                    draftRevision.changed()
                                     replyingTo = comment
-                                    commentText = ""
                                 },
                                 onLikeClick = { viewModel.toggleCommentReaction(comment, "LIKE") },
                                 onDislikeClick = { viewModel.toggleCommentReaction(comment, "DISLIKE") },
@@ -442,6 +452,11 @@ fun PostDetailScreen(
                                 showReportAction = true
                             )
                         }
+                        if (commentsWindow.hasMore) item(key = "more-comments") {
+                            TextButton(onClick = { visibleLimit = commentsWindow.nextLimit }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Ver más comentarios")
+                            }
+                        }
                     }
                 }
             }
@@ -452,6 +467,7 @@ fun PostDetailScreen(
         conectate.com.presentation.messages.StickerPickerDialog(
             onDismiss = { showStickerPicker = false },
             onEmojiSelected = { emoji ->
+                draftRevision.changed()
                 commentText += emoji
                 viewModel.onCommentDraftChanged(commentText)
                 showStickerPicker = false
@@ -459,8 +475,10 @@ fun PostDetailScreen(
             onStickerSelected = { sticker ->
                 val url = sticker.media_url ?: sticker.thumbnail_url
                 if (!url.isNullOrBlank()) {
-                    viewModel.addStickerComment(postId, url, replyingTo?.id)
-                    replyingTo = null
+                    val submittedRevision = draftRevision.snapshot()
+                    viewModel.addStickerComment(postId, url, replyingTo?.id) {
+                        if (draftRevision.acknowledge(submittedRevision)) replyingTo = null
+                    }
                 }
                 showStickerPicker = false
             }

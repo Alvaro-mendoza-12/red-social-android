@@ -24,6 +24,9 @@ internal fun ProfilePostComments(
     val sending by viewModel.commentPosting.collectAsStateWithLifecycle()
     val editing by viewModel.commentEditing.collectAsStateWithLifecycle()
     LaunchedEffect(post.id, viewerId) { viewModel.loadPost(post.id) }
+    DisposableEffect(viewModel, post.id, viewerId) {
+        onDispose { viewModel.closePost(post.id) }
+    }
     val current = state.post?.takeIf { it.id == post.id }
     LaunchedEffect(current?.id, current?.commentCount) { current?.let { onCountChanged(it.commentCount) } }
     CommentsSheet(
