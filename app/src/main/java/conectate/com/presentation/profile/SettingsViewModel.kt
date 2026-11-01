@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
@@ -44,13 +45,6 @@ class SettingsViewModel @Inject constructor(
     private val localFallbackApiClient: LocalFallbackApiClient,
     private val settingsBackupManager: conectate.com.data.local.prefs.SettingsBackupManager,
 ) : ViewModel() {
-    private companion object {
-        val ALLOWED_ADMIN_EMAILS = setOf(
-            "gamergamerff004@gmail.com",
-            "alvaromendozamarin004@gmail.com",
-            "gamergamerff017@gmail.com"
-        )
-    }
 
     val isDarkMode: StateFlow<Boolean> = themePreferences.isDarkMode
     val appTheme: StateFlow<AppThemeOption> = themePreferences.appTheme
@@ -147,45 +141,6 @@ class SettingsViewModel @Inject constructor(
     private val accountTasks = conectate.com.core.concurrency.AccountTasks(viewModelScope)
     private var settingsAccount = authRepository.getCurrentUserId()
 
-    init {
-        viewModelScope.launch {
-            authRepository.getAuthStateFlow().map { it?.user?.id }.distinctUntilChanged().collect { account ->
-                if (account != settingsAccount) {
-                    settingsAccount = account
-                    accountTasks.reset()
-                    currentUser = null
-                    _serverRecoveryCodes.value = emptyList(); _passwordRecoveryCodes.value = emptyList()
-                    _serverTwoFactorSetup.value = null; _serverTwoFactorStatus.value = null
-                    _webSessions.value = emptyList(); _additionalLoginEmails.value = emptyList()
-                    _webSessionsLoading.value = false; _twoFactorBusy.value = false; _passwordRecoveryBusy.value = false
-                    _appearanceSaving.value = false; _profileMusicUploading.value = false; _isDeletingAccount.value = false
-                    _privacyAccepted.value = false; _adminPanelAccess.value = false
-                    _settingsState.value = SettingsUiState.Error("La sesión cambió. Vuelve a abrir los ajustes.")
-                }
-            }
-        }
-        loadUserSettings()
-        loadServerTwoFactorStatus()
-        loadPasswordRecoveryCodeStatus()
-        loadAdditionalLoginEmails()
-        loadWebSessions()
-        resolveAdminIds()
-        refreshAdminPanelAccess()
-    }
-
-    private val _conectateAdminId = MutableStateFlow<String?>(null)
-    private val _alvaroAdminId = MutableStateFlow<String?>(null)
-
-    private fun resolveAdminIds() {
-        accountTasks.scope.launch {
-            val conectateAdminId = resolveSupportAdminId("novvin")
-            _conectateAdminId.value = conectateAdminId
-            android.util.Log.d("SettingsViewModel", "Resolved Novvin Admin ID: $conectateAdminId")
-
-            _alvaroAdminId.value = resolveSupportAdminId("alvaro")
-        }
-    }
-
     private fun isNovvinSupportAdmin(adminName: String): Boolean =
         adminName.trim().lowercase() in setOf("novvin", "noobin", "conectate")
 
@@ -208,48 +163,44 @@ class SettingsViewModel @Inject constructor(
 
         for (username in usernames) {
             val candidate = userRepository.getUserByUsername(username).getOrNull()
-            if (!candidate?.id.isNullOrBlank()) return candidate
+            if (candidate?.is_admin == true && candidate.id.isNotBlank()) return candidate
         }
         for (email in emails) {
             val candidate = userRepository.getUserByEmail(email).getOrNull()
-            if (!candidate?.id.isNullOrBlank()) return candidate
+            if (candidate?.is_admin == true && candidate.id.isNotBlank()) return candidate
         }
         return null
     }
 
     private suspend fun resolveSupportAdminId(adminName: String): String? {
-        val token = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
-        if (token.isNotBlank() && localFallbackApiClient.isConfigured) {
-            localFallbackApiClient.resolveSupportAdminId(token, adminName)
-                .getOrNull()
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.let { return it }
+        if (localFallbackApiClient.isConfigured) {
+            val owner = authRepository.getCurrentUserId()
+            val token = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
+            if (owner == null || owner != authRepository.getCurrentUserId())
+                throw kotlinx.coroutines.CancellationException("La cuenta cambió al abrir soporte.")
+            check(token.isNotBlank()) { "Inicia sesión para contactar con soporte." }
+            // An unavailable authoritative directory must not fall back to a mutable handle.
+            return localFallbackApiClient.resolveSupportAdminId(token, adminName).getOrThrow()
+                .trim().takeIf(String::isNotBlank)
         }
         return resolveSupportAdmin(adminName)?.id?.trim()?.takeIf { it.isNotBlank() }
     }
 
     fun contactSupport(adminName: String, navController: NavController, context: android.content.Context,
         initialMessage: String = "Hola $adminName, necesito ayuda con la aplicación.") {
+        val owner = authRepository.getCurrentUserId() ?: return
         android.widget.Toast.makeText(context, "Conectando con $adminName...", android.widget.Toast.LENGTH_SHORT).show()
         accountTasks.scope.launch {
             try {
-                val isNovvin = isNovvinSupportAdmin(adminName)
-                var adminId = if (isNovvin) _conectateAdminId.value else _alvaroAdminId.value
-
-                if (adminId.isNullOrBlank()) {
-                    adminId = resolveSupportAdminId(adminName)
-                    if (isNovvin) {
-                        _conectateAdminId.value = adminId
-                    } else {
-                        _alvaroAdminId.value = adminId
-                    }
-                }
-
-                val targetAdminId = adminId?.trim()?.takeIf { it.isNotBlank() }
+                if (owner != authRepository.getCurrentUserId()) throw kotlinx.coroutines.CancellationException("La cuenta cambió.")
+                val targetAdminId = resolveSupportAdminId(adminName)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                if (owner != authRepository.getCurrentUserId()) throw kotlinx.coroutines.CancellationException("La cuenta cambió.")
                 if (targetAdminId != null) {
                     messageRepository.getOrCreateChat(targetAdminId)
                         .onSuccess {
+                            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                            if (owner != authRepository.getCurrentUserId()) throw kotlinx.coroutines.CancellationException("La cuenta cambió.")
                             val route = Screen.Chat.createRoute(
                                 userId = targetAdminId,
                                 initialMessage = initialMessage
@@ -267,7 +218,8 @@ class SettingsViewModel @Inject constructor(
                         "No encontramos la cuenta de $adminName. Inténtalo nuevamente."
                     )
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 android.util.Log.e("SettingsViewModel", "Contact support failed", e)
                 conectate.com.presentation.common.AppFeedbackBus.showError(
                     e.toUserFacingMessage("No se pudo abrir el chat de soporte.")
@@ -297,28 +249,23 @@ class SettingsViewModel @Inject constructor(
         refreshAdminPanelAccess()
     }
 
-    fun refreshAdminPanelAccess() {
-        accountTasks.scope.launch {
-            val email = authRepository.getCurrentUserEmail()?.lowercase()?.trim().orEmpty()
-            val isDesignatedAdmin = email in ALLOWED_ADMIN_EMAILS
-            // Keep the entry visible while the backend verifies the immutable
-            // account id. This also removes the startup race where the profile
-            // flag had not loaded yet for one of the three administrator accounts.
-            if (isDesignatedAdmin) {
-                _adminPanelAccess.value = true
-            }
+    private val adminAccessCheck by lazy { AdminAccessCheck(
+        scope = { accountTasks.scope }, account = authRepository::getCurrentUserId,
+        request = { owner ->
             val token = authRepository.getCurrentAccessTokenAwait()?.trim().orEmpty()
-            if (token.isBlank()) {
-                _adminPanelAccess.value = isDesignatedAdmin || currentUser?.is_admin == true
-                return@launch
+            if (owner != authRepository.getCurrentUserId()) throw kotlinx.coroutines.CancellationException("La cuenta cambió.")
+            if (token.isBlank()) Result.failure(IllegalStateException("Inicia sesión para comprobar tus permisos."))
+            else localFallbackApiClient.adminCheckAccess(token)
+        },
+        publish = { decision ->
+            _adminPanelAccess.value = decision.granted
+            if (decision.unavailable && currentUser?.is_admin == true) {
+                conectate.com.presentation.common.AppFeedbackBus.showError("No pudimos comprobar tus permisos de administración. Reintenta.")
             }
+        },
+    ) }
 
-            val serverGranted = localFallbackApiClient.adminCheckAccess(token).isSuccess
-            val trustedLocalFallback = currentUser?.is_admin == true && isDesignatedAdmin
-            _adminPanelAccess.value = serverGranted || trustedLocalFallback
-                || isDesignatedAdmin
-        }
-    }
+    fun refreshAdminPanelAccess() = adminAccessCheck.refresh()
 
     fun acceptPrivacyPolicy() {
         accountTasks.scope.launch {
@@ -891,6 +838,31 @@ class SettingsViewModel @Inject constructor(
 
     fun consumeAccountDeleted() {
         _accountDeleted.value = false
+    }
+
+    init {
+        viewModelScope.launch {
+            authRepository.getAuthStateFlow().map { it?.user?.id }.distinctUntilChanged().collect { account ->
+                if (account != settingsAccount) {
+                    settingsAccount = account
+                    accountTasks.reset()
+                    currentUser = null
+                    _serverRecoveryCodes.value = emptyList(); _passwordRecoveryCodes.value = emptyList()
+                    _serverTwoFactorSetup.value = null; _serverTwoFactorStatus.value = null
+                    _webSessions.value = emptyList(); _additionalLoginEmails.value = emptyList()
+                    _webSessionsLoading.value = false; _twoFactorBusy.value = false; _passwordRecoveryBusy.value = false
+                    _appearanceSaving.value = false; _profileMusicUploading.value = false; _isDeletingAccount.value = false
+                    _privacyAccepted.value = false; _adminPanelAccess.value = false
+                    _settingsState.value = SettingsUiState.Error("La sesión cambió. Vuelve a abrir los ajustes.")
+                }
+            }
+        }
+        loadUserSettings()
+        loadServerTwoFactorStatus()
+        loadPasswordRecoveryCodeStatus()
+        loadAdditionalLoginEmails()
+        loadWebSessions()
+        refreshAdminPanelAccess()
     }
 
     val isAdmin: Boolean
