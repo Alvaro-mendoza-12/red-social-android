@@ -1745,7 +1745,7 @@ function registerStorageRoutes(app, { pool, authRequired, storageScanCoordinator
   app.get('/v1/storage/objects', storageAuth, async (req, res, next) => {
     try {
       const bucket = cleanBucketName(req.query?.bucket)
-      const prefix = normalizeObjectPath(req.query?.prefix || '', '') || ''
+      const prefix = req.query?.prefix ? normalizeObjectPath(req.query.prefix, '') : ''
       const { rows } = await pool.query(
         `SELECT *
          FROM fallback_storage_objects
