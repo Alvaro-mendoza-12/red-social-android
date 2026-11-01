@@ -746,13 +746,21 @@ async function appAdminAccess(pool, identity) {
      LIMIT 1`,
     [identityValues],
   )
-  const email = String(rows[0]?.email || '').trim().toLowerCase()
-  const isOwner = rows[0]?.admin_is_owner === true ||
+  return adminAccessFromStoredRow(rows[0], identityValues)
+}
+
+// Accept only database role columns and immutable IDs, never profile display names.
+function adminAccessFromStoredRow(row, identityValues = []) {
+  if (identityValues.some((value) => DESIGNATED_ADMIN_USER_IDS.has(normalizeId(value)))) {
+    return { level: 'full', isOwner: true }
+  }
+  const email = String(row?.email || '').trim().toLowerCase()
+  const isOwner = row?.admin_is_owner === true ||
     Boolean(email && DESIGNATED_ADMIN_EMAILS.has(email))
   if (isOwner) return { level: 'full', isOwner: true }
   const level = normalizeAdminAccessLevel(
-    rows[0]?.admin_access_level,
-    rows[0]?.is_admin === true ? 'full' : 'none',
+    row?.admin_access_level,
+    row?.is_admin === true ? 'full' : 'none',
   )
   return { level, isOwner: false }
 }
@@ -2414,6 +2422,7 @@ function registerAdminModerationRoutes(app, {
 }
 
 module.exports = {
+  adminAccessFromStoredRow,
   ADMIN_BADGE_CATALOG,
   MODERATION_RULE_CATALOG,
   PROFILE_FRAME_CATALOG,

@@ -137,14 +137,13 @@ fun AdminBadge(
 @Composable
 @Suppress("ModifierParameter")
 fun BadgeRow(
-    userName: String?,
-    userEmail: String? = null,
+    isAdmin: Boolean = false,
     badges: List<Badge> = emptyList(),
     includeAdmin: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val adminFromCatalog = badges.any(::isAdminBadge)
-    val showAdmin = includeAdmin && (isUserAdmin(userName, userEmail) || adminFromCatalog)
+    val showAdmin = includeAdmin && (isAdmin || adminFromCatalog)
     val otherBadges = badges.filterNot(::isAdminBadge)
 
     if (showAdmin || otherBadges.isNotEmpty()) {
@@ -203,24 +202,4 @@ fun GenericBadgeChip(badge: Badge) {
             )
         }
     }
-}
-
-/**
- * Checks if a user is an admin based on specific identifiers from SettingsViewModel
- */
-fun isUserAdmin(userName: String?, userEmail: String? = null): Boolean {
-    val normalizedName = userName?.lowercase()?.trim() ?: ""
-    val normalizedEmail = userEmail?.lowercase()?.trim() ?: ""
-    
-    return normalizedName in setOf(
-               "conectate",
-               "novvin",
-               "noobin",
-               "alvaro",
-               "gamergamerff004",
-               "gamergamerff017"
-           ) ||
-           normalizedEmail == "alvaromendozamarin004@gmail.com" ||
-           normalizedEmail == "gamergamerff004@gmail.com" ||
-           normalizedEmail == "gamergamerff017@gmail.com"
 }

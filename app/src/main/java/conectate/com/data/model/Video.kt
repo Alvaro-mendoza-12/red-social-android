@@ -39,6 +39,7 @@ data class Video(
     @SerialName("favorite_count") val favoriteCount: Int = 0,
     @SerialName("favorited_by_me") val favoritedByMe: Boolean = false,
     @SerialName("is_verified") val isVerified: Boolean = false,
+    @SerialName("is_admin") val isAdmin: Boolean = false,
     @SerialName("sound_id") val soundId: String? = null,
     @SerialName("sound_source_video_id") val soundSourceVideoId: String? = null,
     @SerialName("sound_title") val soundTitle: String? = null,

@@ -21,7 +21,6 @@ import androidx.compose.ui.unit.sp
 import conectate.com.data.model.ChatWithLastMessage
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.AdminBadge
-import conectate.com.presentation.components.isUserAdmin
 import java.util.*
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 
@@ -103,7 +102,7 @@ fun ConversationItem(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (!conversation.chat.is_group && (conversation.otherUserIsAdmin || isUserAdmin(conversation.otherUserName))) {
+                    if (!conversation.chat.is_group && conversation.otherUserIsAdmin) {
                         Spacer(modifier = Modifier.width(4.dp))
                         AdminBadge(showVerifiedLine = false)
                     }

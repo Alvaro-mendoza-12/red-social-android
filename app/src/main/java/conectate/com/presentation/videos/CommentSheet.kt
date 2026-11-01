@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -35,7 +36,6 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import conectate.com.data.model.VideoComment
 import conectate.com.presentation.components.CircularProfileImage
-import conectate.com.presentation.components.isUserAdmin
 import conectate.com.presentation.components.AdminBadge
 import conectate.com.presentation.components.CreatorBadge
 import java.text.SimpleDateFormat
@@ -490,10 +490,18 @@ fun VideoCommentItem(
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.clickable { onProfileClick() }
+                            modifier = Modifier.weight(1f, fill = false).clickable { onProfileClick() },
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                          )
+
+                         if (comment.isVerified || comment.profiles?.isVerified == true) {
+                             Spacer(modifier = Modifier.width(4.dp))
+                             Icon(Icons.Default.CheckCircle, contentDescription = "Verificado",
+                                 tint = androidx.compose.ui.graphics.Color(0xFF1DA1F2), modifier = Modifier.size(14.dp))
+                         }
                          
-                         if (isUserAdmin(comment.userName)) {
+                         if (comment.isAdmin || comment.profiles?.isAdmin == true) {
                              Spacer(modifier = Modifier.width(4.dp))
                              AdminBadge(showVerifiedLine = false)
                          } else if (isCreator) {

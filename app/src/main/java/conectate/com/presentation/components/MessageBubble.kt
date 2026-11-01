@@ -57,7 +57,6 @@ import conectate.com.data.model.Message
 import conectate.com.presentation.theme.*
 import conectate.com.util.Constants
 import conectate.com.presentation.components.AdminBadge
-import conectate.com.presentation.components.isUserAdmin
 import conectate.com.util.ChatContactPayload
 import conectate.com.util.decodeContactPayload
 import java.text.SimpleDateFormat
@@ -604,7 +603,7 @@ fun MessageBubble(
                         }
                         
                         // Prioritize Admin Badge
-                        if (isAdmin || isUserAdmin(senderName, senderEmail) || userBadges.any(::isAdminBadge)) {
+                        if (isAdmin || userBadges.any(::isAdminBadge)) {
                             Spacer(modifier = Modifier.width(4.dp))
                             AdminBadge(showVerifiedLine = false)
                         }
@@ -612,9 +611,7 @@ fun MessageBubble(
                         // Then render other Badges if any
                         if (userBadges.isNotEmpty()) {
                             // Filter out "Admin" if it's already in userBadges list to avoid duplicates
-                            val filteredBadges = userBadges.filter { 
-                                it.name.lowercase() != "admin" && it.name.lowercase() != "administrador" 
-                            }
+                            val filteredBadges = userBadges.filterNot(::isAdminBadge)
                             if (filteredBadges.isNotEmpty()) {
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {

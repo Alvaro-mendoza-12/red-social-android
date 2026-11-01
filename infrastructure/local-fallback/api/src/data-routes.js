@@ -2,6 +2,7 @@ const { latestConversationReadAt } = require('./conversation-read-sync')
 const { isMessageLocationUrl } = require('./message-location')
 const { ensureFollowState, visibleFollowRows, setFollowState, publishFollowChange } = require('./follow-store')
 const crypto = require('crypto')
+const { adminAccessFromStoredRow, appAdminAccess } = require('./admin-moderation-routes')
 const { SYSTEM_MEMBERSHIP, ensureCollectionMembershipTables, loadCollectionMembershipState, collectionHistoryAllows, registerCollectionMembershipRoutes } = require('./collection-membership-policy')
 const { patchImportedRow, deleteImportedRow, deleteImportedPost } = require('./imported-mutation-capabilities')
 const { isRetiredNotification } = require('./retired-notifications')
@@ -1905,6 +1906,8 @@ function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
     id,
     user_id: userId,
     user_name: profileName(profile, textOf(row, ['user_name', 'userName'], 'Usuario')),
+    is_admin: boolOf(profile, ['is_admin'], false),
+    is_verified: boolOf(profile, ['is_verified'], false),
     user_profile_image:
       textOf(profile, ['avatar_url', 'photo_url', 'profile_image'], '') ||
       textOf(row, ['user_profile_image', 'userProfileImage'], ''),
@@ -1951,6 +1954,8 @@ function mapVideoComment(row, profilesById, currentIdentity) {
     video_id: videoIdOf(row),
     user_id: userId,
     user_name: profileName(profile, textOf(row, ['user_name', 'display_name', 'author_name'], 'Usuario')),
+    is_admin: boolOf(profile, ['is_admin'], false),
+    is_verified: boolOf(profile, ['is_verified'], false),
     user_profile_image:
       profileAvatar(profile) || textOf(row, ['user_profile_image', 'user_avatar_url', 'avatar_url'], ''),
     content: textOf(row, ['content', 'comment', 'comment_text', 'body', 'message', 'text'], ''),
@@ -2461,6 +2466,10 @@ async function fallbackUserProfileRows(pool, limit = 5000, profileIds = []) {
         `SELECT
             u.id::text AS id,
             u.supabase_user_id::text AS supabase_user_id,
+            u.email AS __admin_email,
+            COALESCE(m.is_admin, FALSE) AS __admin_flag,
+            COALESCE(m.admin_access_level, CASE WHEN m.is_admin THEN 'full' ELSE 'none' END) AS __admin_level,
+            COALESCE(m.admin_is_owner, FALSE) AS __admin_owner,
             COALESCE(o.profile->>'email', u.email) AS email,
             COALESCE(o.profile->>'display_name', o.profile->>'displayName', o.profile->>'full_name', u.display_name) AS display_name,
             COALESCE(o.profile->>'full_name', o.profile->>'fullName', o.profile->>'display_name', u.display_name) AS full_name,
@@ -2518,6 +2527,14 @@ async function fallbackUserProfileRows(pool, limit = 5000, profileIds = []) {
             COALESCE(o.updated_at, u.last_login_at, u.created_at) AS updated_at
          FROM fallback_users u
          LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+         LEFT JOIN LATERAL (
+           SELECT moderation.is_admin, moderation.admin_access_level, moderation.admin_is_owner
+           FROM fallback_profile_moderation moderation
+           WHERE lower(moderation.user_id) = lower(u.id::text)
+              OR lower(moderation.user_id) = lower(COALESCE(u.supabase_user_id::text, ''))
+           ORDER BY moderation.is_admin DESC, moderation.updated_at DESC
+           LIMIT 1
+         ) m ON TRUE
          WHERE ($1::text[] = '{}'::text[]
            OR lower(u.id::text) = ANY($1::text[])
            OR lower(COALESCE(u.supabase_user_id::text, '')) = ANY($1::text[]))
@@ -2525,7 +2542,14 @@ async function fallbackUserProfileRows(pool, limit = 5000, profileIds = []) {
          LIMIT $2`,
         [requestedIds, safeLimit],
       )
-      return rows.map(normalizeImportedRow)
+      return rows.map((raw) => {
+        const { __admin_email, __admin_flag, __admin_level, __admin_owner, ...profile } = normalizeImportedRow(raw)
+        const access = adminAccessFromStoredRow({
+          email: __admin_email, is_admin: __admin_flag,
+          admin_access_level: __admin_level, admin_is_owner: __admin_owner,
+        }, [profile.id, profile.supabase_user_id])
+        return { ...profile, is_admin: access.level !== 'none' }
+      })
     },
   )
 }
@@ -3562,6 +3586,7 @@ function normalizeProfileForPublic(row, fallbackId = '') {
     is_verified:
       boolOf(row, ['is_verified', 'verified'], false) ||
       followersCount >= AUTO_VERIFY_FOLLOWER_THRESHOLD,
+    is_admin: boolOf(row, ['is_admin'], false),
     badges: publicBadges,
     profile_frame: new Set(['gold', 'neon', 'ruby', 'ocean']).has(profileFrame) ? profileFrame : '',
     is_private: boolOf(row, ['is_private', 'private'], false),
@@ -4357,6 +4382,7 @@ function profileSearchCard(profile) {
     city: visible.city,
     status: visible.status,
     is_verified: visible.is_verified,
+    is_admin: visible.is_admin,
     badges: visible.badges,
     profile_frame: visible.profile_frame,
     is_private: visible.is_private,
@@ -7212,6 +7238,7 @@ function registerDataRoutes(app, {
         fallbackProfileRow(user)
       const overrideProfile = await localProfileOverride(pool, user.id)
       const mergedProfile = buildProfileForUser(user, profile, overrideProfile)
+      mergedProfile.is_admin = (await appAdminAccess(pool, identity)).level !== 'none'
 
       const ownedPosts = posts.filter((row) => isOwnedBy(row, identity))
       const myPosts = sortByDateDesc(
@@ -7443,6 +7470,7 @@ function registerDataRoutes(app, {
         avatar_media_type: hasAvatarMediaTypePatch ? nextAvatarMediaType : user.avatar_media_type,
       }
       const current = buildProfileForUser(refreshedUser, importedProfile, await localProfileOverride(pool, user.id))
+      current.is_admin = (await appAdminAccess(pool, identity)).level !== 'none'
       if (Object.prototype.hasOwnProperty.call(patch, 'favorite_music_url')) {
         for (const id of userIdentity(user).values) void publishRealtimeEvent(`profile-music:${id}`,
           { event: 'profile_music_updated', profileId: id })
@@ -7562,6 +7590,7 @@ function registerDataRoutes(app, {
         updated_at: now,
       }
       const current = buildProfileForUser(refreshedUser, fallbackProfileRow(refreshedUser), await localProfileOverride(pool, user.id))
+      current.is_admin = (await appAdminAccess(pool, userIdentity(user))).level !== 'none'
       res.json({
         ok: true,
         isOnline: current.is_online,
@@ -7663,6 +7692,7 @@ function registerDataRoutes(app, {
             fallbackProfileRow(fallbackUser),
             await localProfileOverride(pool, fallbackUser.id),
           )
+          rawProfile.is_admin = (await appAdminAccess(pool, userIdentity(fallbackUser))).level !== 'none'
           clearProfileCaches()
         }
       }
@@ -15102,6 +15132,9 @@ module.exports = {
   messageContentOf,
   lookupMarkerMessages,
   mapVoiceRoom,
+  mapVideoComment,
+  enrichVideo,
+  fallbackUserProfileRows,
   conversationHiddenForViewer,
   normalizeMessageRow,
   previewFromMessage,
