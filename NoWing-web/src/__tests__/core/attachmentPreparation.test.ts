@@ -23,7 +23,7 @@ test('technical worker errors never reach the attachment UI',()=>{expect(attachm
 
 test('normalizes Windows ZIP MIME without altering the archive bytes',async()=>{const source=new File([new Uint8Array([0x50,0x4b,3,4,5])],'Folder.zip',{type:'application/x-zip-compressed',lastModified:123});const [prepared]=await prepareAttachmentFiles([source]);expect(prepared.type).toBe('application/zip');expect(prepared.name).toBe(source.name);expect(prepared.lastModified).toBe(123);expect(await bytes(prepared)).toEqual(await bytes(source))})
 
-test.each(['documento.doc','datos.json','apuntes.md','dibujo.dwg'])('packages unsupported document %s without changing its contents',async name=>{const source=file(name,'Contenido original'),[prepared]=await prepareAttachmentFiles([source]);expect(prepared.name).toBe(name+'.zip');expect(prepared.type).toBe('application/zip');expect(strFromU8(unzipSync(await bytes(prepared))[name])).toBe('Contenido original')})
+test.each(['datos.json','apuntes.md','dibujo.dwg'])('packages unsupported document %s without changing its contents',async name=>{const source=file(name,'Contenido original'),[prepared]=await prepareAttachmentFiles([source]);expect(prepared.name).toBe(name+'.zip');expect(prepared.type).toBe('application/zip');expect(strFromU8(unzipSync(await bytes(prepared))[name])).toBe('Contenido original')})
 
 test.each(['imagen.gif','video.mp4','presentación.pptx','hoja.xlsx'])('keeps directly supported %s unchanged',async name=>{const source=file(name,'source');expect(await prepareAttachmentFiles([source])).toEqual([source])})
 
@@ -41,7 +41,7 @@ test.each(['libro.pdf','presentación.pptx','tabla.xlsx','vídeo.mp4'])('rejects
 
 test('bounds the aggregate picker selection before reading or compressing',async()=>{
  await expect(prepareAttachmentFiles(Array.from({length:5001},()=>file('nota.txt','a')))).rejects.toThrow('5000')
- const files=Array.from({length:3},()=>({name:'libro.pdf',size:50*1024*1024}) as File);expect(await prepareAttachmentFiles(files)).toEqual(files)
+ const files=Array.from({length:3},()=>({name:'libro.pdf',type:'application/pdf',size:50*1024*1024}) as File);expect(await prepareAttachmentFiles(files)).toEqual(files)
 })
 
 test('large folders split into independently readable ZIP parts, retaining paths',()=>{
@@ -88,4 +88,12 @@ test('combines dropped folders into one ordinary ZIP and reports counts and size
 
 test('identifies the oversized entry and total folder size in the error',()=>{
  expect(()=>folderArchiveParts([{path:'Curso/grande.pdf',file:{size:600*1024*1024} as File}])).toThrow(/Curso\/grande.pdf.*600 MB/)
+})
+
+test.each(['ppt','pptx','doc','docx','xls','xlsx','pptm','xlsb','odt','ods','odp','rtf','epub','tsv'])('sends supported %s documents directly without wrapping them in another ZIP',async extension=>{
+ const original=new File(['document bytes'],`archivo.${extension}`,{type:'application/octet-stream'})
+ const [prepared]=await prepareAttachmentFiles([original])
+ expect(prepared.name).toBe(original.name)
+ expect(prepared.type).not.toBe('application/octet-stream')
+ expect(await bytes(prepared)).toEqual(await bytes(original))
 })

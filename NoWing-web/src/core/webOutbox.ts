@@ -1,3 +1,4 @@
+import { normalizeDocumentBlob } from './documentMime'
 import {getStorageReadIdentity} from './media/storageReadSession'
 import {registerOutboxPreview,clearOutboxPreviewRegistry} from './media/outboxPreviewRegistry'
 import {notifyInboxMessage} from './inboxActivity'
@@ -102,10 +103,10 @@ export async function retryPendingWebMessage(id: string) {
   const owner = outboxOwner(); requireOwner(owner)
   const item = await operation<Pending | undefined>('messages', false, s => s.get(id))
   requireOwner(owner)
-  if (!item || item.owner !== owner) return
+  if (!item || item.owner !== owner) throw new Error('Este envío ya no está pendiente en este navegador. Actualiza la conversación para comprobarlo.')
   item.state = 'pending'; item.retryAt = 0; item.failureMessage = undefined
   await put('messages', item); changed(owner)
-  void flushWebOutbox().catch(() => {})
+  await flushWebOutbox()
 }
 export async function cancelPendingWebMessage(scope: Scope, room: string, id: string): Promise<GenericRow | null> {
   const owner = outboxOwner(); requireOwner(owner)
@@ -174,8 +175,8 @@ async function deliver(item: Pending) {
     if (!file || file.owner !== item.owner) throw new Error('No se encontró el archivo pendiente.')
     if (!file.uploadedUrl) {
       setOutboxProgress({owner:item.owner,id:item.id,phase:'uploading',loaded:0,total:file.blob.size})
-      // Existing queued Windows archives can predate the MIME normalization in the picker.
-      const blob = /\.zip$/i.test(file.name) && file.blob.type !== 'application/zip' ? new Blob([file.blob], { type: 'application/zip' }) : file.blob
+      // Retry old pending documents with corrected metadata while preserving every byte.
+      const blob = normalizeDocumentBlob(file.blob, file.name)
       const body = new FormData(); body.set('bucket', file.bucket); body.set('path', file.path); body.set('file', blob, file.name)
       // Upload time includes the server's antivirus scan, as well as transferring bytes.
       const result = await fallbackApiJson<{ object: { publicUrl: string } }>('/v1/storage/upload', { method: 'POST', body, expectedAccountId: item.owner, signal: AbortSignal.timeout(1200000),onUploadProgress:value=>setOutboxProgress({owner:item.owner,id:item.id,...value}) })

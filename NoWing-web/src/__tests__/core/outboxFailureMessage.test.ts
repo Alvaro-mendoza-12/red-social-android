@@ -11,3 +11,8 @@ test('the message video limit is understandable',()=>expect(outboxFailureMessage
 test('scan time exhaustion offers retry without treating it as a detected threat',()=>expect(outboxFailureMessage(new Error('STORAGE_SCAN_LIMIT_EXCEEDED'))).toContain('sin volver a adjuntarlo'))
 test('encrypted archives have a specific actionable error',()=>expect(outboxFailureMessage(new Error('STORAGE_ARCHIVE_ENCRYPTED'))).toContain('sin contraseña'))
 test.each(['SQLSTATE 42804 https://internal.invalid','stack: PRIVATE_TOKEN','STORAGE_SCAN_POLICY_UNVERIFIED'])('does not expose technical error %s',message=>expect(outboxFailureMessage(new Error(message))).not.toMatch(/internal|TOKEN|SQLSTATE|stack|UNVERIFIED/))
+
+test.each(['UNSUPPORTED_OR_MISMATCHED_MEDIA_TYPE','EXECUTABLE_UPLOAD_BLOCKED','FILE_REQUIRED'])('format failure %s offers an understandable action',code=>{
+ const text=outboxFailureMessage(new Error(code))
+ expect(text).not.toContain(code);expect(text).not.toBe('No se envió. Reintenta o adjunta otra copia.')
+})
