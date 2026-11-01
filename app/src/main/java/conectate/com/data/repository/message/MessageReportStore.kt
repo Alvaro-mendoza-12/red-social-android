@@ -26,6 +26,9 @@ import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -57,12 +60,15 @@ internal class MessageReportStore(
         var auditUserId: String? = null
         var uploadedEvidenceKey: String? = null
         var reportPersisted = false
+        var reportMayBePersisted = false
         val startedAt = System.currentTimeMillis()
         return try {
             val currentUserId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user logged in"))
             val cleanUserId = currentUserId.trim().lowercase()
             auditUserId = cleanUserId
             val cleanTargetId = targetId.trim().lowercase()
+            if (cleanTargetId.isBlank()) return Result.failure(IllegalArgumentException("No encontramos al usuario que quieres reportar."))
+            if (cleanTargetId == cleanUserId) return Result.failure(IllegalArgumentException("No puedes reportar tu propia cuenta."))
 
             val guardDecision = operationGuard.acquire(
                 action = GuardedAction.REPORT_SUBMISSION,
@@ -74,7 +80,8 @@ internal class MessageReportStore(
                 return Result.failure(Exception("Has enviado demasiados reportes. Intenta en ${retryAfterSeconds}s."))
             }
 
-            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            authService.getAccessTokenForAccountAwait(cleanUserId)
+                ?: return Result.failure(Exception("Inicia sesión para enviar el reporte."))
             val baseReason = InputSecurityPolicy.sanitizeReason(reason)
             val baseDescription = InputSecurityPolicy.sanitizeDescription(desc)
             val moderatedReason = moderationService.moderate(baseReason, ModerationContext.REPORT_REASON)
@@ -107,8 +114,14 @@ internal class MessageReportStore(
 
             val currentUser = userRepository.getUserById(cleanUserId).getOrNull()
             val reporterName = currentUser?.username ?: currentUser?.display_name ?: "Usuario"
+            val token = authService.getAccessTokenForAccountAwait(cleanUserId)
+                ?: return Result.failure(Exception("Inicia sesión para enviar el reporte."))
+            currentCoroutineContext().ensureActive()
             android.util.Log.d("MessageReportStore", "Submitting moderated user report")
 
+            // After dispatch, a lost response does not prove that the insert failed.
+            // Keep evidence that an accepted report may already reference.
+            reportMayBePersisted = true
             if (supabaseConfig.isLocalFallbackPrimary) {
                 val result = localFallbackApiClient.submitUserReport(
                     accessToken = token,
@@ -239,7 +252,8 @@ internal class MessageReportStore(
                 )
                 Result.failure(Exception("Error al enviar reporte: $err"))
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("MessageReportStore", "Error submitting report", e)
             var actorId = auditUserId
             if (!actorId.isNullOrBlank()) {
@@ -256,7 +270,7 @@ internal class MessageReportStore(
             appMetrics.recordFailure("report_submit", e)
             Result.failure(e)
         } finally {
-            if (!reportPersisted) {
+            if (!reportPersisted && !reportMayBePersisted) {
                 uploadedEvidenceKey?.let { key ->
                     storageService.deleteFile("report-evidence", key).onFailure { cleanupError ->
                         android.util.Log.w("MessageReportStore", "Could not clean report evidence", cleanupError)

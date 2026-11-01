@@ -2421,8 +2421,9 @@ class VideoRepository @Inject constructor(
 
     suspend fun hasReportedVideo(videoId: String): Result<Boolean> {
         return try {
-            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            var reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
+            val reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("Inicia sesión para consultar tus reportes."))
+            val accessToken = authService.getAccessTokenForAccountAwait(reporterId)
+                ?: return Result.failure(Exception("Inicia sesión para consultar tus reportes."))
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/video_reports") {
                 header("Authorization", "Bearer $accessToken")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -2437,15 +2438,17 @@ class VideoRepository @Inject constructor(
             } else {
                 Result.failure(Exception("Failed checking report status: ${response.status}"))
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Result.failure(e)
         }
     }
 
     suspend fun submitVideoReport(videoId: String, reason: String, details: String?): Result<Unit> {
         return try {
-            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
-            var reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user ID"))
+            val reporterId = authService.getCurrentUserId() ?: return Result.failure(Exception("Inicia sesión para enviar el reporte."))
+            val accessToken = authService.getAccessTokenForAccountAwait(reporterId)
+                ?: return Result.failure(Exception("Inicia sesión para enviar el reporte."))
             val normalizedReason = reason.trim()
             if (normalizedReason.isBlank()) {
                 return Result.failure(Exception("El motivo del reporte es obligatorio"))
@@ -2472,7 +2475,8 @@ class VideoRepository @Inject constructor(
                 if (rpcError.contains("SELF_REPORT_FORBIDDEN", ignoreCase = true)) {
                     return Result.failure(Exception("No puedes reportar tu propio video"))
                 }
-                if (rpcError.contains("duplicate key", ignoreCase = true) || rpcError.contains("23505")) {
+                if (rpcError.contains("VIDEO_ALREADY_REPORTED", ignoreCase = true) ||
+                    rpcError.contains("duplicate key", ignoreCase = true) || rpcError.contains("23505")) {
                     return Result.failure(Exception("Ya reportaste este video"))
                 }
                 return Result.failure(Exception("Error enviando reporte: ${rpcResponse.status}"))
@@ -2486,6 +2490,9 @@ class VideoRepository @Inject constructor(
             val reporterName = reporter?.displayName ?: reporter?.username ?: "Usuario"
             val owner = userRepository.getUserById(video.userId).getOrNull()
             val ownerName = owner?.displayName ?: owner?.username ?: video.userName
+            if (!authService.commitForCurrentAccount(reporterId, accessToken) {})
+                throw CancellationException("La cuenta cambió durante el reporte.")
+            currentCoroutineContext().ensureActive()
 
             val insertBody = buildJsonObject {
                 put("video_id", JsonPrimitive(videoId))
@@ -2517,7 +2524,8 @@ class VideoRepository @Inject constructor(
                     Result.failure(Exception("Error enviando reporte: ${insertResponse.status}"))
                 }
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Result.failure(e)
         }
     }

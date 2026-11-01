@@ -580,6 +580,7 @@ fun ProfileScreen(
     postToReport?.let { reportPost ->
         conectate.com.presentation.components.ContentReportDialog(
             title = "Reportar publicación",
+            reportKey = "post:${reportPost.id}",
             subjectText = reportPost.userName,
             reasonOptions = listOf(
                 "Spam",
@@ -597,14 +598,7 @@ fun ProfileScreen(
                     reason = reason,
                     details = details,
                     evidenceUri = evidenceUri,
-                    onSuccess = {
-                        android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
-                    },
-                    onError = {
-                        android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
-                    }
                 )
-                postToReport = null
             }
         )
     }
@@ -612,6 +606,7 @@ fun ProfileScreen(
     commentToReport?.let { reportComment ->
         conectate.com.presentation.components.ContentReportDialog(
             title = "Reportar comentario",
+            reportKey = "comment:${reportComment.id}",
             subjectText = reportComment.userName ?: "Usuario",
             reasonOptions = listOf(
                 "Spam",
@@ -629,14 +624,7 @@ fun ProfileScreen(
                     reason = reason,
                     details = details,
                     evidenceUri = evidenceUri,
-                    onSuccess = {
-                        android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
-                    },
-                    onError = {
-                        android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show()
-                    }
                 )
-                commentToReport = null
             }
         )
     }

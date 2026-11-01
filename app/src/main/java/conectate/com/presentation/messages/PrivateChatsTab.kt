@@ -249,11 +249,11 @@ fun PrivateChatsTab(
                         val reportedUserId = conv.chat.participants.firstOrNull { it != viewModel.currentUserId } ?: ""
                         val reportedUserName = conv.otherUserName ?: "Usuario"
                         conectate.com.presentation.components.ReportDialog(
+                            reportedUserId = reportedUserId,
                             reportedUserName = reportedUserName,
                             onDismiss = { showReportDialog = false },
                             onSubmit = { reason, description, evidenceUri ->
                                 viewModel.submitReport(reportedUserId, reportedUserName, reason, description, evidenceUri)
-                                // Dialog handles confirmation within itself
                             }
                         )
                     }

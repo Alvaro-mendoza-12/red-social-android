@@ -390,38 +390,33 @@ class VideoPlayerViewModel @Inject constructor(
     }
 
     fun ensureVideoReportStatus(videoId: String) {
+        if (!isCurrentPlaybackAccount()) return
         if (_reportedVideoIds.value.contains(videoId)) return
         viewModelScope.launch {
             videoRepository.hasReportedVideo(videoId).onSuccess { hasReported ->
-                if (hasReported) {
+                if (hasReported && isCurrentPlaybackAccount()) {
                     _reportedVideoIds.value = _reportedVideoIds.value + videoId
                 }
             }
         }
     }
 
-    fun submitVideoReport(videoId: String, reason: String, details: String? = null) {
+    suspend fun submitVideoReport(videoId: String, reason: String, details: String? = null): Result<Unit> {
+        if (!isCurrentPlaybackAccount()) throw kotlinx.coroutines.CancellationException("La cuenta cambió durante el reporte.")
         if (_reportedVideoIds.value.contains(videoId)) {
-            _reportActionMessage.value = "Ya reportaste este video"
-            return
+            return Result.failure(IllegalStateException("Ya reportaste este video"))
         }
-        if (!reportRequestsInFlight.add(videoId)) return
+        if (!reportRequestsInFlight.add(videoId)) return Result.failure(IllegalStateException("El reporte ya se está enviando."))
 
-        viewModelScope.launch {
-            try {
-                videoRepository.submitVideoReport(videoId, reason, details).onSuccess {
-                    _reportedVideoIds.value = _reportedVideoIds.value + videoId
-                    _reportActionMessage.value = "Reporte enviado"
-                }.onFailure { error ->
-                    val message = error.message ?: "No se pudo enviar el reporte"
-                    if (message.contains("Ya reportaste", ignoreCase = true)) {
-                        _reportedVideoIds.value = _reportedVideoIds.value + videoId
-                    }
-                    _reportActionMessage.value = message
-                }
-            } finally {
-                reportRequestsInFlight.remove(videoId)
+        return try {
+            val result = videoRepository.submitVideoReport(videoId, reason, details)
+            if (!isCurrentPlaybackAccount()) throw kotlinx.coroutines.CancellationException("La cuenta cambió durante el reporte.")
+            if (result.isSuccess || result.exceptionOrNull()?.message?.contains("Ya reportaste", ignoreCase = true) == true) {
+                _reportedVideoIds.value = _reportedVideoIds.value + videoId
             }
+            result
+        } finally {
+            reportRequestsInFlight.remove(videoId)
         }
     }
 
@@ -1097,11 +1092,11 @@ fun VideoPlayerScreen(
 
             if (showReportDialog && currentState is VideoPlayerUiState.Success) {
                 VideoReportDialog(
+                    videoId = currentState.video.id,
                     alreadyReported = reportedVideoIds.contains(currentState.video.id),
                     onDismiss = { showReportDialog = false },
                     onSubmit = { reason, details ->
                         viewModel.submitVideoReport(currentState.video.id, reason, details)
-                        showReportDialog = false
                     }
                 )
             }

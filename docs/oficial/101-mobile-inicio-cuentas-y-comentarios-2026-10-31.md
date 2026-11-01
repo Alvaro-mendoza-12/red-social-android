@@ -47,3 +47,15 @@ Una prueba con Room reprodujo otro defecto: al terminar tarde la limpieza de la 
 Validación de este bloque: **261 pruebas seleccionadas, 59 clases, 0 fallos, errores u omisiones**, compilación Android y `lintDebug` completados con **0 errores y 319 advertencias**. Se utilizó `-Pandroid.lint.useK2Uast=false`, como en las revisiones anteriores. Una ejecución anterior con K2 se atascó analizando tipos; se detuvieron únicamente sus procesos de Gradle/Kotlin identificados y se repitió con K1. Las advertencias no se presentan como corregidas.
 
 Este bloque no incluye una APK nueva ni ensayos de dispositivo. Siguen abiertas la revisión de los demás módulos y las confirmaciones de reportes, donde se detectó un aviso de éxito anterior a la respuesta del servidor. La web continúa pendiente de su fase posterior.
+
+## Cuarto bloque: reportes con confirmación real
+
+Los reportes de usuarios en chats mostraban «Reporte enviado» inmediatamente, aunque los modelos ignoraban el resultado del repositorio. Los de publicaciones, comentarios y videos cerraban el formulario antes de saber si se había enviado. Se sustituyó ese contrato por una operación suspendida que devuelve el resultado real del envío. Todos los puntos de entrada compilados usan ahora ese contrato.
+
+El formulario común conserva motivo, detalle y referencia de evidencia; bloquea el doble toque, muestra el envío pendiente y conserva los campos para reintentar tras un fallo. La confirmación depende del ACK; una cancelación o una respuesta de otra cuenta no produce un aviso de éxito. Tiene desplazamiento y espacio para el teclado; se evita cortar el título con letras grandes. Cancelar la selección de otra imagen conserva la evidencia anterior.
+
+Las solicitudes de reporte obtienen credenciales ligadas al propietario y las renuevan antes de enviar después de preparar la evidencia. Se reconoció también el código real `VIDEO_ALREADY_REPORTED` del servidor; el caché de videos reportados se reinicia al cambiar de cuenta y no admite lecturas atrasadas de otra sesión.
+
+Se corrigió otra pérdida posible: después de despachar el POST, una respuesta perdida podía provocar que el móvil borrase la evidencia de un reporte ya guardado. Ahora conserva esa evidencia si la escritura pudo haberse realizado. Esto exige contemplar la conciliación de archivos sin referencia cuando el resultado quedó incierto; no se afirma limpieza completa ni ausencia de duplicados tras perder el ACK de un POST sin idempotencia.
+
+Comprobación: **480 pruebas seleccionadas, 102 clases, 0 fallos, errores u omisiones**, incluyendo siete regresiones del envío/confirmación, y compilación correcta de las pruebas Android de interfaz. Estas últimas se compilaron; **no se ejecutaron en dispositivo**. No se generó una APK nueva y la revisión integral continúa abierta, incluida la identidad de insignias, los cambios de cuenta y los módulos restantes.

@@ -2210,11 +2210,8 @@ class ChatViewModel @Inject constructor(
         }
     }
     fun reportChat(@Suppress("UNUSED_PARAMETER") reason: String) {}
-    fun submitReport(uid: String, name: String, reason: String, desc: String, uri: Uri?) {
-        viewModelScope.launch {
-            messageRepository.submitReport(uid, name, reason, desc, uri)
-        }
-    }
+    suspend fun submitReport(uid: String, name: String, reason: String, desc: String, uri: Uri?): Result<Unit> =
+        withContext(Dispatchers.IO) { messageRepository.submitReport(uid, name, reason, desc, uri) }
 
     suspend fun getPlayableUrl(
         path: String,

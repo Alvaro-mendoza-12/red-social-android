@@ -1405,11 +1405,11 @@ fun VideoFeedScreen(
     if (selectedVideoForReport != null) {
         val targetVideo = selectedVideoForReport!!
         VideoReportDialog(
+            videoId = targetVideo.id,
             alreadyReported = reportedVideoIds.contains(targetVideo.id),
             onDismiss = { selectedVideoForReport = null },
             onSubmit = { reason, details ->
                 viewModel.submitVideoReport(targetVideo.id, reason, details)
-                selectedVideoForReport = null
             }
         )
     }

@@ -488,6 +488,7 @@ fun PostDetailScreen(
     postToReport?.let { reportPost ->
         conectate.com.presentation.components.ContentReportDialog(
             title = "Reportar publicación",
+            reportKey = "post:${reportPost.id}",
             subjectText = reportPost.userName,
             reasonOptions = listOf(
                 "Spam",
@@ -501,7 +502,6 @@ fun PostDetailScreen(
             onDismiss = { postToReport = null },
             onSubmit = { reason, details, evidenceUri ->
                 viewModel.reportPost(reportPost, reason, details, evidenceUri)
-                postToReport = null
             }
         )
     }
@@ -509,6 +509,7 @@ fun PostDetailScreen(
     commentToReport?.let { reportComment ->
         conectate.com.presentation.components.ContentReportDialog(
             title = "Reportar comentario",
+            reportKey = "comment:${reportComment.id}",
             subjectText = reportComment.userName ?: "Usuario",
             reasonOptions = listOf(
                 "Spam",
@@ -522,7 +523,6 @@ fun PostDetailScreen(
             onDismiss = { commentToReport = null },
             onSubmit = { reason, details, evidenceUri ->
                 viewModel.reportComment(reportComment, reason, details, evidenceUri)
-                commentToReport = null
             }
         )
     }

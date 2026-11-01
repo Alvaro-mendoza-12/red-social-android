@@ -377,11 +377,8 @@ class MessagingViewModel @Inject constructor(
         refreshNow()
     }
 
-    fun submitReport(uid: String, name: String?, reason: String, desc: String?, uri: android.net.Uri?) {
-        viewModelScope.launch { 
-            withContext(Dispatchers.IO) { messageRepository.submitReport(uid, name ?: "", reason, desc ?: "", uri) }
-        }
-    }
+    suspend fun submitReport(uid: String, name: String?, reason: String, desc: String?, uri: android.net.Uri?): Result<Unit> =
+        withContext(Dispatchers.IO) { messageRepository.submitReport(uid, name.orEmpty(), reason, desc.orEmpty(), uri) }
 
     fun consumeUiMessage() {
         _uiMessage.value = null

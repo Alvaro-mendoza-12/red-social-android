@@ -533,9 +533,8 @@ class PostDetailViewModel @Inject constructor(
         }
     }
 
-    fun reportPost(post: Post, reason: String, details: String?, evidenceUri: android.net.Uri?) {
-        viewModelScope.launch {
-            val result = postRepository.submitContentReport(
+    suspend fun reportPost(post: Post, reason: String, details: String?, evidenceUri: android.net.Uri?): Result<Unit> =
+            postRepository.submitContentReport(
                 contentType = "post",
                 contentId = post.id,
                 reportedUserId = post.userId,
@@ -544,13 +543,9 @@ class PostDetailViewModel @Inject constructor(
                 details = details,
                 evidenceUri = evidenceUri
             )
-            showReportResult(result)
-        }
-    }
 
-    fun reportComment(comment: Comment, reason: String, details: String?, evidenceUri: android.net.Uri?) {
-        viewModelScope.launch {
-            val result = postRepository.submitContentReport(
+    suspend fun reportComment(comment: Comment, reason: String, details: String?, evidenceUri: android.net.Uri?): Result<Unit> =
+            postRepository.submitContentReport(
                 contentType = "comment",
                 contentId = comment.id,
                 reportedUserId = comment.userId,
@@ -559,9 +554,6 @@ class PostDetailViewModel @Inject constructor(
                 details = details,
                 evidenceUri = evidenceUri
             )
-            showReportResult(result)
-        }
-    }
 
     private suspend fun refreshPostSnapshot(postId: String) {
         val account = authService.getCurrentUserId()
@@ -576,17 +568,6 @@ class PostDetailViewModel @Inject constructor(
     private fun isCurrentPost(postId: String, account: String?, epoch: Long): Boolean =
         epoch == postReadEpoch && selectedPostId == postId && account == authService.getCurrentUserId()
 
-    private fun showReportResult(result: Result<Unit>) {
-        if (result.isSuccess) {
-            android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
-        } else {
-            android.widget.Toast.makeText(
-                context,
-                result.exceptionOrNull()?.message ?: "No se pudo enviar el reporte",
-                android.widget.Toast.LENGTH_LONG
-            ).show()
-        }
-    }
     
     private fun extractActiveMentionQuery(text: String): String? {
         val atIndex = text.lastIndexOf('@')
