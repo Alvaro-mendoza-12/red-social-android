@@ -175,6 +175,27 @@ interface GroupDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<GroupMessageEntity>)
 
+    @Transaction
+    suspend fun insertMessagesOwned(messages: List<GroupMessageEntity>, requireCurrent: () -> Unit) {
+        requireCurrent()
+        insertMessages(messages)
+        requireCurrent()
+    }
+
+    @Transaction
+    suspend fun updateMetadataOwned(groupId: String, lastMsg: String?, lastTime: String?, requireCurrent: () -> Unit) {
+        requireCurrent()
+        updateMetadataIfNewer(groupId, lastMsg, lastTime)
+        requireCurrent()
+    }
+
+    @Transaction
+    suspend fun updateMessageSyncStatusOwned(messageId: String, status: String, isSynced: Boolean, pendingAction: String?, requireCurrent: () -> Unit) {
+        requireCurrent()
+        updateMessageSyncStatus(messageId, status, isSynced, pendingAction)
+        requireCurrent()
+    }
+
     @Query("SELECT id FROM group_messages WHERE group_id = :groupId")
     suspend fun getGroupMessageIds(groupId: String): List<String>
 

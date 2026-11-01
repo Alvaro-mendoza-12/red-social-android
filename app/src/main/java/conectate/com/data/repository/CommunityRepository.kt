@@ -2372,45 +2372,80 @@ class CommunityRepository @Inject constructor(
         channelId: String? = null,
         requireServerAcknowledgement: Boolean = false,
         onQueued: suspend () -> Unit = {}
+    ): Result<Unit> = sendCommunityMessage(
+        accountLease = authService.captureAccountLease(),
+        communityId = communityId,
+        content = content,
+        contentType = contentType,
+        mediaUrl = mediaUrl,
+        replyToId = replyToId,
+        replyTo = replyTo,
+        pollId = pollId,
+        isForwarded = isForwarded,
+        forwardedFromMessageId = forwardedFromMessageId,
+        forwardedFromUserId = forwardedFromUserId,
+        messageId = messageId,
+        channelId = channelId,
+        requireServerAcknowledgement = requireServerAcknowledgement,
+        onQueued = onQueued,
+    )
+
+    internal suspend fun sendCommunityMessage(
+        accountLease: conectate.com.data.supabase.AuthSessionLease,
+        communityId: String,
+        content: String,
+        contentType: String = "text",
+        mediaUrl: String? = null,
+        replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
+        pollId: String? = null,
+        isForwarded: Boolean = false,
+        forwardedFromMessageId: String? = null,
+        forwardedFromUserId: String? = null,
+        messageId: String? = null,
+        channelId: String? = null,
+        requireServerAcknowledgement: Boolean = false,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> {
         val id = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
-        val account = authService.getCurrentUserId()?.trim()?.lowercase()
-            ?: return Result.failure(Exception("Inicia sesión de nuevo."))
-        val session = captureSessionSnapshot(account)
-        return messageSendCoordinator.withMessage(id) {
-            if (!isSessionSnapshotValid(session, "collection-foreground-send")) {
-                Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
-            } else sendCommunityMessageInternal(
-                communityId = communityId,
-                content = content,
-                contentType = contentType,
-                mediaUrl = mediaUrl,
-                replyToId = replyToId,
-                replyTo = replyTo,
-                pollId = pollId,
-                isForwarded = isForwarded,
-                forwardedFromMessageId = forwardedFromMessageId,
-                forwardedFromUserId = forwardedFromUserId,
-                messageId = id,
-                channelId = channelId,
-                onQueued = onQueued
-            ).let { result ->
-                if (result.isFailure || !requireServerAcknowledgement) result else {
-                    val persisted = communityDao.getMessageById(id)
-                    if (!isSessionSnapshotValid(session, "collection-share-confirmation")) {
-                        Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
-                    } else conectate.com.core.messaging.messageSendConfirmation(
-                        synced = persisted?.is_synced == true,
-                        status = persisted?.status.orEmpty(),
-                        pendingAction = persisted?.pending_action,
-                        deletedForAll = persisted?.deleted_for_all == true,
-                    )
+        return conectate.com.data.repository.message.executeOwnedMessageSend(accountLease, sessionWriteGuard, onQueued) { session, queued ->
+            messageSendCoordinator.withMessage(id) {
+                if (!isSessionSnapshotValid(session, "collection-foreground-send")) {
+                    Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                } else sendCommunityMessageInternal(
+                    session = session,
+                    communityId = communityId,
+                    content = content,
+                    contentType = contentType,
+                    mediaUrl = mediaUrl,
+                    replyToId = replyToId,
+                    replyTo = replyTo,
+                    pollId = pollId,
+                    isForwarded = isForwarded,
+                    forwardedFromMessageId = forwardedFromMessageId,
+                    forwardedFromUserId = forwardedFromUserId,
+                    messageId = id,
+                    channelId = channelId,
+                    onQueued = queued
+                ).let { result ->
+                    if (result.isFailure || !requireServerAcknowledgement) result else {
+                        val persisted = communityDao.getMessageById(id)
+                        if (!isSessionSnapshotValid(session, "collection-share-confirmation")) {
+                            Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
+                        } else conectate.com.core.messaging.messageSendConfirmation(
+                            synced = persisted?.is_synced == true,
+                            status = persisted?.status.orEmpty(),
+                            pendingAction = persisted?.pending_action,
+                            deletedForAll = persisted?.deleted_for_all == true,
+                        )
+                    }
                 }
             }
         }
     }
 
     private suspend fun sendCommunityMessageInternal(
+        session: SessionWriteGuard.Snapshot,
         communityId: String,
         content: String,
         contentType: String = "text",
@@ -2427,9 +2462,8 @@ class CommunityRepository @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
         try {
-            var senderId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return@withContext Result.failure(Exception("Not authenticated"))
-            val session = captureSessionSnapshot(senderId)
+            sessionWriteGuard.requireValid(session)
+            val senderId = checkNotNull(session.accountId)
             var cleanId = communityId.trim().lowercase()
             var community = getCommunityById(cleanId)
                 ?: return@withContext Result.failure(Exception("La comunidad ya no está disponible."))
@@ -2526,7 +2560,8 @@ class CommunityRepository @Inject constructor(
             )
 
             // Optimistic local insert
-            communityDao.insertMessages(
+            sessionWriteGuard.requireValid(session)
+            communityDao.insertMessagesOwned(
                 listOf(
                     CommunityMessageEntity.fromDomain(
                         msg = msg,
@@ -2536,15 +2571,16 @@ class CommunityRepository @Inject constructor(
                         lastRetryAt = null
                     )
                 )
-            )
+            ) { sessionWriteGuard.requireValid(session) }
             PendingMessageSyncScheduler.enqueue(context, "community_message_pending")
+            sessionWriteGuard.requireValid(session)
             updateCommunityMessageInFlow(cleanId, msg)
             onQueued()
             if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)
                 ?: CollectionMessageSyncSupport.buildMetadataPreview(contentType, finalContent)
-            communityDao.updateMetadataIfNewer(cleanId, preview, now)
+            communityDao.updateMetadataOwned(cleanId, preview, now) { sessionWriteGuard.requireValid(session) }
 
             try {
                 operationGuard.audit(
@@ -2578,14 +2614,15 @@ class CommunityRepository @Inject constructor(
                     )
                     markPendingCommunityMessageFailed(msgId, session)
                     if (retryable) return@withContext Result.success(Unit)
-                    communityDao.updateMessageSyncStatus(msgId, isSynced = false, pendingAction = "send")
+                    communityDao.updateMessageSyncStatusOwned(msgId, isSynced = false, pendingAction = "send") { sessionWriteGuard.requireValid(session) }
                     return@withContext Result.failure(error)
                 }
                 if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 msg = msg.copy(media_url = outgoingMediaUrl)
-                communityDao.insertMessages(
+                communityDao.insertMessagesOwned(
                     listOf(CommunityMessageEntity.fromDomain(msg, isSynced = false, pendingAction = "send"))
-                )
+                ) { sessionWriteGuard.requireValid(session) }
+                sessionWriteGuard.requireValid(session)
                 updateCommunityMessageInFlow(cleanId, msg)
                 PendingOutgoingMediaStore.delete(context, localMediaUri)
             }
@@ -2606,7 +2643,7 @@ class CommunityRepository @Inject constructor(
                 put("forwarded_from_user_id", forwardedFromUserId)
             }
             var result = if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val token = authService.getAccessTokenAwait()
+                val token = authService.getAccessTokenForAccountAwait(senderId)
                 if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
                 if (token.isNullOrBlank()) {
                     Result.failure(Exception("Sesion Ubuntu no disponible"))
@@ -2634,7 +2671,7 @@ class CommunityRepository @Inject constructor(
                             ),
                             local = msg
                         )
-                        communityDao.insertMessages(
+                        communityDao.insertMessagesOwned(
                             listOf(
                                 CommunityMessageEntity.fromDomain(
                                     msg = synced,
@@ -2642,12 +2679,13 @@ class CommunityRepository @Inject constructor(
                                     pendingAction = null
                                 )
                             )
-                        )
-                        communityDao.updateMetadataIfNewer(
+                        ) { sessionWriteGuard.requireValid(session) }
+                        communityDao.updateMetadataOwned(
                             cleanId,
                             CollectionMessageSyncSupport.buildMetadataPreview(synced.content_type, synced.content),
                             synced.created_at
-                        )
+                        ) { sessionWriteGuard.requireValid(session) }
+                        sessionWriteGuard.requireValid(session)
                         updateCommunityMessageInFlow(cleanId, synced)
                         Unit
                     }
@@ -2655,6 +2693,7 @@ class CommunityRepository @Inject constructor(
             } else {
                 insertCommunityMessageWithRetry(msgId, msgJson, isCurrentSession = { isSessionSnapshotValid(session, "community-foreground-retry") })
             }
+            sessionWriteGuard.requireValid(session)
             if (result.isFailure) {
                 val syncError = result.exceptionOrNull()
                 val shouldRemainQueued = syncError?.message?.contains("Sesion Ubuntu no disponible", ignoreCase = true) == true ||
@@ -2663,7 +2702,7 @@ class CommunityRepository @Inject constructor(
                         transientNetworkRetryCodes
                     ))
                 if (shouldRemainQueued) {
-                    communityDao.updateMessageSyncStatus(msgId, isSynced = false, pendingAction = "send")
+                    communityDao.updateMessageSyncStatusOwned(msgId, isSynced = false, pendingAction = "send") { sessionWriteGuard.requireValid(session) }
                     communityDao.getMessageById(msgId)?.toDomain()?.let { queued -> updateCommunityMessageInFlow(cleanId, queued) }
                     runCatching {
                         operationGuard.audit(
@@ -2916,7 +2955,8 @@ class CommunityRepository @Inject constructor(
         val current = communityDao.getMessageById(messageId) ?: return
         if (current.is_synced || current.deleted_for_all || current.pending_action != "send") return
         val failed = current.copy(status = "failed", retry_count = current.retry_count + 1, last_retry_at = java.time.Instant.now().toString())
-        communityDao.insertMessages(listOf(failed))
+        communityDao.insertMessagesOwned(listOf(failed)) { sessionWriteGuard.requireValid(session) }
+        sessionWriteGuard.requireValid(session)
         updateCommunityMessageInFlow(failed.community_id, failed.toDomain())
     }
     private suspend fun retryPendingCommunityMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
@@ -3049,11 +3089,34 @@ class CommunityRepository @Inject constructor(
         replyToId: String? = null,
         replyTo: conectate.com.data.model.Message? = null,
         onQueued: suspend () -> Unit = {}
+    ): Result<Unit> = sendCommunityMediaMessage(
+        accountLease = authService.captureAccountLease(),
+        communityId = communityId,
+        sourceUri = sourceUri,
+        contentType = contentType,
+        content = content,
+        channelId = channelId,
+        replyToId = replyToId,
+        replyTo = replyTo,
+        onQueued = onQueued,
+    )
+
+    internal suspend fun sendCommunityMediaMessage(
+        accountLease: conectate.com.data.supabase.AuthSessionLease,
+        communityId: String,
+        sourceUri: android.net.Uri,
+        contentType: String,
+        content: String,
+        channelId: String? = null,
+        replyToId: String? = null,
+        replyTo: conectate.com.data.model.Message? = null,
+        stableMessageId: String? = null,
+        onQueued: suspend () -> Unit = {}
     ): Result<Unit> {
-        val accountId = authService.getCurrentUserId()?.trim()?.lowercase()
-            ?: return Result.failure(Exception("Not authenticated"))
-        val session = captureSessionSnapshot(accountId)
-        val messageId = UUID.randomUUID().toString().lowercase()
+        val accountId = accountLease.accountId ?: return Result.failure(Exception("Inicia sesión para enviar mensajes."))
+        val session = sessionWriteGuard.capture(accountLease, kotlinx.coroutines.currentCoroutineContext()[kotlinx.coroutines.Job])
+        sessionWriteGuard.requireValid(session)
+        val messageId = stableMessageId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: UUID.randomUUID().toString()
         val pending = PendingOutgoingMediaStore.persist(
             context = context,
             accountId = accountId,
@@ -3066,6 +3129,7 @@ class CommunityRepository @Inject constructor(
             return Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
         }
         return sendCommunityMessage(
+            accountLease = accountLease,
             communityId = communityId,
             content = content,
             contentType = contentType,

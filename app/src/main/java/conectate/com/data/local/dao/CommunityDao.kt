@@ -157,6 +157,27 @@ interface CommunityDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessages(messages: List<CommunityMessageEntity>)
 
+    @Transaction
+    suspend fun insertMessagesOwned(messages: List<CommunityMessageEntity>, requireCurrent: () -> Unit) {
+        requireCurrent()
+        insertMessages(messages)
+        requireCurrent()
+    }
+
+    @Transaction
+    suspend fun updateMetadataOwned(communityId: String, lastMsg: String?, lastTime: String?, requireCurrent: () -> Unit) {
+        requireCurrent()
+        updateMetadataIfNewer(communityId, lastMsg, lastTime)
+        requireCurrent()
+    }
+
+    @Transaction
+    suspend fun updateMessageSyncStatusOwned(messageId: String, isSynced: Boolean, pendingAction: String?, requireCurrent: () -> Unit) {
+        requireCurrent()
+        updateMessageSyncStatus(messageId, isSynced, pendingAction)
+        requireCurrent()
+    }
+
     @Query("SELECT id FROM community_messages WHERE community_id = :communityId")
     suspend fun getCommunityMessageIds(communityId: String): List<String>
 
