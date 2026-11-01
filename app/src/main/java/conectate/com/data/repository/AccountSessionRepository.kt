@@ -28,6 +28,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 import javax.inject.Singleton
+import conectate.com.data.auth.PreparedLocalAccount
+import kotlinx.coroutines.NonCancellable
 
 @Singleton
 class AccountSessionRepository @Inject constructor(
@@ -136,6 +138,47 @@ class AccountSessionRepository @Inject constructor(
         catch (error: Exception) { Result.failure(error) }
     }
 
+    internal suspend fun prepareLocalAccount(accountId: String): PreparedLocalAccount = withContext(Dispatchers.IO) {
+        ensureSecureStorageAvailable().getOrThrow()
+        val target = _accounts.value.firstOrNull { it.id == accountId.trim() }
+            ?: error("Cuenta no encontrada.")
+        val response = authService.refreshLocalFallbackStoredSession(
+            target.access_token, target.refresh_token, target.email, target.user_id,
+        ).getOrThrow()
+        val renewed = target.copy(
+            user_id = response.user.supabaseUserId?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+                ?: response.user.id.trim().lowercase(),
+            email = response.user.email.trim().lowercase(),
+            access_token = response.accessToken.trim(), refresh_token = response.refreshToken.trim(),
+            display_name = response.user.displayName, avatar_url = response.user.avatarUrl,
+            last_used_at = System.currentTimeMillis(),
+        )
+        // Finish only this local durable write after a received refresh ACK. No network
+        // operation runs in NonCancellable, and removed/newer credentials are respected.
+        val retained = withContext(NonCancellable + Dispatchers.IO) { accountStore.retainRefreshed(target, renewed) }
+        PreparedLocalAccount(retained, response)
+    }
+
+    internal suspend fun prepareLocalSignIn(email: String, password: String, code: String?): PreparedLocalAccount {
+        ensureSecureStorageAvailable().getOrThrow()
+        val response = authService.prepareLocalSignIn(email, password, code)
+        val stored = withContext(NonCancellable + Dispatchers.IO) {
+            storeAccountSnapshot(StoredAccountSession(
+                user_id = response.user.supabaseUserId?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+                    ?: response.user.id.trim().lowercase(),
+                email = response.user.email.trim().lowercase(),
+                access_token = response.accessToken.trim(), refresh_token = response.refreshToken.trim(),
+                display_name = response.user.displayName, avatar_url = response.user.avatarUrl,
+            ))
+        }
+        return PreparedLocalAccount(stored, response)
+    }
+
+    internal fun rememberSwitchSession(snapshot: StoredAccountSession) {
+        ensureSecureStorageAvailable().getOrThrow()
+        storeAccountSnapshot(snapshot)
+    }
+
     suspend fun switchAccount(accountId: String): Result<StoredAccountSession> = withContext(Dispatchers.IO) {
         ensureSecureStorageAvailable().getOrElse { return@withContext Result.failure(it) }
         var clean = accountId.trim()
@@ -150,21 +193,6 @@ class AccountSessionRepository @Inject constructor(
         }
 
         return@withContext runCatching {
-            if (authService.isLocalFallbackStoredSessionToken(target.access_token, target.refresh_token)) {
-                authService.importLocalFallbackStoredSession(
-                    accessToken = target.access_token,
-                    refreshToken = target.refresh_token,
-                    email = target.email,
-                    userId = target.user_id,
-                    displayName = target.display_name,
-                    avatarUrl = target.avatar_url
-                ).getOrThrow()
-
-                return@runCatching storeAccountSnapshot(
-                    target.copy(last_used_at = System.currentTimeMillis())
-                )
-            }
-
             if (authService.isLocalFallbackModeEnabled()) {
                 throw IllegalStateException("Esta cuenta guardada pertenece a Supabase. Ingresa con correo y contraseña para activarla en Ubuntu.")
             }

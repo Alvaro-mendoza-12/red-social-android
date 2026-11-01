@@ -1,6 +1,9 @@
 package conectate.com.data.repository
 
 import conectate.com.data.auth.AccountSuspendedException
+import conectate.com.data.auth.AccountSwitchCoordinator
+import conectate.com.data.auth.AccountSwitchSession
+import conectate.com.data.auth.PreparedLocalAccount
 import conectate.com.data.localfallback.LocalFallbackPasswordResetResponse
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.model.UpdateProfileRequest
@@ -311,6 +314,8 @@ class AuthRepository @Inject constructor(
         password: String,
         secondFactorCode: String? = null
     ): Result<User> {
+        if (authService.usesLocalAccountSwitch() && authService.getCurrentUserId() != null)
+            return signIntoAdditionalLocalAccount(email, password, secondFactorCode)
 
         var normalizedEmail = email.trim().lowercase()
         var resolvedPrimaryEmail = normalizedEmail
@@ -404,6 +409,8 @@ class AuthRepository @Inject constructor(
         totpCode: String? = null,
         backupCode: String? = null
     ): Result<User> {
+        if (authService.usesLocalAccountSwitch() && authService.getCurrentUserId() != null)
+            return signIntoAdditionalLocalAccount(email, password, totpCode ?: backupCode)
         var normalizedEmail = email.trim().lowercase()
         
         // First, authenticate with email and password
@@ -671,29 +678,9 @@ class AuthRepository @Inject constructor(
     }
 
     suspend fun signOut() {
-        notificationRepository.clearAccountAlerts(authService.getCurrentUserId())
-        // Ensure the user is marked offline as soon as possible.
-        runCatching {
-            var userId = authService.getCurrentUserId()
-            if (!userId.isNullOrBlank() && !authService.isLocalFallbackModeEnabled()) {
-                userRepository.setOnlineStatus(userId, false)
-            }
-        }.onFailure {
-            android.util.Log.w("AuthRepository", "Failed to set offline status during signOut", it)
-        }
-
-        // Best-effort cleanup: logout must continue even if any single step fails.
-        runCatching { notificationRepository.unregisterFcmToken() }
-            .onFailure { android.util.Log.w("AuthRepository", "Failed to unregister FCM token during signOut", it) }
-
-        accountSessionRepository.removeCurrentAccount()
-
-        // Synchronous SignOut: wipes local DB and clears Supabase auth state.
-        runCatching { authService.signOut() }
-            .onFailure { android.util.Log.w("AuthRepository", "AuthService signOut failed", it) }
-        
-        // In-memory cleanup should always run.
-        clearSessionScopedState()
+        // Capture and close the intended identity before any request can suspend.
+        // The existing durable revocation queue handles remote cleanup if offline.
+        forceLocalLogout()
     }
 
     /**
@@ -708,18 +695,15 @@ class AuthRepository @Inject constructor(
      * - Starts the heavier Supabase signOut + DB wipe in the background (best-effort).
      */
     fun forceLocalLogout() {
-        // Capture what we can before forcing the logout gate (AuthService will stop exposing tokens/userId).
-        val userIdSnapshot = runCatching { authService.getCurrentUserId()?.trim()?.lowercase() }.getOrNull()
-        val accessTokenSnapshot = runCatching { authService.getAccessToken()?.trim() }.getOrNull()
-        val refreshTokenSnapshot = runCatching { authService.getRefreshToken()?.trim() }.getOrNull()
-        val wasLocalFallbackSession = authService.isLocalFallbackSession()
         val fcmTokenSnapshot = notificationRepository.capturedFcmToken()
-        notificationRepository.clearAccountAlerts(userIdSnapshot)
-
-        accountSessionRepository.removeCurrentAccount()
-
-        runCatching { authService.forceLocalLogout() }
-            .onFailure { android.util.Log.w("AuthRepository", "AuthService forceLocalLogout failed", it) }
+        val outgoing = authService.forceLocalLogoutAndCapture {
+            notificationRepository.clearAccountAlerts(authService.getCurrentUserId())
+            accountSessionRepository.removeCurrentAccount()
+        }
+        val userIdSnapshot = outgoing.accountId
+        val accessTokenSnapshot = outgoing.accessToken
+        val refreshTokenSnapshot = outgoing.refreshToken
+        val wasLocalFallbackSession = outgoing.localFallback
 
         clearSessionScopedState()
 
@@ -728,7 +712,7 @@ class AuthRepository @Inject constructor(
             runCatching {
                 notificationRepository.unregisterFcmToken(userIdSnapshot, accessTokenSnapshot, fcmTokenSnapshot, wasLocalFallbackSession)
             }.onFailure { android.util.Log.w("AuthRepository", "Captured notification unlink failed", it) }
-            runCatching { authService.clearLocalDataForAccountSwitch(userIdSnapshot) }
+            runCatching { authService.clearLocalDataForAccountSwitch(userIdSnapshot, outgoing.generation) }
                 .onFailure { android.util.Log.w("AuthRepository", "Failed to clear local DB during forceLocalLogout", it) }
             // Mark offline best-effort before SDK signOut potentially revokes the token.
             if (!userIdSnapshot.isNullOrBlank() && !accessTokenSnapshot.isNullOrBlank() && !wasLocalFallbackSession) {
@@ -876,13 +860,79 @@ class AuthRepository @Inject constructor(
         if (!accountSwitchMutex.tryLock()) {
             return Result.failure(IllegalStateException("Ya hay un cambio de cuenta en curso."))
         }
-        val targetAccount = accountSessionRepository.accounts.value.firstOrNull { it.id == accountId }
-        _accountSwitchUiState.value = AccountSwitchUiState(
-            isSwitching = true,
-            targetAccountId = accountId,
-            targetDisplayName = targetAccount?.display_name ?: targetAccount?.email,
-            targetAvatarUrl = targetAccount?.avatar_url
+        try {
+            val targetAccount = accountSessionRepository.accounts.value.firstOrNull { it.id == accountId }
+            _accountSwitchUiState.value = AccountSwitchUiState(
+                isSwitching = true,
+                targetAccountId = accountId,
+                targetDisplayName = targetAccount?.display_name ?: targetAccount?.email,
+                targetAvatarUrl = targetAccount?.avatar_url
+            )
+            return if (authService.usesLocalAccountSwitch()) switchLocalStoredAccount(accountId)
+                else switchLegacyStoredAccount(accountId)
+        } finally {
+            _accountSwitchUiState.value = AccountSwitchUiState()
+            accountSwitchMutex.unlock()
+        }
+    }
+
+    private suspend fun switchLocalStoredAccount(accountId: String): Result<User> {
+        val result = localAccountSwitchCoordinator(accountSessionRepository::prepareLocalAccount).switch(accountId)
+        val error = result.exceptionOrNull() ?: return result
+        if (error is CancellationException) throw error
+        return if (looksLikeStoredAccountRefreshFailure(error.message))
+            Result.failure(IllegalStateException("La sesión guardada expiró. Vuelve a iniciar sesión con esa cuenta.", error))
+        else result
+    }
+
+    private fun localAccountSwitchCoordinator(prepare: suspend (String) -> PreparedLocalAccount) =
+        AccountSwitchCoordinator(
+            open = { authService.openLocalAccountSwitch(accountSessionRepository::rememberSwitchSession, ::clearSessionScopedState) },
+            prepare = prepare, complete = ::finishLocalStoredAccount,
+            onRollbackFailure = {
+                android.util.Log.w("AuthRepository", "Could not restore the outgoing local account", it)
+                conectate.com.presentation.common.AppFeedbackBus.showError("No pudimos volver a la cuenta anterior. Inicia sesión de nuevo.")
+            },
         )
+
+    private suspend fun signIntoAdditionalLocalAccount(email: String, password: String, code: String?): Result<User> {
+        if (!accountSwitchMutex.tryLock())
+            return Result.failure(IllegalStateException("Ya hay un cambio de cuenta en curso."))
+        try {
+            val normalizedEmail = email.trim().lowercase()
+            _accountSwitchUiState.value = AccountSwitchUiState(isSwitching = true, targetDisplayName = normalizedEmail)
+            return localAccountSwitchCoordinator {
+                accountSessionRepository.prepareLocalSignIn(normalizedEmail, password, code)
+            }.switch(normalizedEmail)
+        } finally {
+            _accountSwitchUiState.value = AccountSwitchUiState()
+            accountSwitchMutex.unlock()
+        }
+    }
+
+    private suspend fun finishLocalStoredAccount(prepared: PreparedLocalAccount, session: AccountSwitchSession): User {
+        session.requireCurrent()
+        val stored = prepared.stored
+        val owner = stored.user_id ?: error("No se pudo identificar la cuenta seleccionada.")
+        val remoteUser = userRepository.getUserById(owner).getOrNull()
+        session.requireCurrent()
+        val user = remoteUser ?: resolveLocalFallbackSessionUser(
+            fallbackEmail = stored.email, fallbackDisplayName = stored.display_name,
+            fallbackAvatarUrl = stored.avatar_url,
+        )
+        session.requireCurrent()
+        check(user.id.equals(owner, ignoreCase = true)) { "El perfil recibido pertenece a otra cuenta." }
+        enforceUserIsActive(user).getOrThrow()
+        warmUpSessionAfterAccountSwitch(user)
+        session.requireCurrent()
+        accountSessionRepository.captureCurrentAccount(
+            displayName = user.displayName, avatarUrl = user.avatar_url, expectedUserId = owner,
+        ).getOrThrow()
+        session.requireCurrent()
+        return confirmedEntryUser(user)
+    }
+
+    private suspend fun switchLegacyStoredAccount(accountId: String): Result<User> {
         val previousAccessToken = authService.getAccessToken()?.trim()
         val previousRefreshToken = authService.getRefreshToken()?.trim()
         var previousUserId = authService.getCurrentUserId()?.trim()?.lowercase()
@@ -985,9 +1035,6 @@ class AuthRepository @Inject constructor(
                 e
             }
             Result.failure(normalizedFailure)
-        } finally {
-            _accountSwitchUiState.value = AccountSwitchUiState()
-            accountSwitchMutex.unlock()
         }
     }
 

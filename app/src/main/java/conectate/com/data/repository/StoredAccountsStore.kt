@@ -20,4 +20,29 @@ internal class StoredAccountsStore(
             mutable.value = next
             next
         }
+
+    fun retainRefreshed(
+        expected: StoredAccountSession,
+        refreshed: StoredAccountSession,
+    ): StoredAccountSession {
+        var retained: StoredAccountSession? = null
+        update { accounts ->
+            val current = accounts.firstOrNull { it.id == expected.id }
+                ?: throw IllegalStateException("La cuenta guardada se quitó durante la renovación. Vuelve a seleccionarla.")
+            if (current.access_token != expected.access_token || current.refresh_token != expected.refresh_token)
+                throw IllegalStateException("La sesión guardada se actualizó durante la renovación. Vuelve a seleccionarla.")
+            val next = current.copy(
+                user_id = refreshed.user_id,
+                email = refreshed.email,
+                access_token = refreshed.access_token,
+                refresh_token = refreshed.refresh_token,
+                display_name = refreshed.display_name ?: current.display_name,
+                avatar_url = refreshed.avatar_url ?: current.avatar_url,
+                last_used_at = refreshed.last_used_at,
+            )
+            retained = next
+            accounts.map { if (it.id == current.id) next else it }.sortedByDescending { it.last_used_at }
+        }
+        return checkNotNull(retained)
+    }
 }
