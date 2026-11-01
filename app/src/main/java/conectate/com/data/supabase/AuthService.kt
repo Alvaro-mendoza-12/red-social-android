@@ -7,6 +7,9 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import conectate.com.core.testing.RuntimeSessionOverride
 import conectate.com.core.testing.TestRuntimeOverrides
+import conectate.com.data.auth.AccountSwitchSession
+import conectate.com.data.auth.LocalAccountSwitchSession
+import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackAuthResponse
 import conectate.com.data.localfallback.LocalFallbackPasswordResetResponse
@@ -144,6 +147,7 @@ class AuthService @Inject constructor(
         }
     )
     private val localSessionRefreshMutex = Mutex()
+    private val localSessionActivationMutex = Mutex()
     private val localSessionMutationGuard = AuthSessionMutationGuard()
     private val localCompatibilitySessionMutex = Mutex()
     private val logoutRevocationMutex = Mutex()
@@ -196,6 +200,19 @@ class AuthService @Inject constructor(
 
     fun isLocalFallbackModeEnabled(): Boolean = localFallbackApiClient.isConfigured
 
+    internal fun usesLocalAccountSwitch(): Boolean =
+        isLocalFallbackModeEnabled() && !TestRuntimeOverrides.isEnabled(context)
+
+    internal suspend fun prepareLocalSignIn(email: String, password: String, code: String?): LocalFallbackAuthResponse {
+        ensureSecureStorageAvailable().getOrThrow()
+        val response = localFallbackApiClient.login(email, password, code).getOrThrow()
+        check(response.user.id.isNotBlank() && response.user.email.isNotBlank() &&
+            response.accessToken.isNotBlank() && response.refreshToken.isNotBlank()) {
+            "No se pudo recibir una sesión completa. Reintenta."
+        }
+        return response
+    }
+
     fun isLocalFallbackStoredSessionToken(accessToken: String, refreshToken: String): Boolean {
         val access = accessToken.trim()
         val refresh = refreshToken.trim()
@@ -203,15 +220,12 @@ class AuthService @Inject constructor(
         return extractJwtClaim(access, "provider") == "local-fallback"
     }
 
-    suspend fun importLocalFallbackStoredSession(
+    internal suspend fun refreshLocalFallbackStoredSession(
         accessToken: String,
         refreshToken: String,
         email: String,
         userId: String?,
-        displayName: String?,
-        avatarUrl: String?
-    ): Result<Unit> {
-        val requestGeneration = localSessionMutationGuard.snapshot()
+    ): Result<LocalFallbackAuthResponse> {
         val access = accessToken.trim()
         val refresh = refreshToken.trim()
         if (!isLocalFallbackStoredSessionToken(access, refresh)) {
@@ -223,8 +237,7 @@ class AuthService @Inject constructor(
         }
         val resolvedUserId = userId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
             ?: extractJwtClaim(access, "sub")?.lowercase()
-            ?: resolvedEmail
-        if (resolvedEmail.isBlank() || resolvedUserId.isBlank()) {
+        if (resolvedEmail.isBlank() && resolvedUserId.isNullOrBlank()) {
             return Result.failure(Exception("No se pudo restaurar la cuenta local guardada."))
         }
 
@@ -250,18 +263,97 @@ class AuthService @Inject constructor(
             ?: refreshed.user.id.trim().lowercase()
         val refreshedLocalUserId = refreshed.user.id.trim().lowercase()
         val refreshedEmail = refreshed.user.email.trim().lowercase()
-        val identityMatches =
-            refreshedEmail.equals(resolvedEmail, ignoreCase = true) ||
-                refreshedUserId == resolvedUserId ||
-                refreshedLocalUserId == resolvedUserId
+        val identityMatches = if (!resolvedUserId.isNullOrBlank())
+            refreshedUserId == resolvedUserId || refreshedLocalUserId == resolvedUserId
+        else refreshedEmail.equals(resolvedEmail, ignoreCase = true)
         if (!identityMatches) {
             return Result.failure(
                 IllegalStateException("La sesión guardada no corresponde a la cuenta seleccionada.")
             )
         }
 
-        persistLocalFallbackSession(refreshed, expectedGeneration = requestGeneration)
-        return Result.success(Unit)
+        if (refreshed.accessToken.isBlank() || refreshed.refreshToken.isBlank() ||
+            refreshedLocalUserId.isBlank() || refreshedUserId.isBlank() || refreshedEmail.isBlank()) {
+            return Result.failure(IllegalStateException("No se pudo renovar la sesión guardada completa."))
+        }
+        return Result.success(refreshed)
+    }
+
+    suspend fun importLocalFallbackStoredSession(
+        accessToken: String, refreshToken: String, email: String, userId: String?,
+        @Suppress("UNUSED_PARAMETER") displayName: String?,
+        @Suppress("UNUSED_PARAMETER") avatarUrl: String?,
+    ): Result<Unit> {
+        val generation = localSessionMutationGuard.snapshot()
+        return try {
+            val response = refreshLocalFallbackStoredSession(accessToken, refreshToken, email, userId).getOrThrow()
+            persistLocalFallbackSession(response, expectedGeneration = generation)
+            Result.success(Unit)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { Result.failure(error) }
+    }
+
+    internal fun openLocalAccountSwitch(
+        saveCurrent: (StoredAccountSession) -> Unit,
+        clearCaches: () -> Unit,
+    ): AccountSwitchSession {
+        check(isLocalFallbackModeEnabled()) { "El cambio de cuenta local no está disponible." }
+        return LocalAccountSwitchSession(
+            guard = localSessionMutationGuard, activationMutex = localSessionActivationMutex,
+            currentAccount = ::getCurrentUserId, capture = ::readActiveLocalFallbackResponse,
+            saveCurrent = { saveCurrent(storedLocalSession(it)) },
+            pauseCurrent = {
+                check(authPrefsOrNull?.edit()?.putBoolean(KEY_FORCED_LOGOUT, true)?.commit() == true) {
+                    "No se pudo detener la sesión anterior de forma segura."
+                }
+                _currentSession.value = null
+                _isInitializing.value = false
+                localSessionRefreshLastAttemptAtMs = 0L
+                localSessionRefreshLastSuccessAtMs = 0L
+            },
+            clearCaches = clearCaches, archive = accountOutboxVault::preserveAndClear,
+            activateResponse = { response, lease, sync ->
+                persistLocalFallbackSession(response, transition = lease, syncCompatibility = sync)
+            },
+            restore = accountOutboxVault::restore,
+            afterPause = {
+                authScope.launch {
+                    runCatching { localCompatibilitySessionMutex.withLock {
+                        if (isForcedLogout()) supabaseConfig.client.auth.clearSession()
+                    } }.onFailure { Log.w("AuthService", "Could not clear paused compatibility session", it) }
+                }
+            },
+        )
+    }
+
+    private fun storedLocalSession(response: LocalFallbackAuthResponse) = StoredAccountSession(
+        user_id = localFallbackDisplayUserId(response.user), email = response.user.email,
+        access_token = response.accessToken, refresh_token = response.refreshToken,
+        display_name = response.user.displayName, avatar_url = response.user.avatarUrl,
+    )
+
+    /** Called under the mutation guard, before pausing the outgoing identity. */
+    private fun readActiveLocalFallbackResponse(): LocalFallbackAuthResponse? {
+        if (getCurrentUserId() == null) return null
+        check(isLocalFallbackSession()) { "Vuelve a iniciar sesión para guardar esta cuenta en el servidor actual." }
+        val prefs = checkNotNull(authPrefsOrNull)
+        val access = prefs.getString(KEY_ACCESS_TOKEN, null).orEmpty()
+        val refresh = prefs.getString(KEY_REFRESH_TOKEN, null).orEmpty()
+        val localId = prefs.getString(KEY_LOCAL_FALLBACK_LOCAL_USER_ID, null).orEmpty()
+        val email = localFallbackEmailFromPrefs().orEmpty()
+        check(access.isNotBlank() && refresh.isNotBlank() && localId.isNotBlank() && email.isNotBlank()) {
+            "No se pudo guardar la sesión anterior completa."
+        }
+        return LocalFallbackAuthResponse(
+            accessToken = access, refreshToken = refresh,
+            user = LocalFallbackUser(
+                id = localId, email = email,
+                supabaseUserId = prefs.getString(KEY_LOCAL_FALLBACK_SUPABASE_USER_ID, null),
+                displayName = prefs.getString(KEY_LOCAL_FALLBACK_DISPLAY_NAME, null),
+                avatarUrl = prefs.getString(KEY_LOCAL_FALLBACK_AVATAR_URL, null),
+                accountCreatedAt = prefs.getString(KEY_LOCAL_FALLBACK_ACCOUNT_CREATED_AT, null),
+            ),
+        )
     }
 
     /**
@@ -310,6 +402,20 @@ class AuthService @Inject constructor(
             }
         }
     }
+
+    internal data class CapturedLogout(
+        val accountId: String?, val accessToken: String?, val refreshToken: String?,
+        val localFallback: Boolean, val generation: Long,
+    )
+
+    internal fun forceLocalLogoutAndCapture(beforeLogout: () -> Unit = {}): CapturedLogout =
+        localSessionMutationGuard.readCurrent {
+            val captured = CapturedLogout(getCurrentUserId(), getAccessToken(), getRefreshToken(),
+                isLocalFallbackSession(), generation = 0)
+            runCatching(beforeLogout).onFailure { Log.w("AuthService", "Outgoing account cleanup failed", it) }
+            forceLocalLogout()
+            captured.copy(generation = localSessionMutationGuard.snapshot())
+        }
 
     private fun extractJwtClaim(accessToken: String, claim: String): String? {
         if (accessToken.isBlank()) return null
@@ -816,17 +922,14 @@ class AuthService @Inject constructor(
     }
 
     suspend fun signOut(expectedGeneration: Long? = null) {
-        val outgoingAccountId = getCurrentUserId()
-        val outgoingRefreshToken = getRefreshToken()
-        val outgoingWasLocalFallback = isLocalFallbackSession()
-        // Serialize account-bound security changes with a concurrent account switch.
-        if (expectedGeneration == null) forceLocalLogout()
-        else if (!localSessionMutationGuard.commitIfCurrent(expectedGeneration) { forceLocalLogout() }) {
-            throw CancellationException("La cuenta cambió durante la operación de seguridad.")
+        val outgoing = localSessionMutationGuard.readCurrent {
+            if (expectedGeneration != null && expectedGeneration != localSessionMutationGuard.snapshot())
+                throw CancellationException("La cuenta cambió durante la operación de seguridad.")
+            forceLocalLogoutAndCapture()
         }
         withContext(Dispatchers.IO) {
             try {
-                accountOutboxVault.preserveAndClear(outgoingAccountId)
+                clearLocalDataForAccountSwitch(outgoing.accountId, outgoing.generation)
                 Log.d("AuthService", "Account cache cleared and pending work saved")
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -834,9 +937,9 @@ class AuthService @Inject constructor(
                 Log.e("AuthService", "Could not archive pending work during signOut", e)
             }
             try {
-                if (outgoingWasLocalFallback) {
-                    if (!outgoingRefreshToken.isNullOrBlank()) {
-                        revokeCapturedSession(outgoingRefreshToken)
+                if (outgoing.localFallback) {
+                    if (!outgoing.refreshToken.isNullOrBlank()) {
+                        revokeCapturedSession(outgoing.refreshToken)
                     }
                 } else if (isForcedLogout()) {
                     supabaseConfig.client.auth.signOut()
@@ -846,7 +949,7 @@ class AuthService @Inject constructor(
             } catch (e: Exception) {
                 Log.e("AuthService", "Server signOut failed", e)
             } finally {
-                if (isForcedLogout()) {
+                localSessionMutationGuard.commitIfCurrent(outgoing.generation, eligible = { isForcedLogout() }) {
                     _currentSession.value = null
                     clearPersistedSessionSnapshot()
                 }
@@ -1484,8 +1587,14 @@ class AuthService @Inject constructor(
 
     fun observeSession(): StateFlow<AuthResponse?> = currentSession
 
-    suspend fun clearLocalDataForAccountSwitch(accountId: String? = getCurrentUserId()) {
-        accountOutboxVault.preserveAndClear(accountId)
+    suspend fun clearLocalDataForAccountSwitch(
+        accountId: String? = getCurrentUserId(), expectedGeneration: Long? = null,
+    ) = withContext(Dispatchers.IO) {
+        localSessionActivationMutex.withLock {
+            if (expectedGeneration != null && !localSessionMutationGuard.commitIfCurrent(expectedGeneration) {})
+                return@withLock
+            accountOutboxVault.preserveAndClear(accountId)
+        }
     }
 
     /** Stops writes from the outgoing identity while its outbox is being archived. */
@@ -1505,10 +1614,17 @@ class AuthService @Inject constructor(
         }
     }
 
-    suspend fun restorePendingWorkForCurrentAccount() {
-        val accountId = getCurrentUserId()?.trim()?.lowercase()
-            ?: throw IllegalStateException("No se pudo identificar la cuenta para restaurar mensajes")
-        accountOutboxVault.restore(accountId)
+    suspend fun restorePendingWorkForCurrentAccount() = withContext(Dispatchers.IO) {
+        localSessionActivationMutex.withLock {
+            val generation = localSessionMutationGuard.snapshot()
+            val accountId = getCurrentUserId()?.trim()?.lowercase()
+                ?: throw IllegalStateException("No se pudo identificar la cuenta para restaurar mensajes")
+            if (!localSessionMutationGuard.commitIfCurrent(generation) {})
+                throw CancellationException("La cuenta cambió antes de restaurar sus mensajes.")
+            accountOutboxVault.restore(accountId)
+            if (!localSessionMutationGuard.commitIfCurrent(generation) {})
+                throw CancellationException("La cuenta cambió al restaurar sus mensajes.")
+        }
     }
 
     private fun readPersistedSessionSnapshot(): UserSession? {
@@ -1696,6 +1812,8 @@ class AuthService @Inject constructor(
         publishSession: Boolean = true,
         expectedGeneration: Long = localSessionMutationGuard.snapshot(),
         expectedAccessToken: String? = null,
+        transition: AuthSessionMutationGuard.Transition? = null,
+        syncCompatibility: Boolean = true,
     ) {
         val user = response.user
         val accessToken = response.accessToken.trim()
@@ -1703,21 +1821,26 @@ class AuthService @Inject constructor(
         val localUserId = user.id.trim().lowercase()
         val displayUserId = localFallbackDisplayUserId(user)
         val email = user.email.trim().lowercase()
-        if (accessToken.isBlank() || localUserId.isBlank() || displayUserId.isBlank() || email.isBlank()) return
-
-        accountOutboxVault.requireCompatibleAccount(displayUserId)
+        check(accessToken.isNotBlank() && response.refreshToken.isNotBlank() && localUserId.isNotBlank() &&
+            displayUserId.isNotBlank() && email.isNotBlank()) { "No se pudo guardar una sesión completa." }
 
         val prefs = authPrefsOrNull
             ?: throw IllegalStateException("El almacenamiento seguro no está disponible.")
         val stored = withContext(Dispatchers.IO) {
+          localSessionActivationMutex.withLock {
+            val eligible = { expectedAccessToken == null ||
+                (!isForcedLogout() && prefs.getString(KEY_ACCESS_TOKEN, null)?.trim() == expectedAccessToken) }
+            val requestCurrent = if (transition != null) localSessionMutationGuard.isCurrent(transition)
+                else localSessionMutationGuard.commitIfCurrent(expectedGeneration, eligible) {}
+            if (!requestCurrent) throw CancellationException("La cuenta cambió antes de abrir sus mensajes.")
+            accountOutboxVault.requireCompatibleAccount(displayUserId)
             var persisted = false
-            val accepted = localSessionMutationGuard.commitIfCurrent(expectedGeneration,
-                eligible = { expectedAccessToken == null ||
-                    (!isForcedLogout() && prefs.getString(KEY_ACCESS_TOKEN, null)?.trim() == expectedAccessToken) }) {
-                // An explicit login/restoration also invalidates older background results,
-                // including a startup read that had not completed yet.
-                if (expectedAccessToken == null) localSessionMutationGuard.invalidate {}
+            val write = {
                 persisted = prefs.edit()
+                .apply {
+                    if (!displayUserId.equals(prefs.getString(KEY_LOCAL_FALLBACK_DISPLAY_USER_ID, null), ignoreCase = true))
+                        remove(KEY_LOCAL_FALLBACK_COUNTRY)
+                }
                 .putBoolean(KEY_FORCED_LOGOUT, false)
                 .putBoolean(KEY_LOCAL_FALLBACK_SESSION, true)
                 .putString(KEY_ACCESS_TOKEN, accessToken)
@@ -1734,14 +1857,25 @@ class AuthService @Inject constructor(
                     _currentSession.value = mapLocalFallbackSession(response)
                 }
             }
+            val accepted = if (transition != null) localSessionMutationGuard.advanceTransition(transition, mutation = write)
+                else localSessionMutationGuard.commitIfCurrent(expectedGeneration, eligible) {
+                    // An explicit login also invalidates any pending switch or background result.
+                    if (expectedAccessToken == null) localSessionMutationGuard.invalidate {}
+                    write()
+                }
             if (!accepted) throw CancellationException("La cuenta cambió antes de guardar la sesión.")
             persisted
+          }
         }
         if (!stored) {
             throw IllegalStateException("No se pudo guardar la sesión de forma segura en este dispositivo.")
         }
 
-        syncLocalFallbackCompatibilitySession(accessToken)
+        if (syncCompatibility) syncLocalFallbackCompatibilitySession(accessToken)
+        else authScope.launch {
+            runCatching { syncLocalFallbackCompatibilitySession(accessToken) }
+                .onFailure { Log.w("AuthService", "Could not restore compatibility session in background", it) }
+        }
         authScope.launch { retryPendingLogoutRevocations() }
     }
 

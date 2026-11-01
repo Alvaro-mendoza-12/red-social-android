@@ -12,9 +12,18 @@ import conectate.com.data.local.entity.GroupMemberEntity
 import conectate.com.data.local.entity.GroupMessageEntity
 import conectate.com.data.local.entity.MessageDeletionEntity
 import conectate.com.data.local.entity.MessageEntity
+import conectate.com.data.auth.AccountSwitchCoordinator
+import conectate.com.data.auth.LocalAccountSwitchSession
+import conectate.com.data.auth.PreparedLocalAccount
+import conectate.com.data.localfallback.LocalFallbackAuthResponse
+import conectate.com.data.localfallback.LocalFallbackUser
+import conectate.com.data.model.StoredAccountSession
+import conectate.com.data.supabase.AuthSessionMutationGuard
 import conectate.com.test.UnitTestApplication
 import java.util.UUID
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -227,6 +236,50 @@ class AccountOutboxVaultTest {
             val result = runCatching { AccountOutboxVault(context, db, cipher).preserveAndClear(outgoing) }
             assertTrue(result.isFailure)
             assertNotNull(db.messageDao().getMessageById("incoming-pending"))
+        } finally { db.close() }
+    }
+
+    @Test fun `failed account completion restores original Room outbox and keeps target work archived`() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val a = owner(); val b = owner()
+        val vault = AccountOutboxVault(context, db, cipher)
+        val guard = AuthSessionMutationGuard()
+        val activation = Mutex()
+        fun response(id: String) = LocalFallbackAuthResponse(LocalFallbackUser(id = id, email = "$id@example.test"),
+            "$id-access", "$id-refresh")
+        var current: String? = a
+        var sessionResponse = response(a)
+        try {
+            vault.restore(a)
+            db.chatDao().insertChat(chat("a-switch-chat", a))
+            db.messageDao().insertMessage(message("a-switch-pending", "a-switch-chat", a, true))
+            val session = LocalAccountSwitchSession(
+                guard, activation, { current }, { current?.let { sessionResponse } }, {},
+                { current = null }, {}, vault::preserveAndClear,
+                { candidate, lease, _ -> activation.withLock {
+                    vault.requireCompatibleAccount(candidate.user.id)
+                    check(guard.advanceTransition(lease) { current = candidate.user.id; sessionResponse = candidate })
+                } }, vault::restore, {},
+            )
+            val runner = AccountSwitchCoordinator<String>(
+                open = { session }, prepare = {
+                    PreparedLocalAccount(StoredAccountSession(user_id = b, email = "$b@example.test",
+                        access_token = "$b-access", refresh_token = "$b-refresh"), response(b))
+                }, complete = { _, _ ->
+                    db.chatDao().insertChat(chat("b-switch-chat", b))
+                    db.messageDao().insertMessage(message("b-switch-pending", "b-switch-chat", b, true))
+                    error("profile-open-failed")
+                }, onRollbackFailure = { throw AssertionError("Local rollback must succeed", it) },
+            )
+            val result = runner.switch(b)
+            assertEquals("profile-open-failed", result.exceptionOrNull()?.message)
+            assertEquals(a, current)
+            assertNotNull(db.messageDao().getMessageById("a-switch-pending"))
+            assertNull(db.messageDao().getMessageById("b-switch-pending"))
+            vault.preserveAndClear(a)
+            vault.restore(b)
+            assertNotNull(db.messageDao().getMessageById("b-switch-pending"))
+            assertNull(db.messageDao().getMessageById("a-switch-pending"))
         } finally { db.close() }
     }
 }

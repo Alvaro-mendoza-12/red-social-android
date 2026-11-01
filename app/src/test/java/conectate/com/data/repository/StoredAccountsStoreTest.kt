@@ -60,4 +60,54 @@ class StoredAccountsStoreTest {
         assertEquals(listOf("two"), disk.map { it.id })
         assertEquals(disk, store.state.value)
     }
+
+    @Test fun refreshedCredentialsAreDurableBeforeTheyArePublishedAndKeepTheSavedEntryId() {
+        val old = account("one")
+        var disk = listOf(old)
+        lateinit var store: StoredAccountsStore
+        store = StoredAccountsStore(disk) { next ->
+            assertEquals("old", store.state.value.single().access_token)
+            disk = next
+        }
+        val retained = store.retainRefreshed(old, old.copy(id = "different-generated-id",
+            access_token = "new", refresh_token = "refresh-new"))
+        assertEquals(old.id, retained.id)
+        assertEquals("new", disk.single().access_token)
+        assertEquals("refresh-new", disk.single().refresh_token)
+        assertEquals(disk, store.state.value)
+    }
+
+    @Test fun aLateRefreshCannotRecreateAnAccountRemovedWhileItWasLoading() {
+        val old = account("one")
+        val store = StoredAccountsStore(emptyList()) { fail("Removed entry must not be persisted again") }
+        val failure = runCatching { store.retainRefreshed(old, old.copy(access_token = "new")) }.exceptionOrNull()
+        assertTrue(failure is IllegalStateException)
+        assertTrue(store.state.value.isEmpty())
+    }
+
+    @Test fun aLateRefreshCannotOverwriteANewerLoginOrRefresh() {
+        val old = account("one")
+        val newer = account("one", "newer")
+        val store = StoredAccountsStore(listOf(newer)) { fail("Newer credentials must be kept") }
+        assertTrue(runCatching { store.retainRefreshed(old, account("one", "late")) }.exceptionOrNull()
+            is IllegalStateException)
+        assertEquals(listOf(newer), store.state.value)
+    }
+
+    @Test fun refreshStorageFailureKeepsThePreviouslyConfirmedSnapshot() {
+        val old = account("one")
+        val store = StoredAccountsStore(listOf(old)) { error("disk unavailable") }
+        assertTrue(runCatching { store.retainRefreshed(old, account("one", "new")) }.isFailure)
+        assertEquals(listOf(old), store.state.value)
+    }
+
+    @Test fun anUnrelatedProfileEditDuringRefreshIsPreserved() {
+        val old = account("one")
+        val profileUpdated = old.copy(display_name = "New profile name", avatar_url = "new-avatar")
+        val store = StoredAccountsStore(listOf(profileUpdated)) {}
+        val result = store.retainRefreshed(old, old.copy(access_token = "new", refresh_token = "new-refresh"))
+        assertEquals("New profile name", result.display_name)
+        assertEquals("new-avatar", result.avatar_url)
+        assertEquals("new", result.access_token)
+    }
 }

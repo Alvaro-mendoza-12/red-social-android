@@ -7,6 +7,74 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 class AuthSessionMutationGuardTest {
+    @Test fun aTransitionCanAdvanceItsOwnLeaseAcrossPauseAndActivation() {
+        val guard = AuthSessionMutationGuard()
+        val lease = guard.openTransition()
+        val oldRequest = guard.snapshot()
+        var active: String? = "a"
+        assertTrue(guard.advanceTransition(lease) { active = null })
+        assertTrue(guard.isCurrent(lease))
+        assertFalse(guard.commitIfCurrent(oldRequest) { active = "stale-a" })
+        assertTrue(guard.advanceTransition(lease) { active = "b" })
+        assertTrue(guard.isCurrent(lease))
+        assertEquals("b", active)
+    }
+
+    @Test fun theOutgoingSnapshotIncludesTheLatestConfirmedBackgroundRefresh() {
+        val guard = AuthSessionMutationGuard()
+        val lease = guard.openTransition()
+        var credential = "a-old"
+        var saved: String? = null
+        assertTrue(guard.commitIfCurrent(guard.snapshot()) { credential = "a-new" })
+        assertTrue(guard.advanceTransition(lease, beforeMutation = { saved = credential }) { credential = "paused" })
+        assertEquals("a-new", saved)
+        assertEquals("paused", credential)
+    }
+
+    @Test fun anExplicitLogoutInvalidatesRollbackEvenWhenOnlyOneGenerationAdvanced() {
+        val guard = AuthSessionMutationGuard()
+        val lease = guard.openTransition()
+        var active: String? = "a"
+        guard.invalidate { active = null }
+        assertFalse(guard.advanceTransition(lease) { active = "a" })
+        assertNull(active)
+    }
+
+    @Test fun aNewLoginToTheSameTargetAlsoInvalidatesTheOlderTransition() {
+        val guard = AuthSessionMutationGuard()
+        val lease = guard.openTransition()
+        var active = "a"
+        guard.advanceTransition(lease) { active = "b" }
+        guard.invalidate { active = "b" }
+        assertFalse(guard.isCurrent(lease))
+        assertFalse(guard.advanceTransition(lease) { active = "a" })
+        assertEquals("b", active)
+    }
+
+    @Test fun failedSnapshotPersistenceLeavesTheOutgoingSessionAndGenerationUntouched() {
+        val guard = AuthSessionMutationGuard()
+        val lease = guard.openTransition()
+        val generation = guard.snapshot()
+        var active: String? = "a"
+        val result = runCatching {
+            guard.advanceTransition(lease, beforeMutation = { error("disk unavailable") }) { active = null }
+        }
+        assertTrue(result.isFailure)
+        assertEquals(generation, guard.snapshot())
+        assertEquals("a", active)
+        assertTrue(guard.isCurrent(lease))
+    }
+
+    @Test fun closedAndForeignLeasesCannotChangeSessions() {
+        val guard = AuthSessionMutationGuard()
+        val foreign = AuthSessionMutationGuard().openTransition()
+        val lease = guard.openTransition()
+        assertFalse(guard.advanceTransition(foreign) { fail("Foreign lease accepted") })
+        guard.closeTransition(lease)
+        assertFalse(guard.advanceTransition(lease) { fail("Closed lease accepted") })
+        assertTrue(guard.commitIfCurrent(guard.snapshot()) {})
+    }
+
     @Test fun savedCredentialsCannotMixAnAwaitedTokenWithTheNextAccountIdentity() {
         val guard = AuthSessionMutationGuard()
         var currentOwner: String? = "account-a"
