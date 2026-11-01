@@ -95,7 +95,8 @@ class StorageService @Inject constructor(
         fileName: String,
         bytes: ByteArray,
         contentType: String = "application/octet-stream",
-        allowOverwrite: Boolean = true
+        allowOverwrite: Boolean = true,
+        expectedAccountId: String? = null,
     ): Result<StorageResponse> {
         val startedAt = System.currentTimeMillis()
         var normalizedPath = normalizeStoragePath(fileName) ?: return Result.failure(
@@ -107,8 +108,13 @@ class StorageService @Inject constructor(
             "content_type" to canonicalContentType,
             "bytes" to bytes.size.toString()
         )
+        var uploadLease: AuthSessionLease? = null
 
         return try {
+            val lease = authService.captureAccountLease().also { uploadLease = it }
+            val uploadSession = OwnedUploadSession(lease, expectedAccountId) {
+                authService.getAccessTokenForAccountAwait(it)
+            }
             val validation = mediaUploadGuard.validate(
                 bucketName = bucketName,
                 fileName = normalizedPath,
@@ -123,9 +129,7 @@ class StorageService @Inject constructor(
                 return Result.failure(Exception(validation.reason ?: "Upload blocked by media policy"))
             }
 
-            var accessToken = authService.getAccessTokenAwait() ?: return Result.failure(
-                Exception("No access token available")
-            )
+            val accessToken = uploadSession.accessToken()
 
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 val fileDisplayName = normalizedPath.substringAfterLast('/').ifBlank { "archivo" }
@@ -137,6 +141,7 @@ class StorageService @Inject constructor(
                     contentType = canonicalContentType,
                     fileName = fileDisplayName
                 )
+                uploadSession.requireCurrent()
                 return if (upload.isSuccess) {
                     val localObject = upload.getOrThrow()
                     appMetrics.incrementCounter("media_upload_success", attributes = metricAttrs + ("backend" to "local_fallback"))
@@ -178,6 +183,7 @@ class StorageService @Inject constructor(
                 sizeBytes = bytes.size.toLong(),
                 sha256 = mediaHash
             )
+            uploadSession.requireCurrent()
             if (registerResult.isFailure) {
                 val reason = registerResult.exceptionOrNull()?.message ?: "media_registration_failed"
                 android.util.Log.e("StorageService", "Media registration blocked for $bucketName/$normalizedPath: $reason")
@@ -201,9 +207,11 @@ class StorageService @Inject constructor(
                 header("cache-control", "3600")
                 setBody(bytes)
             }
+            uploadSession.requireCurrent()
 
             if (response.status.isSuccess()) {
                 val storageResponse: StorageResponse = response.body()
+                uploadSession.requireCurrent()
                 appMetrics.incrementCounter("media_upload_success", attributes = metricAttrs)
                 appMetrics.recordLatency(
                     metric = "media_upload",
@@ -212,7 +220,10 @@ class StorageService @Inject constructor(
                 )
                 Result.success(storageResponse)
             } else {
-                var errorBody = try { response.body<String>() } catch (e: Exception) { "No error body" }
+                val errorBody = try { response.body<String>() }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (_: Exception) { "No error body" }
+                uploadSession.requireCurrent()
                 android.util.Log.e("StorageService", "Upload failed: ${response.status} - $errorBody")
                 appMetrics.recordFailure(
                     metric = "media_upload",
@@ -229,6 +240,8 @@ class StorageService @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            uploadLease?.requireCurrent()
             android.util.Log.e("StorageService", "Exception uploading file", e)
             appMetrics.recordFailure(
                 metric = "media_upload",
@@ -254,7 +267,27 @@ class StorageService @Inject constructor(
         contentType: String,
         allowOverwrite: Boolean,
         onProgress: (Float) -> Unit
+    ): Result<StorageResponse> = try {
+        val uploadSession = OwnedUploadSession(authService.captureAccountLease(), null) {
+            authService.getAccessTokenForAccountAwait(it)
+        }
+        uploadFileFromUriOwned(bucketName, fileName, sourceUri, sizeBytes, contentType,
+            allowOverwrite, uploadSession, onProgress)
+    } catch (cancelled: CancellationException) { throw cancelled }
+    catch (error: Exception) { Result.failure(error) }
+
+    private suspend fun uploadFileFromUriOwned(
+        bucketName: String,
+        fileName: String,
+        sourceUri: Uri,
+        sizeBytes: Long,
+        contentType: String,
+        allowOverwrite: Boolean,
+        uploadSession: OwnedUploadSession,
+        onProgress: (Float) -> Unit,
     ): Result<StorageResponse> = withContext(Dispatchers.IO) {
+        uploadSession.requireCurrent()
+        val ownedProgress = uploadSession.progress(onProgress)
         val startedAt = System.currentTimeMillis()
         val startedElapsedMs = android.os.SystemClock.elapsedRealtime()
         val normalizedPath = normalizeStoragePath(fileName)
@@ -266,8 +299,7 @@ class StorageService @Inject constructor(
             "bytes" to sizeBytes.toString()
         )
 
-        val accessToken = authService.getAccessTokenAwait()
-            ?: return@withContext Result.failure(Exception("No access token available"))
+        val accessToken = uploadSession.accessToken()
 
         val headerBytes = try {
             context.contentResolver.openInputStream(sourceUri)?.use { stream ->
@@ -275,7 +307,8 @@ class StorageService @Inject constructor(
                 val read = stream.read(buffer)
                 if (read > 0) buffer.copyOf(read) else ByteArray(0)
             } ?: ByteArray(0)
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             return@withContext Result.failure(e)
         }
         val validation = mediaUploadGuard.validateMetadata(
@@ -293,6 +326,7 @@ class StorageService @Inject constructor(
             return@withContext Result.failure(Exception(validation.reason ?: "Upload blocked by media policy"))
         }
 
+        uploadSession.requireCurrent()
         val isLocalFallbackUpload = authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured
         if (shouldAttemptResumableUpload(sizeBytes, isLocalFallbackUpload)) {
             val resumableStartedAtMs = android.os.SystemClock.elapsedRealtime()
@@ -304,8 +338,10 @@ class StorageService @Inject constructor(
                 sizeBytes = sizeBytes,
                 contentType = canonicalContentType,
                 allowOverwrite = allowOverwrite,
-                onProgress = onProgress
+                uploadSession = uploadSession,
+                onProgress = ownedProgress,
             )
+            uploadSession.requireCurrent()
             if (resumable != null) {
                 val resumableAttrs = metricAttrs + ("backend" to "local_fallback_resumable")
                 appMetrics.recordLatency(
@@ -357,9 +393,10 @@ class StorageService @Inject constructor(
                     source.use { stream ->
                         var read: Int
                         while (stream.read(buffer).also { read = it } != -1) {
+                            uploadSession.requireTransportCurrent()
                             sink.write(buffer, 0, read)
                             uploaded += read
-                            if (sizeBytes > 0) onProgress((uploaded.toFloat() / sizeBytes).coerceIn(0f, 1f))
+                            if (sizeBytes > 0) ownedProgress((uploaded.toFloat() / sizeBytes).coerceIn(0f, 1f))
                         }
                     }
                 } finally {
@@ -381,6 +418,7 @@ class StorageService @Inject constructor(
         try {
             largeUploadClient.newCall(request).awaitStorageResponse().use { response ->
                 val responseText = response.body?.string().orEmpty()
+                uploadSession.requireCurrent()
                 if (!response.isSuccessful) {
                     recordStreamUploadTiming(
                         startedElapsedMs = startedElapsedMs,
@@ -396,7 +434,7 @@ class StorageService @Inject constructor(
                         buildSupabaseHttpException(response.code, responseText, "No se pudo subir el archivo.")
                     )
                 }
-                onProgress(1f)
+                ownedProgress(1f)
                 recordStreamUploadTiming(
                     startedElapsedMs = startedElapsedMs,
                     requestBodyStartedAtMs = requestBodyStartedAtMs.get(),
@@ -437,6 +475,8 @@ class StorageService @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            uploadSession.requireCurrent()
             recordStreamUploadTiming(
                 startedElapsedMs = startedElapsedMs,
                 requestBodyStartedAtMs = requestBodyStartedAtMs.get(),
@@ -516,6 +556,7 @@ class StorageService @Inject constructor(
         sizeBytes: Long,
         contentType: String,
         allowOverwrite: Boolean,
+        uploadSession: OwnedUploadSession,
         onProgress: (Float) -> Unit,
     ): Result<StorageResponse>? {
         val endpoint = "${localFallbackApiClient.baseUrl.trimEnd('/')}/storage/v1/upload/resumable"
@@ -525,8 +566,9 @@ class StorageService @Inject constructor(
             val sourceHash = context.contentResolver.openInputStream(sourceUri)?.use {
                 uploadSourceSha256(it, sizeBytes)
             } ?: throw IOException("No se pudo abrir el archivo seleccionado.")
+            uploadSession.requireCurrent()
             val sessionKey = resumableSessionKey(
-                accountId = authService.getCurrentUserId().orEmpty(),
+                accountId = uploadSession.accountId,
                 endpoint = endpoint,
                 bucketName = bucketName,
                 objectPath = normalizedPath,
@@ -538,6 +580,7 @@ class StorageService @Inject constructor(
             var sessionUrl = loadPersistedTusSession(sessionKey, endpoint)?.url
             var initialStatus = sessionUrl?.let { persistedUrl ->
                 try {
+                    uploadSession.requireCurrent()
                     readTusUploadStatus(persistedUrl, accessToken)
                 } catch (error: TusUploadHttpException) {
                     if (error.statusCode == 404 || error.statusCode == 410) {
@@ -560,6 +603,7 @@ class StorageService @Inject constructor(
             }
 
             if (sessionUrl == null) {
+                uploadSession.requireCurrent()
                 val createdSessionUrl = createTusUploadSession(
                     endpoint = endpoint,
                     accessToken = accessToken,
@@ -571,6 +615,7 @@ class StorageService @Inject constructor(
                 ) ?: return null
                 sessionUrl = createdSessionUrl
                 persistTusSession(sessionKey, createdSessionUrl)
+                uploadSession.requireCurrent()
                 initialStatus = readTusUploadStatus(createdSessionUrl, accessToken)
             }
 
@@ -580,6 +625,7 @@ class StorageService @Inject constructor(
             var recoveries = 0
             while (offset < sizeBytes) {
                 currentCoroutineContext().ensureActive()
+                uploadSession.requireCurrent()
                 try {
                     val nextOffset = uploadTusChunk(
                         sessionUrl = activeSessionUrl,
@@ -595,17 +641,21 @@ class StorageService @Inject constructor(
                     offset = nextOffset
                     recoveries = 0
                 } catch (error: TusUploadHttpException) {
+                    uploadSession.requireCurrent()
                     if (error.statusCode != 409 && error.statusCode !in 500..599) throw error
                     offset = recoverTusOffset(activeSessionUrl, accessToken, sizeBytes, recoveries++)
                 } catch (error: IOException) {
+                    uploadSession.requireCurrent()
                     if (recoveries >= 3) throw error
                     offset = recoverTusOffset(activeSessionUrl, accessToken, sizeBytes, recoveries++)
                 }
             }
+            uploadSession.requireCurrent()
             val completed = awaitTusCompletion(activeSessionUrl, accessToken, sizeBytes)
             val serverPath = completed.objectPath?.trim().takeIf { !it.isNullOrBlank() }
                 ?: throw IOException("El servidor no confirmó la ruta del archivo subido.")
             clearPersistedTusSession(sessionKey)
+            uploadSession.requireCurrent()
             onProgress(1f)
             Result.success(
                 StorageResponse(
@@ -619,6 +669,7 @@ class StorageService @Inject constructor(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            uploadSession.requireCurrent()
             Result.failure(error)
         }
     }
