@@ -1080,15 +1080,12 @@ class ProfileViewModel @Inject constructor(
         { videoRepository.getFavoriteVideos(userId) }, { _favoriteVideos.value = it },
         { _favoriteVideos.value = emptyList(); _contentLoadError.value = "Los favoritos no están disponibles para este perfil." })
 
-    fun reportPost(
+    suspend fun reportPost(
         post: Post,
         reason: String,
         details: String?,
         evidenceUri: Uri?,
-        onSuccess: () -> Unit = {},
-        onError: (String) -> Unit = {}
-    ) {
-        viewModelScope.launch {
+    ): Result<Unit> =
             postRepository.submitContentReport(
                 contentType = "post",
                 contentId = post.id,
@@ -1097,23 +1094,14 @@ class ProfileViewModel @Inject constructor(
                 reason = reason,
                 details = details,
                 evidenceUri = evidenceUri
-            ).onSuccess {
-                onSuccess()
-            }.onFailure {
-                onError(it.message ?: "No se pudo enviar el reporte")
-            }
-        }
-    }
+            )
 
-    fun reportComment(
+    suspend fun reportComment(
         comment: conectate.com.data.model.Comment,
         reason: String,
         details: String?,
         evidenceUri: Uri?,
-        onSuccess: () -> Unit = {},
-        onError: (String) -> Unit = {}
-    ) {
-        viewModelScope.launch {
+    ): Result<Unit> =
             postRepository.submitContentReport(
                 contentType = "comment",
                 contentId = comment.id,
@@ -1122,13 +1110,7 @@ class ProfileViewModel @Inject constructor(
                 reason = reason,
                 details = details,
                 evidenceUri = evidenceUri
-            ).onSuccess {
-                onSuccess()
-            }.onFailure {
-                onError(it.message ?: "No se pudo enviar el reporte")
-            }
-        }
-    }
+            )
 
     private fun updatePostInLists(postId: String, transform: (Post) -> Post) {
         _userPosts.value = _userPosts.value.map { post ->

@@ -1,13 +1,15 @@
 package conectate.com.presentation.components
 
 import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,9 +33,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,8 +53,9 @@ import androidx.compose.ui.window.DialogProperties
 @Composable
 fun ContentReportDialog(
     title: String,
+    reportKey: String,
     onDismiss: () -> Unit,
-    onSubmit: (reason: String, details: String?, evidenceUri: Uri?) -> Unit,
+    onSubmit: suspend (reason: String, details: String?, evidenceUri: Uri?) -> Result<Unit>,
     reasonOptions: List<String>,
     modifier: Modifier = Modifier,
     subjectText: String? = null,
@@ -73,6 +81,15 @@ fun ContentReportDialog(
     successMessage: String = "Gracias por informarnos. Revisaremos este reporte y tomaremos medidas si corresponde.",
     successButtonLabel: String = "Confirmar"
 ) {
+    val account = LocalProfileIdentityAccount.current
+    val ownerAtOpen = remember(reportKey) { account }
+    val currentAccount by rememberUpdatedState(account)
+    val latestDismiss by rememberUpdatedState(onDismiss)
+    LaunchedEffect(account, ownerAtOpen) {
+        if (account.isNullOrBlank() || account != ownerAtOpen) latestDismiss()
+    }
+    if (account.isNullOrBlank() || account != ownerAtOpen) return
+
     if (alreadyReported) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = onDismiss,
@@ -87,12 +104,24 @@ fun ContentReportDialog(
         return
     }
 
-    var selectedReason by remember(reasonOptions) { mutableStateOf<String?>(null) }
-    var reasonExpanded by remember { mutableStateOf(false) }
-    var details by remember { mutableStateOf("") }
-    var evidenceUri by remember { mutableStateOf<Uri?>(null) }
-    var isSubmitting by remember { mutableStateOf(false) }
-    var showConfirmation by remember { mutableStateOf(false) }
+    var selectedReason by rememberSaveable(reportKey, ownerAtOpen) { mutableStateOf<String?>(null) }
+    var reasonExpanded by remember(reportKey) { mutableStateOf(false) }
+    var details by rememberSaveable(reportKey, ownerAtOpen) { mutableStateOf("") }
+    var evidencePath by rememberSaveable(reportKey, ownerAtOpen) { mutableStateOf<String?>(null) }
+    val evidenceUri = evidencePath?.let(Uri::parse)
+    val scope = rememberCoroutineScope()
+    val submission = remember(reportKey, ownerAtOpen, scope) {
+        ReportSubmission(scope, isOwnerCurrent = { currentAccount == ownerAtOpen })
+    }
+    val state by submission.state.collectAsState()
+    val isSubmitting = state.isSubmitting
+    val showConfirmation = state.confirmed
+    LaunchedEffect(showConfirmation) {
+        if (showConfirmation && !inlineSuccessConfirmation) {
+            conectate.com.presentation.common.AppFeedbackBus.showSuccess(successTitle)
+            latestDismiss()
+        }
+    }
 
     val trimmedReason = selectedReason?.trim().orEmpty()
     val trimmedDetails = details.trim()
@@ -101,25 +130,27 @@ fun ContentReportDialog(
         (!requiresDetails || trimmedDetails.length >= minDetailsLength) &&
         !isSubmitting
 
-    val imagePicker = conectate.com.presentation.components.rememberInAppMediaPicker() { uri -> evidenceUri = uri }
+    val imagePicker = rememberInAppMediaPicker { uri -> if (uri != null) evidencePath = uri.toString() }
 
     Dialog(
-        onDismissRequest = if (showConfirmation) ({}) else onDismiss,
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            dismissOnClickOutside = !showConfirmation
+            dismissOnClickOutside = !isSubmitting,
+            dismissOnBackPress = !isSubmitting,
         )
     ) {
         Card(
             modifier = modifier
                 .fillMaxWidth(0.95f)
+                .imePadding()
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             if (showConfirmation) {
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -149,7 +180,7 @@ fun ContentReportDialog(
                 }
             } else {
                 Column(
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Row(
@@ -159,10 +190,11 @@ fun ContentReportDialog(
                     ) {
                         Text(
                             text = title,
+                            modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
-                        IconButton(onClick = onDismiss) {
+                        IconButton(onClick = onDismiss, enabled = !isSubmitting) {
                             Icon(Icons.Default.Close, contentDescription = "Cerrar")
                         }
                     }
@@ -183,8 +215,9 @@ fun ContentReportDialog(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         readOnly = true,
+                        enabled = !isSubmitting,
                         trailingIcon = {
-                            TextButton(onClick = { reasonExpanded = true }) {
+                            TextButton(onClick = { reasonExpanded = true }, enabled = !isSubmitting) {
                                 Text(reasonActionLabel)
                             }
                         },
@@ -224,7 +257,8 @@ fun ContentReportDialog(
                         placeholder = { Text(detailsPlaceholder) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(120.dp),
+                            .heightIn(min = 120.dp),
+                        enabled = !isSubmitting,
                         maxLines = 5,
                         isError = requiresDetails && details.isNotEmpty() && trimmedDetails.length < minDetailsLength,
                         supportingText = {
@@ -239,12 +273,11 @@ fun ContentReportDialog(
                     )
 
                     if (attachEvidenceEnabled) {
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            OutlinedButton(onClick = { imagePicker.launch("image/*") }) {
+                            OutlinedButton(onClick = { imagePicker.launch("image/*") }, enabled = !isSubmitting) {
                                 Icon(Icons.Default.AttachFile, contentDescription = null)
                                 Spacer(Modifier.size(4.dp))
                                 Text(attachEvidenceLabel)
@@ -256,7 +289,7 @@ fun ContentReportDialog(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.primary
                                 )
-                                TextButton(onClick = { evidenceUri = null }) {
+                                TextButton(onClick = { evidencePath = null }, enabled = !isSubmitting) {
                                     Text(removeEvidenceLabel)
                                 }
                             }
@@ -265,14 +298,16 @@ fun ContentReportDialog(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
+                    state.error?.let { message ->
+                        Text(message, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
+
                     Button(
                         onClick = {
                             if (!canSubmit) return@Button
-                            isSubmitting = true
-                            onSubmit(trimmedReason, trimmedDetails.ifBlank { null }, evidenceUri)
-                            isSubmitting = false
-                            if (inlineSuccessConfirmation) {
-                                showConfirmation = true
+                            submission.submit {
+                                onSubmit(trimmedReason, trimmedDetails.ifBlank { null }, evidenceUri)
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -293,6 +328,7 @@ fun ContentReportDialog(
                     if (!inlineSuccessConfirmation) {
                         TextButton(
                             onClick = onDismiss,
+                            enabled = !isSubmitting,
                             modifier = Modifier.align(Alignment.End)
                         ) {
                             Text(dismissButtonLabel)

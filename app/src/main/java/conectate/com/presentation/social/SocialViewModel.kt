@@ -1152,9 +1152,8 @@ class SocialViewModel @Inject constructor(
         }
     }
 
-    fun reportPost(post: Post, reason: String, details: String?, evidenceUri: android.net.Uri?) {
-        viewModelScope.launch {
-            val result = postRepository.submitContentReport(
+    suspend fun reportPost(post: Post, reason: String, details: String?, evidenceUri: android.net.Uri?): Result<Unit> =
+            postRepository.submitContentReport(
                 contentType = "post",
                 contentId = post.id,
                 reportedUserId = post.userId,
@@ -1163,14 +1162,6 @@ class SocialViewModel @Inject constructor(
                 details = details,
                 evidenceUri = evidenceUri
             )
-            if (result.isSuccess) {
-                android.widget.Toast.makeText(context, "Reporte enviado", android.widget.Toast.LENGTH_SHORT).show()
-            } else {
-                val message = result.exceptionOrNull().toUserFacingMessage("No se pudo enviar el reporte.")
-                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
-    }
 
     fun deletePost(postId: String) {
         viewModelScope.launch {

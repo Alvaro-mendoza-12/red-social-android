@@ -442,6 +442,9 @@ class VideoFeedViewModel @Inject constructor(
         commentsSession.close()
         shareRequestsInFlight.clear()
         commentMutationsInFlight.clear()
+        _reportedVideoIds.value = emptySet()
+        _reportActionMessage.value = null
+        reportRequestsInFlight.clear()
         if (isProfileFeed) {
             loadProfileVideos(checkNotNull(profileFeedOwnerId))
         } else if (focusedEntryVideoId != null) {
@@ -1558,37 +1561,33 @@ class VideoFeedViewModel @Inject constructor(
 
     fun ensureVideoReportStatus(videoId: String) {
         if (_reportedVideoIds.value.contains(videoId)) return
+        val generation = accountGeneration
         viewModelScope.launch {
             videoRepository.hasReportedVideo(videoId).onSuccess { hasReported ->
-                if (hasReported) {
+                if (hasReported && generation == accountGeneration) {
                     _reportedVideoIds.value = _reportedVideoIds.value + videoId
                 }
             }
         }
     }
 
-    fun submitVideoReport(videoId: String, reason: String, details: String? = null) {
+    suspend fun submitVideoReport(videoId: String, reason: String, details: String? = null): Result<Unit> {
+        val generation = accountGeneration
+        val requestKey = "$generation:$videoId"
         if (_reportedVideoIds.value.contains(videoId)) {
-            _reportActionMessage.value = "Ya reportaste este video"
-            return
+            return Result.failure(IllegalStateException("Ya reportaste este video"))
         }
-        if (!reportRequestsInFlight.add(videoId)) return
+        if (!reportRequestsInFlight.add(requestKey)) return Result.failure(IllegalStateException("El reporte ya se está enviando."))
 
-        viewModelScope.launch {
-            try {
-                videoRepository.submitVideoReport(videoId, reason, details).onSuccess {
-                    _reportedVideoIds.value = _reportedVideoIds.value + videoId
-                    _reportActionMessage.value = "Reporte enviado"
-                }.onFailure { error ->
-                    val message = error.message ?: "No se pudo enviar el reporte"
-                    if (message.contains("Ya reportaste", ignoreCase = true)) {
-                        _reportedVideoIds.value = _reportedVideoIds.value + videoId
-                    }
-                    _reportActionMessage.value = message
-                }
-            } finally {
-                reportRequestsInFlight.remove(videoId)
+        return try {
+            val result = videoRepository.submitVideoReport(videoId, reason, details)
+            if (generation != accountGeneration) throw CancellationException("La cuenta cambió durante el reporte.")
+            if (result.isSuccess || result.exceptionOrNull()?.message?.contains("Ya reportaste", ignoreCase = true) == true) {
+                _reportedVideoIds.value = _reportedVideoIds.value + videoId
             }
+            result
+        } finally {
+            reportRequestsInFlight.remove(requestKey)
         }
     }
 

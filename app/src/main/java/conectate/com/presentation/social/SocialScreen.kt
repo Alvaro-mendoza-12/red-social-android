@@ -443,6 +443,7 @@ fun SocialScreen(
     postToReport?.let { reportPost ->
         conectate.com.presentation.components.ContentReportDialog(
             title = "Reportar publicación",
+            reportKey = "post:${reportPost.id}",
             subjectText = reportPost.userName,
             reasonOptions = listOf(
                 "Spam",
@@ -456,7 +457,6 @@ fun SocialScreen(
             onDismiss = { postToReport = null },
             onSubmit = { reason, details, evidenceUri ->
                 viewModel.reportPost(reportPost, reason, details, evidenceUri)
-                postToReport = null
             }
         )
     }

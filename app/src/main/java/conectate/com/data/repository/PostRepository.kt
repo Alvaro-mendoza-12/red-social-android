@@ -41,6 +41,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -1794,6 +1795,7 @@ class PostRepository @Inject constructor(
         val startedAt = System.currentTimeMillis()
         var uploadedEvidenceKey: String? = null
         var reportPersisted = false
+        var reportMayBePersisted = false
         try {
             val normalizedContentType = contentType.trim().lowercase()
             if (normalizedContentType !in setOf("post", "comment")) {
@@ -1802,8 +1804,8 @@ class PostRepository @Inject constructor(
 
             val currentUserId = authService.getCurrentUserId()?.trim()
                 ?: return@withContext Result.failure(Exception("No user"))
-            val accessToken = authService.getAccessToken()
-                ?: return@withContext Result.failure(Exception("No token"))
+            authService.getAccessTokenForAccountAwait(currentUserId)
+                ?: return@withContext Result.failure(Exception("Inicia sesión para enviar el reporte."))
 
             val cleanContentId = contentId.trim()
             val cleanReportedUserId = reportedUserId.trim()
@@ -1858,7 +1860,13 @@ class PostRepository @Inject constructor(
                 ?: currentUser?.full_name
                 ?: "Usuario"
             val safeReportedName = reportedUserName.trim().take(80).ifBlank { "Usuario" }
+            val accessToken = authService.getAccessTokenForAccountAwait(currentUserId)
+                ?: return@withContext Result.failure(Exception("Inicia sesión para enviar el reporte."))
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
 
+            // The server may commit even if its response never reaches this device.
+            // Do not delete evidence once it could be referenced by that report.
+            reportMayBePersisted = true
             if (supabaseConfig.isLocalFallbackPrimary) {
                 val result = localFallbackApiClient.submitContentReport(
                     accessToken = accessToken,
@@ -1929,12 +1937,13 @@ class PostRepository @Inject constructor(
                 )
                 Result.failure(Exception("Error enviando reporte: ${response.status} $errorBody"))
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("PostRepository", "Error submitting content report", e)
             appMetrics.recordFailure("content_report_submit", e)
             Result.failure(e)
         } finally {
-            if (!reportPersisted) {
+            if (!reportPersisted && !reportMayBePersisted) {
                 uploadedEvidenceKey?.let { key ->
                     storageService.deleteFile("report-evidence", key).onFailure { cleanupError ->
                         android.util.Log.w("PostRepository", "Could not clean report evidence", cleanupError)
