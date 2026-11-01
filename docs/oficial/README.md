@@ -1,13 +1,13 @@
 # Novvin — Documentación oficial del proyecto
 
 Fecha base: 2026-08-24
-Última actualización de la fuente canónica: 2026-10-30 (Bogotá; cada evidencia indica su fecha y alcance)
+Última actualización de la fuente canónica: 2026-10-31 (Bogotá; cada evidencia indica su fecha y alcance)
 
 Estado: documentación canónica para desarrollo, operación y traspaso técnico.
 
-Auditoría móvil actual: La [revisión 99](99-contraste-auditoria-movil-y-candidato-174-2026-10-30.md) contrasta los 53 hallazgos del informe móvil de Antigravity y corrige los confirmados en acceso, navegación, Social, editor, chats, salas, LIVE y controles de gasto. Por decisión del propietario, Registro Android exige 13 años y Ajustes permite solicitar la eliminación por soporte. Aprueban 2.030 unitarias, 14 casos nativos seleccionados y lint sin errores (314 advertencias, K1). **APK/AAB 9.1.34 / 174 firmados**, con firma/R8/16 KiB y actualización desde 173 comprobadas en AOSP 35. No se cambia la API de producción ni se habilitan retiros. No publicado en Play; comunicaciones entre teléfonos físicos pendientes. `correciones` queda para el otro chat.
+Auditoría móvil actual: La [revisión 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md) corrige los compartidos de Social y Perfil de principio a fin, el enlace alterado en comunidades, el regreso al original tras iniciar sesión y las confirmaciones parciales de amistades. Aprueban 2.069 unitarias en 432 suites y cinco recorridos nativos con entrega real a cuentas QA; lint tiene cero errores y 319 advertencias (K1). **APK/AAB 9.1.35 / 175 firmados**, con firma/R8/16 KiB y actualización normal desde 174 comprobadas en AOSP 35. Web publicada: documentos y Reintentar reparados, 20 formatos enviados/descargados sin alterar bytes, 916 pruebas web y 90 controles públicos aprobados. Se publicaron cambios acotados en el servidor para compartidos de perfiles y listado de archivos. Los datos QA se retiraron. No publicado en Play; comunicaciones físicas y certificado de firma de Play pendientes. Esta ruta de archivos usa HTTPS y no implementa cifrado de extremo a extremo. `correciones` permanece para el otro chat.
 
-Auditoría web actual: [98 — Concurrencia y acciones pendientes](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md), publicada con 875 pruebas, 96 Node, 90 controles públicos, siete rutas autenticadas y prueba local de dos pestañas con Web Locks. Continúa la [revisión 94](94-reacciones-y-recorrido-web-2026-10-30.md).
+Auditoría web actual: [100 — Documentos y compartidos](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md), con 916 pruebas web, 96 Node, 90 controles públicos y recuperación real de un envío pendiente PPTX. La [revisión 98](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md) conserva la comprobación anterior de colas y cuentas.
 
 Limpieza local: [93 — Carpetas y Git](93-limpieza-local-y-git-2026-10-30.md). Ambas carpetas pasan de 244,45/62,66 GiB a 7,91/2,67 GiB, sin seguir enlaces. Se recuperan aproximadamente 295 GiB físicos, conservando fuentes, claves y entregas vigentes; Git pasa su comprobación de integridad.
 
@@ -130,6 +130,7 @@ Importante: en el repositorio existen documentos históricos, diagnósticos y no
 101. [Segunda revisión: cancelación y continuidad de la cola push](97-segunda-revision-cancelacion-y-cola-push-2026-10-30.md)
 102. [Colas web y carpetas de chats por cuenta](98-colas-web-y-carpetas-por-cuenta-2026-10-30.md)
 103. [Contraste de auditoría móvil y candidato 174](99-contraste-auditoria-movil-y-candidato-174-2026-10-30.md)
+104. [Compartidos completos, documentos y candidato 175](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md)
 
 ## Reglas para quien trabaje en este proyecto
 
