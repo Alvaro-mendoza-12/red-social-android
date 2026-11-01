@@ -182,13 +182,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun acceptIncomingIntent(incomingIntent: Intent) {
+        // A new link/notification also supersedes an unfinished file capture.
+        // Otherwise that old capture can replace the new destination when it finishes.
+        val generation = ++incomingShareGeneration
         setIntent(incomingIntent)
         if (!isIncomingShareIntent(incomingIntent)) {
             intentState.value = incomingIntent
             return
         }
 
-        val generation = ++incomingShareGeneration
         intentState.value = null
         lifecycleScope.launch {
             val parsed = parseIncomingShareIntent(this@MainActivity, incomingIntent)

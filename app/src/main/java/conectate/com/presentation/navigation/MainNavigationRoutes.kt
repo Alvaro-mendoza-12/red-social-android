@@ -430,6 +430,21 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    // Settings is reachable through both the root graph and the Home tabs.
+    composable(Screen.LanguageSettings.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.settings.LanguageSettingsScreen(navController = navController)
+        }
+    }
+
+    composable(Screen.HelpSettings.route) {
+        conectate.com.presentation.legal.HelpCenterScreen(navController = navController)
+    }
+
+    composable(Screen.TermsAndConditions.route) {
+        conectate.com.presentation.legal.TermsAndConditionsScreen(navController = navController)
+    }
+
     composable(Screen.MyReports.route) {
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.profile.MyReportsScreen(navController = navController)

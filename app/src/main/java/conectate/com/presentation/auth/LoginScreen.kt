@@ -230,6 +230,7 @@ fun LoginScreen(
             return@LaunchedEffect
         }
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+            if (navController.currentDestination?.route !in setOf(Screen.AddAccountLogin.route, Screen.AccountRecoveryHelp.route)) return@withContext
             if (conectate.com.presentation.navigation.PendingSharedContentDestination.consume(navController)?.let { route ->
                 navController.navigate(Screen.Home.createRoute()) { popUpTo(navController.graph.id) { inclusive = false }; launchSingleTop = true }
                 navController.navigate(route) { launchSingleTop = true }
@@ -398,7 +399,10 @@ fun LoginScreen(
                 recoveryCodeRequired = false
                 migrationInfo = ""
                 viewModel.resetAuthState()
-            } else loginType = null
+            } else {
+                viewModel.resetAuthState()
+                loginType = null
+            }
         }
     } else null
     BackHandler(enabled = onAuthBack != null) { onAuthBack?.invoke() }

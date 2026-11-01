@@ -463,7 +463,6 @@ fun ProfileScreen(
     var showProfileViewers by remember { mutableStateOf(false) }
     var identityDialogUser by remember { mutableStateOf<User?>(null) }
     
-    val comments by viewModel.comments.collectAsState()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val notificationViewModel: NotificationViewModel = hiltViewModel()
@@ -554,47 +553,27 @@ fun ProfileScreen(
             },
             sheetState = sheetState
         ) {
-            conectate.com.presentation.components.CommentsSheet(
-                comments = comments,
-                onSendComment = { content: String, parentId: String? ->
-                    viewModel.addComment(postToComment!!.id, content, parentId,
-                        onSuccess = { },
-                        onError = { error: String ->
-                            android.widget.Toast.makeText(context, error, android.widget.Toast.LENGTH_SHORT).show()
+            key(postToComment!!.id, viewModel.currentUserId) {
+                ProfilePostComments(
+                    post = postToComment!!,
+                    viewerId = viewModel.currentUserId,
+                    onDismiss = {
+                        scope.launch { sheetState.hide() }.invokeOnCompletion {
+                            if (!sheetState.isVisible) {
+                                showCommentsSheet = false
+                                postToComment = null
+                            }
                         }
-                    )
-                },
-                onDeleteComment = { commentId: String ->
-                    viewModel.deleteComment(commentId,
-                        onSuccess = { },
-                        onError = { error: String ->
-                            android.widget.Toast.makeText(context, error, android.widget.Toast.LENGTH_SHORT).show()
-                        }
-                    )
-                },
-                onReportComment = { comment ->
-                    commentToReport = comment
-                },
-                onNavigateToProfile = { targetUserId: String ->
-                    showCommentsSheet = false
-                    if (targetUserId != viewModel.currentUserId) {
-                        navController.navigate(Screen.UserProfile.createRoute(targetUserId))
-                    }
-                },
-                onDismiss = {
-                    scope.launch { sheetState.hide() }.invokeOnCompletion {
-                        if (!sheetState.isVisible) {
-                            showCommentsSheet = false
-                            postToComment = null
-                        }
-                    }
-                },
-                isLoading = false,
-                isPostOwner = postToComment?.userId
-                    ?.trim()
-                    ?.equals(viewModel.currentUserId?.trim(), ignoreCase = true) == true,
-                showReportAction = true
-            )
+                    },
+                    onOpenProfile = { targetUserId ->
+                        showCommentsSheet = false
+                        postToComment = null
+                        navController.navigate(Screen.UserProfile.createRoute(targetUserId)) { launchSingleTop = true }
+                    },
+                    onReport = { commentToReport = it },
+                    onCountChanged = { count -> postToComment?.let { viewModel.syncPostCommentCount(it.id, count) } },
+                )
+            }
         }
     }
 
@@ -1295,7 +1274,6 @@ fun ProfileScreen(
                                             onCommentClick = { 
                                                 postToComment = post
                                                 showCommentsSheet = true
-                                                viewModel.loadComments(post.id)
                                             },
                                             onShareClick = { viewModel.togglePostShare(post) },
                                             // User click not needed on own profile
@@ -1389,8 +1367,7 @@ fun ProfileScreen(
                                                 onCommentClick = { 
                                                     postToComment = post
                                                     showCommentsSheet = true
-                                                    viewModel.loadComments(post.id)
-                                                },
+                                                    },
                                                 onShareClick = { viewModel.togglePostShare(post) },
                                                 onUserClick = { 
                                                     navController.navigate(Screen.UserProfile.createRoute(it)) { launchSingleTop = true }

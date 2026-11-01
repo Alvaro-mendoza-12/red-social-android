@@ -21,18 +21,19 @@ import androidx.compose.ui.unit.dp
 import conectate.com.data.model.Comment
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun CommentItem(
     comment: Comment, 
     isPostOwner: Boolean = false,
     level: Int = 0,
     replyingToUserName: String? = null,
-    onReplyClick: () -> Unit = {},
-    onDeleteClick: () -> Unit = {},
-    onEditClick: () -> Unit = {},
-    onProfileClick: () -> Unit = {},
-    onMentionClick: (String) -> Unit = {},
-    onLikeClick: () -> Unit = {},
-    onDislikeClick: () -> Unit = {},
+    onReplyClick: () -> Unit,
+    onDeleteClick: () -> Unit,
+    onEditClick: () -> Unit,
+    onProfileClick: () -> Unit,
+    onMentionClick: (String) -> Unit,
+    onLikeClick: () -> Unit,
+    onDislikeClick: () -> Unit,
     onReportClick: () -> Unit = {},
     showReportAction: Boolean = false
 ) {
@@ -44,15 +45,16 @@ fun CommentItem(
         }.getOrDefault(false)
     }
     Row(modifier = Modifier.fillMaxWidth().padding(start = (level * 24 + 16).dp, end = 16.dp, top = 8.dp, bottom = 8.dp)) {
-        CircularProfileImage(ownerId = comment.userId, 
-            imageUrl = comment.userAvatar ?: "",
-            size = if (isReply) 32.dp else 40.dp,
-            fallbackName = comment.userName
-        )
+        Box(Modifier.clickable(onClick = onProfileClick)) {
+            CircularProfileImage(ownerId = comment.userId,
+                imageUrl = comment.userAvatar ?: "",
+                size = if (isReply) 32.dp else 40.dp,
+                fallbackName = comment.userName)
+        }
         
         Spacer(modifier = Modifier.width(8.dp))
         
-        Column {
+        Column(Modifier.weight(1f)) {
             Box(
                 modifier = Modifier
                     .background(
@@ -92,17 +94,17 @@ fun CommentItem(
                 }
             }
             
-            Row(
+            Text(
+                text = conectate.com.util.DateUtils.formatRelativeDate(comment.createdAt),
+                style = MaterialTheme.typography.labelSmall, color = Color.Gray,
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
+            )
+            FlowRow(
+                modifier = Modifier.padding(start = 12.dp, top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    text = conectate.com.util.DateUtils.formatRelativeDate(comment.createdAt),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.Gray
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                IconButton(onClick = onLikeClick, modifier = Modifier.size(24.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onLikeClick, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = Icons.Default.ThumbUp,
                         contentDescription = "Me gusta",
@@ -111,8 +113,9 @@ fun CommentItem(
                     )
                 }
                 Text((comment.reactionCounts["LIKE"] ?: 0).toString(), style = MaterialTheme.typography.labelSmall)
-                Spacer(modifier = Modifier.width(6.dp))
-                IconButton(onClick = onDislikeClick, modifier = Modifier.size(24.dp)) {
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onDislikeClick, modifier = Modifier.size(48.dp)) {
                     Icon(
                         imageVector = Icons.Default.ThumbDown,
                         contentDescription = "No me gusta",
@@ -121,23 +124,23 @@ fun CommentItem(
                     )
                 }
                 Text((comment.reactionCounts["DISLIKE"] ?: 0).toString(), style = MaterialTheme.typography.labelSmall)
+                }
             }
-            Row(
+            FlowRow(
                 modifier = Modifier.padding(start = 12.dp, top = 2.dp),
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
                     text = "Responder",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = Color.Gray,
-                    modifier = Modifier.clickable { onReplyClick() }
+                    modifier = Modifier.clickable(onClick = onReplyClick).padding(vertical = 16.dp)
                 )
                 
                 if (comment.isMine || isPostOwner) {
-                    Spacer(modifier = Modifier.width(16.dp))
                     if (comment.isMine && canEdit) {
-                        IconButton(onClick = onEditClick, modifier = Modifier.size(18.dp)) {
+                        IconButton(onClick = onEditClick, modifier = Modifier.size(48.dp)) {
                             Icon(
                                 imageVector = androidx.compose.material.icons.Icons.Default.Edit,
                                 contentDescription = "Editar",
@@ -145,9 +148,8 @@ fun CommentItem(
                                 modifier = Modifier.size(14.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(8.dp))
                     }
-                    IconButton(onClick = onDeleteClick, modifier = Modifier.size(18.dp)) {
+                    IconButton(onClick = onDeleteClick, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Default.Delete, 
                             contentDescription = "Eliminar",
@@ -156,8 +158,7 @@ fun CommentItem(
                         )
                     }
                 } else if (showReportAction) {
-                    Spacer(modifier = Modifier.width(16.dp))
-                    IconButton(onClick = onReportClick, modifier = Modifier.size(18.dp)) {
+                    IconButton(onClick = onReportClick, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Default.Report,
                             contentDescription = "Reportar",

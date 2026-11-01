@@ -15,6 +15,7 @@ import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
 import conectate.com.presentation.common.looksLikeStoredAccountSessionIssue
 import conectate.com.presentation.common.toUserFacingMessage
+import conectate.com.core.concurrency.AccountTasks
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
@@ -73,6 +74,7 @@ class AuthViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val emailRecoveryStore = EmailRecoveryDraftStore(context)
+    private val authEntryTasks = AccountTasks(viewModelScope)
     private val emailRecoveryMutex = Mutex()
     private var emailRecoveryGeneration = 0
     private val _emailRecovery = MutableStateFlow<EmailRecoveryDraft?>(null)
@@ -92,8 +94,10 @@ class AuthViewModel @Inject constructor(
     val storedAccounts: StateFlow<List<StoredAccountSession>> = _storedAccounts.asStateFlow()
 
     private val _accountSwitchMessage = MutableStateFlow<String?>(null)
+    private var preparingAddAccount = false
     val accountSwitchMessage: StateFlow<String?> = _accountSwitchMessage.asStateFlow()
     private val _appealSubmitting = MutableStateFlow(false)
+    private var appealGeneration = 0L
     val appealSubmitting: StateFlow<Boolean> = _appealSubmitting.asStateFlow()
     private val _appealMessage = MutableStateFlow<String?>(null)
     val appealMessage: StateFlow<String?> = _appealMessage.asStateFlow()
@@ -177,7 +181,7 @@ class AuthViewModel @Inject constructor(
     ) {
         if (_authState.value is AuthState.Loading) return
         _authState.value = AuthState.Loading
-        viewModelScope.launch {
+        authEntryTasks.scope.launch {
 
             val result = authEntryOperation { authRepository.signUpWithEmail(
                 email, password, name, username, country, gender, birthDate, imageUri, acceptedPrivacyPolicy
@@ -204,7 +208,7 @@ class AuthViewModel @Inject constructor(
         if (_authState.value is AuthState.Loading) return
         _appealMessage.value = null
         _authState.value = AuthState.Loading
-        viewModelScope.launch {
+        authEntryTasks.scope.launch {
             val result = authEntryOperation { authRepository.signInWithEmail(email, password, secondFactorCode) }
             _authState.value = result.fold(
                 onSuccess = {
@@ -255,6 +259,7 @@ class AuthViewModel @Inject constructor(
     }
 
     suspend fun signOut() {
+        authEntryTasks.reset()
         authRepository.signOut()
         _isUserLoggedIn.value = false
         _currentUserId.value = null
@@ -266,6 +271,7 @@ class AuthViewModel @Inject constructor(
      * Ensures we flip the app to "logged out" state before any navigation happens.
      */
     fun forceLocalLogout() {
+        authEntryTasks.reset()
         runCatching { authRepository.forceLocalLogout() }
             .onFailure { android.util.Log.e("AuthViewModel", "forceLocalLogout failed", it) }
         _isUserLoggedIn.value = false
@@ -288,10 +294,12 @@ class AuthViewModel @Inject constructor(
         localFallbackApiClient.checkUsernameAvailability(username, displayName)
 
     fun prepareAddAccount(onReady: () -> Unit) {
-        if (_authState.value is AuthState.Loading) return
+        if (_authState.value is AuthState.Loading || preparingAddAccount) return
+        preparingAddAccount = true
         viewModelScope.launch {
+            try {
             _accountSwitchMessage.value = "Guardando la cuenta actual…"
-            authRepository.rememberCurrentAccount().fold(
+            authEntryOperation { authRepository.rememberCurrentAccount() }.fold(
                 onSuccess = {
                     guestModeApi.clear()
                     _accountSwitchMessage.value = null
@@ -303,14 +311,15 @@ class AuthViewModel @Inject constructor(
                     _accountSwitchMessage.value = it.toUserFacingMessage("No se pudo guardar la cuenta actual.")
                 },
             )
+            } finally { preparingAddAccount = false }
         }
     }
 
     fun switchAccount(accountId: String, onSuccess: (User) -> Unit = {}) {
         if (_authState.value is AuthState.Loading) return
         _authState.value = AuthState.Loading
-        viewModelScope.launch {
-            val result = authRepository.switchAccount(accountId)
+        authEntryTasks.scope.launch {
+            val result = authEntryOperation { authRepository.switchAccount(accountId) }
             result.fold(
                 onSuccess = {
                     _isUserLoggedIn.value = true
@@ -348,6 +357,9 @@ class AuthViewModel @Inject constructor(
     }
 
     fun resetAuthState() {
+        authEntryTasks.reset()
+        emailRecoveryGeneration += 1
+        appealGeneration += 1
         _authState.value = AuthState.Idle
         _appealMessage.value = null
         _appealSubmitting.value = false
@@ -366,19 +378,23 @@ class AuthViewModel @Inject constructor(
             return
         }
         if (_appealSubmitting.value) return
-        viewModelScope.launch {
-            _appealSubmitting.value = true
-            _appealMessage.value = null
-            authRepository.submitModerationAppeal(token, normalized)
-                .onSuccess {
+        val generation = ++appealGeneration
+        _appealSubmitting.value = true
+        _appealMessage.value = null
+        authEntryTasks.scope.launch {
+            try {
+                val result = authEntryOperation { authRepository.submitModerationAppeal(token, normalized) }
+                if (generation != appealGeneration || _authState.value !== suspended) return@launch
+                result.onSuccess {
                     _authState.value = suspended.copy(appealStatus = "pending")
                     _appealMessage.value =
                         "Apelación enviada. Un administrador la revisará y podrás consultar el resultado al volver a iniciar sesión."
-                }
-                .onFailure {
+                }.onFailure {
                     _appealMessage.value = mapAuthError(it)
                 }
-            _appealSubmitting.value = false
+            } finally {
+                if (generation == appealGeneration) _appealSubmitting.value = false
+            }
         }
     }
 
@@ -387,9 +403,11 @@ class AuthViewModel @Inject constructor(
     }
 
     fun resetPassword(email: String) {
-        viewModelScope.launch {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        authEntryTasks.scope.launch {
             _authState.value = AuthState.Loading
-            var result = authRepository.resetPassword(email)
+            val result = authEntryOperation { authRepository.resetPassword(email) }
             _authState.value = result.fold(
                 onSuccess = { AuthState.PasswordResetSent },
                 onFailure = { 
@@ -411,6 +429,8 @@ class AuthViewModel @Inject constructor(
     }
 
     fun clearEmailRecovery(onCleared: () -> Unit = {}) {
+        authEntryTasks.reset()
+        if (_authState.value is AuthState.Loading) _authState.value = AuthState.Idle
         emailRecoveryGeneration += 1
         _emailRecovery.value = null
         viewModelScope.launch { runCatching { persistEmailRecovery(null) }; onCleared() }
@@ -430,10 +450,11 @@ class AuthViewModel @Inject constructor(
     fun verifyEmailRecoveryCode() {
         val current = _emailRecovery.value ?: return
         if (current.code.length != 6 || current.verified || _authState.value is AuthState.Loading) return
+        val generation = emailRecoveryGeneration
         _authState.value = AuthState.Loading
-        viewModelScope.launch {
-            val result = localFallbackApiClient.verifyEmailPasswordCode(current.email, current.code)
-            if (_emailRecovery.value != current) return@launch
+        authEntryTasks.scope.launch {
+            val result = authEntryOperation { localFallbackApiClient.verifyEmailPasswordCode(current.email, current.code) }
+            if (generation != emailRecoveryGeneration || _emailRecovery.value != current) return@launch
             result.fold(onSuccess = { verified ->
                 val next = current.copy(code = "", resetToken = verified.resetToken.orEmpty(),
                     expiresAt = System.currentTimeMillis() + (verified.expiresInMinutes ?: 10) * 60_000L)
@@ -455,7 +476,7 @@ class AuthViewModel @Inject constructor(
         }
         val generation = ++emailRecoveryGeneration
         _authState.value = AuthState.Loading
-        viewModelScope.launch {
+        authEntryTasks.scope.launch {
             // Save the address before sending, so an in-flight email is still usable after process death.
             val pending = EmailRecoveryDraft(normalizedEmail, expiresAt = System.currentTimeMillis() + 15 * 60_000L,
                 resendAt = System.currentTimeMillis() + 60_000, deliveryConfirmed = false)
@@ -505,11 +526,12 @@ class AuthViewModel @Inject constructor(
         val nextUris = (_recoveryEvidence.value.map { it.uri } + uris).distinct()
         if (nextUris.size > 5) { _assistedRecoveryMessage.value = "Adjunta como máximo cinco archivos."; return }
         _assistedRecoverySubmitting.value = true
-        viewModelScope.launch {
+        authEntryTasks.scope.launch {
             try {
                 _recoveryEvidence.value = withContext(Dispatchers.IO) { nextUris.map { readRecoveryEvidenceMetadata(context, it) } }
                 _assistedRecoveryMessage.value = null
-            } catch (error: Exception) { _assistedRecoveryMessage.value = error.message ?: "No se pudo seleccionar el archivo." }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) { _assistedRecoveryMessage.value = "No pudimos leer el archivo. Selecciona una copia disponible en este dispositivo." }
             finally { _assistedRecoverySubmitting.value = false }
         }
     }
@@ -517,16 +539,17 @@ class AuthViewModel @Inject constructor(
 
     fun requestAssistedRecovery(identifier: String, alternateContact: String, description: String, contactType: String, profileHint: String) {
         if (_assistedRecoverySubmitting.value) return
-        viewModelScope.launch {
-            _assistedRecoverySubmitting.value = true
-            _assistedRecoveryMessage.value = null
-            val result = runCatching {
-                val files = withContext(Dispatchers.IO) { _recoveryEvidence.value.map { loadRecoveryEvidence(context, it) } }
-                localFallbackApiClient.requestAssistedRecovery(
-                    identifier.trim(), alternateContact.trim(), description.trim(), contactType, profileHint.trim(), files
-                ).getOrThrow()
-            }
-            _assistedRecoveryMessage.value = result.fold(
+        _assistedRecoverySubmitting.value = true
+        _assistedRecoveryMessage.value = null
+        authEntryTasks.scope.launch {
+            try {
+                val result = authEntryOperation {
+                    val files = withContext(Dispatchers.IO) { _recoveryEvidence.value.map { loadRecoveryEvidence(context, it) } }
+                    localFallbackApiClient.requestAssistedRecovery(
+                        identifier.trim(), alternateContact.trim(), description.trim(), contactType, profileHint.trim(), files
+                    )
+                }
+                _assistedRecoveryMessage.value = result.fold(
                 onSuccess = {
                     _assistedRecoveryCaseId.value = it.caseId
                     _recoveryEvidence.value = emptyList()
@@ -536,26 +559,31 @@ class AuthViewModel @Inject constructor(
                 },
                 onFailure = { mapAuthError(it) }
             )
-            _assistedRecoverySubmitting.value = false
+            } finally { _assistedRecoverySubmitting.value = false }
         }
     }
 
     fun confirmAssistedContact(caseId: String, code: String) {
         if (_assistedRecoverySubmitting.value) return
-        viewModelScope.launch {
-            _assistedRecoverySubmitting.value = true
-            _assistedRecoveryMessage.value = localFallbackApiClient.confirmAssistedRecoveryContact(caseId.trim(), code.trim()).fold(
-                onSuccess = { "Contacto confirmado. Un administrador revisará ahora las pruebas de propiedad de tu cuenta." },
-                onFailure = { mapAuthError(it) },
-            )
-            _assistedRecoverySubmitting.value = false
+        _assistedRecoverySubmitting.value = true
+        authEntryTasks.scope.launch {
+            try {
+                _assistedRecoveryMessage.value = authEntryOperation {
+                    localFallbackApiClient.confirmAssistedRecoveryContact(caseId.trim(), code.trim())
+                }.fold(
+                    onSuccess = { "Contacto confirmado. Un administrador revisará ahora las pruebas de propiedad de tu cuenta." },
+                    onFailure = { mapAuthError(it) },
+                )
+            } finally { _assistedRecoverySubmitting.value = false }
         }
     }
 
     fun confirmMigratedPasswordCode(resetToken: String, newPassword: String) {
-        viewModelScope.launch {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        authEntryTasks.scope.launch {
             _authState.value = AuthState.Loading
-            val result = authRepository.confirmLocalFallbackPasswordReset(resetToken, newPassword)
+            val result = authEntryOperation { authRepository.confirmLocalFallbackPasswordReset(resetToken, newPassword) }
             _authState.value = result.fold(
                 onSuccess = {
                     emailRecoveryGeneration += 1
@@ -582,6 +610,7 @@ class AuthViewModel @Inject constructor(
     }
 
     fun startNewAssistedRecoveryRequest() {
+        if (_assistedRecoverySubmitting.value) return
         _recoveryEvidence.value = emptyList()
         _assistedRecoveryCaseId.value = null
         _assistedRecoveryMessage.value = null
@@ -595,11 +624,13 @@ class AuthViewModel @Inject constructor(
         newPassword: String,
         secondFactorCode: String?
     ) {
-        viewModelScope.launch {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        authEntryTasks.scope.launch {
             _authState.value = AuthState.Loading
-            val result = authRepository.confirmSavedPasswordRecoveryCode(
+            val result = authEntryOperation { authRepository.confirmSavedPasswordRecoveryCode(
                 email.trim().lowercase(), recoveryCode, newPassword, secondFactorCode
-            )
+            ) }
             _authState.value = result.fold(
                 onSuccess = {
                     _isUserLoggedIn.value = true
@@ -612,9 +643,11 @@ class AuthViewModel @Inject constructor(
     }
 
     fun completeMigratedPasswordReset(migrationToken: String, newPassword: String) {
-        viewModelScope.launch {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        authEntryTasks.scope.launch {
             _authState.value = AuthState.Loading
-            val result = authRepository.completeMigratedLocalPasswordReset(migrationToken, newPassword)
+            val result = authEntryOperation { authRepository.completeMigratedLocalPasswordReset(migrationToken, newPassword) }
             _authState.value = result.fold(
                 onSuccess = {
                     _isUserLoggedIn.value = true
@@ -635,10 +668,12 @@ class AuthViewModel @Inject constructor(
      * entrega después de comprobar la contraseña anterior de la cuenta.
      */
     fun setupMigratedPassword(email: String, migrationToken: String?, newPassword: String) {
-        viewModelScope.launch {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        authEntryTasks.scope.launch {
             val normalizedEmail = email.trim().lowercase()
             val token = migrationToken?.trim().orEmpty()
-            val nextPassword = newPassword.trim()
+            val nextPassword = newPassword
 
             if (normalizedEmail.isBlank()) {
                 _authState.value = AuthState.Error("No se encontró el correo de la cuenta migrada.")
@@ -652,7 +687,7 @@ class AuthViewModel @Inject constructor(
             _authState.value = AuthState.Loading
 
             if (token.isNotBlank()) {
-                val result = authRepository.completeMigratedLocalPasswordReset(token, nextPassword)
+                val result = authEntryOperation { authRepository.completeMigratedLocalPasswordReset(token, nextPassword) }
                 _authState.value = result.fold(
                     onSuccess = {
                         _isUserLoggedIn.value = true
@@ -679,10 +714,12 @@ class AuthViewModel @Inject constructor(
      * Solo requiere email y nueva contraseña (con verificación).
      */
     fun directPasswordReset(email: String, newPassword: String, confirmPassword: String) {
-        viewModelScope.launch {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        authEntryTasks.scope.launch {
             val normalizedEmail = email.trim().lowercase()
-            val nextPassword = newPassword.trim()
-            val nextConfirmPassword = confirmPassword.trim()
+            val nextPassword = newPassword
+            val nextConfirmPassword = confirmPassword
 
             if (normalizedEmail.isBlank()) {
                 _authState.value = AuthState.Error("Por favor, ingresa tu correo electrónico.")
@@ -698,7 +735,7 @@ class AuthViewModel @Inject constructor(
             }
 
             _authState.value = AuthState.Loading
-            val result = authRepository.directPasswordReset(normalizedEmail, nextPassword)
+            val result = authEntryOperation { authRepository.directPasswordReset(normalizedEmail, nextPassword) }
             _authState.value = result.fold(
                 onSuccess = {
                     _isUserLoggedIn.value = true
@@ -715,9 +752,11 @@ class AuthViewModel @Inject constructor(
     }
 
     fun updatePassword(newPassword: String) {
-        viewModelScope.launch {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        authEntryTasks.scope.launch {
             _authState.value = AuthState.Loading
-            var result = authRepository.updatePassword(newPassword)
+            val result = authEntryOperation { authRepository.updatePassword(newPassword) }
             _authState.value = result.fold(
                 onSuccess = { AuthState.PasswordChanged },
                 onFailure = { 
@@ -729,7 +768,9 @@ class AuthViewModel @Inject constructor(
     }
 
     fun changePassword(currentPassword: String, newPassword: String) {
-        viewModelScope.launch {
+        if (_authState.value is AuthState.Loading) return
+        _authState.value = AuthState.Loading
+        authEntryTasks.scope.launch {
             val current = currentPassword
             val next = newPassword
             passwordChangeValidationError(current, next)?.let { validationError ->
@@ -738,7 +779,7 @@ class AuthViewModel @Inject constructor(
             }
 
             _authState.value = AuthState.Loading
-            _authState.value = authRepository.changePassword(current, next).fold(
+            _authState.value = authEntryOperation { authRepository.changePassword(current, next) }.fold(
                 onSuccess = { AuthState.PasswordChanged },
                 onFailure = { AuthState.Error(mapAuthError(it)) }
             )

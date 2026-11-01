@@ -25,6 +25,7 @@ data class PostDetailUiState(
     val comments: List<Comment> = emptyList(),
     val isLoadingPost: Boolean = false,
     val isLoadingComments: Boolean = true,
+    val commentsError: String? = null,
     val threadSummary: PostThreadSummary? = null,
     val isSummarizingThread: Boolean = false,
     val threadSummaryError: String? = null,
@@ -67,6 +68,9 @@ class PostDetailViewModel @Inject constructor(
     private val _commentPosting = MutableStateFlow(false)
     val commentPosting: StateFlow<Boolean> = _commentPosting.asStateFlow()
     private var commentPostRevision = 0L
+    private val _commentEditing = MutableStateFlow(false)
+    val commentEditing = _commentEditing.asStateFlow()
+    private var commentEditRevision = 0L
     private val commentReactionsInFlight = mutableSetOf<String>()
 
     init {
@@ -91,6 +95,8 @@ class PostDetailViewModel @Inject constructor(
                     _uiState.value = PostDetailUiState()
                     _commentPosting.value = false
                     commentPostRevision++
+                    _commentEditing.value = false
+                    commentEditRevision++
                     commentReactionsInFlight.clear()
                     if (account != null && target != null) loadPost(target)
                 }
@@ -113,6 +119,8 @@ class PostDetailViewModel @Inject constructor(
         if (selectedPostId != postId) {
             _commentPosting.value = false
             commentPostRevision++
+            _commentEditing.value = false
+            commentEditRevision++
         }
         selectedPostId = postId
         val epoch = ++postReadEpoch
@@ -135,6 +143,8 @@ class PostDetailViewModel @Inject constructor(
                 post = _uiState.value.post?.takeIf { it.id == postId },
                 comments = if (currentState.post?.id == postId) currentState.comments else emptyList(),
                 isLoadingPost = true,
+                isLoadingComments = true,
+                commentsError = null,
                 threadSummary = null,
                 isSummarizingThread = false,
                 threadSummaryError = null,
@@ -155,6 +165,7 @@ class PostDetailViewModel @Inject constructor(
                 if (!isCurrentPost(postId, account, epoch)) return@onFailure
                 _uiState.value = _uiState.value.copy(
                     isLoadingPost = false,
+                    isLoadingComments = false,
                     error = it.toUserFacingMessage(
                         "Esta publicación ya no está disponible."
                     )
@@ -168,15 +179,22 @@ class PostDetailViewModel @Inject constructor(
         val account = authService.getCurrentUserId()
         val epoch = postReadEpoch
         commentsJob = viewModelScope.launch {
-            postRepository.getPostComments(postId).collect { comments ->
-                if (!isCurrentPost(postId, account, epoch)) return@collect
-                _uiState.value = _uiState.value.copy(
-                    comments = comments,
-                    isLoadingComments = false
+            _uiState.value = _uiState.value.copy(isLoadingComments = true, commentsError = null)
+            try {
+                val comments = readPostComments { postRepository.getPostComments(postId) }.getOrThrow()
+                if (isCurrentPost(postId, account, epoch)) _uiState.value = _uiState.value.copy(
+                    comments = comments, isLoadingComments = false, commentsError = null)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (isCurrentPost(postId, account, epoch)) _uiState.value = _uiState.value.copy(
+                    isLoadingComments = false,
+                    commentsError = "No pudimos cargar los comentarios. Inténtalo de nuevo.",
                 )
             }
         }
     }
+
+    fun retryComments() { selectedPostId?.let(::loadComments) }
 
     fun toggleLike(postId: String) {
         val post = _uiState.value.post?.takeIf { it.id == postId } ?: return
@@ -327,13 +345,17 @@ class PostDetailViewModel @Inject constructor(
         }
     }
 
-    fun editComment(commentId: String, newContent: String) {
+    fun editComment(commentId: String, newContent: String, onSaved: () -> Unit = {}) {
         val postId = _uiState.value.post?.id ?: return
         val account = authService.getCurrentUserId()
+        if (_commentEditing.value || newContent.isBlank()) return
+        val revision = ++commentEditRevision
+        _commentEditing.value = true
         viewModelScope.launch {
+            try {
             postRepository.updateCommentContent(commentId, newContent)
                 .onSuccess {
-                    if (selectedPostId != postId || account != authService.getCurrentUserId()) return@onSuccess
+                    if (revision != commentEditRevision || selectedPostId != postId || account != authService.getCurrentUserId()) return@onSuccess
                     android.util.Log.d("PostDetailViewModel", "Comment updated successfully")
                     android.widget.Toast.makeText(context, "Comentario editado", android.widget.Toast.LENGTH_SHORT).show()
                     _uiState.value = _uiState.value.copy(
@@ -344,19 +366,26 @@ class PostDetailViewModel @Inject constructor(
                         threadSummaryError = null
                     )
                     loadComments(postId)
+                    onSaved()
                 }
                 .onFailure {
                     android.util.Log.e("PostDetailViewModel", "Error editing comment", it)
-                    android.widget.Toast.makeText(context, "Error al editar: ${it.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    if (selectedPostId == postId && account == authService.getCurrentUserId())
+                        conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar el comentario. Tu texto sigue aquí.")
                 }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                if (selectedPostId == postId && account == authService.getCurrentUserId())
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar el comentario. Tu texto sigue aquí.")
+            } finally { if (revision == commentEditRevision) _commentEditing.value = false }
         }
     }
 
     fun toggleCommentReaction(comment: Comment, reactionType: String) {
         val postId = selectedPostId ?: return
         val account = authService.getCurrentUserId() ?: return
-        if (!commentReactionsInFlight.add(comment.id)) return
         val normalized = reactionType.uppercase().takeIf { it == "LIKE" || it == "DISLIKE" } ?: return
+        if (!commentReactionsInFlight.add(comment.id)) return
         val previous = comment.myReaction
         val next = if (previous == normalized) null else normalized
         fun updatedComment(source: Comment): Comment {
