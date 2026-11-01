@@ -57,11 +57,12 @@ async function main() {
     await request('/v1/data/messages/groups', { method: 'POST', body: { name: 'Denied' }, status: 401 })
     const a = await register('a'), b = await register('b'), c = await register('c')
     const id = randomUUID()
-    const original = { id, name: 'Original group', description: 'Frozen payload', memberIds: [b.user.id] }
+    const original = { id, name: 'Original group', description: 'Frozen payload', memberIds: [b.user.id], createOnly: true }
     await request('/v1/data/messages/groups', { method: 'POST', token: a.token, body: original, status: 201, ignoreResponse: true })
     const retries = await Promise.all(Array.from({ length: 20 }, () => request('/v1/data/messages/groups',
       { method: 'POST', token: a.token, body: original, status: 201 })))
     assert.ok(retries.every(result => result.id === id))
+    assert.ok(retries.every(result => result.created === false && result.initialMembers.length === 2))
     assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM fallback_collection_rooms WHERE id=$1', [id])).rows[0].n, 1)
     assert.deepEqual(await members(id), [
       { user_id: a.user.id, role: 'owner' }, { user_id: b.user.id, role: 'member' },
@@ -84,7 +85,7 @@ async function main() {
     assert.equal((await request('/v1/data/messages/groups', { method: 'POST', token: a.token, body: interrupted, status: 201 })).id, failedId)
     assert.equal((await members(failedId)).length, 2)
     await withMemberFailure(id, b.user.id, async () => {
-      await request('/v1/data/messages/groups', { method: 'POST', token: a.token, body: { ...original, name: 'Must roll back' }, status: 500 })
+      await request('/v1/data/messages/groups', { method: 'POST', token: a.token, body: { ...original, createOnly: false, name: 'Must roll back' }, status: 500 })
       assert.equal((await pool.query('SELECT name FROM fallback_collection_rooms WHERE id=$1', [id])).rows[0].name, original.name)
       assert.equal((await members(id)).length, 2)
     })
@@ -94,15 +95,25 @@ async function main() {
     assert.equal((await request('/v1/data/messages/groups', { method: 'POST', token: a.token, body: original, status: 201 })).id, id)
     assert.equal((await members(id)).length, 2, 'A migrated alias must not add a second owner membership')
     assert.equal((await members(id)).filter(member => member.role === 'owner').length, 1)
+    await pool.query('UPDATE fallback_collection_rooms SET name=$2 WHERE id=$1', [id, 'Edited after creation'])
+    await pool.query('DELETE FROM fallback_collection_members WHERE room_id=$1 AND user_id=$2', [id, b.user.id])
+    const recovered = await request('/v1/data/messages/groups', { method: 'POST', token: a.token, body: original, status: 201 })
+    assert.equal(recovered.room.name, 'Edited after creation')
+    assert.equal(recovered.initialMembers.length, 1)
+    assert.equal((await members(id)).length, 1, 'Old retries must never re-invite removed members')
 
     const communityId = randomUUID()
-    const community = { id: communityId, name: 'Private community', description: 'Private original', category: 'QA', isPublic: false }
+    const community = { id: communityId, name: 'Private community', description: 'Private original', category: 'QA', isPublic: false, createOnly: true }
     await request('/v1/data/messages/communities', { method: 'POST', token: a.token, body: community, status: 201, ignoreResponse: true })
     assert.equal((await request('/v1/data/messages/communities', { method: 'POST', token: a.token, body: community, status: 201 })).id, communityId)
     const row = (await pool.query('SELECT is_public, creator_id FROM fallback_collection_rooms WHERE id=$1', [communityId])).rows[0]
     assert.equal(row.is_public, false); assert.equal(row.creator_id, publicId)
     assert.equal((await members(communityId)).length, 1)
     await request('/v1/data/messages/communities/' + communityId, { token: c.token, status: 404 })
+    await pool.query('UPDATE fallback_collection_rooms SET is_public=TRUE WHERE id=$1', [communityId])
+    const recoveredCommunity = await request('/v1/data/messages/communities', { method: 'POST', token: a.token, body: community, status: 201 })
+    assert.equal(recoveredCommunity.created, false)
+    assert.equal(recoveredCommunity.room.is_public, true, 'Recovery must preserve a later privacy change')
     await pool.query('UPDATE fallback_collection_rooms SET is_deleted=TRUE WHERE id=$1', [communityId])
     await request('/v1/data/messages/communities', { method: 'POST', token: a.token, body: community, status: 409 })
     assert.equal((await pool.query('SELECT is_deleted FROM fallback_collection_rooms WHERE id=$1', [communityId])).rows[0].is_deleted, true)
@@ -110,6 +121,7 @@ async function main() {
       lostAcknowledgementRecovered: true, concurrentRetries: 20, singleRoomAndMemberships: true,
       wholeCreationRollback: true, failedReplayPreservesPreviousData: true, migratedOwnerIsNotDuplicated: true,
       privateCommunityPreserved: true, foreignAndKindConflictsDenied: true, deletedRoomNotResurrected: true,
+      recoveryPreservesLaterEdits: true, recoveryDoesNotReinviteRemovedMembers: true,
       elapsedMillis: Date.now() - started }
   } finally { await pool.end() }
 }

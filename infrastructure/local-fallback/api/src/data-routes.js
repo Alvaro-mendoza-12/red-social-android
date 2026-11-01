@@ -53,7 +53,7 @@ const { safeErrorLogDetails } = require('./request-observability')
 const { isDeletedForAll, redactDeletedMessage, mergeMessageRows, deleteMessageForAll, refreshChatSummary, ensureMessageDeletionTables, processMessageDeletionOutbox } = require('./message-deletion-policy')
 const { insertMessageOnce } = require('./message-insert-store')
 const { insertWithCommunityBudget } = require('./community-message-budget')
-const { createOwnedCollectionRoom } = require('./collection-room-create-store')
+const { createOwnedCollectionRoom, createOwnedCollectionRoomOnce } = require('./collection-room-create-store')
 const { mayReuseMessageMedia } = require('./message-media-access')
 const { cleanStorageRow } = require('./storage-scan-coordinator')
 const { trustedStorageUrl, scanEnforcementEnabled, readyStorageSql } = require('./storage-media-reference')
@@ -10591,7 +10591,8 @@ function registerDataRoutes(app, {
         : false
       const memberIds = Array.from(cleanSet([...asArray(req.body?.members), ...asArray(req.body?.memberIds), identity.displayUserId]))
 
-      const roomRow = await createOwnedCollectionRoom(
+      const createOnly = req.body?.createOnly === true
+      const created = await (createOnly ? createOwnedCollectionRoomOnce : createOwnedCollectionRoom)(
         pool,
         { id: requestedId, kind: config.kind, name, image, description, category,
           isPublic, creatorId: identity.displayUserId },
@@ -10600,9 +10601,11 @@ function registerDataRoutes(app, {
         async (client, kind, id) => (await importedRowsByFieldValues(client,
           collectionConfig(kind).roomTable, ['id'], [id], 1)).length > 0,
       )
+      const roomRow = createOnly ? created.room : created
       const roomId = textOf(normalizeImportedRow(roomRow), ['id'], '')
 
-      res.status(201).json({ room: normalizeImportedRow(roomRow), id: roomId })
+      res.status(201).json({ room: normalizeImportedRow(roomRow), id: roomId,
+        ...(createOnly ? { created: created.created, initialMembers: created.initialMembers } : {}) })
     } catch (error) {
       next(error)
     }
