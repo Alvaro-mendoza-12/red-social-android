@@ -77,7 +77,7 @@ fun MainActivityContent(
     currentIntent: Intent?,
     onIntentConsumed: () -> Unit,
     incomingShare: IncomingSharePayload?,
-    onIncomingShareConsumed: () -> Unit,
+    onIncomingShareConsumed: () -> conectate.com.presentation.messages.ShareDismissal,
     authRepository: AuthRepository,
     notificationRepositoryProvider: Lazy<NotificationRepository>,
     voiceRoomRepositoryProvider: Lazy<VoiceRoomRepository>,

@@ -60,6 +60,7 @@ data class InternalVideoShareRequest(val video: conectate.com.data.model.Video, 
 data class InternalPostShareRequest(val post: conectate.com.data.model.Post, val requestId: String = UUID.randomUUID().toString())
 
 class UniversalForwardCoordinator {
+    val activeRequestId: String? get() = postRequest?.requestId ?: videoRequest?.requestId ?: request?.requestId
     var postRequest by mutableStateOf<InternalPostShareRequest?>(null)
         private set
     fun openPost(post: conectate.com.data.model.Post) {
@@ -103,6 +104,12 @@ class UniversalForwardCoordinator {
         request = null
         videoRequest = null
         postRequest = null
+    }
+
+    fun dismiss(requestId: String): ShareDismissal {
+        if (activeRequestId != requestId) return ShareDismissal.IGNORED
+        dismiss()
+        return ShareDismissal.CURRENT
     }
 }
 

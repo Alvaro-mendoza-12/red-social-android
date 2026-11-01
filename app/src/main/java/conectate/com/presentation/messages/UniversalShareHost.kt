@@ -56,7 +56,7 @@ import conectate.com.util.IncomingSharePayload
 fun UniversalShareHost(
     incomingShare: IncomingSharePayload?,
     forwardCoordinator: UniversalForwardCoordinator,
-    onIncomingShareConsumed: () -> Unit,
+    onIncomingShareConsumed: () -> ShareDismissal,
     onOpenConversation: (ShareDestination) -> Unit = {},
 ) {
     val forwardRequest = forwardCoordinator.request
@@ -78,13 +78,14 @@ fun UniversalShareHost(
     var selectedPeople by remember(activeKey) { mutableStateOf<Map<String, ShareDestination>>(emptyMap()) }
     var caption by remember(activeKey) { mutableStateOf(if (internalContent) "" else incomingShare?.text ?: incomingShare?.subject.orEmpty()) }
 
-    fun close() {
-        viewModel.resetActionState()
-        if (forwardRequest != null || internalContent) {
-            forwardCoordinator.dismiss()
+    fun close(): Boolean {
+        val dismissal = if (forwardRequest != null || internalContent) {
+            forwardCoordinator.dismiss(activeKey)
         } else {
-            onIncomingShareConsumed()
+            if (forwardCoordinator.activeRequestId != null) ShareDismissal.IGNORED else onIncomingShareConsumed()
         }
+        if (dismissal.consumed) viewModel.resetActionState()
+        return dismissal.mayNavigate
     }
 
     LaunchedEffect(activeKey) {
@@ -98,8 +99,8 @@ fun UniversalShareHost(
 
     LaunchedEffect(actionState) {
         val completed = actionState as? ShareActionState.Completed ?: return@LaunchedEffect
+        if (!close()) return@LaunchedEffect
         Toast.makeText(context, completed.message, Toast.LENGTH_SHORT).show()
-        close()
         completed.openDestination?.let(onOpenConversation)
     }
 
@@ -262,8 +263,7 @@ fun UniversalShareHost(
                             viewModel.forwardMessages(forwardRequest.candidates, selectedKeys)
                         } else if (incomingShare != null) {
                             viewModel.sendIncomingShare(incomingShare, selectedKeys, caption) { destination ->
-                                close()
-                                onOpenConversation(destination)
+                                if (close()) onOpenConversation(destination)
                             }
                         }
                     },

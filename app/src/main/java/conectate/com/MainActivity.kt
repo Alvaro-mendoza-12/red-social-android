@@ -17,6 +17,9 @@ import conectate.com.presentation.messages.shouldAcceptRestoredShare
 import conectate.com.presentation.messages.parseIncomingShareIntent
 import conectate.com.presentation.messages.takeIncomingSharePersistablePermissions
 import conectate.com.presentation.messages.toCapturedShareIntent
+import conectate.com.presentation.messages.IncomingShareDelivery
+import conectate.com.presentation.messages.IncomingShareDeliveryGate
+import conectate.com.presentation.messages.ShareDismissal
 import conectate.com.presentation.theme.RedSocialTheme
 import conectate.com.services.LiveChatHeadService
 import conectate.com.util.IncomingSharePayload
@@ -43,8 +46,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private val intentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
-    private val incomingShareState = androidx.compose.runtime.mutableStateOf<IncomingSharePayload?>(null)
-    private var incomingShareGeneration = 0L
+    private val incomingShareState = androidx.compose.runtime.mutableStateOf<IncomingShareDelivery<IncomingSharePayload>?>(null)
+    private val incomingShareDeliveries = IncomingShareDeliveryGate<IncomingSharePayload>()
+    private var pendingShareIntent: Intent? = null
     private var presenceHeartbeatJob: Job? = null
     private var presenceOfflineJob: Job? = null
 
@@ -123,7 +127,8 @@ class MainActivity : ComponentActivity() {
             val chatAccent by messagesPreferences.chatAccent.collectAsStateWithLifecycle()
             val chatBackground by messagesPreferences.chatBackground.collectAsStateWithLifecycle()
             val currentIntent by intentState
-            val incomingShare by incomingShareState
+            val incomingDelivery by incomingShareState
+            val incomingShare = incomingDelivery?.payload
             RedSocialTheme(
                 darkTheme = isDarkMode,
                 appTheme = appTheme,
@@ -139,7 +144,7 @@ class MainActivity : ComponentActivity() {
                         currentIntent = currentIntent,
                         onIntentConsumed = { consumeIncomingIntent(currentIntent) },
                         incomingShare = incomingShare,
-                        onIncomingShareConsumed = ::discardIncomingShare,
+                        onIncomingShareConsumed = { discardIncomingShare(incomingDelivery) },
                         authRepository = authRepository,
                         notificationRepositoryProvider = notificationRepository,
                         voiceRoomRepositoryProvider = voiceRoomRepository,
@@ -176,7 +181,7 @@ class MainActivity : ComponentActivity() {
         // Android keeps Activity.intent through recreation. Clearing only the
         // Compose state would replay a consumed link on rotation or font changes.
         // Captured shares retain their intent until discardIncomingShare handles it.
-        if (incomingShareState.value == null && intent === consumedIntent) {
+        if (intent === consumedIntent && consumedIntent !== pendingShareIntent) {
             setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
         }
     }
@@ -184,7 +189,7 @@ class MainActivity : ComponentActivity() {
     private fun acceptIncomingIntent(incomingIntent: Intent) {
         // A new link/notification also supersedes an unfinished file capture.
         // Otherwise that old capture can replace the new destination when it finishes.
-        val generation = ++incomingShareGeneration
+        val generation = incomingShareDeliveries.beginIntent()
         setIntent(incomingIntent)
         if (!isIncomingShareIntent(incomingIntent)) {
             intentState.value = incomingIntent
@@ -195,7 +200,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val parsed = parseIncomingShareIntent(this@MainActivity, incomingIntent)
             if (parsed == null) {
-                if (generation == incomingShareGeneration) intentState.value = incomingIntent
+                if (incomingShareDeliveries.isCurrentCapture(generation)) intentState.value = incomingIntent
                 return@launch
             }
 
@@ -209,32 +214,40 @@ class MainActivity : ComponentActivity() {
                     )
                 }
 
-            if (generation != incomingShareGeneration) {
-                PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, captured)
+            val delivery = incomingShareDeliveries.publish(generation, captured)
+            if (delivery == null) {
+                if (incomingShareState.value?.payload?.id != captured.id)
+                    PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, captured)
                 return@launch
             }
 
-            incomingShareState.value
-                ?.takeIf { it.id != captured.id }
-                ?.let { PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, it) }
-            incomingShareState.value = captured
+            val previous = incomingShareState.value?.payload?.takeIf { it.id != captured.id }
+            incomingShareState.value = delivery
             val capturedIntent = captured.toCapturedShareIntent()
+            pendingShareIntent = capturedIntent
             setIntent(capturedIntent)
             intentState.value = capturedIntent
+            // Publish without a suspending cleanup between the generation check and UI delivery.
+            if (previous != null) lifecycleScope.launch {
+                PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, previous)
+            }
         }
     }
 
-    private fun discardIncomingShare() {
-        incomingShareGeneration += 1
-        val payload = incomingShareState.value
+    private fun discardIncomingShare(expected: IncomingShareDelivery<IncomingSharePayload>?): ShareDismissal {
+        if (isDestroyed) return ShareDismissal.IGNORED
+        val consumed = incomingShareDeliveries.consume(expected) ?: return ShareDismissal.IGNORED
+        val payload = consumed.delivery.payload
         incomingShareState.value = null
-        intentState.value = null
-        setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
-        if (payload != null) {
-            lifecycleScope.launch {
-                PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, payload)
-            }
+        pendingShareIntent = null
+        if (consumed.dismissal == ShareDismissal.CURRENT) {
+            intentState.value = null
+            setIntent(Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java))
         }
+        lifecycleScope.launch {
+            PendingOutgoingMediaStore.deleteIncomingShare(this@MainActivity, payload)
+        }
+        return consumed.dismissal
     }
 
     override fun onResume() {
