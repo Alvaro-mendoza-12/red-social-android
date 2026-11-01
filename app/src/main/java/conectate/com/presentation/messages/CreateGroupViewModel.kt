@@ -25,7 +25,8 @@ enum class GroupCreationStep {
 class CreateGroupViewModel @Inject constructor(
     private val groupRepository: conectate.com.data.repository.GroupRepository,
     private val userRepository: UserRepository,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val creationJournal: conectate.com.data.repository.collection.CollectionCreationJournal,
 ) : ViewModel() {
 
     private val _searchResults = MutableStateFlow<List<User>>(emptyList())
@@ -46,13 +47,23 @@ class CreateGroupViewModel @Inject constructor(
     private val creationSession = CollectionCreationSession(viewModelScope, authService.captureAccountLease()) {
         _errorMessage.value = it
     }
+    private val recovery = CollectionCreationRecovery(creationSession, {
+        creationSession.accountId?.takeIf { authService.isLocalFallbackSession() }?.let { creationJournal.pending(it, "group") }
+    }) { _errorMessage.value = it }
+    internal val recoveryState = recovery.state
+    fun retryRecovery() { if (!_isCreating.value) creationSession.scope.launch { recovery.refresh() } }
+    fun retryPending(onSuccess: (String) -> Unit) {
+        val pending = recovery.state.value.pending ?: return
+        createGroup(pending.name, pending.description, onSuccess)
+    }
+    private fun editable() = creationSession.isCurrent() && !_isCreating.value && !recovery.state.value.showRecovery
     val selectedImageBytes = creationSession.selectedImageBytes
     val isPreparingImage = creationSession.preparingImage
     val sessionCurrent = creationSession.sessionCurrent
     fun isSessionCurrent() = creationSession.isCurrent()
     val ownerAccountId get() = creationSession.accountId
     fun prepareImage(loader: suspend () -> ByteArray?) {
-        if (!_isCreating.value) creationSession.prepareImage(loader)
+        if (editable()) creationSession.prepareImage(loader)
     }
 
     private val _currentStep = MutableStateFlow(GroupCreationStep.SELECT_MEMBERS)
@@ -62,12 +73,12 @@ class CreateGroupViewModel @Inject constructor(
     private var searchRevision = 0L
 
     fun setImageBytes(bytes: ByteArray?) {
-        if (!_isCreating.value) creationSession.setImageBytes(bytes)
+        if (editable()) creationSession.setImageBytes(bytes)
     }
 
     fun searchUsers(query: String) {
         searchJob?.cancel()
-        if (!creationSession.isCurrent()) return
+        if (!editable()) return
         val revision = ++searchRevision
         _isSearching.value = false
         _searchResults.value = emptyList()
@@ -105,7 +116,7 @@ class CreateGroupViewModel @Inject constructor(
     }
 
     fun toggleUserSelection(user: User) {
-        if (!creationSession.isCurrent() || _isCreating.value) return
+        if (!editable()) return
         val current = _selectedUsers.value.toMutableList()
         if (current.any { it.id == user.id }) {
             current.removeAll { it.id == user.id }
@@ -120,7 +131,7 @@ class CreateGroupViewModel @Inject constructor(
     }
 
     fun nextStep() {
-        if (!creationSession.isCurrent() || _isCreating.value) return
+        if (!editable()) return
         if (_selectedUsers.value.isNotEmpty()) {
             _currentStep.value = GroupCreationStep.ENTER_DETAILS
         } else {
@@ -129,17 +140,23 @@ class CreateGroupViewModel @Inject constructor(
     }
 
     fun previousStep() {
-        if (!creationSession.isCurrent() || _isCreating.value) return
+        if (!editable()) return
         _currentStep.value = GroupCreationStep.SELECT_MEMBERS
     }
 
     fun createGroup(name: String, description: String?, onSuccess: (String) -> Unit) {
         if (!creationSession.isCurrent() || _isCreating.value) return
+        val recoveryState = recovery.state.value
+        if (recoveryState.loading || recoveryState.readFailed) return
+        val pending = recoveryState.pending
         if (isPreparingImage.value) { _errorMessage.value = "Espera a que terminemos de preparar el icono."; return }
-        if (name.isBlank()) { _errorMessage.value = "El nombre es obligatorio"; return }
+        if (pending == null) {
+            val invalid = runCatching { conectate.com.data.repository.collection.requireCollectionCreationDetails(name.trim(), description) }.exceptionOrNull()
+            if (invalid != null) { _errorMessage.value = invalid.message; return }
+        }
         val owner = creationSession.accountId ?: run { _errorMessage.value = "Inicia sesión para continuar."; return }
         val image = selectedImageBytes.value
-        val participants = _selectedUsers.value.map { it.id }
+        val participants = pending?.memberIds ?: _selectedUsers.value.map { it.id }
         if (participants.isEmpty()) {
             _errorMessage.value = "Selecciona al menos un participante"
             return
@@ -148,6 +165,7 @@ class CreateGroupViewModel @Inject constructor(
         _isCreating.value = true
         _errorMessage.value = null
         creationSession.scope.launch {
+            var confirmed = false
             try {
                 creationSession.requireCurrent()
                 val result = groupRepository.createGroup(
@@ -162,22 +180,27 @@ class CreateGroupViewModel @Inject constructor(
                 if (result.isSuccess) {
                      val groupId = result.getOrNull()
                      if (!groupId.isNullOrBlank()) {
+                         confirmed = true
                          onSuccess(groupId)
                      } else _errorMessage.value = "No pudimos confirmar el grupo. Reintenta."
                 } else {
-                    _errorMessage.value = "No pudimos crear el grupo. Conservamos tus datos para reintentar."
+                    _errorMessage.value = if (result.exceptionOrNull() is conectate.com.data.repository.collection.CollectionCreationRejectedException)
+                        "Esa creación ya no está disponible. Puedes comenzar otra."
+                    else "No pudimos confirmar el grupo. Reintenta para continuar con la misma creación."
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (e: Exception) {
                 if (creationSession.isCurrent()) _errorMessage.value = "No pudimos completar la operación. Conservamos tus datos para reintentar."
             } finally {
-                _isCreating.value = false
+                try { if (!confirmed && creationSession.isCurrent()) recovery.refresh() }
+                finally { _isCreating.value = false }
             }
         }
     }
     override fun onCleared() { creationSession.close(); super.onCleared() }
 
     init {
+        creationSession.scope.launch { recovery.refresh() }
         viewModelScope.launch {
             authService.observeSession().collect {
                 creationSession.sessionChanged()

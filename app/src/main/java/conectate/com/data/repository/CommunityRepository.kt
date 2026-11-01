@@ -153,6 +153,7 @@ class CommunityRepository @Inject constructor(
     private val transientNetworkRetryCodes = listOf("timeout", "timed out", "connection", "network", "502", "503", "504")
     private val collectionAdminRemoteStore = CollectionAdminRemoteStore(supabaseConfig)
     private val collectionCreationRemoteStore = CollectionCreationRemoteStore(supabaseConfig)
+    private val creationJournal = conectate.com.data.repository.collection.CollectionCreationJournal(context)
     private val collectionMediaStore = CollectionMediaStore(storageService)
     private val collectionMessageEngagementStore = CollectionMessageEngagementStore(supabaseConfig, json)
     private val collectionHistoryStore by lazy {
@@ -1666,127 +1667,67 @@ class CommunityRepository @Inject constructor(
     }
 
     suspend fun createCommunity(
-        name: String, 
-        description: String?, 
-        imageBytes: ByteArray?, 
-        category: String?, 
-        isPublic: Boolean,
+        name: String, description: String?, imageBytes: ByteArray?, category: String?, isPublic: Boolean,
         expectedAccountId: String? = null,
     ): Result<String> = conectate.com.data.repository.collection.withCollectionCreationAccount(
         lease = authService.captureAccountLease(), expectedAccountId = expectedAccountId,
         tokenForAccount = authService::getAccessTokenForAccountAwait,
     ) { creatorId, token, requireCurrent ->
         try {
-            var communityId = UUID.randomUUID().toString().lowercase()
-            
-            var imageUrl: String? = null
-            if (imageBytes != null) {
-                imageUrl = collectionMediaStore.uploadImage(
-                    ownerId = communityId, bytes = imageBytes, bucketName = "communities",
-                    filePrefix = "community", expectedAccountId = creatorId,
-                ).getOrThrow()
-                requireCurrent()
-            }
-
-            var now = java.time.Instant.now().toString()
-            // Crear objeto JSON explícito para evitar fallos por campos extra o nulos
-            val communityJson = buildJsonObject {
-                put("id", communityId)
-                put("name", name)
-                put("description", description)
-                put("image", imageUrl)
-                put("category", category)
-                put("is_public", isPublic)
-                put("created_at", now)
-                put("creator_id", creatorId)
-                put("is_deleted", false)
-                put("only_admins_can_talk", true)
-            }
-
-            var membershipPayloads = listOf(
-                buildJsonObject {
-                    put("community_id", communityId)
-                    put("user_id", creatorId.trim().lowercase())
-                    put("role", "owner")
-                    put("joined_at", now)
+            val primary = authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured
+            val prepare: suspend () -> conectate.com.data.repository.collection.CollectionCreationRequest = {
+                conectate.com.data.repository.collection.requireCollectionCreationDetails(name.trim(), description, category)
+                val id = UUID.randomUUID().toString()
+                val image = imageBytes?.let {
+                    collectionMediaStore.uploadImage(id, it, "communities", "community", creatorId).getOrThrow()
                 }
-            )
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
                 requireCurrent()
-                localFallbackApiClient.createCommunity(
-                    accessToken = token,
-                    id = communityId,
-                    name = name,
-                    description = description,
-                    imageUrl = imageUrl,
-                    category = category,
-                    isPublic = isPublic
-                ).getOrThrow()
+                conectate.com.data.repository.collection.CollectionCreationRequest(
+                    id = id, accountId = creatorId, kind = "community", name = name.trim(), description = description,
+                    imageUrl = image, category = category, isPublic = isPublic, createdAt = java.time.Instant.now().toString(),
+                    memberIds = listOf(creatorId.trim().lowercase()),
+                )
+            }
+            val sendAndSave: suspend (conectate.com.data.repository.collection.CollectionCreationRequest) -> Unit = { request ->
                 requireCurrent()
-                val newCommunity = Community(
-                    id = communityId,
-                    name = name,
-                    description = description,
-                    image = imageUrl,
-                    category = category,
-                    is_public = isPublic,
-                    created_at = now,
-                    only_admins_can_talk = true,
-                    creator_id = creatorId,
-                    is_member = true
-                )
-                communityDao.saveCreatedCommunity(CommunityEntity.fromDomain(newCommunity), listOf(
-                    CommunityMemberEntity(
-                        community_id = communityId,
-                        user_id = creatorId.trim().lowercase(),
-                        role = "owner",
-                        joined_at = now
+                var receipt: conectate.com.data.localfallback.LocalFallbackCreateCollectionResponse? = null
+                if (primary) {
+                    receipt = localFallbackApiClient.createCollectionOnce(token, request).getOrThrow()
+                } else {
+                    collectionCreationRemoteStore.createCollectionWithMemberships(
+                        collectionTable = "communities",
+                        collectionPayload = buildJsonObject {
+                            put("id", request.id); put("name", request.name); put("description", request.description)
+                            put("image", request.imageUrl); put("category", request.category); put("is_public", request.isPublic)
+                            put("created_at", request.createdAt); put("creator_id", creatorId)
+                            put("is_deleted", false); put("only_admins_can_talk", true)
+                        }, membershipTable = "community_members",
+                        membershipPayloads = listOf(buildJsonObject {
+                            put("community_id", request.id); put("user_id", creatorId.trim().lowercase())
+                            put("role", "owner"); put("joined_at", request.createdAt)
+                        }), requireCurrent = requireCurrent,
+                    ).getOrThrow()
+                }
+                requireCurrent()
+                if (receipt != null) {
+                    val confirmed = conectate.com.data.repository.collection.collectionCreationCommunityCache(receipt, creatorId)
+                    communityDao.saveCreatedCommunity(confirmed.first, confirmed.second, requireCurrent)
+                } else {
+                    communityDao.saveCreatedCommunity(
+                        CommunityEntity.fromDomain(Community(id = request.id, name = request.name, description = request.description,
+                            image = request.imageUrl, category = request.category, is_public = request.isPublic,
+                            created_at = request.createdAt, only_admins_can_talk = true, creator_id = creatorId, is_member = true)),
+                        listOf(CommunityMemberEntity(community_id = request.id, user_id = creatorId.trim().lowercase(),
+                            role = "owner", joined_at = request.createdAt)), requireCurrent,
                     )
-                ), requireCurrent)
-                return@withCollectionCreationAccount Result.success(communityId)
+                }
             }
-            collectionCreationRemoteStore.createCollectionWithMemberships(
-                collectionTable = "communities",
-                collectionPayload = communityJson,
-                membershipTable = "community_members",
-                membershipPayloads = membershipPayloads,
-                requireCurrent = requireCurrent,
-            ).getOrThrow()
-
-            // Optimistic Local Insert (Instant UI)
-            try {
-                val newCommunity = Community(
-                    id = communityId,
-                    name = name,
-                    description = description,
-                    image = imageUrl,
-                    category = category,
-                    is_public = isPublic,
-                    created_at = now,
-                    only_admins_can_talk = true,
-                    creator_id = creatorId
-                )
-                communityDao.saveCreatedCommunity(CommunityEntity.fromDomain(newCommunity), listOf(
-                    CommunityMemberEntity(
-                        community_id = communityId,
-                        user_id = creatorId,
-                        role = "owner",
-                        joined_at = now
-                    )
-                ), requireCurrent)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (e: Exception) {
-                android.util.Log.e("CommunityRepository", "Error local insert", e)
-            }
-
-            Result.success(communityId)
+            val id = if (primary) creationJournal.execute(creatorId, "community", requireCurrent, prepare, sendAndSave)
+                else prepare().let { sendAndSave(it); it.id }
+            Result.success(id)
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (e: Exception) {
-            android.util.Log.e("CommunityRepository", "Error en createCommunity", e)
-            Result.failure(e)
-        }
+        catch (error: Exception) { Result.failure(error) }
     }
-
 
     private suspend fun getMemberRole(communityId: String, userId: String): String? {
         if (authService.isLocalFallbackModeEnabled()) {

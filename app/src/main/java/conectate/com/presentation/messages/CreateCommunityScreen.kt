@@ -44,6 +44,17 @@ fun CreateCommunityScreen(
         CollectionCreationSessionNotice { navController.popBackStack() }
         return
     }
+    val recovery by viewModel.recoveryState.collectAsStateWithLifecycle()
+    val isCreating by viewModel.isCreating.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    if (recovery.showRecovery) {
+        CollectionCreationRecoveryScreen(recovery.pending?.name, recovery.loading || isCreating, error,
+            onContinue = {
+                if (recovery.pending == null) viewModel.retryRecovery()
+                else viewModel.retryPending { navController.openCreatedCollection("community", it) }
+            }, onBack = { navController.popBackStack() })
+        return
+    }
     key(viewModel.ownerAccountId) { CreateCommunityForm(navController, viewModel) }
 }
 
@@ -207,8 +218,8 @@ private fun CreateCommunityForm(navController: NavController, viewModel: CreateC
 
             Button(
                 onClick = {
-                    viewModel.createCommunity(name, description, category, isPublic) { 
-                        navController.popBackStack()
+                    viewModel.createCommunity(name, description, category, isPublic) { id ->
+                        navController.openCreatedCollection("community", id)
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),

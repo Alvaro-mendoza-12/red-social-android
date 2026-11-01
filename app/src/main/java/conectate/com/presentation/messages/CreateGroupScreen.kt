@@ -49,6 +49,17 @@ fun CreateGroupScreen(
         CollectionCreationSessionNotice { navController.popBackStack() }
         return
     }
+    val recovery by viewModel.recoveryState.collectAsStateWithLifecycle()
+    val isCreating by viewModel.isCreating.collectAsStateWithLifecycle()
+    val error by viewModel.errorMessage.collectAsStateWithLifecycle()
+    if (recovery.showRecovery) {
+        CollectionCreationRecoveryScreen(recovery.pending?.name, recovery.loading || isCreating, error,
+            onContinue = {
+                if (recovery.pending == null) viewModel.retryRecovery()
+                else viewModel.retryPending { navController.openCreatedCollection("group", it) }
+            }, onBack = { navController.popBackStack() })
+        return
+    }
     key(viewModel.ownerAccountId) { CreateGroupForm(navController, viewModel) }
 }
 
@@ -148,7 +159,7 @@ private fun CreateGroupForm(navController: NavController, viewModel: CreateGroup
                         } else {
                             if (groupName.isNotBlank()) {
                                 viewModel.createGroup(groupName.trim(), groupDescription.trim()) { chatId ->
-                                    navController.popBackStack()
+                                    navController.openCreatedCollection("group", chatId)
                                 }
                             } else {
                                 android.widget.Toast.makeText(context, "Ingresa un nombre para el grupo", android.widget.Toast.LENGTH_SHORT).show()

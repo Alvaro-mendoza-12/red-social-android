@@ -153,6 +153,7 @@ class GroupRepository @Inject constructor(
     private val transientNetworkRetryCodes = listOf("timeout", "timed out", "connection", "network", "502", "503", "504")
     private val collectionAdminRemoteStore = CollectionAdminRemoteStore(supabaseConfig)
     private val collectionCreationRemoteStore = CollectionCreationRemoteStore(supabaseConfig)
+    private val creationJournal = conectate.com.data.repository.collection.CollectionCreationJournal(context)
     private val collectionMediaStore = CollectionMediaStore(storageService)
     private val collectionMessageEngagementStore = CollectionMessageEngagementStore(supabaseConfig, json)
     private val collectionHistoryStore by lazy {
@@ -2601,122 +2602,67 @@ class GroupRepository @Inject constructor(
      */
 
 
-    suspend fun createGroup(name: String, description: String?, imageBytes: ByteArray?, members: List<String>, expectedAccountId: String? = null): Result<String> = conectate.com.data.repository.collection.withCollectionCreationAccount(
+    suspend fun createGroup(
+        name: String, description: String?, imageBytes: ByteArray?, members: List<String>, expectedAccountId: String? = null,
+    ): Result<String> = conectate.com.data.repository.collection.withCollectionCreationAccount(
         lease = authService.captureAccountLease(), expectedAccountId = expectedAccountId,
         tokenForAccount = authService::getAccessTokenForAccountAwait,
     ) { creatorId, token, requireCurrent ->
         try {
-            val groupId = UUID.randomUUID().toString().lowercase()
-            
-            var imageUrl: String? = null
-            if (imageBytes != null) {
-                imageUrl = collectionMediaStore.uploadImage(
-                    ownerId = groupId, bytes = imageBytes, bucketName = "groups",
-                    filePrefix = "group", expectedAccountId = creatorId,
-                ).getOrThrow()
+            val primary = authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured
+            val prepare: suspend () -> conectate.com.data.repository.collection.CollectionCreationRequest = {
+                conectate.com.data.repository.collection.requireCollectionCreationDetails(name.trim(), description)
+                val id = UUID.randomUUID().toString()
+                val image = imageBytes?.let {
+                    collectionMediaStore.uploadImage(id, it, "groups", "group", creatorId).getOrThrow()
+                }
                 requireCurrent()
+                conectate.com.data.repository.collection.CollectionCreationRequest(
+                    id = id, accountId = creatorId, kind = "group", name = name.trim(), description = description,
+                    imageUrl = image, memberIds = (members + creatorId).map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct(),
+                    createdAt = java.time.Instant.now().toString(),
+                )
             }
-
-            // Usar JsonObject explícito para evitar fallos por campos nulos o inesperados
-            var now = java.time.Instant.now().toString()
-            val groupJson = buildJsonObject {
-                put("id", groupId)
-                put("name", name)
-                put("description", description)
-                put("image", imageUrl)
-                put("created_at", now)
-                put("creator_id", creatorId)
-                put("is_deleted", false)
-            }
-
-            val allMembers = (members + creatorId)
-                .map { it.trim().lowercase() }
-                .filter { it.isNotBlank() }
-                .distinct()
-            var membershipPayloads = allMembers.map { uid ->
-                buildJsonObject {
-                    put("group_id", groupId)
-                    put("user_id", uid)
-                    put("role", if (uid == creatorId.trim().lowercase()) "owner" else "member")
-                    put("joined_at", now)
+            val sendAndSave: suspend (conectate.com.data.repository.collection.CollectionCreationRequest) -> Unit = { request ->
+                requireCurrent()
+                var receipt: conectate.com.data.localfallback.LocalFallbackCreateCollectionResponse? = null
+                if (primary) {
+                    receipt = localFallbackApiClient.createCollectionOnce(token, request).getOrThrow()
+                } else {
+                    collectionCreationRemoteStore.createCollectionWithMemberships(
+                        collectionTable = "groups",
+                        collectionPayload = buildJsonObject {
+                            put("id", request.id); put("name", request.name); put("description", request.description)
+                            put("image", request.imageUrl); put("created_at", request.createdAt)
+                            put("creator_id", creatorId); put("is_deleted", false)
+                        },
+                        membershipTable = "group_members",
+                        membershipPayloads = request.memberIds.map { uid -> buildJsonObject {
+                            put("group_id", request.id); put("user_id", uid)
+                            put("role", if (uid.equals(creatorId, true)) "owner" else "member"); put("joined_at", request.createdAt)
+                        } }, requireCurrent = requireCurrent,
+                    ).getOrThrow()
+                }
+                requireCurrent()
+                if (receipt != null) {
+                    val confirmed = conectate.com.data.repository.collection.collectionCreationGroupCache(receipt, creatorId)
+                    groupDao.saveCreatedGroup(confirmed.first, confirmed.second, requireCurrent)
+                } else {
+                    groupDao.saveCreatedGroup(
+                        GroupEntity(id = request.id, name = request.name, image = request.imageUrl, description = request.description,
+                            created_at = request.createdAt, creator_id = creatorId, last_message = null, last_message_at = null,
+                            is_member = true, is_deleted = false),
+                        request.memberIds.map { uid -> GroupMemberEntity(group_id = request.id, user_id = uid,
+                            role = if (uid.equals(creatorId, true)) "owner" else "member", joined_at = request.createdAt) }, requireCurrent,
+                    )
                 }
             }
-            if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                requireCurrent()
-                localFallbackApiClient.createGroup(
-                    accessToken = token,
-                    id = groupId,
-                    name = name,
-                    description = description,
-                    imageUrl = imageUrl,
-                    memberIds = allMembers
-                ).getOrThrow()
-                requireCurrent()
-                val optimisticGroup = GroupEntity(
-                    id = groupId,
-                    name = name,
-                    image = imageUrl,
-                    description = description,
-                    created_at = now,
-                    creator_id = creatorId,
-                    last_message = null,
-                    last_message_at = null,
-                    is_member = true,
-                    is_deleted = false
-                )
-                groupDao.saveCreatedGroup(optimisticGroup, allMembers.map { uid ->
-                    GroupMemberEntity(
-                        group_id = groupId,
-                        user_id = uid,
-                        role = if (uid == creatorId.trim().lowercase()) "owner" else "member",
-                        joined_at = now
-                    )
-                }, requireCurrent)
-                return@withCollectionCreationAccount Result.success(groupId)
-            }
-            collectionCreationRemoteStore.createCollectionWithMemberships(
-                collectionTable = "groups",
-                collectionPayload = groupJson,
-                membershipTable = "group_members",
-                membershipPayloads = membershipPayloads,
-                requireCurrent = requireCurrent,
-            ).getOrThrow()
-
-            try {
-                val optimisticGroup = GroupEntity(
-                    id = groupId,
-                    name = name,
-                    image = imageUrl,
-                    description = description,
-                    created_at = now,
-                    creator_id = creatorId,
-                    last_message = null,
-                    last_message_at = null,
-                    is_member = true,
-                    is_deleted = false
-                )
-                groupDao.saveCreatedGroup(optimisticGroup, allMembers.map { uid ->
-                    conectate.com.data.local.entity.GroupMemberEntity(
-                        group_id = groupId,
-                        user_id = uid,
-                        role = if (uid == creatorId.trim().lowercase()) "owner" else "member",
-                        joined_at = now
-                    )
-                }, requireCurrent)
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (e: Exception) {
-                android.util.Log.e("GroupRepository", "Fallo inserción local optimista", e)
-            }
-
-            Result.success(groupId)
+            val id = if (primary) creationJournal.execute(creatorId, "group", requireCurrent, prepare, sendAndSave)
+                else prepare().let { sendAndSave(it); it.id }
+            Result.success(id)
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (e: Exception) {
-            android.util.Log.e("GroupRepository", "[GOD] ERROR AL CREAR GRUPO", e)
-            Result.failure(e)
-        }
+        catch (error: Exception) { Result.failure(error) }
     }
-
-
 
     suspend fun getGroupMembers(groupId: String): Result<List<GroupMember>> = withContext(Dispatchers.IO) {
         val cleanGroupId = groupId.trim().lowercase()

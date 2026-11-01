@@ -71,4 +71,38 @@ class CollectionCreationTransactionTest {
         assertNull(db.communityDao().getCommunityById("community"))
         assertTrue(db.communityDao().getMembersFlow("community").first().isEmpty())
     }
+
+    @Test fun groupRecoveryKeepsMessagesPreviewAndUnreadCountButReplacesOldMemberships() = runBlocking {
+        val dao = db.groupDao()
+        val lease = AuthSessionMutationGuard().captureAccountLease { "a" }
+        dao.saveCreatedGroup(group().copy(last_message = "Keep preview", last_message_at = time, unread_count = 3),
+            listOf(GroupMemberEntity("group", "a", "owner", time), GroupMemberEntity("group", "removed", "member", time)), lease::requireCurrent)
+        dao.insertMessages(listOf(GroupMessageEntity.fromDomain(conectate.com.data.model.GroupMessage(
+            id = "kept", group_id = "group", sender_id = "a", content = "Keep preview", created_at = time))))
+        dao.saveCreatedGroup(group().copy(name = "Edited on server"), listOf(GroupMemberEntity("group", "a", "owner", time)), lease::requireCurrent)
+        val cached = dao.getGroupById("group")!!
+        assertEquals("Edited on server", cached.name)
+        assertEquals("Keep preview", cached.last_message)
+        assertEquals(3, cached.unread_count)
+        assertEquals(listOf("a"), dao.getMembersFlow("group").first().map { it.user_id })
+        assertEquals(listOf("kept"), dao.getMessagesSync("group").map { it.id })
+    }
+
+    @Test fun communityRecoveryUpdatesWithoutReplacingTheParentAndErasingItsMembersOrMessages() = runBlocking {
+        val dao = db.communityDao()
+        val lease = AuthSessionMutationGuard().captureAccountLease { "a" }
+        dao.saveCreatedCommunity(community().copy(last_message = "Keep community", last_message_at = time, unread_count = 2),
+            listOf(CommunityMemberEntity("community", "a", "owner", time), CommunityMemberEntity("community", "removed", "member", time)), lease::requireCurrent)
+        dao.insertMessages(listOf(CommunityMessageEntity.fromDomain(conectate.com.data.model.CommunityMessage(
+            id = "kept", community_id = "community", sender_id = "a", content = "Keep community", created_at = time))))
+        dao.saveCreatedCommunity(community().copy(name = "Edited community", is_public = true),
+            listOf(CommunityMemberEntity("community", "a", "owner", time)), lease::requireCurrent)
+        val cached = dao.getCommunityById("community")!!
+        assertEquals("Edited community", cached.name)
+        assertTrue(cached.is_public)
+        assertEquals("Keep community", cached.last_message)
+        assertEquals(2, cached.unread_count)
+        assertEquals(listOf("a"), dao.getMembersFlow("community").first().map { it.user_id })
+        assertEquals(listOf("kept"), dao.getMessagesSync("community").map { it.id })
+    }
 }

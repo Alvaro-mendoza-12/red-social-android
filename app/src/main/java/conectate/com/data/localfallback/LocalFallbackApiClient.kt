@@ -937,14 +937,20 @@ private data class LocalFallbackCreateCollectionRequest(
     val imageUrl: String? = null,
     val category: String? = null,
     val isPublic: Boolean = true,
-    val memberIds: List<String> = emptyList()
+    val memberIds: List<String> = emptyList(),
+    val createOnly: Boolean = false,
 )
 
 @Serializable
-private data class LocalFallbackCreateCollectionResponse(
+internal data class LocalFallbackCreateCollectionResponse(
     val id: String = "",
-    val room: JsonObject? = null
+    val room: JsonObject? = null,
+    val created: Boolean? = null,
+    val initialMembers: List<LocalFallbackCreatedCollectionMember>? = null,
 )
+
+@Serializable
+internal data class LocalFallbackCreatedCollectionMember(val user_id: String, val role: String = "member", val joined_at: String = "")
 
 @Serializable
 private data class LocalFallbackCreateVoiceRoomRequest(
@@ -5842,11 +5848,30 @@ class LocalFallbackApiClient @Inject constructor(
         )
     )
 
+    internal suspend fun createCollectionOnce(
+        accessToken: String, request: conectate.com.data.repository.collection.CollectionCreationRequest,
+    ): Result<LocalFallbackCreateCollectionResponse> = postCollectionCreation(
+        accessToken, if (request.kind == "group") "groups" else "communities",
+        LocalFallbackCreateCollectionRequest(id = request.id, name = request.name, description = request.description,
+            imageUrl = UbuntuStorageUrl.rewrite(request.imageUrl), category = request.category, isPublic = request.isPublic,
+            memberIds = request.memberIds, createOnly = true),
+    ).mapCatching { response ->
+        check(response.id.equals(request.id, true) && response.room?.let { textOf(it, "id") }.equals(request.id, true)
+            && response.created != null && response.initialMembers != null) { "No pudimos confirmar la creación. Reintenta." }
+        response
+    }
+
     private suspend fun createCollection(
+        accessToken: String, collection: String, request: LocalFallbackCreateCollectionRequest,
+    ): Result<String> = postCollectionCreation(accessToken, collection, request).map { response ->
+        response.id.ifBlank { response.room?.let { textOf(it, "id") }.orEmpty() }
+    }
+
+    private suspend fun postCollectionCreation(
         accessToken: String,
         collection: String,
         request: LocalFallbackCreateCollectionRequest
-    ): Result<String> {
+    ): Result<LocalFallbackCreateCollectionResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return try {
             val response = supabaseConfig.httpClient.post("$baseUrl/v1/data/messages/${urlEncode(collection)}") {
@@ -5857,10 +5882,21 @@ class LocalFallbackApiClient @Inject constructor(
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
                 val decoded = json.decodeFromString<LocalFallbackCreateCollectionResponse>(body)
-                Result.success(decoded.id.ifBlank { decoded.room?.let { textOf(it, "id") }.orEmpty() })
+                Result.success(decoded)
             } else {
-                Result.failure(toException(response, decodeError(body)))
+                val error = decodeError(body)
+                val code = (error.error ?: error.message).orEmpty().trim()
+                val rejection = when {
+                    response.status.value == 400 && code == "NAME_REQUIRED" ->
+                        conectate.com.data.repository.collection.CollectionCreationRejectedException("El nombre es obligatorio.")
+                    response.status.value == 409 && code == "ROOM_ID_CONFLICT" ->
+                        conectate.com.data.repository.collection.CollectionCreationRejectedException("No pudimos utilizar esa creación. Reintenta para comenzar otra.")
+                    else -> toException(response, error)
+                }
+                Result.failure(rejection)
             }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             Result.failure(error)
         }

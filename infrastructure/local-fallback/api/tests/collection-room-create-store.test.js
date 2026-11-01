@@ -136,7 +136,7 @@ test('rollback failure still releases the connection and preserves the original 
   assert.equal(f.released(), 1)
 })
 
-function oncePool({ existing, failMember = false } = {}) {
+function oncePool({ existing, failMember = false, departed = false } = {}) {
   const calls = []
   const actualMembers = [{ user_id: 'owner', role: 'owner', joined_at: '2026-11-01T12:00:00Z' }]
   let released = 0
@@ -146,6 +146,7 @@ function oncePool({ existing, failMember = false } = {}) {
     if (failMember && sql.includes('INSERT INTO fallback_collection_members')) throw new Error('member failed')
     if (sql.startsWith('INSERT INTO fallback_collection_rooms')) return { rows: existing ? [] : [current] }
     if (sql.startsWith('SELECT * FROM fallback_collection_rooms')) return { rows: [current] }
+    if (sql.includes('SELECT 1 AS departed')) return { rows: departed ? [{ departed: 1 }] : [] }
     if (sql.includes('SELECT user_id, role, joined_at')) return { rows: actualMembers }
     return { rows: [] }
   }, release: () => { released++ } }
@@ -196,4 +197,13 @@ test('opt-in creation requires a stable ID and a valid creator before acquiring 
   const pool = { connect: () => assert.fail('Invalid creation must not start') }
   await assert.rejects(createOwnedCollectionRoomOnce(pool, { ...room, id: null }, actors, []), /ROOM_ID_CONFLICT/)
   await assert.rejects(createOwnedCollectionRoomOnce(pool, { ...room, creatorId: 'other' }, actors, []), /ROOM_ID_CONFLICT/)
+})
+
+test('a sole creator who voluntarily left cannot regain membership by replaying an old creation', async () => {
+  const f = oncePool({ existing: { id: room.id, creator_id: 'owner', room_kind: 'group', is_deleted: false }, departed: true })
+  await assert.rejects(createOwnedCollectionRoomOnce(f.pool, room, actors, []), { message: 'ROOM_ID_CONFLICT', status: 409 })
+  assert.equal(f.calls.at(-1).sql, 'ROLLBACK')
+  assert.ok(!f.calls.some(call => call.sql.includes('INSERT INTO fallback_collection_members')))
+  assert.ok(f.calls.findIndex(call => call.sql.includes('pg_advisory_xact_lock')) < f.calls.findIndex(call => call.sql.startsWith('INSERT INTO fallback_collection_rooms')))
+  assert.equal(f.released(), 1)
 })
