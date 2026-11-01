@@ -1,9 +1,26 @@
 package conectate.com.data.supabase
 
+internal class AuthSessionLease internal constructor(
+    val accountId: String?, private val matches: () -> Boolean,
+) {
+    fun isCurrent(): Boolean = accountId != null && matches()
+    fun requireCurrent() {
+        if (!isCurrent()) throw kotlinx.coroutines.CancellationException("La sesión cambió. Vuelve a abrir este apartado.")
+    }
+}
+
 /** Serializes the final local session write with an immediate logout/account switch. */
 internal class AuthSessionMutationGuard {
     private val lock = Any()
     private var generation = 0L
+
+    fun captureAccountLease(currentAccount: () -> String?): AuthSessionLease = synchronized(lock) {
+        val expected = generation
+        val account = currentAccount()?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+        AuthSessionLease(account) {
+            commitIfCurrent(expected, eligible = { account != null && account.equals(currentAccount(), ignoreCase = true) }) {}
+        }
+    }
 
     internal class Transition internal constructor(
         internal val guard: AuthSessionMutationGuard,

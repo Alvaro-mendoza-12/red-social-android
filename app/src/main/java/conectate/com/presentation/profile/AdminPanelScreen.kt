@@ -30,6 +30,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.awaitCancellation
 import androidx.navigation.NavController
 import conectate.com.data.model.Report
 import conectate.com.data.model.VideoReport
@@ -85,26 +90,52 @@ fun AdminPanelScreen(
     navController: NavController,
     viewModel: AdminPanelViewModel = hiltViewModel()
 ) {
+    val session by viewModel.sessionState.collectAsStateWithLifecycle()
+    if (session == null || !viewModel.hasCurrentSession()) {
+        Scaffold(topBar = {
+            TopAppBar(title = { Text("Administración") }, navigationIcon = {
+                IconButton(onClick = { navController.popBackStack() }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                }
+            })
+        }) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("La sesión cambió. Vuelve a abrir la administración con tu cuenta actual.")
+                TextButton(onClick = { navController.popBackStack() }) { Text("Volver") }
+            }
+        }
+        return
+    }
+    AdminPanelContent(navController, viewModel)
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AdminPanelContent(
+    navController: NavController,
+    viewModel: AdminPanelViewModel,
+) {
     val context = LocalContext.current
-    val isAdmin by viewModel.isAdmin.collectAsState()
-    val adminAccess by viewModel.adminAccess.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    val statusMessage by viewModel.statusMessage.collectAsState()
+    val isAdmin by viewModel.isAdmin.collectAsStateWithLifecycle()
+    val adminAccess by viewModel.adminAccess.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+    val statusMessage by viewModel.statusMessage.collectAsStateWithLifecycle()
     
-    val suspendedProfiles by viewModel.suspendedProfiles.collectAsState()
-    val moderationAppeals by viewModel.moderationAppeals.collectAsState()
-    val recoveryCases by viewModel.recoveryCases.collectAsState()
-    val recoverySearch by viewModel.recoverySearch.collectAsState()
-    val recoveryFilter by viewModel.recoveryFilter.collectAsState()
-    val recoveryOffset by viewModel.recoveryOffset.collectAsState()
-    val recoveryTotal by viewModel.recoveryTotal.collectAsState()
-    val recoveryCounts by viewModel.recoveryCounts.collectAsState()
-    val recoveryPageLoading by viewModel.recoveryPageLoading.collectAsState()
-    val recoveryAccounts by viewModel.recoveryAccounts.collectAsState()
-    val recoverySecret by viewModel.recoverySecret.collectAsState()
-    val recoverySecretCaseId by viewModel.recoverySecretCaseId.collectAsState()
-    val recoverySecretAction by viewModel.recoverySecretAction.collectAsState()
+    val suspendedProfiles by viewModel.suspendedProfiles.collectAsStateWithLifecycle()
+    val moderationAppeals by viewModel.moderationAppeals.collectAsStateWithLifecycle()
+    val recoveryCases by viewModel.recoveryCases.collectAsStateWithLifecycle()
+    val recoverySearch by viewModel.recoverySearch.collectAsStateWithLifecycle()
+    val recoveryFilter by viewModel.recoveryFilter.collectAsStateWithLifecycle()
+    val recoveryOffset by viewModel.recoveryOffset.collectAsStateWithLifecycle()
+    val recoveryTotal by viewModel.recoveryTotal.collectAsStateWithLifecycle()
+    val recoveryCounts by viewModel.recoveryCounts.collectAsStateWithLifecycle()
+    val recoveryPageLoading by viewModel.recoveryPageLoading.collectAsStateWithLifecycle()
+    val recoveryAccounts by viewModel.recoveryAccounts.collectAsStateWithLifecycle()
+    val recoverySecret by viewModel.recoverySecret.collectAsStateWithLifecycle()
+    val recoverySecretCaseId by viewModel.recoverySecretCaseId.collectAsStateWithLifecycle()
+    val recoverySecretAction by viewModel.recoverySecretAction.collectAsStateWithLifecycle()
     var openedRecoveryDraft by rememberSaveable { mutableIntStateOf(0) }
     LaunchedEffect(recoverySecret, recoverySecretCaseId, recoverySecretAction, recoveryCases) {
         val secret = recoverySecret ?: return@LaunchedEffect
@@ -119,18 +150,18 @@ fun AdminPanelScreen(
             recoveryDeliveryMessage(destination.id, secret, contactCode = false),
         )
     }
-    val recoveryBusy by viewModel.recoveryBusy.collectAsState()
+    val recoveryBusy by viewModel.recoveryBusy.collectAsStateWithLifecycle()
     var expandedRecoveryCaseId by rememberSaveable { mutableStateOf<String?>(null) }
-    val userReports by viewModel.userReports.collectAsState()
-    val videoReports by viewModel.videoReports.collectAsState()
-    val stats by viewModel.stats.collectAsState()
-    val systemHealth by viewModel.systemHealth.collectAsState()
-    val users by viewModel.users.collectAsState()
-    val catalog by viewModel.catalog.collectAsState()
-    val selectedUser by viewModel.selectedUser.collectAsState()
-    val userSearch by viewModel.userSearch.collectAsState()
-    val lastDeletedUserId by viewModel.lastDeletedUserId.collectAsState()
-    val deleteCandidate by viewModel.deleteCandidate.collectAsState()
+    val userReports by viewModel.userReports.collectAsStateWithLifecycle()
+    val videoReports by viewModel.videoReports.collectAsStateWithLifecycle()
+    val stats by viewModel.stats.collectAsStateWithLifecycle()
+    val systemHealth by viewModel.systemHealth.collectAsStateWithLifecycle()
+    val users by viewModel.users.collectAsStateWithLifecycle()
+    val catalog by viewModel.catalog.collectAsStateWithLifecycle()
+    val selectedUser by viewModel.selectedUser.collectAsStateWithLifecycle()
+    val userSearch by viewModel.userSearch.collectAsStateWithLifecycle()
+    val lastDeletedUserId by viewModel.lastDeletedUserId.collectAsStateWithLifecycle()
+    val deleteCandidate by viewModel.deleteCandidate.collectAsStateWithLifecycle()
 
     var selectedTabIndex by rememberSaveable { mutableStateOf(0) }
     var userToSuspend by remember { mutableStateOf<String?>(null) }
@@ -165,9 +196,13 @@ fun AdminPanelScreen(
         viewModel.checkAdminAccess()
     }
 
-    DisposableEffect(Unit) {
-        viewModel.startStatsAutoRefresh()
-        onDispose { viewModel.stopStatsAutoRefresh() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, viewModel) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.startStatsAutoRefresh()
+            try { awaitCancellation() }
+            finally { viewModel.stopStatsAutoRefresh() }
+        }
     }
 
     LaunchedEffect(lastDeletedUserId) {

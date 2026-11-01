@@ -203,6 +203,8 @@ class AuthService @Inject constructor(
     internal fun usesLocalAccountSwitch(): Boolean =
         isLocalFallbackModeEnabled() && !TestRuntimeOverrides.isEnabled(context)
 
+    internal fun captureAccountLease(): AuthSessionLease = localSessionMutationGuard.captureAccountLease(::getCurrentUserId)
+
     internal suspend fun prepareLocalSignIn(email: String, password: String, code: String?): LocalFallbackAuthResponse {
         ensureSecureStorageAvailable().getOrThrow()
         val response = localFallbackApiClient.login(email, password, code).getOrThrow()
