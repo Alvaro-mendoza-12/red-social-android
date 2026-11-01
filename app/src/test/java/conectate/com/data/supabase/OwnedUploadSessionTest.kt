@@ -95,4 +95,76 @@ class OwnedUploadSessionTest {
         assertTrue(error is java.io.IOException)
         assertTrue(error?.cause is CancellationException)
     }
+
+    @Test fun anOrdinaryTransportFailureCanUseTheFallbackForTheSameAccount() = runTest {
+        val guard = AuthSessionMutationGuard()
+        val requested = mutableListOf<String>()
+        val session = OwnedUploadSession(guard.captureAccountLease { "a" }, null) { requested += it; "a-token" }
+        val result = session.uploadWithFallback(primary = {
+            assertEquals("a-token", session.accessToken())
+            Result.failure<String>(java.io.IOException("bucket unavailable"))
+        }, fallback = {
+            assertEquals("a-token", session.accessToken())
+            Result.success("stored-url")
+        })
+        assertEquals("stored-url", result.getOrThrow())
+        assertEquals(listOf("a", "a"), requested)
+    }
+
+    @Test fun aWrappedLegacyCancellationCannotStartTheFallback() = runTest {
+        val guard = AuthSessionMutationGuard()
+        val session = OwnedUploadSession(guard.captureAccountLease { "a" }, null) { "token" }
+        var fallbackCalls = 0
+        val error = runCatching { session.uploadWithFallback(
+            primary = { Result.failure<String>(CancellationException("screen left")) },
+            fallback = { fallbackCalls++; Result.success("wrong") },
+        ) }.exceptionOrNull()
+        assertTrue(error is CancellationException)
+        assertEquals(0, fallbackCalls)
+    }
+
+    @Test fun aFailedUploadAfterSwitchingAccountsCannotRetryWithTheNextAccountsCredentials() = runTest {
+        val guard = AuthSessionMutationGuard()
+        var owner = "a"
+        val session = OwnedUploadSession(guard.captureAccountLease { owner }, null) { "$it-token" }
+        val reply = CompletableDeferred<Result<String>>()
+        var fallbackCalls = 0
+        val send = async { session.uploadWithFallback(primary = { reply.await() },
+            fallback = { fallbackCalls++; session.accessToken(); Result.success("wrong") }) }
+        runCurrent()
+        guard.invalidate { owner = "b" }
+        reply.complete(Result.failure(java.io.IOException("old failure")))
+        assertTrue(runCatching { send.await() }.exceptionOrNull() is CancellationException)
+        assertEquals(0, fallbackCalls)
+    }
+
+    @Test fun aSuccessfulUploadAfterNewLoginOfTheSameOwnerCannotPublishItsOldResult() = runTest {
+        val guard = AuthSessionMutationGuard()
+        val session = OwnedUploadSession(guard.captureAccountLease { "a" }, null) { "token" }
+        val reply = CompletableDeferred<Result<String>>()
+        val send = async { session.uploadWithFallback(primary = { reply.await() }) }
+        runCurrent(); guard.invalidate {}
+        reply.complete(Result.success("old-url"))
+        assertTrue(runCatching { send.await() }.exceptionOrNull() is CancellationException)
+    }
+
+    @Test fun aSwitchDuringFallbackCannotDeliverItsResultToAnotherSession() = runTest {
+        val guard = AuthSessionMutationGuard()
+        var owner = "a"
+        val session = OwnedUploadSession(guard.captureAccountLease { owner }, null) { "token" }
+        val reply = CompletableDeferred<Result<String>>()
+        val send = async { session.uploadWithFallback(primary = { Result.failure(java.io.IOException("retry")) },
+            fallback = { reply.await() }) }
+        runCurrent(); guard.invalidate { owner = "b" }
+        reply.complete(Result.success("old-url"))
+        assertTrue(runCatching { send.await() }.exceptionOrNull() is CancellationException)
+    }
+
+    @Test fun aSuccessfulPrimaryNeverStartsAnotherUpload() = runTest {
+        val guard = AuthSessionMutationGuard()
+        val session = OwnedUploadSession(guard.captureAccountLease { "a" }, null) { "token" }
+        val result = session.uploadWithFallback(primary = { Result.success("original") },
+            fallback = { fail("No fallback after ACK"); Result.success("extra") })
+        assertEquals("original", result.getOrThrow())
+    }
 }

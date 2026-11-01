@@ -267,10 +267,37 @@ class StorageService @Inject constructor(
         contentType: String,
         allowOverwrite: Boolean,
         onProgress: (Float) -> Unit
-    ): Result<StorageResponse> = try {
-        val uploadSession = OwnedUploadSession(authService.captureAccountLease(), null) {
+    ): Result<StorageResponse> = uploadFileFromUriForAccount(bucketName, fileName, sourceUri, sizeBytes,
+        contentType, allowOverwrite, null, onProgress)
+
+    suspend fun uploadFileFromUri(
+        bucketName: String,
+        fileName: String,
+        sourceUri: Uri,
+        sizeBytes: Long,
+        contentType: String,
+        allowOverwrite: Boolean,
+        expectedAccountId: String,
+        onProgress: (Float) -> Unit,
+    ): Result<StorageResponse> = uploadFileFromUriForAccount(bucketName, fileName, sourceUri, sizeBytes,
+        contentType, allowOverwrite, expectedAccountId, onProgress)
+
+    internal fun captureUploadSession(expectedAccountId: String? = null) =
+        OwnedUploadSession(authService.captureAccountLease(), expectedAccountId) {
             authService.getAccessTokenForAccountAwait(it)
         }
+
+    private suspend fun uploadFileFromUriForAccount(
+        bucketName: String,
+        fileName: String,
+        sourceUri: Uri,
+        sizeBytes: Long,
+        contentType: String,
+        allowOverwrite: Boolean,
+        expectedAccountId: String?,
+        onProgress: (Float) -> Unit,
+    ): Result<StorageResponse> = try {
+        val uploadSession = captureUploadSession(expectedAccountId)
         uploadFileFromUriOwned(bucketName, fileName, sourceUri, sizeBytes, contentType,
             allowOverwrite, uploadSession, onProgress)
     } catch (cancelled: CancellationException) { throw cancelled }

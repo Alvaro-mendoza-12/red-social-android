@@ -41,4 +41,24 @@ internal class OwnedUploadSession(
         try { requireCurrent(); callback(value) }
         catch (cancelled: CancellationException) { throw IOException("La sesión cambió durante la subida.", cancelled) }
     }
+
+    /** A legacy Result-wrapped cancellation must never authorize a second transport. */
+    suspend fun <T> uploadWithFallback(
+        primary: suspend () -> Result<T>,
+        fallback: (suspend () -> Result<T>)? = null,
+    ): Result<T> {
+        suspend fun attempt(operation: suspend () -> Result<T>): Result<T> {
+            currentCoroutineContext().ensureActive()
+            requireCurrent()
+            val result = try { operation() }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { Result.failure(error) }
+            currentCoroutineContext().ensureActive()
+            requireCurrent()
+            (result.exceptionOrNull() as? CancellationException)?.let { throw it }
+            return result
+        }
+        val result = attempt(primary)
+        return if (result.isSuccess || fallback == null) result else attempt(fallback)
+    }
 }
