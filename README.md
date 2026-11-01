@@ -1,11 +1,11 @@
 # Novvin — Red social móvil
 
-Fecha de última revisión documental: 2026-10-30.
+Fecha de última revisión documental: 2026-10-31.
 
 > Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
 > Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
 
-Continuación vigente: La [revisión 99](docs/oficial/99-contraste-auditoria-movil-y-candidato-174-2026-10-30.md) contrasta los 53 hallazgos del informe móvil de Antigravity y corrige los confirmados en acceso, navegación, Social, editor, chats, salas, LIVE y controles de gasto. Por decisión del propietario, Registro Android exige 13 años y Ajustes permite solicitar la eliminación por soporte. Aprueban 2.030 unitarias, 14 casos nativos seleccionados y lint sin errores (314 advertencias, K1). **APK/AAB 9.1.34 / 174 firmados**, con firma/R8/16 KiB y actualización desde 173 comprobadas en AOSP 35. No se cambia la API de producción ni se habilitan retiros. No publicado en Play; comunicaciones entre teléfonos físicos pendientes. `correciones` queda para el otro chat.
+Continuación vigente: La [revisión 100](docs/oficial/100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md) corrige los compartidos de Social y Perfil de principio a fin, el enlace alterado en comunidades, el regreso al original tras iniciar sesión y las confirmaciones parciales de amistades. Aprueban 2.069 unitarias en 432 suites y cinco recorridos nativos con entrega real a cuentas QA; lint tiene cero errores y 319 advertencias (K1). **APK/AAB 9.1.35 / 175 firmados**, con firma/R8/16 KiB y actualización normal desde 174 comprobadas en AOSP 35. Web publicada: documentos y Reintentar reparados, 20 formatos enviados/descargados sin alterar bytes, 916 pruebas web y 90 controles públicos aprobados. Se publicaron cambios acotados en el servidor para compartidos de perfiles y listado de archivos. Los datos QA se retiraron. No publicado en Play; comunicaciones físicas y certificado de firma de Play pendientes. Esta ruta de archivos usa HTTPS y no implementa cifrado de extremo a extremo. `correciones` permanece para el otro chat.
 
 La [revisión 83](docs/oficial/83-capturas-chat-y-recuperacion-voz-2026-10-28.md) conserva la publicación anterior, el aviso de momentos y el paquete histórico Android **9.1.29 / 169** firmado. La indexación y sus comprobaciones están documentadas en esa continuidad y la [revisión SEO 80](docs/oficial/80-auditoria-seo-y-candidato-local-2026-10-27.md). La rama `main` está conectada a Vercel: la tanda 86 tiene autorización del propietario para publicar la web y subir los commits.
 
