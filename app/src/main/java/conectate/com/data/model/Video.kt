@@ -46,9 +46,6 @@ data class Video(
     @SerialName("sound_url") val soundUrl: String? = null,
     @SerialName("chapters") val chapters: List<VideoChapter> = emptyList(),
     @SerialName("allow_clip_sharing") val allowClipSharing: Boolean = true,
-    @SerialName("owned_by_me") val ownedByMe: Boolean = false
-) {
-    // Kept outside the primary constructor to preserve the stable Video ABI.
-    @SerialName("is_sensitive")
-    var isSensitive: Boolean = false
-}
+    @SerialName("owned_by_me") val ownedByMe: Boolean = false,
+    @SerialName("is_sensitive") var isSensitive: Boolean = false,
+)

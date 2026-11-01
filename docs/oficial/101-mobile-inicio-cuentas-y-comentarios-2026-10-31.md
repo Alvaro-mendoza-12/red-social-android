@@ -59,3 +59,11 @@ Las solicitudes de reporte obtienen credenciales ligadas al propietario y las re
 Se corrigió otra pérdida posible: después de despachar el POST, una respuesta perdida podía provocar que el móvil borrase la evidencia de un reporte ya guardado. Ahora conserva esa evidencia si la escritura pudo haberse realizado. Esto exige contemplar la conciliación de archivos sin referencia cuando el resultado quedó incierto; no se afirma limpieza completa ni ausencia de duplicados tras perder el ACK de un POST sin idempotencia.
 
 Comprobación: **480 pruebas seleccionadas, 102 clases, 0 fallos, errores u omisiones**, incluyendo siete regresiones del envío/confirmación, y compilación correcta de las pruebas Android de interfaz. Estas últimas se compilaron; **no se ejecutaron en dispositivo**. No se generó una APK nueva y la revisión integral continúa abierta, incluida la identidad de insignias, los cambios de cuenta y los módulos restantes.
+
+## Quinto bloque: contenido sensible e idioma
+
+`Post` y `Video` declaraban la marca de contenido sensible fuera del constructor de sus clases de datos. Por ello, `copy` podía perder la marca al reaccionar o compartir, y un cambio solo de clasificación podía no llegar a la pantalla mediante `StateFlow`. Se incorporó al constructor, manteniendo el nombre JSON y el valor predeterminado para cachés anteriores.
+
+También se corrigió la sincronización de idioma. En Android 13 o posterior, la selección procede del sistema y la preferencia antigua se migra una sola vez, sin revertir un cambio posterior en Ajustes de Android. En versiones anteriores, volver a «Idioma del sistema» restablece también el idioma de los formatos. Se siguió la [documentación oficial de idiomas por aplicación](https://developer.android.com/guide/topics/resources/app-languages). Esto no traduce las cadenas que todavía están escritas directamente en español.
+
+Se añadieron primero nueve regresiones: ocho fallaron con el código anterior por estos dos defectos; la lectura del JSON antiguo ya funcionaba. Después de corregirlos, pasaron **272 pruebas seleccionadas, 64 clases, sin fallos, errores ni omisiones**, incluyendo esas nueve, comentarios, reacciones, hidratación de autores y videos. La revisión de insignias y de los demás recorridos sigue abierta; todavía no se generó una APK nueva.
