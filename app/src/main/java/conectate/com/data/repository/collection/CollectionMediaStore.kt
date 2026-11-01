@@ -29,7 +29,8 @@ internal class CollectionMediaStore(private val storageService: StorageService) 
         ownerId: String, bytes: ByteArray, bucketName: String, filePrefix: String,
         expectedAccountId: String? = null,
     ): Result<String> = withUploadOwner(expectedAccountId) { session ->
-        uploadBytes(session, bucketName, null, collectionMediaFileName(filePrefix, ownerId, "jpg"), bytes, "image/jpeg")
+        val icon = conectate.com.core.media.normalizeCollectionIcon(bytes)
+        uploadBytes(session, bucketName, null, collectionMediaFileName(filePrefix, ownerId, icon.extension), icon.bytes, icon.contentType)
     }
 
     suspend fun uploadAudio(

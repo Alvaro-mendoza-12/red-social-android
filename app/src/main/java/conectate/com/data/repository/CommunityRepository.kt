@@ -1670,19 +1670,22 @@ class CommunityRepository @Inject constructor(
         description: String?, 
         imageBytes: ByteArray?, 
         category: String?, 
-        isPublic: Boolean
-    ): Result<String> = withContext(Dispatchers.IO) {
+        isPublic: Boolean,
+        expectedAccountId: String? = null,
+    ): Result<String> = conectate.com.data.repository.collection.withCollectionCreationAccount(
+        lease = authService.captureAccountLease(), expectedAccountId = expectedAccountId,
+        tokenForAccount = authService::getAccessTokenForAccountAwait,
+    ) { creatorId, token, requireCurrent ->
         try {
-            var creatorId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            
             var communityId = UUID.randomUUID().toString().lowercase()
             
             var imageUrl: String? = null
             if (imageBytes != null) {
-                var uploadResult = uploadCommunityImage(communityId, imageBytes)
-                if (uploadResult.isSuccess) {
-                    imageUrl = uploadResult.getOrNull()
-                }
+                imageUrl = collectionMediaStore.uploadImage(
+                    ownerId = communityId, bytes = imageBytes, bucketName = "communities",
+                    filePrefix = "community", expectedAccountId = creatorId,
+                ).getOrThrow()
+                requireCurrent()
             }
 
             var now = java.time.Instant.now().toString()
@@ -1709,8 +1712,7 @@ class CommunityRepository @Inject constructor(
                 }
             )
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val token = authService.getAccessTokenAwait()
-                    ?: return@withContext Result.failure(Exception("Sesion Ubuntu no disponible"))
+                requireCurrent()
                 localFallbackApiClient.createCommunity(
                     accessToken = token,
                     id = communityId,
@@ -1720,6 +1722,7 @@ class CommunityRepository @Inject constructor(
                     category = category,
                     isPublic = isPublic
                 ).getOrThrow()
+                requireCurrent()
                 val newCommunity = Community(
                     id = communityId,
                     name = name,
@@ -1732,22 +1735,22 @@ class CommunityRepository @Inject constructor(
                     creator_id = creatorId,
                     is_member = true
                 )
-                communityDao.insertCommunities(listOf(CommunityEntity.fromDomain(newCommunity)))
-                communityDao.insertMembers(listOf(
+                communityDao.saveCreatedCommunity(CommunityEntity.fromDomain(newCommunity), listOf(
                     CommunityMemberEntity(
                         community_id = communityId,
                         user_id = creatorId.trim().lowercase(),
                         role = "owner",
                         joined_at = now
                     )
-                ))
-                return@withContext Result.success(communityId)
+                ), requireCurrent)
+                return@withCollectionCreationAccount Result.success(communityId)
             }
             collectionCreationRemoteStore.createCollectionWithMemberships(
                 collectionTable = "communities",
                 collectionPayload = communityJson,
                 membershipTable = "community_members",
-                membershipPayloads = membershipPayloads
+                membershipPayloads = membershipPayloads,
+                requireCurrent = requireCurrent,
             ).getOrThrow()
 
             // Optimistic Local Insert (Instant UI)
@@ -1763,21 +1766,22 @@ class CommunityRepository @Inject constructor(
                     only_admins_can_talk = true,
                     creator_id = creatorId
                 )
-                communityDao.insertCommunities(listOf(CommunityEntity.fromDomain(newCommunity)))
-                communityDao.insertMembers(listOf(
+                communityDao.saveCreatedCommunity(CommunityEntity.fromDomain(newCommunity), listOf(
                     CommunityMemberEntity(
                         community_id = communityId,
                         user_id = creatorId,
                         role = "owner",
                         joined_at = now
                     )
-                ))
-            } catch (e: Exception) {
+                ), requireCurrent)
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (e: Exception) {
                 android.util.Log.e("CommunityRepository", "Error local insert", e)
             }
 
             Result.success(communityId)
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("CommunityRepository", "Error en createCommunity", e)
             Result.failure(e)
         }

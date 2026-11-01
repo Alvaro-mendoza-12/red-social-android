@@ -72,6 +72,14 @@ interface GroupDao {
         }
     }
 
+    @Transaction
+    suspend fun saveCreatedGroup(group: GroupEntity, members: List<GroupMemberEntity>, requireCurrent: () -> Unit) {
+        requireCurrent()
+        upsertGroup(group)
+        insertMembers(members)
+        requireCurrent() // Throwing rolls back both rows if the session changed during E/S.
+    }
+
     @Update
     suspend fun updateGroup(group: GroupEntity)
 

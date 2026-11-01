@@ -42,6 +42,14 @@ interface CommunityDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCommunities(communities: List<CommunityEntity>)
 
+    @Transaction
+    suspend fun saveCreatedCommunity(community: CommunityEntity, members: List<CommunityMemberEntity>, requireCurrent: () -> Unit) {
+        requireCurrent()
+        insertCommunities(listOf(community))
+        insertMembers(members)
+        requireCurrent()
+    }
+
     @Update
     suspend fun updateCommunity(community: CommunityEntity)
 

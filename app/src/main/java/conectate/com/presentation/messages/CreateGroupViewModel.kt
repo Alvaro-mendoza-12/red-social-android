@@ -43,8 +43,17 @@ class CreateGroupViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
-    private val _selectedImageBytes = MutableStateFlow<ByteArray?>(null)
-    val selectedImageBytes: StateFlow<ByteArray?> = _selectedImageBytes.asStateFlow()
+    private val creationSession = CollectionCreationSession(viewModelScope, authService.captureAccountLease()) {
+        _errorMessage.value = it
+    }
+    val selectedImageBytes = creationSession.selectedImageBytes
+    val isPreparingImage = creationSession.preparingImage
+    val sessionCurrent = creationSession.sessionCurrent
+    fun isSessionCurrent() = creationSession.isCurrent()
+    val ownerAccountId get() = creationSession.accountId
+    fun prepareImage(loader: suspend () -> ByteArray?) {
+        if (!_isCreating.value) creationSession.prepareImage(loader)
+    }
 
     private val _currentStep = MutableStateFlow(GroupCreationStep.SELECT_MEMBERS)
     val currentStep: StateFlow<GroupCreationStep> = _currentStep.asStateFlow()
@@ -53,35 +62,42 @@ class CreateGroupViewModel @Inject constructor(
     private var searchRevision = 0L
 
     fun setImageBytes(bytes: ByteArray?) {
-        _selectedImageBytes.value = bytes
+        if (!_isCreating.value) creationSession.setImageBytes(bytes)
     }
 
     fun searchUsers(query: String) {
         searchJob?.cancel()
-        val owner = authService.getCurrentUserId()
+        if (!creationSession.isCurrent()) return
         val revision = ++searchRevision
         _isSearching.value = false
         _searchResults.value = emptyList()
+        _errorMessage.value = null
         if (query.isBlank()) {
             _searchResults.value = emptyList() // or load suggested
             return
         }
 
-        searchJob = viewModelScope.launch {
+        searchJob = creationSession.scope.launch {
             _isSearching.value = true
             try {
                 delay(350)
                 // Delegate to UserRepo which should support searching users from Supabase
                 val result = conectate.com.core.network.runReadWithDeadline(10_000) { userRepository.searchUsers(query.trim()).getOrThrow() }
-                if (revision != searchRevision || owner != authService.getCurrentUserId()) return@launch
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                creationSession.requireCurrent()
+                if (revision != searchRevision) return@launch
                 if (result.isSuccess) {
                     _searchResults.value = result.getOrNull() ?: emptyList()
                 } else {
                     _searchResults.value = emptyList()
+                    _errorMessage.value = "No pudimos buscar participantes. Reintenta la búsqueda."
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (e: Exception) {
-                _searchResults.value = emptyList()
+                if (creationSession.isCurrent() && revision == searchRevision) {
+                    _searchResults.value = emptyList()
+                    _errorMessage.value = "No pudimos buscar participantes. Reintenta la búsqueda."
+                }
             } finally {
                 if (revision == searchRevision) _isSearching.value = false
             }
@@ -89,6 +105,7 @@ class CreateGroupViewModel @Inject constructor(
     }
 
     fun toggleUserSelection(user: User) {
+        if (!creationSession.isCurrent() || _isCreating.value) return
         val current = _selectedUsers.value.toMutableList()
         if (current.any { it.id == user.id }) {
             current.removeAll { it.id == user.id }
@@ -103,6 +120,7 @@ class CreateGroupViewModel @Inject constructor(
     }
 
     fun nextStep() {
+        if (!creationSession.isCurrent() || _isCreating.value) return
         if (_selectedUsers.value.isNotEmpty()) {
             _currentStep.value = GroupCreationStep.ENTER_DETAILS
         } else {
@@ -111,14 +129,16 @@ class CreateGroupViewModel @Inject constructor(
     }
 
     fun previousStep() {
+        if (!creationSession.isCurrent() || _isCreating.value) return
         _currentStep.value = GroupCreationStep.SELECT_MEMBERS
     }
 
     fun createGroup(name: String, description: String?, onSuccess: (String) -> Unit) {
-        if (_isCreating.value) return
+        if (!creationSession.isCurrent() || _isCreating.value) return
+        if (isPreparingImage.value) { _errorMessage.value = "Espera a que terminemos de preparar el icono."; return }
         if (name.isBlank()) { _errorMessage.value = "El nombre es obligatorio"; return }
-        val owner = authService.getCurrentUserId() ?: run { _errorMessage.value = "Inicia sesión para continuar."; return }
-        val image = _selectedImageBytes.value
+        val owner = creationSession.accountId ?: run { _errorMessage.value = "Inicia sesión para continuar."; return }
+        val image = selectedImageBytes.value
         val participants = _selectedUsers.value.map { it.id }
         if (participants.isEmpty()) {
             _errorMessage.value = "Selecciona al menos un participante"
@@ -127,30 +147,48 @@ class CreateGroupViewModel @Inject constructor(
 
         _isCreating.value = true
         _errorMessage.value = null
-        viewModelScope.launch {
+        creationSession.scope.launch {
             try {
+                creationSession.requireCurrent()
                 val result = groupRepository.createGroup(
                     name = name,
                     description = description,
                     imageBytes = image,
-                    members = participants
+                    members = participants,
+                    expectedAccountId = owner,
                 )
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                if (owner != authService.getCurrentUserId()) return@launch
+                creationSession.requireCurrent()
                 if (result.isSuccess) {
                      val groupId = result.getOrNull()
-                     if (groupId != null) {
+                     if (!groupId.isNullOrBlank()) {
                          onSuccess(groupId)
-                     }
+                     } else _errorMessage.value = "No pudimos confirmar el grupo. Reintenta."
                 } else {
-                    _errorMessage.value = "Error al crear grupo: ${result.exceptionOrNull()?.message}"
+                    _errorMessage.value = "No pudimos crear el grupo. Conservamos tus datos para reintentar."
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (e: Exception) {
-                _errorMessage.value = e.message
+                if (creationSession.isCurrent()) _errorMessage.value = "No pudimos completar la operación. Conservamos tus datos para reintentar."
             } finally {
                 _isCreating.value = false
             }
         }
     }
+    override fun onCleared() { creationSession.close(); super.onCleared() }
+
+    init {
+        viewModelScope.launch {
+            authService.observeSession().collect {
+                creationSession.sessionChanged()
+                if (!creationSession.isCurrent()) {
+                    _isCreating.value = false
+                    _selectedUsers.value = emptyList()
+                    _searchResults.value = emptyList()
+                    _isSearching.value = false
+                }
+            }
+        }
+    }
+
 }

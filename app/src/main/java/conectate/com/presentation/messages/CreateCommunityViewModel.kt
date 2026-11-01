@@ -22,11 +22,20 @@ class CreateCommunityViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
 
-    private val _selectedImageBytes = MutableStateFlow<ByteArray?>(null)
-    val selectedImageBytes = _selectedImageBytes.asStateFlow()
+    private val creationSession = CollectionCreationSession(viewModelScope, authService.captureAccountLease()) {
+        _error.value = it
+    }
+    val selectedImageBytes = creationSession.selectedImageBytes
+    val isPreparingImage = creationSession.preparingImage
+    val sessionCurrent = creationSession.sessionCurrent
+    fun isSessionCurrent() = creationSession.isCurrent()
+    val ownerAccountId get() = creationSession.accountId
+    fun prepareImage(loader: suspend () -> ByteArray?) {
+        if (!_isCreating.value) creationSession.prepareImage(loader)
+    }
 
     fun setImageBytes(bytes: ByteArray?) {
-        _selectedImageBytes.value = bytes
+        if (!_isCreating.value) creationSession.setImageBytes(bytes)
     }
 
     fun createCommunity(
@@ -36,38 +45,56 @@ class CreateCommunityViewModel @Inject constructor(
         isPublic: Boolean,
         onSuccess: (String) -> Unit
     ) {
-        if (_isCreating.value) return
+        if (!creationSession.isCurrent() || _isCreating.value) return
+        if (isPreparingImage.value) { _error.value = "Espera a que terminemos de preparar el icono."; return }
         if (name.isBlank()) {
             _error.value = "El nombre es obligatorio"
             return
         }
 
-        val image = _selectedImageBytes.value
-        val owner = authService.getCurrentUserId() ?: run { _error.value = "Inicia sesión para continuar."; return }
+        val image = selectedImageBytes.value
+        val owner = creationSession.accountId ?: run { _error.value = "Inicia sesión para continuar."; return }
         _isCreating.value = true
         _error.value = null
-        viewModelScope.launch {
+        creationSession.scope.launch {
             try {
+                creationSession.requireCurrent()
                 val result = communityRepository.createCommunity(
                     name = name,
                     description = description,
                     imageBytes = image,
                     category = category,
-                    isPublic = isPublic
+                    isPublic = isPublic,
+                    expectedAccountId = owner,
                 )
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                if (owner != authService.getCurrentUserId()) return@launch
+                creationSession.requireCurrent()
                 if (result.isSuccess) {
-                    onSuccess(result.getOrThrow())
+                    val id = result.getOrThrow()
+                    if (id.isNotBlank()) onSuccess(id)
+                    else _error.value = "No pudimos confirmar la comunidad. Reintenta."
                 } else {
-                    _error.value = result.exceptionOrNull()?.message
+                    _error.value = "No pudimos crear la comunidad. Conservamos tus datos para reintentar."
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (e: Exception) {
-                _error.value = e.message
+                if (creationSession.isCurrent()) _error.value = "No pudimos completar la operación. Conservamos tus datos para reintentar."
             } finally {
                 _isCreating.value = false
             }
         }
     }
+    override fun onCleared() { creationSession.close(); super.onCleared() }
+
+    init {
+        viewModelScope.launch {
+            authService.observeSession().collect {
+                creationSession.sessionChanged()
+                if (!creationSession.isCurrent()) {
+                    _isCreating.value = false
+                }
+            }
+        }
+    }
+
 }

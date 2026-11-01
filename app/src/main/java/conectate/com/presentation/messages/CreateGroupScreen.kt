@@ -3,6 +3,8 @@ package conectate.com.presentation.messages
 import conectate.com.core.media.readMediaBytesWithLimit
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -42,21 +44,32 @@ fun CreateGroupScreen(
     navController: NavController,
     viewModel: CreateGroupViewModel = hiltViewModel()
 ) {
-    val currentStep by viewModel.currentStep.collectAsState()
-    val selectedUsers by viewModel.selectedUsers.collectAsState()
-    val searchResults by viewModel.searchResults.collectAsState()
-    val isCreating by viewModel.isCreating.collectAsState()
-    val isSearching by viewModel.isSearching.collectAsState()
-    val selectedImageBytes by viewModel.selectedImageBytes.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
+    val sessionCurrent by viewModel.sessionCurrent.collectAsStateWithLifecycle()
+    if (!sessionCurrent || !viewModel.isSessionCurrent()) {
+        CollectionCreationSessionNotice { navController.popBackStack() }
+        return
+    }
+    key(viewModel.ownerAccountId) { CreateGroupForm(navController, viewModel) }
+}
 
-    var searchQuery by remember { mutableStateOf("") }
-    var groupName by remember { mutableStateOf("") }
-    var groupDescription by remember { mutableStateOf("") }
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
+@Composable
+private fun CreateGroupForm(navController: NavController, viewModel: CreateGroupViewModel) {
+    val currentStep by viewModel.currentStep.collectAsStateWithLifecycle()
+    val selectedUsers by viewModel.selectedUsers.collectAsStateWithLifecycle()
+    val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
+    val isCreating by viewModel.isCreating.collectAsStateWithLifecycle()
+    val isPreparingImage by viewModel.isPreparingImage.collectAsStateWithLifecycle()
+    val isSearching by viewModel.isSearching.collectAsStateWithLifecycle()
+    val selectedImageBytes by viewModel.selectedImageBytes.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var groupName by rememberSaveable { mutableStateOf("") }
+    var groupDescription by rememberSaveable { mutableStateOf("") }
     var showMediaPicker by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     if (showMediaPicker) {
         MessageMediaComposer(
@@ -72,21 +85,13 @@ fun CreateGroupScreen(
             onSend = { selected, _ ->
                 val media = selected.firstOrNull() ?: return@MessageMediaComposer
                 showMediaPicker = false
-                scope.launch {
-                    val bytes = withContext(Dispatchers.IO) {
-                        if (media.type == "video") {
-                            VideoUtils.generateVideoThumbnail(context, media.uri)
-                        } else {
-                            runCatching { context.contentResolver.openInputStream(media.uri)?.use { it.readMediaBytesWithLimit(60L * 1024 * 1024) } }.getOrNull()
+                viewModel.prepareImage {
+                    withContext(Dispatchers.IO) {
+                        val raw = if (media.type == "video") VideoUtils.generateVideoThumbnail(context.applicationContext, media.uri)
+                        else context.contentResolver.openInputStream(media.uri)?.use {
+                            it.readMediaBytesWithLimit(60L * 1024 * 1024)
                         }
-                    }
-                    viewModel.setImageBytes(bytes)
-                    if (bytes == null) {
-                        android.widget.Toast.makeText(
-                            context,
-                            "No se pudo preparar ese archivo. Elige otro.",
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
+                        raw?.let { conectate.com.core.media.normalizeCollectionIcon(it).bytes }
                     }
                 }
             }
@@ -115,7 +120,7 @@ fun CreateGroupScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = {
+                    IconButton(enabled = !isCreating, onClick = {
                         if (currentStep == GroupCreationStep.SELECT_MEMBERS) {
                             navController.popBackStack()
                         } else {
@@ -137,6 +142,7 @@ fun CreateGroupScreen(
             if (selectedUsers.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = {
+                        if (isCreating || isPreparingImage) return@FloatingActionButton
                         if (currentStep == GroupCreationStep.SELECT_MEMBERS) {
                             viewModel.nextStep()
                         } else {
@@ -153,7 +159,7 @@ fun CreateGroupScreen(
                     contentColor = MaterialTheme.colorScheme.onPrimary,
                     shape = CircleShape
                 ) {
-                    if (isCreating) {
+                    if (isCreating || isPreparingImage) {
                         CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
                     } else {
                         Icon(
@@ -191,6 +197,7 @@ fun CreateGroupScreen(
                         // Search
                         OutlinedTextField(
                             value = searchQuery,
+                            enabled = !isCreating,
                             onValueChange = {
                                 searchQuery = it
                                 viewModel.searchUsers(it)
@@ -208,6 +215,8 @@ fun CreateGroupScreen(
                             singleLine = true,
                             shape = CircleShape
                         )
+
+                        errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp)) }
 
                         // Selected Horizontal list (WhatsApp Style)
                         if (selectedUsers.isNotEmpty()) {
@@ -273,13 +282,17 @@ fun CreateGroupScreen(
                             .padding(16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
+                        if (isPreparingImage) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            Text("Preparando icono…", style = MaterialTheme.typography.bodySmall)
+                        }
                         // Image Picker
                         Box(
                             modifier = Modifier
                                 .size(100.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
-                                .clickable { showMediaPicker = true },
+                                .clickable(enabled = !isCreating && !isPreparingImage) { showMediaPicker = true },
                             contentAlignment = Alignment.Center
                         ) {
                             if (selectedImageBytes != null) {
@@ -303,6 +316,7 @@ fun CreateGroupScreen(
 
                         OutlinedTextField(
                             value = groupName,
+                            enabled = !isCreating,
                             onValueChange = { if (it.length <= 25) groupName = it },
                             label = { Text("Asunto del grupo") },
                             placeholder = { Text("Máx. 25 caracteres") },
@@ -322,6 +336,7 @@ fun CreateGroupScreen(
 
                         OutlinedTextField(
                             value = groupDescription,
+                            enabled = !isCreating,
                             onValueChange = { groupDescription = it },
                             label = { Text("Descripción (opcional)") },
                             modifier = Modifier.fillMaxWidth(),

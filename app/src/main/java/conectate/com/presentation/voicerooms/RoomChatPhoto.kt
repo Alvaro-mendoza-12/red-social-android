@@ -39,11 +39,7 @@ object RoomChatPhoto {
         var rotated = original
         try {
             val orientation = runCatching { ExifInterface(ByteArrayInputStream(raw)).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1) }.getOrDefault(1)
-            val matrix = Matrix().apply { when (orientation) {
-                2 -> setScale(-1f,1f); 3 -> setRotate(180f); 4 -> setScale(1f,-1f)
-                5 -> { setRotate(90f); postScale(-1f,1f) }; 6 -> setRotate(90f)
-                7 -> { setRotate(-90f); postScale(-1f,1f) }; 8 -> setRotate(-90f)
-            } }
+            val matrix = conectate.com.core.media.exifOrientationMatrix(orientation)
             if (!matrix.isIdentity) rotated = Bitmap.createBitmap(original,0,0,original.width,original.height,matrix,true)
             val scale = minOf(1f,720f / maxOf(rotated.width,rotated.height))
             val result = Bitmap.createBitmap(maxOf(1,(rotated.width*scale).toInt()),maxOf(1,(rotated.height*scale).toInt()),Bitmap.Config.ARGB_8888)
