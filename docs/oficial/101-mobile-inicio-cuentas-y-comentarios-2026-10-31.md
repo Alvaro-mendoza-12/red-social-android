@@ -77,3 +77,13 @@ El contrato de autores incorpora rol y verificación en videos/comentarios. El s
 Comprobación local: **suite Android completa: 2.120 pruebas, 444 clases, 0 fallos, errores u omisiones**. Incluye cinco pruebas del contrato nativo de identidad y las regresiones anteriores. En el servidor: **965 casos/grupos, 951 pasados, 0 fallos y 14 omitidos** por requisitos de PostgreSQL real o fixtures Linux. Se comprobó que los metadatos de un video y los nombres visibles no sustituyen el rol de su autor.
 
 **Despliegue pendiente de este bloque:** Tailscale exigió renovar SSH al contrastar el archivo activo con el candidato. No se ha reemplazado la imagen `storage100` ni se ha publicado una APK nueva. Es necesario comparar los archivos activos, conservar sus diferencias previas, validar el candidato en el servidor y entonces activarlo con posibilidad de reversión. Estos cambios locales y las pruebas no equivalen a esa activación ni al cierre de la auditoría móvil.
+
+## Séptimo bloque: mensajes guardados
+
+Actualizar guardados borraba la lista antes de confirmar la lectura. Una desconexión podía presentarse también como colección vacía. Ahora conserva el resultado confirmado durante una actualización y su fallo, distingue errores de lectura y de acciones y permite reintentar. La paginación bloquea solicitudes repetidas y elimina claves duplicadas antes de dibujarlas.
+
+El modelo observa la cuenta, cancela su trabajo anterior y separa lista, búsqueda y filtros por propietario. La pantalla oculta de inmediato una instantánea ajena, incluso antes de que se ejecute el observador. Quitar un elemento conserva la fila hasta confirmar el cambio y rechaza una acción pendiente de otra cuenta. Una lectura anterior al ACK no puede resucitar el guardado; una lectura posterior sí puede mostrarlo si se guardó de nuevo desde otro dispositivo. El cambio de filtros durante esa operación conserva su consulta activa.
+
+Los filtros se desplazan dentro de la lista para dejar accesible la búsqueda y aprovechar el espacio con teclado. Estas modificaciones de presentación siguen pendientes de comprobación visual. Se comprobaron **25 pruebas seleccionadas, 2 clases, sin fallos, errores u omisiones**: once regresiones de guardados y catorce de acceso a conversaciones. No se repitió todavía la suite completa tras este bloque.
+
+SSH ya se renovó. La comparación del código activo identificó además ajustes y eliminación de salas de voz presentes en el repositorio pero ausentes de la imagen desplegada, incluido el endpoint usado para guardar su configuración. Se continúa con ese contrato de servidor y con la activación de insignias; no se declara cerrado el móvil ni se pasa todavía a web.
