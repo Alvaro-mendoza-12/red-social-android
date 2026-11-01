@@ -1017,73 +1017,8 @@ class ProfileViewModel @Inject constructor(
             android.util.Log.e("ProfileViewModel", "reloadProfileSilently: Exception", e)
         }
     }
-    private val _comments = MutableStateFlow<List<conectate.com.data.model.Comment>>(emptyList())
-    val comments: StateFlow<List<conectate.com.data.model.Comment>> = _comments.asStateFlow()
-
-    fun loadComments(postId: String) {
-        viewModelScope.launch {
-            try {
-                android.util.Log.d("ProfileViewModel", "loadComments: Fetching for post $postId")
-                postRepository.getPostComments(postId).collect {
-                    android.util.Log.d("ProfileViewModel", "loadComments: Success! Received ${it.size} comments for $postId")
-                    _comments.value = it
-                }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileViewModel", "loadComments: FAILED for $postId", e)
-            }
-        }
-    }
-
-    fun addComment(postId: String, content: String, parentId: String? = null, onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
-        viewModelScope.launch {
-            postRepository.addComment(postId, content, parentId)
-                .onSuccess { newComment ->
-                    onSuccess()
-                    
-                    // Optimistic update
-                    val currentUser = (_profileState.value as? ProfileUiState.Success)?.user
-                    val fullComment = newComment.copy(
-                        userName = currentUser?.display_name ?: currentUser?.full_name ?: currentUser?.username ?: "Yo",
-                        userAvatar = currentUser?.avatar_url,
-                        isVerified = currentUser?.is_verified ?: false,
-                        isMine = true
-                    )
-                    
-                    _comments.value = _comments.value + listOf(fullComment)
-                    updatePostInLists(postId) { post ->
-                        post.copy(commentCount = post.commentCount + 1)
-                    }
-                    
-                    // Reload posts to update comment count globally
-                    val targetId = currentUser?.id
-                    if (targetId != null) loadUserPosts(targetId)
-                }
-                .onFailure { onError(it.message ?: "Error al comentar") }
-        }
-    }
-
-    fun deleteComment(commentId: String, onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}) {
-        viewModelScope.launch {
-            postRepository.deleteComment(commentId)
-                .onSuccess {
-                    onSuccess()
-                    // Remove from local list
-                    val targetPostId = _comments.value.firstOrNull { it.id == commentId }?.postId
-                    val removedCount = _comments.value.count { it.id == commentId || it.parentId == commentId }
-                    _comments.value = _comments.value.filterNot { it.id == commentId || it.parentId == commentId }
-                    if (targetPostId != null) {
-                        updatePostInLists(targetPostId) { post ->
-                            post.copy(commentCount = maxOf(0, post.commentCount - removedCount.coerceAtLeast(1)))
-                        }
-                    }
-                    
-                    // Reload posts to update comment count
-                    val currentUser = (_profileState.value as? ProfileUiState.Success)?.user
-                    val targetId = currentUser?.id
-                    if (targetId != null) loadUserPosts(targetId)
-                }
-                .onFailure { onError(it.message ?: "Error al eliminar") }
-        }
+    fun syncPostCommentCount(postId: String, count: Int) {
+        updatePostInLists(postId) { it.copy(commentCount = count.coerceAtLeast(0)) }
     }
 
     fun deletePost(postId: String, onSuccess: () -> Unit, onError: (String) -> Unit) {

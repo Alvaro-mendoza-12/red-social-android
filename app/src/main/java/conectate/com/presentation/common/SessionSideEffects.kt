@@ -20,6 +20,7 @@ import conectate.com.data.repository.NotificationRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -43,7 +44,7 @@ fun SessionSideEffects(
     var isAppInForeground by remember {
         mutableStateOf(processLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
     }
-    var hasHandledForcedExit by remember { mutableStateOf(false) }
+    val forcedExit = remember(activeUserId) { ForcedSessionExitGate(activeUserId, authRepository::getCurrentUserId) }
 
     DisposableEffect(processLifecycle) {
         val observer = LifecycleEventObserver { _, event ->
@@ -59,20 +60,14 @@ fun SessionSideEffects(
         onDispose { processLifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(isLoggedIn) {
-        if (!isLoggedIn) {
-            hasHandledForcedExit = false
-            return@LaunchedEffect
-        }
-    }
-
     suspend fun handleForcedSessionExit(
         shouldReportSuspension: Boolean,
         suspensionEndDate: String? = null,
-        reason: String? = null
+        reason: String? = null,
+        recipientId: String? = activeUserId,
     ) {
-        if (hasHandledForcedExit) return
-        hasHandledForcedExit = true
+        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+        if (!forcedExit.accept(recipientId)) return
         if (shouldReportSuspension) {
             latestOnSuspensionDetected(suspensionEndDate, reason)
         }
@@ -89,8 +84,8 @@ fun SessionSideEffects(
         }
     }
 
-    LaunchedEffect(isLoggedIn) {
-        if (!isLoggedIn) return@LaunchedEffect
+    LaunchedEffect(isLoggedIn, activeUserId) {
+        if (!isLoggedIn || activeUserId.isNullOrBlank()) return@LaunchedEffect
         notificationRepository.observeNotifications()
             .catch { error ->
                 android.util.Log.e("MainActivity", "Notification stream failed", error)
@@ -100,13 +95,14 @@ fun SessionSideEffects(
                 handleForcedSessionExit(
                     shouldReportSuspension = true,
                     suspensionEndDate = extractSuspensionEndDate(notification),
-                    reason = extractSuspensionReason(notification)
+                    reason = extractSuspensionReason(notification),
+                    recipientId = notification.recipientId,
                 )
             }
     }
 
-    LaunchedEffect(isLoggedIn, isAppInForeground) {
-        if (!isLoggedIn || !isAppInForeground) return@LaunchedEffect
+    LaunchedEffect(isLoggedIn, activeUserId, isAppInForeground) {
+        if (!isLoggedIn || activeUserId.isNullOrBlank() || !isAppInForeground) return@LaunchedEffect
         while (kotlinx.coroutines.currentCoroutineContext().isActive) {
             val gate = authRepository.enforceCurrentSessionIsActive()
             if (gate.isFailure) {

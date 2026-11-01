@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,21 +32,32 @@ import androidx.compose.ui.platform.LocalContext
 @Composable
 fun CommentsSheet(
     comments: List<Comment>,
-    onSendComment: (String, String?) -> Unit, // Added parentId
+    onSendComment: (String, String?, () -> Unit) -> Unit,
     onDeleteComment: (String) -> Unit,
-    onReportComment: (Comment) -> Unit = {},
+    onReportComment: (Comment) -> Unit,
+    onEditComment: (Comment, String, () -> Unit) -> Unit,
+    onReactComment: (Comment, String) -> Unit,
+    onMentionClick: (String) -> Unit,
     onNavigateToProfile: (String) -> Unit,
+    onRetry: () -> Unit,
     onDismiss: () -> Unit,
     isLoading: Boolean = false,
+    isSending: Boolean = false,
+    isEditing: Boolean = false,
+    error: String? = null,
     isPostOwner: Boolean = false,
     showReportAction: Boolean = false
 ) {
-    var commentText by remember { mutableStateOf("") }
+    var commentText by rememberSaveable { mutableStateOf("") }
     var replyingTo by remember { mutableStateOf<Comment?>(null) }
+    var editing by remember { mutableStateOf<Comment?>(null) }
+
+    editing?.let { comment ->
+        CommentEditDialog(comment, isEditing, onDismiss = { editing = null },
+            onSave = { text -> onEditComment(comment, text) { editing = null } })
+    }
     
-    // Group comments by parent
-    val parentComments = remember(comments) { comments.filter { it.parentId == null } }
-    val repliesMap = remember(comments) { comments.filter { it.parentId != null }.groupBy { it.parentId!! } }
+    val threads = remember(comments) { conectate.com.presentation.posts.organizeThreaded(comments) }
 
     Column(
         modifier = Modifier
@@ -78,8 +90,16 @@ fun CommentsSheet(
         }
 
         // Comments List
+        if (error != null) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(error, color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onRetry, enabled = !isLoading) { Text("Reintentar") }
+            }
+        }
         Box(modifier = Modifier.weight(1f)) {
-            if (comments.isEmpty() && !isLoading) {
+            if (comments.isEmpty() && isLoading) {
+                CircularProgressIndicator(Modifier.align(Alignment.Center))
+            } else if (comments.isEmpty() && error == null) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Sé el primero en comentar", color = Color.Gray)
                 }
@@ -89,41 +109,21 @@ fun CommentsSheet(
                     contentPadding = PaddingValues(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    parentComments.forEach { parent ->
-                        item(key = parent.id) {
-                            CommentItem(
-                                comment = parent,
-                                isPostOwner = isPostOwner,
-                                onReplyClick = { 
-                                    replyingTo = parent
-                                    commentText = "@${parent.userName ?: "Usuario"} "
-                                },
-                                onDeleteClick = { onDeleteComment(parent.id) },
-                                onReportClick = { onReportComment(parent) },
-                                showReportAction = showReportAction,
-                                onProfileClick = { parent.userId.let { onNavigateToProfile(it) } }
-                            )
-                        }
-                        
-                        // Show replies
-                        val replies = repliesMap[parent.id] ?: emptyList()
-                        items(replies, key = { it.id }) { reply ->
-                            Row(modifier = Modifier.padding(start = 32.dp, top = 8.dp)) {
-                                CommentItem(
-                                    comment = reply,
-                                    isPostOwner = isPostOwner,
-                                    level = 1,
-                                    onReplyClick = {
-                                        replyingTo = parent // Keep same thread
-                                        commentText = "@${reply.userName ?: "Usuario"} "
-                                    },
-                                    onDeleteClick = { onDeleteComment(reply.id) },
-                                    onReportClick = { onReportComment(reply) },
-                                    showReportAction = showReportAction,
-                                    onProfileClick = { reply.userId.let { onNavigateToProfile(it) } }
-                                )
-                            }
-                        }
+                    items(threads, key = { it.first.id }) { (comment, level) ->
+                        CommentItem(
+                            comment = comment,
+                            level = level,
+                            isPostOwner = isPostOwner,
+                            onReplyClick = { replyingTo = comment; commentText = "" },
+                            onDeleteClick = { onDeleteComment(comment.id) },
+                            onEditClick = { editing = comment },
+                            onLikeClick = { onReactComment(comment, "LIKE") },
+                            onDislikeClick = { onReactComment(comment, "DISLIKE") },
+                            onMentionClick = onMentionClick,
+                            onReportClick = { onReportComment(comment) },
+                            showReportAction = showReportAction,
+                            onProfileClick = { onNavigateToProfile(comment.userId) },
+                        )
                     }
                 }
             }
@@ -179,15 +179,22 @@ fun CommentsSheet(
                 IconButton(
                     onClick = { 
                         if (commentText.isNotBlank()) {
-                            onSendComment(commentText, replyingTo?.id)
-                            commentText = ""
-                            replyingTo = null
+                            val submittedText = commentText
+                            val submittedParent = replyingTo?.id
+                            onSendComment(submittedText, submittedParent) {
+                                // A late acknowledgement must not erase a newer draft.
+                                if (commentText == submittedText && replyingTo?.id == submittedParent) {
+                                    commentText = ""
+                                    replyingTo = null
+                                }
+                            }
                         }
                     },
-                    enabled = commentText.isNotBlank(),
+                    enabled = commentText.isNotBlank() && !isSending,
                     colors = IconButtonDefaults.iconButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, "Enviar")
+                    if (isSending) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.AutoMirrored.Filled.Send, "Enviar")
                 }
             }
         }

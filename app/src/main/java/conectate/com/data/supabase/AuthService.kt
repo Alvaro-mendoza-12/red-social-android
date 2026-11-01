@@ -653,6 +653,7 @@ class AuthService @Inject constructor(
         password: String,
         metadata: SignUpMetadata
     ): Result<AuthResponse> {
+        val requestGeneration = localSessionMutationGuard.snapshot()
         registrationInProgress = true
         pendingRegistrationSession = null
         return try {
@@ -669,7 +670,7 @@ class AuthService @Inject constructor(
                     pendingRegistrationSession = null
                     return Result.failure(error)
                 }
-                persistLocalFallbackSession(localSession, publishSession = false)
+                persistLocalFallbackSession(localSession, publishSession = false, expectedGeneration = requestGeneration)
                 val mapped = mapLocalFallbackSession(localSession)
                 pendingRegistrationSession = mapped
                 return Result.success(mapped)
@@ -814,12 +815,15 @@ class AuthService @Inject constructor(
         }
     }
 
-    suspend fun signOut() {
+    suspend fun signOut(expectedGeneration: Long? = null) {
         val outgoingAccountId = getCurrentUserId()
         val outgoingRefreshToken = getRefreshToken()
         val outgoingWasLocalFallback = isLocalFallbackSession()
-        // Gate logout immediately so navigation/login flow doesn't bounce back due to stale SDK session.
-        forceLocalLogout()
+        // Serialize account-bound security changes with a concurrent account switch.
+        if (expectedGeneration == null) forceLocalLogout()
+        else if (!localSessionMutationGuard.commitIfCurrent(expectedGeneration) { forceLocalLogout() }) {
+            throw CancellationException("La cuenta cambió durante la operación de seguridad.")
+        }
         withContext(Dispatchers.IO) {
             try {
                 accountOutboxVault.preserveAndClear(outgoingAccountId)
@@ -875,12 +879,13 @@ class AuthService @Inject constructor(
     }
 
     suspend fun enableServerTwoFactor(password: String, code: String): Result<List<String>> {
+        val requestGeneration = localSessionMutationGuard.snapshot()
         val token = getAccessTokenAwait()
             ?: return Result.failure(IllegalStateException("Inicia sesión para activar la verificación."))
         val enabled = localFallbackApiClient.enableTwoFactor(token, password, code)
             .getOrElse { return Result.failure(it) }
         return try {
-            persistLocalFallbackSession(enabled.session)
+            persistLocalFallbackSession(enabled.session, expectedGeneration = requestGeneration)
             Result.success(enabled.recoveryCodes)
         } catch (error: Exception) {
             Result.failure(error)
@@ -888,10 +893,11 @@ class AuthService @Inject constructor(
     }
 
     suspend fun disableServerTwoFactor(password: String, code: String): Result<Unit> {
+        val requestGeneration = localSessionMutationGuard.snapshot()
         val token = getAccessTokenAwait()
             ?: return Result.failure(IllegalStateException("Inicia sesión para desactivar la verificación."))
         val result = localFallbackApiClient.disableTwoFactor(token, password, code)
-        if (result.isSuccess) signOut()
+        if (result.isSuccess) signOut(expectedGeneration = requestGeneration)
         return result
     }
 
@@ -989,12 +995,13 @@ class AuthService @Inject constructor(
         resetToken: String,
         newPassword: String
     ): Result<Unit> {
+        val requestGeneration = localSessionMutationGuard.snapshot()
         if (!localFallbackApiClient.isConfigured) {
             return Result.failure(Exception("Servidor Ubuntu no configurado."))
         }
         val localSession = localFallbackApiClient.confirmPasswordReset(resetToken, newPassword)
             .getOrElse { return Result.failure(it) }
-        persistLocalFallbackSession(localSession)
+        persistLocalFallbackSession(localSession, expectedGeneration = requestGeneration)
         return Result.success(Unit)
     }
 
@@ -1004,10 +1011,11 @@ class AuthService @Inject constructor(
         newPassword: String,
         secondFactorCode: String?
     ): Result<Unit> {
+        val requestGeneration = localSessionMutationGuard.snapshot()
         val localSession = localFallbackApiClient.confirmSavedPasswordRecoveryCode(
             email, recoveryCode, newPassword, secondFactorCode
         ).getOrElse { return Result.failure(it) }
-        persistLocalFallbackSession(localSession)
+        persistLocalFallbackSession(localSession, expectedGeneration = requestGeneration)
         return Result.success(Unit)
     }
 
@@ -1015,12 +1023,13 @@ class AuthService @Inject constructor(
         migrationToken: String,
         newPassword: String
     ): Result<Unit> {
+        val requestGeneration = localSessionMutationGuard.snapshot()
         if (!localFallbackApiClient.isConfigured) {
             return Result.failure(Exception("Servidor Ubuntu no configurado."))
         }
         val localSession = localFallbackApiClient.completeMigratedPasswordReset(migrationToken, newPassword)
             .getOrElse { return Result.failure(it) }
-        persistLocalFallbackSession(localSession)
+        persistLocalFallbackSession(localSession, expectedGeneration = requestGeneration)
         return Result.success(Unit)
     }
 
@@ -1028,12 +1037,13 @@ class AuthService @Inject constructor(
         email: String,
         newPassword: String
     ): Result<Unit> {
+        val requestGeneration = localSessionMutationGuard.snapshot()
         if (!localFallbackApiClient.isConfigured) {
             return Result.failure(Exception("Servidor Ubuntu no configurado."))
         }
         val localSession = localFallbackApiClient.directPasswordReset(email, newPassword)
             .getOrElse { return Result.failure(it) }
-        persistLocalFallbackSession(localSession)
+        persistLocalFallbackSession(localSession, expectedGeneration = requestGeneration)
         return Result.success(Unit)
     }
 
@@ -1041,6 +1051,7 @@ class AuthService @Inject constructor(
         currentPassword: String,
         newPassword: String
     ): Result<Unit> {
+        val requestGeneration = localSessionMutationGuard.snapshot()
         if (!isLocalFallbackModeEnabled()) {
             return updateUserPassword(newPassword)
         }
@@ -1051,7 +1062,7 @@ class AuthService @Inject constructor(
             currentPassword = currentPassword,
             newPassword = newPassword
         ).getOrElse { return Result.failure(it) }
-        persistLocalFallbackSession(localSession)
+        persistLocalFallbackSession(localSession, expectedGeneration = requestGeneration)
         return Result.success(Unit)
     }
 

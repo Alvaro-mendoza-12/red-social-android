@@ -89,6 +89,10 @@ fun ThreadedCommentItem(
     onReplyClick: (Comment) -> Unit,
     onDeleteClick: (Comment) -> Unit,
     onProfileClick: (Comment) -> Unit,
+    onEditClick: (Comment) -> Unit,
+    onMentionClick: (String) -> Unit,
+    onLikeClick: (Comment) -> Unit,
+    onDislikeClick: (Comment) -> Unit,
     depth: Int = 0,
     initiallyExpanded: Boolean = false
 ) {
@@ -110,7 +114,11 @@ fun ThreadedCommentItem(
             replyingToUserName = replyTargetName,
             onReplyClick = { onReplyClick(comment) },
             onDeleteClick = { onDeleteClick(comment) },
-            onProfileClick = { onProfileClick(comment) }
+            onProfileClick = { onProfileClick(comment) },
+            onEditClick = { onEditClick(comment) },
+            onMentionClick = onMentionClick,
+            onLikeClick = { onLikeClick(comment) },
+            onDislikeClick = { onDislikeClick(comment) },
         )
 
         if (descendantCount > 0) {
@@ -155,6 +163,10 @@ fun ThreadedCommentItem(
                         onReplyClick = onReplyClick,
                         onDeleteClick = onDeleteClick,
                         onProfileClick = onProfileClick,
+                        onEditClick = onEditClick,
+                        onMentionClick = onMentionClick,
+                        onLikeClick = onLikeClick,
+                        onDislikeClick = onDislikeClick,
                         depth = depth + 1,
                         initiallyExpanded = true
                     )

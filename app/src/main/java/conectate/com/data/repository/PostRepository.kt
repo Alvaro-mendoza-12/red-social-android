@@ -1591,16 +1591,11 @@ class PostRepository @Inject constructor(
 
     suspend fun getPostComments(postId: String, limit: Int = 50): Flow<List<conectate.com.data.model.Comment>> = flow {
         try {
-            var accessToken = authService.getAccessToken()
+            val accessToken = authService.getAccessTokenAwait()
             if (accessToken != null) {
-                if (supabaseConfig.isLocalFallbackPrimary) {
+                if (usesLocalFallbackBackend()) {
                     val result = localFallbackApiClient.loadPostDetail(accessToken, postId)
-                    if (result.isSuccess) {
-                        emit(result.getOrThrow().comments.take(limit))
-                    } else {
-                        android.util.Log.e("PostRepository", "Error fetching Ubuntu post comments", result.exceptionOrNull())
-                        emit(emptyList())
-                    }
+                    emit(result.getOrThrow().comments.take(limit))
                     return@flow
                 }
 
@@ -1697,13 +1692,15 @@ class PostRepository @Inject constructor(
                     }
                     emit(comments)
                 } else {
-                    emit(emptyList())
+                    throw IllegalStateException("No se pudieron cargar los comentarios.")
                 }
             } else {
-                emit(emptyList())
+                throw IllegalStateException("Inicia sesión para ver los comentarios.")
             }
-        } catch (e: Exception) {
-            emit(emptyList())
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
+            android.util.Log.w("PostRepository", "Comment read failed", e)
+            throw e
         }
     }.flowOn(kotlinx.coroutines.Dispatchers.IO)
 

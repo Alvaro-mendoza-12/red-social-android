@@ -64,6 +64,7 @@ fun PostDetailScreen(
     var commentToReport by remember { mutableStateOf<conectate.com.data.model.Comment?>(null) }
     var showStickerPicker by remember { mutableStateOf(false) }
     val mentionSuggestions by viewModel.mentionSuggestions.collectAsStateWithLifecycle()
+    val commentEditing by viewModel.commentEditing.collectAsStateWithLifecycle()
     
     val threadedComments = remember(uiState.comments) {
         organizeThreaded(uiState.comments)
@@ -386,13 +387,19 @@ fun PostDetailScreen(
                         }
                     }
 
+                    if (state.commentsError != null) item(key = "comments-error") {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(state.commentsError, color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = viewModel::retryComments, enabled = !state.isLoadingComments) { Text("Reintentar") }
+                        }
+                    }
                     if (state.isLoadingComments && state.comments.isEmpty()) {
                         item(key = "loading_comments") {
                             Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator(modifier = Modifier.size(24.dp))
                             }
                         }
-                    } else if (state.comments.isEmpty()) {
+                    } else if (state.comments.isEmpty() && state.commentsError == null) {
                         item(key = "empty_comments") {
                             Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                                 Text("Sé el primero en comentar", color = Color.Gray)
@@ -502,58 +509,13 @@ fun PostDetailScreen(
         )
     }
 
-    if (commentToEdit != null) {
-        var editContent by remember(commentToEdit) { mutableStateOf(commentToEdit?.content ?: "") }
-        AlertDialog(
-            onDismissRequest = { commentToEdit = null },
-            title = { Text("Editar Comentario") },
-            text = {
-                OutlinedTextField(
-                    value = editContent,
-                    onValueChange = { editContent = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 3
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        commentToEdit?.let {
-                            viewModel.editComment(it.id, editContent)
-                        }
-                        commentToEdit = null
-                    },
-                    enabled = editContent.isNotBlank() && editContent != commentToEdit?.content
-                ) {
-                    Text("Guardar")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { commentToEdit = null }) {
-                    Text("Cancelar")
-                }
-            }
+    commentToEdit?.let { comment ->
+        conectate.com.presentation.components.CommentEditDialog(
+            comment, commentEditing, onDismiss = { commentToEdit = null },
+            onSave = { text -> viewModel.editComment(comment.id, text) { commentToEdit = null } },
         )
     }
-}
 
-fun organizeThreaded(comments: List<conectate.com.data.model.Comment>): List<Pair<conectate.com.data.model.Comment, Int>> {
-    val result = mutableListOf<Pair<conectate.com.data.model.Comment, Int>>()
-    val roots = comments.filter { it.parentId == null }
-    val childrenMap = comments.filter { it.parentId != null }.groupBy { it.parentId }
-
-    fun addChildren(parentId: String, level: Int) {
-        childrenMap[parentId]?.forEach { child ->
-            result.add(child to level)
-            addChildren(child.id, level + 1)
-        }
-    }
-
-    roots.forEach { root ->
-        result.add(root to 0)
-        addChildren(root.id, 1)
-    }
-    return result
 }
 
 private fun replaceActiveMention(currentText: String, username: String): String {
