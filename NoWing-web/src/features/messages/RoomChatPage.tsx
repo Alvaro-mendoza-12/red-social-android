@@ -1667,7 +1667,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
             (emoji) => reactionCount(message.reactions, emoji) > 0,
           )
           const inlinePhoto = Boolean(message.mediaUrl && !message.deletedForAll && !['sticker', 'location', 'contact', 'birthday_card', 'poll', 'raffle', 'question'].includes(message.contentType) && !isViewOnceType(message.contentType) && attachmentKind(message.contentType, message.mediaUrl) === 'image')
-          const photoTimestamp = inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={message.status} edited={message.isEdited} onRetry={() => void retryPendingWebMessage(message.id)}/> : undefined
+          const photoTimestamp = inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={message.status} edited={message.isEdited} onRetry={() => void retryPendingWebMessage(message.id).catch(error => setError(friendlyError(error)))}/> : undefined
           return (
             <Fragment key={message.id}>
               {showDaySeparator ? (
@@ -1782,7 +1782,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
                 ) : null}
                 {mine && message.status==='failed' ? <p className="message-delivery-error" role="status">{messageDeliveryFeedback(message.deliveryError)}</p> : null}
                 {mine && message.status==='pending' && message.mediaUrl ? <OutboxTransferStatus id={message.id}/> : null}
-                {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={message.status} edited={message.isEdited} onRetry={() => void retryPendingWebMessage(message.id)}/> : null}
+                {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={message.status} edited={message.isEdited} onRetry={() => void retryPendingWebMessage(message.id).catch(error => setError(friendlyError(error)))}/> : null}
               </article>
             </Fragment>
           )

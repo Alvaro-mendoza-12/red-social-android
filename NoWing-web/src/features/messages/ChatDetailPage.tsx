@@ -2421,7 +2421,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           )
 
           const inlinePhoto = Boolean(message.mediaUrl && !message.deletedForAll && !['sticker', 'location', 'contact', 'birthday_card', 'poll', 'raffle', 'question'].includes(message.contentType) && !isViewOnceType(message.contentType) && attachmentKind(message.contentType, message.mediaUrl) === 'image')
-          const photoTimestamp = inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id)}/> : undefined
+          const photoTimestamp = inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id).catch(error => setError(friendlyError(error)))}/> : undefined
           return (
             <Fragment key={message.id}>
               {showDaySeparator ? (
@@ -2553,7 +2553,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
                 {mine && message.status==='failed' ? <p className="message-delivery-error" role="status">{messageDeliveryFeedback(message.deliveryError)}</p> : null}
                 {mine && message.status==='pending' && message.mediaUrl ? <OutboxTransferStatus id={message.id}/> : null}
-                {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id)}/> : null}
+                {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id).catch(error => setError(friendlyError(error)))}/> : null}
               </article>
             </Fragment>
           )

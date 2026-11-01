@@ -1,3 +1,4 @@
+import { documentContentType, normalizeDocumentFile } from './documentMime'
 import { Zip, ZipDeflate, ZipPassThrough } from 'fflate'
 import { validateMessageVideo } from './messageVideoPolicy'
 import { normalizeClipboardFiles } from './chatClipboard'
@@ -120,8 +121,9 @@ export async function prepareAttachmentFiles(files: File[], onProgress?: Prepara
   if(files.some(file=>file.webkitRelativePath)) return prepareSelectedFolder(files,onProgress)
   if (files.length > MAX_FILES) throw new AttachmentPreparationError('Selecciona hasta 5000 archivos sueltos o adjunta la carpeta completa para dividirla en ZIPs.')
   const prepared: File[] = []
-  for (const source of files) {
-    if (source.size > MAX_MESSAGE_UPLOAD_BYTES) throw new AttachmentPreparationError('El archivo supera los 500 MB permitidos. Selecciona uno más pequeño.')
+  for (const original of files) {
+    if (original.size > MAX_MESSAGE_UPLOAD_BYTES) throw new AttachmentPreparationError('El archivo supera los 500 MB permitidos. Selecciona uno más pequeño.')
+    const source = normalizeDocumentFile(original)
     // WhatsApp for Windows can export an animated WebP without an extension
     // or MIME. Recognize the bytes before deciding to ZIP an unknown file.
     const file = (!source.type || source.type === 'application/octet-stream' || source.type.startsWith('image/'))
@@ -133,7 +135,7 @@ export async function prepareAttachmentFiles(files: File[], onProgress?: Prepara
     if (/\.zip$/i.test(file.name) && file.type !== 'application/zip') { prepared.push(new File([file], file.name, { type: 'application/zip', lastModified: file.lastModified })); continue }
     const directExtension = /\.(pdf|zip|docx|xlsx|pptx|txt|csv|jpe?g|png|webp|gif|mp4|webm|mp3|m4a|aac|wav|ogg|oga|opus|flac)$/i.test(file.name)
     const directMediaType = /^(image\/(jpeg|png|webp|gif)|video\/(mp4|webm)|audio\/(mpeg|mp4|aac|wav|x-wav|ogg|opus|webm|flac|x-flac)|application\/ogg)$/.test(file.type || '')
-    if (!directExtension && !directMediaType) { prepared.push(await compressFiles([{path:file.name,file}], file.name)); continue }
+    if (!documentContentType(file.name) && !directExtension && !directMediaType) { prepared.push(await compressFiles([{path:file.name,file}], file.name)); continue }
     if (file.size < 8 * 1024 * 1024 || !/\.(txt|csv)$/i.test(file.name)) { prepared.push(file); continue }
     const packed = await compressFiles([{ path: file.name, file }], file.name)
     prepared.push(packed.size < file.size ? packed : file)
