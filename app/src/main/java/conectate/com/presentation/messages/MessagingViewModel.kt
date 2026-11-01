@@ -310,8 +310,17 @@ class MessagingViewModel @Inject constructor(
         }
     }
 
-    fun blockUser(userId: String) {
-        viewModelScope.launch { withContext(Dispatchers.IO) { userRepository.blockUser(userId) } }
+    private val blockActions by lazy { CollectionActionRunner(viewModelScope, authService::getCurrentUserId,
+        { _uiMessage.value = it }, authService.currentSession.map { authService.getCurrentUserId() }) }
+
+    fun blockUser(userId: String, expectedAccountId: String?) {
+        val owner = expectedAccountId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return
+        val target = userId.trim().lowercase()
+        if (target.isBlank() || target == owner || owner != currentUserId) return
+        blockActions.run("block:$owner:$target", "No se pudo bloquear al usuario. Inténtalo de nuevo.",
+            { owner == currentUserId },
+            { withContext(Dispatchers.IO) { userRepository.blockUser(target, owner) } },
+            { _uiMessage.value = "Usuario bloqueado." })
     }
     
     fun deleteChat(chatId: String) {

@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import conectate.com.data.model.ChatWithLastMessage
+import conectate.com.data.repository.message.otherDirectParticipant
 
 // Colors now resolved at runtime via MaterialTheme.colorScheme for light/dark compatibility
 
@@ -207,8 +208,9 @@ fun PrivateChatsTab(
                         }
                     }
                 } else {
-                    var showReportDialog by remember { mutableStateOf(false) }
-                    var selectedConversation by remember { mutableStateOf<ChatWithLastMessage?>(null) }
+                    val reportAccount = conectate.com.presentation.components.LocalProfileIdentityAccount.current
+                    var showReportDialog by remember(reportAccount) { mutableStateOf(false) }
+                    var selectedConversation by remember(reportAccount) { mutableStateOf<ChatWithLastMessage?>(null) }
                     
                     LazyColumn(
                         modifier = Modifier
@@ -219,8 +221,7 @@ fun PrivateChatsTab(
                             items = privateChats,
                             key = { it.chat.id }
                         ) { conversation ->
-                            val otherUserId = conversation.chat.participants
-                                .firstOrNull { it != viewModel.currentUserId } ?: ""
+                            val otherUserId = conversation.chat.otherDirectParticipant(viewModel.currentUserId)
                             
                             ConversationItemWithSwipe(
                                 conversation = conversation,
@@ -232,7 +233,7 @@ fun PrivateChatsTab(
                                 onPin = { viewModel.pinChat(conversation.chat.id, !conversation.chat.is_pinned) },
                                 onFavorite = { viewModel.favoriteChat(conversation.chat.id, !conversation.chat.is_favorite) },
                                 onArchive = { viewModel.archiveChat(conversation.chat.id, !conversation.chat.is_archived) },
-                                onBlock = { viewModel.blockUser(otherUserId) },
+                                onBlock = { otherUserId?.let { viewModel.blockUser(it, reportAccount) } },
                                 onManageFolders = { folderTargetConversation = conversation },
                                 onDelete = { viewModel.deleteChat(conversation.chat.id) },
                                 onReport = {
@@ -246,9 +247,9 @@ fun PrivateChatsTab(
 
                     if (showReportDialog && selectedConversation != null) {
                         val conv = selectedConversation!!
-                        val reportedUserId = conv.chat.participants.firstOrNull { it != viewModel.currentUserId } ?: ""
+                        val reportedUserId = conv.chat.otherDirectParticipant(viewModel.currentUserId)
                         val reportedUserName = conv.otherUserName ?: "Usuario"
-                        conectate.com.presentation.components.ReportDialog(
+                        if (reportedUserId != null) conectate.com.presentation.components.ReportDialog(
                             reportedUserId = reportedUserId,
                             reportedUserName = reportedUserName,
                             onDismiss = { showReportDialog = false },

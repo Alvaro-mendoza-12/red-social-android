@@ -16,6 +16,13 @@ internal fun Chat.isAccessibleTo(accountId: String?): Boolean {
     return participants.any { it.trim().lowercase() == account }
 }
 
+/** User actions in a DM require one actual peer and membership of the acting account. */
+internal fun Chat.otherDirectParticipant(accountId: String?): String? {
+    val account = accountId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return null
+    if (is_group || !isAccessibleTo(account)) return null
+    return participants.map { it.trim().lowercase() }.filter { it.isNotBlank() && it != account }.distinct().singleOrNull()
+}
+
 /** A preview/read timestamp update cannot restart the complete message history. */
 internal fun Flow<Chat?>.distinctHistoryAccess(): Flow<Chat?> = distinctUntilChanged { previous, next ->
     previous?.id == next?.id && previous?.is_group == next?.is_group &&

@@ -99,3 +99,13 @@ También se contrastaron contra PostgreSQL **13 perfiles: 4 administradores y 9 
 La activación pasó la comprobación local y pública de disponibilidad; la ruta de ajustes exige autenticación y responde 401 sin credenciales. No se cambió el esquema ni se enviaron mensajes a contactos. Se conservan la imagen anterior y el punto de reversión `/home/alvaro/novvin-candidates/audit101-mobile/backup`. El primer intento de SSH quedó sin ejecutar el proceso remoto; se verificó esa ausencia y se sustituyó únicamente esa conexión antes de validar y desplegar.
 
 Esto cierra el despliegue pendiente de insignias y de ese contrato de voz. Todavía no se generó una APK nueva y siguen abiertas las comprobaciones visuales y el resto de módulos móviles; no es el cierre de producción de toda la aplicación.
+
+## Noveno bloque: destinatarios y bloqueos
+
+Los chats con uno mismo, los grupos o una conversación sin un interlocutor válido no deben mostrar acciones de reportar o bloquear a otro usuario. La lista y el chat resuelven ahora un único participante distinto del propietario; un registro incompleto o ajeno no produce un destinatario vacío ni uno elegido arbitrariamente. El reporte de la lista se reinicia al cambiar de cuenta.
+
+El bloqueo desde la lista ignoraba su resultado. Ahora reutiliza el ejecutor de acciones existente, evita envíos repetidos, espera el ACK y comunica tanto éxito como fallo. Bloquear y desbloquear desde el chat también quedan ligados al propietario y al interlocutor que inició la operación. El repositorio captura primero al actor y obtiene credenciales para esa cuenta; las lecturas de relación y su caché rechazan respuestas ajenas.
+
+Además, el sondeo de bloqueos del servidor convertía un fallo de lectura en una relación vacía. Eso podía dibujar un desbloqueo que nunca ocurrió. Solo publica estados confirmados; conserva el anterior durante un fallo y deja de emitir tras cambiar de cuenta. Se comprobaron **52 pruebas seleccionadas, 6 clases, sin fallos, errores u omisiones**, incluidas cinco regresiones nuevas de destinatario y sondeo. La primera compilación detectó un import incorrecto del modelo de relación; se corrigió antes de esta ejecución satisfactoria.
+
+La lectura posterior de Ajustes encontró otra inferencia de administración por correo y un consumo incorrecto de un resultado booleano: se comprobaba que la consulta terminase, en vez de su valor. Son pendientes de la siguiente corrección, junto con los límites de sesión del cambio de cuenta. La fase móvil sigue abierta y no se ha pasado a la web.

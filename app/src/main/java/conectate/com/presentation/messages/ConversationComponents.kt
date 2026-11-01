@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import conectate.com.data.model.ChatWithLastMessage
+import conectate.com.data.repository.message.otherDirectParticipant
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.AdminBadge
 import java.util.*
@@ -39,6 +40,7 @@ fun ConversationItem(
     onReport: () -> Unit = {}
 ) {
     val colors = MaterialTheme.colorScheme
+    val hasPeer = conversation.chat.otherDirectParticipant(currentUserId) != null
     val draftContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
     val drafts = remember(draftContext) { conectate.com.data.local.ConversationDraftStore(draftContext) }
     val draftScope = if (conversation.chat.is_group) "group" else "chat"
@@ -288,7 +290,7 @@ fun ConversationItem(
                         leadingIcon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null) }
                     )
                 }
-                if (!conversation.chat.is_group) {
+                if (hasPeer) {
                     DropdownMenuItem(
                         text = { Text("Bloquear usuario") },
                         onClick = {
@@ -312,7 +314,7 @@ fun ConversationItem(
                     },
                     leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red) }
                 )
-                DropdownMenuItem(
+                if (hasPeer) DropdownMenuItem(
                     text = { Text("Reportar") },
                     onClick = { 
                         showMenu = false

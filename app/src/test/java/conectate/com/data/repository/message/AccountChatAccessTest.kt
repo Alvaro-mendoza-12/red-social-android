@@ -17,6 +17,18 @@ import org.junit.Test
 class AccountChatAccessTest {
     private fun chat(owner: String = "a", id: String = "chat") = Chat(id = id, participants = listOf(owner, "person"))
 
+    @Test fun `a direct peer is normalized but never inferred for self chat`() {
+        assertEquals("person", Chat(participants = listOf(" A ", " PERSON ")).otherDirectParticipant("a"))
+        assertNull(Chat(participants = listOf("a", " A ", "")).otherDirectParticipant("a"))
+    }
+
+    @Test fun `a malformed group or another accounts chat has no user action target`() {
+        assertNull(chat().copy(is_group = true).otherDirectParticipant("a"))
+        assertNull(chat().otherDirectParticipant("not-a-member"))
+        assertNull(Chat(participants = listOf("a", "person", "third")).otherDirectParticipant("a"))
+        assertNull(chat().otherDirectParticipant(null))
+    }
+
     @Test fun `preview and read changes do not restart history but membership still does`() = runTest {
         val accounts = MutableStateFlow<String?>("a")
         val chats = MutableStateFlow<Chat?>(chat())

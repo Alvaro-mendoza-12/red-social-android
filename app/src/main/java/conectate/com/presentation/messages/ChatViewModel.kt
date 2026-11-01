@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.ChatSummary
 import conectate.com.data.model.Message
 import conectate.com.data.repository.message.ScheduledMessagesKey
+import conectate.com.data.repository.message.otherDirectParticipant
 import conectate.com.data.model.TypingConversationScope
 import conectate.com.data.model.TypingParticipant
 import conectate.com.data.model.User
@@ -2160,48 +2161,27 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun blockUser() {
-        val uid = resolvedTargetUserId ?: otherUserId
-        if (uid.isBlank()) return
-        viewModelScope.launch {
-             val result = userRepository.blockUser(uid)
-             if (result.isSuccess) {
-                 applyBlockRelationship(
-                     relationship = BlockRelationship(
-                         blockedByMe = true,
-                         blockedMe = _isBlockedByOther.value
-                     ),
-                     announceWhenBlockedByOther = false
-                 )
-                 _advancedMessage.value = "Usuario bloqueado."
-             } else {
-                 _advancedMessage.value = "No se pudo bloquear usuario."
-             }
-        }
-    }
+    private val peerActions by lazy { CollectionActionRunner(viewModelScope, authService::getCurrentUserId,
+        { _advancedMessage.value = it }, authService.currentSession.map { authService.getCurrentUserId() }) }
 
-    fun unblockUser() {
-        val uid = resolvedTargetUserId ?: otherUserId
-        if (uid.isBlank()) return
-        viewModelScope.launch {
-             val result = userRepository.unblockUser(uid)
-             if (result.isSuccess) {
-                 applyBlockRelationship(
-                     relationship = BlockRelationship(
-                         blockedByMe = false,
-                         blockedMe = _isBlockedByOther.value
-                     ),
-                     announceWhenBlockedByOther = false
-                 )
-                 _advancedMessage.value = if (_isBlockedByOther.value) {
-                     "El otro usuario te tiene bloqueado."
-                 } else {
-                     "Usuario desbloqueado."
-                 }
-             } else {
-                 _advancedMessage.value = "No se pudo desbloquear usuario."
-             }
-        }
+    fun blockUser() = changePeerBlock(true)
+
+    fun unblockUser() = changePeerBlock(false)
+
+    private fun changePeerBlock(blocked: Boolean) {
+        val owner = authService.getCurrentUserId() ?: return
+        val uid = (_chatState.value as? ChatUiState.Success)?.chat?.otherDirectParticipant(owner) ?: return
+        peerActions.run("block:$owner:$uid", "No se pudo guardar el bloqueo. Inténtalo de nuevo.",
+            { (_chatState.value as? ChatUiState.Success)?.chat?.otherDirectParticipant(owner) == uid },
+            { if (blocked) userRepository.blockUser(uid, owner) else userRepository.unblockUser(uid, owner) }, {
+                applyBlockRelationship(BlockRelationship(blockedByMe = blocked, blockedMe = _isBlockedByOther.value),
+                    announceWhenBlockedByOther = false)
+                _advancedMessage.value = when {
+                    blocked -> "Usuario bloqueado."
+                    _isBlockedByOther.value -> "El otro usuario te tiene bloqueado."
+                    else -> "Usuario desbloqueado."
+                }
+            })
     }
     fun deleteChat() {
         val cid = chatId ?: return

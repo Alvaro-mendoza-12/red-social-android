@@ -3073,15 +3073,18 @@ class UserRepository @Inject constructor(
     // BLOCK/UNBLOCK USERS
     // ─────────────────────────────────────────────
     
-    suspend fun blockUser(targetUserId: String): Result<Unit> {
+    suspend fun blockUser(targetUserId: String, expectedAccountId: String? = null): Result<Unit> {
         return try {
-            var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token"))
-            var currentUserId = authService.getCurrentUserId()
-                ?: return Result.failure(Exception("No user logged in"))
+            val currentUserId = (expectedAccountId ?: authService.getCurrentUserId())?.trim()?.lowercase()
+                ?: return Result.failure(Exception("Inicia sesión para bloquear al usuario."))
+            val target = targetUserId.trim().lowercase()
+            if (target.isBlank()) return Result.failure(Exception("No encontramos al usuario que quieres bloquear."))
+            if (target == currentUserId) return Result.failure(Exception("No puedes bloquear tu propia cuenta."))
+            val accessToken = authService.getAccessTokenForAccountAwait(currentUserId)
+                ?: return Result.failure(Exception("Inicia sesión para bloquear al usuario."))
 
             if (shouldUseUbuntuBackend()) {
-                return localFallbackApiClient.blockUser(accessToken, targetUserId)
+                return localFallbackApiClient.blockUser(accessToken, target)
                     .map {
                         invalidateBlockedMentionCache()
                         Unit
@@ -3090,7 +3093,7 @@ class UserRepository @Inject constructor(
 
             val blockData = buildJsonObject {
                 put("blocker_id", currentUserId)
-                put("blocked_id", targetUserId)
+                put("blocked_id", target)
             }
             
             var response = supabaseConfig.httpClient.post(
@@ -3111,23 +3114,26 @@ class UserRepository @Inject constructor(
                     invalidateBlockedMentionCache()
                     Result.success(Unit) // Already blocked
                 } else {
-                    Result.failure(Exception("Failed to block user"))
+                    Result.failure(Exception("No se pudo bloquear al usuario. Inténtalo de nuevo."))
                 }
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    suspend fun unblockUser(targetUserId: String): Result<Unit> {
+    suspend fun unblockUser(targetUserId: String, expectedAccountId: String? = null): Result<Unit> {
         return try {
-            var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token"))
-            var currentUserId = authService.getCurrentUserId()
-                ?: return Result.failure(Exception("No user logged in"))
+            val currentUserId = (expectedAccountId ?: authService.getCurrentUserId())?.trim()?.lowercase()
+                ?: return Result.failure(Exception("Inicia sesión para quitar el bloqueo."))
+            val target = targetUserId.trim().lowercase()
+            if (target.isBlank() || target == currentUserId) return Result.failure(Exception("El contacto no está disponible."))
+            val accessToken = authService.getAccessTokenForAccountAwait(currentUserId)
+                ?: return Result.failure(Exception("Inicia sesión para quitar el bloqueo."))
 
             if (shouldUseUbuntuBackend()) {
-                return localFallbackApiClient.unblockUser(accessToken, targetUserId)
+                return localFallbackApiClient.unblockUser(accessToken, target)
                     .map {
                         invalidateBlockedMentionCache()
                         Unit
@@ -3140,16 +3146,17 @@ class UserRepository @Inject constructor(
                 header("apikey", supabaseConfig.supabaseAnonKey)
                 header("Authorization", "Bearer $accessToken")
                 parameter("blocker_id", "eq.$currentUserId")
-                parameter("blocked_id", "eq.$targetUserId")
+                parameter("blocked_id", "eq.$target")
             }
 
             if (response.status.isSuccess()) {
                 invalidateBlockedMentionCache()
                 Result.success(Unit)
             } else {
-                Result.failure(Exception("Failed to unblock user"))
+                Result.failure(Exception("No se pudo quitar el bloqueo. Inténtalo de nuevo."))
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Result.failure(e)
         }
     }
@@ -3158,6 +3165,8 @@ class UserRepository @Inject constructor(
         return try {
             var now = System.currentTimeMillis()
             val normalizedCurrentUserId = currentUserId.trim().lowercase()
+            if (!authService.commitForCurrentAccount(normalizedCurrentUserId) {})
+                throw CancellationException("La cuenta cambió durante la consulta de bloqueos.")
             var cachedUserId = blockedMentionCacheUserId
 
             if (
@@ -3167,8 +3176,8 @@ class UserRepository @Inject constructor(
                 return Result.success(blockedMentionCacheIds)
             }
 
-            var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token"))
+            val accessToken = authService.getAccessTokenForAccountAwait(normalizedCurrentUserId)
+                ?: return Result.failure(Exception("Inicia sesión para consultar tus bloqueos."))
 
             var response = supabaseConfig.httpClient.get(
                 "${supabaseConfig.supabaseUrl}/rest/v1/blocked_users"
@@ -3199,12 +3208,15 @@ class UserRepository @Inject constructor(
                 }
             }.toSet()
 
-            blockedMentionCacheUserId = normalizedCurrentUserId
-            blockedMentionCacheAtMs = now
-            blockedMentionCacheIds = relatedIds
+            if (!authService.commitForCurrentAccount(normalizedCurrentUserId, accessToken) {
+                blockedMentionCacheUserId = normalizedCurrentUserId
+                blockedMentionCacheAtMs = now
+                blockedMentionCacheIds = relatedIds
+            }) throw CancellationException("La cuenta cambió durante la consulta de bloqueos.")
 
             Result.success(relatedIds)
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Result.failure(e)
         }
     }
@@ -3217,16 +3229,18 @@ class UserRepository @Inject constructor(
 
     suspend fun getBlockRelationship(targetUserId: String): Result<BlockRelationship> {
         return try {
-            var accessToken = authService.getAccessTokenAwait()
-                ?: return Result.failure(Exception("No access token"))
-            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return Result.failure(Exception("No user logged in"))
+            val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
+                ?: return Result.failure(Exception("Inicia sesión para comprobar el bloqueo."))
+            val accessToken = authService.getAccessTokenForAccountAwait(currentUserId)
+                ?: return Result.failure(Exception("Inicia sesión para comprobar el bloqueo."))
             var cleanTargetId = targetUserId.trim().lowercase()
             if (cleanTargetId.isBlank()) return Result.success(BlockRelationship())
 
             if (shouldUseUbuntuBackend()) {
                 return localFallbackApiClient.getBlockRelationship(accessToken, cleanTargetId)
                     .map { response ->
+                        if (!authService.commitForCurrentAccount(currentUserId, accessToken) {})
+                            throw CancellationException("La cuenta cambió durante la consulta de bloqueos.")
                         BlockRelationship(
                             blockedByMe = response.blockedByMe,
                             blockedMe = response.blockedMe
@@ -3261,13 +3275,16 @@ class UserRepository @Inject constructor(
                 if (blockerId == cleanTargetId && blockedId == currentUserId) blockedMe = true
             }
 
+            if (!authService.commitForCurrentAccount(currentUserId, accessToken) {})
+                throw CancellationException("La cuenta cambió durante la consulta de bloqueos.")
             Result.success(
                 BlockRelationship(
                     blockedByMe = blockedByMe,
                     blockedMe = blockedMe
                 )
             )
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Result.failure(e)
         }
     }
@@ -3275,16 +3292,10 @@ class UserRepository @Inject constructor(
     fun observeBlockRelationship(targetUserId: String): Flow<BlockRelationship> {
         val cleanTargetId = targetUserId.trim().lowercase()
         if (shouldUseUbuntuBackend()) {
-            return flow {
-                if (cleanTargetId.isBlank()) {
-                    emit(BlockRelationship())
-                    return@flow
-                }
-                while (true) {
-                    emit(getBlockRelationship(cleanTargetId).getOrDefault(BlockRelationship()))
-                    delay(5_000L)
-                }
-            }.distinctUntilChanged().flowOn(Dispatchers.IO)
+            if (cleanTargetId.isBlank()) return kotlinx.coroutines.flow.flowOf(BlockRelationship())
+            return conectate.com.data.repository.user.confirmedBlockRelationships(authService::getCurrentUserId) {
+                getBlockRelationship(cleanTargetId)
+            }.flowOn(Dispatchers.IO)
         }
 
         return callbackFlow {

@@ -36,6 +36,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import conectate.com.data.model.Message
+import conectate.com.data.repository.message.otherDirectParticipant
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -915,6 +916,7 @@ fun ChatScreen(
              } else {
                  val successState = chatState as? ChatUiState.Success
                  val chat = successState?.chat
+                 val directPeer = chat?.otherDirectParticipant(viewModel.getCurrentUserId())
                  val otherUser = successState?.otherUser
                  
                 
@@ -1113,14 +1115,14 @@ fun ChatScreen(
                                         showBackgroundSheet = true
                                     }
                                 )
-                                DropdownMenuItem(
+                                if (directPeer != null) DropdownMenuItem(
                                     text = { Text(if (isBlockedByMe) "Desbloquear" else "Bloquear") },
                                     onClick = {
                                         showMenu = false
                                         if (isBlockedByMe) viewModel.unblockUser() else viewModel.blockUser()
                                     }
                                 )
-                                DropdownMenuItem(
+                                if (directPeer != null) DropdownMenuItem(
                                     text = { Text("Reportar") },
                                     onClick = { 
                                         showMenu = false
@@ -1129,9 +1131,9 @@ fun ChatScreen(
                                 )
                             }
 
-                        if (showReportDialog) {
+                        if (showReportDialog && directPeer != null) {
                             val otherUser = (chatState as? ChatUiState.Success)?.otherUser
-                            val reportedUserId = otherUser?.id ?: ""
+                            val reportedUserId = directPeer
                             val reportedUserName = otherUser?.username ?: chatName
                             
                             conectate.com.presentation.components.ReportDialog(
