@@ -7,6 +7,28 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 class AuthSessionMutationGuardTest {
+    @Test fun savedCredentialsCannotMixAnAwaitedTokenWithTheNextAccountIdentity() {
+        val guard = AuthSessionMutationGuard()
+        var currentOwner: String? = "account-a"
+        var currentToken: String? = "token-a"
+        val awaitedToken = currentToken
+        guard.invalidate { currentOwner = "account-b"; currentToken = "token-b" }
+        var stored = false
+        assertFalse(guard.commitForAccount("account-a", awaitedToken, { currentOwner }, { currentToken }) { stored = true })
+        assertFalse(stored)
+        assertTrue(guard.commitForAccount("ACCOUNT-B", "token-b", { currentOwner }, { currentToken }) { stored = true })
+        assertTrue(stored)
+    }
+
+    @Test fun anOlderObserverCannotOverwriteFreshCredentialsForTheSameAccount() {
+        val guard = AuthSessionMutationGuard()
+        var saved = "fresh"
+        assertFalse(guard.commitForAccount("account", "old", { "account" }, { "fresh" }) { saved = "old" })
+        assertEquals("fresh", saved)
+        assertFalse(guard.commitForAccount("account", "fresh", { null }, { null }) { saved = "logged-out" })
+        assertEquals("fresh", saved)
+    }
+
     @Test fun currentRefreshCanPersist() {
         val guard = AuthSessionMutationGuard()
         var session = "old-token"

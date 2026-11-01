@@ -106,16 +106,29 @@ class AuthRepository @Inject constructor(
     val isUserLoggedIn: Boolean
         get() = authService.isLoggedIn()
 
-    private suspend fun restorePendingWorkAfterLogin(): Exception? = try {
-        authService.restorePendingWorkForCurrentAccount()
-        null
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (error: Exception) {
-        // A different account must never see a cache whose ownership could not be verified.
-        authService.forceLocalLogout()
-        android.util.Log.e("AuthRepository", "Pending work could not be safely restored", error)
-        IllegalStateException("No pudimos abrir los mensajes pendientes de esta cuenta. Inténtalo de nuevo.", error)
+    private suspend fun restorePendingWorkAfterLogin(): Exception? {
+        val owner = authService.getCurrentUserId()
+            ?: return IllegalStateException("No pudimos identificar tu sesión. Inicia sesión de nuevo.")
+        return try {
+            authService.restorePendingWorkForCurrentAccount()
+            if (!authService.commitForCurrentAccount(owner) {})
+                throw CancellationException("La cuenta cambió durante la restauración.")
+            null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // A failed restore may close its own account, never a newer login.
+            if (!authService.commitForCurrentAccount(owner) { authService.forceLocalLogout() })
+                throw CancellationException("La cuenta cambió durante la restauración.")
+            android.util.Log.e("AuthRepository", "Pending work could not be safely restored", error)
+            IllegalStateException("No pudimos abrir los mensajes pendientes de esta cuenta. Inténtalo de nuevo.", error)
+        }
+    }
+
+    private fun confirmedEntryUser(user: User): User {
+        if (!authService.commitForCurrentAccount(user.id) {})
+            throw CancellationException("La cuenta cambió antes de terminar el acceso.")
+        return user
     }
 
     val isInitializing: StateFlow<Boolean> = authService.isInitializing
@@ -270,14 +283,16 @@ class AuthRepository @Inject constructor(
             displayName = normalizedName,
             country = normalizedCountry,
             privacyPolicyAccepted = true,
-            privacyPolicyAcceptedAt = acceptedAt
+            privacyPolicyAcceptedAt = acceptedAt,
+            expectedUserId = hydratedUser.id,
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to sync signup metadata", it)
         }
 
         accountSessionRepository.captureCurrentAccount(
             displayName = hydratedUser.displayName,
-            avatarUrl = hydratedUser.avatar_url
+            avatarUrl = hydratedUser.avatar_url,
+            expectedUserId = hydratedUser.id
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to save quick-switch session after sign up", it)
         }
@@ -288,7 +303,7 @@ class AuthRepository @Inject constructor(
         // the registration ViewModel and cancel the pending image upload.
         authService.completePendingRegistration()
         restorePendingWorkAfterLogin()?.let { return Result.failure(it) }
-        return Result.success(hydratedUser)
+        return Result.success(confirmedEntryUser(hydratedUser))
     }
 
     suspend fun signInWithEmail(
@@ -321,11 +336,12 @@ class AuthRepository @Inject constructor(
             )
             accountSessionRepository.captureCurrentAccount(
                 displayName = user.displayName,
-                avatarUrl = user.avatar_url
+                avatarUrl = user.avatar_url,
+                expectedUserId = user.id
             ).onFailure {
                 android.util.Log.w("AuthRepository", "Failed to save local fallback account after sign in", it)
             }
-            return Result.success(user)
+            return Result.success(confirmedEntryUser(user))
         }
 
         if (twoFactorAuthManager.is2FARequired()) {
@@ -370,12 +386,13 @@ class AuthRepository @Inject constructor(
 
         accountSessionRepository.captureCurrentAccount(
             displayName = user.display_name ?: user.full_name ?: user.username,
-            avatarUrl = user.avatar_url
+            avatarUrl = user.avatar_url,
+            expectedUserId = user.id
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to refresh stored account snapshot after sign in", it)
         }
 
-        return Result.success(user)
+        return Result.success(confirmedEntryUser(user))
     }
 
     /**
@@ -400,11 +417,12 @@ class AuthRepository @Inject constructor(
             val user = resolveLocalFallbackSessionUser(fallbackEmail = normalizedEmail)
             accountSessionRepository.captureCurrentAccount(
                 displayName = user.displayName,
-                avatarUrl = user.avatar_url
+                avatarUrl = user.avatar_url,
+                expectedUserId = user.id
             ).onFailure {
                 android.util.Log.w("AuthRepository", "Failed to save local fallback 2FA account after sign in", it)
             }
-            return Result.success(user)
+            return Result.success(confirmedEntryUser(user))
         }
 
         // Check if 2FA is enabled for this user
@@ -471,12 +489,13 @@ class AuthRepository @Inject constructor(
 
         accountSessionRepository.captureCurrentAccount(
             displayName = user.display_name ?: user.full_name ?: user.username,
-            avatarUrl = user.avatar_url
+            avatarUrl = user.avatar_url,
+            expectedUserId = user.id
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to refresh stored account snapshot after sign in", it)
         }
 
-        return Result.success(user)
+        return Result.success(confirmedEntryUser(user))
     }
 
     /**
@@ -744,11 +763,12 @@ class AuthRepository @Inject constructor(
         val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
         accountSessionRepository.captureCurrentAccount(
             displayName = user.displayName,
-            avatarUrl = user.avatar_url
+            avatarUrl = user.avatar_url,
+            expectedUserId = user.id
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to save local fallback account after password reset", it)
         }
-        return Result.success(user)
+        return Result.success(confirmedEntryUser(user))
     }
 
     suspend fun confirmSavedPasswordRecoveryCode(
@@ -766,11 +786,12 @@ class AuthRepository @Inject constructor(
         val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
         accountSessionRepository.captureCurrentAccount(
             displayName = user.displayName,
-            avatarUrl = user.avatar_url
+            avatarUrl = user.avatar_url,
+            expectedUserId = user.id
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to save account after recovery", it)
         }
-        return Result.success(user)
+        return Result.success(confirmedEntryUser(user))
     }
 
     suspend fun completeMigratedLocalPasswordReset(
@@ -785,11 +806,12 @@ class AuthRepository @Inject constructor(
         val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
         accountSessionRepository.captureCurrentAccount(
             displayName = user.displayName,
-            avatarUrl = user.avatar_url
+            avatarUrl = user.avatar_url,
+            expectedUserId = user.id
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to save local fallback account after migration reset", it)
         }
-        return Result.success(user)
+        return Result.success(confirmedEntryUser(user))
     }
 
     suspend fun directPasswordReset(
@@ -804,11 +826,12 @@ class AuthRepository @Inject constructor(
         val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
         accountSessionRepository.captureCurrentAccount(
             displayName = user.displayName,
-            avatarUrl = user.avatar_url
+            avatarUrl = user.avatar_url,
+            expectedUserId = user.id
         ).onFailure {
             android.util.Log.w("AuthRepository", "Failed to save local fallback account after direct reset", it)
         }
-        return Result.success(user)
+        return Result.success(confirmedEntryUser(user))
     }
 
     suspend fun updatePassword(newPassword: String): Result<Unit> {
@@ -836,13 +859,16 @@ class AuthRepository @Inject constructor(
         val userId = authService.getCurrentUserId()?.trim()?.lowercase()
         val email = authService.getCurrentUserEmail()?.trim()?.lowercase()
         val existing = accountSessionRepository.accounts.value.firstOrNull {
-            (!userId.isNullOrBlank() && it.user_id == userId) ||
-                (!email.isNullOrBlank() && it.email.equals(email, ignoreCase = true))
+            if (!userId.isNullOrBlank()) it.user_id == userId
+            else !email.isNullOrBlank() && it.email.equals(email, ignoreCase = true)
         }
         val seed = authService.getCurrentUserProfileSeed()
+        if (seed != null && !seed.id.equals(userId, ignoreCase = true))
+            throw CancellationException("La cuenta cambió antes de guardar sus datos.")
         return accountSessionRepository.captureCurrentAccount(
             displayName = seed?.displayName ?: existing?.display_name,
-            avatarUrl = seed?.avatarUrl ?: existing?.avatar_url
+            avatarUrl = seed?.avatarUrl ?: existing?.avatar_url,
+            expectedUserId = userId
         ).map { Unit }
     }
 
@@ -929,12 +955,13 @@ class AuthRepository @Inject constructor(
 
             accountSessionRepository.captureCurrentAccount(
                 displayName = hydratedUser.displayName,
-                avatarUrl = hydratedUser.avatar_url
+                avatarUrl = hydratedUser.avatar_url,
+                expectedUserId = hydratedUser.id
             ).onFailure {
                 android.util.Log.w("AuthRepository", "Failed to refresh stored account snapshot after switch", it)
             }
 
-            Result.success(hydratedUser)
+            Result.success(confirmedEntryUser(hydratedUser))
         } catch (e: Exception) {
             if (!previousAccessToken.isNullOrBlank() && !previousRefreshToken.isNullOrBlank()) {
                 runCatching {
@@ -1108,7 +1135,9 @@ class AuthRepository @Inject constructor(
         if (account != null && authService.isLocalFallbackStoredSessionToken(account.access_token, account.refresh_token)) {
             authService.rememberServerLogout(account.refresh_token)
         }
-        accountSessionRepository.removeAccount(accountId)
+        accountSessionRepository.removeAccount(accountId).onFailure {
+            conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo quitar la cuenta guardada. Inténtalo de nuevo.")
+        }
         if (account != null && conectate.com.util.NotificationAccountTarget(account.user_id, account.email)
                 .matches(authService.getCurrentUserId(), authService.getCurrentUserEmail())) {
             forceLocalLogout()

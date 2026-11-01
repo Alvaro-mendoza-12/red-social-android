@@ -7,6 +7,8 @@ internal class AuthSessionMutationGuard {
 
     fun snapshot(): Long = synchronized(lock) { generation }
 
+    fun <T> readCurrent(read: () -> T): T = synchronized(lock) { read() }
+
     fun invalidate(mutation: () -> Unit) = synchronized(lock) {
         generation += 1
         mutation()
@@ -20,5 +22,19 @@ internal class AuthSessionMutationGuard {
         if (expectedGeneration != generation || !eligible()) return@synchronized false
         mutation()
         true
+    }
+
+    fun commitForAccount(
+        accountId: String?,
+        accessToken: String?,
+        currentAccount: () -> String?,
+        currentAccessToken: () -> String?,
+        mutation: () -> Unit,
+    ): Boolean {
+        val owner = accountId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        return commitIfCurrent(snapshot(), eligible = {
+            owner.equals(currentAccount(), ignoreCase = true) &&
+                (accessToken == null || accessToken == currentAccessToken())
+        }, mutation = mutation)
     }
 }

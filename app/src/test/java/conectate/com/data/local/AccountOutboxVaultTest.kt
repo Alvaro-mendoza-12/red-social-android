@@ -183,6 +183,21 @@ class AccountOutboxVaultTest {
         }
     }
 
+    @Test fun `delayed outgoing cleanup never clears the new account idle cache`() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val outgoing = owner()
+        val incoming = owner()
+        val vault = AccountOutboxVault(context, db, cipher)
+        try {
+            vault.restore(incoming)
+            db.chatDao().insertChat(chat("incoming-chat", incoming))
+            val lateCleanup = runCatching { vault.preserveAndClear(outgoing) }
+            assertNotNull("An outgoing cleanup erased the new account cache", db.chatDao().getChatById("incoming-chat"))
+            assertTrue(lateCleanup.isFailure)
+            vault.requireCompatibleAccount(incoming)
+        } finally { db.close() }
+    }
+
     @Test fun `idle rows from previous account are cleared before another login`() = runTest {
         val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
         val oldAccount = owner()
@@ -200,5 +215,18 @@ class AccountOutboxVaultTest {
         } finally {
             db.close()
         }
+    }
+
+    @Test fun `an absent owner marker cannot authorize clearing another account pending messages`() = runTest {
+        val db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
+        val outgoing = owner()
+        val incoming = owner()
+        try {
+            db.chatDao().insertChat(chat("incoming-chat", incoming))
+            db.messageDao().insertMessage(message("incoming-pending", "incoming-chat", incoming, true))
+            val result = runCatching { AccountOutboxVault(context, db, cipher).preserveAndClear(outgoing) }
+            assertTrue(result.isFailure)
+            assertNotNull(db.messageDao().getMessageById("incoming-pending"))
+        } finally { db.close() }
     }
 }

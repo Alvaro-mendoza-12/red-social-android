@@ -35,3 +35,15 @@ El envío de stickers de comentario conserva la respuesta hasta confirmación y 
 Se ejecutó después **toda la suite Android: 2.092 pruebas, 439 clases, 0 fallos, 0 errores, 0 omisiones**. Incluye las pruebas nuevas de ventanas, destino de notificación fuera de la primera página y conservación del borrador ante ACK atrasado. La invalidación de resumen/menciones está verificada por lectura de flujo y compilación; no se afirma una prueba instrumental nueva de esos controles. Continúan pendientes la revisión de otros módulos, la comprobación visual y una APK nueva.
 
 La lectura siguiente identificó concurrencia pendiente de corregir en captura/persistencia de cuentas guardadas. Ese hallazgo y los demás módulos revisables mantienen abierta la fase móvil.
+
+## Tercer bloque: coherencia de cuentas y caché
+
+La captura de una cuenta guardada esperaba el token y después leía por separado la identidad y el token de renovación. Un cambio de cuenta entre esas lecturas podía mezclar credenciales. Ahora la captura y las respuestas de acceso/perfil comprueban la cuenta propietaria; las escrituras de sesión se confirman bajo la misma guardia que el cambio de cuenta. La actualización de perfil obtiene también un token ligado a su destinatario.
+
+Las modificaciones de cuentas guardadas se serializan y solo se publican tras confirmar su persistencia segura. Un fallo de almacenamiento ya no muestra una eliminación o una actualización que se perderá al reiniciar. La sincronización continúa después de un fallo puntual.
+
+Una prueba con Room reprodujo otro defecto: al terminar tarde la limpieza de la cuenta A, se borraba la caché inactiva que ya pertenecía a B. La prueba falló antes de corregirlo. La limpieza de salida ahora rechaza una propiedad ajena antes de modificar la base; se comprobó tanto caché sin envíos como mensajes pendientes sin marcador de propietario.
+
+Validación de este bloque: **261 pruebas seleccionadas, 59 clases, 0 fallos, errores u omisiones**, compilación Android y `lintDebug` completados con **0 errores y 319 advertencias**. Se utilizó `-Pandroid.lint.useK2Uast=false`, como en las revisiones anteriores. Una ejecución anterior con K2 se atascó analizando tipos; se detuvieron únicamente sus procesos de Gradle/Kotlin identificados y se repitió con K1. Las advertencias no se presentan como corregidas.
+
+Este bloque no incluye una APK nueva ni ensayos de dispositivo. Siguen abiertas la revisión de los demás módulos y las confirmaciones de reportes, donde se detectó un aviso de éxito anterior a la respuesta del servidor. La web continúa pendiente de su fase posterior.

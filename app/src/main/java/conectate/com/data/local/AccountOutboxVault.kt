@@ -98,9 +98,14 @@ class AccountOutboxVault private constructor(
             if (owner.isBlank() && hasPendingWork(db)) {
                 error("No se puede borrar la bandeja de salida sin identificar su cuenta")
             }
-            val activeOwner = activeOwnerOrClearIdleCache(db, owner.takeIf(String::isNotBlank)?.let(::hash))
+            // An outgoing logout is not a new login: it must never repair/clear
+            // a newer account's idle cache while its background cleanup finishes.
+            val activeOwner = ownerPrefs.getString(OWNER_HASH, null)
             if (owner.isNotBlank() && activeOwner != null && activeOwner != hash(owner)) {
                 error("La caché local pertenece a otra cuenta")
+            }
+            check(owner.isBlank() || !hasForeignPendingWork(db, owner)) {
+                "Hay mensajes pendientes de otra cuenta"
             }
             if (owner.isNotBlank()) {
                 val current = capture(db, owner)
