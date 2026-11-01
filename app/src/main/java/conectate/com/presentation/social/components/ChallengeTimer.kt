@@ -27,28 +27,9 @@ fun ChallengeTimer(
     onTimerFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var timeLeft by remember { mutableStateOf(durationSeconds) }
-    val context = LocalContext.current
-    val vibrator = remember { context.getSystemService(Vibrator::class.java) }
-
-    LaunchedEffect(key1 = durationSeconds) {
-        timeLeft = durationSeconds
-        while (timeLeft > 0) {
-            delay(1000L)
-            timeLeft--
-            
-            // Vibración si es crítico
-            if (timeLeft < 60) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator?.vibrate(50L)
-                }
-            }
-        }
-        onTimerFinished()
-    }
+    val timeLeft = durationSeconds.coerceAtLeast(0)
+    val currentFinished by rememberUpdatedState(onTimerFinished)
+    LaunchedEffect(timeLeft == 0) { if (timeLeft == 0) currentFinished() }
 
     val minutes = timeLeft / 60
     val seconds = timeLeft % 60

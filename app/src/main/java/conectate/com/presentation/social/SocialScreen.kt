@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.HideImage
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -182,6 +183,7 @@ fun SocialScreen(
     connectivityViewModel: ConnectivityViewModel = hiltViewModel(),
     sharedText: String? = null,
     sharedUri: String? = null,
+    initialPage: Int = 0,
     onFollowingFeedVisible: (List<conectate.com.data.model.Post>) -> Unit = {},
     onNavigateToHomeTab: (String) -> Unit,
 ) {
@@ -206,11 +208,13 @@ fun SocialScreen(
     val avatarMoments = remember(moments, avatarClock) { conectate.com.data.model.activeAvatarMoments(moments, avatarClock) }
     val authorFollows by viewModel.authorFollows.collectAsStateWithLifecycle()
     val followBusy by viewModel.followBusy.collectAsStateWithLifecycle()
-    val activeChallenge by challengeViewModel.activeChallenge.collectAsStateWithLifecycle()
-    val isSubmittingChallenge by challengeViewModel.isSubmittingChallenge.collectAsStateWithLifecycle()
-    val hasParticipated by challengeViewModel.hasParticipated.collectAsStateWithLifecycle()
-    val votingCountdown by challengeViewModel.votingCountdown.collectAsStateWithLifecycle()
-    val winnersCountdown by challengeViewModel.winnersCountdown.collectAsStateWithLifecycle()
+    val challengeSnapshot by challengeViewModel.state.collectAsStateWithLifecycle()
+    val challengeState = challengeViewModel.visibleState(challengeSnapshot)
+    val activeChallenge = challengeState.active
+    val isSubmittingChallenge = challengeState.submitting
+    val hasParticipated = challengeState.hasParticipated
+    val votingCountdown = if (activeChallenge?.status == "voting") challengeState.remainingSeconds else 0
+    val winnersCountdown = if (activeChallenge?.status == "completed") challengeState.remainingSeconds else 0
     val isConnected by connectivityViewModel.isConnected.collectAsStateWithLifecycle()
     val reactionUsers by viewModel.reactionUsers.collectAsStateWithLifecycle()
     val reactionsLoading by viewModel.reactionsLoading.collectAsStateWithLifecycle()
@@ -234,7 +238,7 @@ fun SocialScreen(
     })
     
     val tabs = listOf("Social", "Momentos", "Rondas")
-    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { tabs.size })
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(initialPage = initialPage.coerceIn(0, 2), pageCount = { tabs.size })
     val currentFollowingCallback by rememberUpdatedState(onFollowingFeedVisible)
     val feedLifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     LaunchedEffect(feedMode, isRefreshing, feedError, posts, pagerState.currentPage, feedLifecycleState) {
@@ -279,15 +283,34 @@ fun SocialScreen(
     var showSavedLibrary by remember { mutableStateOf(false) }
     var savedSearch by remember { mutableStateOf("") }
     var savedCollectionFilter by remember { mutableStateOf<String?>(null) }
-    var challengesUnlocked by remember { mutableStateOf(false) }
     var showDrawingCanvas by remember { mutableStateOf(false) }
-    var showTextChallengeEntry by remember { mutableStateOf(false) }
-    var challengeText by remember { mutableStateOf("") }
     var showCreateChallengeDialog by remember { mutableStateOf(false) }
     var showPassTorchDialog by remember { mutableStateOf(false) }
-    val submissions by challengeViewModel.challengeSubmissions.collectAsStateWithLifecycle()
+    val submissions = challengeState.submissions
     val galleryMedia by createMomentViewModel.galleryMedia.collectAsStateWithLifecycle()
     var showChallengeMediaPicker by remember { mutableStateOf(false) }
+    var challengeEntry by remember { mutableStateOf<ChallengeEntry?>(null) }
+    var cameraEntry by remember { mutableStateOf<ChallengeEntry?>(null) }
+    var selectedChallengeMedia by remember { mutableStateOf<android.net.Uri?>(null) }
+    LaunchedEffect(challengeState.sessionEpoch, challengeState.ownerId) {
+        showDrawingCanvas = false
+        showChallengeMediaPicker = false
+        showCreateChallengeDialog = false
+        showPassTorchDialog = false
+        challengeEntry = null
+        cameraEntry = null
+        selectedChallengeMedia = null
+    }
+    fun sendSelectedChallengeMedia(entry: ChallengeEntry, uri: android.net.Uri) {
+        selectedChallengeMedia = uri
+        coroutineScope.launch {
+            challengeViewModel.submitChallengeMediaFromUri(entry, uri).onSuccess {
+                showChallengeMediaPicker = false
+                selectedChallengeMedia = null
+            }
+        }
+    }
+
 
     val context = LocalContext.current
 
@@ -302,14 +325,20 @@ fun SocialScreen(
     var tempCameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
     
     val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success && tempCameraUri != null) {
-            challengeViewModel.submitChallengeMediaFromUri(tempCameraUri!!)
+        if (success) {
+            val entry = cameraEntry
+            val uri = tempCameraUri
+            if (entry != null && uri != null) sendSelectedChallengeMedia(entry, uri)
+            else conectate.com.presentation.common.AppFeedbackBus.showError("Vuelve a abrir la ronda para elegir el archivo capturado.")
         }
     }
 
     val recordVideoLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { success ->
-        if (success && tempCameraUri != null) {
-            challengeViewModel.submitChallengeMediaFromUri(tempCameraUri!!)
+        if (success) {
+            val entry = cameraEntry
+            val uri = tempCameraUri
+            if (entry != null && uri != null) sendSelectedChallengeMedia(entry, uri)
+            else conectate.com.presentation.common.AppFeedbackBus.showError("Vuelve a abrir la ronda para elegir el archivo capturado.")
         }
     }
 
@@ -322,7 +351,7 @@ fun SocialScreen(
     }
 
     LaunchedEffect(showChallengeMediaPicker) {
-        if (showChallengeMediaPicker) {
+        if (showChallengeMediaPicker && challengeState.ownerId != null) {
             createMomentViewModel.loadGalleryMedia(context)
         }
     }
@@ -333,10 +362,11 @@ fun SocialScreen(
         }
     }
 
-    LaunchedEffect(pagerState.currentPage) {
-        if (pagerState.currentPage == 2) {
-            challengeViewModel.loadActiveChallenge()
-        }
+    LaunchedEffect(pagerState.currentPage, feedLifecycleState) {
+        challengeViewModel.setVisible(pagerState.currentPage == 2 && feedLifecycleState.isAtLeast(Lifecycle.State.STARTED))
+    }
+    DisposableEffect(challengeViewModel) {
+        onDispose { challengeViewModel.setVisible(false) }
     }
 
     LaunchedEffect(posts.isNotEmpty(), isConnected, feedMode) {
@@ -402,10 +432,6 @@ fun SocialScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.onFeedResumed()
                 friendViewModel.loadRequests()
-                // Forzar refresco si estamos en la pestaña de Retos al volver a la app
-                if (pagerState.currentPage == 2) {
-                    challengeViewModel.loadActiveChallenge()
-                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -414,9 +440,9 @@ fun SocialScreen(
         }
     }
 
-    val userChallenges by challengeViewModel.userChallenges.collectAsStateWithLifecycle()
+    val userChallenges = challengeState.userChallenges
     LaunchedEffect(showCreateChallengeDialog) {
-        if (showCreateChallengeDialog) {
+        if (showCreateChallengeDialog && challengeState.ownerId != null) {
             challengeViewModel.loadUserChallenges()
         }
     }
@@ -999,7 +1025,7 @@ fun SocialScreen(
         }
     }
     
-    if (showCreateChallengeDialog) {
+    if (showCreateChallengeDialog && challengeState.ownerId != null) {
         var newTitle by remember { mutableStateOf("") }
         var newDesc by remember { mutableStateOf("") }
         var newType by remember { mutableStateOf("text") }
@@ -1007,7 +1033,7 @@ fun SocialScreen(
         var descError by remember { mutableStateOf(false) }
         
         androidx.compose.ui.window.Dialog(
-            onDismissRequest = { showCreateChallengeDialog = false },
+            onDismissRequest = { if (!challengeState.mutating) showCreateChallengeDialog = false },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Surface(
@@ -1044,7 +1070,7 @@ fun SocialScreen(
                                     )
                                 }
                             }
-                            IconButton(onClick = { showCreateChallengeDialog = false }) {
+                            IconButton(enabled = !challengeState.mutating, onClick = { showCreateChallengeDialog = false }) {
                                 Icon(Icons.Default.Close, "Cerrar")
                             }
                         }
@@ -1083,7 +1109,7 @@ fun SocialScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(80.dp)
-                                        .clickable { newType = type },
+                                        .clickable(enabled = !challengeState.mutating) { newType = type },
                                     colors = CardDefaults.cardColors(
                                         containerColor = if (newType == type) 
                                             MaterialTheme.colorScheme.primaryContainer
@@ -1126,6 +1152,7 @@ fun SocialScreen(
                         val maxTitleChars = 50
                         OutlinedTextField(
                             value = newTitle,
+                            enabled = !challengeState.mutating,
                             onValueChange = { 
                                 if (it.length <= maxTitleChars) {
                                     newTitle = it
@@ -1175,6 +1202,7 @@ fun SocialScreen(
                         val maxDescChars = 200
                         OutlinedTextField(
                             value = newDesc,
+                            enabled = !challengeState.mutating,
                             onValueChange = { 
                                 if (it.length <= maxDescChars) {
                                     newDesc = it
@@ -1298,7 +1326,9 @@ fun SocialScreen(
                                                 Text(challenge.description, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                             }
                                         }
-                                        IconButton(onClick = { challengeViewModel.deleteUserChallenge(challenge.id) }) {
+                                        IconButton(enabled = !challengeState.mutating, onClick = {
+                                            coroutineScope.launch { challengeViewModel.deleteUserChallenge(challenge.id) }
+                                        }) {
                                             Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                                         }
                                     }
@@ -1320,7 +1350,7 @@ fun SocialScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             OutlinedButton(
-                                onClick = { showCreateChallengeDialog = false },
+                                enabled = !challengeState.mutating, onClick = { showCreateChallengeDialog = false },
                                 modifier = Modifier.weight(1f).height(56.dp),
                                 shape = RoundedCornerShape(16.dp)
                             ) {
@@ -1331,12 +1361,15 @@ fun SocialScreen(
                             Button(
                                 onClick = {
                                     if (isValid) {
-                                        challengeViewModel.createChallenge(newTitle, newDesc, newType, "medium")
-                                        showCreateChallengeDialog = false
+                                        coroutineScope.launch {
+                                            challengeViewModel.createChallenge(newTitle, newDesc, newType, "medium").onSuccess {
+                                                showCreateChallengeDialog = false
+                                            }
+                                        }
                                     }
                                 },
                                 modifier = Modifier.weight(2f).height(56.dp),
-                                enabled = isValid,
+                                enabled = isValid && !challengeState.mutating,
                                 shape = RoundedCornerShape(16.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.primary
@@ -1356,147 +1389,9 @@ fun SocialScreen(
         }
     }
 
-    if (showTextChallengeEntry) {
-        androidx.compose.material3.ModalBottomSheet(
-            onDismissRequest = { showTextChallengeEntry = false },
-            containerColor = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp)
-            ) {
-                // Header con gradiente sutil
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("📝", fontSize = 28.sp)
-                        Spacer(Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                activeChallenge?.challenge?.title ?: "Responder Reto",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Black
-                            )
-                            Text(
-                                "Comparte tu creatividad",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                    IconButton(onClick = { showTextChallengeEntry = false }) {
-                        Icon(Icons.Default.Close, "Cerrar")
-                    }
-                }
-                
-                Spacer(Modifier.height(16.dp))
-                
-                // Descripción del reto
-                if (!activeChallenge?.challenge?.description.isNullOrEmpty()) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(
-                            activeChallenge?.challenge?.description ?: "",
-                            modifier = Modifier.padding(12.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                }
-                
-                // TextField mejorado
-                val maxChars = 500
-                val charCount = challengeText.length
-                val charColor = when {
-                    charCount > 490 -> Color(0xFFE53935)
-                    charCount > 400 -> Color(0xFFFF9800)
-                    else -> Color(0xFF4CAF50)
-                }
-                
-                OutlinedTextField(
-                    value = challengeText,
-                    onValueChange = { if (it.length <= maxChars) challengeText = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp),
-                    placeholder = { 
-                        Text(
-                            "Comparte tu perspectiva única...",
-                            style = MaterialTheme.typography.bodyLarge
-                        ) 
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                    ),
-                    textStyle = MaterialTheme.typography.bodyLarge
-                )
-                
-                // Contador de caracteres
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Text(
-                        "$charCount/$maxChars",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = charColor,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                
-                Spacer(Modifier.height(24.dp))
-                
-                // Botón de envío mejorado
-                Button(
-                    onClick = {
-                        if (challengeText.trim().isNotEmpty()) {
-                            challengeViewModel.submitText(challengeText)
-                            showTextChallengeEntry = false
-                            challengeText = ""
-                            challengesUnlocked = true
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    enabled = challengeText.trim().isNotEmpty(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                ) {
-                    Text(
-                        "✨ ENVIAR RESPUESTA",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Black,
-                        letterSpacing = 1.sp
-                    )
-                }
-                
-                Spacer(Modifier.height(16.dp))
-            }
-        }
-    }
-    
-    
-    if (showDrawingCanvas) {
+    if (showDrawingCanvas && challengeState.ownerId != null) {
         androidx.compose.ui.window.Dialog(
-            onDismissRequest = { showDrawingCanvas = false },
+            onDismissRequest = { if (!isSubmittingChallenge) showDrawingCanvas = false },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Surface(
@@ -1526,20 +1421,20 @@ fun SocialScreen(
                                             fontWeight = FontWeight.Black
                                         )
                                         Text(
-                                            activeChallenge?.challenge?.title ?: "Reto de Dibujo",
+                                            challengeEntry?.challenge?.challenge?.title ?: "Reto de Dibujo",
                                             style = MaterialTheme.typography.bodyMedium,
                                             color = MaterialTheme.colorScheme.primary,
                                             fontWeight = FontWeight.Medium
                                         )
                                     }
                                 }
-                                IconButton(onClick = { showDrawingCanvas = false }) {
+                                IconButton(enabled = !isSubmittingChallenge, onClick = { showDrawingCanvas = false }) {
                                     Icon(Icons.Default.Close, contentDescription = "Cerrar")
                                 }
                             }
                             
                             // Descripción del reto
-                            if (!activeChallenge?.challenge?.description.isNullOrEmpty()) {
+                            if (!challengeEntry?.challenge?.challenge?.description.isNullOrEmpty()) {
                                 Spacer(Modifier.height(12.dp))
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
@@ -1549,7 +1444,7 @@ fun SocialScreen(
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Text(
-                                        activeChallenge?.challenge?.description ?: "",
+                                        challengeEntry?.challenge?.challenge?.description ?: "",
                                         modifier = Modifier.padding(10.dp),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
@@ -1563,10 +1458,13 @@ fun SocialScreen(
                     Box(modifier = Modifier.weight(1f)) {
                         conectate.com.presentation.components.DrawingCanvas(
                             modifier = Modifier.fillMaxSize().padding(16.dp),
+                            enabled = !isSubmittingChallenge,
                             onSave = { lines ->
-                                challengeViewModel.submitDrawing(lines)
-                                showDrawingCanvas = false
-                                challengesUnlocked = true
+                                challengeEntry?.let { entry ->
+                                    coroutineScope.launch {
+                                        challengeViewModel.submitDrawing(entry, lines).onSuccess { showDrawingCanvas = false }
+                                    }
+                                }
                             }
                         )
                     }
@@ -1596,10 +1494,10 @@ fun SocialScreen(
     }
 
 
-    if (showPassTorchDialog) {
+    if (showPassTorchDialog && challengeState.ownerId != null) {
         val friends by viewModel.friends.collectAsStateWithLifecycle()
         AlertDialog(
-            onDismissRequest = { showPassTorchDialog = false },
+            onDismissRequest = { if (!challengeState.mutating) showPassTorchDialog = false },
             title = { Text("Pasar la Antorcha 🔥") },
             text = {
                 if (friends.isEmpty()) {
@@ -1610,9 +1508,12 @@ fun SocialScreen(
                             ListItem(
                                 headlineContent = { Text(friend.displayName ?: "Amigo") },
                                 trailingContent = {
-                                    Button(onClick = {
-                                        challengeViewModel.passTorch(friend.id)
-                                        showPassTorchDialog = false
+                                    Button(enabled = !challengeState.mutating, onClick = {
+                                        challengeEntry?.let { entry ->
+                                            coroutineScope.launch {
+                                                challengeViewModel.passTorch(entry, friend.id).onSuccess { showPassTorchDialog = false }
+                                            }
+                                        }
                                     }) { Text("DESAFIAR") }
                                 }
                             )
@@ -1621,7 +1522,7 @@ fun SocialScreen(
                 }
             },
             confirmButton = {},
-            dismissButton = { TextButton(onClick = { showPassTorchDialog = false }) { Text("CERRAR") } }
+            dismissButton = { TextButton(enabled = !challengeState.mutating, onClick = { showPassTorchDialog = false }) { Text("CERRAR") } }
         )
     }
 
@@ -2182,23 +2083,35 @@ fun SocialScreen(
                             }
                         }
                         2 -> {
+                            if (pagerState.currentPage == 2 && feedLifecycleState.isAtLeast(Lifecycle.State.STARTED)) {
                             ChallengeSection(
                                 activeChallenge = activeChallenge,
                                 submissions = submissions,
                                 hasParticipated = hasParticipated,
                                 onAcceptChallenge = {
-                                    if (activeChallenge?.challenge?.challengeType == "drawing") {
+                                    challengeViewModel.beginEntry()?.let { entry ->
+                                    challengeEntry = entry
+                                    selectedChallengeMedia = null
+                                    if (entry.challenge.challenge.challengeType == "drawing") {
                                         showDrawingCanvas = true
                                     } else {
-                                        showChallengeMediaPicker = true // Ahora maneja Text, Audio y Media internamente
+                                        showChallengeMediaPicker = true
+                                    }
                                     }
                                 },
-                                onPassTorch = { showPassTorchDialog = true },
+                                onPassTorch = {
+                                    challengeViewModel.beginEntry()?.let { challengeEntry = it; showPassTorchDialog = true }
+                                },
                                 onVote = { id -> challengeViewModel.toggleChallengeVote(id) },
                                 onRefresh = { challengeViewModel.loadActiveChallenge() },
                                 votingCountdown = votingCountdown,
-                                winnersCountdown = winnersCountdown
+                                winnersCountdown = winnersCountdown,
+                                activeCountdown = challengeState.remainingSeconds,
+                                error = challengeState.error,
+                                loading = challengeState.loadingRound,
+                                pendingVotes = challengeState.pendingVotes,
                             )
+                            }
                         }
                     }
                 }
@@ -2219,14 +2132,15 @@ fun SocialScreen(
     }
     
     
-    if (showChallengeMediaPicker) {
+    if (showChallengeMediaPicker && challengeState.ownerId != null) {
         ChallengeMediaPicker(
-            activeChallenge = activeChallenge,
-            onDismiss = { showChallengeMediaPicker = false },
+            activeChallenge = challengeEntry?.challenge,
+            busy = isSubmittingChallenge,
+            selectedMedia = selectedChallengeMedia,
+            onDismiss = { if (!isSubmittingChallenge) showChallengeMediaPicker = false },
             mediaList = galleryMedia,
             onMediaSelected = { uri ->
-                showChallengeMediaPicker = false
-                challengeViewModel.submitChallengeMediaFromUri(uri)
+                challengeEntry?.let { sendSelectedChallengeMedia(it, uri) }
             },
             onTakePhoto = {
                 try {
@@ -2239,6 +2153,7 @@ fun SocialScreen(
                         context, "${context.packageName}.provider", file
                     )
                     tempCameraUri = uri
+                    cameraEntry = challengeEntry
                     takePictureLauncher.launch(uri)
                 } catch (e: Exception) {
                     android.widget.Toast.makeText(context, "Error al abrir cámara", android.widget.Toast.LENGTH_SHORT).show()
@@ -2255,18 +2170,21 @@ fun SocialScreen(
                         context, "${context.packageName}.provider", file
                     )
                     tempCameraUri = uri
+                    cameraEntry = challengeEntry
                     recordVideoLauncher.launch(uri)
                 } catch (e: Exception) {
                     android.widget.Toast.makeText(context, "Error al abrir video", android.widget.Toast.LENGTH_SHORT).show()
                 }
             },
             onTextSubmit = { text ->
-                showChallengeMediaPicker = false
-                challengeViewModel.submitText(text)
+                challengeEntry?.let { entry ->
+                    coroutineScope.launch { challengeViewModel.submitText(entry, text).onSuccess { showChallengeMediaPicker = false } }
+                }
             },
             onAudioSubmit = { file ->
-                showChallengeMediaPicker = false
-                challengeViewModel.submitAudio(file)
+                challengeEntry?.let { entry ->
+                    coroutineScope.launch { challengeViewModel.submitAudio(entry, file).onSuccess { showChallengeMediaPicker = false } }
+                }
             },
             voiceManager = viewModel.voiceMessageManager,
             onMicPermissionRequest = {
@@ -2892,7 +2810,11 @@ fun ChallengeSection(
     onVote: (submissionId: String) -> Unit,
     onRefresh: () -> Unit,
     votingCountdown: Int,
-    winnersCountdown: Int
+    winnersCountdown: Int,
+    activeCountdown: Int,
+    error: String?,
+    loading: Boolean,
+    pendingVotes: Set<String>,
 ) {
     Column(
         modifier = Modifier
@@ -2934,14 +2856,10 @@ fun ChallengeSection(
         }
 
         // Timer dinámico
-        val durationSeconds = if (isVoting) {
-            votingCountdown
-        } else {
-            activeChallenge?.let {
-                conectate.com.presentation.social.components.roundRemainingSeconds(
-                    it.expiresAt, System.currentTimeMillis()
-                )
-            } ?: 0
+        if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        error?.let { message ->
+            Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
+            TextButton(onClick = onRefresh) { Text("Reintentar") }
         }
 
         if (isCompleted) {
@@ -2972,7 +2890,7 @@ fun ChallengeSection(
             }
         } else if (!isVoting) {
             conectate.com.presentation.social.components.ChallengeTimer(
-                durationSeconds = durationSeconds,
+                durationSeconds = activeCountdown,
                 onTimerFinished = { onRefresh() }
             )
         } else if (votingCountdown == 0 || (isCompleted && winnersCountdown == 0)) {
@@ -3051,7 +2969,7 @@ fun ChallengeSection(
                 }
                 
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 80.dp)) {
-                    items(submissions) { sub ->
+                    items(items = submissions, key = { it.id }) { sub ->
                         SubmissionCard(
                             sub, 
                             isVoting = isVoting, 
@@ -3059,6 +2977,7 @@ fun ChallengeSection(
                             hasParticipated = hasParticipated,
                             isCompleted = isCompleted,
                             blurred = !hasParticipated, 
+                            votePending = sub.id in pendingVotes,
                             onVote = { onVote(sub.id) }
                         )
                     }
@@ -3094,7 +3013,7 @@ fun ChallengeSection(
             if (submissions.isNotEmpty()) {
                 Box(Modifier.weight(1f)) {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.blur(15.dp)) {
-                        items(submissions) { sub ->
+                        items(items = submissions, key = { it.id }) { sub ->
                             SubmissionCard(
                                 sub, 
                                 isVoting = false, 
@@ -3185,6 +3104,16 @@ fun ChallengeAudioPlayer(url: String) {
         }
     }
 
+    LaunchedEffect(isLoading, mediaPlayer) {
+        if (isLoading) {
+            delay(15_000)
+            if (isLoading) {
+                releaseAudio()
+                android.widget.Toast.makeText(context, "El audio está tardando en abrir. Toca para reintentar.", android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     val color = if (isPlaying) MaterialTheme.colorScheme.primary else Color(0xFFD81B60)
 
     Column(
@@ -3220,14 +3149,14 @@ fun ChallengeAudioPlayer(url: String) {
                                     }
                                 }
                             }
-                            setOnCompletionListener {
-                                releaseAudio()
-                                progress = 0f
+                            setOnCompletionListener { completedPlayer ->
+                                if (mediaPlayer === completedPlayer) { releaseAudio(); progress = 0f }
                             }
                             setOnErrorListener { failedPlayer, what, extra ->
-                                if (mediaPlayer === failedPlayer) releaseAudio()
+                                if (mediaPlayer !== failedPlayer) return@setOnErrorListener true
+                                releaseAudio()
                                 android.util.Log.e("ChallengeAudio", "MediaPlayer error: $what, $extra")
-                                android.widget.Toast.makeText(context, "Error al reproducir audio: $what, $extra", android.widget.Toast.LENGTH_SHORT).show()
+                                android.widget.Toast.makeText(context, "No pudimos reproducir el audio. Toca para reintentar.", android.widget.Toast.LENGTH_SHORT).show()
                                 true
                             }
                             // Register callbacks before prepareAsync so fast local sources cannot race them.
@@ -3265,7 +3194,7 @@ fun ChallengeAudioPlayer(url: String) {
                 } catch (e: Exception) {
                     releaseAudio()
                     android.util.Log.e("ChallengeAudio", "Error setup player", e)
-                    android.widget.Toast.makeText(context, "Error: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(context, "No pudimos abrir el audio. Toca para reintentar.", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
             .padding(12.dp)
@@ -3307,6 +3236,8 @@ fun ChallengeAudioPlayer(url: String) {
 fun ChallengeVideoPlayer(url: String) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    var videoFailed by remember(context, url) { mutableStateOf(false) }
+    var videoBuffering by remember(context, url) { mutableStateOf(true) }
     val exoPlayer = remember(context, url) {
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(
@@ -3329,7 +3260,20 @@ fun ChallengeVideoPlayer(url: String) {
     }
 
     DisposableEffect(exoPlayer) {
-        onDispose { exoPlayer.release() }
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                videoBuffering = playbackState == Player.STATE_BUFFERING
+                if (playbackState == Player.STATE_READY) videoFailed = false
+            }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                videoFailed = true
+                videoBuffering = false
+            }
+        }
+        exoPlayer.addListener(listener)
+        videoBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING
+        videoFailed = exoPlayer.playerError != null
+        onDispose { exoPlayer.removeListener(listener); exoPlayer.release() }
     }
 
     DisposableEffect(exoPlayer, lifecycleOwner) {
@@ -3340,6 +3284,7 @@ fun ChallengeVideoPlayer(url: String) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    Box(modifier = Modifier.fillMaxWidth().height(250.dp).background(Color.Black), contentAlignment = Alignment.Center) {
     AndroidView(
         factory = {
             PlayerView(context).apply {
@@ -3358,6 +3303,49 @@ fun ChallengeVideoPlayer(url: String) {
         },
         onRelease = { view -> view.player = null },
     )
+    if (videoBuffering) CircularProgressIndicator()
+    if (videoFailed) {
+        Column(modifier = Modifier.background(Color.Black.copy(alpha = 0.85f)).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("No pudimos reproducir el vídeo.", color = Color.White)
+            TextButton(onClick = {
+                if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                    videoFailed = false
+                    videoBuffering = true
+                    exoPlayer.prepare()
+                    exoPlayer.play()
+                }
+            }) { Text("Reintentar") }
+        }
+    }
+    }
+}
+
+@Composable
+private fun ChallengeImage(source: String, fullScreen: Boolean, modifier: Modifier) {
+    val context = LocalContext.current
+    var retry by remember(source) { mutableIntStateOf(0) }
+    key(source, retry) {
+        val request = remember(source, fullScreen, context) {
+            val path = source.substringBefore('?').substringBefore('#').lowercase(Locale.ROOT)
+            if (fullScreen) conectate.com.core.media.MediaImageRequestFactory.fullScreen(context, source)
+            else if (listOf(".gif", ".webp", ".apng").any(path::endsWith)) conectate.com.core.media.MediaImageRequestFactory.animated(context, source)
+            else conectate.com.core.media.MediaImageRequestFactory.preview(context, source)
+        }
+        SubcomposeAsyncImage(
+            model = request,
+            contentDescription = "Imagen de la participación",
+            modifier = modifier,
+            contentScale = if (fullScreen) ContentScale.Fit else ContentScale.Crop,
+            loading = { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } },
+            error = {
+                Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant).padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text("No pudimos cargar la imagen.")
+                    TextButton(onClick = { retry++ }) { Text("Reintentar") }
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -3368,6 +3356,7 @@ fun SubmissionCard(
     hasParticipated: Boolean,
     isCompleted: Boolean = false,
     blurred: Boolean = false,
+    votePending: Boolean = false,
     onVote: () -> Unit
 ) {
     val context = LocalContext.current
@@ -3397,26 +3386,22 @@ fun SubmissionCard(
             }
             
             // Contenido (Imagen o Texto)
-            var showFullScreen by remember { mutableStateOf(false) }
+            var showFullScreen by remember(submission.id, submission.contentUrl) { mutableStateOf(false) }
             
             if (submission.contentUrl != null) {
-                val isVideo = submission.contentUrl.endsWith(".mp4", ignoreCase = true) || 
-                              submission.contentUrl.contains("/videos/") || 
-                              submission.contentUrl.contains(".m3u8")
-
-                if (challengeType == "audio") {
+                val kind = challengeMediaKind(challengeType, submission.contentUrl)
+                if (kind == ChallengeMediaKind.AUDIO) {
                      ChallengeAudioPlayer(submission.contentUrl)
-                } else if (isVideo) {
+                } else if (kind == ChallengeMediaKind.VIDEO) {
                     Box(modifier = Modifier.fillMaxWidth().height(250.dp)) {
                         ChallengeVideoPlayer(submission.contentUrl)
                     }
                 } else {
                     Box(modifier = Modifier.fillMaxWidth().height(250.dp).clickable { showFullScreen = true }) {
-                        Image(
-                            painter = rememberAsyncImagePainter(submission.contentUrl),
-                            contentDescription = null,
+                        ChallengeImage(
+                            source = submission.contentUrl,
+                            fullScreen = false,
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
                         )
                         // Icono de expansión
                         Icon(
@@ -3433,11 +3418,10 @@ fun SubmissionCard(
                             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
                         ) {
                             Box(modifier = Modifier.fillMaxSize().background(Color.Black).clickable { showFullScreen = false }) {
-                                Image(
-                                    painter = rememberAsyncImagePainter(submission.contentUrl),
-                                    contentDescription = null,
+                                ChallengeImage(
+                                    source = submission.contentUrl,
+                                    fullScreen = true,
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Fit
                                 )
                                 IconButton(
                                     onClick = { showFullScreen = false },
@@ -3466,7 +3450,7 @@ fun SubmissionCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // Botón de votación habilitado siempre que haya participado y no esté completado el reto
                     val canVoteNow = hasParticipated && !isCompleted
-                    IconButton(onClick = {
+                    IconButton(enabled = !votePending, onClick = {
                         if (canVoteNow) onVote() 
                         else if (!hasParticipated) android.widget.Toast.makeText(context, "Participa para desbloquear votaciones 🔓", android.widget.Toast.LENGTH_SHORT).show()
                         else android.widget.Toast.makeText(context, "El reto ya ha finalizado", android.widget.Toast.LENGTH_SHORT).show()
@@ -3669,6 +3653,8 @@ fun LockedRetoUI(onAcceptChallenge: () -> Unit) {
 @Composable
 fun ChallengeMediaPicker(
     activeChallenge: conectate.com.data.model.ActiveChallenge?,
+    busy: Boolean,
+    selectedMedia: android.net.Uri?,
     onDismiss: () -> Unit,
     mediaList: List<conectate.com.presentation.social.GalleryMedia>,
     onMediaSelected: (android.net.Uri) -> Unit,
@@ -3684,27 +3670,28 @@ fun ChallengeMediaPicker(
     // Lógica específica según el tipo de reto
     when (activeChallenge.challenge.challengeType) {
         "text" -> {
-            TextSubmissionDialog(onDismiss, onTextSubmit)
+            TextSubmissionDialog(onDismiss, onTextSubmit, busy)
         }
         "audio" -> {
-            AudioSubmissionDialog(onDismiss, onAudioSubmit, voiceManager, onMicPermissionRequest)
+            AudioSubmissionDialog(onDismiss, onAudioSubmit, voiceManager, onMicPermissionRequest, busy)
         }
         else -> {
             // Camera, Video, Drawing, etc. (Comportamiento existente + mejoras)
-            DefaultMediaPicker(onDismiss, mediaList, onMediaSelected, onTakePhoto, onRecordVideo)
+            DefaultMediaPicker(onDismiss, mediaList, onMediaSelected, onTakePhoto, onRecordVideo, busy, selectedMedia)
         }
     }
 }
 
 @Composable
-fun TextSubmissionDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
-    var text by remember { mutableStateOf("") }
+fun TextSubmissionDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit, busy: Boolean = false) {
+    var text by rememberSaveable { mutableStateOf("") }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         title = { Text("Tu Respuesta") },
         text = { 
             OutlinedTextField(
-                value = text, 
+                value = text,
+                enabled = !busy,
                 onValueChange = { text = it.take(500) },
                 supportingText = { Text("${text.length}/500") },
                 label = { Text("Escribe aquí...") },
@@ -3712,12 +3699,12 @@ fun TextSubmissionDialog(onDismiss: () -> Unit, onSubmit: (String) -> Unit) {
             ) 
         },
         confirmButton = {
-            Button(onClick = { onSubmit(text.trim()) }, enabled = text.isNotBlank()) {
-                Text("ENVIAR")
+            Button(onClick = { onSubmit(text.trim()) }, enabled = text.isNotBlank() && !busy) {
+                Text(if (busy) "Enviando…" else "ENVIAR")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
+            TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancelar") }
         }
     )
 }
@@ -3729,7 +3716,9 @@ fun DefaultMediaPicker(
     mediaList: List<conectate.com.presentation.social.GalleryMedia>,
     onMediaSelected: (android.net.Uri) -> Unit,
     onTakePhoto: () -> Unit,
-    onRecordVideo: () -> Unit
+    onRecordVideo: () -> Unit,
+    busy: Boolean = false,
+    selectedMedia: android.net.Uri? = null,
 ) {
     var showCameraOptions by remember { mutableStateOf(false) }
 
@@ -3758,7 +3747,7 @@ fun DefaultMediaPicker(
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!busy) onDismiss() },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { BottomSheetDefaults.DragHandle() }
@@ -3776,6 +3765,12 @@ fun DefaultMediaPicker(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             
+            if (busy) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+                Text("Enviando archivo…")
+            } else if (selectedMedia != null) {
+                Button(onClick = { onMediaSelected(selectedMedia) }) { Text("Reintentar archivo seleccionado") }
+            }
             Spacer(Modifier.height(20.dp))
 
             androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
@@ -3791,7 +3786,7 @@ fun DefaultMediaPicker(
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
-                            .clickable { showCameraOptions = true },
+                            .clickable(enabled = !busy) { showCameraOptions = true },
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -3817,7 +3812,7 @@ fun DefaultMediaPicker(
                         modifier = Modifier
                             .aspectRatio(1f)
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { onMediaSelected(media.uri) }
+                            .clickable(enabled = !busy) { onMediaSelected(media.uri) }
                     ) {
                         coil.compose.AsyncImage(
                             model = media.uri,
@@ -3840,6 +3835,7 @@ fun DefaultMediaPicker(
             Spacer(Modifier.height(16.dp))
             
             OutlinedButton(
+                enabled = !busy,
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
@@ -3855,7 +3851,8 @@ fun AudioSubmissionDialog(
     onDismiss: () -> Unit, 
     onSubmit: (java.io.File) -> Unit,
     voiceManager: conectate.com.presentation.messages.VoiceMessageManager,
-    onMicPermissionRequest: () -> Unit
+    onMicPermissionRequest: () -> Unit,
+    busy: Boolean = false,
 ) {
     val state by voiceManager.state.collectAsStateWithLifecycle()
     val duration by voiceManager.duration.collectAsStateWithLifecycle()
@@ -3866,11 +3863,25 @@ fun AudioSubmissionDialog(
     DisposableEffect(Unit) {
         onDispose { voiceManager.reset() }
     }
+    val recordingLifecycle = LocalLifecycleOwner.current
+    DisposableEffect(recordingLifecycle, voiceManager) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                voiceManager.pauseRecording()
+                voiceManager.pausePreview()
+            }
+        }
+        recordingLifecycle.lifecycle.addObserver(observer)
+        onDispose { recordingLifecycle.lifecycle.removeObserver(observer) }
+    }
+
 
     AlertDialog(
         onDismissRequest = {
+            if (!busy) {
             voiceManager.reset()
             onDismiss()
+            }
         },
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3897,6 +3908,7 @@ fun AudioSubmissionDialog(
                 when (state) {
                     VoiceState.IDLE -> {
                         IconButton(
+                            enabled = !busy,
                             onClick = { 
                                 if (androidx.core.content.ContextCompat.checkSelfPermission(
                                         context, android.Manifest.permission.RECORD_AUDIO
@@ -3920,6 +3932,7 @@ fun AudioSubmissionDialog(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                             // Pause button
                             IconButton(
+                            enabled = !busy,
                                 onClick = { voiceManager.pauseRecording() },
                                 modifier = Modifier.size(56.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
                             ) {
@@ -3928,6 +3941,7 @@ fun AudioSubmissionDialog(
                             
                             // Stop button
                             IconButton(
+                            enabled = !busy,
                                 onClick = { voiceManager.stopRecordingForReview() },
                                 modifier = Modifier.size(80.dp).background(Color.Red, CircleShape)
                             ) {
@@ -3940,6 +3954,7 @@ fun AudioSubmissionDialog(
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                             // Resume button
                             IconButton(
+                            enabled = !busy,
                                 onClick = { voiceManager.resumeRecording() },
                                 modifier = Modifier.size(80.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                             ) {
@@ -3948,6 +3963,7 @@ fun AudioSubmissionDialog(
                             
                             // Stop button (Finish)
                             IconButton(
+                            enabled = !busy,
                                 onClick = { voiceManager.stopRecordingForReview() },
                                 modifier = Modifier.size(56.dp).background(Color.Red.copy(alpha = 0.7f), CircleShape)
                             ) {
@@ -3960,6 +3976,7 @@ fun AudioSubmissionDialog(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             // Playback bar
                             Slider(
+                                enabled = !busy,
                                 value = playbackProgress,
                                 onValueChange = { voiceManager.seekPreview(it) },
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)
@@ -3968,6 +3985,7 @@ fun AudioSubmissionDialog(
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 // Delete/Restart
                                 IconButton(
+                            enabled = !busy,
                                     onClick = { voiceManager.reset() },
                                     modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.errorContainer, CircleShape)
                                 ) {
@@ -3976,6 +3994,7 @@ fun AudioSubmissionDialog(
                                 
                                 // Play/Pause Preview
                                 IconButton(
+                            enabled = !busy,
                                     onClick = { 
                                         if (isPlaying) voiceManager.pausePreview() else voiceManager.playPreview() 
                                     },
@@ -3986,6 +4005,7 @@ fun AudioSubmissionDialog(
                                 
                                 // Resume recording from review (Continue singing)
                                 IconButton(
+                            enabled = !busy,
                                     onClick = { voiceManager.resumeRecordingFromReview() },
                                     modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
                                 ) {
@@ -4000,15 +4020,19 @@ fun AudioSubmissionDialog(
         },
         confirmButton = {
             Button(
-                onClick = { voiceManager.getCurrentFile()?.let { onSubmit(it) } },
-                enabled = state == VoiceState.REVIEWING,
+                onClick = {
+                    val file = voiceManager.getCurrentFile()
+                    if (file != null) onSubmit(file)
+                    else conectate.com.presentation.common.AppFeedbackBus.showError("No pudimos recuperar la grabación. Graba otra copia.")
+                },
+                enabled = state == VoiceState.REVIEWING && !busy,
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("ENVIAR RETO")
+                Text(if (busy) "Enviando…" else "ENVIAR RETO")
             }
         },
         dismissButton = {
-            TextButton(onClick = {
+            TextButton(enabled = !busy, onClick = {
                 voiceManager.reset()
                 onDismiss()
             }) {

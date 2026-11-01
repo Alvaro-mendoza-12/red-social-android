@@ -61,6 +61,7 @@ async function deleteChallengeMaster(pool, identity, challengeId) {
 async function submitChallenge(pool, identity, activeChallengeId, input, authorizeMedia) {
   const activeId = clean(activeChallengeId)
   const actor = clean(identity.displayUserId)
+  const aliases = [...new Set([actor, ...Array.from(identity.ids || [])].map(clean).filter(Boolean))]
   const contentUrl = String(input.contentUrl || input.content_url || '').trim() || null
   const textContent = String(input.textContent || input.text_content || '').trim() || null
   const requestedMaster = clean(input.challengeId || input.challenge_id)
@@ -76,6 +77,21 @@ async function submitChallenge(pool, identity, activeChallengeId, input, authori
     requireOpenRound(round)
     const master = clean(round.challenge_id)
     if (requestedMaster && requestedMaster !== master) throw problem('CHALLENGE_ROUND_CHANGED', 409)
+    const { rows: owned } = await client.query(`SELECT id::text,user_id FROM fallback_challenge_submissions
+      WHERE lower(active_challenge_id)=$1 AND lower(user_id)=ANY($2::text[])
+      ORDER BY (lower(user_id)=$3) DESC,updated_at DESC,id ASC FOR UPDATE`, [activeId, aliases, actor])
+    if (owned.length) {
+      const keeper = owned[0].id
+      const duplicates = owned.slice(1).map(row => row.id)
+      if (duplicates.length) {
+        await client.query(`INSERT INTO fallback_challenge_votes(submission_id,voter_id)
+          SELECT $1,voter_id FROM fallback_challenge_votes WHERE submission_id=ANY($2::text[])
+          ON CONFLICT (submission_id,voter_id) DO NOTHING`, [keeper, duplicates])
+        await client.query('DELETE FROM fallback_challenge_votes WHERE submission_id=ANY($1::text[])', [duplicates])
+        await client.query('DELETE FROM fallback_challenge_submissions WHERE id::text=ANY($1::text[])', [duplicates])
+      }
+      await client.query('UPDATE fallback_challenge_submissions SET user_id=$2 WHERE id::text=$1', [keeper, actor])
+    }
     const { rows } = await client.query(`INSERT INTO fallback_challenge_submissions
       (challenge_id,active_challenge_id,user_id,content_url,text_content)
       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (active_challenge_id,user_id)

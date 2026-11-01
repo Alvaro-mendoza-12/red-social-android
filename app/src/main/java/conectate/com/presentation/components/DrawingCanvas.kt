@@ -40,7 +40,8 @@ data class Line(
 @Composable
 fun DrawingCanvas(
     onSave: (LineList: List<Line>) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     var lines = remember { mutableStateListOf<Line>() }
     var currentLine = remember { mutableStateListOf<Pair<Float, Float>>() }
@@ -62,10 +63,10 @@ fun DrawingCanvas(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = { if (lines.isNotEmpty()) lines.removeAt(lines.size - 1) }) {
+                IconButton(enabled = enabled, onClick = { if (lines.isNotEmpty()) lines.removeAt(lines.size - 1) }) {
                     Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "Deshacer", tint = Color.DarkGray)
                 }
-                IconButton(onClick = { lines.clear() }) {
+                IconButton(enabled = enabled, onClick = { lines.clear() }) {
                     Icon(Icons.Default.Clear, contentDescription = "Limpiar", tint = Color.DarkGray)
                 }
             }
@@ -82,7 +83,7 @@ fun DrawingCanvas(
                             .background(if (currentColor == color) Color.LightGray else color)
                             .clip(CircleShape)
                             .background(color)
-                            .clickable { currentColor = color }
+                            .clickable { if (enabled) currentColor = color }
                     )
                 }
             }
@@ -96,6 +97,7 @@ fun DrawingCanvas(
                 .weight(1f)
                 .fillMaxWidth()
                 .pointerInteropFilter { event ->
+                    if (!enabled) return@pointerInteropFilter false
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
                             currentLine.add(Pair(event.x, event.y))
@@ -154,12 +156,13 @@ fun DrawingCanvas(
         // Footer con botón de enviar
         Button(
             onClick = { onSave(lines.toList()) },
+            enabled = enabled && lines.isNotEmpty(),
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("ENVIAR DIBUJO")
+            Text(if (enabled) "ENVIAR DIBUJO" else "Enviando…")
         }
     }
 }

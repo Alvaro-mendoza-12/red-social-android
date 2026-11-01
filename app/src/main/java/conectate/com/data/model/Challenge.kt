@@ -3,6 +3,8 @@ package conectate.com.data.model
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerialName
 
+class ChallengeActionException(message: String) : IllegalStateException(message)
+
 
 @Serializable
 data class Challenge(

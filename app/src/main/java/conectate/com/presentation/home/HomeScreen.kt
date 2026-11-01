@@ -69,7 +69,8 @@ fun HomeScreen(
     homeViewModel: HomeViewModel = conectate.com.core.observability.startupViewModel("home model"),
     startTab: String? = null,
     sharedText: String? = null,
-    sharedUri: String? = null
+    sharedUri: String? = null,
+    socialPage: Int = 0,
 ) {
     val navController = rememberNavController()
     val currentUserAvatarUrl by homeViewModel.currentUserAvatarUrl.collectAsStateWithLifecycle()
@@ -313,6 +314,7 @@ fun HomeScreen(
                     mainNavController,
                     sharedText = sharedText,
                     sharedUri = sharedUri,
+                    initialPage = socialPage,
                     onFollowingFeedVisible = { posts -> homeViewModel.markFeedSeen("social", posts.map { it.createdAt }) },
                     onNavigateToHomeTab = { tab ->
                         navController.navigate(tab) {

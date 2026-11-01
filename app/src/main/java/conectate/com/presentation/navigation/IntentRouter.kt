@@ -374,7 +374,7 @@ object IntentRouter {
                     incomingIntent,
                     navController,
                     authRepository,
-                    Screen.Home.createRoute(startTab = Screen.Social.route)
+                    Screen.Home.roundsRoute()
                 )
                 clearIntent()
                 return true

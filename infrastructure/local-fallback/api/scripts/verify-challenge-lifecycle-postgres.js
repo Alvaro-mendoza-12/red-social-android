@@ -48,6 +48,10 @@ async function main() {
       { challengeId: round.challenge_id, textContent: 'Isolated fixture response' }, async () => true)))
     assert.equal(new Set(submissions.map(row => row.id)).size, 1)
     const submission = submissions[0]
+    await pool.query('UPDATE fallback_challenge_submissions SET user_id=$2 WHERE id=$1::uuid',[submission.id,user.id])
+    const aliasedRetry=await submitChallenge(pool,identity,round.id,{textContent:'Retry of legacy owner'},async()=>true)
+    assert.equal(aliasedRetry.id,submission.id)
+    assert.equal(aliasedRetry.user_id,identity.displayUserId)
     const input = { votedByMe: true, activeChallengeId: round.id }
     const votes = await Promise.all(Array.from({length:20}, () => setChallengeVote(pool, identity, submission.id, input)))
     assert.ok(votes.every(vote => vote.voted_by_me && vote.vote_count === 1))
@@ -55,6 +59,13 @@ async function main() {
     const removals = await Promise.all(Array.from({length:20}, () => setChallengeVote(pool, identity, submission.id,
       { ...input, votedByMe: false })))
     assert.ok(removals.every(vote => !vote.voted_by_me && vote.vote_count === 1))
+    const duplicate=randomUUID()
+    await pool.query(`INSERT INTO fallback_challenge_submissions(id,challenge_id,active_challenge_id,user_id,text_content)
+      VALUES ($1::uuid,$2,$3,$4,'duplicate alias fixture')`,[duplicate,round.challenge_id,round.id,user.id])
+    await pool.query('INSERT INTO fallback_challenge_votes(submission_id,voter_id) VALUES ($1,$2)',[duplicate,another.displayUserId])
+    assert.equal((await submitChallenge(pool,identity,round.id,{textContent:'Consolidated own answer'},async()=>true)).id,submission.id)
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM fallback_challenge_submissions WHERE active_challenge_id=$1',[round.id])).rows[0].n,1)
+    assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM fallback_challenge_votes WHERE submission_id=$1',[submission.id])).rows[0].n,1)
     await pool.query('INSERT INTO fallback_challenge_votes(submission_id,voter_id) VALUES ($1,$2)', [submission.id,user.id])
     assert.deepEqual(await setChallengeVote(pool, identity, submission.id, input), { vote_count:2,voted_by_me:true })
     assert.equal((await pool.query('SELECT COUNT(*)::int AS n FROM fallback_challenge_votes WHERE voter_id=$1', [user.id])).rows[0].n, 0)
@@ -96,6 +107,7 @@ async function main() {
     return {ok:true,database:'isolated-container',productionDataTouched:false,concurrentRoundReads:100,
       concurrentSubmissions:20,concurrentVoteOperations:60,oneRound:true,idempotentVotes:true,
       aliasVotesCanonicalized:true,expiredMutationsDenied:true,oldRoundPurged:true,rollbackReleasedLock:true,
+      legacySubmissionOwnerCanonicalized:true,duplicateAliasSubmissionVotesPreserved:true,
       runningMasterDeletionDenied:true,expiredMasterDeletionPurgesChildren:true,
       emptyExpiredRoundSkipped:true,
       elapsedMillis:Date.now()-started}

@@ -635,13 +635,21 @@ class NotificationRepository @Inject constructor(
         type: String,
         targetId: String? = null,
         content: String? = null,
-        extraData: kotlinx.serialization.json.JsonObject = buildJsonObject {}
+        extraData: kotlinx.serialization.json.JsonObject = buildJsonObject {},
+        expectedAccountId: String? = null,
     ): Result<Unit> {
+        val lease = authService.captureAccountLease()
         return try {
-            var actorId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
+            val actorId = lease.accountId ?: return Result.failure(Exception("Inicia sesión para continuar."))
+            if (expectedAccountId != null && !actorId.equals(expectedAccountId, ignoreCase = true))
+                throw kotlinx.coroutines.CancellationException("La cuenta cambió.")
+            lease.requireCurrent()
             if (actorId == recipientId) return Result.success(Unit) // Don't notify self
 
-            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
+            val token = authService.getAccessTokenForAccountAwait(actorId)
+            currentCoroutineContext().ensureActive()
+            lease.requireCurrent()
+            if (token.isNullOrBlank()) return Result.failure(Exception("Vuelve a iniciar sesión para continuar."))
 
             if (authService.isLocalFallbackSession()) {
                 return localFallbackApiClient.createNotification(
@@ -652,7 +660,10 @@ class NotificationRepository @Inject constructor(
                     targetType = extraData["target_type"]?.jsonPrimitive?.contentOrNull,
                     content = content,
                     extraData = extraData
-                ).map { Unit }
+                ).map { Unit }.also {
+                    currentCoroutineContext().ensureActive()
+                    lease.requireCurrent()
+                }
             }
 
             val notificationData = buildJsonObject {
@@ -671,9 +682,14 @@ class NotificationRepository @Inject constructor(
                 setBody(notificationData)
             }
 
+            lease.requireCurrent()
             if (response.status.isSuccess()) Result.success(Unit)
             else Result.failure(Exception("Error sending notification: ${response.status}"))
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
+            currentCoroutineContext().ensureActive()
+            if (lease.accountId != null) lease.requireCurrent()
             Result.failure(e)
         }
     }

@@ -13979,9 +13979,10 @@ function registerDataRoutes(app, {
         `SELECT id::text, challenge_id, active_challenge_id, user_id, content_url, text_content, created_at, updated_at
          FROM fallback_challenge_submissions
          WHERE (lower(active_challenge_id) = $1 OR lower(challenge_id) = $1)
-           AND lower(user_id) = $2
+           AND lower(user_id) = ANY($2::text[])
+         ORDER BY updated_at DESC
          LIMIT 1`,
-        [activeId, identity.displayUserId],
+        [activeId, identity.values],
       )
       const profilesById = indexProfiles(await publicProfilesByIds(pool, [identity.displayUserId]))
       res.json({
@@ -14004,9 +14005,9 @@ function registerDataRoutes(app, {
         `SELECT 1
          FROM fallback_challenge_submissions
          WHERE (lower(active_challenge_id) = $1 OR lower(challenge_id) = $1)
-           AND lower(user_id) = $2
+           AND lower(user_id) = ANY($2::text[])
          LIMIT 1`,
-        [activeId, identity.displayUserId],
+        [activeId, identity.values],
       )
       res.json({ participating: rows.length > 0 })
     } catch (error) {

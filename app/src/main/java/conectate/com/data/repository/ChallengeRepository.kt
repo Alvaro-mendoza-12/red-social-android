@@ -13,6 +13,9 @@ import conectate.com.data.model.Challenge
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.supabase.StorageService
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -43,18 +46,42 @@ class ChallengeRepository @Inject constructor(
     private val localFallbackApiClient: LocalFallbackApiClient,
     @param:ApplicationContext private val context: Context
 ) {
+    private suspend fun <T> withAccount(
+        expectedAccountId: String?,
+        operation: suspend (String, String, () -> Unit) -> Result<T>,
+    ): Result<T> {
+        val lease = authService.captureAccountLease()
+        return try {
+            val owner = lease.accountId ?: return Result.failure(IllegalStateException("Inicia sesión para continuar."))
+            if (expectedAccountId != null && !owner.equals(expectedAccountId, ignoreCase = true))
+                throw CancellationException("La cuenta cambió.")
+            lease.requireCurrent()
+            withContext(Dispatchers.IO) {
+                val token = authService.getAccessTokenForAccountAwait(owner)
+                currentCoroutineContext().ensureActive()
+                lease.requireCurrent()
+                if (token.isNullOrBlank()) return@withContext Result.failure(IllegalStateException("Vuelve a iniciar sesión para continuar."))
+                val result = operation(owner, token, lease::requireCurrent)
+                currentCoroutineContext().ensureActive()
+                lease.requireCurrent()
+                result
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            currentCoroutineContext().ensureActive()
+            if (lease.accountId != null) lease.requireCurrent()
+            Result.failure(error)
+        }
+    }
 
-
-
-    suspend fun submitMedia(activeChallenge: ActiveChallenge, bytes: ByteArray, mimeType: String, extension: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun submitMedia(activeChallenge: ActiveChallenge, bytes: ByteArray, mimeType: String, extension: String, expectedAccountId: String? = null): Result<Unit> = withAccount(expectedAccountId) { userId, accessToken, checkSession ->
         try {
-            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
         var storagePath = "challenge_submissions/${activeChallenge.id}/$userId.$extension"
         var bucketName = "challenges"
-        var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, mimeType)
+        var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, mimeType, expectedAccountId = userId)
 
+        checkSession()
         if (uploadResult.isSuccess) {
             val remoteKey = uploadResult.getOrThrow().Key ?: storagePath
             var url = versionedChallengeUrl(
@@ -62,7 +89,7 @@ class ChallengeRepository @Inject constructor(
             )
 
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.submitChallenge(
+                return@withAccount localFallbackApiClient.submitChallenge(
                     accessToken = accessToken,
                     activeChallenge = activeChallenge,
                     contentUrl = url
@@ -100,18 +127,15 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-
-
-    suspend fun getSubmissions(activeChallengeId: String, minCreatedAt: String? = null): Result<List<conectate.com.data.model.ChallengeSubmission>> = withContext(Dispatchers.IO) {
+    suspend fun getSubmissions(activeChallengeId: String, minCreatedAt: String? = null, expectedAccountId: String? = null): Result<List<conectate.com.data.model.ChallengeSubmission>> = withAccount(expectedAccountId) { userId, accessToken, checkSession ->
         try {
             android.util.Log.d("ChallengeRepository", "=== getSubmissions START for $activeChallengeId ===")
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            
-            var userId = authService.getCurrentUserId() ?: ""
+
+
             android.util.Log.d("ChallengeRepository", "Current UserId: $userId")
 
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.loadChallengeSubmissions(accessToken, activeChallengeId)
+                return@withAccount localFallbackApiClient.loadChallengeSubmissions(accessToken, activeChallengeId)
             }
             
             // Using RPC for reliability and bypassing RLS for user names
@@ -219,16 +243,19 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-
-
-    suspend fun toggleVote(activeChallengeId: String, submissionId: String): Result<Pair<Int, Boolean>> = withContext(Dispatchers.IO) {
+    suspend fun toggleVote(activeChallengeId: String, submissionId: String, desired: Boolean, expectedAccountId: String? = null): Result<Pair<Int, Boolean>> = withAccount(expectedAccountId) { userId, accessToken, checkSession ->
         try {
-            var accessToken = authService.getAccessTokenAwait() ?: return@withContext Result.failure(Exception("Not authenticated"))
+
             
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.toggleChallengeVote(accessToken, submissionId)
+                return@withAccount localFallbackApiClient.toggleChallengeVote(accessToken, submissionId, desired, activeChallengeId)
             }
 
+            val current = getSubmissions(activeChallengeId, expectedAccountId = userId).getOrThrow()
+                .firstOrNull { it.id == submissionId }
+                ?: return@withAccount Result.failure(IllegalStateException("Esta respuesta ya no está disponible."))
+            checkSession()
+            if (current.votedByMe == desired) return@withAccount Result.success(current.voteCount to desired)
             android.util.Log.d("ChallengeRepository", "Calling v2026_challenge_vote RPC for submission: $submissionId")
             
             var response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/v2026_challenge_vote") {
@@ -258,14 +285,11 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-
-
-    suspend fun getMySubmission(activeChallengeId: String, userId: String): Result<conectate.com.data.model.ChallengeSubmission?> = withContext(Dispatchers.IO) {
+    suspend fun getMySubmission(activeChallengeId: String, userId: String): Result<conectate.com.data.model.ChallengeSubmission?> = withAccount(userId) { _, token, checkSession ->
         try {
-            val token = authService.getAccessToken()
-                ?: return@withContext Result.failure(Exception("No token"))
+
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.loadMyChallengeSubmission(token, activeChallengeId)
+                return@withAccount localFallbackApiClient.loadMyChallengeSubmission(token, activeChallengeId)
             }
 
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenge_submissions") {
@@ -307,15 +331,11 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-
-
-    suspend fun submitText(activeChallenge: ActiveChallenge, text: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun submitText(activeChallenge: ActiveChallenge, text: String, expectedAccountId: String? = null): Result<Unit> = withAccount(expectedAccountId) { userId, accessToken, checkSession ->
         try {
-            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.submitChallenge(
+                return@withAccount localFallbackApiClient.submitChallenge(
                     accessToken = accessToken,
                     activeChallenge = activeChallenge,
                     textContent = text
@@ -343,13 +363,11 @@ class ChallengeRepository @Inject constructor(
  Result.failure(e) }
     }
 
-
-
-    suspend fun getActiveChallenge(): Result<ActiveChallenge> = withContext(Dispatchers.IO) {
+    suspend fun getActiveChallenge(expectedAccountId: String? = null): Result<ActiveChallenge> = withAccount(expectedAccountId) { _, accessToken, checkSession ->
         try {
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.loadActiveChallenge(accessToken)
+                return@withAccount localFallbackApiClient.loadActiveChallenge(accessToken)
             }
             var url = supabaseConfig.supabaseUrl
             val key = supabaseConfig.supabaseAnonKey
@@ -366,6 +384,7 @@ class ChallengeRepository @Inject constructor(
                     val dto = list[0]
                     
                     // 2. Obtener detalles del Challenge maestro
+                    checkSession()
                     val challengeResponse = supabaseConfig.httpClient.get("$url/rest/v1/challenges_master") {
                         header("Authorization", "Bearer $accessToken")
                         header("apikey", key)
@@ -407,15 +426,11 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-
-
-    suspend fun createChallengeMaster(title: String, description: String, type: String, difficulty: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun createChallengeMaster(title: String, description: String, type: String, difficulty: String, expectedAccountId: String? = null): Result<Unit> = withAccount(expectedAccountId) { userId, accessToken, checkSession ->
         try {
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
 
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.createChallengeMaster(
+                return@withAccount localFallbackApiClient.createChallengeMaster(
                     accessToken,
                     title,
                     description,
@@ -450,15 +465,11 @@ class ChallengeRepository @Inject constructor(
  Result.failure(e) }
     }
 
-
-
-    suspend fun getUserChallenges(): Result<List<Challenge>> = withContext(Dispatchers.IO) {
+    suspend fun getUserChallenges(expectedAccountId: String? = null): Result<List<Challenge>> = withAccount(expectedAccountId) { userId, accessToken, checkSession ->
         try {
-            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.loadMyChallengeMasters(accessToken)
+                return@withAccount localFallbackApiClient.loadMyChallengeMasters(accessToken)
             }
             
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
@@ -477,14 +488,12 @@ class ChallengeRepository @Inject constructor(
  Result.failure(e) }
     }
 
-
-
-    suspend fun deleteChallengeMaster(id: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun deleteChallengeMaster(id: String, expectedAccountId: String? = null): Result<Unit> = withAccount(expectedAccountId) { _, accessToken, checkSession ->
         try {
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("Not authenticated"))
+
 
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.deleteChallengeMaster(accessToken, id)
+                return@withAccount localFallbackApiClient.deleteChallengeMaster(accessToken, id)
             }
             
             var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/challenges_master") {
@@ -500,16 +509,14 @@ class ChallengeRepository @Inject constructor(
  Result.failure(e) }
     }
 
-
-
-    suspend fun submitDrawing(activeChallenge: ActiveChallenge, lines: List<conectate.com.presentation.components.Line>): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun submitDrawing(activeChallenge: ActiveChallenge, lines: List<conectate.com.presentation.components.Line>, expectedAccountId: String? = null): Result<Unit> = withAccount(expectedAccountId) { userId, accessToken, checkSession ->
         try {
-            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
-            val drawableLines = lines.filter { it.points.isNotEmpty() }
+            val drawableLines = lines.map { line ->
+                line.copy(points = line.points.filter { (x, y) -> x.isFinite() && y.isFinite() })
+            }.filter { it.points.isNotEmpty() }
             if (drawableLines.isEmpty()) {
-                return@withContext Result.failure(Exception("Dibuja algo antes de enviarlo."))
+                return@withAccount Result.failure(Exception("Dibuja algo antes de enviarlo."))
             }
 
             // 1. Convertir dibujo a imagen
@@ -518,8 +525,9 @@ class ChallengeRepository @Inject constructor(
             // 2. Subir a Storage
             var storagePath = "challenge_submissions/${activeChallenge.id}/$userId.png"
             var bucketName = "challenges"
-            var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, "image/png")
+            var uploadResult = storageService.uploadFile(bucketName, storagePath, bytes, "image/png", expectedAccountId = userId)
             
+            checkSession()
             if (uploadResult.isSuccess) {
                 val remoteKey = uploadResult.getOrThrow().Key ?: storagePath
                 var url = versionedChallengeUrl(
@@ -527,7 +535,7 @@ class ChallengeRepository @Inject constructor(
                 )
 
                 if (supabaseConfig.isLocalFallbackPrimary) {
-                    return@withContext localFallbackApiClient.submitChallenge(
+                    return@withAccount localFallbackApiClient.submitChallenge(
                         accessToken = accessToken,
                         activeChallenge = activeChallenge,
                         contentUrl = url
@@ -566,16 +574,15 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-
-
-    suspend fun submitMedia(activeChallenge: ActiveChallenge, uri: android.net.Uri, mimeType: String, extension: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun submitMedia(activeChallenge: ActiveChallenge, uri: android.net.Uri, mimeType: String, extension: String, expectedAccountId: String? = null): Result<Unit> = withAccount(expectedAccountId) { userId, _, checkSession ->
         try {
             val inputStream = context.contentResolver.openInputStream(uri) 
-                ?: return@withContext Result.failure(Exception("Cannot read file"))
+                ?: return@withAccount Result.failure(Exception("Cannot read file"))
             
             var bytes = inputStream.use { it.readMediaBytesWithLimit(30L * 1024 * 1024) }
             
-            submitMedia(activeChallenge, bytes, mimeType, extension)
+            checkSession()
+            submitMedia(activeChallenge, bytes, mimeType, extension, userId)
         } catch (e: Exception) { 
             if (e is kotlinx.coroutines.CancellationException) throw e
 
@@ -583,12 +590,11 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-
-
-    suspend fun submitAudio(activeChallenge: ActiveChallenge, file: java.io.File): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun submitAudio(activeChallenge: ActiveChallenge, file: java.io.File, expectedAccountId: String? = null): Result<Unit> = withAccount(expectedAccountId) { userId, _, checkSession ->
         try {
             var bytes = file.inputStream().use { it.readMediaBytesWithLimit(30L * 1024 * 1024) }
-            submitMedia(activeChallenge, bytes, "audio/mp4", "mp4")
+            checkSession()
+            submitMedia(activeChallenge, bytes, "audio/mp4", "mp4", userId)
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
 
@@ -596,15 +602,11 @@ class ChallengeRepository @Inject constructor(
         }
     }
 
-
-
-    suspend fun checkParticipation(activeChallengeId: String, minCreatedAt: String? = null, masterChallengeId: String? = null): Result<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun checkParticipation(activeChallengeId: String, minCreatedAt: String? = null, masterChallengeId: String? = null, expectedAccountId: String? = null): Result<Boolean> = withAccount(expectedAccountId) { userId, accessToken, checkSession ->
         try {
-            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("Not authenticated"))
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
 
             if (supabaseConfig.isLocalFallbackPrimary) {
-                return@withContext localFallbackApiClient.hasChallengeParticipation(accessToken, activeChallengeId)
+                return@withAccount localFallbackApiClient.hasChallengeParticipation(accessToken, activeChallengeId)
             }
 
             // FIXED: Filter by Master Challenge ID to allow participation in new contents even if active_id is reused
@@ -638,14 +640,16 @@ class ChallengeRepository @Inject constructor(
  Result.failure(e) }
     }
 
-    suspend fun passTorch(challengeTitle: String, friendId: String): Result<Unit> {
-        return notificationRepository.sendNotification(
+    suspend fun passTorch(challengeTitle: String, friendId: String, expectedAccountId: String? = null): Result<Unit> = withAccount(expectedAccountId) { owner, _, checkSession ->
+        checkSession()
+        notificationRepository.sendNotification(
             recipientId = friendId,
             type = "challenge_invite",
-            content = "Te pasaron una Ronda Novvin: $challengeTitle. ¡Tienes 10 minutos!",
+            content = "Te invitaron a una Ronda Novvin: $challengeTitle. Entra para ver si sigue abierta.",
             extraData = buildJsonObject {
                 put("challenge_title", challengeTitle)
-            }
+            },
+            expectedAccountId = owner,
         )
     }
 
@@ -683,7 +687,7 @@ class ChallengeRepository @Inject constructor(
     fun observeSubmissions(activeChallengeId: String, minCreatedAt: String? = null): Flow<List<conectate.com.data.model.ChallengeSubmission>> = flow {
         if (supabaseConfig.isLocalFallbackPrimary) {
             while (true) {
-                emit(getSubmissions(activeChallengeId, minCreatedAt).getOrNull().orEmpty())
+                getSubmissions(activeChallengeId, minCreatedAt).onSuccess { emit(it) }
                 delay(5_000)
             }
         }
@@ -693,8 +697,7 @@ class ChallengeRepository @Inject constructor(
         
         try {
             // 1. Carga inicial inmediata
-            val initial = getSubmissions(activeChallengeId, minCreatedAt).getOrNull() ?: emptyList()
-            emit(initial)
+            getSubmissions(activeChallengeId, minCreatedAt).onSuccess { emit(it) }
 
             // 2. Configurar listener de cambios (INSERT, UPDATE, DELETE)
             var changes = channel.postgresChangeFlow<PostgresAction>(schema = "public") {
@@ -813,7 +816,11 @@ class ChallengeRepository @Inject constructor(
                 }
             }
             if (line.points.size == 1) {
-                canvas.drawCircle(targetWidth / 2f, targetHeight / 2f, paint.strokeWidth / 2f, paint)
+                canvas.drawCircle(
+                    (line.points[0].first - minX) * scale + offsetX,
+                    (line.points[0].second - minY) * scale + offsetY,
+                    paint.strokeWidth / 2f, paint,
+                )
             } else {
                 canvas.drawPath(path, paint)
             }
@@ -836,8 +843,4 @@ class ChallengeRepository @Inject constructor(
         return "$url${separator}v=${System.currentTimeMillis()}"
     }
 }
-
-
-
-
 

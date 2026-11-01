@@ -84,6 +84,30 @@ test('media ownership is still required before accepting a challenge submission'
   assert.deepEqual(f.events, [])
 })
 
+test('resubmitting a legacy actor alias keeps its submission and canonicalizes the owner', async () => {
+  const f = fixture(sql => ({ rows: sql.includes('FROM fallback_active_challenges') ? [active()]
+    : sql.startsWith('SELECT id::text,user_id') ? [{id:'kept',user_id:'local-actor'}]
+    : sql.startsWith('INSERT INTO fallback_challenge_submissions') ? [{id:'kept'}] : [] }))
+  assert.deepEqual(await submitChallenge(f.pool,identity,'round',{textContent:'retry'},async()=>true),{id:'kept'})
+  const lookup=f.events.find(event=>event.sql.startsWith('SELECT id::text,user_id'))
+  assert.deepEqual(lookup.values,['round',['public-actor','local-actor'],'public-actor'])
+  const update=f.events.find(event=>event.sql.startsWith('UPDATE fallback_challenge_submissions'))
+  assert.deepEqual(update.values,['kept','public-actor'])
+  assert.ok(!f.events.some(event=>event.sql.startsWith('DELETE FROM fallback_challenge_submissions')))
+})
+
+test('duplicate owned aliases merge their votes before removing only the redundant submission', async () => {
+  const f = fixture(sql => ({ rows: sql.includes('FROM fallback_active_challenges') ? [active()]
+    : sql.startsWith('SELECT id::text,user_id') ? [{id:'canonical',user_id:'public-actor'},{id:'legacy',user_id:'local-actor'}]
+    : sql.startsWith('INSERT INTO fallback_challenge_submissions') ? [{id:'canonical'}] : [] }))
+  await submitChallenge(f.pool,identity,'round',{textContent:'updated'},async()=>true)
+  const merge=f.events.findIndex(event=>event.sql.startsWith('INSERT INTO fallback_challenge_votes'))
+  const remove=f.events.findIndex(event=>event.sql.startsWith('DELETE FROM fallback_challenge_submissions'))
+  assert.ok(merge>0 && remove>merge)
+  assert.deepEqual(f.events[merge].values,['canonical',['legacy']])
+  assert.deepEqual(f.events[remove].values,[['legacy']])
+})
+
 test('a vote without a real submission and active round cannot create orphan rows', async () => {
   const f = fixture()
   await assert.rejects(() => setChallengeVote(f.pool, identity, 'missing', { votedByMe: true }),
