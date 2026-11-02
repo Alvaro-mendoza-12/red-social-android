@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-02T18:46:32.196929+00:00",
-  "baseCommit": "e29a0aadd7a5b2923037f6e0532e9a023d40a23f",
+  "generatedAtUtc": "2026-11-02T19:38:00.569344+00:00",
+  "baseCommit": "18fc9bde672afec6ac202b0b76d6596602b3ac0c",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -18370,7 +18370,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "6d051e7540db4dde7666cd59f64ab389928525a7",
+      "gitBlobId": "76ce2f7afea3234976b51af74b5247e32e33a777",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
