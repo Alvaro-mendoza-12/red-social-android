@@ -103,81 +103,18 @@ object IntentRouter {
         ) {
             android.util.Log.w("IntentRouter", "Rejected untrusted notification intent type=$type")
             clearIntent()
+            AppFeedbackBus.show("Este aviso ya no se puede abrir. Revisa tus notificaciones dentro de la aplicación.")
+            navController.navigate(Screen.Notifications.route) { launchSingleTop = true }
             return true
         }
 
         when (type) {
-            "new_message" -> {
-                val chatId = incomingIntent.getStringExtra("chat_id")
-                    ?: incomingIntent.getStringExtra("target_id")
-                val senderId = incomingIntent.getStringExtra("sender_id")
-                val messageId = incomingIntent.getStringExtra("message_id")
-                    ?: incomingIntent.getStringExtra("focus_message_id")
-                val targetType = incomingIntent.getStringExtra("target_type")?.trim()?.lowercase()
-                val groupId = incomingIntent.getStringExtra("group_id")
-                val communityId = incomingIntent.getStringExtra("community_id")
-                val isGroupFromString = incomingIntent.getStringExtra("is_group")
-                    ?.trim()?.equals("true", ignoreCase = true) == true
-                val isCommunityFromString = incomingIntent.getStringExtra("is_community")
-                    ?.trim()?.equals("true", ignoreCase = true) == true
-                val isGroup = incomingIntent.getBooleanExtra("is_group", false) ||
-                    isGroupFromString ||
-                    targetType == "group" ||
-                    !groupId.isNullOrBlank()
-                val isCommunity = incomingIntent.getBooleanExtra("is_community", false) ||
-                    isCommunityFromString ||
-                    targetType == "community" ||
-                    !communityId.isNullOrBlank()
-
-                val targetGroupId = groupId ?: if (isGroup && !isCommunity) chatId else null
-                val targetCommunityId = communityId ?: if (isCommunity) chatId else null
-
-                android.util.Log.d(
-                    "MainActivity",
-                    "Navigating via Notification: chatId=$chatId, groupId=$targetGroupId, communityId=$targetCommunityId, targetType=$targetType"
-                )
-
-                when {
-                    !targetCommunityId.isNullOrBlank() -> {
-                        navigateNotificationDestination(
-                            incomingIntent = incomingIntent,
-                            navController = navController,
-                            authRepository = authRepository,
-                            destinationRoute = Screen.CommunityChat.createRoute(
-                                targetCommunityId,
-                                focusMessageId = messageId
-                            )
-                        )
-                        clearIntent()
-                        return true
-                    }
-                    !targetGroupId.isNullOrBlank() -> {
-                        navigateNotificationDestination(
-                            incomingIntent = incomingIntent,
-                            navController = navController,
-                            authRepository = authRepository,
-                            destinationRoute = Screen.GroupChat.createRoute(
-                                targetGroupId,
-                                focusMessageId = messageId
-                            )
-                        )
-                        clearIntent()
-                        return true
-                    }
-                    !chatId.isNullOrBlank() || !senderId.isNullOrBlank() -> {
-                        val targetUserOrChat = senderId ?: chatId ?: return false
-                        navigateNotificationDestination(
-                            incomingIntent = incomingIntent,
-                            navController = navController,
-                            authRepository = authRepository,
-                            destinationRoute = Screen.Chat.createRoute(
-                                targetUserOrChat,
-                                focusMessageId = messageId
-                            )
-                        )
-                        clearIntent()
-                        return true
-                    }
+            "new_message", "message_reaction" -> {
+                val route = notificationConversationDestination(incomingIntent)
+                if (route != null) {
+                    navigateNotificationDestination(incomingIntent, navController, authRepository, route)
+                    clearIntent()
+                    return true
                 }
             }
 
@@ -398,7 +335,12 @@ object IntentRouter {
             }
         }
 
-        return false
+        // A genuine newer/informational alert still has a useful destination
+        // when this version has no dedicated content route for it.
+        navigateNotificationDestination(incomingIntent, navController, authRepository,
+            Screen.Notifications.route, launchSingleTop = true)
+        clearIntent()
+        return true
     }
 
     private fun navigateNotificationDestination(
@@ -448,7 +390,9 @@ object IntentRouter {
                 targetAccountLabel = targetLabel,
                 currentAccountLabel = currentLabel,
                 contextTitle = contextTitle,
-                preview = preview
+                preview = preview,
+                targetUserId = target.userId,
+                targetEmail = target.email,
             )
         ) {
             this.launchSingleTop = true

@@ -205,6 +205,18 @@ class AuthService @Inject constructor(
 
     internal fun captureAccountLease(): AuthSessionLease = localSessionMutationGuard.captureAccountLease(::getCurrentUserId)
 
+    /** Trusted identifiers of this local session, including an imported profile's id. */
+    internal fun currentAccountUserIds(): Set<String> = localSessionMutationGuard.readCurrent {
+        val current = getCurrentUserId()?.trim()?.lowercase() ?: return@readCurrent emptySet()
+        buildSet {
+            add(current)
+            if (isLocalFallbackSession()) {
+                authPrefsOrNull?.getString(KEY_LOCAL_FALLBACK_LOCAL_USER_ID, null)
+                    ?.trim()?.lowercase()?.takeIf(String::isNotEmpty)?.let(::add)
+            }
+        }
+    }
+
     internal suspend fun prepareLocalSignIn(email: String, password: String, code: String?): LocalFallbackAuthResponse {
         ensureSecureStorageAvailable().getOrThrow()
         val response = localFallbackApiClient.login(email, password, code).getOrThrow()

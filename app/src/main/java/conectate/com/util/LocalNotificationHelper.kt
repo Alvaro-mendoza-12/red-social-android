@@ -273,7 +273,7 @@ class LocalNotificationHelper(private val context: Context) {
                     addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     putExtra("type", "live_discovery")
                     putNotificationAccountTarget(account)
-                },
+                }.also { TrustedNavigationIntents.markTrusted(context, it) },
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
         )

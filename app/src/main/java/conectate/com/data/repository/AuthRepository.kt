@@ -830,6 +830,7 @@ class AuthRepository @Inject constructor(
         authService.importSession(accessToken, refreshToken)
     }
     internal fun captureAccountLease() = authService.captureAccountLease()
+    internal fun currentAccountUserIds() = authService.currentAccountUserIds()
 
     fun getCurrentUserId(): String? = authService.getCurrentUserId()
     
@@ -858,7 +859,17 @@ class AuthRepository @Inject constructor(
         ).map { Unit }
     }
 
-    suspend fun switchAccount(accountId: String): Result<User> {
+    suspend fun switchAccount(accountId: String): Result<User> = switchAccount(accountId) { it }
+
+    internal suspend fun switchAccountForNotification(accountId: String) = switchAccount(accountId) { user ->
+        captureAccountLease().also { lease ->
+            lease.requireCurrent()
+            if (!lease.accountId.equals(user.id, ignoreCase = true))
+                throw CancellationException("La cuenta cambió antes de abrir el aviso.")
+        }
+    }
+
+    private suspend fun <T> switchAccount(accountId: String, complete: (User) -> T): Result<T> {
         if (!accountSwitchMutex.tryLock()) {
             return Result.failure(IllegalStateException("Ya hay un cambio de cuenta en curso."))
         }
@@ -870,16 +881,16 @@ class AuthRepository @Inject constructor(
                 targetDisplayName = targetAccount?.display_name ?: targetAccount?.email,
                 targetAvatarUrl = targetAccount?.avatar_url
             )
-            return if (authService.usesLocalAccountSwitch()) switchLocalStoredAccount(accountId)
-                else switchLegacyStoredAccount(accountId)
+            return if (authService.usesLocalAccountSwitch()) switchLocalStoredAccount(accountId, complete)
+                else switchLegacyStoredAccount(accountId).map(complete)
         } finally {
             _accountSwitchUiState.value = AccountSwitchUiState()
             accountSwitchMutex.unlock()
         }
     }
 
-    private suspend fun switchLocalStoredAccount(accountId: String): Result<User> {
-        val result = localAccountSwitchCoordinator(accountSessionRepository::prepareLocalAccount).switch(accountId)
+    private suspend fun <T> switchLocalStoredAccount(accountId: String, complete: (User) -> T): Result<T> {
+        val result = localAccountSwitchCoordinator(accountSessionRepository::prepareLocalAccount, complete).switch(accountId)
         val error = result.exceptionOrNull() ?: return result
         if (error is CancellationException) throw error
         return if (looksLikeStoredAccountRefreshFailure(error.message))
@@ -887,10 +898,16 @@ class AuthRepository @Inject constructor(
         else result
     }
 
-    private fun localAccountSwitchCoordinator(prepare: suspend (String) -> PreparedLocalAccount) =
+    private fun <T> localAccountSwitchCoordinator(
+        prepare: suspend (String) -> PreparedLocalAccount,
+        complete: (User) -> T,
+    ) =
         AccountSwitchCoordinator(
             open = { authService.openLocalAccountSwitch(accountSessionRepository::rememberSwitchSession, ::clearSessionScopedState) },
-            prepare = prepare, complete = ::finishLocalStoredAccount,
+            prepare = prepare,
+            // Capture any navigation lease before this transition closes. Its final
+            // generation check rejects another login, including B -> C -> B.
+            complete = { prepared, session -> complete(finishLocalStoredAccount(prepared, session)) },
             onRollbackFailure = {
                 android.util.Log.w("AuthRepository", "Could not restore the outgoing local account", it)
                 conectate.com.presentation.common.AppFeedbackBus.showError("No pudimos volver a la cuenta anterior. Inicia sesión de nuevo.")
@@ -903,9 +920,9 @@ class AuthRepository @Inject constructor(
         try {
             val normalizedEmail = email.trim().lowercase()
             _accountSwitchUiState.value = AccountSwitchUiState(isSwitching = true, targetDisplayName = normalizedEmail)
-            return localAccountSwitchCoordinator {
+            return localAccountSwitchCoordinator(prepare = {
                 accountSessionRepository.prepareLocalSignIn(normalizedEmail, password, code)
-            }.switch(normalizedEmail)
+            }, complete = { it }).switch(normalizedEmail)
         } finally {
             _accountSwitchUiState.value = AccountSwitchUiState()
             accountSwitchMutex.unlock()

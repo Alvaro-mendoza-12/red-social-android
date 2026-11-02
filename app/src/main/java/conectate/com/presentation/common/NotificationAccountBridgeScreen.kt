@@ -24,7 +24,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,37 +33,54 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import conectate.com.presentation.navigation.Screen
+import conectate.com.presentation.navigation.NotificationAccountSignIn
 
 
 @Composable
 fun NotificationAccountBridgeScreen(
     navController: NavController,
+    bridgeEntry: NavBackStackEntry,
     destinationRoute: String,
     targetAccountId: String?,
     targetAccountLabel: String?,
     currentAccountLabel: String?,
     contextTitle: String?,
     preview: String?,
+    targetUserId: String?,
+    targetEmail: String?,
     viewModel: NotificationAccountBridgeViewModel = hiltViewModel()
 ) {
-    val isSwitching by viewModel.isSwitching.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    val completedRoute by viewModel.completedRoute.collectAsState()
+    val isSwitching by viewModel.isSwitching.collectAsStateWithLifecycle()
+    val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+    val completedRoute by viewModel.completedRoute.collectAsStateWithLifecycle()
+    val activeAccountLabel by viewModel.activeAccountLabel.collectAsStateWithLifecycle()
+    val signedInUser by NotificationAccountSignIn.result(bridgeEntry.savedStateHandle).collectAsStateWithLifecycle()
 
-    val resolvedCurrentLabel = currentAccountLabel?.takeIf { it.isNotBlank() } ?: "tu cuenta actual"
+    val resolvedCurrentLabel = activeAccountLabel?.takeIf { it.isNotBlank() }
+        ?: currentAccountLabel?.takeIf { it.isNotBlank() } ?: "tu cuenta actual"
     val resolvedTargetLabel = targetAccountLabel?.takeIf { it.isNotBlank() } ?: "esta cuenta"
     val hasStoredTarget = !targetAccountId.isNullOrBlank()
 
+    LaunchedEffect(signedInUser) {
+        val userId = NotificationAccountSignIn.takeResult(bridgeEntry.savedStateHandle) ?: return@LaunchedEffect
+        viewModel.resumeAfterSignIn(userId, destinationRoute, targetAccountId, targetUserId, targetEmail)
+    }
+
     LaunchedEffect(completedRoute) {
-        val route = completedRoute ?: return@LaunchedEffect
-        AppFeedbackBus.showSuccess("Ahora estas en $resolvedTargetLabel.")
-        navController.navigate(route) {
-            popUpTo(Screen.NotificationAccountBridge.route) { inclusive = true }
-            launchSingleTop = true
+        val route = viewModel.takeCompletedRoute() ?: return@LaunchedEffect
+        try {
+            navController.navigate(route) {
+                popUpTo(Screen.NotificationAccountBridge.route) { inclusive = true }
+                launchSingleTop = true
+            }
+            AppFeedbackBus.showSuccess("Ahora estás en $resolvedTargetLabel.")
+        } catch (error: IllegalArgumentException) {
+            android.util.Log.w("NotificationAccountBridge", "Notification destination could not be opened", error)
+            viewModel.navigationFailed()
         }
-        viewModel.consumeCompletedRoute()
     }
 
     Surface(
@@ -97,7 +114,7 @@ fun NotificationAccountBridgeScreen(
             Spacer(modifier = Modifier.height(18.dp))
 
             Text(
-                text = "Estas en $resolvedCurrentLabel, pero este contenido llego a $resolvedTargetLabel.",
+                text = "Este contenido llegó a $resolvedTargetLabel. Para abrirlo debes usar esa cuenta.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -183,13 +200,14 @@ fun NotificationAccountBridgeScreen(
                     )
                 ) {
                     Text(
-                        text = "No encontramos una sesion guardada para $resolvedTargetLabel. Inicia sesion manualmente una vez con esa cuenta y luego podras abrir estas notificaciones sin perder el contexto.",
+                        text = "Inicia sesión con $resolvedTargetLabel para abrir esta notificación.",
                         modifier = Modifier.padding(18.dp),
                         color = MaterialTheme.colorScheme.onErrorContainer,
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
-            } else if (!errorMessage.isNullOrBlank()) {
+            }
+            if (!errorMessage.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -218,7 +236,7 @@ fun NotificationAccountBridgeScreen(
                         )
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isSwitching
+                    enabled = !isSwitching && completedRoute == null
                 ) {
                     if (isSwitching) {
                         CircularProgressIndicator(
@@ -230,16 +248,16 @@ fun NotificationAccountBridgeScreen(
                     }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-            } else {
+            }
+            if (!hasStoredTarget || !errorMessage.isNullOrBlank()) {
                 Button(
                     onClick = {
-                        navController.navigate(Screen.AddAccountLogin.route) {
-                            launchSingleTop = true
-                        }
+                        NotificationAccountSignIn.open(navController, bridgeEntry)
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSwitching && completedRoute == null
                 ) {
-                    Text("Agregar o iniciar sesion con $resolvedTargetLabel")
+                    Text("Iniciar sesión con $resolvedTargetLabel")
                 }
                 Spacer(modifier = Modifier.height(12.dp))
             }
@@ -251,7 +269,8 @@ fun NotificationAccountBridgeScreen(
                         launchSingleTop = true
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isSwitching
             ) {
                 Text("Quedarme en $resolvedCurrentLabel")
             }

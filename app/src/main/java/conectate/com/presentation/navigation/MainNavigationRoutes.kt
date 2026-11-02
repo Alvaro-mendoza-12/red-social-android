@@ -489,6 +489,16 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
                 type = NavType.StringType
                 nullable = true
                 defaultValue = null
+            },
+            navArgument("targetUserId") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
+            navArgument("targetEmail") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
             }
         )
     ) { backStackEntry ->
@@ -497,12 +507,15 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
             ?: Screen.Home.createRoute(startTab = Screen.Messages.route)
         conectate.com.presentation.common.NotificationAccountBridgeScreen(
             navController = navController,
+            bridgeEntry = backStackEntry,
             destinationRoute = destination,
             targetAccountId = backStackEntry.arguments?.getString("targetAccountId"),
             targetAccountLabel = backStackEntry.arguments?.getString("targetAccountLabel"),
             currentAccountLabel = backStackEntry.arguments?.getString("currentAccountLabel"),
             contextTitle = backStackEntry.arguments?.getString("contextTitle"),
-            preview = backStackEntry.arguments?.getString("preview")
+            preview = backStackEntry.arguments?.getString("preview"),
+            targetUserId = backStackEntry.arguments?.getString("targetUserId"),
+            targetEmail = backStackEntry.arguments?.getString("targetEmail"),
         )
     }
 
