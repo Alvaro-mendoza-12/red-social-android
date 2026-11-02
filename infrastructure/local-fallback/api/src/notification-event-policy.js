@@ -3,6 +3,9 @@
 // These events are created by their authorized transactions, never by a public alert insert.
 const SERVER_MANAGED_TYPES = new Set([
   'system_announcement', 'message_deleted', 'account_suspended', 'account_enabled',
+  'conversation_read', 'message_reaction',
+  'message', 'new_message', 'chat_message', 'group_message', 'community_message',
+  'text', 'image', 'video', 'audio', 'sticker', 'file', 'document', 'location', 'contact',
 ])
 
 function notificationObject(value) {
@@ -21,13 +24,7 @@ function isServerManagedNotification(row) {
     .map(value => String(value || '').trim().toLowerCase())
   if (types.some(value => SERVER_MANAGED_TYPES.has(value))) return true
 
-  // Older installed clients infer suspension from these legacy message notices.
-  // Normal chat messages use their own message endpoints, not this alert insert.
-  if (!types.includes('message')) return false
-  const content = String(row?.content || '').trim().toLowerCase()
-  return ['cuenta fue suspendida', 'cuenta ha sido suspendida',
-    'cuenta ha sido habilitada', 'cuenta fue habilitada', 'cuenta habilitada nuevamente']
-    .some(fragment => content.includes(fragment))
+  return false
 }
 
 module.exports = { isServerManagedNotification }

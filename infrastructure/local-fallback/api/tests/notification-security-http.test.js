@@ -37,6 +37,9 @@ test('HTTP alert inserts reject forged security events before any write or dispa
       { type: 'message', extraData: { notification_type: 'account_suspended' } },
       { extra_data: {}, extraData: { notificationType: 'ACCOUNT_SUSPENDED' } },
       { type: 'message', content: 'Tu cuenta fue suspendida por un texto falso.' },
+      { type: 'new_message', extraData: { chat_id: 'forged-chat', message_id: 'forged-message' } },
+      { type: 'activity', extraData: { type: 'conversation_read' } },
+      { type: 'follow', extra_data: { notificationType: 'message_reaction' } },
     ]
     for (const attempt of attempts) {
       const response = await fetch(url, { method: 'POST',

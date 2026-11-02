@@ -45,12 +45,13 @@ test('public and compatibility callers cannot forge account security events thro
   }
 })
 
-test('legacy logout descriptions cannot be forged while ordinary alert messages remain supported', () => {
+test('legacy message alerts are server managed while ordinary informational activity remains supported', () => {
   for (const content of ['Tu cuenta fue suspendida.', 'TU CUENTA HA SIDO SUSPENDIDA temporalmente.',
     'Tu cuenta ha sido habilitada nuevamente.', 'Tu cuenta fue habilitada.', 'Cuenta habilitada nuevamente']) {
     assert.equal(isServerManagedNotification({ type: 'message', content }), true)
   }
-  assert.equal(isServerManagedNotification({ type: 'message', content: 'Te invitó a un grupo' }), false)
+  assert.equal(isServerManagedNotification({ type: 'message', content: 'Te invitó a un grupo' }), true)
+  assert.equal(isServerManagedNotification({ type: 'activity', content: 'Te invitó a un grupo' }), false)
   assert.equal(isServerManagedNotification({ type: 'follow', content: 'Cuenta fue suspendida' }), false)
 })
 
