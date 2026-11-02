@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.Before
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
@@ -21,6 +22,10 @@ import java.util.UUID
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [25, 34], application = UnitTestApplication::class)
 class LocalNotificationHelperTest {
+    @Before fun allowNotificationsOnTheIsolatedApplication() {
+        shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
+            .grantPermissions(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
     private val context: Context get() = ApplicationProvider.getApplicationContext()
     private val manager: NotificationManager get() = context.getSystemService(NotificationManager::class.java)
     private fun account() = NotificationAccountTarget(userId = "owned-${UUID.randomUUID()}")

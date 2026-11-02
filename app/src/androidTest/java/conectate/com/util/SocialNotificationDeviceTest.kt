@@ -79,4 +79,19 @@ class SocialNotificationDeviceTest {
             MessageNotificationFactory.cancelAccount(context, second.userId)
         }
     }
+
+    @Test(timeout = 15_000L) fun anOptionalPhotoCannotRestoreATextAlertAfterItWasRead() {
+        val account = owner()
+        try {
+            val publication = requireNotNull(LocalNotificationHelper(context).showSocialNotification(
+                account, "Comprobación local", "El texto llega primero", "like_post", "fixture-target", notificationId = "photo-fixture"))
+            awaitState("Text must be visible before optional image work") { alerts(account).size == 1 }
+            LocalNotificationHelper(context).clearSocialNotification(account.userId, "photo-fixture")
+            awaitState("Reading the fixture must remove its alert") { alerts(account).isEmpty() }
+            val photo = android.graphics.Bitmap.createBitmap(4, 4, android.graphics.Bitmap.Config.ARGB_8888)
+            assertFalse(MessageNotificationFactory.updateAccountNotificationAvatar(context, publication, photo))
+            Thread.sleep(650L)
+            assertTrue("The photo revived a read notification", alerts(account).isEmpty())
+        } finally { MessageNotificationFactory.cancelAccount(context, account.userId) }
+    }
 }

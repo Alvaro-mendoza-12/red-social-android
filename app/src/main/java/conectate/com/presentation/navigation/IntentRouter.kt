@@ -369,10 +369,11 @@ object IntentRouter {
                 return true
             }
 
-            "notification_digest", "account_suspended", "account_enabled", "admin_access_changed", "admin_access_audit" -> {
+            "notification_digest", "account_suspended", "account_enabled", "admin_access_changed", "admin_access_audit", "system_announcement", "activity", "notification_list" -> {
                 val destination = when (type) {
                     "notification_digest" -> Screen.NotificationSettings.route
                     "admin_access_changed" -> Screen.AdminPanel.route
+                    "system_announcement", "activity", "notification_list" -> Screen.Notifications.route
                     "admin_access_audit" -> (incomingIntent.getStringExtra("target_user_id")
                         ?: incomingIntent.getStringExtra("target_id"))?.takeIf(String::isNotBlank)
                         ?.let(Screen.UserProfile::createRoute) ?: Screen.Notifications.route

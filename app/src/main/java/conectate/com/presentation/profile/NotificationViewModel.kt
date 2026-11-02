@@ -189,7 +189,7 @@ class NotificationViewModel @Inject constructor(
                                 val name = notification.actorName ?: "Alguien"
                                 val contentText = if (notification.content.isNullOrBlank()) typeLabel else notification.content
 
-                                notificationHelper.showSocialNotification(
+                                val publication = notificationHelper.showSocialNotification(
                                     account = conectate.com.util.NotificationAccountTarget(userId = lease.accountId),
                                     title = name,
                                     body = contentText,
@@ -201,6 +201,16 @@ class NotificationViewModel @Inject constructor(
                                     extraData = notification.extraData,
                                     notificationId = notification.id
                                 )
+                                if (publication != null && !notification.actorAvatarUrl.isNullOrBlank()) {
+                                    viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        val bitmap = conectate.com.core.media.NotificationAvatarLoader.load(context, notification.actorAvatarUrl)
+                                            ?: return@launch
+                                        if (lease.isCurrent() && conectate.com.data.local.prefs.AppSettingsPreferences
+                                                .activityNotificationAllowed(context, effectiveType)) {
+                                            conectate.com.util.MessageNotificationFactory.updateAccountNotificationAvatar(context, publication, bitmap)
+                                        }
+                                    }
+                                }
                             }
                         } catch (e: Exception) {
                             android.util.Log.e("NotificationViewModel", "Error showing local notification", e)
