@@ -2439,6 +2439,7 @@ class CommunityRepository @Inject constructor(
                     forwardedFromUserId = forwardedFromUserId,
                     messageId = id,
                     channelId = channelId,
+                    existingMessage = existing?.toDomain(),
                     onQueued = queued
                 ).let { result ->
                     if (result.isFailure || !requireServerAcknowledgement) result else {
@@ -2471,6 +2472,7 @@ class CommunityRepository @Inject constructor(
         forwardedFromUserId: String? = null,
         messageId: String? = null,
         channelId: String? = null,
+        existingMessage: CommunityMessage? = null,
         onQueued: suspend () -> Unit = {}
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
@@ -2538,7 +2540,7 @@ class CommunityRepository @Inject constructor(
             
             val msgId = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
                 ?: UUID.randomUUID().toString().lowercase()
-            var now = java.time.Instant.now().toString()
+            val now = existingMessage?.created_at?.takeIf { it.isNotBlank() } ?: java.time.Instant.now().toString()
 
             var msg = CommunityMessage(
                 id = msgId,
@@ -3350,29 +3352,35 @@ class CommunityRepository @Inject constructor(
     suspend fun forwardCommunityMessageToCommunities(
         source: CommunityMessage,
         targetCommunityIds: List<String>
-    ): Result<Int> = withContext(Dispatchers.IO) {
-        CollectionMessageForwardingSupport.forwardMessage(
-            sourceDeletedForAll = source.deleted_for_all,
-            sourceScopeId = source.community_id,
-            targetScopeIds = targetCommunityIds,
-            maxTargetsPerBatch = maxForwardTargetsPerBatch,
-            emptySelectionMessage = "Selecciona al menos una comunidad",
-            batchLimitMessage = "Puedes reenviar a un máximo de $maxForwardTargetsPerBatch comunidades por vez",
-            totalFailureMessage = "No se pudo reenviar"
-        ) { targetId ->
-            sendCommunityMessage(
-                communityId = targetId,
-                content = if (source.content.isNotBlank()) source.content else "Mensaje reenviado",
-                contentType = source.content_type,
-                mediaUrl = source.media_url,
-                isForwarded = true,
-                forwardedFromMessageId = source.id,
-                forwardedFromUserId = source.sender_id
-            )
+    ): Result<Int> {
+        val accountLease = authService.captureAccountLease()
+        return withContext(Dispatchers.IO) {
+            accountLease.requireCurrent()
+            CollectionMessageForwardingSupport.forwardMessage(
+                sourceDeletedForAll = source.deleted_for_all,
+                sourceScopeId = source.community_id,
+                targetScopeIds = targetCommunityIds,
+                maxTargetsPerBatch = maxForwardTargetsPerBatch,
+                emptySelectionMessage = "Selecciona al menos una comunidad",
+                batchLimitMessage = "Puedes reenviar a un máximo de $maxForwardTargetsPerBatch comunidades por vez",
+                totalFailureMessage = "No se pudo reenviar",
+                sourceContentType = source.content_type,
+                sourceStatus = source.status,
+                sourceMediaUrl = source.media_url,
+            ) { targetId ->
+                sendCommunityMessage(
+                    accountLease = accountLease,
+                    communityId = targetId,
+                    content = if (source.content.isNotBlank()) source.content else "Mensaje reenviado",
+                    contentType = source.content_type,
+                    mediaUrl = source.media_url,
+                    isForwarded = true,
+                    forwardedFromMessageId = source.id,
+                    forwardedFromUserId = source.sender_id
+                )
+            }.also { accountLease.requireCurrent() }
         }
     }
-
-
 
     suspend fun getCommunityMembers(communityId: String): Result<List<CommunityMember>> = withContext(Dispatchers.IO) {
         val cleanCommunityId = communityId.trim().lowercase()

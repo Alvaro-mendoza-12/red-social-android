@@ -54,7 +54,7 @@ class IncomingShareParsingTest {
     @Test fun restoringACapturedIntentPreservesItsIdentityAndDocumentMetadata() {
         val original = IncomingSharePayload(items = listOf(IncomingSharedItem(Uri.parse("file:///sample.pptx"),
             "application/vnd.openxmlformats-officedocument.presentationml.presentation", "sample.pptx", 10_000)))
-        val result = parseIncomingShareIntent(context, original.toCapturedShareIntent())!!
+        val result = parseIncomingShareIntent(context, original.toCapturedShareIntent(), original.id)!!
         assertEquals(original.id, result.id)
         assertEquals(original.items, result.items)
         assertEquals(original.id, capturedIncomingShareId(original.toCapturedShareIntent()))
@@ -70,6 +70,8 @@ class IncomingShareParsingTest {
         val files = ArrayList((0 until 25).map { Uri.parse("content://audit.share/item/$it") })
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, files)
             .putExtra("conectate.capture.failed_count", Int.MAX_VALUE)
-        assertEquals(Int.MAX_VALUE, parseIncomingShareIntent(context, intent)?.failedItemCount)
+        val id = java.util.UUID.randomUUID().toString()
+        intent.putExtra("conectate.capture.share_id", id)
+        assertEquals(Int.MAX_VALUE, parseIncomingShareIntent(context, intent, id)?.failedItemCount)
     }
 }

@@ -121,7 +121,9 @@ fun UniversalShareHost(
     }
     val isRunning = actionState is ShareActionState.Running || actionState is ShareActionState.Queued
     val retryPending = (actionState as? ShareActionState.Failed)?.retryPending == true
-    val canShareContent = internalContent || forwardRequest != null || incomingShare?.hasContent == true
+    val textError = if (forwardRequest == null) sharedTextError(caption, internalContent) else null
+    val canShareContent = internalContent || forwardRequest != null ||
+        incomingShare?.let { it.items.isNotEmpty() || caption.isNotBlank() } == true
     val preview = remember(incomingShare, forwardRequest, videoRequest, postRequest) {
         when {
             postRequest != null -> postRequest.post.content.take(100).ifBlank { "Publicación de Novvin" }
@@ -176,15 +178,17 @@ fun UniversalShareHost(
                     }
                 }
 
-                if (incomingShare?.items?.isNotEmpty() == true || internalContent) {
+                if (incomingShare != null || internalContent) {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = caption,
-                        onValueChange = { caption = it.take(800) },
-                        label = { Text("Comentario (opcional)") },
+                        onValueChange = { caption = it },
+                        label = { Text(if (incomingShare?.isTextOnly == true) "Texto para compartir" else "Comentario (opcional)") },
                         modifier = Modifier.fillMaxWidth().testTag("shared_attachment_caption"),
                         maxLines = 3,
                         enabled = !isRunning && !retryPending,
+                        isError = textError != null,
+                        supportingText = textError?.let { message -> { Text(message) } },
                     )
                 }
                 Spacer(Modifier.height(10.dp))
@@ -280,7 +284,7 @@ fun UniversalShareHost(
                             viewModel.sendIncomingShare(activeKey, incomingShare, selectedKeys, caption)
                         }
                     },
-                    enabled = canShareContent && (retryPending || selectedKeys.isNotEmpty()) && !isRunning,
+                    enabled = canShareContent && (retryPending || selectedKeys.isNotEmpty() && textError == null) && !isRunning,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp)

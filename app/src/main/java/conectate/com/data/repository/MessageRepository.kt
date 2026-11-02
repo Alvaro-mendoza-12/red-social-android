@@ -2515,7 +2515,8 @@ class MessageRepository @Inject constructor(
                 return@withMessage Result.success(cached.toDomain())
             }
             sendMessageInternal(session, chatId, content, replyToId, mediaUri, mediaType, id, existingMediaUrl,
-                isForwarded, forwardedFromMessageId, forwardedFromUserId, allowRapidMediaBatch, queued)
+                isForwarded, forwardedFromMessageId, forwardedFromUserId, allowRapidMediaBatch,
+                existingMessage = cached?.toDomain(), onQueued = queued)
         }
     }
 
@@ -2532,6 +2533,7 @@ class MessageRepository @Inject constructor(
         forwardedFromMessageId: String? = null,
         forwardedFromUserId: String? = null,
         allowRapidMediaBatch: Boolean = false,
+        existingMessage: Message? = null,
         onQueued: suspend () -> Unit = {}
     ): Result<Message> {
         // Fix: Define ID outside try block so it's visible in catch block
@@ -2621,10 +2623,11 @@ class MessageRepository @Inject constructor(
                 }
             }
 
-            var mediaUrl: String? = existingMediaUrl
-            var uploadedMediaSize = 0L
+            val uploaded = conectate.com.data.repository.message.uploadedMessageForRetry(existingMessage, mediaType)
+            var mediaUrl: String? = uploaded?.media_url ?: existingMediaUrl
+            var uploadedMediaSize = uploaded?.media_size ?: 0L
             var pendingMediaUri: Uri? = null
-            if (mediaUri != null) {
+            if (mediaUri != null && uploaded == null) {
                 val pendingMedia = persistPendingChatMedia(
                     accountId = userId,
                     requireCurrent = ::requireCurrentSession,
@@ -2647,6 +2650,7 @@ class MessageRepository @Inject constructor(
                 content_type = mediaType,
                 media_url = mediaUrl,
                 media_size = uploadedMediaSize,
+                thumbnail_url = uploaded?.thumbnail_url,
                 status = "sending", // EXPLICIT STATUS FOR OPTIMISTIC VIEW
                 // SANITIZATION: If replying to a local FCM placeholder, try to resolve it to a Realtime UUID.
                 // If not found in map, strip it to prevent HTTP 400.
@@ -2658,7 +2662,7 @@ class MessageRepository @Inject constructor(
                 is_forwarded = isForwarded,
                 forwarded_from_message_id = forwardedFromMessageId,
                 forwarded_from_user_id = forwardedFromUserId,
-                created_at = java.time.Instant.now().toString(),
+                created_at = existingMessage?.created_at?.takeIf { it.isNotBlank() } ?: java.time.Instant.now().toString(),
                 reply_to = if (replyToId != null) {
                     _activeChatMessages[cleanId]?.value?.find { it.id == replyToId }
                 } else null
@@ -4511,54 +4515,60 @@ class MessageRepository @Inject constructor(
     suspend fun forwardMessageToChats(
         source: Message,
         targetChatIds: List<String>
-    ): Result<Int> = withContext(Dispatchers.IO) {
-        if (source.deleted_for_all) {
-            return@withContext Result.failure(Exception("No se puede reenviar un mensaje eliminado"))
-        }
+    ): Result<Int> {
+        val accountLease = authService.captureAccountLease()
+        return withContext(Dispatchers.IO) {
+            accountLease.requireCurrent()
+            conectate.com.core.messaging.messageForwardingError(source.deleted_for_all, source.content_type, source.status, source.media_url)
+                ?.let { return@withContext Result.failure(IllegalStateException(it)) }
 
-        val uniqueTargets = targetChatIds
-            .map { it.trim().lowercase() }
-            .filter { it.isNotBlank() }
-            .distinct()
+            val uniqueTargets = targetChatIds
+                .map { it.trim().lowercase() }
+                .filter { it.isNotBlank() }
+                .distinct()
 
-        if (uniqueTargets.isEmpty()) {
-            return@withContext Result.failure(Exception("Selecciona al menos un chat"))
-        }
-        if (uniqueTargets.size > MAX_FORWARD_TARGETS_PER_BATCH) {
-            return@withContext Result.failure(Exception("Puedes reenviar a un máximo de $MAX_FORWARD_TARGETS_PER_BATCH chats por vez"))
-        }
-
-        var successCount = 0
-        val errors = mutableListOf<String>()
-
-        uniqueTargets.forEach { targetChatId ->
-            var content = buildPreviewForContentType(
-                contentType = source.content_type,
-                fallbackContent = source.content.ifBlank { "Mensaje reenviado" }
-            )
-
-            val sendResult = sendMessage(
-                chatId = targetChatId,
-                content = content,
-                mediaType = source.content_type,
-                existingMediaUrl = source.media_url,
-                isForwarded = true,
-                forwardedFromMessageId = source.id,
-                forwardedFromUserId = source.sender_id
-            )
-
-            if (sendResult.isSuccess) {
-                successCount += 1
-            } else {
-                errors += (sendResult.exceptionOrNull()?.message ?: "Error desconocido")
+            if (uniqueTargets.isEmpty()) {
+                return@withContext Result.failure(Exception("Selecciona al menos un chat"))
             }
-        }
+            if (uniqueTargets.size > MAX_FORWARD_TARGETS_PER_BATCH) {
+                return@withContext Result.failure(Exception("Puedes reenviar a un máximo de $MAX_FORWARD_TARGETS_PER_BATCH chats por vez"))
+            }
 
-        if (successCount == 0) {
-            return@withContext Result.failure(Exception(errors.firstOrNull() ?: "No se pudo reenviar"))
-        }
+            var successCount = 0
+            val errors = mutableListOf<String>()
 
-        Result.success(successCount)
+            uniqueTargets.forEach { targetChatId ->
+                var content = buildPreviewForContentType(
+                    contentType = source.content_type,
+                    fallbackContent = source.content.ifBlank { "Mensaje reenviado" }
+                )
+
+                val sendResult = sendMessage(
+                    accountLease = accountLease,
+                    chatId = targetChatId,
+                    content = content,
+                    mediaType = source.content_type,
+                    existingMediaUrl = source.media_url,
+                    isForwarded = true,
+                    forwardedFromMessageId = source.id,
+                    forwardedFromUserId = source.sender_id
+                )
+
+                sendResult.exceptionOrNull()?.let { if (it is CancellationException) throw it }
+                accountLease.requireCurrent()
+                if (sendResult.isSuccess) {
+                    successCount += 1
+                } else {
+                    errors += (sendResult.exceptionOrNull()?.message ?: "Error desconocido")
+                }
+            }
+
+            if (successCount == 0) {
+                return@withContext Result.failure(Exception(errors.firstOrNull() ?: "No se pudo reenviar"))
+            }
+
+            Result.success(successCount)
+        }
     }
 
     private fun toggleReactionMap(

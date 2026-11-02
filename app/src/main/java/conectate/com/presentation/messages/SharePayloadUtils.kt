@@ -64,8 +64,11 @@ fun hasCapturedIncomingShare(intent: Intent?): Boolean {
     return capturedIncomingShareId(intent) != null
 }
 
-internal fun capturedIncomingShareId(intent: Intent?): String? =
-    intent?.getStringExtra(EXTRA_CAPTURED_SHARE_ID)?.trim()?.takeIf { it.isNotBlank() }
+internal fun capturedIncomingShareId(intent: Intent?): String? = try {
+    intent?.getStringExtra(EXTRA_CAPTURED_SHARE_ID)?.trim()?.takeIf {
+        UUID.fromString(it).toString().equals(it, ignoreCase = true)
+    }?.lowercase()
+} catch (_: RuntimeException) { null }
 
 fun incomingShareText(intent: Intent): String? {
     val explicit = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
@@ -99,7 +102,7 @@ fun incomingShareUris(intent: Intent): List<Uri> {
     }.distinctBy(Uri::toString)
 }
 
-fun parseIncomingShareIntent(context: Context, intent: Intent): IncomingSharePayload? {
+fun parseIncomingShareIntent(context: Context, intent: Intent, trustedCaptureId: String? = null): IncomingSharePayload? {
     if (!isIncomingShareIntent(intent)) return null
     val uris = incomingShareUris(intent)
     val text = incomingShareText(intent)
@@ -107,14 +110,20 @@ fun parseIncomingShareIntent(context: Context, intent: Intent): IncomingSharePay
         intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString(),
         intent.getCharSequenceExtra(Intent.EXTRA_TITLE)?.toString()
     ).firstOrNull { !it.isNullOrBlank() }?.trim()?.take(500)
-    val capturedId = capturedIncomingShareId(intent)
+    // Extras supplied by another app are not proof that a private capture belongs to this task.
+    val capturedId = capturedIncomingShareId(intent)?.takeIf { it == trustedCaptureId }
     if (uris.isEmpty() && text.isNullOrBlank() && subject.isNullOrBlank() && capturedId == null) return null
 
-    val capturedMimeTypes = intent.getStringArrayListExtra(EXTRA_CAPTURED_SHARE_MIME_TYPES) ?: emptyList()
-    val capturedDisplayNames = intent.getStringArrayListExtra(EXTRA_CAPTURED_SHARE_DISPLAY_NAMES) ?: emptyList()
-    val capturedSizes = intent.getLongArrayExtra(EXTRA_CAPTURED_SHARE_SIZES) ?: LongArray(0)
+    val capturedMimeTypes = if (capturedId != null) intent.getStringArrayListExtra(EXTRA_CAPTURED_SHARE_MIME_TYPES).orEmpty() else emptyList()
+    val capturedDisplayNames = if (capturedId != null) intent.getStringArrayListExtra(EXTRA_CAPTURED_SHARE_DISPLAY_NAMES).orEmpty() else emptyList()
+    val capturedSizes = if (capturedId != null) intent.getLongArrayExtra(EXTRA_CAPTURED_SHARE_SIZES) ?: LongArray(0) else LongArray(0)
     val fallbackMime = canonicalizeMediaContentType(intent.type)
-    val items = uris.take(MAX_INCOMING_SHARE_ITEMS).mapIndexed { index, uri ->
+    var rejectedSources = 0
+    val items = uris.take(MAX_INCOMING_SHARE_ITEMS).mapIndexedNotNull { index, uri ->
+        if (!mayReadIncomingShareSource(context, uri, capturedId)) {
+            rejectedSources++
+            return@mapIndexedNotNull null
+        }
         val providerMime = canonicalizeMediaContentType(capturedMimeTypes.getOrNull(index))
             ?: canonicalizeMediaContentType(runCatching { context.contentResolver.getType(uri) }.getOrNull())
             ?: fallbackMime
@@ -141,13 +150,13 @@ fun parseIncomingShareIntent(context: Context, intent: Intent): IncomingSharePay
         text = text,
         subject = subject,
         items = items,
-        receivedAtMs = intent.getLongExtra(
+        receivedAtMs = if (capturedId != null) intent.getLongExtra(
             EXTRA_CAPTURED_SHARE_RECEIVED_AT,
             System.currentTimeMillis()
-        ),
-        failedItemCount = (intent.getIntExtra(EXTRA_CAPTURED_SHARE_FAILED_COUNT, 0).coerceAtLeast(0).toLong() +
-            (uris.size - MAX_INCOMING_SHARE_ITEMS).coerceAtLeast(0)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-        captureError = intent.getStringExtra(EXTRA_CAPTURED_SHARE_ERROR)?.takeIf { it.isNotBlank() }
+        ) else System.currentTimeMillis(),
+        failedItemCount = ((if (capturedId != null) intent.getIntExtra(EXTRA_CAPTURED_SHARE_FAILED_COUNT, 0).coerceAtLeast(0).toLong() else 0L) +
+            rejectedSources + (uris.size - MAX_INCOMING_SHARE_ITEMS).coerceAtLeast(0)).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+        captureError = if (capturedId != null) intent.getStringExtra(EXTRA_CAPTURED_SHARE_ERROR)?.takeIf { it.isNotBlank() } else null
     )
 }
 
@@ -186,6 +195,7 @@ fun takeIncomingSharePersistablePermissions(context: Context, intent: Intent) {
     incomingShareUris(intent)
         .take(MAX_INCOMING_SHARE_ITEMS)
         .filter { it.scheme.equals("content", ignoreCase = true) }
+        .filter { mayReadIncomingShareSource(context, it) }
         .forEach { uri ->
             runCatching {
                 context.contentResolver.takePersistableUriPermission(

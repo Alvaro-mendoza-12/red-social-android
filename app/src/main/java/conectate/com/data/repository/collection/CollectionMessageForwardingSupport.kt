@@ -1,5 +1,7 @@
 package conectate.com.data.repository.collection
 
+import kotlinx.coroutines.ensureActive
+
 internal object CollectionMessageForwardingSupport {
     suspend fun forwardMessage(
         sourceDeletedForAll: Boolean,
@@ -9,11 +11,13 @@ internal object CollectionMessageForwardingSupport {
         emptySelectionMessage: String,
         batchLimitMessage: String,
         totalFailureMessage: String,
+        sourceContentType: String = "text",
+        sourceStatus: String = "sent",
+        sourceMediaUrl: String? = null,
         sendToTarget: suspend (String) -> Result<Unit>
     ): Result<Int> {
-        if (sourceDeletedForAll) {
-            return Result.failure(Exception("No se puede reenviar un mensaje eliminado"))
-        }
+        conectate.com.core.messaging.messageForwardingError(sourceDeletedForAll, sourceContentType, sourceStatus, sourceMediaUrl)
+            ?.let { return Result.failure(IllegalStateException(it)) }
 
         val cleanSourceScopeId = sourceScopeId.trim().lowercase()
         val targets = targetScopeIds
@@ -29,7 +33,10 @@ internal object CollectionMessageForwardingSupport {
 
         var success = 0
         targets.forEach { targetId ->
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
             val result = sendToTarget(targetId)
+            result.exceptionOrNull()?.let { if (it is kotlinx.coroutines.CancellationException) throw it }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
             if (result.isSuccess) success++
         }
 

@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val PROCESS_INSTANCE_KEY = "novvin_process_instance"
         private const val SHARE_CONSUMED_KEY = "novvin_incoming_share_consumed"
+        private const val NAVIGATION_INTENT_ID_KEY = "novvin_navigation_intent_id"
         private const val SHARE_REQUEST_ID_KEY = "novvin_incoming_share_request_id"
         private const val SHARE_PAYLOAD_ID_KEY = "novvin_incoming_share_payload_id"
         private val processInstanceId = java.util.UUID.randomUUID().toString()
@@ -50,6 +51,7 @@ class MainActivity : ComponentActivity() {
         super.attachBaseContext(conectate.com.data.local.prefs.AppLocalePreferences.wrap(newBase))
     }
 
+    private val navigationIntentState = androidx.compose.runtime.mutableStateOf(java.util.UUID.randomUUID().toString())
     private val intentState = androidx.compose.runtime.mutableStateOf<Intent?>(null)
     private val incomingShareState = androidx.compose.runtime.mutableStateOf<IncomingShareDelivery<IncomingSharePayload>?>(null)
     private val incomingShareDeliveries = IncomingShareDeliveryGate<IncomingSharePayload>()
@@ -113,7 +115,8 @@ class MainActivity : ComponentActivity() {
         )
         acceptIncomingIntent(if (replayedShare) {
             Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java)
-        } else restoredIntent, savedInstanceState?.getString(SHARE_PAYLOAD_ID_KEY), savedInstanceState?.getString(SHARE_REQUEST_ID_KEY))
+        } else restoredIntent, savedInstanceState?.getString(SHARE_PAYLOAD_ID_KEY), savedInstanceState?.getString(SHARE_REQUEST_ID_KEY),
+            savedInstanceState?.takeIf { it.getString(PROCESS_INSTANCE_KEY) == processInstanceId }?.getString(NAVIGATION_INTENT_ID_KEY))
 
         lifecycleScope.launch {
             moderationNoticeCenter.notices.collect { notice ->
@@ -135,6 +138,7 @@ class MainActivity : ComponentActivity() {
             val sensitiveContentMode by contentSafetyPreferences.sensitiveContentMode.collectAsStateWithLifecycle()
             val chatAccent by messagesPreferences.chatAccent.collectAsStateWithLifecycle()
             val chatBackground by messagesPreferences.chatBackground.collectAsStateWithLifecycle()
+            val navigationIntentId by navigationIntentState
             val currentIntent by intentState
             val incomingDelivery by incomingShareState
             val incomingShare = incomingDelivery?.payload
@@ -151,6 +155,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     MainActivityContent(
                         currentIntent = currentIntent,
+                        navigationIntentId = navigationIntentId,
                         onIntentConsumed = { consumeIncomingIntent(currentIntent) },
                         incomingShare = incomingShare,
                         incomingShareRequestId = incomingDelivery?.requestId,
@@ -175,6 +180,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putString(PROCESS_INSTANCE_KEY, processInstanceId)
+        outState.putString(NAVIGATION_INTENT_ID_KEY, navigationIntentState.value)
         outState.putString(SHARE_REQUEST_ID_KEY, incomingShareState.value?.requestId)
         outState.putString(SHARE_PAYLOAD_ID_KEY, incomingShareState.value?.payload?.id)
         outState.putBoolean(SHARE_CONSUMED_KEY, !isIncomingShareIntent(intent) && incomingShareState.value == null)
@@ -198,7 +204,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun acceptIncomingIntent(incomingIntent: Intent, savedPayloadId: String? = null, savedRequestId: String? = null) {
+    private fun acceptIncomingIntent(incomingIntent: Intent, savedPayloadId: String? = null, savedRequestId: String? = null,
+        restoredNavigationId: String? = null) {
+        navigationIntentState.value = restoredNavigationId?.takeIf { it.isNotBlank() } ?: java.util.UUID.randomUUID().toString()
         // A new link/notification also supersedes an unfinished file capture.
         // Otherwise that old capture can replace the new destination when it finishes.
         val generation = incomingShareDeliveries.beginIntent()
@@ -216,7 +224,10 @@ class MainActivity : ComponentActivity() {
         val captureJob = lifecycleScope.launch {
             val parsed = try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    parseIncomingShareIntent(this@MainActivity, incomingIntent)?.also {
+                    val trustedCaptureId = capturedIncomingShareId(incomingIntent)?.takeIf {
+                        restoredShareRequestId(it, savedPayloadId, savedRequestId) != null
+                    }
+                    parseIncomingShareIntent(this@MainActivity, incomingIntent, trustedCaptureId)?.also {
                         takeIncomingSharePersistablePermissions(this@MainActivity, incomingIntent)
                     }
                 }
@@ -224,12 +235,16 @@ class MainActivity : ComponentActivity() {
             catch (error: Exception) {
                 if (incomingShareDeliveries.isCurrentCapture(generation)) {
                     android.util.Log.w("MainActivity", "Cannot read incoming share", error)
-                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo preparar lo compartido. Vuelve a adjuntarlo.")
                 }
                 null
             }
             if (parsed == null) {
-                if (incomingShareDeliveries.isCurrentCapture(generation)) intentState.value = incomingIntent
+                if (incomingShareDeliveries.isCurrentCapture(generation)) {
+                    // Never send an unreadable parcel on to navigation to parse it again.
+                    setIntent(pendingShareIntent ?: Intent(Intent.ACTION_MAIN).setClass(this@MainActivity, MainActivity::class.java))
+                    intentState.value = null
+                    conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo preparar lo compartido. Vuelve a adjuntarlo.")
+                }
                 return@launch
             }
 

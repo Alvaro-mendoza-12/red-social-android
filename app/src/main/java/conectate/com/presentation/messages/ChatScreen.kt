@@ -609,28 +609,30 @@ fun ChatScreen(
                         Text("Reaccionar")
                     }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                selectedMessage?.let { message ->
-                                    if (universalForwardCoordinator != null) {
-                                        universalForwardCoordinator.open(
-                                            candidates = listOf(message.toForwardMessagePayload()),
-                                            initiallySelectedIds = setOf(message.id)
-                                        )
-                                        viewModel.dismissMessageActions()
-                                    } else {
-                                        viewModel.openForwardPicker(message)
+                    if (selectedMessage?.toForwardMessagePayload()?.isForwardable == true) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedMessage?.let { message ->
+                                        if (universalForwardCoordinator != null) {
+                                            universalForwardCoordinator.openForUi(
+                                                candidates = listOf(message.toForwardMessagePayload()),
+                                                initiallySelectedIds = setOf(message.id)
+                                            )
+                                            viewModel.dismissMessageActions()
+                                        } else {
+                                            viewModel.openForwardPicker(message)
+                                        }
                                     }
                                 }
-                            }
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text("Reenviar")
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text("Reenviar")
+                        }
                     }
                 }
 
@@ -906,7 +908,7 @@ fun ChatScreen(
                     onForward = {
                         val selected = messages.filter { it.id in selectedMessages && !it.deleted_for_all }
                         if (universalForwardCoordinator != null) {
-                            universalForwardCoordinator.open(candidates = selected.map { it.toForwardMessagePayload() }, initiallySelectedIds = selected.map { it.id }.toSet())
+                            universalForwardCoordinator.openForUi(candidates = selected.map { it.toForwardMessagePayload() }, initiallySelectedIds = selected.map { it.id }.toSet())
                             viewModel.toggleSelectionMode()
                         }
                     },

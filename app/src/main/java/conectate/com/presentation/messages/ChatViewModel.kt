@@ -1933,7 +1933,10 @@ class ChatViewModel @Inject constructor(
     }
 
     fun openForwardPicker(message: Message) {
-        if (message.deleted_for_all) return
+        if (!message.toForwardMessagePayload().isForwardable) {
+            conectate.com.presentation.common.AppFeedbackBus.showError(FORWARD_UNAVAILABLE_MESSAGE)
+            return
+        }
         _forwardPickerMessage.value = message
         _forwardUserSearchQuery.value = ""
         _forwardUserTargets.value = emptyList()

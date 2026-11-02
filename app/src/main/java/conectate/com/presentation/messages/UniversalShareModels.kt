@@ -34,8 +34,12 @@ data class ForwardMessagePayload(
     val contentType: String,
     val mediaUrl: String?,
     val timestampMs: Long,
-    val deletedForAll: Boolean
+    val deletedForAll: Boolean,
+    val status: String = "sent",
 ) {
+    val isForwardable: Boolean
+        get() = conectate.com.core.messaging.messageForwardingError(deletedForAll, contentType, status, mediaUrl) == null
+
     val preview: String
         get() = content.trim().ifBlank {
             when (contentType.trim().lowercase()) {
@@ -59,10 +63,15 @@ data class UniversalForwardRequest(
 data class InternalVideoShareRequest(val video: conectate.com.data.model.Video, val requestId: String = UUID.randomUUID().toString())
 data class InternalPostShareRequest(val post: conectate.com.data.model.Post, val requestId: String = UUID.randomUUID().toString())
 
+internal data class ShareNavigationOrigin(val intentId: String?, val entryId: String?)
+
 class UniversalForwardCoordinator internal constructor(
     private val captureAccountLease: (() -> conectate.com.data.supabase.AuthSessionLease)? = null,
 ) {
     private var accountLease: conectate.com.data.supabase.AuthSessionLease? = null
+    private var navigationOrigin: () -> ShareNavigationOrigin? = { null }
+    private var openedAt: ShareNavigationOrigin? = null
+    internal fun bindNavigationOrigin(provider: () -> ShareNavigationOrigin?) { navigationOrigin = provider }
     private var activePost by mutableStateOf<InternalPostShareRequest?>(null)
     private var activeVideo by mutableStateOf<InternalVideoShareRequest?>(null)
     private var activeForward by mutableStateOf<UniversalForwardRequest?>(null)
@@ -75,6 +84,7 @@ class UniversalForwardCoordinator internal constructor(
     private fun begin(): Boolean {
         dismiss()
         accountLease = captureAccountLease?.invoke()
+        openedAt = navigationOrigin()
         return isCurrent()
     }
 
@@ -84,14 +94,16 @@ class UniversalForwardCoordinator internal constructor(
     fun openVideo(video: conectate.com.data.model.Video) {
         if (begin()) activeVideo = InternalVideoShareRequest(video)
     }
-    fun open(candidates: List<ForwardMessagePayload>, initiallySelectedIds: Set<String>) {
-        val eligible = candidates.asSequence().filterNot(ForwardMessagePayload::deletedForAll)
+    fun open(candidates: List<ForwardMessagePayload>, initiallySelectedIds: Set<String>): Boolean {
+        val eligible = candidates.asSequence().filter(ForwardMessagePayload::isForwardable)
             .distinctBy(ForwardMessagePayload::id).sortedBy(ForwardMessagePayload::timestampMs)
             .take(MAX_FORWARD_CANDIDATES).toList()
-        if (eligible.isEmpty()) return
+        if (eligible.isEmpty()) return false
         val eligibleIds = eligible.mapTo(mutableSetOf(), ForwardMessagePayload::id)
         val initial = initiallySelectedIds.intersect(eligibleIds).ifEmpty { setOf(eligible.last().id) }
-        if (begin()) activeForward = UniversalForwardRequest(candidates = eligible, initiallySelectedIds = initial)
+        if (!begin()) return false
+        activeForward = UniversalForwardRequest(candidates = eligible, initiallySelectedIds = initial)
+        return true
     }
     fun validateSession() { if (!isCurrent()) dismiss() }
     fun dismiss() {
@@ -99,11 +111,27 @@ class UniversalForwardCoordinator internal constructor(
         activeVideo = null
         activePost = null
         accountLease = null
+        openedAt = null
     }
     fun dismiss(requestId: String): ShareDismissal {
         if (activeRequestId != requestId) return ShareDismissal.IGNORED
+        val mayNavigate = openedAt == navigationOrigin()
         dismiss()
-        return ShareDismissal.CURRENT
+        return if (mayNavigate) ShareDismissal.CURRENT else ShareDismissal.SUPERSEDED
+    }
+}
+
+internal const val FORWARD_UNAVAILABLE_MESSAGE = "No se pueden reenviar mensajes eliminados, pendientes de envío o de una sola visualización."
+
+internal fun UniversalForwardCoordinator.openForUi(candidates: List<ForwardMessagePayload>, initiallySelectedIds: Set<String>) {
+    if (candidates.none(ForwardMessagePayload::isForwardable)) {
+        conectate.com.presentation.common.AppFeedbackBus.showError(FORWARD_UNAVAILABLE_MESSAGE)
+        return
+    }
+    if (!open(candidates, initiallySelectedIds)) {
+        conectate.com.presentation.common.AppFeedbackBus.showError("La sesión cambió. Vuelve a abrir la conversación.")
+    } else if (candidates.any { !it.isForwardable }) {
+        conectate.com.presentation.common.AppFeedbackBus.show("Se omitieron los mensajes que no admiten reenvíos.")
     }
 }
 
@@ -116,7 +144,8 @@ fun Message.toForwardMessagePayload(): ForwardMessagePayload = ForwardMessagePay
     contentType = content_type,
     mediaUrl = media_url,
     timestampMs = timestampMillis,
-    deletedForAll = deleted_for_all
+    deletedForAll = deleted_for_all,
+    status = status,
 )
 
 fun GroupMessage.toForwardMessagePayload(): ForwardMessagePayload = ForwardMessagePayload(
@@ -126,7 +155,8 @@ fun GroupMessage.toForwardMessagePayload(): ForwardMessagePayload = ForwardMessa
     contentType = content_type,
     mediaUrl = media_url,
     timestampMs = timestampMillis,
-    deletedForAll = deleted_for_all
+    deletedForAll = deleted_for_all,
+    status = status,
 )
 
 fun CommunityMessage.toForwardMessagePayload(): ForwardMessagePayload = ForwardMessagePayload(
@@ -136,7 +166,8 @@ fun CommunityMessage.toForwardMessagePayload(): ForwardMessagePayload = ForwardM
     contentType = content_type,
     mediaUrl = media_url,
     timestampMs = timestampMillis,
-    deletedForAll = deleted_for_all
+    deletedForAll = deleted_for_all,
+    status = status,
 )
 
 internal fun validateForwardSelection(

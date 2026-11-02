@@ -1563,6 +1563,7 @@ class GroupRepository @Inject constructor(
                     forwardedFromMessageId = forwardedFromMessageId,
                     forwardedFromUserId = forwardedFromUserId,
                     messageId = id,
+                    existingMessage = existing?.toDomain(),
                     onQueued = queued
                 ).let { result ->
                     if (result.isFailure || !requireServerAcknowledgement) result else {
@@ -1594,6 +1595,7 @@ class GroupRepository @Inject constructor(
         forwardedFromMessageId: String? = null,
         forwardedFromUserId: String? = null,
         messageId: String? = null,
+        existingMessage: GroupMessage? = null,
         onQueued: suspend () -> Unit = {}
     ): Result<Unit> = withContext(Dispatchers.IO) {
         val startedAt = System.currentTimeMillis()
@@ -1639,7 +1641,7 @@ class GroupRepository @Inject constructor(
             
             var msgId = messageId?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
                 ?: java.util.UUID.randomUUID().toString()
-            var now = java.time.Instant.now().toString()
+            val now = existingMessage?.created_at?.takeIf { it.isNotBlank() } ?: java.time.Instant.now().toString()
             
             var msg = GroupMessage(
                 id = msgId,
@@ -2253,25 +2255,33 @@ class GroupRepository @Inject constructor(
     suspend fun forwardGroupMessageToGroups(
         source: GroupMessage,
         targetGroupIds: List<String>
-    ): Result<Int> = withContext(Dispatchers.IO) {
-        CollectionMessageForwardingSupport.forwardMessage(
-            sourceDeletedForAll = source.deleted_for_all,
-            sourceScopeId = source.group_id,
-            targetScopeIds = targetGroupIds,
-            maxTargetsPerBatch = maxForwardTargetsPerBatch,
-            emptySelectionMessage = "Selecciona al menos un grupo",
-            batchLimitMessage = "Puedes reenviar a un máximo de $maxForwardTargetsPerBatch grupos por vez",
-            totalFailureMessage = "No se pudo reenviar"
-        ) { targetId ->
-            sendGroupMessage(
-                groupId = targetId,
-                content = if (source.content.isNotBlank()) source.content else "Mensaje reenviado",
-                contentType = source.content_type,
-                mediaUrl = source.media_url,
-                isForwarded = true,
-                forwardedFromMessageId = source.id,
-                forwardedFromUserId = source.sender_id
-            )
+    ): Result<Int> {
+        val accountLease = authService.captureAccountLease()
+        return withContext(Dispatchers.IO) {
+            accountLease.requireCurrent()
+            CollectionMessageForwardingSupport.forwardMessage(
+                sourceDeletedForAll = source.deleted_for_all,
+                sourceScopeId = source.group_id,
+                targetScopeIds = targetGroupIds,
+                maxTargetsPerBatch = maxForwardTargetsPerBatch,
+                emptySelectionMessage = "Selecciona al menos un grupo",
+                batchLimitMessage = "Puedes reenviar a un máximo de $maxForwardTargetsPerBatch grupos por vez",
+                totalFailureMessage = "No se pudo reenviar",
+                sourceContentType = source.content_type,
+                sourceStatus = source.status,
+                sourceMediaUrl = source.media_url,
+            ) { targetId ->
+                sendGroupMessage(
+                    accountLease = accountLease,
+                    groupId = targetId,
+                    content = if (source.content.isNotBlank()) source.content else "Mensaje reenviado",
+                    contentType = source.content_type,
+                    mediaUrl = source.media_url,
+                    isForwarded = true,
+                    forwardedFromMessageId = source.id,
+                    forwardedFromUserId = source.sender_id
+                )
+            }.also { accountLease.requireCurrent() }
         }
     }
 
