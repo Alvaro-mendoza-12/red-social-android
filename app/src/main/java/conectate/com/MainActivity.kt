@@ -138,6 +138,8 @@ class MainActivity : ComponentActivity() {
             val sensitiveContentMode by contentSafetyPreferences.sensitiveContentMode.collectAsStateWithLifecycle()
             val chatAccent by messagesPreferences.chatAccent.collectAsStateWithLifecycle()
             val chatBackground by messagesPreferences.chatBackground.collectAsStateWithLifecycle()
+            val enterToSend by messagesPreferences.enterToSendEnabled.collectAsStateWithLifecycle()
+            val showTypingIndicator by messagesPreferences.typingIndicatorsEnabled.collectAsStateWithLifecycle()
             val navigationIntentId by navigationIntentState
             val currentIntent by intentState
             val incomingDelivery by incomingShareState
@@ -152,6 +154,8 @@ class MainActivity : ComponentActivity() {
                     conectate.com.presentation.theme.LocalSensitiveContentMode provides sensitiveContentMode,
                     conectate.com.presentation.theme.LocalChatAccentKey provides chatAccent,
                     conectate.com.presentation.theme.LocalChatBackgroundKey provides chatBackground,
+                    conectate.com.presentation.messages.LocalChatBehavior provides
+                        conectate.com.presentation.messages.ChatBehaviorSettings(enterToSend, showTypingIndicator),
                 ) {
                     MainActivityContent(
                         currentIntent = currentIntent,

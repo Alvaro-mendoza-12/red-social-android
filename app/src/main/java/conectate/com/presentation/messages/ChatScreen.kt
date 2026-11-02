@@ -88,6 +88,7 @@ fun ChatScreen(
     focusMessageId: String? = null,
     birthdayGreeting: Boolean = false
 ) {
+    val chatBehavior = LocalChatBehavior.current
     val chatState by viewModel.chatState.collectAsStateWithLifecycle()
     val workspaceViewModel: ChatWorkspaceViewModel = hiltViewModel()
     val markersViewModel: ConversationMarkersViewModel = hiltViewModel()
@@ -987,7 +988,7 @@ fun ChatScreen(
                                 val currentOtherUser = otherUserReactive ?: otherUser
                                 
                                 val typingParticipants by viewModel.typingParticipants.collectAsStateWithLifecycle()
-                                if (typingParticipants.isNotEmpty()) {
+                                if (chatBehavior.showTypingIndicator && typingParticipants.isNotEmpty()) {
                                     Row(verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                         Text("Escribiendo…", style = MaterialTheme.typography.labelSmall,
@@ -1697,6 +1698,11 @@ fun ChatScreen(
                             spellingDraft = it
                             if (textChanged) viewModel.updateMessageText(it.text)
                         }
+                        val submitCurrentDraft = {
+                            val text = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
+                            submitChatComposerDraft(text, editingMessage != null, canSend = !isBlocked,
+                                onEdit = { viewModel.confirmEditMessage() }, onSend = { viewModel.sendTextMessage() })
+                        }
                         Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.fillMaxWidth()
@@ -1727,6 +1733,9 @@ fun ChatScreen(
                                 showMediaComposer = true
                             })
                             .focusRequester(stickerKeyboardPanel.inputFocusRequester)
+                            .chatComposerKeyboard(chatBehavior.enterToSend && !isBlocked,
+                                hasComposition = { composerFieldState.composition != null },
+                                onSend = { submitCurrentDraft() })
                             .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
                         enabled = voiceState == VoiceState.IDLE && !isBlocked,
                         placeholder = { 
@@ -1745,15 +1754,11 @@ fun ChatScreen(
                         },
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                             capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true,
-                            imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                            imeAction = if (chatBehavior.enterToSend) androidx.compose.ui.text.input.ImeAction.Send
+                                else androidx.compose.ui.text.input.ImeAction.Default
                         ),
-                        onKeyboardAction = androidx.compose.foundation.text.input.KeyboardActionHandler { _ ->
-                                val currentText = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
-                                if (editingMessage != null) {
-                                    viewModel.confirmEditMessage()
-                                } else if (currentText.isNotBlank()) {
-                                    viewModel.sendTextMessage()
-                                }
+                        onKeyboardAction = androidx.compose.foundation.text.input.KeyboardActionHandler { performDefaultAction ->
+                            if (chatBehavior.enterToSend) submitCurrentDraft() else performDefaultAction()
                         },
                         colors = TextFieldDefaults.colors(
                             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -1791,12 +1796,7 @@ fun ChatScreen(
                      FloatingActionButton(
                         onClick = { 
                             if (isBlocked) return@FloatingActionButton
-                            val currentText = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
-                            if (editingMessage != null) {
-                                viewModel.confirmEditMessage()
-                            } else if (currentText.isNotBlank()) {
-                                viewModel.sendTextMessage()
-                            } else {
+                            if (!submitCurrentDraft()) {
                                 if (voiceState != VoiceState.IDLE) {
                                     viewModel.stopRecording(true)
                                 } else {
