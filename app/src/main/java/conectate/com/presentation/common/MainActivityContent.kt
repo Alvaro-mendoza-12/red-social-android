@@ -98,7 +98,9 @@ fun MainActivityContent(
         color = MaterialTheme.colorScheme.background
     ) {
         val navController = rememberNavController()
-        val universalForwardCoordinator = hiltViewModel<UniversalForwardViewModel>().coordinator
+        val forwardViewModel = hiltViewModel<UniversalForwardViewModel>()
+        val universalForwardCoordinator = forwardViewModel.coordinator
+        val pendingShares by forwardViewModel.pending.collectAsStateWithLifecycle()
         universalForwardCoordinator.bindNavigationOrigin {
             ShareNavigationOrigin(navigationIntentId, navController.currentBackStackEntry?.id)
         }
@@ -380,7 +382,15 @@ fun MainActivityContent(
                             }
                             navController.navigate(route) { launchSingleTop = true }
                         },
+                        onFinished = forwardViewModel::refreshPending,
                     )
+                    if (incomingShare == null && universalForwardCoordinator.activeRequestId == null &&
+                        forwardViewModel.hasCurrentAccount()) {
+                        conectate.com.presentation.messages.PendingShareRecoveryPrompt(pendingShares,
+                            onContinue = { pendingShares.ids.firstOrNull()?.let(universalForwardCoordinator::openSavedBatch)
+                                ?: forwardViewModel.refreshPending() },
+                            onLater = forwardViewModel::dismissNotice)
+                    }
                 }
 
                 ForcedSuspensionAlertDialog(

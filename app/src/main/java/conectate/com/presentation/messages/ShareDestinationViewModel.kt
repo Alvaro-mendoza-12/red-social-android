@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
 
 enum class SharePublishDestination {
     POST,
@@ -33,21 +34,25 @@ enum class SharePublishDestination {
 }
 
 @HiltViewModel
-class ShareDestinationViewModel @Inject constructor(
+class ShareDestinationViewModel @Inject internal constructor(
     private val authRepository: AuthRepository,
     private val messageRepository: MessageRepository,
     private val groupRepository: GroupRepository,
     private val communityRepository: CommunityRepository,
     private val postRepository: PostRepository,
     private val momentRepository: MomentRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val shareJournal: ShareBatchJournal,
 ) : ViewModel() {
 
     private val requests = ShareRequestSession(viewModelScope, authRepository::captureAccountLease) { error ->
         android.util.Log.w("ShareDestination", "Share operation failed", error)
     }
     val actionState: StateFlow<ShareActionState> = requests.state
-    private val batch = ShareBatchDelivery()
+    private val batch = ShareBatchDelivery(journal = shareJournal)
+    private val recovery = ShareBatchRecovery()
+    internal val recoveryState = recovery.state
+    private var recoveryJob: kotlinx.coroutines.Job? = null
 
     val destinations: StateFlow<List<ShareDestination>> = combine(
         messageRepository.getUserChatsFlow(),
@@ -100,7 +105,12 @@ class ShareDestinationViewModel @Inject constructor(
     )
 
     init {
-        viewModelScope.launch { authRepository.getAuthStateFlow().collect { requests.validateSession() } }
+        viewModelScope.launch { authRepository.getAuthStateFlow().collect {
+            requests.validateSession()
+            recovery.state.value.requestId?.let { id -> if (requests.accountForRequest(id) == null) {
+                recoveryJob?.cancel(); recovery.reset(null); batch.reset(); videoPeople.value = emptyList()
+            } }
+        } }
     }
 
     fun refreshDestinations() {
@@ -115,6 +125,30 @@ class ShareDestinationViewModel @Inject constructor(
             batch.reset()
             videoPeople.value = emptyList()
             refreshDestinations()
+            recoverRequest(requestId)
+        }
+    }
+
+    fun recoverRequest(requestId: String) {
+        val account = requests.accountForRequest(requestId) ?: return
+        recoveryJob?.cancel()
+        recovery.reset(requestId)
+        recoveryJob = viewModelScope.launch {
+            fun guard() {
+                account.requireCurrent()
+                if (!requests.isBound(requestId, account)) throw kotlinx.coroutines.CancellationException("La solicitud cambió.")
+            }
+            recovery.load(requestId, ::guard,
+                read = { shareJournal.load(requestId, checkNotNull(account.accountId), ::guard) },
+                restore = { if (it == null) batch.reset() else batch.restore(requestId, checkNotNull(account.accountId), it) })
+            guard()
+            when (recovery.state.value.mode) {
+                ShareRecoveryState.Mode.PENDING -> requests.restoreState(requestId, account,
+                    ShareActionState.Failed("Hay envíos pendientes. Continúa con los destinos y el contenido originales.", true, requestId))
+                ShareRecoveryState.Mode.CLOSED -> requests.restoreState(requestId, account,
+                    ShareActionState.Completed("Esta acción de compartir ya finalizó.", false, requestId = requestId))
+                else -> Unit
+            }
         }
     }
 
@@ -124,11 +158,31 @@ class ShareDestinationViewModel @Inject constructor(
         sendBatch(requestId, frozen, openWhenQueued = frozen.singleOrNull()?.content is ShareOutgoingContent.Attachment)
     }
 
-    fun finishRequest(requestId: String) {
-        if (requests.close(requestId)) {
-            peopleSearch?.cancel()
-            batch.reset()
-            videoPeople.value = emptyList()
+    suspend fun finishRequest(requestId: String): Boolean = viewModelScope.async { finishBoundRequest(requestId) }.await()
+
+    private suspend fun finishBoundRequest(requestId: String): Boolean {
+        if (requests.accountForRequest(requestId) == null) return requests.close(requestId)
+        val account = requests.beginClosing(requestId) ?: return false
+        recoveryJob?.cancel()
+        return try {
+            fun guard() {
+                account.requireCurrent()
+                if (!requests.isBound(requestId, account)) throw kotlinx.coroutines.CancellationException("La solicitud cambió.")
+            }
+            if (recovery.state.value.mode != ShareRecoveryState.Mode.OTHER_ACCOUNT)
+                shareJournal.close(requestId, checkNotNull(account.accountId), ::guard)
+            guard()
+            requests.close(requestId).also { closed -> if (closed) {
+                peopleSearch?.cancel(); batch.reset(); recovery.reset(null); videoPeople.value = emptyList()
+            } }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            android.util.Log.w("ShareDestination", "Cannot preserve share closure", error)
+            // Closing the UI must remain possible when storage is unavailable. Any surviving
+            // command still requires explicit recovery and keeps its original immutable IDs.
+            requests.close(requestId).also { closed -> if (closed) {
+                peopleSearch?.cancel(); batch.reset(); recovery.reset(null); videoPeople.value = emptyList()
+            } }
         }
     }
 
@@ -198,17 +252,28 @@ class ShareDestinationViewModel @Inject constructor(
     }
 
     private fun sendBatch(requestId: String, items: List<ShareBatchItem>, openWhenQueued: Boolean = false) {
+        if (recovery.state.value.requestId != requestId || recovery.state.value.blocked) return
         if (items.isEmpty() || items.map { it.destination.key }.distinct().size > MAX_FORWARD_DESTINATIONS || items.size > MAX_FORWARD_OPERATIONS) {
             requests.fail(requestId, "Selecciona destinos y hasta $MAX_FORWARD_OPERATIONS envíos por lote.")
             return
         }
         requests.start(requestId, items.size) { ticket ->
-            val result = batch.send(requestId, checkNotNull(ticket.account.accountId), items,
+            val result = try { batch.send(requestId, checkNotNull(ticket.account.accountId), items,
                 requireCurrent = { requests.requireCurrent(ticket) },
                 onProgress = { completed, total -> requests.report(ticket, ShareActionState.Running(completed, total)) },
                 onQueued = { target -> if (openWhenQueued) requests.report(ticket, ShareActionState.Queued(target, requestId)) },
                 onFailure = { error -> android.util.Log.w("ShareDestination", "Share item not accepted", error) },
+                onFrozen = { recovery.frozen(requestId, it) },
                 deliver = { item, messageId, queued -> deliver(item, messageId, ticket.account, queued) })
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: Exception) {
+                // A failed first save has not dispatched anything. Re-read before unlocking the
+                // draft: an interrupted atomic write may nevertheless have preserved the command.
+                recovery.load(requestId, { requests.requireCurrent(ticket) },
+                    read = { shareJournal.load(requestId, checkNotNull(ticket.account.accountId)) { requests.requireCurrent(ticket) } },
+                    restore = { if (it == null) batch.reset() else batch.restore(requestId, checkNotNull(ticket.account.accountId), it) })
+                throw error
+            }
             if (result.accepted == result.total) ShareActionState.Completed("Compartido", false, result.lastDestination)
             else ShareActionState.Failed("Se aceptaron ${result.accepted} de ${result.total} envíos. Reintenta para enviar solo los pendientes.", retryPending = true)
         }
@@ -269,13 +334,15 @@ class ShareDestinationViewModel @Inject constructor(
                 content = source.content.ifBlank { source.preview }, mediaUri = mediaUri, mediaType = source.contentType,
                 existingMediaUrl = source.mediaUrl.takeUnless { mediaUri != null }, messageId = messageId,
                 isForwarded = true, forwardedFromMessageId = source.id, forwardedFromUserId = source.senderId,
-                allowRapidMediaBatch = true).map { Unit }
+                allowRapidMediaBatch = true).fold(onSuccess = ::confirmedDirectContentShare, onFailure = { Result.failure(it) })
             ShareDestinationType.GROUP -> groupRepository.sendGroupMessage(accountLease = account, groupId = destination.id,
                 content = source.content.ifBlank { source.preview }, contentType = source.contentType, mediaUrl = source.mediaUrl,
-                isForwarded = true, forwardedFromMessageId = source.id, forwardedFromUserId = source.senderId, messageId = messageId)
+                isForwarded = true, forwardedFromMessageId = source.id, forwardedFromUserId = source.senderId,
+                messageId = messageId, requireServerAcknowledgement = true)
             ShareDestinationType.COMMUNITY -> communityRepository.sendCommunityMessage(accountLease = account, communityId = destination.id,
                 content = source.content.ifBlank { source.preview }, contentType = source.contentType, mediaUrl = source.mediaUrl,
-                isForwarded = true, forwardedFromMessageId = source.id, forwardedFromUserId = source.senderId, messageId = messageId)
+                isForwarded = true, forwardedFromMessageId = source.id, forwardedFromUserId = source.senderId,
+                messageId = messageId, requireServerAcknowledgement = true)
         }
     }
 

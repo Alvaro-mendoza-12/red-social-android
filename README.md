@@ -1,17 +1,14 @@
 # Novvin — Red social móvil
 
-Fecha de última revisión documental: 2026-10-31.
+Estado documental: 1 de noviembre de 2026. La revisión integral sigue en curso.
 
-> Documentación oficial actual: [docs/oficial/README.md](docs/oficial/README.md).
-> Si algún documento antiguo contradice esa carpeta, usa `docs/oficial/` como fuente de verdad y valida el estado real con los comandos del runbook.
+Empieza por [la documentación oficial](docs/oficial/README.md) y el [estado vigente de la revisión móvil](docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md). Ese estado distingue cambios de código, verificaciones automatizadas, despliegues y pruebas pendientes. No se ha declarado cerrada toda la aplicación.
 
-Continuación vigente: La [revisión 100](docs/oficial/100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md) corrige los compartidos de Social y Perfil de principio a fin, el enlace alterado en comunidades, el regreso al original tras iniciar sesión y las confirmaciones parciales de amistades. Aprueban 2.069 unitarias en 432 suites y cinco recorridos nativos con entrega real a cuentas QA; lint tiene cero errores y 319 advertencias (K1). **APK/AAB 9.1.35 / 175 firmados**, con firma/R8/16 KiB y actualización normal desde 174 comprobadas en AOSP 35. Web publicada: documentos y Reintentar reparados, 20 formatos enviados/descargados sin alterar bytes, 916 pruebas web y 90 controles públicos aprobados. Se publicaron cambios acotados en el servidor para compartidos de perfiles y listado de archivos. Los datos QA se retiraron. No publicado en Play; comunicaciones físicas y certificado de firma de Play pendientes. Esta ruta de archivos usa HTTPS y no implementa cifrado de extremo a extremo. `correciones` permanece para el otro chat.
+La última entrega Android firmada es **9.1.35 / 175**, registrada en la [revisión 100](docs/oficial/100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md); los commits posteriores todavía no constituyen otra APK. Primero se completa la revisión móvil y después se continúa con la web. Las correcciones se publican en `main` y `feature/live-gifts` con árboles iguales. `correciones` está reservada al otro chat.
 
-La [revisión 83](docs/oficial/83-capturas-chat-y-recuperacion-voz-2026-10-28.md) conserva la publicación anterior, el aviso de momentos y el paquete histórico Android **9.1.29 / 169** firmado. La indexación y sus comprobaciones están documentadas en esa continuidad y la [revisión SEO 80](docs/oficial/80-auditoria-seo-y-candidato-local-2026-10-27.md). La rama `main` está conectada a Vercel: la tanda 86 tiene autorización del propietario para publicar la web y subir los commits.
+Novvin usa **Kotlin y Jetpack Compose** en Android y un **servidor propio Ubuntu** para autenticación, PostgreSQL, almacenamiento, tiempo real y señalización. Los adaptadores de importación que todavía existen no implican que se utilice un servicio externo como backend activo. Consulta los contratos y el runbook actuales antes de cambiarlos.
 
-La [revisión del servidor](docs/oficial/76-auditoria-servidor-2026-10-26.md) y su [continuación del 27/10](docs/oficial/78-capacidad-host-y-acceso-web-2026-10-27.md) registran limpieza, restauración, Ubuntu actualizado y reiniciado, capacidad y transporte web público. La [revisión de indexación](docs/oficial/79-indexacion-publica-2026-10-27.md) recoge 19 páginas, seis imágenes nuevas y verificaciones de Vercel y buscadores. Las [instrucciones de continuidad](docs/oficial/77-prompt-continuidad-produccion-y-escalado.md) conservan los objetivos pendientes.
-
-Una plataforma de red social móvil construida con **Kotlin**, **Jetpack Compose** y backend propio en **Ubuntu**. Supabase queda como compatibilidad legacy y herramienta temporal de migracion/importacion.
+Los informes fechados conservan evidencia histórica de sus versiones; sus cifras de pruebas, paquetes y despliegues no describen automáticamente el código actual. Los documentos operativos 00–08 y el estado vigente enlazado arriba son la entrada de mantenimiento.
 
 ## Probar Novvin
 
@@ -36,7 +33,7 @@ Novvin está en beta pública. Las pruebas y comentarios honestos de usuarios re
 - **Navegación**: Jetpack Navigation Compose
 - **Inyección de Dependencias**: Hilt
 - **Backend principal**: Ubuntu local/server (`infrastructure/local-fallback`) con Auth, Postgres, storage, realtime, signaling y proxy edge.
-- **Backend legacy**: Supabase solo para migracion/importacion mientras se termina la limpieza controlada.
+- **Compatibilidad de datos**: adaptadores para importar identidades y datos anteriores; no son otro backend de producción.
 - **Comunicación de Voz**: WebRTC Native SDK + Custom Node.js Signaling
 
 ## 🚀 Configuración Inicial

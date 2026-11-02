@@ -20,7 +20,7 @@ internal data class ShareBatchItem(val sourceKey: String, val destination: Share
 internal data class ShareBatchResult(val accepted: Int, val total: Int, val lastDestination: ShareDestination?)
 
 /** Freeze each user action and retain receipts; retries never resend accepted items or change their content. */
-internal class ShareBatchDelivery(private val intervalMs: Long = 350L) {
+internal class ShareBatchDelivery(private val intervalMs: Long = 350L, private val journal: ShareBatchJournal? = null) {
     private var request: Pair<String, String>? = null
     private var revision = 0L
     private var plan = emptyList<ShareBatchItem>()
@@ -31,6 +31,13 @@ internal class ShareBatchDelivery(private val intervalMs: Long = 350L) {
     fun frozenPlan(requestId: String, accountId: String): List<ShareBatchItem> =
         plan.takeIf { request == (requestId to accountId) }.orEmpty()
 
+    fun restore(requestId: String, accountId: String, saved: SavedShareBatch) {
+        reset()
+        request = requestId to accountId
+        plan = saved.plan
+        receipts.putAll(saved.receipts)
+    }
+
     suspend fun send(
         requestId: String,
         accountId: String,
@@ -39,6 +46,7 @@ internal class ShareBatchDelivery(private val intervalMs: Long = 350L) {
         onProgress: (Int, Int) -> Unit,
         onQueued: suspend (ShareDestination) -> Unit = {},
         onFailure: (Throwable) -> Unit = {},
+        onFrozen: (SavedShareBatch) -> Unit = {},
         deliver: suspend (ShareBatchItem, String, suspend () -> Unit) -> Result<ShareDestination>,
     ): ShareBatchResult {
         requireCurrent()
@@ -49,12 +57,26 @@ internal class ShareBatchDelivery(private val intervalMs: Long = 350L) {
             plan = proposed.distinctBy { it.key }.toList()
         }
         val expected = revision
-        val items = plan
         fun guard() {
             requireCurrent()
             if (revision != expected || request != key) throw CancellationException("La solicitud de compartir cambió.")
         }
         guard()
+        journal?.prepare(requestId, accountId, plan, ::guard)?.let { saved ->
+            guard()
+            if (saved.closed) return ShareBatchResult(0, 0, null)
+            plan = saved.plan
+            receipts.putAll(saved.receipts)
+        }
+        val items = plan
+        onFrozen(SavedShareBatch(items, receipts.toMap(), false))
+        suspend fun accepted(item: ShareBatchItem, target: ShareDestination) {
+            guard()
+            journal?.accepted(requestId, accountId, item.key, target, ::guard)
+            guard()
+            receipts[item.key] = target
+            onFrozen(SavedShareBatch(items, receipts.toMap(), false))
+        }
         var processed = items.count { it.key in receipts }
         onProgress(processed, items.size)
         for (item in items) {
@@ -65,7 +87,11 @@ internal class ShareBatchDelivery(private val intervalMs: Long = 350L) {
             val result = try {
                 deliver(item, messageId) {
                     guard()
-                    if (items.size == 1) onQueued(item.destination)
+                    if (items.size == 1 && item.content is ShareOutgoingContent.Attachment) {
+                        // Save the handoff BEFORE the UI may close and cancel this coroutine.
+                        accepted(item, item.destination)
+                        onQueued(item.destination)
+                    } else if (items.size == 1) onQueued(item.destination)
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) { Result.failure(error) }
@@ -73,7 +99,7 @@ internal class ShareBatchDelivery(private val intervalMs: Long = 350L) {
             currentCoroutineContext().ensureActive()
             guard()
             result.exceptionOrNull()?.let(onFailure)
-            result.getOrNull()?.let { receipts[item.key] = it }
+            result.getOrNull()?.let { accepted(item, it) }
             onProgress(++processed, items.size)
             if (processed < items.size && intervalMs > 0L) delay(intervalMs)
         }

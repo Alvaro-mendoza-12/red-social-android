@@ -15,6 +15,46 @@ class ShareRequestSessionTest {
     }
     private val destination = ShareDestination("chat", ShareDestinationType.CHAT, "Chat")
 
+    @Test fun closingStopsTheCurrentAttemptAndRejectsANewSendUntilItsMarkerIsSaved() = runTest {
+        val account = Account(); val session = ShareRequestSession(this, account::lease)
+        session.bind("r")
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        var lateCallbackAccepted = false
+        session.start("r", 1) { ticket ->
+            withContext(NonCancellable) { entered.complete(Unit); release.await() }
+            session.requireCurrent(ticket); lateCallbackAccepted = true
+            ShareActionState.Completed("late", false)
+        }
+        runCurrent(); entered.await()
+        assertNotNull(session.beginClosing("r"))
+        assertFalse(session.start("r", 1) { ShareActionState.Completed("wrong", false) })
+        release.complete(Unit); runCurrent()
+        assertFalse(lateCallbackAccepted)
+        assertTrue(session.close("r"))
+    }
+
+    @Test fun anotherRequestCannotBeClosedByThePreviousRequestsClosure() = runTest {
+        val account = Account(); val session = ShareRequestSession(this, account::lease)
+        session.bind("r"); assertNotNull(session.beginClosing("r"))
+        session.bind("next")
+        assertNull(session.beginClosing("r"))
+        assertFalse(session.close("r"))
+        assertSame(ShareActionState.Idle, session.state.value)
+    }
+
+    @Test fun aRecoveryResultCannotReplaceALiveSendOrAnotherRequestsState() = runTest {
+        val account = Account(); val session = ShareRequestSession(this, account::lease)
+        session.bind("r"); val lease = session.accountForRequest("r")!!
+        val release = CompletableDeferred<Unit>()
+        session.start("r", 1) { release.await(); ShareActionState.Completed("done", false) }
+        runCurrent()
+        session.restoreState("r", lease, ShareActionState.Completed("stale recovery", false))
+        assertTrue(session.state.value is ShareActionState.Running)
+        release.complete(Unit); runCurrent(); session.bind("next")
+        session.restoreState("r", lease, ShareActionState.Completed("old recovery", false))
+        assertSame(ShareActionState.Idle, session.state.value)
+    }
+
     @Test fun recreatingTheSameUiDoesNotCancelOrRestartDelivery() = runTest {
         val account = Account(); val session = ShareRequestSession(this, account::lease)
         val release = CompletableDeferred<Unit>(); var calls = 0

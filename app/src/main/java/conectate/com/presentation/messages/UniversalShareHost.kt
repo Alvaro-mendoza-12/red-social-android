@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -52,6 +53,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import conectate.com.util.IncomingShareKind
 import conectate.com.util.IncomingSharePayload
+import kotlinx.coroutines.launch
 
 @Composable
 fun UniversalShareHost(
@@ -60,35 +62,46 @@ fun UniversalShareHost(
     forwardCoordinator: UniversalForwardCoordinator,
     onIncomingShareConsumed: () -> ShareDismissal,
     onOpenConversation: (ShareDestination) -> Unit = {},
+    onFinished: () -> Unit = {},
 ) {
     val forwardRequest = forwardCoordinator.request
     val videoRequest = forwardCoordinator.videoRequest
     val postRequest = forwardCoordinator.postRequest
+    val savedBatchRequestId = forwardCoordinator.savedBatchRequestId
     val internalContent = videoRequest != null || postRequest != null
-    if (incomingShare == null && forwardRequest == null && videoRequest == null && postRequest == null) return
+    if (incomingShare == null && forwardRequest == null && videoRequest == null && postRequest == null && savedBatchRequestId == null) return
 
     val viewModel: ShareDestinationViewModel = hiltViewModel()
     val knownDestinations by viewModel.destinations.collectAsStateWithLifecycle()
     val people by viewModel.videoPeople.collectAsStateWithLifecycle()
     val destinations = if (!internalContent) knownDestinations else (knownDestinations + people).distinctBy { it.key }
     val observedActionState by viewModel.actionState.collectAsStateWithLifecycle()
+    val observedRecovery by viewModel.recoveryState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val maximumDialogHeight = with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * 0.9f
-    val activeKey = postRequest?.requestId ?: videoRequest?.requestId ?: forwardRequest?.requestId ?: incomingShareRequestId ?: incomingShare?.id.orEmpty()
+    val activeKey = postRequest?.requestId ?: videoRequest?.requestId ?: forwardRequest?.requestId ?: savedBatchRequestId ?: incomingShareRequestId ?: incomingShare?.id.orEmpty()
     val actionState = observedActionState.forRequest(activeKey)
+    val recovery = observedRecovery.takeIf { it.requestId == activeKey }
     var query by rememberSaveable(activeKey) { mutableStateOf("") }
     var selectedKeys by rememberSaveable(activeKey) { mutableStateOf<Set<String>>(emptySet()) }
     var selectedPeople by remember(activeKey) { mutableStateOf<Map<String, ShareDestination>>(emptyMap()) }
     var caption by rememberSaveable(activeKey) { mutableStateOf(if (internalContent) "" else incomingShare?.text ?: incomingShare?.subject.orEmpty()) }
 
-    fun close(): Boolean {
-        val dismissal = if (forwardRequest != null || internalContent) {
+    var closing by remember(activeKey) { mutableStateOf(false) }
+    suspend fun close(): Boolean {
+        if (closing) return false
+        closing = true
+        try {
+        if (!viewModel.finishRequest(activeKey)) return false
+        val dismissal = if (forwardRequest != null || internalContent || savedBatchRequestId != null) {
             forwardCoordinator.dismiss(activeKey)
         } else {
             if (forwardCoordinator.activeRequestId != null) ShareDismissal.IGNORED else onIncomingShareConsumed()
         }
-        if (dismissal.consumed) viewModel.finishRequest(activeKey)
+        if (dismissal.consumed) onFinished()
         return dismissal.mayNavigate
+        } finally { closing = false }
     }
 
     LaunchedEffect(activeKey) {
@@ -103,9 +116,11 @@ fun UniversalShareHost(
         val completed = actionState as? ShareActionState.Completed
         val queued = actionState as? ShareActionState.Queued
         if (completed == null && queued == null) return@LaunchedEffect
-        if (!close()) return@LaunchedEffect
-        completed?.let { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
-        (queued?.destination ?: completed?.openDestination)?.let(onOpenConversation)
+        scope.launch {
+            if (!close()) return@launch
+            completed?.let { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
+            (queued?.destination ?: completed?.openDestination)?.let(onOpenConversation)
+        }
     }
 
     val filtered = remember(destinations, query) {
@@ -119,8 +134,11 @@ fun UniversalShareHost(
             }
         }
     }
-    val isRunning = actionState is ShareActionState.Running || actionState is ShareActionState.Queued
-    val retryPending = (actionState as? ShareActionState.Failed)?.retryPending == true
+    val isRunning = closing || actionState is ShareActionState.Running || actionState is ShareActionState.Queued
+    val recovering = (recovery == null || recovery.mode == ShareRecoveryState.Mode.LOADING) && actionState !is ShareActionState.Failed
+    val frozen = recovery?.mode == ShareRecoveryState.Mode.PENDING
+    val retryPending = frozen && !isRunning
+    val allowEditing = !isRunning && !recovering && recovery?.mode == ShareRecoveryState.Mode.EDITABLE
     val textError = if (forwardRequest == null) sharedTextError(caption, internalContent) else null
     val canShareContent = internalContent || forwardRequest != null ||
         incomingShare?.let { it.items.isNotEmpty() || caption.isNotBlank() } == true
@@ -138,7 +156,7 @@ fun UniversalShareHost(
     }
 
     Dialog(
-        onDismissRequest = { if (!isRunning) close() },
+        onDismissRequest = { if (!isRunning) scope.launch { close() } },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
@@ -173,12 +191,31 @@ fun UniversalShareHost(
                             )
                         }
                     }
-                    IconButton(onClick = { close() }, enabled = !isRunning) {
+                    IconButton(onClick = { scope.launch { close() } }, enabled = !isRunning) {
                         Icon(Icons.Default.Close, contentDescription = "Cerrar")
                     }
                 }
 
-                if (incomingShare != null || internalContent) {
+                if (recovering) Text("Comprobando los envíos anteriores…", modifier = Modifier.padding(vertical = 12.dp))
+                if (frozen) {
+                    Text("Se conservaron ${recovery!!.plan.size} envíos; ${recovery.accepted} ya aceptados. Continuar usa los destinos y el contenido originales.",
+                        modifier = Modifier.padding(vertical = 10.dp))
+                    recovery.plan.map { it.destination }.distinctBy { it.key }.forEach {
+                        Text("${it.title} · ${it.subtitle ?: it.type.sectionTitle}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    recovery.plan.firstOrNull()?.content?.let { content ->
+                        Text(when (content) {
+                            is ShareOutgoingContent.Text -> content.content
+                            is ShareOutgoingContent.Attachment -> "${content.item.displayName ?: "Archivo"}\n${content.content}"
+                            is ShareOutgoingContent.Forward -> content.source.preview
+                        }, maxLines = 4, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+                recovery?.message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp)) }
+                if (recovery?.mode == ShareRecoveryState.Mode.FAILED) Button(onClick = { viewModel.recoverRequest(activeKey) }) {
+                    Text("Comprobar de nuevo")
+                }
+                if (allowEditing && (incomingShare != null || internalContent)) {
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = caption,
@@ -186,11 +223,12 @@ fun UniversalShareHost(
                         label = { Text(if (incomingShare?.isTextOnly == true) "Texto para compartir" else "Comentario (opcional)") },
                         modifier = Modifier.fillMaxWidth().testTag("shared_attachment_caption"),
                         maxLines = 3,
-                        enabled = !isRunning && !retryPending,
+                        enabled = allowEditing,
                         isError = textError != null,
                         supportingText = textError?.let { message -> { Text(message) } },
                     )
                 }
+                if (allowEditing) {
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = query,
@@ -200,7 +238,7 @@ fun UniversalShareHost(
                     placeholder = { Text("Chats, grupos o comunidades") },
                     leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                     singleLine = true,
-                    enabled = !isRunning && !retryPending
+                    enabled = allowEditing
                 )
 
                 Spacer(Modifier.height(10.dp))
@@ -224,7 +262,7 @@ fun UniversalShareHost(
                             }
                             items(section, key = ShareDestination::key) { destination ->
                                 val checked = destination.key in selectedKeys
-                                ShareDestinationRow(destination, checked, !isRunning && !retryPending) { shouldSelect ->
+                                ShareDestinationRow(destination, checked, allowEditing) { shouldSelect ->
                                     selectedKeys = if (shouldSelect) selectedKeys + destination.key else selectedKeys - destination.key
                                     selectedPeople = if (shouldSelect) selectedPeople + (destination.key to destination) else selectedPeople - destination.key
                                 }
@@ -245,6 +283,7 @@ fun UniversalShareHost(
                             )
                         }
                     }
+                }
                 }
 
                 (actionState as? ShareActionState.Failed)?.let { failed ->
@@ -284,7 +323,7 @@ fun UniversalShareHost(
                             viewModel.sendIncomingShare(activeKey, incomingShare, selectedKeys, caption)
                         }
                     },
-                    enabled = canShareContent && (retryPending || selectedKeys.isNotEmpty() && textError == null) && !isRunning,
+                    enabled = (retryPending || allowEditing && canShareContent && selectedKeys.isNotEmpty() && textError == null) && !isRunning,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp)
