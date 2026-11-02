@@ -2,6 +2,18 @@
 
 Este es un avance de correcciones comprobadas, no el cierre de la revisión integral ni una declaración de que toda la aplicación esté lista. Se continúa primero en Android. La revisión 100 ya registró la reparación de documentos de la web y la comprobación de 20 formatos; ese recorrido y el historial con personas y grupos se revalidarán en la fase web, después del móvil.
 
+## Estado vigente — 1 de noviembre de 2026
+
+La fase Android sigue abierta. La matriz contiene 1.135 archivos: 67 con lectura completa de código, 30 parciales y 1.038 pendientes. Una lectura de archivo no equivale a cerrar todos los recorridos de su módulo.
+
+La última batería completa de Android pasó **2.387 pruebas en 475 clases, sin fallos, errores ni omisiones**, y compiló las pruebas instrumentadas sin ejecutarlas en dispositivo. El lint K1 de esta tanda terminó con cero errores y 321 avisos, sin cambiar su línea base. No se ha generado otra APK: la entrega firmada continúa siendo **9.1.35 / 175**, registrada en la revisión 100.
+
+La disponibilidad pública de la API se volvió a consultar: respondió correctamente con `novvin-audit101-collection-exits-20261101`, commit `fc98113fbc0ce15d69331c1b6b814512a85de173` y resumen `b9e242d7d1bed6791dfa0c9f397ecde496131b6af53f543f681c339aab9d2ab4`. Esta consulta no sustituye pruebas de recorridos autenticados. No se desplegó otra API en esta tanda.
+
+Siguen pendientes el diario de lotes entre procesos, otras transiciones de mensajería y confirmaciones, los formularios administrativos, las carreras de grabación y los demás archivos de la matriz. La comprobación física sigue aplazada. La revisión web y la posterior limpieza y modularización pedidas por el usuario todavía no han comenzado en esta fase.
+
+Los bloques que siguen conservan la evidencia de cada paso. Sus menciones de pendientes describen ese momento; este apartado y el último bloque indican el estado actual.
+
 ## Problemas corregidos
 
 - Los comentarios abiertos desde un perfil mostraban acciones de reacción, edición y menciones con callbacks vacíos. Ahora usan el mismo modelo y operaciones autenticadas del detalle de publicación. Los callbacks visibles de `CommentItem` son obligatorios en compilación.
@@ -20,7 +32,7 @@ La ejecución anterior detectó una aserción de identidad de excepción incompa
 
 No se generó una APK nueva, no se usó emulador en esta tanda y no se ejecutaron cambios de contraseña, correos ni pagos sobre usuarios reales. Las mejoras de presentación de comentarios todavía requieren comprobación visual. La compilación y estas pruebas no sustituyen la revisión de los demás módulos.
 
-## Continuación obligatoria
+## Continuación del primer bloque — resuelta en el segundo
 
 Quedan por cerrar, entre otros, el borrador al responder, la disponibilidad de comentarios posteriores al número 50 y las respuestas atrasadas del resumen del hilo. Después continúa la lectura de los módulos móviles pendientes y sus contratos de servidor, manteniendo una matriz de cobertura por archivo y recorrido. No se pasa a web hasta completar la fase móvil.
 
@@ -274,4 +286,22 @@ Pasaron **148 pruebas seleccionadas en 23 clases** y después **2.352 pruebas co
 
 La primera selección de esta etapa falló en cinco pruebas nuevas porque el `StatFs` simulado no tenía espacio configurado. Se corrigió el fixture y se añadieron pruebas que conservan el rechazo real por espacio insuficiente. Una selección posterior terminó correctamente, pero sus XML se retiraron antes de recoger el conteo; no se usa ese conteo como evidencia. Las baterías completas posteriores regeneraron y comprobaron los informes.
 
-Esto no cierra la fase móvil. El plan y los recibos del lote se conservan en el modelo durante cambios de configuración; todavía no constituyen un diario de lotes entre procesos. Siguen abiertos el reenvío ofrecido para contenido de una sola visualización, la conservación de solicitudes internas al recrear la actividad y otros recorridos de mensajería, panel, grabación y demás módulos. La cola de mensajes ya guardados sí sigue siendo duradera. No se generó una APK nueva ni hubo despliegue adicional de API o mutaciones de usuarios reales en este bloque. La entrega firmada anterior continúa siendo 9.1.35 / 175 de la revisión 100.
+Esto no cierra la fase móvil. El plan y los recibos del lote se conservan en el modelo durante cambios de configuración; todavía no constituyen un diario de lotes entre procesos. Los ajustes de reenvío y recreación interna se registran a continuación; continúan abiertos otros recorridos de mensajería, panel, grabación y demás módulos. La cola de mensajes ya guardados sí sigue siendo duradera. No se generó una APK nueva ni hubo despliegue adicional de API o mutaciones de usuarios reales en este bloque. La entrega firmada anterior continúa siendo 9.1.35 / 175 de la revisión 100.
+
+### Recreación interna, reintentos y fuentes de archivos comprobados
+
+El coordinador de compartidos internos vive ahora en un ViewModel de la actividad. Conserva la solicitud durante cambios de configuración. Captura el origen de navegación al abrirla y compara tanto la entrada de navegación como la llegada de un intent antes de abrir el chat al terminar. Una respuesta anterior puede cerrar su propia hoja, pero no navegar por encima de otra pantalla o enlace. Se guarda la identidad de navegación de la misma instancia de proceso; una llegada nueva recibe otra identidad.
+
+La elegibilidad de reenvío se comparte entre interfaz y repositorios: excluye eliminados, contenido de una sola visualización, mensajes sin confirmación y archivos que siguen en una URI local. Los menús individuales ocultan la opción no disponible y una selección mixta omite esos mensajes con un aviso. Se conservan también los estados recibidos antiguos. Antes, un reenvío a grupos o comunidades podía reutilizar el archivo pendiente del original y eliminarlo después de subirlo. La comprobación ocurre antes de llegar a esa ruta. Las tres entradas de reenvío antiguas capturan además la cuenta antes de E/S, transmiten la misma sesión a sus envíos y propagan la cancelación del lote.
+
+El reintento de un mensaje directo reutiliza la URL remota que ya se guardó tras subir su archivo. Conserva tamaño, miniatura y fecha, sin volver a abrir un original cuyo permiso pudo caducar. No trata URI locales, enlaces incompletos, credenciales en la URL ni otro tipo de contenido como una subida confirmada. Los reintentos de texto en grupos y comunidades conservan también la fecha local de creación.
+
+Las fuentes de archivos entrantes se comprueban antes de consultar metadatos o abrirlas. Una entrada externa no puede hacer que la aplicación lea sus archivos privados, incluidos sus directorios externos, ni use sus propios proveedores con permisos del proceso. Se rechazan también rutas de descriptores, esquemas incompatibles y escapes de directorio. Una captura privada solo se restaura dentro de su carpeta si el identificador UUID coincide con el estado guardado por esa tarea; un extra enviado por otra aplicación no acredita esa procedencia. Los metadatos de captura tampoco se aceptan como datos fiables desde una entrada nueva. Las fuentes normales de otros proveedores y los archivos externos antiguos se conservan. Este control sigue la recomendación de [validar las URI y los componentes privados al recibir intents](https://support.google.com/faqs/answer/9267555?hl=en). No se presenta como una revisión completa de todos los permisos de proveedores.
+
+Una lectura fallida del intent no vuelve a pasar ese mismo paquete al navegador para que falle otra vez. Se conserva una captura anterior válida o una entrada neutra, con una indicación para volver a adjuntar el contenido. Los identificadores no canónicos tampoco pueden compartir accidentalmente una carpeta por recortarse al mismo prefijo.
+
+Un texto externo demasiado largo se rechaza antes de que el saneamiento del repositorio lo recorte a 4.000 caracteres. La hoja permite editarlo y explica el límite; conserva los 800 caracteres permitidos para comentarios de compartidos internos y desactiva el envío de texto vacío o excesivo. La edición ya no recorta silenciosamente todo el campo al primer cambio.
+
+Pasaron **145 pruebas seleccionadas en 24 clases** antes de los últimos controles de entrada, y después la batería completa pasó **2.387 pruebas en 475 clases, sin fallos, errores ni omisiones**. Hay **35 regresiones nuevas** desde la batería de 2.352. Compilaron las pruebas instrumentadas sin ejecutarlas en dispositivo. La primera selección de entrada tuvo un fallo en un fixture nuevo que esperaba conservar un MIME genérico aunque el nombre identificaba correctamente un PPTX; se corrigió ese dato de prueba y la batería completa comprobó la clasificación. No se relajó la protección de fuentes privadas. El lint K1 terminó con cero errores y 321 avisos, sin cambiar la línea base.
+
+No se generó otra APK ni se cambió la API. La disponibilidad pública confirmó la versión y el resumen previstos, sin crear cuentas o mensajes de prueba en producción. Continúan abiertos el diario del lote entre procesos, los mensajes especiales de reenvío y los demás recorridos pendientes; no se declara terminado Compartir ni la fase móvil.

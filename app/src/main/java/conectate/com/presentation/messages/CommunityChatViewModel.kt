@@ -1083,7 +1083,10 @@ class CommunityChatViewModel @Inject constructor(
     }
 
     fun openForwardPicker(message: conectate.com.data.model.Message) {
-        if (message.deleted_for_all) return
+        if (!message.toForwardMessagePayload().isForwardable) {
+            _errorMessage.value = FORWARD_UNAVAILABLE_MESSAGE
+            return
+        }
         _forwardPickerMessage.value = message
         _selectedMessage.value = null
     }

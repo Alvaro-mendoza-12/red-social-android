@@ -159,6 +159,7 @@ class ShareDestinationViewModel @Inject constructor(
         shareInternalContent(request.requestId, conectate.com.presentation.navigation.postShareLink(request.post.id), targets, caption)
 
     private fun shareInternalContent(requestId: String, link: String, targets: List<ShareDestination>, caption: String) {
+        sharedTextError(caption, internalContent = true)?.let { requests.fail(requestId, it); return }
         val content = link + caption.trim().take(800).takeIf(String::isNotBlank)?.let { "\n$it" }.orEmpty()
         val selected = targets.distinctBy { it.key }
         if (selected.isEmpty() || selected.size > MAX_FORWARD_DESTINATIONS) {
@@ -172,6 +173,7 @@ class ShareDestinationViewModel @Inject constructor(
         val selected = destinations.value.filter { it.key in destinationKeys }
         val effectiveText = caption?.trim() ?: payload.text?.trim().takeUnless { it.isNullOrBlank() }
             ?: payload.subject?.trim().takeUnless { it.isNullOrBlank() }
+        sharedTextError(effectiveText)?.let { requests.fail(requestId, it); return }
         if (payload.items.isEmpty() && effectiveText.isNullOrBlank()) {
             requests.fail(requestId, "No se pudo leer el contenido compartido. Adjunta otra copia.")
             return
@@ -188,7 +190,7 @@ class ShareDestinationViewModel @Inject constructor(
 
     fun forwardMessages(requestId: String, messages: List<ForwardMessagePayload>, destinationKeys: Set<String>) {
         val targets = destinations.value.filter { it.key in destinationKeys }
-        val selected = messages.filterNot(ForwardMessagePayload::deletedForAll).distinctBy { it.id }.sortedBy { it.timestampMs }
+        val selected = messages.filter(ForwardMessagePayload::isForwardable).distinctBy { it.id }.sortedBy { it.timestampMs }
         validateForwardSelection(selected.size, targets.size)?.let { requests.fail(requestId, it); return }
         sendBatch(requestId, targets.flatMap { target -> selected.map { message ->
             ShareBatchItem("forward:${message.id}", target, ShareOutgoingContent.Forward(message))

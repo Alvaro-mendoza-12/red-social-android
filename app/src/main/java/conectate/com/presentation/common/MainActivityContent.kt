@@ -64,7 +64,8 @@ import conectate.com.presentation.calls.CallInvitationOverlayHost
 import conectate.com.presentation.calls.ActiveCallSessionBar
 import conectate.com.presentation.live.ActiveLiveSessionBubble
 import conectate.com.presentation.messages.LocalUniversalForwardCoordinator
-import conectate.com.presentation.messages.UniversalForwardCoordinator
+import conectate.com.presentation.messages.UniversalForwardViewModel
+import conectate.com.presentation.messages.ShareNavigationOrigin
 import conectate.com.presentation.messages.UniversalShareHost
 import conectate.com.util.IncomingSharePayload
 import dagger.Lazy
@@ -75,6 +76,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun MainActivityContent(
     currentIntent: Intent?,
+    navigationIntentId: String? = null,
     onIntentConsumed: () -> Unit,
     incomingShare: IncomingSharePayload?,
     incomingShareRequestId: String? = null,
@@ -96,7 +98,10 @@ fun MainActivityContent(
         color = MaterialTheme.colorScheme.background
     ) {
         val navController = rememberNavController()
-        val universalForwardCoordinator = remember { UniversalForwardCoordinator(authRepository::captureAccountLease) }
+        val universalForwardCoordinator = hiltViewModel<UniversalForwardViewModel>().coordinator
+        universalForwardCoordinator.bindNavigationOrigin {
+            ShareNavigationOrigin(navigationIntentId, navController.currentBackStackEntry?.id)
+        }
 
         val isInitializing by authRepository.isInitializing.collectAsStateWithLifecycle()
         LaunchedEffect(currentIntent, isInitializing) {
