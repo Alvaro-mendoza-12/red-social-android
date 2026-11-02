@@ -80,6 +80,20 @@ function buildData(notification, extraData = {}) {
     if (serialized !== null) data[key] = serialized
   }
 
+  // A public social alert may supply optional context, never a different event,
+  // authenticated actor or persisted target. Otherwise Android could interpret
+  // a follow as a message or call with caller-controlled sender/routing fields.
+  Object.assign(data, {
+    type,
+    notification_id: stringValue(notification.id) || '',
+    sender_id: actorId,
+    actor_id: actorId,
+    sender_name: actorName,
+    sender_avatar: stringValue(notification.actor_avatar_url) || '',
+    target_id: targetId,
+    target_type: targetType,
+  })
+
   if (data.content_type === 'birthday_card') data.body = '🎂 Te envió una tarjeta de cumpleaños'
   // Preserve content for the local replica, but never expose an empty/catalog
   // label/transport URI as the notification body for a sticker.
