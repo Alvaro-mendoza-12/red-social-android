@@ -12,74 +12,41 @@ object TrustedNavigationIntents {
     private const val PREFS = "trusted_navigation_intents"
     private const val ENTRY_PREFIX = "nav_token_"
     private const val EXTRA_TOKEN = "trusted_navigation_token"
-    private const val MAX_ENTRIES = 256
+    private const val EXTRA_SIGNATURE = "trusted_navigation_signature"
     private const val DEFAULT_TTL_MS = 24 * 60 * 60 * 1000L
-
-    private val protectedTypes = setOf(
-        "new_message",
-        "like",
-        "like_post",
-        "like_video",
-        "follow",
-        "friend_request",
-        "friend_request_accepted",
-        "comment",
-        "comment_post",
-        "reply_post",
-        "comment_video",
-        "reply_video",
-        "mention",
-        "mention_post",
-        "mention_video",
-        "mention_video_description",
-        "new_video",
-        "new_post",
-        "share",
-        "share_post",
-        "share_video",
-        "admin_warning_video",
-        "challenge_invite",
-        "voice_invite",
-        "voice_access_request",
-        "voice_return",
-        "call_return",
-        "call_cancel",
-        "live_return",
-        "live_started",
-        "call_invite"
-    )
 
     private val secureRandom = SecureRandom()
 
     fun requiresTrust(type: String?): Boolean =
-        protectedTypes.contains(type?.trim()?.lowercase().orEmpty())
+        !type.isNullOrBlank()
 
     fun markTrusted(context: Context, intent: Intent): Intent {
         val type = intent.getStringExtra("type")?.trim()?.lowercase().orEmpty()
         if (!requiresTrust(type)) return intent
 
-        prune(context.applicationContext)
-
-        val token = randomToken()
+        // A signature stays valid independently of how many newer alerts arrive.
+        // Keep the old nonce verifier below for already issued PendingIntents.
+        intent.removeExtra(EXTRA_TOKEN)
+        intent.removeExtra("conversation_shortcut_signature")
         val expiresAt = System.currentTimeMillis() + DEFAULT_TTL_MS
-        val subjectHash = hashSubject(buildSubject(type, intent))
-
-        prefs(context.applicationContext).edit()
-            .putString("$ENTRY_PREFIX$token", "$expiresAt:$subjectHash")
-            .apply()
-
-        intent.putExtra(EXTRA_TOKEN, token)
+        val signature = signSubject(context, "notice-v2:$expiresAt:${signedSubject(intent)}")
+        intent.putExtra(EXTRA_SIGNATURE, "2:$expiresAt:$signature")
         return intent
     }
 
     /** Persistent, account-bound route for Android's long-lived conversation shortcut. */
     fun markTrustedConversationShortcut(context: Context, intent: Intent): Intent {
         require(intent.getStringExtra("type") == "new_message")
+        intent.removeExtra(EXTRA_SIGNATURE)
+        intent.removeExtra(EXTRA_TOKEN)
         intent.putExtra("conversation_shortcut_signature", shortcutSignature(context, intent))
         return intent
     }
 
-    private fun shortcutSignature(context: Context, intent: Intent): String {
+    private fun shortcutSignature(context: Context, intent: Intent): String =
+        signSubject(context, buildSubject("new_message", intent))
+
+    private fun signSubject(context: Context, subject: String): String {
         val storage = prefs(context.applicationContext)
         val encoded = synchronized(this) {
             storage.getString("conversation_shortcut_key", null) ?: ByteArray(32).also(secureRandom::nextBytes)
@@ -89,12 +56,21 @@ object TrustedNavigationIntents {
         }
         val mac = javax.crypto.Mac.getInstance("HmacSHA256")
         mac.init(javax.crypto.spec.SecretKeySpec(Base64.decode(encoded, Base64.NO_WRAP), "HmacSHA256"))
-        return Base64.encodeToString(mac.doFinal(buildSubject("new_message", intent).toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
+        return Base64.encodeToString(mac.doFinal(subject.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
     }
 
     fun isTrusted(context: Context, intent: Intent): Boolean {
         val type = intent.getStringExtra("type")?.trim()?.lowercase().orEmpty()
         if (!requiresTrust(type)) return true
+        val signature = intent.getStringExtra(EXTRA_SIGNATURE)
+        if (signature != null) return runCatching {
+            val parts = signature.split(':', limit = 3)
+            if (parts.size != 3 || parts[0] != "2" || parts[2].length != 44) return@runCatching false
+            val expiresAt = parts[1].toLongOrNull() ?: return@runCatching false
+            if (expiresAt <= System.currentTimeMillis()) return@runCatching false
+            val expected = signSubject(context, "notice-v2:$expiresAt:${signedSubject(intent)}")
+            MessageDigest.isEqual(parts[2].toByteArray(Charsets.UTF_8), expected.toByteArray(Charsets.UTF_8))
+        }.getOrDefault(false)
         val suppliedShortcutSignature = intent.getStringExtra("conversation_shortcut_signature")
         if (type == "new_message" && suppliedShortcutSignature != null) {
             return runCatching {
@@ -131,7 +107,9 @@ object TrustedNavigationIntents {
             else -> extra(name)
         }
 
-        val normalizedType = type.trim().lowercase()
+        // Historical reaction notifications were signed as messages before
+        // changing this field. Their destination and account are identical.
+        val normalizedType = type.trim().lowercase().let { if (it == "message_reaction") "new_message" else it }
         val accountSubject = listOf(
             extra(NotificationAccountTargetContract.EXTRA_TARGET_ACCOUNT_USER_ID),
             extra(NotificationAccountTargetContract.EXTRA_TARGET_ACCOUNT_EMAIL),
@@ -189,46 +167,28 @@ object TrustedNavigationIntents {
         }
     }
 
-    private fun prune(context: Context) {
-        val now = System.currentTimeMillis()
-        val prefs = prefs(context)
-        val entries = prefs.all.entries
-            .filter { (key, value) -> key.startsWith(ENTRY_PREFIX) && value is String }
-            .mapNotNull { (key, value) ->
-                val raw = value as? String ?: return@mapNotNull null
-                val separator = raw.indexOf(':')
-                val expiry = if (separator > 0) raw.substring(0, separator).toLongOrNull() else null
-                key to expiry
+    /** Type and all app extras, with lengths/types so delimiters cannot change their meaning. */
+    @Suppress("DEPRECATION")
+    private fun signedSubject(intent: Intent): String = buildString {
+        val extras = intent.extras ?: return@buildString
+        extras.keySet().sorted().filterNot {
+            it in setOf(EXTRA_TOKEN, EXTRA_SIGNATURE, "conversation_shortcut_signature") ||
+                it.startsWith("android.") || it.startsWith("androidx.")
+        }.forEach { key ->
+            val value = when (val raw = extras.get(key)) {
+                null -> "null"
+                is String -> "string:$raw"
+                is Boolean -> "boolean:$raw"
+                is Int -> "int:$raw"
+                is Long -> "long:$raw"
+                is Float -> "float:$raw"
+                is Double -> "double:$raw"
+                is ByteArray -> "bytes:${Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(raw), Base64.NO_WRAP)}"
+                else -> throw IllegalArgumentException("Unsupported internal navigation extra")
             }
-
-        val expiredKeys = entries.filter { (_, expiry) -> expiry == null || expiry <= now }.map { it.first }
-        if (expiredKeys.isNotEmpty()) {
-            val editor = prefs.edit()
-            expiredKeys.forEach(editor::remove)
-            editor.apply()
+            append(key.length).append(':').append(key)
+            append(value.length).append(':').append(value)
         }
-
-        val activeEntries = prefs.all.entries
-            .filter { (key, value) -> key.startsWith(ENTRY_PREFIX) && value is String }
-            .mapNotNull { (key, value) ->
-                val raw = value as? String ?: return@mapNotNull null
-                val separator = raw.indexOf(':')
-                val expiry = if (separator > 0) raw.substring(0, separator).toLongOrNull() else null
-                if (expiry == null || expiry <= now) null else key to expiry
-            }
-            .sortedByDescending { it.second }
-
-        if (activeEntries.size > MAX_ENTRIES) {
-            val editor = prefs.edit()
-            activeEntries.drop(MAX_ENTRIES).forEach { (key, _) -> editor.remove(key) }
-            editor.apply()
-        }
-    }
-
-    private fun randomToken(): String {
-        val bytes = ByteArray(18)
-        secureRandom.nextBytes(bytes)
-        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     }
 
     private fun hashSubject(subject: String): String {

@@ -174,7 +174,7 @@ object MessageNotificationFactory {
         val intent = buildOpenIntent(context, payload).apply {
             removeExtra("notification_preview")
             putExtra("type", "message_reaction")
-        }
+        }.also { TrustedNavigationIntents.markTrusted(context, it) }
         val pending = PendingIntent.getActivity(context, payload.notificationId, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(context, payload.channelId)
             .setSmallIcon(R.drawable.ic_notification).setContentTitle(if (payload.isGroupConversation) "${payload.senderName} · ${payload.conversationTitle}" else payload.senderName)

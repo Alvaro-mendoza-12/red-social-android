@@ -10,7 +10,6 @@ import android.os.IBinder
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
-import conectate.com.MainActivity
 import conectate.com.R
 import conectate.com.data.repository.VoiceRoomRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -42,6 +41,8 @@ class VoiceForegroundService : Service() {
     }
 
     @Inject lateinit var voiceRoomRepository: VoiceRoomRepository
+    @Inject lateinit var authService: conectate.com.data.supabase.AuthService
+    private var notificationAccount: conectate.com.util.NotificationAccountTarget? = null
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentRoomId = ""
@@ -56,6 +57,11 @@ class VoiceForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_START || (intent?.action == ACTION_UPDATE && currentRoomId.isBlank())) {
+            notificationAccount = conectate.com.util.NotificationAccountTarget(
+                userId = authService.getCurrentUserId(), email = authService.getCurrentUserEmail(),
+            )
+        }
         when (intent?.action) {
             ACTION_HANGUP -> {
                 val roomId = intent.getStringExtra(EXTRA_ROOM_ID)?.trim().orEmpty()
@@ -121,10 +127,6 @@ class VoiceForegroundService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startForegroundFallbackOrStop(requestedType: Int) {
-        // Obsoleto, integrado arriba.
-    }
-
     private fun foregroundServiceType(): Int {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             return 0
@@ -149,11 +151,7 @@ class VoiceForegroundService : Service() {
         val openIntent = PendingIntent.getActivity(
             this,
             currentRoomId.hashCode(),
-            Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                putExtra("room_id", currentRoomId)
-                putExtra("type", "voice_room")
-            },
+            voiceRoomReturnIntent(this, currentRoomId, notificationAccount),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val muteIntent = PendingIntent.getService(

@@ -241,7 +241,8 @@ sealed class Screen(val route: String) {
     object NotificationAccountBridge : Screen(
         "notification_account_bridge?destination={destination}&targetAccountId={targetAccountId}" +
             "&targetAccountLabel={targetAccountLabel}&currentAccountLabel={currentAccountLabel}" +
-            "&contextTitle={contextTitle}&preview={preview}"
+            "&contextTitle={contextTitle}&preview={preview}" +
+            "&targetUserId={targetUserId}&targetEmail={targetEmail}"
     ) {
         fun createRoute(
             destinationRoute: String,
@@ -249,7 +250,9 @@ sealed class Screen(val route: String) {
             targetAccountLabel: String? = null,
             currentAccountLabel: String? = null,
             contextTitle: String? = null,
-            preview: String? = null
+            preview: String? = null,
+            targetUserId: String? = null,
+            targetEmail: String? = null,
         ): String {
             val destination = destinationRoute.trim().takeIf { it.isNotBlank() }
                 ?: Home.createRoute(startTab = Messages.route)
@@ -264,7 +267,11 @@ sealed class Screen(val route: String) {
                 contextTitle?.trim()?.takeIf { it.isNotBlank() }
                     ?.let { "contextTitle=${android.net.Uri.encode(it.take(180))}" },
                 preview?.trim()?.takeIf { it.isNotBlank() }
-                    ?.let { "preview=${android.net.Uri.encode(it.take(500))}" }
+                    ?.let { "preview=${android.net.Uri.encode(it.take(500))}" },
+                targetUserId?.trim()?.takeIf { it.isNotBlank() }
+                    ?.let { "targetUserId=${android.net.Uri.encode(it.take(200))}" },
+                targetEmail?.trim()?.takeIf { it.isNotBlank() }
+                    ?.let { "targetEmail=${android.net.Uri.encode(it.take(320))}" }
             )
             return "notification_account_bridge?${params.joinToString("&")}"
         }

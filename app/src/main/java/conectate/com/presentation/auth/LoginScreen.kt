@@ -231,6 +231,9 @@ fun LoginScreen(
         }
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
             if (navController.currentDestination?.route !in setOf(Screen.AddAccountLogin.route, Screen.AccountRecoveryHelp.route)) return@withContext
+            if (conectate.com.presentation.navigation.NotificationAccountSignIn.returnToBridge(
+                    navController, (authState as AuthState.Success).user.id,
+                )) return@withContext
             if (conectate.com.presentation.navigation.PendingSharedContentDestination.consume(navController)?.let { route ->
                 navController.navigate(Screen.Home.createRoute()) { popUpTo(navController.graph.id) { inclusive = false }; launchSingleTop = true }
                 navController.navigate(route) { launchSingleTop = true }
