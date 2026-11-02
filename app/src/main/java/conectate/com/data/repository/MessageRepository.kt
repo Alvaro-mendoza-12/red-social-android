@@ -20,11 +20,8 @@ import conectate.com.data.model.CommunityMessage
 import conectate.com.data.model.GroupMessage
 import conectate.com.data.model.Message
 import conectate.com.data.repository.message.MessageCacheManager
-import conectate.com.data.repository.message.MessageRemoteStore
 import conectate.com.data.repository.message.MessageRealtimeSync
-import conectate.com.data.repository.message.MessagePolicyEngine
 import conectate.com.data.repository.message.MessageNotificationService
-import conectate.com.data.repository.message.MessageUnreadCounter
 import conectate.com.data.repository.message.MessageSessionStateStore
 import conectate.com.data.repository.message.MessageMediaResolver
 import conectate.com.data.repository.message.InboxSyncPolicy
@@ -125,11 +122,8 @@ class MessageRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
     // Nuevos stores inyectados
     private val messageCacheManager: MessageCacheManager,
-    private val messageRemoteStore: MessageRemoteStore,
     private val messageRealtimeSync: MessageRealtimeSync,
-    private val messagePolicyEngine: MessagePolicyEngine,
     private val messageNotificationService: MessageNotificationService,
-    private val messageUnreadCounter: MessageUnreadCounter,
     private val sessionStateStore: MessageSessionStateStore,
     private val inboxIdentityCache: InboxIdentityCache,
     private val readJournal: conectate.com.data.repository.message.VisibleReadJournal = conectate.com.data.repository.message.VisibleReadJournal(context),
@@ -317,7 +311,6 @@ class MessageRepository @Inject constructor(
         // Nuevos stores
         messageCacheManager.clearAll()
         sessionListeners.stopActive()
-        messageUnreadCounter.clearCache()
     }
 
     fun setActiveChatSession(chatId: String?, isVisible: Boolean) {
@@ -2433,7 +2426,11 @@ class MessageRepository @Inject constructor(
             val updatedList = current.toMutableList()
             var idx = updatedList.indexOfFirst { it.id == msg.id }
             if (idx != -1) {
-                updatedList[idx] = msg
+                val local = current[idx]
+                val receipt = conectate.com.core.messaging.mergeMessageReceiptState(
+                    msg.status, msg.delivered_at, msg.read_at, local.status, local.delivered_at, local.read_at,
+                )
+                updatedList[idx] = msg.copy(status = receipt.status, delivered_at = receipt.deliveredAt, read_at = receipt.readAt)
             } else {
                 updatedList.add(msg)
             }
@@ -2795,7 +2792,7 @@ class MessageRepository @Inject constructor(
 
             // --- 4. HANDLE RESPONSE (UPDATE LOCAL) ---
             if (serverSendResult.isSuccess) {
-                val returnedMsg = (serverSendResult.message ?: msg.copy(status = "sent")).copy(
+                var returnedMsg = (serverSendResult.message ?: msg.copy(status = "sent")).copy(
                     reply_to = msg.reply_to,
                     created_at = (serverSendResult.message?.created_at ?: msg.created_at)
                 )
@@ -2809,7 +2806,8 @@ class MessageRepository @Inject constructor(
                         returnedMsg,
                         isSynced = true
                     )
-                    messageDao.insertMessageOwned(entity) { requireCurrentSession() }
+                    val stored = messageDao.persistMessageOwned(entity) { requireCurrentSession() }
+                    returnedMsg = returnedMsg.copy(status = stored.status, delivered_at = stored.delivered_at, read_at = stored.read_at)
                     android.util.Log.d("MessageRepository", "✅ Room Updated to SENT: ${returnedMsg.id}")
                 } catch (error: CancellationException) {
                     throw error

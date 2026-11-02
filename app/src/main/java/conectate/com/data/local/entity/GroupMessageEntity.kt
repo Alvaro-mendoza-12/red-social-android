@@ -92,7 +92,7 @@ data class GroupMessageEntity(
     companion object {
         fun fromDomain(
             msg: GroupMessage,
-            isSynced: Boolean = MessageStatusNormalizer.normalize(msg.status) == "sent",
+            isSynced: Boolean = MessageStatusNormalizer.canonical(msg.status, msg.delivered_at, msg.read_at) in setOf("sent", "delivered", "read"),
             pendingAction: String? = null,
             retryCount: Int = 0,
             lastRetryAt: String? = null
