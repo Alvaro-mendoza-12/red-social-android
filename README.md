@@ -1,6 +1,6 @@
 # Novvin — Red social móvil
 
-Estado documental: 1 de noviembre de 2026. La revisión integral sigue en curso.
+Estado documental: 2 de noviembre de 2026. La revisión integral sigue en curso.
 
 Empieza por [la documentación oficial](docs/oficial/README.md) y el [estado vigente de la revisión móvil](docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md). Ese estado distingue cambios de código, verificaciones automatizadas, despliegues y pruebas pendientes. No se ha declarado cerrada toda la aplicación.
 

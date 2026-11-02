@@ -1,6 +1,6 @@
 # Novvin — Documentación oficial del proyecto
 
-Estado documental: 1 de noviembre de 2026. Esta es la entrada para desarrollo, operación y traspaso técnico.
+Estado documental: 2 de noviembre de 2026. Esta es la entrada para desarrollo, operación y traspaso técnico.
 
 ## Estado vigente
 

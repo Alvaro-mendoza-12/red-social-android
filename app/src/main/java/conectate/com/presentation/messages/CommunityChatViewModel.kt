@@ -1183,7 +1183,11 @@ class CommunityChatViewModel @Inject constructor(
         if (_isSending.value) return
         val msg = _editingMessage.value ?: return
         val snapshot = textComposer.captureEdit()
-        if (snapshot.text.isBlank() || snapshot.text == msg.content) { cancelEdit(); return }
+        if (snapshot.text.isBlank()) {
+            _errorMessage.value = "Escribe un mensaje para guardar la edición."
+            return
+        }
+        if (snapshot.text == msg.content) { cancelEdit(); return }
         val owner = authService.getCurrentUserId() ?: return
         val destination = communityId
         fun current() = owner == authService.getCurrentUserId() && destination == communityId

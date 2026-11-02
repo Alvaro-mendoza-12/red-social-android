@@ -2,11 +2,11 @@
 
 Este es un avance de correcciones comprobadas, no el cierre de la revisión integral ni una declaración de que toda la aplicación esté lista. Se continúa primero en Android. La revisión 100 ya registró la reparación de documentos de la web y la comprobación de 20 formatos; ese recorrido y el historial con personas y grupos se revalidarán en la fase web, después del móvil.
 
-## Estado vigente — 1 de noviembre de 2026
+## Estado vigente — 2 de noviembre de 2026
 
 La fase Android sigue abierta. La [matriz versionada](review-coverage.json) amplía el inventario anterior de 1.135 archivos de código principal móvil al conjunto de archivos versionados del repositorio: incluye pruebas, recursos, documentación, servidor y web. Sus estados corresponden a la huella concreta de cada archivo; una modificación posterior invalida la lectura anterior. Inventariar, buscar texto o compilar no marca un archivo como leído. Una lectura completa tampoco equivale a cerrar todos los recorridos de su módulo. Los 1.038 pendientes de la matriz anterior siguen siendo trabajo pendiente hasta revisarlos efectivamente.
 
-La última batería completa de Android pasó **2.450 pruebas en 480 clases, sin fallos, errores ni omisiones**, y compiló las pruebas instrumentadas sin ejecutarlas en dispositivo. El lint K1 del bloque de confirmaciones terminó correctamente con cero errores, cero errores fatales y 322 avisos, sin cambiar su línea base. Sus análisis se ejecutaron; Gradle reutilizó el informe final porque los resultados no habían cambiado. No se ha generado otra APK: la entrega firmada continúa siendo **9.1.35 / 175**, registrada en la revisión 100.
+La última batería completa de Android pasó **2.464 pruebas en 481 clases, sin fallos, errores ni omisiones**. Compilaron las pruebas instrumentadas y pasaron las dos nuevas comprobaciones de teclado en un emulador Android 15. Esto no valida por sí solo los tres chats completos. Lint K1 terminó con cero errores, cero errores fatales y 322 avisos, sin cambiar su línea base; este bloque generó un informe nuevo. Se construyó un APK debug para las comprobaciones del emulador, sin distribuirlo como entrega de producción. La última entrega firmada continúa siendo **9.1.35 / 175**, registrada en la revisión 100.
 
 La disponibilidad pública de la API se volvió a consultar: respondió correctamente con `novvin-audit101-collection-exits-20261101`, commit `fc98113fbc0ce15d69331c1b6b814512a85de173` y resumen `b9e242d7d1bed6791dfa0c9f397ecde496131b6af53f543f681c339aab9d2ab4`. Esta consulta no sustituye pruebas de recorridos autenticados. No se desplegó otra API en esta tanda.
 
@@ -353,3 +353,16 @@ Se retiraron MessageRemoteStore y su resultado privado, MessagePolicyEngine y Me
 La reproducción inicial ejecutó diez pruebas y detectó siete fallos antes de la corrección. Después pasaron **306 pruebas seleccionadas en 43 clases, sin fallos, errores ni omisiones**, incluida la base de datos real y una carga de 1.300 mensajes en cada una de las tres tablas. La batería completa pasó después **2.450 pruebas en 480 clases, cero fallos, errores ni omisiones**. Compilaron las pruebas instrumentadas; no se ejecutaron en dispositivo. Lint K1 ejecutó sus análisis y terminó correctamente con cero errores, cero errores fatales y 322 avisos. El informe final reutilizado conserva esos mismos resultados; no se ocultaron avisos ni se modificó la línea base.
 
 Siguen abiertos, entre otros, la aplicación efectiva de los ajustes de escritura y lectura, la grabación de audio y las transiciones de sesiones de voz. La elección de los tres ajustes se guardaba, pero los chats no la consumían. La privacidad de lectura necesita separar la sincronización privada de la cuenta de los recibos enviados a otras personas; no basta ocultar una marca en pantalla. Estos recorridos mantienen abierta la revisión móvil.
+
+
+## Decimosexto bloque, continuación: ajustes del compositor y edición
+
+Las preferencias «Enter para enviar» y «mostrar cuando otra persona escribe» se guardaban, pero no eran consumidas por los chats. Ahora la raíz observa sus valores con el ciclo de vida y los proporciona a las pantallas. El indicador recibido del chat individual respeta el ajuste; esto no cambia la publicación de presencia propia ni anuncia una privacidad de escritura distinta de la que describe Ajustes.
+
+Los compositores de personas, grupos y comunidades comparten la misma acción para botón, teclado virtual y Enter físico. Con el ajuste desactivado se conserva el comportamiento multilínea; con él activado, Enter y Enter numérico envían una vez. Shift y los atajos de sistema conservan su comportamiento, la composición de texto no se envía como mensaje y mantener Enter pulsado no repite el envío. La acción lee el texto vigente del campo.
+
+Una edición vacía ya no activa el micrófono en grupos/comunidades ni descarta la edición en los tres chats. Conserva el borrador, explica que hay que escribir y muestra «Guardar cambios». Un mensaje sin cambios sigue permitiendo terminar la edición y recuperar el borrador anterior.
+
+Pasaron **31 pruebas seleccionadas en tres clases** y después **2.464 pruebas en 481 clases** de la batería completa, sin fallos, errores ni omisiones. Las dos pruebas nuevas de teclado se ejecutaron sobre un campo real de Compose en `codex-doc-qa`, Android 15, 1080 × 1920: ambas aprobadas en 8,859 segundos. Comprobaron envío único sin salto extra, cambio inmediato de preferencia, Shift+Enter y Enter numérico; no enviaron mensajes a usuarios ni recorrieron los tres chats autenticados. Lint K1 y la construcción debug terminaron correctamente. No hay nueva APK de producción ni cambios de servidor en este bloque.
+
+Sigue pendiente conectar correctamente la preferencia de confirmaciones de lectura con el contrato de privacidad del servidor: ocultar las marcas localmente no impide que el otro usuario las reciba. También siguen abiertas las carreras de grabación, transiciones de sesión y otros recorridos de la matriz. Este avance no cierra Android ni inicia la fase web.

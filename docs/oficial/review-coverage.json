@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-02T04:54:56.102737+00:00",
-  "baseCommit": "e9aaa408d4859ccf48a89cda6f9cbed9d7588e3d",
+  "generatedAtUtc": "2026-11-02T10:21:11.182341+00:00",
+  "baseCommit": "84b92f5db434665ab21ec00e1e177cb4631822a9",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3895,
-    "code-read": 190,
-    "partial": 40
+    "pending": 3894,
+    "code-read": 192,
+    "partial": 42
   },
   "countsByPhase": {
     "android": {
-      "pending": 1692,
-      "code-read": 185,
-      "partial": 37
+      "pending": 1691,
+      "code-read": 187,
+      "partial": 39
     },
     "documentation": {
       "pending": 563,
@@ -3703,7 +3703,7 @@
     {
       "file": "README.md",
       "phase": "documentation",
-      "gitBlobId": "bb572ae786d15473f41824bdbcf4b6788c8576c0",
+      "gitBlobId": "51c92caa42c7663c75a19be7d0ce45742c094e27",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -4181,6 +4181,14 @@
       "phase": "android",
       "gitBlobId": "10b184d74e45349fd5e25c0e42c8fec6030727ee",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/messages/ChatComposerKeyboardDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "2f4be13082000c5642172689f782cc41b23dad20",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/messages/ChatEmojiDraftDeviceTest.kt",
@@ -4981,8 +4989,8 @@
     {
       "file": "app/src/main/java/conectate/com/MainActivity.kt",
       "phase": "android",
-      "gitBlobId": "e08533b861283e46ff0d2de7b0a275563bcbc55a",
-      "reviewStatus": "code-read",
+      "gitBlobId": "a5f917d533bee4c2f6cb6bf610acbd68a194db20",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -9177,6 +9185,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/messages/ChatBehaviorSettings.kt",
+      "phase": "android",
+      "gitBlobId": "68eaed5dece5720cd794e7f5fef457fc3dac97f4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatCameraCapture.kt",
       "phase": "android",
       "gitBlobId": "ed0b5bd76a5ab48c35a76eb9088156eca17c9379",
@@ -9221,7 +9237,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "e4558fc247e361108ec9034d020a2bc968e0e140",
+      "gitBlobId": "d6257d326f01959bcf4c42c1293eb5456c253a8d",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -9229,7 +9245,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt",
       "phase": "android",
-      "gitBlobId": "de8daf8a0db5918deef425ea5827b513b68d402f",
+      "gitBlobId": "23c1ac9ea85e698661065179ec8b136b041b53e5",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -9341,13 +9357,15 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "97c8be9aa26a6e714c6a7a4346dad12ec1a359ad",
-      "reviewStatus": "pending"
+      "gitBlobId": "003581ad4b7d56550a4a20a96dde8dd5d02fb918",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/CommunityChatViewModel.kt",
       "phase": "android",
-      "gitBlobId": "3bbb7a066024ddc0f06c14628bbf0e2d04e5c6a2",
+      "gitBlobId": "953b87356402ca833a76a882f62afd4971901cdf",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -9513,7 +9531,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "5436067dd7debbcf5e09c7743888e13ca98907e2",
+      "gitBlobId": "a7adf4c1749f7a8867c5e4ddf314914e5d8851e4",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -9521,7 +9539,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/GroupChatViewModel.kt",
       "phase": "android",
-      "gitBlobId": "176202080c79547bb0c8aa928234d899d5d225e7",
+      "gitBlobId": "ed8ed082a168b4cc52bd061cf160c2f3f30b41be",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -14427,6 +14445,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/messages/ChatComposerKeyboardTest.kt",
+      "phase": "android",
+      "gitBlobId": "3f3796044e6b9ae37abf80a842925d651cb753cd",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/messages/ChatEmojiBackspaceTest.kt",
       "phase": "android",
       "gitBlobId": "ea826204ed745c0447f95581e5ebf2e166e145ba",
@@ -18109,7 +18135,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "16c93daab936d36bb902febc284459a30bb3a36c",
+      "gitBlobId": "7d9c7ff181266a699073aee41b0ed03cd81b9523",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18645,7 +18671,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "b7b8bdfb5c65a5124f7f55f47db376ed2296642d",
+      "gitBlobId": "64d094ba4eedbd5717789b6268db138811c9aa22",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

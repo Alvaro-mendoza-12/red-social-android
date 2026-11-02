@@ -70,6 +70,7 @@ fun CommunityChatScreen(
     focusMessageId: String? = null,
     viewModel: CommunityChatViewModel = hiltViewModel()
 ) {
+    val chatBehavior = LocalChatBehavior.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     val isSending by viewModel.isSending.collectAsStateWithLifecycle()
@@ -1012,6 +1013,11 @@ fun CommunityChatScreen(
                                 mentionDraft = it
                                 if (textChanged) viewModel.updateMessageText(it.text)
                             }
+                            val submitCurrentDraft = {
+                                val text = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
+                                submitChatComposerDraft(text, editingMessage != null,
+                                    onEdit = { viewModel.confirmEditMessage() }, onSend = { viewModel.sendMessage() })
+                            }
                             TextField(
                                 state = composerFieldState,
                                 inputTransformation = ChatUnicodeInputTransformation,
@@ -1023,17 +1029,18 @@ fun CommunityChatScreen(
                                         showMediaComposer = true
                                     })
                                     .focusRequester(stickerKeyboardPanel.inputFocusRequester)
+                                    .chatComposerKeyboard(chatBehavior.enterToSend,
+                                        hasComposition = { composerFieldState.composition != null },
+                                        onSend = { submitCurrentDraft() })
                                     .onFocusChanged { if (it.isFocused) stickerKeyboardPanel.onInputFocused() },
                                 enabled = true,
                                 placeholder = { Text("Mensaje") },
                                 lineLimits = androidx.compose.foundation.text.input.TextFieldLineLimits.MultiLine(maxHeightInLines = 4),
                                 shape = RoundedCornerShape(12.dp),
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true, imeAction = androidx.compose.ui.text.input.ImeAction.Send),
-                                onKeyboardAction = androidx.compose.foundation.text.input.KeyboardActionHandler {
-                                    val currentText = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
-                                    if (currentText.isNotBlank()) {
-                                        if (editingMessage != null) viewModel.confirmEditMessage() else viewModel.sendMessage()
-                                    }
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, autoCorrectEnabled = true,
+                                    imeAction = if (chatBehavior.enterToSend) androidx.compose.ui.text.input.ImeAction.Send else androidx.compose.ui.text.input.ImeAction.Default),
+                                onKeyboardAction = androidx.compose.foundation.text.input.KeyboardActionHandler { performDefaultAction ->
+                                    if (chatBehavior.enterToSend) submitCurrentDraft() else performDefaultAction()
                                 },
                                 colors = TextFieldDefaults.colors(focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant, disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant, focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent),
                                 trailingIcon = {
@@ -1049,11 +1056,7 @@ fun CommunityChatScreen(
                             Spacer(Modifier.width(4.dp))
                             FloatingActionButton(
                                 onClick = {
-                                    val currentText = composerFieldState.publishCurrentChatDraft(viewModel::updateMessageText)
-                                    if (currentText.isNotBlank()) {
-                                        if (editingMessage != null) viewModel.confirmEditMessage()
-                                        else viewModel.sendMessage()
-                                    } else {
+                                    if (!submitCurrentDraft()) {
                                         if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
                                             viewModel.startRecording()
                                         } else {
@@ -1068,7 +1071,18 @@ fun CommunityChatScreen(
                                 elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                             ) {
                                 val hasText = composerFieldState.text.isNotBlank()
-                                Icon(imageVector = if (hasText) Icons.AutoMirrored.Filled.Send else Icons.Default.Mic, contentDescription = if (hasText) "Enviar mensaje" else "Grabar audio")
+                                Icon(
+                                    imageVector = when {
+                                        editingMessage != null -> Icons.Default.Check
+                                        hasText -> Icons.AutoMirrored.Filled.Send
+                                        else -> Icons.Default.Mic
+                                    },
+                                    contentDescription = when {
+                                        editingMessage != null -> "Guardar cambios"
+                                        hasText -> "Enviar mensaje"
+                                        else -> "Grabar audio"
+                                    }
+                                )
                             }
                         }
                         }
