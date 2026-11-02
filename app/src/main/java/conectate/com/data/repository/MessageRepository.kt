@@ -4538,10 +4538,9 @@ class MessageRepository @Inject constructor(
             val errors = mutableListOf<String>()
 
             uniqueTargets.forEach { targetChatId ->
-                var content = buildPreviewForContentType(
-                    contentType = source.content_type,
-                    fallbackContent = source.content.ifBlank { "Mensaje reenviado" }
-                )
+                val content = source.content.ifBlank {
+                    buildPreviewForContentType(source.content_type, "Mensaje reenviado")
+                }
 
                 val sendResult = sendMessage(
                     accountLease = accountLease,

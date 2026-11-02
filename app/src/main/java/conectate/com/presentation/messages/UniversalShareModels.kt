@@ -37,8 +37,9 @@ data class ForwardMessagePayload(
     val deletedForAll: Boolean,
     val status: String = "sent",
 ) {
-    val isForwardable: Boolean
-        get() = conectate.com.core.messaging.messageForwardingError(deletedForAll, contentType, status, mediaUrl) == null
+    val forwardingError: String?
+        get() = conectate.com.core.messaging.messageForwardingError(deletedForAll, contentType, status, mediaUrl)
+    val isForwardable: Boolean get() = forwardingError == null
 
     val preview: String
         get() = content.trim().ifBlank {
@@ -125,7 +126,7 @@ internal const val FORWARD_UNAVAILABLE_MESSAGE = "No se pueden reenviar mensajes
 
 internal fun UniversalForwardCoordinator.openForUi(candidates: List<ForwardMessagePayload>, initiallySelectedIds: Set<String>) {
     if (candidates.none(ForwardMessagePayload::isForwardable)) {
-        conectate.com.presentation.common.AppFeedbackBus.showError(FORWARD_UNAVAILABLE_MESSAGE)
+        conectate.com.presentation.common.AppFeedbackBus.showError(candidates.firstNotNullOfOrNull { it.forwardingError } ?: FORWARD_UNAVAILABLE_MESSAGE)
         return
     }
     if (!open(candidates, initiallySelectedIds)) {

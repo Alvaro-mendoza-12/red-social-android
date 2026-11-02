@@ -107,4 +107,12 @@ class ForwardCoordinatorNavigationTest {
         assertFalse(group.isForwardable)
         assertFalse(community.isForwardable)
     }
+
+    @Test fun specialMessageActionsCannotBecomeBrokenOrMisleadingCardsInAnotherConversation() {
+        for (type in listOf("poll", "raffle", "system_member_joined", " SYSTEM_MEMBER_LEFT ")) {
+            val coordinator = UniversalForwardCoordinator()
+            assertFalse(coordinator.open(listOf(text.copy(contentType = type)), setOf(text.id)))
+            assertNull(coordinator.request)
+        }
+    }
 }

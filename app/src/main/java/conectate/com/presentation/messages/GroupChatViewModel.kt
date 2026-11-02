@@ -921,8 +921,9 @@ class GroupChatViewModel @Inject constructor(
     }
 
     fun openForwardPicker(message: conectate.com.data.model.Message) {
-        if (!message.toForwardMessagePayload().isForwardable) {
-            _errorMessage.value = FORWARD_UNAVAILABLE_MESSAGE
+        val forwardingError = message.toForwardMessagePayload().forwardingError
+        if (forwardingError != null) {
+            _errorMessage.value = forwardingError
             return
         }
         _forwardPickerMessage.value = message
