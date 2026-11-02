@@ -4,16 +4,10 @@ import kotlin.OptIn
 import androidx.compose.foundation.ExperimentalFoundationApi
 
 import android.Manifest
-import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
-import android.media.RingtoneManager
-import android.media.AudioAttributes
 import android.os.Build
-import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import conectate.com.MainActivity
@@ -22,9 +16,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonObject
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import androidx.core.app.Person
-import androidx.core.graphics.drawable.IconCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -32,7 +23,6 @@ import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.repository.AccountSessionRepository
 import conectate.com.data.repository.CallRepository
 import conectate.com.data.repository.MultiAccountInboxRepository
-import conectate.com.data.repository.NotificationRepository
 import conectate.com.data.local.prefs.AppSettingsPreferences
 import conectate.com.data.repository.message.MessageSessionStateStore
 import conectate.com.data.model.MultiAccountPendingDestination
@@ -59,9 +49,6 @@ import java.io.ByteArrayOutputStream
 
 @AndroidEntryPoint
 class MyFirebaseMessagingService : FirebaseMessagingService() {
-
-    @Inject
-    lateinit var notificationRepository: NotificationRepository
 
     @Inject
     lateinit var messageRepository: conectate.com.data.repository.MessageRepository
@@ -125,9 +112,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             // Parse all known target keys (snake_case + camelCase) to avoid notification misrouting.
             var groupId = data["group_id"] ?: data["groupId"]
             var communityId = data["community_id"] ?: data["communityId"]
-            var chatId = data["chat_id"] ?: data["chatId"] ?: data["challenge_id"]
-            var type = data["type"] ?: "text"
-            var contentType = data["content_type"] ?: "text"
+            val chatId = conectate.com.util.pushConversationId(data)
+            val type = data["type"]?.trim()?.lowercase().orEmpty()
+            val contentType = data["content_type"]?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: "text"
             var senderId = data["sender_id"] ?: data["senderId"] ?: data["uid"]
             var senderName = data["sender_name"] ?: data["senderName"] ?: data["author_name"] ?: notificationTitle ?: "Novvin"
             var content = data["content"] ?: data["message"] ?: data["body"] ?: data["text"] ?: data["comment"] ?: notificationBody ?: ""
@@ -139,12 +126,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             var messageId = data["message_id"] ?: data["focus_message_id"]
             var commentId = data["comment_id"] ?: data["focus_comment_id"]
             
-            var isGroup = data["is_group"] == "true" ||
-                data["isGroup"] == "true" ||
-                !groupId.isNullOrBlank()
-            var isCommunity = data["is_community"] == "true" ||
-                data["isCommunity"] == "true" ||
-                !communityId.isNullOrBlank()
+            val conversationKind = conectate.com.util.pushConversationKind(data)
+            val isCommunity = conversationKind == "community"
+            val isGroup = conversationKind == "group"
             val remoteAccountTarget = notificationAccountTargetFromRemoteData(data)
             val currentAccountTarget = currentNotificationAccountTarget()
             if (!conectate.com.util.canReceiveAccountNotification(
@@ -155,6 +139,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     accountSessionRepository.accounts.value
                 )) return
             val effectiveAccountTarget = remoteAccountTarget ?: currentAccountTarget
+            val receivedLease = authService.captureAccountLease()
             val isTargetingActiveAccount = remoteAccountTarget
                 ?.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail())
                 ?: true
@@ -170,15 +155,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 "Notification received type=$type chatId=${chatId ?: "-"} groupId=${groupId ?: "-"} communityId=${communityId ?: "-"}"
             )
 
-            // Always prioritize explicit group/community targets over generic chat_id.
-            if (isCommunity && !communityId.isNullOrBlank()) {
-                chatId = communityId
-            } else if (isGroup && !groupId.isNullOrBlank()) {
-                chatId = groupId
-            } else if (type == "new_message" && chatId.isNullOrBlank() && targetId.isNotBlank()) {
-                chatId = targetId
-            }
-            
             android.util.Log.d(
                 TAG,
                 "Extraction: chatId=$chatId, groupId=$groupId, communityId=$communityId, isGroup=$isGroup, isCommunity=$isCommunity"
@@ -223,6 +199,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 val scopeType = if (isCommunity) "community" else if (isGroup) "group" else "chat"
                 val conversationId = chatId?.trim()?.takeIf { it.isNotBlank() } ?: return
                 if (!appSettingsPreferences.messageNotificationsEnabled.value) return
+                if (effectiveAccountTarget == null || !canStillNotify(effectiveAccountTarget)) return
+                if (ConversationNotificationPrefs(this).isMuted(scopeType, conversationId, effectiveAccountTarget.userId)) return
                 if (isTargetingActiveAccount && (messageSessionStateStore.isActiveConversationVisible(scopeType, conversationId) ||
                     ConversationNotificationPrefs(this).isMuted(scopeType, conversationId, authService.getCurrentUserId()))) return
                 if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return
@@ -376,96 +354,42 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                 return
             }
 
-            if (type.trim().equals("live_started", ignoreCase = true)) {
-                if (!appSettingsPreferences.liveNotificationsEnabled.value) {
-                    android.util.Log.d(TAG, "Live notifications disabled by user preference.")
-                    return
+            val activityType = conectate.com.util.ActivityNotificationPolicy.normalizedType(type)
+            if (activityType == "live_started" || activityType in conectate.com.util.ActivityNotificationPolicy.socialTypes) {
+                val action = when (activityType) {
+                    "friend_request_accepted" -> getString(R.string.notification_friend_accepted)
+                    "friend_request" -> getString(R.string.notification_friend_requested)
+                    "follow" -> getString(R.string.notification_followed)
+                    else -> null
                 }
-
-                val liveId = (
-                    data["live_id"] ?: data["liveId"] ?: data["target_id"] ?: data["targetId"]
-                ).orEmpty().trim()
-                val liveTitle = data["title"]?.trim().takeUnless { it.isNullOrBlank() }
-                    ?: "$senderName inició un directo"
-                val liveBody = data["body"]?.trim().takeUnless { it.isNullOrBlank() }
-                    ?: data["message"]?.trim().takeUnless { it.isNullOrBlank() }
-                    ?: "Está en vivo ahora."
-
-                if (liveId.isBlank()) {
-                    // A malformed event must never create a privileged navigation intent.
-                    sendSystemNotification(liveTitle, liveBody)
-                    return
-                }
-
-                sendLiveStartedNotification(
-                    title = liveTitle,
-                    body = liveBody,
-                    liveId = liveId,
-                    hostId = data["host_id"] ?: data["hostId"] ?: senderId,
-                    hostAvatar = data["sender_avatar"]
-                        ?: data["senderAvatar"]
-                        ?: data["actor_avatar_url"]
-                        ?: data["host_avatar_url"],
-                    notificationAccountTarget = effectiveAccountTarget,
-                    accountLabel = targetAccountLabel
+                val liveId = data["live_id"] ?: data["liveId"] ?: targetId
+                val readableBody = if (activityType == "live_started")
+                    (data["body"] ?: data["message"])?.takeIf(String::isNotBlank) ?: "Está en vivo ahora."
+                    else conectate.com.util.socialNotificationBody(data["title"] ?: senderName, data["body"] ?: displayContent, action)
+                sendActivityNotification(
+                    title = data["title"]?.takeIf(String::isNotBlank) ?: senderName,
+                    body = readableBody, type = activityType,
+                    targetId = if (activityType == "live_started") liveId else targetId,
+                    senderId = if (activityType == "live_started") data["host_id"] ?: data["hostId"] ?: senderId else senderId,
+                    senderAvatar = data["sender_avatar"] ?: data["senderAvatar"] ?: data["actor_avatar_url"] ?: data["host_avatar_url"],
+                    notificationId = data["notification_id"], notificationAccountTarget = effectiveAccountTarget,
+                    accountLabel = targetAccountLabel, data = data,
                 )
                 return
             }
 
-            // 2. SOCIAL & VIDEOS (Highest Priority Fix)
-            val socialTypes = listOf(
-                "like", "like_post", "like_video", "follow", "friend_request", "friend_request_accepted",
-                "comment", "comment_post", "reply_post", "comment_video", "reply_video",
-                "mention", "mention_post", "mention_video", "share", "share_post", "share_video", "admin_warning_video",
-                "challenge_invite", "voice_invite", "voice_access_request", "birthday", "new_moment", "like_moment"
-            )
-
-            if (type in socialTypes) {
-                if (
-                    type == "voice_invite" &&
-                    !appSettingsPreferences.liveNotificationsEnabled.value
-                ) {
-                    android.util.Log.d(TAG, "Live notifications disabled by user preference: $type")
-                    return
-                }
-                if (!appSettingsPreferences.socialNotificationsEnabled.value) {
-                    android.util.Log.d(TAG, "Social notifications disabled by user preference: $type")
-                    return
-                }
-                var isForeground = ProcessLifecycleOwner.get().lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-                if (isForeground && isTargetingActiveAccount) {
-                    android.util.Log.d(TAG, "Skipping foreground social system notification for active account: $type")
-                    return
-                }
-                android.util.Log.d(TAG, "Routing to SOCIAL: $type")
-                sendSocialNotification(
-                    title = data["title"] ?: senderName,
-                    body = data["body"] ?: displayContent,
-                    type = type,
-                    targetId = targetId,
-                    postId = postId,
-                    videoId = videoId,
-                    senderId = senderId ?: "",
-                    senderAvatar = data["sender_avatar"],
-                    commentId = commentId,
-                    notificationId = data["notification_id"],
-                    expiresAt = data["expires_at"],
-                    notificationAccountTarget = effectiveAccountTarget,
-                    accountLabel = targetAccountLabel
-                )
-                return // DONE
-            }
-
-            // 3. Inject into Repository for the matching active session only.
-            if (isTargetingActiveAccount && !chatId.isNullOrBlank()) {
+            // Only actual server message deliveries can enter the local replica or message alerts.
+            val isMessageDelivery = conectate.com.util.isMessageDeliveryPush(type, messageId, senderId, effectiveAccountTarget?.userId)
+            val deliveryLease = receivedLease
+            if (isMessageDelivery && isTargetingActiveAccount && !chatId.isNullOrBlank()) {
                 // La notificación no debe adelantarse a la fila local: si el
                 // usuario la toca inmediatamente, el mensaje ya debe existir.
                 runBlocking(Dispatchers.IO) {
                     withTimeoutOrNull(2_000L) {
                     try {
-                        val incomingId = messageId ?: "fcm_${System.currentTimeMillis()}"
+                        deliveryLease.requireCurrent()
+                        val incomingId = requireNotNull(messageId)
                         if (isGroup) {
-                            runCatching { groupRepository.markMessageAsDelivered(chatId, incomingId) }
                             var msg = conectate.com.data.model.GroupMessage(
                                 id = incomingId,
                                 group_id = chatId,
@@ -481,9 +405,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                                 forwarded_from_message_id = data["forwarded_from_message_id"],
                                 forwarded_from_user_id = data["forwarded_from_user_id"]
                             )
-                            groupRepository.handleIncomingMessage(msg)
+                            groupRepository.handleIncomingMessage(deliveryLease, msg)
                         } else if (isCommunity) {
-                            runCatching { communityRepository.markMessageAsDelivered(chatId, incomingId) }
                             var msg = conectate.com.data.model.CommunityMessage(
                                 id = incomingId,
                                 community_id = chatId,
@@ -500,9 +423,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                                 forwarded_from_message_id = data["forwarded_from_message_id"],
                                 forwarded_from_user_id = data["forwarded_from_user_id"]
                             )
-                            communityRepository.handleIncomingMessage(msg)
+                            communityRepository.handleIncomingMessage(deliveryLease, msg)
                         } else {
-                            runCatching { messageRepository.markMessageAsDelivered(chatId, incomingId) }
                             var msg = conectate.com.data.model.Message(
                                 id = incomingId,
                                 chat_id = chatId,
@@ -519,15 +441,25 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                                 created_at = data["created_at"] ?: java.time.Instant.now().toString(),
                                 status = "delivered"
                             )
-                            messageRepository.handleIncomingMessage(msg)
+                            messageRepository.handleIncomingMessage(deliveryLease, msg)
                         }
-                    } catch (e: Exception) {
+                    } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch (e: Exception) {
                         android.util.Log.e(TAG, "Background Repo Insert Error", e)
                     }
                     }
                 }
             }
             
+            if (!isMessageDelivery) {
+                val body = data["body"] ?: data["message"] ?: displayContent
+                if (body.isNotBlank()) sendActivityNotification(data["title"] ?: senderName, body, type,
+                    targetId, senderId, data["sender_avatar"], data["notification_id"], effectiveAccountTarget, targetAccountLabel, data)
+                return
+            }
+            if (effectiveAccountTarget == null || !canStillNotify(effectiveAccountTarget)) return
+            if (isTargetingActiveAccount) deliveryLease.requireCurrent()
+
             if (isCallEventContentType(contentType)) {
                 android.util.Log.d(TAG, "Skipping standard chat notification for call event contentType=$contentType")
                 return
@@ -581,7 +513,8 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     messageId = messageId,
                     notificationAccountTarget = effectiveAccountTarget,
                     accountLabel = targetAccountLabel,
-                    respectMutePreferences = isTargetingActiveAccount
+                    respectMutePreferences = isTargetingActiveAccount,
+                    activeLease = if (isTargetingActiveAccount) deliveryLease else null
                 )
             } else if (!chatId.isNullOrBlank() || type == "new_message") {
                 if (isTargetingActiveAccount && !chatId.isNullOrBlank() && messageRepository.isChatMutedLocally(chatId)) {
@@ -599,119 +532,27 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     notificationAccountTarget = effectiveAccountTarget,
                     accountLabel = targetAccountLabel,
                     allowInlineActions = isTargetingActiveAccount,
-                    respectMutePreferences = isTargetingActiveAccount
+                    respectMutePreferences = isTargetingActiveAccount,
+                    activeLease = if (isTargetingActiveAccount) deliveryLease else null
                 )
             } else {
-                var title = data["title"] ?: data["notification_title"] ?: senderName
-                var body = data["body"] ?: data["message"] ?: displayContent
-                val isLiveNotification = type.startsWith("live_") ||
-                    type in setOf("new_live", "stream_reminder", "stream_soon", "voice_invite")
-                if (isLiveNotification && !appSettingsPreferences.liveNotificationsEnabled.value) {
-                    android.util.Log.d(TAG, "Live notifications disabled by user preference: $type")
-                    return
-                }
-                if (body.isNotBlank()) {
-                    sendSystemNotification(title, body, data["notification_id"]?.takeIf { type == "system_announcement" })
-                }
+                val title = data["title"] ?: data["notification_title"] ?: senderName
+                val body = data["body"] ?: data["message"] ?: displayContent
+                if (body.isNotBlank()) sendActivityNotification(
+                    title, body, type, targetId, senderId, data["sender_avatar"],
+                    data["notification_id"], effectiveAccountTarget, targetAccountLabel, data,
+                )
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            android.util.Log.d(TAG, "Notification processing stopped because its session changed")
         } catch (e: Exception) {
-            android.util.Log.e(TAG, "CRITICAL ERROR processing FCM: ${e.message}", e)
+            android.util.Log.e(TAG, "Could not process an incoming notification", e)
         } finally {
             if (wakeLock.isHeld) {
                 wakeLock.release()
                 android.util.Log.d(TAG, "WakeLock Released.")
             }
         }
-    }
-
-    @OptIn(ExperimentalFoundationApi::class)
-    private fun sendSocialNotification(
-        title: String,
-        body: String,
-        type: String,
-        targetId: String,
-        postId: String?,
-        videoId: String?,
-        senderId: String,
-        senderAvatar: String?,
-        commentId: String?,
-        notificationId: String?,
-        expiresAt: String?,
-        notificationAccountTarget: NotificationAccountTarget?,
-        accountLabel: String?
-    ) {
-        var channelId = getString(R.string.social_notification_channel_id)
-        val action = when (type) {
-            "friend_request_accepted" -> getString(R.string.notification_friend_accepted)
-            "friend_request" -> getString(R.string.notification_friend_requested)
-            "follow" -> getString(R.string.notification_followed)
-            else -> null
-        }
-        val readableBody=conectate.com.util.socialNotificationBody(title,body,action)
-        var intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            putExtra("type", type)
-            notificationId?.takeIf { it.isNotBlank() }?.let { putExtra("notification_id", it) }
-            commentId?.let { putExtra("comment_id", it) }
-            when (type) {
-                "birthday" -> putExtra("birthday_user_id", senderId.ifBlank { targetId })
-                "follow", "friend_request", "friend_request_accepted", "voice_access_request" -> putExtra("follower_id", senderId.ifBlank { targetId })
-                "like", "like_post", "comment", "comment_post", "reply_post", "mention", "mention_post", "share", "share_post" -> putExtra("post_id", targetId)
-                "like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video" -> putExtra("video_id", targetId)
-                "voice_invite" -> putExtra("room_id", targetId)
-                "challenge_invite" -> putExtra("challenge_id", targetId)
-                "new_moment", "like_moment" -> putExtra("moment_id", targetId)
-            }
-            if (type == "mention" && !videoId.isNullOrBlank()) {
-                putExtra("video_id", videoId)
-                putExtra("target_type", "video")
-            } else if (type == "mention" && !postId.isNullOrBlank()) {
-                putExtra("post_id", postId)
-                putExtra("target_type", "post")
-            }
-        }.putNotificationAccountTarget(
-            notificationAccountTarget,
-            accountLabel
-        ).also { conectate.com.util.TrustedNavigationIntents.markTrusted(this, it) }
-
-        val stableId = notificationId?.takeIf { it.isNotBlank() }
-            ?.let { ("social:$it").hashCode() } ?: System.currentTimeMillis().toInt()
-        var pendingIntent = PendingIntent.getActivity(this, stableId, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        var avatarBitmap = getAvatarBitmap(senderAvatar)
-
-        var notificationBuilder = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setLargeIcon(avatarBitmap ?: BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
-            .setContentTitle(title)
-            .setContentText(readableBody)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(readableBody))
-            .setSubText(accountLabel?.let { "Cuenta: $it" } ?: getString(R.string.app_name))
-            .setColor(ContextCompat.getColor(this, R.color.red_primary))
-            .setAutoCancel(true)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
-            .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
-
-        if (type == "birthday") notificationBuilder.addAction(0, "Felicítalo ahora", pendingIntent)
-        if (type == "new_moment" || type == "like_moment") {
-            val remaining = runCatching {
-                expiresAt?.let { java.time.Instant.parse(it).toEpochMilli() - System.currentTimeMillis() }
-            }.getOrNull()
-            if (remaining != null && remaining <= 0) return
-            if (remaining != null) notificationBuilder.setTimeoutAfter(remaining)
-        }
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Interacciones Sociales", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Likes, Comentarios y Seguidores"
-                enableVibration(true)
-                setShowBadge(true)
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
-        notificationManager.notify(stableId, notificationBuilder.build())
     }
 
     @OptIn(ExperimentalFoundationApi::class)
@@ -726,16 +567,23 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         notificationAccountTarget: NotificationAccountTarget?,
         accountLabel: String?,
         allowInlineActions: Boolean,
-        respectMutePreferences: Boolean
+        respectMutePreferences: Boolean,
+        activeLease: conectate.com.data.supabase.AuthSessionLease?
     ) {
+        val owner = notificationAccountTarget ?: return
+        if (!canStillNotify(owner)) return
+        activeLease?.requireCurrent()
         var conversationId = chatId?.trim()?.lowercase().orEmpty()
         if (conversationId.isBlank()) return
-        if (respectMutePreferences && ConversationNotificationPrefs(this).isMuted(targetType = "chat", conversationId = conversationId, accountId = authService.getCurrentUserId())) {
+        if (ConversationNotificationPrefs(this).isMuted(targetType = "chat", conversationId = conversationId, accountId = owner.userId)) {
             android.util.Log.d(TAG, "Chat $conversationId muted via notification prefs. Notification skipped.")
             return
         }
 
         val avatarBitmap = getMessageSenderBitmap(senderId, senderAvatar, respectMutePreferences)
+        activeLease?.requireCurrent()
+        if (!canStillNotify(owner) || !appSettingsPreferences.messageNotificationsEnabled.value ||
+            ConversationNotificationPrefs(this).isMuted("chat", conversationId, owner.userId)) return
         if (respectMutePreferences && (
                 notificationAccountTarget?.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail()) == false ||
                 messageSessionStateStore.isActiveConversationVisible("chat", conversationId) ||
@@ -784,8 +632,12 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         notificationAccountTarget: NotificationAccountTarget?,
         accountLabel: String?,
         respectMutePreferences: Boolean,
+        activeLease: conectate.com.data.supabase.AuthSessionLease?,
         isMention: Boolean = false
     ) {
+        val owner = notificationAccountTarget ?: return
+        if (!canStillNotify(owner)) return
+        activeLease?.requireCurrent()
         var channelId = getString(R.string.group_notification_channel_id)
         var targetType = when {
             isCommunity -> "community"
@@ -793,12 +645,15 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             else -> "chat"
         }
         var conversationId = chatId.trim().lowercase()
-        if (respectMutePreferences && !isMention && ConversationNotificationPrefs(this).isMuted(targetType = targetType, conversationId = conversationId, accountId = authService.getCurrentUserId())) {
+        if (!isMention && ConversationNotificationPrefs(this).isMuted(targetType = targetType, conversationId = conversationId, accountId = owner.userId)) {
             android.util.Log.d(TAG, "$targetType $conversationId muted via notification prefs. Notification skipped.")
             return
         }
         val avatarBitmap = getMessageSenderBitmap(senderId, senderAvatar, respectMutePreferences)
         val roomBitmap = getAvatarBitmap(conversationAvatar)
+        activeLease?.requireCurrent()
+        if (!canStillNotify(owner) || !appSettingsPreferences.messageNotificationsEnabled.value ||
+            (!isMention && ConversationNotificationPrefs(this).isMuted(targetType, conversationId, owner.userId))) return
         if (respectMutePreferences && (
                 notificationAccountTarget?.matches(authService.getCurrentUserId(), authService.getCurrentUserEmail()) == false ||
                 messageSessionStateStore.isActiveConversationVisible(targetType, conversationId) ||
@@ -829,147 +684,41 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         )
     }
 
-    private fun sendLiveStartedNotification(
+    /** Show text immediately. Optional photos may only enrich this exact still-visible attempt. */
+    private fun sendActivityNotification(
         title: String,
         body: String,
-        liveId: String,
-        hostId: String?,
-        hostAvatar: String?,
+        type: String,
+        targetId: String,
+        senderId: String?,
+        senderAvatar: String?,
+        notificationId: String?,
         notificationAccountTarget: NotificationAccountTarget?,
-        accountLabel: String?
+        accountLabel: String?,
+        data: Map<String, String>,
     ) {
-        val normalizedLiveId = liveId.trim()
-        if (normalizedLiveId.isBlank()) {
-            sendSystemNotification(title, body)
-            return
-        }
-
-        val channelId = getString(R.string.live_notification_channel_id)
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        ensureLiveNotificationChannel(notificationManager, channelId)
-
-        val openLiveIntent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            data = Uri.Builder()
-                .scheme("novvin")
-                .authority("notification")
-                .appendPath("live")
-                .appendPath(normalizedLiveId)
-                .build()
-            putExtra("type", "live_started")
-            putExtra("live_id", normalizedLiveId)
-            putExtra("target_id", normalizedLiveId)
-            hostId?.trim()?.takeIf { it.isNotBlank() }?.let { putExtra("host_id", it) }
-        }.putNotificationAccountTarget(
-            notificationAccountTarget,
-            accountLabel
-        ).also { conectate.com.util.TrustedNavigationIntents.markTrusted(this, it) }
-
-        val notificationId = ("live_started:$normalizedLiveId").hashCode()
-        val contentIntent = PendingIntent.getActivity(
-            this,
-            notificationId,
-            openLiveIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-
-        val childNotification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setLargeIcon(getAvatarBitmap(hostAvatar) ?: BitmapFactory.decodeResource(resources, R.mipmap.ic_launcher))
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setSubText(
-                accountLabel?.let { "EN VIVO · Cuenta: $it" }
-                    ?: "EN VIVO · ${getString(R.string.app_name)}"
-            )
-            .setColor(ContextCompat.getColor(this, R.color.red_primary))
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(contentIntent)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-            .setGroup(LIVE_NOTIFICATION_GROUP)
-            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
-            .build()
-
-        val discoveryIntent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra("type", "live_discovery")
-        }
-        val discoveryPendingIntent = PendingIntent.getActivity(
-            this,
-            LIVE_NOTIFICATION_SUMMARY_REQUEST_CODE,
-            discoveryIntent,
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-        )
-        val summaryNotification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(getString(R.string.live_notification_summary_title))
-            .setContentText(getString(R.string.live_notification_summary_body))
-            .setStyle(NotificationCompat.InboxStyle().setSummaryText(getString(R.string.app_name)))
-            .setAutoCancel(true)
-            .setOnlyAlertOnce(true)
-            .setContentIntent(discoveryPendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
-            .setGroup(LIVE_NOTIFICATION_GROUP)
-            .setGroupSummary(true)
-            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
-            .build()
-
-        // A repeated FCM delivery for the same live updates this exact notification
-        // instead of stacking another visual alert on the device.
-        notificationManager.notify("$LIVE_NOTIFICATION_TAG:$normalizedLiveId", notificationId, childNotification)
-        notificationManager.notify(LIVE_NOTIFICATION_SUMMARY_TAG, LIVE_NOTIFICATION_SUMMARY_ID, summaryNotification)
-    }
-
-    private fun ensureLiveNotificationChannel(
-        notificationManager: NotificationManager,
-        channelId: String
-    ) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val channel = NotificationChannel(
-            channelId,
-            getString(R.string.live_notification_channel_name),
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = getString(R.string.live_notification_channel_description)
-            setShowBadge(true)
-        }
-        notificationManager.createNotificationChannel(channel)
-    }
-
-    @OptIn(ExperimentalFoundationApi::class)
-    private fun sendSystemNotification(title: String, body: String, stableId: String? = null) {
-        var channelId = getString(R.string.system_notification_channel_id)
-        var intent = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        }
-        var pendingIntent = PendingIntent.getActivity(this, System.currentTimeMillis().toInt(), intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-
-        var notificationBuilder = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setOnlyAlertOnce(stableId != null)
-            .setAutoCancel(true)
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
-            .setContentIntent(pendingIntent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-
-        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, "Sistema", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Alertas importantes del sistema"
+        val account = notificationAccountTarget ?: return
+        if (!canStillNotify(account)) return
+        val extra = buildJsonObject { data.forEach { (key, value) -> put(key, value) } }
+        val publication = conectate.com.util.LocalNotificationHelper(this).showSocialNotification(
+            account = account.copy(displayName = accountLabel ?: account.displayName),
+            title = title, body = body, type = type, targetId = targetId,
+            senderId = senderId, senderAvatar = senderAvatar, targetType = data["target_type"],
+            extraData = extra, notificationId = notificationId,
+        ) ?: return
+        if (!senderAvatar.isNullOrBlank()) serviceScope.launch {
+            val bitmap = conectate.com.core.media.NotificationAvatarLoader.load(this@MyFirebaseMessagingService, senderAvatar)
+                ?: return@launch
+            if (canStillNotify(account) &&
+                AppSettingsPreferences.activityNotificationAllowed(this@MyFirebaseMessagingService, type)) {
+                MessageNotificationFactory.updateAccountNotificationAvatar(this@MyFirebaseMessagingService, publication, bitmap)
             }
-            notificationManager.createNotificationChannel(channel)
         }
-        if (stableId.isNullOrBlank()) notificationManager.notify(System.currentTimeMillis().toInt(), notificationBuilder.build())
-        else notificationManager.notify("system:$stableId", stableId.hashCode(), notificationBuilder.build())
     }
+
+    private fun canStillNotify(account: NotificationAccountTarget): Boolean =
+        conectate.com.util.canReceiveAccountNotification(account, authService.getCurrentUserId(),
+            authService.getCurrentUserEmail(), authService.isLoggedIn(), accountSessionRepository.accounts.value)
 
     private fun getMessageSenderBitmap(senderId: String?, avatarUrl: String?, resolveProfile: Boolean): Bitmap? {
         if (!resolveProfile || android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return getAvatarBitmap(avatarUrl)
@@ -1125,11 +874,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     companion object {
         private const val TAG = "MyFirebaseMsgService"
         private const val CALL_INVITE_MAX_AGE_MS = 60_000L
-        private const val LIVE_NOTIFICATION_GROUP = "novvin_live_notifications"
-        private const val LIVE_NOTIFICATION_TAG = "live_started"
-        private const val LIVE_NOTIFICATION_SUMMARY_TAG = "live_started_summary"
-        private const val LIVE_NOTIFICATION_SUMMARY_ID = 9_401
-        private const val LIVE_NOTIFICATION_SUMMARY_REQUEST_CODE = 9_402
     }
 }
 

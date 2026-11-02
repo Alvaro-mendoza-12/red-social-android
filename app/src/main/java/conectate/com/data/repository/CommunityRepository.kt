@@ -774,14 +774,24 @@ class CommunityRepository @Inject constructor(
 
     // --- MESSAGE HANDLING ---
 
-    // Note: No explicit locking needed - Dispatcher.IO coroutines are single-threaded per context
+    // Incoming writes retain the account generation across repository suspensions.
     
     suspend fun handleIncomingMessage(
         msg: CommunityMessage,
         sessionUserId: String? = currentSessionUserId()
     ) {
-        val msg = deletedMessageStore.redact(msg, sessionUserId)
-        var sessionSnapshot = captureSessionSnapshot(sessionUserId)
+        val lease = authService.captureAccountLease()
+        if (!lease.accountId.equals(sessionUserId, ignoreCase = true)) return
+        handleIncomingMessage(lease, msg)
+    }
+
+    internal suspend fun handleIncomingMessage(
+        lease: conectate.com.data.supabase.AuthSessionLease,
+        msg: CommunityMessage,
+    ) {
+        lease.requireCurrent()
+        val msg = deletedMessageStore.redact(msg, lease.accountId)
+        val sessionSnapshot = sessionWriteGuard.capture(lease, operationJob = null)
         withContext(Dispatchers.IO) {
             if (!isSessionSnapshotValid(sessionSnapshot, "community-insert-start:${msg.community_id}")) return@withContext
             var cleanId = msg.community_id.trim().lowercase()
@@ -816,7 +826,7 @@ class CommunityRepository @Inject constructor(
                     var currentUserId = sessionSnapshot.accountId
                     
                     if (currentUserId != null && msg.sender_id.trim().lowercase() != currentUserId) {
-                        scope.launch { markMessageAsDelivered(cleanId, msg.id) }
+                        scope.launch { markMessageAsDelivered(lease, cleanId, msg.id) }
                     }
 
                     // Hydrate reply_to manually since Realtime payload allows it to be null/missing joins
@@ -894,8 +904,9 @@ class CommunityRepository @Inject constructor(
                     
                     android.util.Log.d("CommunityRepository", "✅ [INCOMING-COMPLETE] Mensaje ${msg.id} procesado exitosamente")
 
-                } catch (e: Exception) {
-                    android.util.Log.e("CommunityRepository", "❌ [INCOMING-ERROR] Error crítico procesando mensaje ${msg.id}", e)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (e: Exception) {
+                    android.util.Log.e("CommunityRepository", "Could not process an incoming message", e)
                 }
         }
     }
@@ -1881,13 +1892,21 @@ class CommunityRepository @Inject constructor(
 
 
 
-    suspend fun markMessageAsDelivered(communityId: String, messageId: String) {
-        var cleanId = communityId.trim().lowercase()
+    suspend fun markMessageAsDelivered(communityId: String, messageId: String) =
+        markMessageAsDelivered(authService.captureAccountLease(), communityId, messageId)
+
+    internal suspend fun markMessageAsDelivered(
+        lease: conectate.com.data.supabase.AuthSessionLease, communityId: String, messageId: String,
+    ) {
+        lease.requireCurrent()
+        val cleanId = communityId.trim().lowercase()
         val cleanMessageId = messageId.trim().lowercase()
         if (cleanId.isBlank() || cleanMessageId.isBlank()) return
         withContext(Dispatchers.IO) {
-            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
-            var token = authService.getAccessToken()
+            lease.requireCurrent()
+            val currentUserId = lease.accountId ?: return@withContext
+            val token = authService.getAccessTokenForAccountAwait(currentUserId)
+            lease.requireCurrent()
             var now = java.time.Instant.now().toString()
             var remoteSynced = collectionMessageReceiptRemoteStore.markMessageDelivered(
                 logTag = "CommunityRepository",
@@ -1899,6 +1918,7 @@ class CommunityRepository @Inject constructor(
                 token = token,
                 confirmationStatuses = listOf("delivered", "read", "received")
             )
+            lease.requireCurrent()
             communityDao.markMessageAsDelivered(cleanId, cleanMessageId, now, currentUserId)
             if (!remoteSynced) {
                 android.util.Log.w("CommunityRepository", "markMessageAsDelivered could not confirm remote transition for $cleanMessageId in $cleanId")

@@ -32,14 +32,18 @@ class LocalNotificationHelper(private val context: Context) {
         targetType: String? = null,
         extraData: JsonObject? = null,
         notificationId: String? = null
-    ) {
-        val owner = account.userId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return
+    ): AccountNotificationPublication? {
+        val owner = account.userId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return null
         val accountTarget = account.copy(userId = owner)
+        if (!conectate.com.data.local.prefs.AppSettingsPreferences.activityNotificationAllowed(context, type)) return null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED) return null
         if (isRetiredMomentViewNotification(
                 type, getExtraDataValue(extraData, "notification_type"),
                 getExtraDataValue(extraData, "notificationType")
-            )) return
-        val normalizedType = type.trim().lowercase().let { if (it == "new_live") "live_started" else it }
+            )) return null
+        val normalizedType = ActivityNotificationPolicy.normalizedType(type)
         val normalizedTargetType = targetType?.trim()?.lowercase()?.ifBlank { null }
             ?: getExtraDataValue(extraData, "target_type")?.lowercase()
         val commentId = getExtraDataValue(extraData, "comment_id")
@@ -74,13 +78,7 @@ class LocalNotificationHelper(private val context: Context) {
             else -> null
         }
 
-        val socialTypes = listOf(
-            "like", "like_post", "like_video", "like_moment", "follow", "friend_request", "friend_request_accepted", "new_moment", "new_post", "new_video",
-            "comment", "comment_post", "reply_post", "comment_video", "reply_video",
-            "mention", "mention_post", "mention_video", "mention_video_description",
-            "share", "share_post", "share_video", "admin_warning_video",
-            "challenge_invite", "voice_invite", "voice_access_request", "birthday"
-        )
+        val socialTypes = ActivityNotificationPolicy.socialTypes
         
         val channelId = when {
             isLiveStarted -> context.getString(R.string.live_notification_channel_id)
@@ -122,6 +120,8 @@ class LocalNotificationHelper(private val context: Context) {
             putExtra("type", normalizedType)
             targetId.trim().takeIf(String::isNotBlank)?.let { putExtra("target_id", it) }
             notificationId?.takeIf { it.isNotBlank() }?.let { putExtra("notification_id", it) }
+            putExtra("title", title)
+            putExtra("body", body)
             senderAvatar?.takeIf { it.isNotBlank() }?.let { putExtra("sender_avatar", it) }
             commentId?.let { putExtra("comment_id", it) }
             messageId?.let { putExtra("message_id", it) }
@@ -177,6 +177,7 @@ class LocalNotificationHelper(private val context: Context) {
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(body)
+            .setSubText(accountTarget.presentableLabel()?.let { "Cuenta: $it" } ?: context.getString(R.string.app_name))
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setColor(ContextCompat.getColor(context, R.color.red_primary))
             .setAutoCancel(true)
@@ -198,8 +199,10 @@ class LocalNotificationHelper(private val context: Context) {
                     ?.let { java.time.Instant.parse(it).toEpochMilli() }
             }.getOrNull()
             val remaining = expiry?.minus(System.currentTimeMillis())
-            if (remaining != null && remaining <= 0) return
-            if (remaining != null) notificationBuilder.setTimeoutAfter(remaining)
+            if (remaining != null && remaining <= 0) return null
+            if (remaining != null) notificationBuilder.setTimeoutAfter(remaining).addExtras(Bundle().apply {
+                putLong(MessageNotificationFactory.EXTRA_EXPIRES_AT, expiry!!)
+            })
         }
 
         if (isLiveStarted) {
@@ -210,8 +213,8 @@ class LocalNotificationHelper(private val context: Context) {
                 .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         }
 
-        if (isLiveStarted) {
-            MessageNotificationFactory.publishAccountNotification(
+        return if (isLiveStarted) {
+            val child = MessageNotificationFactory.publishAccountNotification(
                 context, owner, tag,
                 tag.hashCode(),
                 notificationBuilder.build()
@@ -221,6 +224,7 @@ class LocalNotificationHelper(private val context: Context) {
                 LIVE_NOTIFICATION_SUMMARY_ID,
                 buildLiveSummaryNotification(channelId, accountTarget)
             )
+            child
         } else {
             MessageNotificationFactory.publishAccountNotification(
                 context, owner, tag,

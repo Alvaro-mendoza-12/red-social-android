@@ -559,14 +559,24 @@ class GroupRepository @Inject constructor(
 
     // --- MESSAGE HANDLING ---
 
-    // Note: No explicit locking needed - Dispatcher.IO coroutines are single-threaded per context
+    // Incoming writes retain the account generation across repository suspensions.
     
     suspend fun handleIncomingMessage(
         msg: GroupMessage,
         sessionUserId: String? = currentSessionUserId()
     ) {
-        val msg = deletedMessageStore.redact(msg, sessionUserId)
-        var sessionSnapshot = captureSessionSnapshot(sessionUserId)
+        val lease = authService.captureAccountLease()
+        if (!lease.accountId.equals(sessionUserId, ignoreCase = true)) return
+        handleIncomingMessage(lease, msg)
+    }
+
+    internal suspend fun handleIncomingMessage(
+        lease: conectate.com.data.supabase.AuthSessionLease,
+        msg: GroupMessage,
+    ) {
+        lease.requireCurrent()
+        val msg = deletedMessageStore.redact(msg, lease.accountId)
+        val sessionSnapshot = sessionWriteGuard.capture(lease, operationJob = null)
         withContext(Dispatchers.IO) {
             if (!isSessionSnapshotValid(sessionSnapshot, "group-insert-start:${msg.group_id}")) return@withContext
             var cleanId = msg.group_id.trim().lowercase()
@@ -601,7 +611,7 @@ class GroupRepository @Inject constructor(
                     var currentUserId = sessionSnapshot.accountId
                     
                     if (currentUserId != null && msg.sender_id.trim().lowercase() != currentUserId) {
-                        scope.launch { markMessageAsDelivered(cleanId, msg.id) }
+                        scope.launch { markMessageAsDelivered(lease, cleanId, msg.id) }
                     }
 
                     // Hydrate reply_to manually since Realtime payload allows it to be null/missing joins
@@ -673,8 +683,9 @@ class GroupRepository @Inject constructor(
                     
                     android.util.Log.d("GroupRepository", "✅ [INCOMING-COMPLETE] Mensaje ${msg.id} procesado exitosamente")
 
-                } catch (e: Exception) {
-                    android.util.Log.e("GroupRepository", "❌ [INCOMING-ERROR] Error crítico procesando mensaje ${msg.id}", e)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (e: Exception) {
+                    android.util.Log.e("GroupRepository", "Could not process an incoming message", e)
                 }
         }
     }
@@ -1337,13 +1348,21 @@ class GroupRepository @Inject constructor(
 
 
 
-    suspend fun markMessageAsDelivered(groupId: String, messageId: String) {
-        var cleanId = groupId.trim().lowercase()
+    suspend fun markMessageAsDelivered(groupId: String, messageId: String) =
+        markMessageAsDelivered(authService.captureAccountLease(), groupId, messageId)
+
+    internal suspend fun markMessageAsDelivered(
+        lease: conectate.com.data.supabase.AuthSessionLease, groupId: String, messageId: String,
+    ) {
+        lease.requireCurrent()
+        val cleanId = groupId.trim().lowercase()
         val cleanMessageId = messageId.trim().lowercase()
         if (cleanId.isBlank() || cleanMessageId.isBlank()) return
         withContext(Dispatchers.IO) {
-            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@withContext
-            var token = authService.getAccessToken()
+            lease.requireCurrent()
+            val currentUserId = lease.accountId ?: return@withContext
+            val token = authService.getAccessTokenForAccountAwait(currentUserId)
+            lease.requireCurrent()
             var now = java.time.Instant.now().toString()
             var remoteSynced = collectionMessageReceiptRemoteStore.markMessageDelivered(
                 logTag = "GroupRepository",
@@ -1355,6 +1374,7 @@ class GroupRepository @Inject constructor(
                 token = token,
                 confirmationStatuses = listOf("delivered", "read", "received")
             )
+            lease.requireCurrent()
             groupDao.markMessageAsDelivered(cleanId, cleanMessageId, now, currentUserId)
             if (!remoteSynced) {
                 android.util.Log.w("GroupRepository", "markMessageAsDelivered could not confirm remote transition for $cleanMessageId in $cleanId")

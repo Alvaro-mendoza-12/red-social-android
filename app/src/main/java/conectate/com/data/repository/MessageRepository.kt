@@ -330,13 +330,14 @@ class MessageRepository @Inject constructor(
 
     private suspend fun handleGlobalMessageInsert(
         msg: Message,
-        sessionUserId: String? = currentSessionUserId()
+        lease: conectate.com.data.supabase.AuthSessionLease,
     ) {
-        val normalizedMsg = deletedMessageStore.redact(msg.withNormalizedStatus(), sessionUserId)
-        var cleanId = normalizedMsg.chat_id.trim().lowercase()
-        var sessionSnapshot = captureSessionSnapshot(sessionUserId)
+        lease.requireCurrent()
+        val normalizedMsg = deletedMessageStore.redact(msg.withNormalizedStatus(), lease.accountId)
+        val cleanId = normalizedMsg.chat_id.trim().lowercase()
+        val sessionSnapshot = sessionWriteGuard.capture(lease, operationJob = null)
         if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-start:$cleanId")) return
-        android.util.Log.d("MessageRepository", "Global insert received: ${normalizedMsg.content} for chat $cleanId")
+        android.util.Log.d("MessageRepository", "Incoming message received for the active account")
         
         var currentUserId = sessionSnapshot.accountId
         var wasAlreadyStored = false
@@ -412,8 +413,9 @@ class MessageRepository @Inject constructor(
                     // 3. RE-ROUTE TO PULSE
                     if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-pulse:$cleanId")) return@withLock
                     messageEvents.emit(finalizedMsg)
-                } catch (e: Exception) {
-                    android.util.Log.e("MessageRepository", "❌ Room handling error", e)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                catch (e: Exception) {
+                    android.util.Log.e("MessageRepository", "Could not store an incoming message", e)
                 }
             }
 
@@ -439,7 +441,7 @@ class MessageRepository @Inject constructor(
                 // I am the recipient: sent -> delivered immediately.
                 // Read is handled strictly by viewport logic in ChatViewModel (visible + focused chat).
                 scope.launch {
-                    markMessageAsDelivered(cleanId, normalizedMsg.id)
+                    markMessageAsDelivered(lease, cleanId, normalizedMsg.id)
                 }
             }
         }
@@ -3300,11 +3302,18 @@ class MessageRepository @Inject constructor(
 
 
 
-    suspend fun markMessageAsDelivered(chatId: String, messageId: String): Result<Unit> = withContext(Dispatchers.IO) {
+    suspend fun markMessageAsDelivered(chatId: String, messageId: String): Result<Unit> =
+        markMessageAsDelivered(authService.captureAccountLease(), chatId, messageId)
+
+    internal suspend fun markMessageAsDelivered(
+        lease: conectate.com.data.supabase.AuthSessionLease, chatId: String, messageId: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return@withContext Result.failure(Exception("No user"))
+            lease.requireCurrent()
+            val currentUserId = lease.accountId ?: return@withContext Result.failure(IllegalStateException("Inicia sesión para continuar."))
+            val token = authService.getAccessTokenForAccountAwait(currentUserId)
+            lease.requireCurrent()
+            if (token.isNullOrBlank()) return@withContext Result.failure(IllegalStateException("Tu sesión venció. Inicia sesión de nuevo."))
             var cleanId = chatId.trim().lowercase()
             var cleanMessageId = messageId.trim().lowercase()
             if (cleanId.isBlank() || cleanMessageId.isBlank()) return@withContext Result.success(Unit)
@@ -3348,6 +3357,7 @@ class MessageRepository @Inject constructor(
                 android.util.Log.w("MessageRepository", "markMessageAsDelivered patch failed for $cleanMessageId", e)
             }
 
+            lease.requireCurrent()
             if (!remoteSynced) {
                 // Legacy fallback for old deployments without granular patch support.
                 runCatching {
@@ -3369,6 +3379,7 @@ class MessageRepository @Inject constructor(
                 }
             }
 
+            lease.requireCurrent()
             messageDao.markMessageAsDelivered(cleanMessageId, cleanId, currentUserId, now)
             if (!remoteSynced) {
                 android.util.Log.w(
@@ -3377,7 +3388,9 @@ class MessageRepository @Inject constructor(
                 )
             }
             Result.success(Unit)
-        } catch (e: Exception) {
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (e: Exception) {
+            lease.requireCurrent()
             Result.failure(e)
         }
     }
@@ -5236,10 +5249,10 @@ class MessageRepository @Inject constructor(
 
     // --- COMPATIBILITY & ADMIN ---
 
-    suspend fun handleIncomingMessage(msg: Message) {
-        // Manually inject into flow for instant update if Realtime hasn't caught it yet
-        android.util.Log.d("MessageRepository", "FCM Message received: ${msg.content}, chat_id: ${msg.chat_id}")
-        handleGlobalMessageInsert(msg, currentSessionUserId())
+    suspend fun handleIncomingMessage(msg: Message) = handleIncomingMessage(authService.captureAccountLease(), msg)
+
+    internal suspend fun handleIncomingMessage(lease: conectate.com.data.supabase.AuthSessionLease, msg: Message) {
+        handleGlobalMessageInsert(msg, lease)
     }
 
     suspend fun getAllReports(): Result<List<conectate.com.data.model.Report>> = reportStore.getAllReports()

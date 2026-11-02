@@ -50,6 +50,14 @@ data class MessageNotificationPayload(
     val createdAt: String? = null
 )
 
+/** Identifies one publication attempt, so an optional late image cannot revive or replace it. */
+class AccountNotificationPublication internal constructor(
+    internal val accountId: String,
+    internal val tag: String,
+    internal val id: Int,
+    internal val revision: String,
+)
+
 object MessageNotificationFactory {
     const val EXTRA_SCOPE = "novvin_conversation_scope"
     const val EXTRA_LAST_MESSAGE_ID = "novvin_last_message_id"
@@ -60,10 +68,12 @@ object MessageNotificationFactory {
     private const val EXTRA_TYPE = "novvin_notification_target_type"
     private const val EXTRA_CONVERSATION = "novvin_notification_conversation"
     internal const val EXTRA_ACCOUNT = "novvin_notification_account"
+    internal const val EXTRA_EXPIRES_AT = "novvin_notification_expires_at"
     private const val EXTRA_CHANNEL_CONTEXT = "novvin_notification_channel_context"
     private const val EXTRA_TITLE = "novvin_notification_title"
     private const val EXTRA_SENDER_NAME = "novvin_notification_sender_name"
     private const val EXTRA_SENDER_ID = "novvin_notification_sender_id"
+    private const val EXTRA_PUBLICATION = "novvin_notification_publication"
 
     private data class Published(val tag: String?, val id: Int, val notification: Notification, val atMs: Long)
     // NotificationManager enqueues updates asynchronously. Keep only a bounded
@@ -288,10 +298,40 @@ object MessageNotificationFactory {
 
     /** Social alerts share the publication queue so logout can cancel a pending Binder post too. */
     @Synchronized
-    internal fun publishAccountNotification(context: Context, userId: String, tag: String, id: Int, notification: Notification) {
+    internal fun publishAccountNotification(context: Context, userId: String, tag: String, id: Int, notification: Notification): AccountNotificationPublication {
         require(userId.isNotBlank())
+        val publication = AccountNotificationPublication(userId, tag, id, UUID.randomUUID().toString())
         notification.extras.putString(EXTRA_ACCOUNT, userId)
+        notification.extras.putString(EXTRA_PUBLICATION, publication.revision)
         publish(context.getSystemService(NotificationManager::class.java), tag, id, notification)
+        return publication
+    }
+
+    /** Update only the same pending/visible attempt; a read, swipe, logout or newer event wins. */
+    @Synchronized
+    internal fun updateAccountNotificationAvatar(context: Context, publication: AccountNotificationPublication, avatar: Bitmap): Boolean {
+        val key = publication.tag to publication.id
+        val original = published[key]?.notification ?: return false
+        if (original.extras.getString(EXTRA_ACCOUNT) != publication.accountId ||
+            original.extras.getString(EXTRA_PUBLICATION) != publication.revision) return false
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val isPending = pendingPublications.containsKey(key)
+        val isVisible = manager.activeNotifications.any {
+            it.tag == publication.tag && it.id == publication.id &&
+                it.notification.extras.getString(EXTRA_PUBLICATION) == publication.revision
+        }
+        if (!isPending && !isVisible) return false
+        val builder = NotificationCompat.Builder(context, original).setLargeIcon(avatar)
+            .setOnlyAlertOnce(true).setSilent(true)
+        val expiresAt = original.extras.getLong(EXTRA_EXPIRES_AT, 0L)
+        if (expiresAt > 0L) {
+            val remaining = expiresAt - System.currentTimeMillis()
+            if (remaining <= 0L) return false
+            builder.setTimeoutAfter(remaining)
+        }
+        val updated = builder.build()
+        publish(manager, publication.tag, publication.id, updated)
+        return true
     }
 
     @Synchronized

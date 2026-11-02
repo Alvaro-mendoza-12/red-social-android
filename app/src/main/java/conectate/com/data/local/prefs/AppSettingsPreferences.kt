@@ -29,6 +29,14 @@ class AppSettingsPreferences @Inject constructor(
         private const val KEY_BOTTOM_NAV_ORDER = "bottom_navigation_order"
         val DEFAULT_BOTTOM_NAV_ORDER = listOf("Mensajes", "Videos", "Social", "Perfil")
 
+        /** Foreground realtime and FCM must honor the same persisted switches. */
+        internal fun activityNotificationAllowed(context: Context, type: String): Boolean {
+            val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            return conectate.com.util.ActivityNotificationPolicy.allowed(type,
+                socialEnabled = preferences.getBoolean(KEY_SOCIAL_NOTIFICATIONS, true),
+                liveEnabled = preferences.getBoolean(KEY_LIVE_NOTIFICATIONS, true))
+        }
+
         fun isReduceMotionEnabled(context: Context): Boolean = context
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_REDUCE_MOTION, false)
