@@ -25,6 +25,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.data.model.Notification
 import conectate.com.util.postMentionAction
@@ -41,8 +43,8 @@ import conectate.com.presentation.navigation.Screen
 import conectate.com.util.DateUtils
 import conectate.com.util.UbuntuMedia
 import coil.compose.SubcomposeAsyncImage
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
+import conectate.com.util.notificationDisplayType as resolveNotificationType
+import conectate.com.util.notificationExtra as extractNotificationExtra
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -55,10 +57,44 @@ fun NotificationScreen(
     navController: NavController,
     viewModel: NotificationViewModel = hiltViewModel()
 ) {
-    val state by viewModel.notificationsState.collectAsState()
+    val ownerRevision by viewModel.ownerRevision.collectAsStateWithLifecycle()
+    key(ownerRevision) { NotificationFeedForAccount(navController, viewModel) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotificationFeedForAccount(navController: NavController, viewModel: NotificationViewModel) {
+    val state by viewModel.notificationsState.collectAsStateWithLifecycle()
+    val canAct = viewModel.ownerAtRender()
+    var confirmDelete by remember { mutableStateOf(false) }
+    var selectedNotice by remember { mutableStateOf<Notification?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.loadNotifications()
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("¿Borrar todas las notificaciones?") },
+            text = { Text("Se quitarán de tu lista de notificaciones.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    if (canAct()) viewModel.deleteAllNotifications()
+                }) { Text("Borrar todas") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } },
+        )
+    }
+
+    selectedNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { selectedNotice = null },
+            title = { Text("Notificación") },
+            text = { Text(buildNotificationText(notice)) },
+            confirmButton = { TextButton(onClick = { selectedNotice = null }) { Text("Cerrar") } },
+        )
     }
 
     Scaffold(
@@ -74,10 +110,13 @@ fun NotificationScreen(
                     IconButton(onClick = { navController.navigate(Screen.NotificationSettings.route) }) {
                         Icon(Icons.Default.Tune, contentDescription = "Configurar resumen")
                     }
-                    IconButton(onClick = { viewModel.deleteAllNotifications() }) {
+                    IconButton(
+                        onClick = { if (canAct()) confirmDelete = true },
+                        enabled = (state as? NotificationsUiState.Success)?.notifications?.isNotEmpty() == true,
+                    ) {
                         Icon(Icons.Default.DeleteSweep, "Borrar Todo", tint = MaterialTheme.colorScheme.error)
                     }
-                    IconButton(onClick = { viewModel.markAllAsRead() }) {
+                    IconButton(onClick = { if (canAct()) viewModel.markAllAsRead() }) {
                         Icon(
                             Icons.Default.DoneAll,
                             contentDescription = "Marcar todo como leído"
@@ -87,14 +126,15 @@ fun NotificationScreen(
             )
         }
     ) { padding ->
-        val isRefreshing by viewModel.isRefreshing.collectAsState()
+        val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
         
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (isRefreshing && state is NotificationsUiState.Success) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).zIndex(1f))
+            }
             when (val s = state) {
                 is NotificationsUiState.Loading -> {
-                    if (!isRefreshing) {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    }
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is NotificationsUiState.Error -> {
                     Column(
@@ -148,8 +188,11 @@ fun NotificationScreen(
                                         NotificationItem(
                                             notification = notification,
                                             onClick = {
-                                                viewModel.markAsRead(notification.id)
-                                                handleNotificationNavigation(navController, notification)
+                                                if (canAct()) {
+                                                    viewModel.markAsRead(notification.id)
+                                                    if (notificationDestination(notification) == null) selectedNotice = notification
+                                                    else handleNotificationNavigation(navController, notification)
+                                                }
                                             }
                                         )
                                     }
@@ -585,165 +628,4 @@ private fun adminAccessChangedAction(notification: Notification): String {
         if (access.isNotBlank()) return " actualizó tu acceso administrativo a $access"
     }
     return " actualizó tu acceso administrativo"
-}
-
-fun handleNotificationNavigation(navController: NavController, n: Notification) {
-    val type = resolveNotificationType(n)
-    val commentId = extractNotificationExtra(n, "comment_id")
-        ?: extractNotificationExtra(n, "focus_comment_id")
-    val messageId = extractNotificationExtra(n, "message_id")
-        ?: extractNotificationExtra(n, "focus_message_id")
-    val groupId = extractNotificationExtra(n, "group_id")
-    val communityId = extractNotificationExtra(n, "community_id")
-    val extraVideoId = extractNotificationExtra(n, "video_id")
-    val extraPostId = extractNotificationExtra(n, "post_id")
-    val extraLiveId = extractNotificationExtra(n, "live_id")
-    val resolvedVideoId = extraVideoId ?: n.targetId
-    val resolvedPostId = extraPostId ?: n.targetId
-
-    // Algunas notificaciones se abren desde un NavHost anidado (pestañas de HomeScreen) cuyo
-    // grafo no contiene todos los destinos (p. ej. moment_viewer). Antes esto lanzaba
-    // IllegalArgumentException ("destination cannot be found") y cerraba la app. Se protege la
-    // navegación para degradar a un log en vez de crashear cuando el destino no existe en el grafo.
-    // Nota: se usa try/catch (no runCatching) para que el `when` siga siendo una sentencia y no
-    // requiera ser exhaustivo.
-    try {
-    when (type) {
-        "birthday" -> { if (n.actorId.isNotBlank()) navController.navigate(Screen.Chat.createRoute(n.actorId, birthdayGreeting = true)) }
-        "follow", "friend_request_accepted" -> {
-            if (n.actorId.isNotBlank()) {
-                navController.navigate(Screen.UserProfile.createRoute(n.actorId))
-            }
-        }
-        "friend_request" -> navController.navigate(Screen.FriendRequests.route)
-        "mention" -> {
-            when {
-                n.targetType.equals("video", ignoreCase = true) || !extraVideoId.isNullOrBlank() -> {
-                    val videoId = resolvedVideoId
-                    if (!videoId.isNullOrBlank()) {
-                        navController.navigate(Screen.VideoPlayer.createRoute(videoId, focusCommentId = commentId))
-                    }
-                }
-                else -> {
-                    val postId = resolvedPostId
-                    if (!postId.isNullOrBlank()) {
-                        navController.navigate(Screen.PostDetail.createRoute(postId, focusCommentId = commentId))
-                    }
-                }
-            }
-        }
-        "like_video", "comment_video", "reply_video", "new_video", "mention_video", "mention_video_description", "share_video", "admin_warning_video" -> {
-            resolvedVideoId?.let { navController.navigate(Screen.VideoPlayer.createRoute(it, focusCommentId = commentId)) }
-        }
-        "like_post", "comment_post", "reply_post", "new_post", "share_post", "mention_post" -> {
-            resolvedPostId?.let { navController.navigate(Screen.PostDetail.createRoute(it, focusCommentId = commentId)) }
-        }
-        "message", "new_message" -> {
-            when {
-                !communityId.isNullOrBlank() -> navController.navigate(
-                    Screen.CommunityChat.createRoute(communityId, focusMessageId = messageId)
-                )
-                !groupId.isNullOrBlank() -> navController.navigate(
-                    Screen.GroupChat.createRoute(groupId, focusMessageId = messageId)
-                )
-                n.targetId != null -> navController.navigate(
-                    Screen.Chat.createRoute(n.targetId, focusMessageId = messageId)
-                )
-                !n.actorId.isBlank() -> navController.navigate(
-                    Screen.Chat.createRoute(n.actorId, focusMessageId = messageId)
-                )
-            }
-        }
-        "group_member_added" -> {
-            val destination = groupId ?: n.targetId
-            if (!destination.isNullOrBlank()) navController.navigate(Screen.GroupChat.createRoute(destination))
-        }
-        "community_member_added" -> {
-            val destination = communityId ?: n.targetId
-            if (!destination.isNullOrBlank()) navController.navigate(Screen.CommunityChat.createRoute(destination))
-        }
-        "view_moment", "new_moment", "like_moment" -> {
-            n.targetId?.let { navController.navigate(Screen.MomentViewer.createRoute(it)) }
-        }
-        "live_started", "new_live" -> {
-            val liveId = extraLiveId ?: n.targetId
-            if (!liveId.isNullOrBlank()) {
-                navController.navigate(Screen.LiveViewer.createRoute(liveId)) { launchSingleTop = true }
-            } else {
-                navController.navigate(Screen.LiveDiscovery.route) { launchSingleTop = true }
-            }
-        }
-        "voice_access_request" -> {
-            if (n.actorId.isNotBlank()) {
-                navController.navigate(Screen.UserProfile.createRoute(n.actorId))
-            }
-        }
-        "admin_access_audit" -> {
-            val profileId = extractNotificationExtra(n, "target_user_id") ?: n.targetId
-            if (!profileId.isNullOrBlank()) {
-                navController.navigate(Screen.UserProfile.createRoute(profileId))
-            }
-        }
-        "admin_access_changed" -> {
-            navController.navigate(Screen.AdminPanel.route)
-        }
-        "challenge_invite" -> {
-            navController.navigate(Screen.Home.roundsRoute())
-        }
-        "account_suspended", "account_enabled" -> {
-            navController.navigate(Screen.Profile.route)
-        }
-        else -> {
-            when (n.targetType?.trim()?.lowercase()) {
-                "video" -> resolvedVideoId?.let {
-                    navController.navigate(Screen.VideoPlayer.createRoute(it, focusCommentId = commentId))
-                }
-                "post" -> resolvedPostId?.let {
-                    navController.navigate(Screen.PostDetail.createRoute(it, focusCommentId = commentId))
-                }
-                "moment" -> n.targetId?.let {
-                    navController.navigate(Screen.MomentViewer.createRoute(it))
-                }
-                "profile" -> n.targetId?.let {
-                    navController.navigate(Screen.UserProfile.createRoute(it))
-                }
-            }
-        }
-    }
-    } catch (error: Exception) {
-        android.util.Log.w(
-            "NotificationNav",
-            "Destino de notificación no disponible en el grafo de navegación actual (tipo='$type')",
-            error
-        )
-    }
-}
-
-private fun extractNotificationExtra(notification: Notification, key: String): String? {
-    return notification.extraData
-        ?.get(key)
-        ?.jsonPrimitive
-        ?.contentOrNull
-        ?.takeIf { it.isNotBlank() }
-}
-
-private fun resolveNotificationType(notification: Notification): String {
-    val subtype = notification.extraData
-        ?.get("notification_type")
-        ?.jsonPrimitive
-        ?.contentOrNull
-        ?.trim()
-        ?.lowercase()
-    if (!subtype.isNullOrBlank()) return subtype
-    val baseType = notification.type.trim().lowercase()
-    if (baseType != "message") return baseType
-    val lowerContent = notification.content?.trim()?.lowercase().orEmpty()
-    return when {
-        lowerContent.contains("cuenta fue suspendida") ||
-            lowerContent.contains("cuenta ha sido suspendida") -> "account_suspended"
-        lowerContent.contains("cuenta ha sido habilitada") ||
-            lowerContent.contains("cuenta fue habilitada") ||
-            lowerContent.contains("cuenta habilitada nuevamente") -> "account_enabled"
-        else -> baseType
-    }
 }

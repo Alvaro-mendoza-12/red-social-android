@@ -22,8 +22,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
+import conectate.com.util.declaredNotificationType as resolveNotificationType
+import conectate.com.util.notificationExtra
 
 private const val SESSION_GATE_INTERVAL_MS = 180_000L
 
@@ -119,51 +119,9 @@ fun SessionSideEffects(
     }
 }
 
-private fun resolveNotificationType(notification: Notification): String {
-    val subtype = notification.extraData
-        ?.get("notification_type")
-        ?.jsonPrimitive
-        ?.contentOrNull
-        ?.trim()
-        ?.lowercase()
-    if (!subtype.isNullOrBlank()) return subtype
-    val baseType = notification.type.trim().lowercase()
-    if (baseType != "message") return baseType
-    val lowerContent = notification.content?.trim()?.lowercase().orEmpty()
-    return when {
-        lowerContent.contains("cuenta fue suspendida") ||
-            lowerContent.contains("cuenta ha sido suspendida") -> "account_suspended"
-        lowerContent.contains("cuenta ha sido habilitada") ||
-            lowerContent.contains("cuenta fue habilitada") ||
-            lowerContent.contains("cuenta habilitada nuevamente") -> "account_enabled"
-        else -> baseType
-    }
-}
+private fun extractSuspensionEndDate(notification: Notification): String? =
+    notificationExtra(notification, "suspended_until")
 
-private fun extractSuspensionEndDate(notification: Notification): String? {
-    return notification.extraData
-        ?.get("suspended_until")
-        ?.jsonPrimitive
-        ?.contentOrNull
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-}
-
-private fun extractSuspensionReason(notification: Notification): String? {
-    val fromExtra = notification.extraData
-        ?.get("suspension_reason")
-        ?.jsonPrimitive
-        ?.contentOrNull
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-    if (!fromExtra.isNullOrBlank()) return fromExtra
-    return notification.content
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
-}
-
-
-
-
-
-
+private fun extractSuspensionReason(notification: Notification): String? =
+    notificationExtra(notification, "suspension_reason")
+        ?: notification.content?.trim()?.takeIf(String::isNotBlank)

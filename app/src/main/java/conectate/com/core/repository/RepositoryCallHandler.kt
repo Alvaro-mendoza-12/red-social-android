@@ -10,6 +10,7 @@ import io.ktor.client.plugins.ServerResponseException
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.network.sockets.SocketTimeoutException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,7 +28,9 @@ class RepositoryCallHandler @Inject constructor(
     ): AppResult<T> = withContext(dispatchers.io) {
         try {
             AppResult.Success(block())
-        } catch (throwable: Throwable) {
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (throwable: Exception) {
             val error = throwable.toAppError()
             logger.e("RepositoryCallHandler", "Operation failed: $operation (${error.message})", throwable)
             crashReporter.recordException(
@@ -45,47 +48,47 @@ class RepositoryCallHandler @Inject constructor(
         return when (this) {
             is HttpRequestTimeoutException,
             is SocketTimeoutException -> AppError.Timeout(
-                message = message ?: "Request timeout",
+                message = "La solicitud está tardando demasiado. Inténtalo de nuevo.",
                 cause = this
             )
 
             is ClientRequestException -> {
                 when (response.status.value) {
                     401 -> AppError.Unauthorized(
-                        message = "Unauthorized request",
+                        message = "Tu sesión venció. Inicia sesión de nuevo.",
                         cause = this
                     )
                     403 -> AppError.Forbidden(
-                        message = "Forbidden request",
+                        message = "No tienes permiso para realizar esta acción.",
                         cause = this
                     )
                     404 -> AppError.NotFound(
-                        message = "Resource not found",
+                        message = "Este contenido ya no está disponible.",
                         cause = this
                     )
                     400, 422 -> AppError.Validation(
-                        message = message,
+                        message = "Revisa los datos e inténtalo de nuevo.",
                         cause = this
                     )
                     else -> AppError.Network(
-                        message = message,
+                        message = "No se pudo completar la solicitud. Inténtalo de nuevo.",
                         cause = this
                     )
                 }
             }
 
             is ServerResponseException -> AppError.Network(
-                message = message,
+                message = "No se pudo completar la solicitud. Inténtalo de nuevo.",
                 cause = this
             )
 
             is IOException -> AppError.Network(
-                message = message ?: "I/O error",
+                message = "No se pudo conectar. Revisa tu conexión e inténtalo otra vez.",
                 cause = this
             )
 
             else -> AppError.Unexpected(
-                message = message ?: "Unexpected repository error",
+                message = "No se pudo completar la acción. Inténtalo de nuevo.",
                 cause = this
             )
         }

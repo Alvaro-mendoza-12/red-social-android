@@ -181,7 +181,7 @@ object IntentRouter {
                 }
             }
 
-            "like", "like_post", "comment", "comment_post", "reply_post", "share", "share_post" -> {
+            "like", "like_post", "comment", "comment_post", "reply_post", "share", "share_post", "new_post" -> {
                 val postId = incomingIntent.getStringExtra("post_id") ?: incomingIntent.getStringExtra("target_id")
                 val commentId = incomingIntent.getStringExtra("comment_id")
                     ?: incomingIntent.getStringExtra("focus_comment_id")
@@ -239,7 +239,7 @@ object IntentRouter {
                 }
             }
 
-            "like_video", "comment_video", "reply_video", "share_video", "admin_warning_video", "mention_video" -> {
+            "like_video", "comment_video", "reply_video", "share_video", "admin_warning_video", "mention_video", "mention_video_description", "new_video" -> {
                 val videoId = incomingIntent.getStringExtra("video_id") ?: incomingIntent.getStringExtra("target_id")
                 val commentId = incomingIntent.getStringExtra("comment_id")
                     ?: incomingIntent.getStringExtra("focus_comment_id")
@@ -280,7 +280,7 @@ object IntentRouter {
                     clearIntent(); return true
                 }
             }
-            "follow", "friend_request", "voice_access_request" -> {
+            "follow", "friend_request", "friend_request_accepted", "voice_access_request" -> {
                 val followerId = incomingIntent.getStringExtra("follower_id")
                     ?: incomingIntent.getStringExtra("target_id")
                 if (!followerId.isNullOrBlank()) {
@@ -339,7 +339,7 @@ object IntentRouter {
                 }
             }
 
-            "live_started" -> {
+            "live_started", "new_live" -> {
                 // The host role is intentionally never accepted from a remote notification.
                 // Opening the viewer validates the live and the user's access again server-side.
                 val destination = resolveLiveStartedRoute(
@@ -365,6 +365,22 @@ object IntentRouter {
                     Screen.LiveDiscovery.route,
                     launchSingleTop = true
                 )
+                clearIntent()
+                return true
+            }
+
+            "notification_digest", "account_suspended", "account_enabled", "admin_access_changed", "admin_access_audit" -> {
+                val destination = when (type) {
+                    "notification_digest" -> Screen.NotificationSettings.route
+                    "admin_access_changed" -> Screen.AdminPanel.route
+                    "admin_access_audit" -> (incomingIntent.getStringExtra("target_user_id")
+                        ?: incomingIntent.getStringExtra("target_id"))?.takeIf(String::isNotBlank)
+                        ?.let(Screen.UserProfile::createRoute) ?: Screen.Notifications.route
+                    else -> (notificationAccountTargetFromIntent(incomingIntent)?.userId
+                        ?: authRepository.getCurrentUserId())?.takeIf(String::isNotBlank)
+                        ?.let(Screen.UserProfile::createRoute) ?: Screen.Notifications.route
+                }
+                navigateNotificationDestination(incomingIntent, navController, authRepository, destination, launchSingleTop = true)
                 clearIntent()
                 return true
             }

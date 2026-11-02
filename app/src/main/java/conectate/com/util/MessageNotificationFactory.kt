@@ -59,7 +59,7 @@ object MessageNotificationFactory {
     private const val HISTORY_LIMIT = 10
     private const val EXTRA_TYPE = "novvin_notification_target_type"
     private const val EXTRA_CONVERSATION = "novvin_notification_conversation"
-    private const val EXTRA_ACCOUNT = "novvin_notification_account"
+    internal const val EXTRA_ACCOUNT = "novvin_notification_account"
     private const val EXTRA_CHANNEL_CONTEXT = "novvin_notification_channel_context"
     private const val EXTRA_TITLE = "novvin_notification_title"
     private const val EXTRA_SENDER_NAME = "novvin_notification_sender_name"
@@ -283,10 +283,23 @@ object MessageNotificationFactory {
 
     @Synchronized
     fun cancelAccount(context: Context, userId: String?) {
+        cancelAccountNotifications(context, userId) { true }
+    }
+
+    /** Social alerts share the publication queue so logout can cancel a pending Binder post too. */
+    @Synchronized
+    internal fun publishAccountNotification(context: Context, userId: String, tag: String, id: Int, notification: Notification) {
+        require(userId.isNotBlank())
+        notification.extras.putString(EXTRA_ACCOUNT, userId)
+        publish(context.getSystemService(NotificationManager::class.java), tag, id, notification)
+    }
+
+    @Synchronized
+    internal fun cancelAccountNotifications(context: Context, userId: String?, matches: (Notification) -> Boolean) {
         if (userId.isNullOrBlank()) return
         val manager = context.getSystemService(NotificationManager::class.java)
         currentNotifications(context).filter {
-            it.notification.extras.getString(EXTRA_ACCOUNT)?.equals(userId, true) == true
+            it.notification.extras.getString(EXTRA_ACCOUNT)?.equals(userId.trim(), true) == true && matches(it.notification)
         }.forEach { cancelPublished(manager, it.tag, it.id) }
     }
 
