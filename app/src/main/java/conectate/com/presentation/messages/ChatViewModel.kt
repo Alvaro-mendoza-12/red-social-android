@@ -112,6 +112,9 @@ class ChatViewModel @Inject constructor(
 
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
+    private var voiceSubmission: Any? = null
+    private val _isPreparingVoice = MutableStateFlow(false)
+    val isPreparingVoice: StateFlow<Boolean> = _isPreparingVoice.asStateFlow()
     private val _messageRequest = MutableStateFlow(conectate.com.data.model.DirectMessageRequestState())
     val messageRequest = _messageRequest.asStateFlow()
     private val _requestWarningAcknowledged = MutableStateFlow(false)
@@ -917,9 +920,24 @@ class ChatViewModel @Inject constructor(
         }
     }
 
-    fun sendMediaMessage(uri: Uri, messageType: String, content: String = "") {
-        if (!ensureNotBlockedForSending()) return
-        if (chatId == null) return
+    fun sendMediaMessage(
+        uri: Uri, messageType: String, content: String = "",
+        onLocalQueueAccepted: () -> Unit = {}, onLocalQueueRejected: () -> Unit = {},
+    ) {
+        var queuedLocally = false
+        var rejected = false
+        fun rejectUnqueued() {
+            if (!queuedLocally && !rejected) {
+                rejected = true
+                onLocalQueueRejected()
+            }
+        }
+        if (!ensureNotBlockedForSending()) { rejectUnqueued(); return }
+        if (chatId == null) {
+            rejectUnqueued()
+            conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo abrir la conversación. Vuelve a intentarlo.")
+            return
+        }
         val replySnapshot = textComposer.captureReply()
         reserveIntroduction()
         viewModelScope.launch {
@@ -936,11 +954,12 @@ class ChatViewModel @Inject constructor(
                         startObservingMessages(newChat.id, newChat)
                     } else {
                         showCreateChatError(createResult.exceptionOrNull())
+                        rejectUnqueued()
                         return@launch
                     }
                 }
 
-                val cid = chatId ?: return@launch
+                val cid = chatId ?: run { rejectUnqueued(); return@launch }
                 val outboundContent = if (messageType in setOf("document", "file")) {
                     val providerName = withContext(Dispatchers.IO) {
                         runCatching {
@@ -957,9 +976,14 @@ class ChatViewModel @Inject constructor(
                     mediaUri = uri,
                     mediaType = messageType,
                     replyToId = replySnapshot.replyTo?.id,
-                    onQueued = { withContext(Dispatchers.Main.immediate) { textComposer.queuedReply(replySnapshot) } }
+                    onQueued = { withContext(Dispatchers.Main.immediate) {
+                        textComposer.queuedReply(replySnapshot)
+                        queuedLocally = true
+                        onLocalQueueAccepted()
+                    } }
                 )
                 if (result.isFailure) {
+                    rejectUnqueued()
                     val error = normalizeSendError(result.exceptionOrNull()?.message.orEmpty())
                     conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo enviar archivo: $error")
                 } else if (messageType == "audio") {
@@ -972,9 +996,11 @@ class ChatViewModel @Inject constructor(
             } catch (error: CancellationException) {
                 throw error
             } catch (e: Exception) {
+                rejectUnqueued()
                 android.util.Log.e("ChatViewModel", "Media send error", e)
                 conectate.com.presentation.common.AppFeedbackBus.showError("Error al enviar archivo")
             } finally {
+                rejectUnqueued() // Cancellation before local acceptance also releases the voice-send reservation.
                 _isSending.value = false
             }
         }
@@ -1689,9 +1715,7 @@ class ChatViewModel @Inject constructor(
             viewModelScope.launch {
                 val (file, duration) = voiceMessageManager.stopAndGetFile()
                 if (file != null) {
-                    val uri = Uri.fromFile(file)
-                    val durationLabel = voiceMessageManager.formatDuration(duration)
-                    sendMediaMessage(uri, "audio", durationLabel)
+                    sendRecordedVoice(file, duration)
                 }
             }
         }
@@ -1703,13 +1727,35 @@ class ChatViewModel @Inject constructor(
          val duration = recordingDuration.value
          
          if (file != null) {
-            val uri = Uri.fromFile(file)
-            val durationLabel = voiceMessageManager.formatDuration(duration)
-            sendMediaMessage(uri, "audio", durationLabel)
-            voiceMessageManager.reset()
+            sendRecordedVoice(file, duration)
          }
     }
     
+
+    private fun sendRecordedVoice(file: File, durationMs: Long) {
+        if (voiceSubmission != null) return
+        val token = Any()
+        voiceSubmission = token
+        _isPreparingVoice.value = true
+        val recover = voiceMessageManager.recoveryForUnqueuedSubmission(file, durationMs)
+        sendMediaMessage(Uri.fromFile(file), "audio", voiceMessageManager.formatDuration(durationMs),
+            onLocalQueueAccepted = {
+                if (voiceSubmission === token) {
+                    voiceSubmission = null
+                    _isPreparingVoice.value = false
+                }
+                voiceMessageManager.completeQueuedSubmission(file)
+            },
+            onLocalQueueRejected = {
+                if (voiceSubmission === token) {
+                    voiceSubmission = null
+                    _isPreparingVoice.value = false
+                }
+                recover()
+            },
+        )
+    }
+
     private fun playResolvedAudioSource(source: String, id: String, generation: Long) {
         val player = conectate.com.util.MessageAudioPlayer()
         mediaPlayer = player
@@ -1821,7 +1867,11 @@ class ChatViewModel @Inject constructor(
     fun onScreenVisibilityChanged(isVisible: Boolean) {
         if (ownerAccountId != authService.getCurrentUserId()?.trim()?.lowercase()) return
         _isScreenActive.value = isVisible
-        if (!isVisible) stopAudio()
+        if (!isVisible) {
+            stopAudio()
+            voiceMessageManager.pauseRecording()
+            voiceMessageManager.pausePreview()
+        }
         requestPollJob?.cancel()
         if (isVisible) {
             refreshMessageRequest()

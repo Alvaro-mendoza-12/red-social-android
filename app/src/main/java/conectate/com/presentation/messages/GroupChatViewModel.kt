@@ -1,6 +1,5 @@
 package conectate.com.presentation.messages
 
-import conectate.com.core.media.readMediaBytesWithLimit
 
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -81,6 +80,8 @@ class GroupChatViewModel @Inject constructor(
 
     private val _isSending = MutableStateFlow(false)
     val isSending: StateFlow<Boolean> = _isSending.asStateFlow()
+    private val _isPreparingVoice = MutableStateFlow(false)
+    val isPreparingVoice: StateFlow<Boolean> = _isPreparingVoice.asStateFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
@@ -191,6 +192,13 @@ class GroupChatViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            authService.currentSession.collect {
+                if (!authService.getCurrentUserId().equals(ownerAccountId, ignoreCase = true)) {
+                    voiceMessageManager.reset()
+                }
+            }
+        }
+        viewModelScope.launch {
             groupRepository.observePollUpdates().collect { pollRefresh.requestRefresh(it) }
         }
     }
@@ -245,7 +253,11 @@ class GroupChatViewModel @Inject constructor(
     }
 
     fun onScreenVisibilityChanged(isVisible: Boolean) {
-        if (!isVisible) stopAudio()
+        if (!isVisible) {
+            stopAudio()
+            voiceMessageManager.pauseRecording()
+            voiceMessageManager.pausePreview()
+        }
         _isScreenActive.value = isVisible
         refreshVisiblePolls()
         val cleanId = groupId.trim().lowercase()
@@ -1149,54 +1161,49 @@ class GroupChatViewModel @Inject constructor(
         val duration = recordingDuration.value
         if (file != null) {
             sendVoiceMessage(file, duration)
-            voiceMessageManager.reset()
         }
     }
     
+    private val voiceEnqueuer by lazy {
+        VoiceNoteEnqueuer(viewModelScope, { _isPreparingVoice.value = it }, { _errorMessage.value = it })
+    }
+
     private fun sendVoiceMessage(file: File, durationMs: Long) {
-         if (durationMs > 1000) {
-            viewModelScope.launch {
-                _isSending.value = true
-                val bytes = try {
-                    withContext(Dispatchers.IO) {
-                        val coroutine = kotlinx.coroutines.currentCoroutineContext()
-                        file.inputStream().use { input ->
-                            input.readMediaBytesWithLimit(60L * 1024 * 1024) { coroutine.ensureActive() }
-                        }
-                    }
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                    _isSending.value = false
-                    throw cancelled
-                } catch (error: Exception) {
-                    _errorMessage.value = "No se pudo preparar el audio. Verifica el archivo y vuelve a intentarlo."
-                    _isSending.value = false
-                    return@launch
-                }
-                val uploadResult = groupRepository.uploadGroupAudio(groupId, bytes)
-                if (uploadResult.isSuccess) {
-                    val url = uploadResult.getOrThrow()
-                    val durationLabel = formatDuration(durationMs)
-                    val sendResult = groupRepository.sendGroupMessage(
-                        groupId = groupId,
-                        content = durationLabel,
-                        contentType = "audio",
-                        mediaUrl = url
-                    )
-                    if (sendResult.isFailure) {
-                        val reason = sendResult.exceptionOrNull()?.message ?: "Error desconocido"
-                        _errorMessage.value = "Error al enviar audio: $reason"
-                    }
-                } else {
-                    val reason = uploadResult.exceptionOrNull()?.message
-                    _errorMessage.value = if (reason.isNullOrBlank()) {
-                        "Error al subir audio"
-                    } else {
-                        "Error al subir audio: $reason"
-                    }
-                }
-                _isSending.value = false
-            }
+        if (durationMs <= 500L) {
+            _errorMessage.value = "La grabación es muy corta. Graba un poco más antes de enviarla."
+            return
         }
+        val lease = authService.captureAccountLease()
+        if (!lease.isCurrent() || !lease.accountId.equals(ownerAccountId, ignoreCase = true)) return
+        val destination = groupId.takeIf { it.isNotBlank() } ?: return
+        val state = _uiState.value as? GroupChatUiState.Success
+        val isAdmin = _myRole.value in setOf("admin", "owner") || state?.group?.creator_id == lease.accountId
+        if (state?.group?.only_admins_can_talk == true && !isAdmin) {
+            _errorMessage.value = "Solo los administradores pueden enviar audios."
+            return
+        }
+        val reply = textComposer.captureReply()
+        val recover = voiceMessageManager.recoveryForUnqueuedSubmission(file, durationMs)
+        voiceEnqueuer.enqueue(file,
+            isCurrent = { lease.isCurrent() && groupId == destination },
+            send = { queued ->
+                groupRepository.sendGroupMediaMessage(
+                    accountLease = lease,
+                    groupId = destination,
+                    sourceUri = android.net.Uri.fromFile(file),
+                    contentType = "audio",
+                    content = formatDuration(durationMs),
+                    replyToId = reply.replyTo?.id,
+                    replyTo = reply.replyTo,
+                    onQueued = queued,
+                )
+            },
+            onQueued = {
+                textComposer.queuedReply(reply)
+                voiceMessageManager.completeQueuedSubmission(file)
+            },
+            onUnqueuedFailure = recover,
+        )
     }
 
     private fun formatDuration(ms: Long): String {

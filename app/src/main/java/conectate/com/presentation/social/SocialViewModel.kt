@@ -271,6 +271,7 @@ class SocialViewModel @Inject constructor(
     }
 
     private fun handleAccountChanged(accountId: String?) {
+        voiceMessageManager.reset()
         activeAccountId = accountId
         feedSignalTracker.setAccount(accountId)
         previousVisitSeenIds = emptySet()
@@ -1250,5 +1251,9 @@ class SocialViewModel @Inject constructor(
 
 
     // Other methods removed
+    override fun onCleared() {
+        voiceMessageManager.reset()
+        super.onCleared()
+    }
 
 }
