@@ -1,6 +1,7 @@
 package conectate.com.presentation.messages
 
 import android.app.Application
+import android.content.ClipData
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Intent
@@ -73,5 +74,27 @@ class IncomingShareParsingTest {
         val id = java.util.UUID.randomUUID().toString()
         intent.putExtra("conectate.capture.share_id", id)
         assertEquals(Int.MAX_VALUE, parseIncomingShareIntent(context, intent, id)?.failedItemCount)
+    }
+
+    @Test fun blankExplicitTextFallsBackToTheUsableClipboardText() {
+        val intent = Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_TEXT, " \n\t")
+        intent.clipData = ClipData.newPlainText("text", "https://example.test/shared/post")
+        assertEquals("https://example.test/shared/post", parseIncomingShareIntent(context, intent)?.text)
+    }
+
+    @Test fun nonEmptyExplicitTextStillTakesPriorityOverAClipboardPreview() {
+        val intent = Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_TEXT, " Original message ")
+        intent.clipData = ClipData.newPlainText("text", "Different preview")
+        assertEquals("Original message", parseIncomingShareIntent(context, intent)?.text)
+    }
+
+    @Test fun clipboardFallbackRetainsOrderAndRemovesDuplicateOrEmptyItems() {
+        val intent = Intent(Intent.ACTION_SEND).putExtra(Intent.EXTRA_TEXT, "")
+        intent.clipData = ClipData.newPlainText("text", " First ").apply {
+            addItem(ClipData.Item("  "))
+            addItem(ClipData.Item("First"))
+            addItem(ClipData.Item("Second"))
+        }
+        assertEquals("First\nSecond", parseIncomingShareIntent(context, intent)?.text)
     }
 }

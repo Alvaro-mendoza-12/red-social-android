@@ -25,7 +25,7 @@ class CollectionMessageForwardingSupportTest {
     @Test fun deletedAndViewOnceMessagesAreRejectedEvenByTheLegacyRepositoryPath() = runTest {
         var calls = 0
         assertTrue(forward(deleted = true) { calls++; Result.success(Unit) }.isFailure)
-        for (type in listOf("view_once_image", "view_once_video", " VIEW_ONCE_OTHER "))
+        for (type in listOf("view_once_image", "view_once_video", " VIEW_ONCE_OTHER ", "poll", "raffle", " SYSTEM_MEMBER_LEFT "))
             assertTrue(forward(type = type) { calls++; Result.success(Unit) }.isFailure)
         assertEquals(0, calls)
     }

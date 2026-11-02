@@ -71,7 +71,7 @@ internal fun capturedIncomingShareId(intent: Intent?): String? = try {
 } catch (_: RuntimeException) { null }
 
 fun incomingShareText(intent: Intent): String? {
-    val explicit = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+    val explicit = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.trim()?.takeIf { it.isNotBlank() }
     val clipText = buildList {
         val clipData = intent.clipData
         if (clipData != null) {

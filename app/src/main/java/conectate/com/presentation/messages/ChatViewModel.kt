@@ -1933,8 +1933,9 @@ class ChatViewModel @Inject constructor(
     }
 
     fun openForwardPicker(message: Message) {
-        if (!message.toForwardMessagePayload().isForwardable) {
-            conectate.com.presentation.common.AppFeedbackBus.showError(FORWARD_UNAVAILABLE_MESSAGE)
+        val forwardingError = message.toForwardMessagePayload().forwardingError
+        if (forwardingError != null) {
+            conectate.com.presentation.common.AppFeedbackBus.showError(forwardingError)
             return
         }
         _forwardPickerMessage.value = message
