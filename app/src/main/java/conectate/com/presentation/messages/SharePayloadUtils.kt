@@ -120,7 +120,8 @@ fun parseIncomingShareIntent(context: Context, intent: Intent, trustedCaptureId:
     val fallbackMime = canonicalizeMediaContentType(intent.type)
     var rejectedSources = 0
     val items = uris.take(MAX_INCOMING_SHARE_ITEMS).mapIndexedNotNull { index, uri ->
-        if (!mayReadIncomingShareSource(context, uri, capturedId)) {
+        if (!mayReadIncomingShareSource(context, uri, capturedId,
+                hasReadGrantFlag = intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)) {
             rejectedSources++
             return@mapIndexedNotNull null
         }
@@ -195,7 +196,7 @@ fun takeIncomingSharePersistablePermissions(context: Context, intent: Intent) {
     incomingShareUris(intent)
         .take(MAX_INCOMING_SHARE_ITEMS)
         .filter { it.scheme.equals("content", ignoreCase = true) }
-        .filter { mayReadIncomingShareSource(context, it) }
+        .filter { mayReadIncomingShareSource(context, it, hasReadGrantFlag = canRead) }
         .forEach { uri ->
             runCatching {
                 context.contentResolver.takePersistableUriPermission(

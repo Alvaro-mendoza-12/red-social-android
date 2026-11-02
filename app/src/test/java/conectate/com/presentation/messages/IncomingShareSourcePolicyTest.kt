@@ -19,7 +19,6 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
-import org.robolectric.shadows.ShadowStatFs
 
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, sdk = [34])
@@ -28,6 +27,7 @@ class IncomingShareSourcePolicyTest {
     private val context get() = RuntimeEnvironment.getApplication() as Application
     private fun share(uri: Uri) = Intent(Intent.ACTION_SEND).setType("application/octet-stream")
         .putExtra(Intent.EXTRA_STREAM, uri)
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
     @Test fun anotherAppsFileUriCannotReadOrCopyThisAppsPrivateData() = runBlocking {
         val file = File(context.filesDir, "private-${UUID.randomUUID()}.txt").apply { writeText("private session material") }
@@ -81,7 +81,9 @@ class IncomingShareSourcePolicyTest {
         Robolectric.buildContentProvider(IncomingShareParsingTest.FilesProvider::class.java).create("audit.share").get()
         val original = IncomingSharePayload(items = listOf(IncomingSharedItem(Uri.parse("content://audit.share/item/1"),
             "application/pdf", "forged.pdf", 999_999)), failedItemCount = Int.MAX_VALUE, captureError = "forged error")
-        val parsed = parseIncomingShareIntent(context, original.toCapturedShareIntent())!!
+        val granted = IncomingSharePermissionContext(context, original.items.map { it.uri }.toSet())
+        val parsed = parseIncomingShareIntent(granted, original.toCapturedShareIntent()
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))!!
         assertNotEquals(original.id, parsed.id)
         assertEquals("file-1.bin", parsed.items.single().displayName)
         assertNotEquals(999_999L, parsed.items.single().sizeBytes)
@@ -102,15 +104,15 @@ class IncomingShareSourcePolicyTest {
         assertNull(capturedIncomingShareId(broken))
     }
 
-    @Test fun validExternalLegacyFilesStillReachTheDurableCaptureWithIdenticalBytes() = runBlocking {
-        ShadowStatFs.registerStats(context.filesDir, 1_000_000, 900_000, 900_000)
+    @Test fun aRawExternalFilePathCannotBorrowTheApplicationsGeneralStoragePermissions() = runBlocking {
         val source = temporary.newFile("presentation.pptx").apply { writeBytes(ByteArray(1000) { (it % 127).toByte() }) }
         val parsed = parseIncomingShareIntent(context, share(Uri.fromFile(source)))!!
         try {
-            assertEquals(1, parsed.items.size)
+            assertTrue(parsed.items.isEmpty())
+            assertEquals(1, parsed.failedItemCount)
             val captured = PendingOutgoingMediaStore.persistIncomingShare(context, parsed).getOrThrow()
-            assertEquals(1, captured.items.size)
-            assertArrayEquals(source.readBytes(), File(captured.items.single().uri.path!!).readBytes())
+            assertTrue(captured.items.isEmpty())
+            assertEquals(1000, source.readBytes().size)
         } finally { PendingOutgoingMediaStore.deleteIncomingShare(context, parsed) }
     }
 
