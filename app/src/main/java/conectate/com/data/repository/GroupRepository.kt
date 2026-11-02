@@ -1199,7 +1199,11 @@ class GroupRepository @Inject constructor(
             val list = current.toMutableList()
             val index = list.indexOfFirst { it.id == msg.id }
             if (index != -1) {
-                list[index] = msg
+                val local = current[index]
+                val receipt = conectate.com.core.messaging.mergeMessageReceiptState(
+                    msg.status, msg.delivered_at, msg.read_at, local.status, local.delivered_at, local.read_at,
+                )
+                list[index] = msg.copy(status = receipt.status, delivered_at = receipt.deliveredAt, read_at = receipt.readAt)
             } else {
                 list.add(msg)
             }
@@ -1953,9 +1957,9 @@ class GroupRepository @Inject constructor(
         val current = groupDao.getMessageById(messageId) ?: return
         if (current.is_synced || current.deleted_for_all || current.pending_action != "send") return
         val failed = current.copy(status = "failed", retry_count = current.retry_count + 1, last_retry_at = java.time.Instant.now().toString())
-        groupDao.insertMessagesOwned(listOf(failed)) { sessionWriteGuard.requireValid(session) }
+        val stored = groupDao.persistMessagesOwned(listOf(failed)) { sessionWriteGuard.requireValid(session) }.single()
         sessionWriteGuard.requireValid(session)
-        updateGroupMessageInFlow(failed.group_id, failed.toDomain())
+        updateGroupMessageInFlow(stored.group_id, stored.toDomain())
     }
     private suspend fun retryPendingGroupMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return

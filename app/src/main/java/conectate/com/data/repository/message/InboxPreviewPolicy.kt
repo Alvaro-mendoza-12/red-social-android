@@ -5,9 +5,8 @@ import conectate.com.data.local.entity.MessageDeletionEntity
 import conectate.com.data.local.entity.MessageEntity
 import conectate.com.data.model.ChatWithLastMessage
 import conectate.com.data.model.Message
+import conectate.com.data.model.parseMessageInstant
 import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneOffset
 import kotlinx.serialization.json.Json
 
 /** Derives presentation only; underlying history and files are never erased. */
@@ -74,7 +73,5 @@ internal fun buildVisibleInboxConversation(entity: ChatWithUserProfile, preview:
 }
 
 private fun inboxTime(value: String?): Instant? {
-    val clean = value?.trim()?.replace(' ', 'T')?.takeIf { it.isNotBlank() } ?: return null
-    return runCatching { Instant.parse(clean) }.getOrNull()
-        ?: runCatching { LocalDateTime.parse(clean).toInstant(ZoneOffset.UTC) }.getOrNull()
+    return value?.takeIf(String::isNotBlank)?.let(::parseMessageInstant)
 }

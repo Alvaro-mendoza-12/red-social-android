@@ -281,8 +281,7 @@ class MessageRealtimeSync @Inject constructor(
 
                     // Si es un read receipt, recalcular unread del chat
                     if (msg.status == "read" || msg.status == "delivered") {
-                        // El cálculo de unread debería estar en MessageUnreadCounter
-                        // Por ahora lo dejamos en el Dao/Repository
+                        // The account-owned inbox projection is invalidated by this Room write.
                     }
 
                     Log.d(TAG, "✅ Mensaje actualizado via realtime: ${msg.id}")
@@ -410,7 +409,7 @@ class MessageRealtimeSync @Inject constructor(
     }
 
     /**
-     * Parsea un registro JSON de Supabase a objeto Message.
+     * Parsea el contrato JSON de mensajes del servidor a objeto Message.
      */
     @OptIn(ExperimentalSerializationApi::class)
     private fun parseMessageFromJson(record: JsonObject): Message {

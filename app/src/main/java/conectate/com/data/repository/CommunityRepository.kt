@@ -1344,7 +1344,11 @@ class CommunityRepository @Inject constructor(
             val list = current.toMutableList()
             val index = list.indexOfFirst { it.id == msg.id }
             if (index != -1) {
-                list[index] = msg
+                val local = current[index]
+                val receipt = conectate.com.core.messaging.mergeMessageReceiptState(
+                    msg.status, msg.delivered_at, msg.read_at, local.status, local.delivered_at, local.read_at,
+                )
+                list[index] = msg.copy(status = receipt.status, delivered_at = receipt.deliveredAt, read_at = receipt.readAt)
             } else {
                 list.add(msg)
             }
@@ -2970,9 +2974,9 @@ class CommunityRepository @Inject constructor(
         val current = communityDao.getMessageById(messageId) ?: return
         if (current.is_synced || current.deleted_for_all || current.pending_action != "send") return
         val failed = current.copy(status = "failed", retry_count = current.retry_count + 1, last_retry_at = java.time.Instant.now().toString())
-        communityDao.insertMessagesOwned(listOf(failed)) { sessionWriteGuard.requireValid(session) }
+        val stored = communityDao.persistMessagesOwned(listOf(failed)) { sessionWriteGuard.requireValid(session) }.single()
         sessionWriteGuard.requireValid(session)
-        updateCommunityMessageInFlow(failed.community_id, failed.toDomain())
+        updateCommunityMessageInFlow(stored.community_id, stored.toDomain())
     }
     private suspend fun retryPendingCommunityMessages(maxBatch: Int = 40, targetMessageId: String? = null) {
         var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return

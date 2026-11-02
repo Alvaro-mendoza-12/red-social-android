@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.room.Transaction
 import conectate.com.data.local.entity.MessageEntity
+import conectate.com.data.local.entity.withPersistedReceipts
 import conectate.com.data.model.Message
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -14,13 +15,25 @@ import kotlinx.coroutines.flow.map
 @Dao
 interface MessageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMessage(message: MessageEntity)
+    suspend fun insertMessageRaw(message: MessageEntity)
+
+    @Transaction
+    suspend fun insertMessage(message: MessageEntity) {
+        insertMessageRaw(message.withPersistedReceipts(getMessageById(message.id)))
+    }
 
     @Transaction
     suspend fun insertMessageOwned(message: MessageEntity, requireCurrent: () -> Unit) {
+        persistMessageOwned(message, requireCurrent)
+    }
+
+    @Transaction
+    suspend fun persistMessageOwned(message: MessageEntity, requireCurrent: () -> Unit): MessageEntity {
         requireCurrent()
-        insertMessage(message)
+        val merged = message.withPersistedReceipts(getMessageById(message.id))
+        insertMessageRaw(merged)
         requireCurrent()
+        return merged
     }
 
     @Transaction
@@ -31,7 +44,19 @@ interface MessageDao {
     }
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMessages(messages: List<MessageEntity>)
+    suspend fun insertMessagesRaw(messages: List<MessageEntity>)
+
+    @Query("SELECT * FROM messages WHERE id IN (:messageIds)")
+    suspend fun getMessagesByIds(messageIds: List<String>): List<MessageEntity>
+
+    @Transaction
+    suspend fun insertMessages(messages: List<MessageEntity>) {
+        if (messages.isEmpty()) return
+        val latest = messages.map { it.id }.distinct().chunked(800)
+            .flatMap { getMessagesByIds(it) }.associateBy { it.id }.toMutableMap()
+        val merged = messages.map { incoming -> incoming.withPersistedReceipts(latest[incoming.id]).also { latest[it.id] = it } }
+        insertMessagesRaw(merged)
+    }
 
     @Query("SELECT * FROM messages WHERE chat_id = :chatId ORDER BY created_at ASC")
     fun getMessagesFlow(chatId: String): Flow<List<MessageEntity>>
@@ -96,7 +121,14 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE pending_action = 'edit'")
     suspend fun getPendingEditMessages(): List<MessageEntity>
 
-    @Query("UPDATE messages SET status = :status, is_synced = :isSynced, pending_action = :pendingAction WHERE id = :messageId")
+    @Query("""
+        UPDATE messages SET status = CASE
+            WHEN LOWER(status) = 'read' OR NULLIF(TRIM(read_at), '') IS NOT NULL THEN 'read'
+            WHEN LOWER(status) IN ('delivered','received') OR NULLIF(TRIM(delivered_at), '') IS NOT NULL THEN 'delivered'
+            ELSE :status END, is_synced = :isSynced, pending_action = :pendingAction
+        WHERE id = :messageId AND NOT (:isSynced = 0 AND COALESCE(:pendingAction, '') = 'send' AND is_synced = 1
+            AND (LOWER(status) IN ('sent','delivered','received','read') OR NULLIF(TRIM(read_at), '') IS NOT NULL OR NULLIF(TRIM(delivered_at), '') IS NOT NULL))
+    """)
     suspend fun updateSyncStatus(messageId: String, status: String, isSynced: Boolean, pendingAction: String?)
 
     @Query("UPDATE messages SET media_url = :mediaUrl WHERE id = :messageId")

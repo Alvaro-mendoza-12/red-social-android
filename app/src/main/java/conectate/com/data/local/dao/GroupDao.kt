@@ -4,6 +4,7 @@ import androidx.room.*
 import conectate.com.data.local.entity.GroupEntity
 import conectate.com.data.local.entity.GroupMemberEntity
 import conectate.com.data.local.entity.GroupMessageEntity
+import conectate.com.data.local.entity.withPersistedReceipts
 import kotlinx.coroutines.flow.Flow
 
 data class GroupUnreadCountRow(
@@ -173,13 +174,35 @@ interface GroupDao {
 
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertMessages(messages: List<GroupMessageEntity>)
+    suspend fun insertMessagesRaw(messages: List<GroupMessageEntity>)
+
+    @Query("SELECT * FROM group_messages WHERE id IN (:messageIds)")
+    suspend fun getMessagesByIds(messageIds: List<String>): List<GroupMessageEntity>
+
+    @Transaction
+    suspend fun insertMessages(messages: List<GroupMessageEntity>) { persistMessages(messages) }
+
+    @Transaction
+    suspend fun persistMessages(messages: List<GroupMessageEntity>): List<GroupMessageEntity> {
+        if (messages.isEmpty()) return emptyList()
+        val latest = messages.map { it.id }.distinct().chunked(800)
+            .flatMap { getMessagesByIds(it) }.associateBy { it.id }.toMutableMap()
+        val merged = messages.map { incoming -> incoming.withPersistedReceipts(latest[incoming.id]).also { latest[it.id] = it } }
+        insertMessagesRaw(merged)
+        return merged
+    }
 
     @Transaction
     suspend fun insertMessagesOwned(messages: List<GroupMessageEntity>, requireCurrent: () -> Unit) {
+        persistMessagesOwned(messages, requireCurrent)
+    }
+
+    @Transaction
+    suspend fun persistMessagesOwned(messages: List<GroupMessageEntity>, requireCurrent: () -> Unit): List<GroupMessageEntity> {
         requireCurrent()
-        insertMessages(messages)
+        val merged = persistMessages(messages)
         requireCurrent()
+        return merged
     }
 
     @Transaction
@@ -205,10 +228,17 @@ interface GroupDao {
     @Query("SELECT * FROM group_messages WHERE is_synced = 0 AND pending_action = 'send' AND deleted_for_all = 0 AND LOWER(TRIM(sender_id)) = LOWER(TRIM(:senderId)) ORDER BY created_at ASC, id ASC LIMIT :limit")
     suspend fun getPendingOutgoingMessages(senderId: String, limit: Int): List<GroupMessageEntity>
 
-    @Query("UPDATE group_messages SET status = :status, is_synced = :isSynced, pending_action = :pendingAction WHERE id = :messageId")
+    @Query("""
+        UPDATE group_messages SET status = CASE
+            WHEN LOWER(status) = 'read' OR NULLIF(TRIM(read_at), '') IS NOT NULL THEN 'read'
+            WHEN LOWER(status) IN ('delivered','received') OR NULLIF(TRIM(delivered_at), '') IS NOT NULL THEN 'delivered'
+            ELSE :status END, is_synced = :isSynced, pending_action = :pendingAction
+        WHERE id = :messageId AND NOT (:isSynced = 0 AND COALESCE(:pendingAction, '') = 'send' AND is_synced = 1
+            AND (LOWER(status) IN ('sent','delivered','received','read') OR NULLIF(TRIM(read_at), '') IS NOT NULL OR NULLIF(TRIM(delivered_at), '') IS NOT NULL))
+    """)
     suspend fun updateMessageSyncStatus(messageId: String, status: String, isSynced: Boolean, pendingAction: String?)
 
-    @Query("UPDATE group_messages SET retry_count = retry_count + 1, last_retry_at = :lastRetryAt, status = :status WHERE id = :messageId")
+    @Query("UPDATE group_messages SET retry_count = retry_count + 1, last_retry_at = :lastRetryAt, status = :status WHERE id = :messageId AND is_synced = 0 AND NULLIF(TRIM(read_at), '') IS NULL AND NULLIF(TRIM(delivered_at), '') IS NULL AND LOWER(status) NOT IN ('read','delivered','received')")
     suspend fun markRetryAttempt(messageId: String, lastRetryAt: String, status: String = "failed")
     @Query("UPDATE group_messages SET status = 'read', read_at = :now, delivered_at = CASE WHEN delivered_at IS NULL THEN :now ELSE delivered_at END WHERE group_id = :groupId AND sender_id != :currentUserId AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received')")
     suspend fun markAllAsRead(groupId: String, now: String, currentUserId: String)

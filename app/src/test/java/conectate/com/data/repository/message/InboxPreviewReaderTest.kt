@@ -201,6 +201,25 @@ open class InboxPreviewReaderTest {
         assertNull(inbox().single().lastMessage)
     }
 
+    @Test fun `new messages remain visible after clearing with a legacy PostgreSQL offset`() = runBlocking {
+        seed()
+        for (cutoff in listOf("2026-09-09 00:00:02+00", "2026-09-08T19:00:02-0500")) {
+            chat(cutoff = cutoff)
+            assertNull(inbox().single().lastMessage)
+            db.messageDao().insertMessage(message("after", 3))
+            assertEquals("after", inbox().single().lastMessage?.id)
+            db.messageDao().deleteMessage("after")
+        }
+    }
+
+    @Test fun `newer summary with a short timezone offset wins over older history`() = runBlocking {
+        chat(last = "server")
+        val oldChat = db.chatDao().getChatById("chat")!!
+        db.chatDao().updateChat(oldChat.copy(last_message_timestamp = "2026-09-08 19:00:03-05"))
+        db.messageDao().insertMessage(message("local", 2))
+        assertEquals("server", inbox().single().lastMessage?.id)
+    }
+
     @Test fun `chat summary works before history download but known intent still hides it`() = runBlocking {
         chat()
         assertEquals("new", inbox().single().lastMessage!!.id)
