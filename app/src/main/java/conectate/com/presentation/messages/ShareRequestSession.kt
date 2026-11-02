@@ -38,6 +38,7 @@ internal class ShareRequestSession(
     private var current: Binding? = null
     private var attempt: Ticket? = null
     private var job: Job? = null
+    private var closing = false
 
     /** Returns true only for a new request, so its batch receipts can be reset exactly once. */
     fun bind(id: String): Boolean {
@@ -47,6 +48,7 @@ internal class ShareRequestSession(
         current = Binding(id, captureAccountLease())
         attempt = null
         job = null
+        closing = false
         _state.value = ShareActionState.Idle
         old?.cancel()
         validateSession()
@@ -59,6 +61,7 @@ internal class ShareRequestSession(
         attempt = null
         val old = job
         job = null
+        closing = false
         _state.value = ShareActionState.Idle
         old?.cancel()
         return true
@@ -66,6 +69,20 @@ internal class ShareRequestSession(
 
     fun accountForRequest(id: String): AuthSessionLease? = current?.takeIf { it.id == id && it.account.isCurrent() }?.account
     fun isBound(id: String, account: AuthSessionLease): Boolean = current?.id == id && current?.account === account && account.isCurrent()
+
+    fun beginClosing(id: String): AuthSessionLease? {
+        val account = accountForRequest(id) ?: return null
+        if (closing) return null
+        closing = true
+        attempt = null
+        job?.cancel(); job = null
+        _state.value = ShareActionState.Running(0, 0, id)
+        return account
+    }
+
+    fun restoreState(id: String, account: AuthSessionLease, state: ShareActionState) {
+        if (isBound(id, account) && !closing && job?.isActive != true) _state.value = state
+    }
 
     fun validateSession() {
         val ticket = current ?: return
@@ -101,7 +118,7 @@ internal class ShareRequestSession(
     fun start(id: String, total: Int, delivery: suspend (Ticket) -> ShareActionState): Boolean {
         val binding = current?.takeIf { it.id == id } ?: return false
         validateSession()
-        if (!binding.account.isCurrent() || job?.isActive == true || _state.value is ShareActionState.Queued) return false
+        if (!binding.account.isCurrent() || closing || job?.isActive == true || _state.value is ShareActionState.Queued) return false
         val ticket = Ticket(binding)
         attempt = ticket
         _state.value = ShareActionState.Running(0, total, id) // Reserve before launch to reject double taps.

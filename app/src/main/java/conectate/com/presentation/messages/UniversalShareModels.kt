@@ -9,12 +9,14 @@ import conectate.com.data.model.GroupMessage
 import conectate.com.data.model.Message
 import java.util.UUID
 
+@kotlinx.serialization.Serializable
 enum class ShareDestinationType {
     CHAT,
     GROUP,
     COMMUNITY
 }
 
+@kotlinx.serialization.Serializable
 data class ShareDestination(
     val id: String,
     val type: ShareDestinationType,
@@ -27,6 +29,7 @@ data class ShareDestination(
         get() = "${type.name.lowercase()}:$id"
 }
 
+@kotlinx.serialization.Serializable
 data class ForwardMessagePayload(
     val id: String,
     val senderId: String,
@@ -76,11 +79,13 @@ class UniversalForwardCoordinator internal constructor(
     private var activePost by mutableStateOf<InternalPostShareRequest?>(null)
     private var activeVideo by mutableStateOf<InternalVideoShareRequest?>(null)
     private var activeForward by mutableStateOf<UniversalForwardRequest?>(null)
+    private var activeSavedBatch by mutableStateOf<String?>(null)
     private fun isCurrent() = captureAccountLease == null || accountLease?.isCurrent() == true
     val postRequest: InternalPostShareRequest? get() = activePost.takeIf { isCurrent() }
     val videoRequest: InternalVideoShareRequest? get() = activeVideo.takeIf { isCurrent() }
     val request: UniversalForwardRequest? get() = activeForward.takeIf { isCurrent() }
-    val activeRequestId: String? get() = postRequest?.requestId ?: videoRequest?.requestId ?: request?.requestId
+    val savedBatchRequestId: String? get() = activeSavedBatch.takeIf { isCurrent() }
+    val activeRequestId: String? get() = postRequest?.requestId ?: videoRequest?.requestId ?: request?.requestId ?: savedBatchRequestId
 
     private fun begin(): Boolean {
         dismiss()
@@ -95,6 +100,7 @@ class UniversalForwardCoordinator internal constructor(
     fun openVideo(video: conectate.com.data.model.Video) {
         if (begin()) activeVideo = InternalVideoShareRequest(video)
     }
+    internal fun openSavedBatch(id: String) { if (id.isNotBlank() && begin()) activeSavedBatch = id }
     fun open(candidates: List<ForwardMessagePayload>, initiallySelectedIds: Set<String>): Boolean {
         val eligible = candidates.asSequence().filter(ForwardMessagePayload::isForwardable)
             .distinctBy(ForwardMessagePayload::id).sortedBy(ForwardMessagePayload::timestampMs)
@@ -111,6 +117,7 @@ class UniversalForwardCoordinator internal constructor(
         activeForward = null
         activeVideo = null
         activePost = null
+        activeSavedBatch = null
         accountLease = null
         openedAt = null
     }

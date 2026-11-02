@@ -6,6 +6,25 @@ import org.junit.Test
 class ForwardCoordinatorNavigationTest {
     private val text = ForwardMessagePayload("text", "sender", "hello", "text", null, 1, false)
 
+    @Test fun anIndexedInternalBatchCanBeOpenedAfterTheOriginalSelectionWasLost() {
+        val coordinator = UniversalForwardCoordinator()
+        coordinator.bindNavigationOrigin { ShareNavigationOrigin("restart", "messages") }
+        coordinator.openSavedBatch("saved-request")
+        assertEquals("saved-request", coordinator.savedBatchRequestId)
+        assertEquals("saved-request", coordinator.activeRequestId)
+        assertNull(coordinator.postRequest); assertNull(coordinator.request)
+        assertEquals(ShareDismissal.CURRENT, coordinator.dismiss("saved-request"))
+    }
+
+    @Test fun recoveryCompletionCannotNavigateOverANewerDeepLink() {
+        var origin = ShareNavigationOrigin("restart", "messages")
+        val coordinator = UniversalForwardCoordinator()
+        coordinator.bindNavigationOrigin { origin }
+        coordinator.openSavedBatch("saved-request")
+        origin = origin.copy(intentId = "new-link")
+        assertEquals(ShareDismissal.SUPERSEDED, coordinator.dismiss("saved-request"))
+    }
+
     @Test fun completionCanOpenItsConversationWhileTheOriginIsStillCurrent() {
         val coordinator = UniversalForwardCoordinator()
         coordinator.bindNavigationOrigin { ShareNavigationOrigin("intent", "entry") }
