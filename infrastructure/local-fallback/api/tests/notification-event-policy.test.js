@@ -30,6 +30,30 @@ test('compatibility inserts cannot bypass the admin notice outbox', async () => 
   }
 })
 
+test('public and compatibility callers cannot forge account security events through any alias', async () => {
+  for (const type of ['account_suspended', 'account_enabled']) {
+    for (const row of [{ type }, { notificationType: type }, { notification_type: type },
+      { type: 'message', extraData: { notification_type: type } },
+      { extra_data: {}, extraData: { notificationType: type } },
+      { extraData: {}, extra_data: JSON.stringify({ type }) },
+      { data: JSON.stringify({ notification_type: type.toUpperCase() }) }]) {
+      assert.equal(isServerManagedNotification(row), true)
+      await assert.rejects(_test.prepareInsertRow(noQueries, 'notifications', identity,
+        { ...row, recipient_id: userId, actor_id: userId }),
+      error => error.status === 403 && error.message === 'SERVER_MANAGED_NOTIFICATION')
+    }
+  }
+})
+
+test('legacy logout descriptions cannot be forged while ordinary alert messages remain supported', () => {
+  for (const content of ['Tu cuenta fue suspendida.', 'TU CUENTA HA SIDO SUSPENDIDA temporalmente.',
+    'Tu cuenta ha sido habilitada nuevamente.', 'Tu cuenta fue habilitada.', 'Cuenta habilitada nuevamente']) {
+    assert.equal(isServerManagedNotification({ type: 'message', content }), true)
+  }
+  assert.equal(isServerManagedNotification({ type: 'message', content: 'Te invitó a un grupo' }), false)
+  assert.equal(isServerManagedNotification({ type: 'follow', content: 'Cuenta fue suspendida' }), false)
+})
+
 test('recipients can read or delete their notice but cannot rewrite its event or sender', async () => {
   const row = { recipient_id: userId, actor_id: 'server', type: 'system_announcement' }
   assert.equal(await _test.authorizeMutation(noQueries, 'notifications', identity, row,

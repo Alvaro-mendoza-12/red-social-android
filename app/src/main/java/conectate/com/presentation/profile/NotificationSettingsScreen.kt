@@ -28,6 +28,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
 import java.util.Locale
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,11 +82,21 @@ fun NotificationSettingsScreen(
     navController: NavController,
     viewModel: NotificationViewModel = hiltViewModel()
 ) {
+    val ownerRevision by viewModel.ownerRevision.collectAsStateWithLifecycle()
+    key(ownerRevision) { NotificationSettingsForAccount(navController, viewModel) }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NotificationSettingsForAccount(navController: NavController, viewModel: NotificationViewModel) {
+    val canAct = viewModel.ownerAtRender()
     val state by viewModel.digestState.collectAsStateWithLifecycle()
     val saving by viewModel.digestSaving.collectAsStateWithLifecycle()
     val message by viewModel.digestMessage.collectAsStateWithLifecycle()
     val momentNotificationsEnabled by viewModel.momentNotificationsEnabled.collectAsStateWithLifecycle()
     val momentNotificationsSaving by viewModel.momentNotificationsSaving.collectAsStateWithLifecycle()
+    val momentPreferencesLoading by viewModel.momentPreferencesLoading.collectAsStateWithLifecycle()
+    val momentPreferencesError by viewModel.momentPreferencesError.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -108,13 +120,13 @@ fun NotificationSettingsScreen(
     ) { granted ->
         val action = pendingPermissionAction
         pendingPermissionAction = null
-        if (granted) {
+        if (granted && canAct()) {
             when (action) {
                 NotificationPermissionAction.MOMENTS -> viewModel.setMomentNotificationsEnabled(true)
                 NotificationPermissionAction.DIGEST -> enabled = true
                 null -> Unit
             }
-        } else if (action != null) {
+        } else if (action != null && canAct()) {
             coroutineScope.launch {
                 snackbarHostState.showSnackbar(
                     "Activa las notificaciones de Novvin en Ajustes para recibir estos avisos."
@@ -124,6 +136,7 @@ fun NotificationSettingsScreen(
     }
 
     fun requestNotificationsThen(action: NotificationPermissionAction) {
+        if (!canAct()) return
         val permissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
         val permissionGranted = !permissionRequired || ContextCompat.checkSelfPermission(
             context,
@@ -162,7 +175,7 @@ fun NotificationSettingsScreen(
     LaunchedEffect(message) {
         val text = message ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(text)
-        viewModel.clearDigestMessage()
+        if (canAct()) viewModel.clearDigestMessage()
     }
 
     Scaffold(
@@ -214,11 +227,14 @@ fun NotificationSettingsScreen(
                     modifier = Modifier.padding(padding),
                     momentNotificationsEnabled = momentNotificationsEnabled,
                     momentNotificationsSaving = momentNotificationsSaving,
+                    momentPreferencesLoading = momentPreferencesLoading,
+                    momentPreferencesError = momentPreferencesError,
+                    onRetryMomentPreferences = { if (canAct()) viewModel.loadMomentNotificationPreferences() },
                     onMomentNotificationsChange = { shouldEnable ->
                         if (shouldEnable) {
                             requestNotificationsThen(NotificationPermissionAction.MOMENTS)
                         } else {
-                            viewModel.setMomentNotificationsEnabled(false)
+                            if (canAct()) viewModel.setMomentNotificationsEnabled(false)
                         }
                     },
                     enabled = enabled,
@@ -245,7 +261,7 @@ fun NotificationSettingsScreen(
                     onIncludeUpcomingLivesChange = { includeUpcomingLives = it },
                     saving = saving,
                     onSave = {
-                        viewModel.saveNotificationDigestPreferences(
+                        if (canAct()) viewModel.saveNotificationDigestPreferences(
                             NotificationDigestPreferences(
                                 enabled = enabled,
                                 frequency = frequency,
@@ -273,6 +289,9 @@ private fun NotificationDigestSettingsContent(
     modifier: Modifier,
     momentNotificationsEnabled: Boolean?,
     momentNotificationsSaving: Boolean,
+    momentPreferencesLoading: Boolean,
+    momentPreferencesError: String?,
+    onRetryMomentPreferences: () -> Unit,
     onMomentNotificationsChange: (Boolean) -> Unit,
     enabled: Boolean,
     onEnabledChange: (Boolean) -> Unit,
@@ -307,15 +326,30 @@ private fun NotificationDigestSettingsContent(
         conectate.com.presentation.calls.IncomingCallPermissionCard()
         SettingsSwitchRow(
             title = "Avisos de momentos",
-            description = "Desactivados por defecto. Si los activas, recibirás avisos de momentos de personas que sigues; desaparecen al vencer el momento.",
+            description = when {
+                momentNotificationsSaving -> "Guardando el cambio…"
+                momentPreferencesLoading -> "Cargando tu preferencia…"
+                else -> "Desactivados por defecto. Si los activas, recibirás avisos de momentos de personas que sigues; desaparecen al vencer el momento."
+            },
             checked = momentNotificationsEnabled == true,
-            onCheckedChange = { if (!momentNotificationsSaving && momentNotificationsEnabled != null) onMomentNotificationsChange(it) }
+            onCheckedChange = onMomentNotificationsChange,
+            enabled = momentNotificationsEnabled != null && !momentNotificationsSaving && !momentPreferencesLoading
         )
+        if (momentPreferencesLoading || momentNotificationsSaving) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        if (momentPreferencesError != null) {
+            Text(momentPreferencesError, color = MaterialTheme.colorScheme.error)
+            TextButton(onClick = onRetryMomentPreferences, enabled = !momentPreferencesLoading && !momentNotificationsSaving) {
+                Text("Reintentar avisos de momentos")
+            }
+        }
         SettingsSwitchRow(
             title = "Recibir un resumen",
             description = "Agrupa actividad no urgente para reducir interrupciones.",
             checked = enabled,
-            onCheckedChange = onEnabledChange
+            onCheckedChange = onEnabledChange,
+            enabled = !saving
         )
 
         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
@@ -333,24 +367,24 @@ private fun NotificationDigestSettingsContent(
                         selected = frequency == "daily",
                         onClick = { onFrequencyChange("daily") },
                         label = { Text("Diario") },
-                        enabled = enabled
+                        enabled = enabled && !saving
                     )
                     FilterChip(
                         selected = frequency == "weekly",
                         onClick = { onFrequencyChange("weekly") },
                         label = { Text("Semanal") },
-                        enabled = enabled
+                        enabled = enabled && !saving
                     )
                 }
                 DigestHourPicker(
                     hour = deliveryHour,
-                    enabled = enabled,
+                    enabled = enabled && !saving,
                     onHourChange = onDeliveryHourChange
                 )
                 if (frequency == "weekly") {
                     DigestWeekdayPicker(
                         weekday = deliveryWeekday,
-                        enabled = enabled,
+                        enabled = enabled && !saving,
                         onWeekdayChange = onDeliveryWeekdayChange
                     )
                 }
@@ -368,28 +402,28 @@ private fun NotificationDigestSettingsContent(
             description = "Cuando alguien te mencione en publicaciones o videos.",
             checked = includeMentions,
             onCheckedChange = onIncludeMentionsChange,
-            enabled = enabled
+            enabled = enabled && !saving
         )
         SettingsSwitchRow(
             title = "Mensajes directos no urgentes",
             description = "Los mensajes marcados como urgentes siempre llegan de inmediato.",
             checked = includeDirectMessages,
             onCheckedChange = onIncludeDirectMessagesChange,
-            enabled = enabled
+            enabled = enabled && !saving
         )
         SettingsSwitchRow(
             title = "Actividad de comunidades",
             description = "Mensajes y novedades de grupos o comunidades.",
             checked = includeCommunityActivity,
             onCheckedChange = onIncludeCommunityActivityChange,
-            enabled = enabled
+            enabled = enabled && !saving
         )
         SettingsSwitchRow(
             title = "Directos próximos",
             description = "Recordatorios y actividad relacionada con transmisiones.",
             checked = includeUpcomingLives,
             onCheckedChange = onIncludeUpcomingLivesChange,
-            enabled = enabled
+            enabled = enabled && !saving
         )
 
         Card(

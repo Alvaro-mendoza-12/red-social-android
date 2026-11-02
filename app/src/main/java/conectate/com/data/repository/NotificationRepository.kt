@@ -12,6 +12,7 @@ import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.AccountDeletedEvents
 import conectate.com.data.model.Notification
 import conectate.com.data.supabase.AuthService
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.SupabaseConfig
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.ktor.client.request.*
@@ -59,21 +60,22 @@ class NotificationRepository @Inject constructor(
         pushSession.invalidate()
     }
 
-    private fun scheduleRealtimeUnreadRefresh(userId: String) {
-        if (!userId.equals(authService.getCurrentUserId(), ignoreCase = true)) return
+    private fun scheduleRealtimeUnreadRefresh(lease: AuthSessionLease) {
+        if (!lease.isCurrent()) return
         realtimeUnreadRefreshJob?.cancel()
         realtimeUnreadRefreshJob = scope.launch {
             delay(150)
-            if (userId.equals(authService.getCurrentUserId(), ignoreCase = true)) updateUnreadCount()
+            if (lease.isCurrent()) updateUnreadCount(lease)
         }
     }
 
-    private fun scheduleMomentExpiryRefresh(notifications: List<Notification>) {
+    private fun scheduleMomentExpiryRefresh(notifications: List<Notification>, lease: AuthSessionLease) {
+        if (!lease.isCurrent()) return
         val now = System.currentTimeMillis()
         val nearest = notifications.asSequence()
             .filter { it.type.equals("new_moment", ignoreCase = true) }
             .mapNotNull { notification ->
-                notification.extraData?.get("expires_at")?.jsonPrimitive?.contentOrNull
+                (notification.extraData?.get("expires_at") as? JsonPrimitive)?.contentOrNull
                     ?.let { runCatching { java.time.Instant.parse(it).toEpochMilli() }.getOrNull() }
             }
             .filter { it > now }
@@ -82,7 +84,7 @@ class NotificationRepository @Inject constructor(
         if (nearest != null) {
             momentExpiryRefreshJob = scope.launch {
                 delay((nearest - now + 250L).coerceAtMost(7 * 24 * 60 * 60 * 1000L))
-                updateUnreadCount()
+                if (lease.isCurrent()) updateUnreadCount(lease)
             }
         }
     }
@@ -146,29 +148,34 @@ class NotificationRepository @Inject constructor(
             throw IllegalStateException("could not find function secure_mark_notifications_read")
         }
     }
+    private suspend fun <T> notificationCall(
+        lease: AuthSessionLease,
+        action: suspend (owner: String, accessToken: String) -> Result<T>,
+    ): Result<T> = notificationAccountCall(lease, authService::getAccessTokenForAccountAwait, action)
+
     /**
      * Fetch notifications for the current user, joining with the actor's profile info.
      */
-    suspend fun getNotifications(): Result<List<conectate.com.data.model.Notification>> {
-        return try {
+    suspend fun getNotifications(): Result<List<conectate.com.data.model.Notification>> = getNotifications(authService.captureAccountLease())
+
+    internal suspend fun getNotifications(accountLease: AuthSessionLease): Result<List<conectate.com.data.model.Notification>> = notificationCall(accountLease) { userId, token ->
+        return@notificationCall try {
             if (authService.isLocalFallbackSession()) {
                 val request = unreadCounter.begin()
-                val token = authService.getAccessToken()
-                    ?: return Result.failure(Exception("No token"))
-                return localFallbackApiClient.loadNotifications(token)
+
+                return@notificationCall localFallbackApiClient.loadNotifications(token)
                     .map { response ->
+                    accountLease.requireCurrent()
                         val visibleUnread = (response.unreadCount - response.items.count {
                                 it.isRetiredNotification() && !it.isRead
                             }).coerceAtLeast(0)
                         if (unreadCounter.publish(request, visibleUnread)) {
-                            scheduleMomentExpiryRefresh(response.items)
+                            scheduleMomentExpiryRefresh(response.items, accountLease)
                         }
                         response.items.filterNot { it.isRetiredNotification() }
                     }
             }
 
-            var userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
-            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
 
             // We perform a join to get actor details (display_name, avatar_url)
             // Query: notifications?recipient_id=eq.userId&select=*,actor:profiles!actor_id(display_name,avatar_url)&order=created_at.desc
@@ -239,6 +246,8 @@ class NotificationRepository @Inject constructor(
                 Log.e("NotificationRepository", "❌ Error body: $errorBody")
                 Result.failure(Exception("Error fetching notifications: ${response.status}"))
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Log.e("NotificationRepository", "🚨 Exception in getNotifications", e)
             Result.failure(e)
@@ -304,55 +313,56 @@ class NotificationRepository @Inject constructor(
         }
     }
 
-    suspend fun getNotificationDigest(): Result<NotificationDigestOverview> {
+    suspend fun getNotificationDigest(): Result<NotificationDigestOverview> = getNotificationDigest(authService.captureAccountLease())
+
+    internal suspend fun getNotificationDigest(accountLease: AuthSessionLease): Result<NotificationDigestOverview> = notificationCall(accountLease) { _, token ->
         if (!authService.isLocalFallbackSession()) {
-            return Result.failure(IllegalStateException("El resumen requiere el servidor actual de Novvin."))
+            return@notificationCall Result.failure(IllegalStateException("El resumen requiere el servidor actual de Novvin."))
         }
-        val token = authService.getAccessToken()
-            ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
-        return localFallbackApiClient.loadNotificationDigest(token)
+
+        return@notificationCall localFallbackApiClient.loadNotificationDigest(token)
     }
 
-    suspend fun getMomentNotificationPreferences(): Result<conectate.com.data.localfallback.MomentNotificationPreferences> {
+    suspend fun getMomentNotificationPreferences(): Result<conectate.com.data.localfallback.MomentNotificationPreferences> = getMomentNotificationPreferences(authService.captureAccountLease())
+
+    internal suspend fun getMomentNotificationPreferences(accountLease: AuthSessionLease): Result<conectate.com.data.localfallback.MomentNotificationPreferences> = notificationCall(accountLease) { _, token ->
         if (!authService.isLocalFallbackSession()) {
-            return Result.failure(IllegalStateException("Las alertas de momentos requieren el servidor actual de Novvin."))
+            return@notificationCall Result.failure(IllegalStateException("Las alertas de momentos requieren el servidor actual de Novvin."))
         }
-        val token = authService.getAccessToken()
-            ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
-        return localFallbackApiClient.loadMomentNotificationPreferences(token)
+
+        return@notificationCall localFallbackApiClient.loadMomentNotificationPreferences(token)
     }
 
-    suspend fun setMomentNotificationPreferences(enabled: Boolean): Result<conectate.com.data.localfallback.MomentNotificationPreferences> {
+    suspend fun setMomentNotificationPreferences(enabled: Boolean): Result<conectate.com.data.localfallback.MomentNotificationPreferences> = setMomentNotificationPreferences(authService.captureAccountLease(), enabled)
+
+    internal suspend fun setMomentNotificationPreferences(accountLease: AuthSessionLease, enabled: Boolean): Result<conectate.com.data.localfallback.MomentNotificationPreferences> = notificationCall(accountLease) { _, token ->
         if (!authService.isLocalFallbackSession()) {
-            return Result.failure(IllegalStateException("Las alertas de momentos requieren el servidor actual de Novvin."))
+            return@notificationCall Result.failure(IllegalStateException("Las alertas de momentos requieren el servidor actual de Novvin."))
         }
-        val token = authService.getAccessToken()
-            ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
-        return localFallbackApiClient.updateMomentNotificationPreferences(token, enabled)
+
+        return@notificationCall localFallbackApiClient.updateMomentNotificationPreferences(token, enabled)
     }
 
-    suspend fun updateNotificationDigestPreferences(
-        preferences: NotificationDigestPreferences
-    ): Result<NotificationDigestPreferences> {
+    suspend fun updateNotificationDigestPreferences(preferences: NotificationDigestPreferences): Result<NotificationDigestPreferences> = updateNotificationDigestPreferences(authService.captureAccountLease(), preferences)
+
+    internal suspend fun updateNotificationDigestPreferences(accountLease: AuthSessionLease, preferences: NotificationDigestPreferences): Result<NotificationDigestPreferences> = notificationCall(accountLease) { _, token ->
         if (!authService.isLocalFallbackSession()) {
-            return Result.failure(IllegalStateException("El resumen requiere el servidor actual de Novvin."))
+            return@notificationCall Result.failure(IllegalStateException("El resumen requiere el servidor actual de Novvin."))
         }
-        val token = authService.getAccessToken()
-            ?: return Result.failure(IllegalStateException("Tu sesión expiró. Inicia sesión nuevamente."))
-        return localFallbackApiClient.updateNotificationDigestPreferences(token, preferences)
+
+        return@notificationCall localFallbackApiClient.updateNotificationDigestPreferences(token, preferences)
     }
 
-    suspend fun markAsRead(notificationId: String): Result<Unit> {
+    suspend fun markAsRead(notificationId: String): Result<Unit> = markAsRead(authService.captureAccountLease(), notificationId)
+
+    internal suspend fun markAsRead(accountLease: AuthSessionLease, notificationId: String): Result<Unit> = notificationCall(accountLease) { userId, token ->
         if (authService.isLocalFallbackSession()) {
-            val token = authService.getAccessToken()
-                ?: return Result.failure(Exception("No token"))
-            return localFallbackApiClient.markNotificationRead(token, notificationId)
-                .onSuccess { updateUnreadCount() }
+
+            return@notificationCall localFallbackApiClient.markNotificationRead(token, notificationId)
+                .onSuccess { scheduleRealtimeUnreadRefresh(accountLease) }
         }
 
-        return safeRepositoryCall("notifications.markAsRead") {
-            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
-            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
+        return@notificationCall safeRepositoryCall<Unit>("notifications.markAsRead") {
             val cleanId = notificationId.trim()
             if (cleanId.isBlank()) throw IllegalArgumentException("Notification id is required")
 
@@ -377,23 +387,20 @@ class NotificationRepository @Inject constructor(
                 }
             }
 
-            updateUnreadCount()
+            scheduleRealtimeUnreadRefresh(accountLease)
+            Unit
         }
     }
 
-    suspend fun markAllAsRead(): Result<Unit> {
+    suspend fun markAllAsRead(): Result<Unit> = markAllAsRead(authService.captureAccountLease())
+
+    internal suspend fun markAllAsRead(accountLease: AuthSessionLease): Result<Unit> = notificationCall(accountLease) { userId, token ->
         if (authService.isLocalFallbackSession()) {
-            val request = unreadCounter.begin()
-            val token = authService.getAccessToken()
-                ?: return Result.failure(Exception("No token"))
-            return localFallbackApiClient.markAllNotificationsRead(token)
-                .onSuccess { if (unreadCounter.isCurrent(request)) updateUnreadCount() }
+            return@notificationCall localFallbackApiClient.markAllNotificationsRead(token)
+                .onSuccess { scheduleRealtimeUnreadRefresh(accountLease) }
         }
 
-        return safeRepositoryCall("notifications.markAllAsRead") {
-            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
-            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
-
+        return@notificationCall safeRepositoryCall<Unit>("notifications.markAllAsRead") {
             var secureResult = secureMarkRead(token, emptyList(), markAll = true)
             if (secureResult.isFailure) {
                 var secureError = secureResult.exceptionOrNull()
@@ -415,7 +422,8 @@ class NotificationRepository @Inject constructor(
                 }
             }
 
-            updateUnreadCount()
+            scheduleRealtimeUnreadRefresh(accountLease)
+            Unit
         }
     }
 
@@ -489,35 +497,30 @@ class NotificationRepository @Inject constructor(
         }
     }
 
-    suspend fun updateUnreadCount(): Result<Int> {
-        if (authService.isLocalFallbackSession()) {
-            return getUnreadCount()
-        }
+    suspend fun updateUnreadCount(): Result<Int> = getUnreadCount()
+    internal suspend fun updateUnreadCount(accountLease: AuthSessionLease): Result<Int> = getUnreadCount(accountLease)
 
-        return getUnreadCount()
-    }
 
-    suspend fun getUnreadCount(): Result<Int> {
+    suspend fun getUnreadCount(): Result<Int> = getUnreadCount(authService.captureAccountLease())
+
+    internal suspend fun getUnreadCount(accountLease: AuthSessionLease): Result<Int> = notificationCall(accountLease) { userId, token ->
         val request = unreadCounter.begin()
         if (authService.isLocalFallbackSession()) {
-            val token = authService.getAccessToken()
-                ?: return Result.failure(Exception("No token"))
-            return localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
+
+            return@notificationCall localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
                 .map { response ->
+                    accountLease.requireCurrent()
                     val visibleUnread = (response.unreadCount - response.items.count {
                         it.isRetiredNotification() && !it.isRead
                     }).coerceAtLeast(0)
                     if (unreadCounter.publish(request, visibleUnread)) {
-                        scheduleMomentExpiryRefresh(response.items)
+                        scheduleMomentExpiryRefresh(response.items, accountLease)
                     }
                     visibleUnread
                 }
         }
 
-        return safeRepositoryCall("notifications.getUnreadCount") {
-            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
-            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
-
+        return@notificationCall safeRepositoryCall("notifications.getUnreadCount") {
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -534,6 +537,7 @@ class NotificationRepository @Inject constructor(
 
             val contentRange = response.headers["Content-Range"]
             val count = contentRange?.substringAfter("/")?.toIntOrNull() ?: 0
+            accountLease.requireCurrent()
             unreadCounter.publish(request, count)
             count
         }
@@ -542,17 +546,20 @@ class NotificationRepository @Inject constructor(
     /**
      * Observable flow of incoming notifications for the current user.
      */
-    fun observeNotifications(): Flow<conectate.com.data.model.Notification> = flow {
+    fun observeNotifications(): Flow<Notification> = observeNotifications(authService.captureAccountLease())
+
+    internal fun observeNotifications(lease: AuthSessionLease): Flow<Notification> = flow {
+        val userId = lease.accountId ?: return@flow
+        val token = notificationAccountCall(lease, authService::getAccessTokenForAccountAwait) { _, token ->
+            Result.success(token)
+        }.getOrThrow()
         if (authService.isLocalFallbackSession()) {
-            val userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@flow
-            val token = authService.getAccessToken()?.trim().orEmpty()
-            if (token.isBlank()) return@flow
+            lease.requireCurrent()
             ubuntuRealtimeClient.updateAccessToken(token)
             ubuntuRealtimeClient.subscribe("user:$userId")
             val gate = NotificationEventGate(userId)
             ubuntuRealtimeClient.events.collect { envelope ->
-                if (!envelope.channel.equals("user:$userId", ignoreCase = true) ||
-                    !userId.equals(authService.getCurrentUserId()?.trim(), ignoreCase = true)) return@collect
+                if (!envelope.channel.equals("user:$userId", ignoreCase = true) || !lease.isCurrent()) return@collect
                 if (envelope.event == "account_deleted") {
                     AccountDeletedEvents.notifyAccountDeleted()
                     return@collect
@@ -563,13 +570,13 @@ class NotificationRepository @Inject constructor(
                     userId.equals(authService.getCurrentUserId(), ignoreCase = true)) {
                     // Deliveries can be retried and multiple screens can subscribe. Read the authoritative
                     // count once for a short burst instead of adding one for each duplicate/subscriber.
-                    scheduleRealtimeUnreadRefresh(userId)
+                    scheduleRealtimeUnreadRefresh(lease)
                     emit(notification)
                 }
             }
+            return@flow
         }
 
-        var userId = authService.getCurrentUserId()?.trim()?.lowercase() ?: return@flow
         Log.d("NotificationRepository", "🏠 Starting observeNotifications for user: $userId")
         
         val client = supabaseConfig.client
@@ -588,6 +595,7 @@ class NotificationRepository @Inject constructor(
             Log.d("NotificationRepository", "📡 Subscribed to 'notifications' channel")
 
             changes.collect { action ->
+                lease.requireCurrent()
                 Log.d("NotificationRepository", "⚡ Received Realtime Action: ${action::class.simpleName}")
                 if (action is PostgresAction.Insert) {
                     try {
@@ -600,27 +608,32 @@ class NotificationRepository @Inject constructor(
                         if (notification.recipientId.equals(userId, ignoreCase = true)) {
                             // Fetch actor profile for realtime notifications
                             try {
-                                val actorProfile = fetchActorProfile(notification.actorId)
+                                val actorProfile = fetchActorProfile(notification.actorId, token)
                                 notification = notification.copy(
                                     actorName = actorProfile.first,
                                     actorAvatarUrl = actorProfile.second
                                 )
-                            } catch (e: Exception) {
+                            } catch (cancelled: CancellationException) { throw cancelled }
+                            catch (e: Exception) {
                                 Log.e("NotificationRepository", "Failed to fetch actor profile for realtime notification", e)
                             }
 
                             Log.d("NotificationRepository", "✅ Notification matches current user. Emitting!")
+                            lease.requireCurrent()
                             emit(notification)
                         } else {
                             Log.d("NotificationRepository", "⚠️ Notification is for a different user (${notification.recipientId}). Ignoring.")
                         }
-                    } catch (e: Exception) {
+                    } catch (cancelled: CancellationException) { throw cancelled }
+                    catch (e: Exception) {
                         Log.e("NotificationRepository", "❌ Error decoding notification record", e)
                     }
                 }
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Log.e("NotificationRepository", "🚨 Error in observeNotifications flow", e)
+            throw e
         } finally {
             runCatching { channel.unsubscribe() }
             runCatching { client.realtime.removeChannel(channel) }
@@ -802,9 +815,8 @@ class NotificationRepository @Inject constructor(
         }
     }
 
-    private suspend fun fetchActorProfile(actorId: String): Pair<String?, String?> {
+    private suspend fun fetchActorProfile(actorId: String, token: String): Pair<String?, String?> {
         return try {
-            var token = authService.getAccessToken() ?: return null to null
             var response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/profiles") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -830,7 +842,8 @@ class NotificationRepository @Inject constructor(
             } else {
                 null to null
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             Log.e("NotificationRepository", "Error inside fetchActorProfile", e)
             null to null
         }
@@ -840,16 +853,16 @@ class NotificationRepository @Inject constructor(
         return "${userId.trim().lowercase()}|${token.trim()}"
     }
 
-    suspend fun deleteNotification(id: String): Result<Unit> {
+    suspend fun deleteNotification(id: String): Result<Unit> = deleteNotification(authService.captureAccountLease(), id)
+
+    internal suspend fun deleteNotification(accountLease: AuthSessionLease, id: String): Result<Unit> = notificationCall(accountLease) { userId, token ->
         if (authService.isLocalFallbackSession()) {
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            return localFallbackApiClient.deleteNotification(token, id)
+
+            return@notificationCall localFallbackApiClient.deleteNotification(token, id)
+                .onSuccess { scheduleRealtimeUnreadRefresh(accountLease) }
         }
 
-        return safeRepositoryCall("notifications.delete") {
-            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
-            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
-            
+        return@notificationCall safeRepositoryCall("notifications.delete") {
             var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -862,18 +875,15 @@ class NotificationRepository @Inject constructor(
         }
     }
 
-    suspend fun deleteAllNotifications(): Result<Unit> {
+    suspend fun deleteAllNotifications(): Result<Unit> = deleteAllNotifications(authService.captureAccountLease())
+
+    internal suspend fun deleteAllNotifications(accountLease: AuthSessionLease): Result<Unit> = notificationCall(accountLease) { userId, token ->
         if (authService.isLocalFallbackSession()) {
-            val request = unreadCounter.begin()
-            val token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            return localFallbackApiClient.deleteAllNotifications(token)
-                .onSuccess { if (unreadCounter.isCurrent(request)) updateUnreadCount() }
+            return@notificationCall localFallbackApiClient.deleteAllNotifications(token)
+                .onSuccess { scheduleRealtimeUnreadRefresh(accountLease) }
         }
 
-        return safeRepositoryCall("notifications.deleteAll") {
-            var userId = authService.getCurrentUserId() ?: throw IllegalStateException("Not logged in")
-            var token = authService.getAccessToken() ?: throw IllegalStateException("No token")
-            
+        return@notificationCall safeRepositoryCall<Unit>("notifications.deleteAll") {
             var response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/notifications") {
                 header("Authorization", "Bearer $token")
                 header("apikey", supabaseConfig.supabaseAnonKey)
@@ -882,7 +892,8 @@ class NotificationRepository @Inject constructor(
             if (!response.status.isSuccess()) {
                 throw IllegalStateException("Error deleting all notifications: ${response.status}")
             }
-            updateUnreadCount()
+            scheduleRealtimeUnreadRefresh(accountLease)
+            Unit
         }
     }
 }

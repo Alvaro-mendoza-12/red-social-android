@@ -5,10 +5,9 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.Bundle
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -16,12 +15,14 @@ import conectate.com.MainActivity
 import conectate.com.R
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonPrimitive
+import java.util.UUID
 
 @OptIn(ExperimentalFoundationApi::class)
 class LocalNotificationHelper(private val context: Context) {
 
     fun showSocialNotification(
+        account: NotificationAccountTarget,
         title: String,
         body: String,
         type: String,
@@ -32,11 +33,13 @@ class LocalNotificationHelper(private val context: Context) {
         extraData: JsonObject? = null,
         notificationId: String? = null
     ) {
+        val owner = account.userId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return
+        val accountTarget = account.copy(userId = owner)
         if (isRetiredMomentViewNotification(
                 type, getExtraDataValue(extraData, "notification_type"),
                 getExtraDataValue(extraData, "notificationType")
             )) return
-        val normalizedType = type.trim().lowercase()
+        val normalizedType = type.trim().lowercase().let { if (it == "new_live") "live_started" else it }
         val normalizedTargetType = targetType?.trim()?.lowercase()?.ifBlank { null }
             ?: getExtraDataValue(extraData, "target_type")?.lowercase()
         val commentId = getExtraDataValue(extraData, "comment_id")
@@ -53,9 +56,12 @@ class LocalNotificationHelper(private val context: Context) {
             else -> null
         }
         val isLiveStarted = normalizedType == "live_started" && !resolvedLiveId.isNullOrBlank()
+        val recordId = notificationId?.trim()?.takeIf(String::isNotBlank)
+        val publicationKey = if (isLiveStarted) "live:$resolvedLiveId" else recordId ?: UUID.randomUUID().toString()
+        val tag = "$SOCIAL_NOTIFICATION_TAG:$owner:$publicationKey"
 
-        val postLikeTypes = setOf("like", "like_post", "comment", "comment_post", "reply_post", "mention", "mention_post", "share", "share_post")
-        val videoLikeTypes = setOf("like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video")
+        val postLikeTypes = setOf("like", "like_post", "comment", "comment_post", "reply_post", "mention", "mention_post", "share", "share_post", "new_post")
+        val videoLikeTypes = setOf("like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video", "mention_video_description", "new_video")
 
         val resolvedPostId = explicitPostId ?: when {
             normalizedTargetType == "post" -> targetId
@@ -69,9 +75,9 @@ class LocalNotificationHelper(private val context: Context) {
         }
 
         val socialTypes = listOf(
-            "like", "like_post", "like_video", "follow", "friend_request", "new_moment",
+            "like", "like_post", "like_video", "like_moment", "follow", "friend_request", "friend_request_accepted", "new_moment", "new_post", "new_video",
             "comment", "comment_post", "reply_post", "comment_video", "reply_video",
-            "mention", "mention_post", "mention_video",
+            "mention", "mention_post", "mention_video", "mention_video_description",
             "share", "share_post", "share_video", "admin_warning_video",
             "challenge_invite", "voice_invite", "voice_access_request", "birthday"
         )
@@ -110,8 +116,11 @@ class LocalNotificationHelper(private val context: Context) {
         }
 
         val intent = Intent(context, MainActivity::class.java).apply {
+            action = "${context.packageName}.OPEN_SOCIAL:$owner:$publicationKey"
             addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putNotificationAccountTarget(accountTarget)
             putExtra("type", normalizedType)
+            targetId.trim().takeIf(String::isNotBlank)?.let { putExtra("target_id", it) }
             notificationId?.takeIf { it.isNotBlank() }?.let { putExtra("notification_id", it) }
             senderAvatar?.takeIf { it.isNotBlank() }?.let { putExtra("sender_avatar", it) }
             commentId?.let { putExtra("comment_id", it) }
@@ -122,13 +131,13 @@ class LocalNotificationHelper(private val context: Context) {
 
             when (normalizedType) {
                 "birthday" -> { putExtra("birthday_user_id", getExtraDataValue(extraData, "birthday_user_id") ?: senderId ?: targetId); putExtra("target_id", targetId) }
-                "follow", "friend_request", "voice_access_request" -> {
+                "follow", "friend_request", "friend_request_accepted", "voice_access_request" -> {
                     putExtra("follower_id", senderId ?: targetId)
                 }
-                "like", "like_post", "comment", "comment_post", "reply_post", "mention", "mention_post", "share", "share_post" -> {
+                "like", "like_post", "comment", "comment_post", "reply_post", "mention", "mention_post", "share", "share_post", "new_post" -> {
                     (resolvedPostId ?: targetId).takeIf { it.isNotBlank() }?.let { putExtra("post_id", it) }
                 }
-                "like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video" -> {
+                "like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video", "mention_video_description", "new_video" -> {
                     (resolvedVideoId ?: targetId).takeIf { it.isNotBlank() }?.let { putExtra("video_id", it) }
                 }
                 "voice_invite" -> {
@@ -148,15 +157,18 @@ class LocalNotificationHelper(private val context: Context) {
                     }
                     senderId?.trim()?.takeIf { it.isNotBlank() }?.let { putExtra("host_id", it) }
                 }
-                "new_moment" -> targetId.takeIf { it.isNotBlank() }?.let { putExtra("moment_id", it) }
+                "new_moment", "like_moment" -> (getExtraDataValue(extraData, "moment_id") ?: targetId)
+                    .takeIf(String::isNotBlank)?.let { putExtra("moment_id", it) }
+            }
+            if (normalizedType == "mention" && !resolvedVideoId.isNullOrBlank()) {
+                putExtra("video_id", resolvedVideoId)
+                putExtra("target_type", "video")
             }
         }.also { TrustedNavigationIntents.markTrusted(context, it) }
 
         val pendingIntent = PendingIntent.getActivity(
             context,
-            if (isLiveStarted) ("live_started:$resolvedLiveId").hashCode()
-            else notificationId?.takeIf { it.isNotBlank() }?.let { ("social:$it").hashCode() }
-                ?: System.currentTimeMillis().toInt(),
+            tag.hashCode(),
             intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
@@ -170,11 +182,17 @@ class LocalNotificationHelper(private val context: Context) {
             .setAutoCancel(true)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             .setContentIntent(pendingIntent)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .addExtras(Bundle().apply {
+                putBoolean(EXTRA_SOCIAL, true)
+                putString(EXTRA_RECORD_ID, recordId)
+            })
             .setPriority(if (isLiveStarted) NotificationCompat.PRIORITY_DEFAULT else NotificationCompat.PRIORITY_HIGH)
             .setCategory(if (isLiveStarted || normalizedType in socialTypes) NotificationCompat.CATEGORY_SOCIAL else NotificationCompat.CATEGORY_SYSTEM)
 
         if (normalizedType == "birthday") notificationBuilder.addAction(0, "Felicítalo ahora", pendingIntent)
-        if (normalizedType == "new_moment") {
+        if (normalizedType == "new_moment" || normalizedType == "like_moment") {
             val expiry = runCatching {
                 getExtraDataValue(extraData, "expires_at")
                     ?.let { java.time.Instant.parse(it).toEpochMilli() }
@@ -188,50 +206,39 @@ class LocalNotificationHelper(private val context: Context) {
             notificationBuilder
                 .setOnlyAlertOnce(true)
                 .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                .setGroup(LIVE_NOTIFICATION_GROUP)
+                .setGroup("$LIVE_NOTIFICATION_GROUP:$owner")
                 .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         }
 
         if (isLiveStarted) {
-            val liveNotificationId = ("live_started:$resolvedLiveId").hashCode()
-            notificationManager.notify(
-                "$LIVE_NOTIFICATION_TAG:$resolvedLiveId",
-                liveNotificationId,
+            MessageNotificationFactory.publishAccountNotification(
+                context, owner, tag,
+                tag.hashCode(),
                 notificationBuilder.build()
             )
-            notificationManager.notify(
-                LIVE_NOTIFICATION_SUMMARY_TAG,
+            MessageNotificationFactory.publishAccountNotification(
+                context, owner, "$LIVE_NOTIFICATION_SUMMARY_TAG:$owner",
                 LIVE_NOTIFICATION_SUMMARY_ID,
-                buildLiveSummaryNotification(channelId)
+                buildLiveSummaryNotification(channelId, accountTarget)
             )
         } else {
-            val systemId = notificationId?.takeIf { it.isNotBlank() }
-                ?.let { ("social:$it").hashCode() } ?: System.currentTimeMillis().toInt()
-            notificationManager.notify(
-                if (normalizedType in socialTypes) SOCIAL_NOTIFICATION_TAG else null,
-                systemId,
+            MessageNotificationFactory.publishAccountNotification(
+                context, owner, tag,
+                tag.hashCode(),
                 notificationBuilder.build()
             )
         }
     }
 
-    fun clearSocialNotification(notificationId: String) {
+    fun clearSocialNotification(accountId: String?, notificationId: String) {
         if (notificationId.isBlank()) return
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val systemId = ("social:$notificationId").hashCode()
-        manager.cancel(SOCIAL_NOTIFICATION_TAG, systemId)
-        manager.cancel(systemId) // Notifications created before tagging may still be visible.
+        MessageNotificationFactory.cancelAccountNotifications(context, accountId) {
+            it.extras.getBoolean(EXTRA_SOCIAL) && it.extras.getString(EXTRA_RECORD_ID) == notificationId
+        }
     }
 
-    fun clearAllSocialNotifications() {
-        val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val socialChannel = context.getString(R.string.social_notification_channel_id)
-        manager.activeNotifications
-            .filter {
-                it.tag == SOCIAL_NOTIFICATION_TAG ||
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && it.notification.channelId == socialChannel)
-            }
-            .forEach { manager.cancel(it.tag, it.id) }
+    fun clearAllSocialNotifications(accountId: String?) {
+        MessageNotificationFactory.cancelAccountNotifications(context, accountId) { it.extras.getBoolean(EXTRA_SOCIAL) }
     }
 
     fun clearChatNotifications(chatId: String?) {
@@ -241,15 +248,13 @@ class LocalNotificationHelper(private val context: Context) {
     }
 
     private fun getExtraDataValue(extraData: JsonObject?, key: String): String? {
-        return extraData
-            ?.get(key)
-            ?.jsonPrimitive
+        return (extraData?.get(key) as? JsonPrimitive)
             ?.contentOrNull
             ?.trim()
             ?.ifBlank { null }
     }
 
-    private fun buildLiveSummaryNotification(channelId: String) = NotificationCompat.Builder(context, channelId)
+    private fun buildLiveSummaryNotification(channelId: String, account: NotificationAccountTarget) = NotificationCompat.Builder(context, channelId)
         .setSmallIcon(R.drawable.ic_notification)
         .setContentTitle(context.getString(R.string.live_notification_summary_title))
         .setContentText(context.getString(R.string.live_notification_summary_body))
@@ -260,14 +265,18 @@ class LocalNotificationHelper(private val context: Context) {
                 context,
                 LIVE_NOTIFICATION_SUMMARY_REQUEST_CODE,
                 Intent(context, MainActivity::class.java).apply {
+                    action = "${context.packageName}.OPEN_SOCIAL_SUMMARY:${account.userId}"
                     addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     putExtra("type", "live_discovery")
+                    putNotificationAccountTarget(account)
                 },
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
         )
         .setCategory(NotificationCompat.CATEGORY_SOCIAL)
-        .setGroup(LIVE_NOTIFICATION_GROUP)
+        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        .addExtras(Bundle().apply { putBoolean(EXTRA_SOCIAL, true) })
+        .setGroup("$LIVE_NOTIFICATION_GROUP:${account.userId}")
         .setGroupSummary(true)
         .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
         .build()
@@ -275,7 +284,8 @@ class LocalNotificationHelper(private val context: Context) {
     private companion object {
         const val SOCIAL_NOTIFICATION_TAG = "novvin_social"
         const val LIVE_NOTIFICATION_GROUP = "novvin_live_notifications"
-        const val LIVE_NOTIFICATION_TAG = "live_started"
+        const val EXTRA_SOCIAL = "novvin_social_notification"
+        const val EXTRA_RECORD_ID = "novvin_social_notification_id"
         const val LIVE_NOTIFICATION_SUMMARY_TAG = "live_started_summary"
         const val LIVE_NOTIFICATION_SUMMARY_ID = 9_401
         const val LIVE_NOTIFICATION_SUMMARY_REQUEST_CODE = 9_402
