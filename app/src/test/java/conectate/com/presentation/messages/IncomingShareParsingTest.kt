@@ -35,12 +35,14 @@ class IncomingShareParsingTest {
         override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?) = 0
     }
     private val context get() = RuntimeEnvironment.getApplication() as Application
+    private fun granted(uris: List<Uri>) = IncomingSharePermissionContext(context, uris.toSet())
 
     @Test fun excessiveSelectionsAreCountedWithoutQueryingEveryProvidersMetadata() {
         val provider = Robolectric.buildContentProvider(FilesProvider::class.java).create("audit.share").get()
         val files = ArrayList((0 until 50).map { Uri.parse("content://audit.share/item/$it") })
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, files).setType("*/*")
-        val result = parseIncomingShareIntent(context, intent)!!
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val result = parseIncomingShareIntent(granted(files), intent)!!
         assertEquals(MAX_INCOMING_SHARE_ITEMS, result.items.size)
         assertEquals(50 - MAX_INCOMING_SHARE_ITEMS, result.failedItemCount)
         assertEquals(MAX_INCOMING_SHARE_ITEMS, provider.mimeReads)
@@ -53,7 +55,9 @@ class IncomingShareParsingTest {
     }
 
     @Test fun restoringACapturedIntentPreservesItsIdentityAndDocumentMetadata() {
-        val original = IncomingSharePayload(items = listOf(IncomingSharedItem(Uri.parse("file:///sample.pptx"),
+        val id = java.util.UUID.randomUUID().toString()
+        val uri = Uri.fromFile(java.io.File(context.filesDir, "pending-incoming-share/$id/sample.pptx"))
+        val original = IncomingSharePayload(id = id, items = listOf(IncomingSharedItem(uri,
             "application/vnd.openxmlformats-officedocument.presentationml.presentation", "sample.pptx", 10_000)))
         val result = parseIncomingShareIntent(context, original.toCapturedShareIntent(), original.id)!!
         assertEquals(original.id, result.id)
@@ -71,9 +75,10 @@ class IncomingShareParsingTest {
         val files = ArrayList((0 until 25).map { Uri.parse("content://audit.share/item/$it") })
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, files)
             .putExtra("conectate.capture.failed_count", Int.MAX_VALUE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         val id = java.util.UUID.randomUUID().toString()
         intent.putExtra("conectate.capture.share_id", id)
-        assertEquals(Int.MAX_VALUE, parseIncomingShareIntent(context, intent, id)?.failedItemCount)
+        assertEquals(Int.MAX_VALUE, parseIncomingShareIntent(granted(files), intent, id)?.failedItemCount)
     }
 
     @Test fun blankExplicitTextFallsBackToTheUsableClipboardText() {
