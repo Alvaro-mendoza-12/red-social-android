@@ -1,390 +1,200 @@
 package conectate.com.util
 
+import android.Manifest
 import android.content.Context
-import android.media.*
+import android.content.pm.PackageManager
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioRecord
+import android.media.MediaRecorder
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.os.Build
-import android.util.Log
+import androidx.core.content.ContextCompat
 import conectate.com.core.observability.AppMetrics
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileInputStream
-import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
-import javax.inject.Singleton
-import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.android.scopes.ViewModelScoped
 
-@Singleton
+@ViewModelScoped
 class AudioRecorder @Inject constructor(
     @param:ApplicationContext private val context: Context,
-    private val appMetrics: AppMetrics
-) {
-    // --- Configuration ---
-    // Using 44.1kHz for maximum compatibility across all Android devices
-    private val SAMPLE_RATE = 44100
-    private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
-    private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    
-    // --- State ---
-    private var audioRecord: AudioRecord? = null
-    private var noiseSuppressor: NoiseSuppressor? = null
-    private var automaticGainControl: AutomaticGainControl? = null
-    
-    @Volatile
-    private var isRecording = false
-    @Volatile
-    private var isPaused = false
-    @Volatile
-    private var writerThread: Thread? = null
-    
-    // Temporary raw PCM file
-    private var pcmFile: File? = null
-    
-    // Playback (Preview)
-    private var mediaPlayer: MediaPlayer? = null
-    
-    // --- Public State Access ---
-    fun isRecording(): Boolean = isRecording
-    fun isPaused(): Boolean = isPaused
-    fun getRecordingFile(): File? = pcmFile
+    private val appMetrics: AppMetrics,
+) : VoiceRecordingBackend {
+    private val lock = Any()
+    private var active: PcmRecordingSession? = null
+    private var retainedPcm: File? = null
+    @Volatile private var generation = 0L
 
-    // --- Recording Methods ---
+    fun isRecording(): Boolean = synchronized(lock) { active?.isRecording == true }
+    fun isPaused(): Boolean = synchronized(lock) { active?.isPaused == true }
+    fun getRecordingFile(): File? = synchronized(lock) { active?.file ?: retainedPcm }
 
-    fun start(append: Boolean = false): File? {
-        if (isRecording) {
-            if (isPaused) {
-               resume()
-               return pcmFile
-            }
-            return pcmFile
+    override fun start(append: Boolean, onFailure: (Exception) -> Unit): File? = synchronized(lock) {
+        active?.let { session ->
+            if (!session.isRecording) return@synchronized null
+            if (session.isPaused && !session.resume()) return@synchronized null
+            return@synchronized session.file
         }
-        
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return@synchronized null
+        }
+        if (append && retainedPcm?.isFile != true) return@synchronized null
+        generation++
+        val previous = retainedPcm
+        retainedPcm = null
+        var file: File? = null
+        var input: PcmRecordingInput? = null
+        var session: PcmRecordingSession? = null
         try {
-            val outputDir = context.cacheDir
-            if (!append || pcmFile == null || !pcmFile!!.exists()) {
-                pcmFile = File.createTempFile("raw_recording_", ".pcm", outputDir)
+            if (!append) previous?.delete()
+            file = if (append) requireNotNull(previous) else File.createTempFile("raw_recording_", ".pcm", context.cacheDir)
+            input = createInput()
+            session = PcmRecordingSession(file, input) { error ->
+                appMetrics.recordFailure("voice_note_pcm_write", error)
+                onFailure(error)
             }
-            
-            // Initialize AudioRecord
-            val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-            
-            // Ensure system microphone is NOT muted (might have been left muted by another component)
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (audioManager.isMicrophoneMute) {
-                android.util.Log.w("AudioRecorder", "🎤 System mic was MUTED. Unmuting now...")
-                audioManager.isMicrophoneMute = false
+            active = session
+            session.start()
+            file
+        } catch (error: Exception) {
+            active = null
+            if (session != null) session.discard()
+            else {
+                runCatching { input?.release() }
+                file?.delete()
             }
-
-            // VOICE_RECOGNITION is often more reliable for voice notes and triggers privacy dot better
-            val audioSource = MediaRecorder.AudioSource.VOICE_RECOGNITION
-            
-            if (androidx.core.app.ActivityCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                android.util.Log.e("AudioRecorder", "Permission RECORD_AUDIO not granted")
-                return null
-            }
-
-            if (minBufferSize <= 0) {
-                android.util.Log.e("AudioRecorder", "Invalid minBufferSize: $minBufferSize")
-                return null
-            }
-
-            audioRecord = AudioRecord(audioSource, SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, minBufferSize * 4)
-            
-            if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
-                android.util.Log.e("AudioRecorder", "AudioRecord initialization FAILED. State: ${audioRecord?.state}")
-                return null
-            }
-
-            // --- Apply Effects ---
-            val sessionId = audioRecord!!.audioSessionId
-            if (NoiseSuppressor.isAvailable()) {
-                noiseSuppressor = NoiseSuppressor.create(sessionId)
-                noiseSuppressor?.enabled = true
-            }
-            if (AutomaticGainControl.isAvailable()) {
-                automaticGainControl = AutomaticGainControl.create(sessionId)
-                automaticGainControl?.enabled = true
-            }
-
-            audioRecord?.startRecording()
-            isRecording = true
-            isPaused = false
-            
-            startWriterThread()
-            
-            return pcmFile
-        } catch (e: Exception) {
-            appMetrics.recordFailure("voice_note_record_start", e)
-            stop() // Clean up
-            return null
+            appMetrics.recordFailure("voice_note_record_start", error)
+            null
         }
     }
 
-    fun pause() {
-        if (!isRecording || isPaused) return
-        isPaused = true
-        try {
-            audioRecord?.stop()
-        } catch (e: Exception) {
-            Log.w("AudioRecorder", "Could not pause AudioRecord cleanly", e)
-        }
+    override fun pause(): Boolean = synchronized(lock) { active?.pause() == true }
+    override fun resume(): Boolean = synchronized(lock) { active?.resume() == true }
+
+    override fun detachFinalization(): VoiceRecordingFinalization? = synchronized(lock) {
+        val session = active ?: return@synchronized null
+        active = null
+        session.requestStop()
+        NativeFinalization(session, generation)
     }
 
-    fun resume() {
-        if (!isRecording || !isPaused) return
-        
-        try {
-            audioRecord?.startRecording()
-            isPaused = false
-            
-            startWriterThread()
-        } catch (e: Exception) {
-            appMetrics.recordFailure("voice_note_record_resume", e)
+    /** Compatibility for IO callers; the manager detaches before launching its IO job. */
+    suspend fun stop(): File? = detachFinalization()?.finish()
+
+    override fun cancel() {
+        val previous = synchronized(lock) {
+            generation++
+            (active to retainedPcm).also { active = null; retainedPcm = null }
         }
+        previous.first?.discard()
+        previous.second?.delete()
     }
 
-    // Returns the temp file encoded as M4A (or PCM if encode fails/ignored)
-    fun stop(): File? {
-        if (!isRecording) return null
-        
-        isRecording = false
-        isPaused = false
-        
-        try {
-            audioRecord?.stop()
-            awaitWriterCompletion()
-            audioRecord?.release()
-            noiseSuppressor?.release()
-            automaticGainControl?.release()
-        } catch (e: Exception) {
-            Log.w("AudioRecorder", "Could not release the recording session cleanly", e)
-        } finally {
-            audioRecord = null
-            noiseSuppressor = null
-            automaticGainControl = null
-        }
-        
-        // Return encoded file
-        return if (pcmFile != null && pcmFile!!.exists()) {
-             encodeToAac(pcmFile!!)
-        } else {
-             null
-        }
-    }
-    
-    // Allows discarding current recording
-    fun cancel() {
-        isRecording = false
-        isPaused = false
-        val fileToDelete = pcmFile
-        val threadToAwait = writerThread
-        try {
-            audioRecord?.stop()
-            audioRecord?.release()
-            noiseSuppressor?.release()
-            automaticGainControl?.release()
-        } catch (e: Exception) {
-            Log.w("AudioRecorder", "Could not cancel the recording session cleanly", e)
-        }
-        audioRecord = null
-        pcmFile = null
-        writerThread = null
-        Thread {
-            runCatching { threadToAwait?.join(WRITER_JOIN_TIMEOUT_MS) }
-            runCatching { fileToDelete?.delete() }
-        }.apply {
-            name = "voice-note-cleanup"
-            isDaemon = true
-            start()
-        }
-    }
+    private inner class NativeFinalization(
+        private val session: PcmRecordingSession,
+        private val owner: Long,
+    ) : VoiceRecordingFinalization {
+        private val started = AtomicBoolean(false)
+        private val discarded = AtomicBoolean(false)
+        private val output = AtomicReference<File?>(null)
 
-    private fun startWriterThread() {
-        writerThread = Thread {
-            writePcmDataToFile()
-        }.apply {
-            name = "voice-note-pcm-writer"
-            start()
-        }
-    }
-
-    private fun awaitWriterCompletion() {
-        val activeWriter = writerThread
-        if (activeWriter != null && activeWriter !== Thread.currentThread()) {
-            runCatching { activeWriter.join(WRITER_JOIN_TIMEOUT_MS) }
-            if (activeWriter.isAlive) {
-                android.util.Log.w("AudioRecorder", "El escritor PCM tardó demasiado; se interrumpe de forma segura.")
-                runCatching { activeWriter.interrupt() }
-                runCatching { activeWriter.join(500L) }
-            }
-        }
-        writerThread = null
-    }
-
-    private fun writePcmDataToFile() {
-        val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
-        val data = ByteArray(bufferSize)
-        val file = pcmFile ?: return
-        
-        try {
-            var totalBytesRead = 0L
-            FileOutputStream(file, true).use { output ->
-                while (isRecording && !isPaused) {
-                    val read = audioRecord?.read(data, 0, bufferSize) ?: 0
-                    if (read > 0) {
-                        output.write(data, 0, read)
-                        totalBytesRead += read
-                    } else if (read < 0) {
-                        android.util.Log.e("AudioRecorder", "Error reading from AudioRecord: $read")
+        override suspend fun finish(): File? {
+            check(started.compareAndSet(false, true)) { "Recording already finalized" }
+            return try {
+                withContext(Dispatchers.IO) {
+                    val jobContext = currentCoroutineContext()
+                    val checkActive = {
+                        jobContext.ensureActive()
+                        if (discarded.get() || generation != owner) throw CancellationException("Recording no longer active")
                     }
+                    checkActive()
+                    session.awaitClosed()
+                    checkActive()
+                    val file = AacVoiceEncoder(context.cacheDir).encode(session.file, checkActive)
+                    output.set(file)
+                    checkActive()
+                    val retained = synchronized(lock) {
+                        if (generation == owner && active == null && !discarded.get()) {
+                            retainedPcm = session.transferFile()
+                            retainedPcm != null
+                        } else false
+                    }
+                    if (!retained) session.discard()
+                    file
                 }
-                output.flush()
+            } catch (cancelled: CancellationException) {
+                discard()
+                throw cancelled
+            } catch (error: Exception) {
+                appMetrics.recordFailure("voice_note_record_finalize", error)
+                discard()
+                null
             }
-            android.util.Log.d("AudioRecorder", "Finished writing PCM. Total bytes: $totalBytesRead")
-        } catch (e: Exception) {
-            appMetrics.recordFailure("voice_note_pcm_write", e)
+        }
+
+        override fun discard() {
+            discarded.set(true)
+            output.getAndSet(null)?.delete()
+            session.discard()
         }
     }
-    
-    // --- Playback (Preview) ---
-    
-    // Generates a preview file WITHOUT stopping the session logic directly, 
-    // although technically we are reading the file while it might be written to?
-    // Safe-ish as long as we are paused.
-    // If we want to preview, we usually PAUSE first.
-    suspend fun getPreviewFile(): File? = withContext(Dispatchers.IO) {
-        if (pcmFile == null || !pcmFile!!.exists()) return@withContext null
-        encodeToAac(pcmFile!!)
-    }
 
-    // --- Encoding (PCM -> M4A) ---
-    private fun encodeToAac(inputFile: File): File? {
-        if (!inputFile.exists() || inputFile.length() == 0L) return null
-        
-        val outputDir = context.cacheDir
-        val outputFile = File.createTempFile("voice_message_", ".m4a", outputDir)
-        var inputStream: FileInputStream? = null
-        var mediaMuxer: MediaMuxer? = null
-        var codec: MediaCodec? = null
-        var muxerStarted = false
-
+    private fun createInput(): PcmRecordingInput {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            throw SecurityException("Microphone permission is required")
+        }
+        val minimum = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
+        check(minimum > 0) { "Invalid AudioRecord buffer size" }
+        // Preserve the existing restoration of the app's microphone state after a call.
+        (context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager)?.let {
+            if (it.isMicrophoneMute) it.isMicrophoneMute = false
+        }
+        val recorder = AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
+            AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minimum * 4)
+        var noise: NoiseSuppressor? = null
+        var gain: AutomaticGainControl? = null
         try {
-            val fis = FileInputStream(inputFile).also { inputStream = it }
-            
-            val activeMuxer = MediaMuxer(
-                outputFile.absolutePath,
-                MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4
-            ).also { mediaMuxer = it }
-            val codecName = MediaCodecList(MediaCodecList.REGULAR_CODECS).findEncoderForFormat(
-                MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, SAMPLE_RATE, 1)
-            ) ?: "OMX.google.aac.encoder"
-            
-            val activeCodec = MediaCodec.createByCodecName(codecName).also { codec = it }
-            val format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, SAMPLE_RATE, 1)
-            format.setInteger(MediaFormat.KEY_BIT_RATE, 64_000)
-            format.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
-            format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384)
-            
-            activeCodec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            activeCodec.start()
-
-            val bufferInfo = MediaCodec.BufferInfo()
-            var trackIndex = -1
-            var inputDone = false
-            var outputDone = false
-            
-            val buffer = ByteArray(4096)
-            var presentationTimeUs = 0L
-            val deadlineMs = android.os.SystemClock.elapsedRealtime() + ENCODER_TIMEOUT_MS
-            
-            while (!outputDone) {
-                if (android.os.SystemClock.elapsedRealtime() > deadlineMs) {
-                    throw IllegalStateException("El codificador de audio no terminó a tiempo.")
+            check(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord initialization failed" }
+            // These optional effects must not prevent recording on unsupported vendor implementations.
+            try {
+                if (NoiseSuppressor.isAvailable()) noise = NoiseSuppressor.create(recorder.audioSessionId)
+                noise?.enabled = true
+            } catch (error: Exception) { appMetrics.recordFailure("voice_note_noise_effect", error) }
+            try {
+                if (AutomaticGainControl.isAvailable()) gain = AutomaticGainControl.create(recorder.audioSessionId)
+                gain?.enabled = true
+            } catch (error: Exception) { appMetrics.recordFailure("voice_note_gain_effect", error) }
+            val inputNoise = noise
+            val inputGain = gain
+            return object : PcmRecordingInput {
+                override val bufferSize = minimum
+                override fun start() {
+                    recorder.startRecording()
+                    check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Microphone did not start" }
                 }
-                if (!inputDone) {
-                    val index = activeCodec.dequeueInputBuffer(2_000)
-                    if (index >= 0) {
-                        val inputBuffer = activeCodec.getInputBuffer(index)
-                        inputBuffer?.clear()
-                        
-                        val read = fis.read(buffer)
-                        if (read == -1) {
-                            activeCodec.queueInputBuffer(
-                                index,
-                                0,
-                                0,
-                                presentationTimeUs,
-                                MediaCodec.BUFFER_FLAG_END_OF_STREAM
-                            )
-                            inputDone = true
-                        } else {
-                            if (inputBuffer == null) {
-                                throw IllegalStateException("El codificador no entregó un búfer de entrada.")
-                            }
-                            inputBuffer.put(buffer, 0, read)
-                            activeCodec.queueInputBuffer(index, 0, read, presentationTimeUs, 0)
-                            presentationTimeUs += read.toLong() * 1_000_000L / sampleRateByteSize()
-                        }
-                    }
-                }
-                
-                val encoderStatus = activeCodec.dequeueOutputBuffer(bufferInfo, 2_000)
-                if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    if (muxerStarted) {
-                        throw IllegalStateException("El formato de audio cambió más de una vez.")
-                    }
-                    trackIndex = activeMuxer.addTrack(activeCodec.outputFormat)
-                    activeMuxer.start()
-                    muxerStarted = true
-                } else if (encoderStatus >= 0) {
-                    val outputBuffer = activeCodec.getOutputBuffer(encoderStatus)
-                    if (outputBuffer != null) {
-                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                            bufferInfo.size = 0
-                        }
-                         
-                        if (bufferInfo.size != 0 && trackIndex >= 0 && muxerStarted) {
-                            outputBuffer.position(bufferInfo.offset)
-                            outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                            activeMuxer.writeSampleData(trackIndex, outputBuffer, bufferInfo)
-                        }
-                         
-                        activeCodec.releaseOutputBuffer(encoderStatus, false)
-                         
-                        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
-                            outputDone = true
-                        }
-                    } else {
-                        activeCodec.releaseOutputBuffer(encoderStatus, false)
-                    }
+                override fun stop() = recorder.stop()
+                override fun read(buffer: ByteArray): Int = recorder.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
+                override fun release() {
+                    runCatching { recorder.release() }
+                    runCatching { inputNoise?.release() }
+                    runCatching { inputGain?.release() }
                 }
             }
-
-            return outputFile.takeIf { it.exists() && it.length() > 0L }
-        } catch (e: Exception) {
-            android.util.Log.e("AudioRecorder", "No se pudo codificar el audio", e)
-            runCatching { outputFile.delete() }
-            return null
-        } finally {
-            runCatching { inputStream?.close() }
-            runCatching { codec?.stop() }
-            runCatching { codec?.release() }
-            if (muxerStarted) {
-                runCatching { mediaMuxer?.stop() }
-            }
-            runCatching { mediaMuxer?.release() }
+        } catch (error: Exception) {
+            runCatching { recorder.release() }
+            runCatching { noise?.release() }
+            runCatching { gain?.release() }
+            throw error
         }
     }
-    
-    private fun sampleRateByteSize(): Int {
-        // 16bit = 2 bytes * sampleRate
-        return SAMPLE_RATE * 2
-    }
 
-    private companion object {
-        const val WRITER_JOIN_TIMEOUT_MS = 5_000L
-        const val ENCODER_TIMEOUT_MS = 90_000L
-    }
+    private companion object { const val SAMPLE_RATE = 44_100 }
 }

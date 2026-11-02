@@ -3974,6 +3974,11 @@ fun AudioSubmissionDialog(
                         }
                         Text("Pausado", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
                     }
+                    VoiceState.FINALIZING -> {
+                        CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                        Text("Preparando audio…", style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(top = 12.dp))
+                    }
                     VoiceState.REVIEWING -> {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             // Playback bar

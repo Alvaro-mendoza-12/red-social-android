@@ -72,6 +72,7 @@ fun GroupChatScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     val isSending by viewModel.isSending.collectAsStateWithLifecycle()
+    val isPreparingVoice by viewModel.isPreparingVoice.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val markersViewModel: ConversationMarkersViewModel = hiltViewModel()
     val markerFeedback by markersViewModel.feedback.collectAsStateWithLifecycle()
@@ -282,6 +283,8 @@ fun GroupChatScreen(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) viewModel.startRecording()
+        else conectate.com.presentation.common.AppFeedbackBus.showError(
+            "Permite el acceso al micrófono para grabar. Puedes activarlo en Ajustes de Android → Novvin → Permisos.")
     }
 
     DisposableEffect(lifecycleOwner, groupId) {
@@ -773,11 +776,11 @@ fun GroupChatScreen(
                                 .navigationBarsPadding()
                                 .imePadding()
                                 .padding(8.dp)
-                                .height(64.dp)
+                                .heightIn(min = 64.dp)
                                 .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
                                 .padding(horizontal = 8.dp)
                         ) {
-                            IconButton(onClick = { viewModel.cancelRecording() }) {
+                            IconButton(enabled = !isPreparingVoice, onClick = { viewModel.cancelRecording() }) {
                                 Icon(Icons.Default.Delete, "Cancelar", tint = MaterialTheme.colorScheme.error)
                             }
                             Spacer(Modifier.width(8.dp))
@@ -799,6 +802,13 @@ fun GroupChatScreen(
                                          }
                                     }
                                     VoiceState.PAUSED -> Text("Pausado", style = MaterialTheme.typography.bodyMedium)
+                                    VoiceState.FINALIZING -> {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Preparando audio…", style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    }
                                     VoiceState.REVIEWING -> {
                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                                             IconButton(onClick = { 
@@ -832,8 +842,10 @@ fun GroupChatScreen(
                                     }
                                 }
                                 VoiceState.REVIEWING -> {
-                                    FloatingActionButton(onClick = { viewModel.sendCurrentRecording() }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp), elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)) {
-                                        Icon(Icons.AutoMirrored.Filled.Send, null, modifier = Modifier.size(20.dp))
+                                    FloatingActionButton(onClick = { if (!isPreparingVoice) viewModel.sendCurrentRecording() }, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp), elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)) {
+                                        if (isPreparingVoice) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.onPrimary)
+                                        else Icon(Icons.AutoMirrored.Filled.Send, "Enviar audio", modifier = Modifier.size(20.dp))
                                     }
                                 }
                                 else -> {}
