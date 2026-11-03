@@ -26,6 +26,18 @@ moviendo información bajo el escenario y conservando el chat a la derecha.
 Las barras de desplazamiento de conversaciones y chat de voz están ocultas,
 con el desplazamiento disponible. La validación visual se registra aparte.
 
+En el invitado se encontró una causa adicional de recarga. La limpieza de
+sesión estaba dentro del contenido cuya clave cambia al navegar entre
+Social, Videos y Momentos. Ahora pertenece a la página exterior y se
+ejecuta al abandonar Explorar. Una regresión recorre Social, Videos,
+Social e inicio de sesión y comprueba que la sesión solo se limpia al salir.
+Los APNG mantienen el archivo original para conservar su animación.
+
+El servidor prepara los tamaños canónicos 160/78 y 384/86 de nuevas subidas
+de identidad JPEG, PNG, GIF y WebP, y las portadas de avatares de video.
+La prueba compara esos perfiles con los de las lecturas reales. El trabajo
+continúa acotado por la cola existente y comparte la conversión en curso.
+
 El chat de voz vence al cumplir 60 minutos desde el envío. Android y web
 limitan también los mensajes que conservaban un plazo anterior de 90 minutos.
 El servidor conserva el vencimiento inicial en reintentos y retransmisiones
@@ -34,22 +46,59 @@ JPEG pequeños viajan por el canal temporal y Pub/Sub, sin crear objetos de
 storage o réplicas R2. La limpieza de Redis elimina los eventos de chat
 antiguos que hubieran quedado en Streams de una versión previa.
 
-La API activa es `novvin-api:r2-animated-thumbnails-20261102`, con imagen
-`sha256:5aaac072246f67f658199ee9eba2b7b5a93e861bcf13c4d8f3bf7707f031c256`.
+La API activa es `novvin-api:r2-media-final-20261102`, con imagen
+`sha256:79a4b3ee4485df011ed813735f3fcfdc1937b29c991d931891c1843efc9aba5e`.
 Señalización usa `novvin-signaling:room-chat-hour-20261102`, con imagen
 `sha256:543dd35388d8ac727985fd90eb79242acb489a54b350251c64ad884a90c37808`.
 Ambos servicios aprobaron disponibilidad después de recrearse. La copia
-anterior de Compose está en
+anterior de Compose de la última activación está en
+`/home/alvaro/.config/novvin/media-final-deploy.kaIZOPTk/`.
+La copia anterior al cambio de plazo de señalización está en
 `/home/alvaro/.config/novvin/media-hour-deploy.5wmU7u3u/`.
 Se compararon las fuentes previas de señalización con Git antes de aplicar
 la capa que cambia el plazo y sus comprobaciones periódicas.
 
-Pasaron 128 pruebas web seleccionadas y 16 del service worker. Pasaron 79
-pruebas de API en Linux con ffmpeg y 12 de señalización, sin fallos ni casos
-omitidos. Pasó el build web con sus comprobaciones de SEO. Android 9.1.38 /
-178 incorpora las portadas de avatar y el plazo de una hora. Su paquete y las
-comprobaciones finales se registran al terminar su construcción. La entrega
-177 previa a esta nueva política queda sustituida por ese candidato.
+Pasaron 130 pruebas web seleccionadas en diez suites y 16 del service worker.
+Pasaron 80 pruebas de API en Linux con ffmpeg y 12 de señalización, sin fallos
+ni casos omitidos. Pasó el build web con sus comprobaciones de SEO. Android
+aprobó 107 pruebas seleccionadas en once clases, sin fallos, errores ni
+omisiones. La entrega 177 previa a esta nueva política queda sustituida
+por 178.
+
+La referencia visual de sala usó el CSS construido en un navegador aislado,
+con participantes de ejemplo. Se comprobaron anchos de 1366, 768 y 360
+píxeles sin desbordamiento horizontal, nueve controles disponibles y scroll
+funcional con barra oculta. En escritorio la separación de información bajo
+el escenario quedó en 14 píxeles. Este ensayo de presentación no verifica
+una llamada autenticada ni sustituye pruebas físicas.
+
+### AAB firmado 9.1.38 / 178
+
+`bundleRelease` y `assembleRelease` terminaron correctamente. El AAB usa
+`conectate.com`, minSdk 24, targetSdk 36 y el Worker multimedia de producción.
+Incluye las portadas de avatar y el límite de una hora de `db7d16352e53`,
+además de las correcciones Android anteriores. La copia local de entrega es
+`artifacts/releases/9.1.38-178/Novvin-9.1.38-178.aab`.
+
+Su SHA-256 es
+`B5B19A7D141F5AAE4A8410DB7742597606C954816E32F9620EAEF7EAB6947003`.
+La firma coincide con el certificado de subida anterior
+`623CDB12BAD08FCCA8A4A2F62EB6B5C91583D2CD14CED4AE63864066E036D84D`.
+Pasaron R8 para los 17 componentes declarados, alineación ZIP de 16 KiB y las
+14 bibliotecas nativas de 64 bits. El AAB pasó sus cuatro presupuestos.
+Mide 132.547.292 bytes y la descarga máxima comprimida calculada por
+bundletool es 66.909.778 bytes, 63,81 MiB.
+
+La APK universal generada está firmada y alineada, pero mide 221.433.189
+bytes, 211,18 MiB, frente al presupuesto de 100 MiB. Su carga nativa
+comprimida es 51.748.256 bytes, 49,35 MiB, frente al presupuesto de 30 MiB.
+Esos dos controles fallaron y no se presenta como entrega aprobada. No se
+ampliaron los presupuestos ni se retiraron bibliotecas requeridas. Los
+informes de ambas comprobaciones están en
+`build/reports/r2-media-hour178/`.
+
+La validación física y la subida del AAB a Play siguen a cargo del
+propietario. Las pruebas anteriores no cierran la revisión integral.
 
 ## Avatares y latencia, 2 de noviembre de 2026
 

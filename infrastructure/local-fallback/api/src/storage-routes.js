@@ -13,7 +13,7 @@ const { createR2EdgeDelivery, edgeConfiguration } = require('./storage-r2-edge')
 const defaultR2EdgeDelivery = createR2EdgeDelivery(edgeConfiguration(), error => {
   console.warn('[storage] R2 delivery lookup failed', safeErrorLogDetails(error))
 })
-const { normalizeImageVariant } = require('./image-variant-policy')
+const { normalizeImageVariant, prewarmImageVariants } = require('./image-variant-policy')
 const { createStorageScanCoordinator, cleanStorageRow, revisionFilePath, ensureStorageScanSchema, STORAGE_SCAN_TICKET } = require('./storage-scan-coordinator')
 const SCAN_COORDINATOR = Symbol('trusted-storage-coordinator')
 const { execFile } = require('child_process')
@@ -1505,14 +1505,8 @@ async function writeValidatedStoredObject(pool, req, options) {
   }
   if (backupPath) await fs.promises.rm(backupPath, { force: true }).catch(() => {})
 
-  const identityImage = ['avatars', 'groups', 'communities'].includes(bucket)
-  const avatarVideo = bucket === 'avatars' && validated.contentType.startsWith('video/')
-  if (transformableImageTypes.has(validated.contentType) || avatarVideo) {
-    // Prepare the sizes used by the web and Android profile avatars.
-    const previews = identityImage && validated.contentType !== 'image/webp'
-      ? [{ width: 160, quality: 78 }, { width: 384, quality: 86 }].map(preview =>
-        avatarVideo ? { ...preview, poster: true } : preview)
-      : [{ width: 1080, quality: 78 }]
+  const previews = prewarmImageVariants(bucket, validated.contentType)
+  if (previews.length) {
     // Generate the preview as soon as the upload is accepted. It runs in the
     // background and shares the same in-flight job with an immediate GET, so
     // browsing does not pay the full conversion cost several seconds later.

@@ -113,6 +113,14 @@ test('owned GIF avatars request a small variant that explicitly preserves their 
   }))
 })
 
+test('APNG avatars retain original frames through the original source', async () => {
+  ;(readBoundedStorageBlob as jest.Mock).mockResolvedValue(new Blob(['apng'], { type: 'image/png' }))
+  const url = 'https://owned.test/storage/v1/object/public/avatars/member/animated.apng'
+  render(<SafeAvatar url={url} name="APNG" />)
+  await waitFor(() => expect(screen.getByRole('img', { name: 'APNG' }).getAttribute('src')).toMatch(/^blob:/))
+  expect(readBoundedStorageBlob).toHaveBeenCalledWith(expect.objectContaining({ url }))
+})
+
 test('failure before a streaming source is assigned reaches accessible initials', async () => {
   const streaming = jest.requireMock('../../core/media/browserStreaming')
   streaming.browserStreamingSource = jest.fn(async () => { throw Error('offline') })

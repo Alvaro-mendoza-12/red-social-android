@@ -14,8 +14,9 @@ const avatarVideoMaxBytes = 8 * 1024 * 1024
 export function CachedProfileImage({ src, mediaType, previewWidth = 160, onSourceUnavailable, ...props }: ImgHTMLAttributes<HTMLImageElement> & { src: string; mediaType: string; previewWidth?: number; onSourceUnavailable: () => void }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const animated = /\.(gif|webp|apng)(?:[?#]|$)/i.test(src) || /gif|webp|apng/i.test(mediaType)
+  const apng = /\.apng(?:[?#]|$)/i.test(src) || /apng/i.test(mediaType)
   let source = animated ? rewriteRuntimeStorageUrl(src) : runtimeStoragePreviewUrl(src, previewWidth, 75)
-  if (animated && trustedStorageBackend(source) && /^\/storage\/v1\/object\/public\/(avatars|groups|communities)\//.test(new URL(source).pathname)) {
+  if (animated && !apng && trustedStorageBackend(source) && /^\/storage\/v1\/object\/public\/(avatars|groups|communities)\//.test(new URL(source).pathname)) {
     const preview = new URL(runtimeStoragePreviewUrl(source, previewWidth, 75))
     preview.searchParams.set('animated', '1')
     source = preview.href

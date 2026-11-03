@@ -55,13 +55,13 @@ function GuestAuthor({ id, name }: { id: string; name: string }) {
 
 export function ExplorePage() {
   const params = useParams()
+  useEffect(() => () => stopGuestBrowsing(), [])
   return <ExploreContent key={`${params.kind}/${params.id}`} />
 }
 function ExploreContent() {
   const params = useParams(), kind: GuestKind = ['posts', 'moments', 'profiles'].includes(params.kind || '') ? params.kind as GuestKind : 'videos'
   const [items, setItems] = useState<GenericRow[]>([]), [loading, setLoading] = useState(true), [failed, setFailed] = useState(false)
   const [retry, setRetry] = useState(0), [limit, setLimit] = useState(10)
-  useEffect(() => () => stopGuestBrowsing(), [])
   useEffect(() => {
     const controller = new AbortController()
     const entrySession = crypto.randomUUID()
