@@ -88,4 +88,68 @@ class NotificationAccountSignInTest {
         assertEquals("recipient", entry.arguments?.getString("targetUserId"))
         assertEquals("recipient", NotificationAccountSignIn.takeResult(entry.savedStateHandle))
     }
+
+    @Test fun `a fresh manual login cannot be skipped by the existing expired account`() {
+        val nav = controller()
+        NotificationAccountSignIn.open(nav, nav.bridge(), "opaque-before")
+        assertNull(NotificationAccountSignIn.restoredBridge(nav, nav.currentBackStackEntry!!.id))
+        assertFalse(NotificationAccountSignIn.hasNewSession(nav, "opaque-before"))
+    }
+
+    @Test fun `a different process retains the exact bridge and requires a changed session`() {
+        val nav = controller()
+        val bridge = nav.bridge()
+        NotificationAccountSignIn.open(nav, bridge, "opaque-before")
+        val restored = controller(nav.saveState())
+        val pending = NotificationAccountSignIn.restoredBridge(restored, restored.currentBackStackEntry!!.id, "another-process")
+        assertEquals(bridge.id, pending?.id)
+        assertFalse(NotificationAccountSignIn.hasNewSession(restored, "opaque-before"))
+        assertTrue(NotificationAccountSignIn.hasNewSession(restored, "opaque-after"))
+        assertTrue(NotificationAccountSignIn.returnToBridge(restored, "recipient"))
+        assertEquals(bridge.id, restored.currentBackStackEntry?.id)
+        assertEquals("recipient", NotificationAccountSignIn.takeResult(restored.currentBackStackEntry!!.savedStateHandle))
+    }
+
+    @Test fun `restored recovery belongs to its underlying login and a different entry cannot resume it`() {
+        val nav = controller()
+        val bridge = nav.bridge()
+        NotificationAccountSignIn.open(nav, bridge, "opaque-before")
+        val loginId = nav.currentBackStackEntry!!.id
+        nav.navigate(Screen.AccountRecoveryHelp.route)
+        val restored = controller(nav.saveState())
+        assertNull(NotificationAccountSignIn.restoredBridge(restored, loginId, "another-process"))
+        assertEquals(bridge.id, NotificationAccountSignIn.restoredBridge(restored,
+            restored.currentBackStackEntry!!.id, "another-process")?.id)
+    }
+
+    @Test fun `an unrelated current screen cannot return through a login remaining below it`() {
+        val nav = controller()
+        val bridge = nav.bridge()
+        NotificationAccountSignIn.open(nav, bridge)
+        nav.navigate(Screen.Notifications.route)
+        assertFalse(NotificationAccountSignIn.returnToBridge(nav, "recipient"))
+        assertNull(NotificationAccountSignIn.takeResult(bridge.savedStateHandle))
+        assertEquals(Screen.Notifications.route, nav.currentDestination?.route)
+    }
+
+    @Test fun `a new bridge cannot borrow a login from an older bridge instance`() {
+        val nav = controller()
+        val original = nav.bridge()
+        NotificationAccountSignIn.open(nav, original, "opaque-before")
+        val newer = nav.bridge()
+        nav.navigate(Screen.AccountRecoveryHelp.route)
+        assertNull(NotificationAccountSignIn.restoredBridge(nav, nav.currentBackStackEntry!!.id, "another-process"))
+        assertFalse(NotificationAccountSignIn.returnToBridge(nav, "recipient"))
+        assertNull(NotificationAccountSignIn.takeResult(original.savedStateHandle))
+        assertNull(NotificationAccountSignIn.takeResult(newer.savedStateHandle))
+    }
+
+    @Test fun `a legacy login without a session fingerprint keeps the manual recovery path`() {
+        val nav = controller()
+        val bridge = nav.bridge()
+        NotificationAccountSignIn.open(nav, bridge)
+        val restored = controller(nav.saveState())
+        assertFalse(NotificationAccountSignIn.hasNewSession(restored, "opaque-current"))
+        assertTrue(NotificationAccountSignIn.returnToBridge(restored, "recipient"))
+    }
 }

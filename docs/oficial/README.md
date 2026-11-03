@@ -1,6 +1,6 @@
 # Novvin — Documentación oficial del proyecto
 
-Estado documental: 2 de noviembre de 2026. Esta es la entrada para desarrollo, operación y traspaso técnico.
+Estado documental: 3 de noviembre de 2026. Esta es la entrada para desarrollo, operación y traspaso técnico.
 
 ## Estado vigente
 
@@ -8,7 +8,7 @@ La [revisión móvil 101](101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md)
 
 La [matriz de cobertura por archivo](review-coverage.json) registra las lecturas a una huella concreta de todos los archivos versionados. Incluye código, pruebas, recursos y documentos; los respaldos y temporales ignorados quedan fuera. `code-read` significa lectura del archivo, no certificación de producción. Los cambios posteriores invalidan automáticamente esa lectura.
 
-El AAB firmado más reciente es **9.1.38 / 178**, descrito en la [operación R2 102](102-r2-replica-y-entrega-multimedia.md). Incluye las correcciones Android de la revisión 101, portadas pequeñas de avatares de video y vencimiento del chat de voz a una hora. El AAB pasó firma, R8, alineación de 16 KiB y sus cuatro presupuestos de tamaño. La APK universal 178 excede los presupuestos de tamaño y no se presenta como entrega aprobada. La APK histórica entregada sigue siendo **9.1.35 / 175**, descrita en la [entrega 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md). La validación física y la subida del AAB a Google Play están a cargo del propietario. `main` y `feature/live-gifts` deben contener las mismas correcciones; `correciones` queda para el otro chat.
+El AAB firmado más reciente es **9.1.38 / 178**, descrito en la [operación R2 102](102-r2-replica-y-entrega-multimedia.md). Incluye las correcciones Android anteriores a esa entrega, portadas pequeñas de avatares de video y vencimiento del chat de voz a una hora. **La restauración del acceso documentada el 3 de noviembre en la revisión 101 requiere una nueva entrega firmada; no está en ese AAB.** El AAB 178 pasó firma, R8, alineación de 16 KiB y sus cuatro presupuestos de tamaño. La APK universal 178 excede los presupuestos de tamaño y no se presenta como entrega aprobada. La APK histórica entregada sigue siendo **9.1.35 / 175**, descrita en la [entrega 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md). La validación física y la subida del AAB a Google Play están a cargo del propietario. `main` y `feature/live-gifts` deben contener las mismas correcciones; `correciones` queda para el otro chat.
 
 El backend activo es el servidor propio Ubuntu. Empieza por [arquitectura](01-arquitectura.md), [backend](03-backend-mini-pc.md) y [operación](06-operaciones-runbook.md); contrasta cualquier cambio de infraestructura con su estado real. Los nombres de contratos o tablas de importación no son evidencia de que otro servicio esté en producción.
 

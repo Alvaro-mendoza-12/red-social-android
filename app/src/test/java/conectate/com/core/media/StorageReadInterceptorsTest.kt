@@ -36,6 +36,67 @@ class StorageReadInterceptorsTest {
         assertEquals(listOf(storage.replace(backend, edge), storage), chain.attempts.map { it.url.toString() })
         assertTrue(chain.attempts.all { it.header("Range") == "bytes=0-9" })
     }
+
+    @Test fun realReadInterceptorsPreserveRangeAndRefreshAuthorizationWhenEdgeFallsBack() {
+        var current = a
+        val attempts = mutableListOf<Request>()
+        val network = StorageReadNetworkInterceptor({ backend }, { current })
+        val original = Request.Builder().url(storage).header("Range", "bytes=0-2")
+            .header("Authorization", "caller-must-not-win").header("Cookie", "origin-only").build()
+        val chain = Chain(original, next = { request ->
+            network.intercept(Chain(request, status = { authorized ->
+                attempts += authorized
+                if (authorized.url.host == "media.example.test") {
+                    current = StorageReadCredential(a.identity, "renewed.jwt")
+                    503
+                } else 206
+            }))
+        })
+        StorageReadRequestInterceptor({ backend }, { current }, { current }, edge, backend).intercept(chain).use {
+            assertEquals(206, it.code)
+            assertArrayEquals(byteArrayOf(1, 2, 3), it.body!!.bytes())
+        }
+        assertEquals(listOf("media.example.test", "api.example.test"), attempts.map { it.url.host })
+        assertEquals(listOf("Bearer first.jwt", "Bearer renewed.jwt"), attempts.map { it.header("Authorization") })
+        assertTrue(attempts.all { it.header("Range") == "bytes=0-2" })
+        assertNull(attempts.first().header("Cookie"))
+    }
+
+    @Test fun accountChangeDuringEdgeFailureCannotSendTheNewAccountsTokenToTheFallback() {
+        var current = a
+        val attempts = mutableListOf<Request>()
+        val network = StorageReadNetworkInterceptor({ backend }, { current })
+        val chain = Chain(Request.Builder().url(storage).build(), next = { request ->
+            network.intercept(Chain(request, status = { authorized ->
+                attempts += authorized
+                current = StorageReadCredential(StorageReadIdentity("b", 2), "other.jwt")
+                503
+            }))
+        })
+        assertThrows(IOException::class.java) {
+            StorageReadRequestInterceptor({ backend }, { current }, { current }, edge, backend).intercept(chain)
+        }
+        assertEquals(1, attempts.size)
+        assertEquals("media.example.test", attempts.single().url.host)
+        assertEquals("Bearer first.jwt", attempts.single().header("Authorization"))
+    }
+
+    @Test fun openingEdgeConnectionFailureRetriesTheCanonicalOriginWithTheRealNetworkGate() {
+        val attempts = mutableListOf<Request>()
+        val network = StorageReadNetworkInterceptor({ backend }, { a })
+        val chain = Chain(Request.Builder().url(storage).build(), next = { request ->
+            network.intercept(Chain(request, status = { authorized ->
+                attempts += authorized
+                if (authorized.url.host == "media.example.test") throw IOException("Synthetic edge interruption")
+                200
+            }))
+        })
+        StorageReadRequestInterceptor({ backend }, { a }, { a }, edge, backend).intercept(chain).use {
+            assertArrayEquals(byteArrayOf(1, 2, 3), it.body!!.bytes())
+        }
+        assertEquals(listOf("media.example.test", "api.example.test"), attempts.map { it.url.host })
+        assertTrue(attempts.all { it.header("Authorization") == "Bearer first.jwt" })
+    }
     @Test fun edgeDenialDoesNotRetryAndOnlyExactEdgeUrlGetsBearer() {
         val original = Request.Builder().url(storage).build()
         val chain = Chain(original, status = { 403 })
@@ -154,13 +215,14 @@ class StorageReadInterceptorsTest {
     private fun request(url: String, identity: StorageReadIdentity? = a.identity, startedAtStorageOrigin: Boolean = true): Request =
         Request.Builder().url(url).tag(StorageReadRequestContext::class.java, StorageReadRequestContext(identity, startedAtStorageOrigin)).build()
 
-    private class Chain(private val original: Request, private val beforeResponse: () -> Unit = {}, private val body: okhttp3.ResponseBody? = null, private val status: (Request) -> Int = { 200 }) : Interceptor.Chain {
+    private class Chain(private val original: Request, private val beforeResponse: () -> Unit = {}, private val body: okhttp3.ResponseBody? = null, private val status: (Request) -> Int = { 200 }, private val next: ((Request) -> Response)? = null) : Interceptor.Chain {
         val attempts = mutableListOf<Request>()
         val sent: Request? get() = attempts.lastOrNull()
         override fun request(): Request = original
         override fun proceed(request: Request): Response {
             attempts += request
             beforeResponse()
+            next?.let { return it(request) }
             return Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(status(request)).message("Synthetic")
                 .body(body ?: byteArrayOf(1, 2, 3).toResponseBody()).build()
         }

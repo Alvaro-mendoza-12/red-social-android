@@ -252,7 +252,7 @@ fun NotificationAccountBridgeScreen(
             if (!hasStoredTarget || !errorMessage.isNullOrBlank()) {
                 Button(
                     onClick = {
-                        NotificationAccountSignIn.open(navController, bridgeEntry)
+                        NotificationAccountSignIn.open(navController, bridgeEntry, viewModel.signInSessionStamp())
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSwitching && completedRoute == null

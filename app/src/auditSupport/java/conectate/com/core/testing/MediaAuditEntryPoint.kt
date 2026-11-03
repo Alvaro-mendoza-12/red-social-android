@@ -12,4 +12,5 @@ import dagger.hilt.components.SingletonComponent
 interface MediaAuditEntryPoint {
     fun authService(): AuthService
     fun storageService(): StorageService
+    fun guestModeApi(): conectate.com.data.localfallback.GuestModeApi
 }

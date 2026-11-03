@@ -30,10 +30,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -56,6 +58,7 @@ import conectate.com.data.localfallback.AccountDeletedEvents
 import conectate.com.data.model.VoiceRoom
 import conectate.com.presentation.components.OfflineRetryState
 import conectate.com.presentation.navigation.AppNavGraph
+import conectate.com.presentation.navigation.AuthenticationJourneyRestoration
 import conectate.com.presentation.navigation.IntentRouter
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.voicerooms.InvitationOverlayHost
@@ -86,7 +89,8 @@ fun MainActivityContent(
     voiceRoomRepositoryProvider: Lazy<VoiceRoomRepository>,
     callRepositoryProvider: Lazy<CallRepository>,
     liveRepositoryProvider: Lazy<LiveRepository>,
-    activityScope: CoroutineScope
+    activityScope: CoroutineScope,
+    onAuthenticationFlowChanged: (Boolean) -> Unit = {},
 ) {
     LaunchedEffect(Unit) {
         if (conectate.com.BuildConfig.DEBUG) {
@@ -98,6 +102,15 @@ fun MainActivityContent(
         color = MaterialTheme.colorScheme.background
     ) {
         val navController = rememberNavController()
+        val authenticationFlowChanged by rememberUpdatedState(onAuthenticationFlowChanged)
+        DisposableEffect(navController) {
+            // Observe synchronously: onSaveInstanceState can precede the next composition.
+            val listener = androidx.navigation.NavController.OnDestinationChangedListener { controller, _, _ ->
+                AuthenticationJourneyRestoration.pending(controller)?.let(authenticationFlowChanged)
+            }
+            navController.addOnDestinationChangedListener(listener)
+            onDispose { navController.removeOnDestinationChangedListener(listener) }
+        }
         val forwardViewModel = hiltViewModel<UniversalForwardViewModel>()
         val universalForwardCoordinator = forwardViewModel.coordinator
         val pendingShares by forwardViewModel.pending.collectAsStateWithLifecycle()
