@@ -47,6 +47,8 @@ class RoomChatPhotoTest {
         val accepted=pending.copy(delivery=RoomChatDelivery.SENT)
         assertEquals(listOf(accepted),boundedRoomChat(listOf(pending,accepted),now=1500))
         assertTrue(boundedRoomChat(listOf(accepted),now=2000).isEmpty())
-        assertEquals(90L*60*1000,ROOM_CHAT_TTL_MS)
+        assertEquals(60L*60*1000,ROOM_CHAT_TTL_MS)
+        val legacy = pending.copy(expiresAt = pending.timestamp + 90L * 60 * 1000, imageData = "old photo")
+        assertTrue(boundedRoomChat(listOf(legacy), now = legacy.timestamp + ROOM_CHAT_TTL_MS).isEmpty())
     }
 }

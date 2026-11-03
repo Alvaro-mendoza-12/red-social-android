@@ -5,7 +5,7 @@ import java.net.URLEncoder
 object UbuntuStorageUrl {
     private const val PUBLIC_MARKER = "/storage/v1/object/public/"
     private const val SIGNED_MARKER = "/storage/v1/object/sign/"
-    private val cacheVariantParameters = setOf("format", "quality", "width", "poster")
+    private val cacheVariantParameters = setOf("format", "quality", "width", "poster", "animated")
     const val NGROK_SKIP_BROWSER_WARNING = "ngrok-skip-browser-warning"
 
     private val knownBuckets = setOf(
