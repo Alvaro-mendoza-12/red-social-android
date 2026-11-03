@@ -12,6 +12,8 @@ La última APK/AAB firmada es **9.1.35 / 175**, descrita en la [entrega 100](100
 
 El backend activo es el servidor propio Ubuntu. Empieza por [arquitectura](01-arquitectura.md), [backend](03-backend-mini-pc.md) y [operación](06-operaciones-runbook.md); contrasta cualquier cambio de infraestructura con su estado real. Los nombres de contratos o tablas de importación no son evidencia de que otro servicio esté en producción.
 
+La [preparación R2 102](102-r2-replica-y-entrega-multimedia.md) registra la réplica opcional, la entrega de originales mediante Worker, sus pruebas y el inventario agregado. La activación y las mediciones contra Cloudflare siguen pendientes.
+
 La última revisión web documentada está en la [entrega 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md); el historial de personas y grupos y el envío de documentos se revalidarán después del móvil. El proveedor de retiros sigue pendiente; las preferencias de compra están en [91](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md).
 
 ## Cómo interpretar el historial

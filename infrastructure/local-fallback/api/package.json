@@ -5,6 +5,11 @@
   "description": "Local fallback API for Conectate when Supabase is restricted or unavailable.",
   "main": "src/server.js",
   "scripts": {
+    "r2:inventory": "node scripts/storage-r2-mirror.js --inventory",
+    "r2:status": "node scripts/storage-r2-mirror.js --status",
+    "r2:migrate": "node scripts/storage-r2-mirror.js --migrate",
+    "r2:once": "node scripts/storage-r2-mirror.js --once",
+    "test:r2": "node --test tests/storage-r2-mirror.test.js tests/storage-r2-remote.test.js tests/storage-r2-journal.postgres.test.js",
     "test:raffles": "node --test tests/raffles.test.js",
     "check:raffles": "node --check src/raffles/service.js && node --check src/raffles/routes.js",
     "precheck": "node --check src/distributed-rate-limit.js && node --check src/admin-capabilities.js && node --check src/message-insert-store.js && node --check src/message-markers-routes.js && node --check src/two-factor.js && node --check scripts/verify-two-factor-e2e.js",
@@ -99,6 +104,8 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1161.0",
+    "@aws-sdk/lib-storage": "3.1161.0",
     "bcrypt": "6.0.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
