@@ -8,7 +8,7 @@ y obtiene el original al abrir la foto completa. La prueba recorre ambas
 entradas mediante la factoría real de solicitudes y el interceptor de Coil.
 El código está en `efdd7453`, con versión `9.1.36` y código `176`.
 Pasaron 79 pruebas de lectura multimedia en seis clases, con cero fallos,
-errores y omisiones. La entrega firmada se registra al terminar su validación.
+errores y omisiones. La entrega firmada se detalla más abajo.
 
 En web, la foto principal de `ProfileHeader` comienza su lectura al montar el
 componente y tiene prioridad en la cola acotada de imágenes. Los avatares de
@@ -72,6 +72,26 @@ resuelta en el Worker. Fuentes consultadas el 2 de noviembre de 2026.
 [Ubicación de R2](https://developers.cloudflare.com/r2/reference/data-location/),
 [Placement](https://developers.cloudflare.com/workers/configuration/placement/),
 [Cache API](https://developers.cloudflare.com/r2/examples/cache-api/).
+
+### AAB firmado 9.1.36 / 176
+
+La compilación `bundleRelease` terminó correctamente. El AAB de producción
+usa `conectate.com`, minSdk 24, targetSdk 36 y el origen multimedia del Worker
+comprobado dentro de los DEX. Incluye las correcciones Android anteriores de
+la revisión 101, la activación de R2 y la reducción de descargas de avatar de
+`efdd74532d86`. La copia local de entrega es
+`artifacts/releases/9.1.36-176/Novvin-9.1.36-176.aab`.
+
+Se verificó criptográficamente la firma contra el certificado de subida del
+AAB anterior, con SHA-256
+`623CDB12BAD08FCCA8A4A2F62EB6B5C91583D2CD14CED4AE63864066E036D84D`.
+La huella SHA-256 del nuevo archivo es
+`7A1F63A9C1C07EDC771D11650E1F9E7E2F32180F4037F2A2DCE1A7A79E4B98EE`.
+Pasaron R8 para 17 componentes declarados, alineación ZIP de 16 KiB y las
+14 bibliotecas nativas de 64 bits. Pasaron los cuatro presupuestos de tamaño.
+El AAB mide 132.551.459 bytes y la descarga máxima comprimida calculada por
+bundletool es 66.915.026 bytes, equivalentes a 63,82 MiB. Los informes locales
+están en `build/reports/r2-avatar-release176/`.
 
 La revisión integral sigue abierta. La validación física y la publicación de
 Android en Google Play corresponden al propietario.
