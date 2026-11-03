@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T15:22:23.356730+00:00",
-  "baseCommit": "1097d40c46f8c27559423d9c58a1f45fd1e685f5",
+  "generatedAtUtc": "2026-11-03T15:48:51.074949+00:00",
+  "baseCommit": "a94fd644d47f2a4861a87563ec3209ee33b91505",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,24 +10,24 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3747,
-    "code-read": 392,
-    "partial": 61
+    "pending": 3731,
+    "code-read": 408,
+    "partial": 62
   },
   "countsByPhase": {
     "android": {
-      "pending": 1593,
-      "code-read": 336,
+      "pending": 1579,
+      "code-read": 351,
       "partial": 39
     },
     "documentation": {
       "pending": 558,
-      "code-read": 5,
-      "partial": 5
+      "code-read": 4,
+      "partial": 6
     },
     "server": {
-      "pending": 874,
-      "code-read": 27,
+      "pending": 872,
+      "code-read": 29,
       "partial": 5
     },
     "tooling-and-other": {
@@ -11334,7 +11334,9 @@
       "file": "app/src/main/java/conectate/com/presentation/video/FeedPlaybackPolicy.kt",
       "phase": "android",
       "gitBlobId": "82ddcc9a7759f5cdf71fff033c967c02c69c084b",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/FeedVideoSeekBar.kt",
@@ -11459,7 +11461,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
       "phase": "android",
-      "gitBlobId": "ff531f98fa0e602f90e0cffdef8c305d43293ea6",
+      "gitBlobId": "07857a2748de9ff5cb01a9229c8f1fea3e9d10ed",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -11548,7 +11550,9 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoPreloadPolicy.kt",
       "phase": "android",
       "gitBlobId": "b0aec6c21be73564ec518e356dbb1dc627e60725",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoWatchLaterSheet.kt",
@@ -12138,7 +12142,9 @@
       "file": "app/src/main/java/conectate/com/util/MediaNetworkTrace.kt",
       "phase": "android",
       "gitBlobId": "c18171907a8e0163202bc9308c6c75db5f2bb90b",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/MediaPlaybackDataSources.kt",
@@ -12241,8 +12247,10 @@
     {
       "file": "app/src/main/java/conectate/com/util/PlaybackCacheAdmission.kt",
       "phase": "android",
-      "gitBlobId": "d5f57dfe77ca4112a80c1f7d34ca06e0408a07f4",
-      "reviewStatus": "pending"
+      "gitBlobId": "9d48bd4d12ba3f341ccbe371ca3c09e1ce24a8bf",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/PushMessagePolicy.kt",
@@ -12294,7 +12302,9 @@
       "file": "app/src/main/java/conectate/com/util/StorageReadDataSource.kt",
       "phase": "android",
       "gitBlobId": "201e74c4dffbc01af4b75b2fd9850eb12fc0b742",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/StorageReadHttpDataSource.kt",
@@ -12335,14 +12345,18 @@
     {
       "file": "app/src/main/java/conectate/com/util/VideoCache.kt",
       "phase": "android",
-      "gitBlobId": "eb5ad42ff70242cd9ab3fee6cd15f37772248e17",
-      "reviewStatus": "pending"
+      "gitBlobId": "af5925ea988abdd838bf418d8065e2ee43466ebf",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/VideoCacheResourceKeys.kt",
       "phase": "android",
       "gitBlobId": "ef194c2b7a0d6d43439b90e4a7816074523f3b3b",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/VideoDeliveryFormat.kt",
@@ -15888,7 +15902,9 @@
       "file": "app/src/test/java/conectate/com/presentation/video/VideoPreloadPolicyTest.kt",
       "phase": "android",
       "gitBlobId": "3923017dda21eee713259115ba9360d6dfe537d6",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/videos/CommentSheetThreadingSupport.kt",
@@ -16121,6 +16137,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/util/FeedPlaybackCacheAdmissionTest.kt",
+      "phase": "android",
+      "gitBlobId": "899b9207fff812f9ce49eaf330321f01355a2d64",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/util/InteractiveAudioBufferTest.kt",
       "phase": "android",
       "gitBlobId": "bd4b61d75fb120dfe41bb5d21230d4f82f52c48d",
@@ -16144,7 +16168,9 @@
       "file": "app/src/test/java/conectate/com/util/MediaNetworkTraceTest.kt",
       "phase": "android",
       "gitBlobId": "9df293f6335c63c529bddef49c522052004c6bdd",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/util/MediaPlaybackDataSourcesTest.kt",
@@ -16198,7 +16224,9 @@
       "file": "app/src/test/java/conectate/com/util/PlaybackCacheAdmissionTest.kt",
       "phase": "android",
       "gitBlobId": "69b3d9e9b4aa31e19946012fcd0e8f5426383a4e",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/util/ProtobufRuntimeSecurityTest.kt",
@@ -16248,7 +16276,9 @@
       "file": "app/src/test/java/conectate/com/util/StorageReadAdmittedCacheTest.kt",
       "phase": "android",
       "gitBlobId": "fc7c232fdd44095b9f49bc75b938c45cf903efad",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/util/StorageReadHttpDataSourceTest.kt",
@@ -16284,19 +16314,25 @@
       "file": "app/src/test/java/conectate/com/util/VideoCacheLocalPlaybackTest.kt",
       "phase": "android",
       "gitBlobId": "a1dca8c41c7589ba8196cfe4657226de0f163d1a",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/util/VideoCacheResourceKeysTest.kt",
       "phase": "android",
       "gitBlobId": "b412f809566e574aadc586b7da1f4de3f888dd1d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/util/VideoPrefetchBudgetTest.kt",
       "phase": "android",
       "gitBlobId": "e250cc8bfe51a2ac6586ed6a9e3a251cbbedb8c5",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/widgets/NovvinWidgetIntentTest.kt",
@@ -18811,7 +18847,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "ab8c6838241aa967a295ec4016038d249c1f6b5b",
+      "gitBlobId": "8977094532f9db25ad148857bbaf71e724b7003e",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18819,7 +18855,7 @@
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "phase": "documentation",
-      "gitBlobId": "e4242b9ddc5f7f2365182c3842822d239b066ca7",
+      "gitBlobId": "67d9a2d4bf51e696f15d4c5c985ffee49e134443",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -19355,8 +19391,8 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "a1cbff72bfd46ca5bf2d9a9382eb199b974cff22",
-      "reviewStatus": "code-read",
+      "gitBlobId": "b56f8549adb7aa547b5a6aa85150a41f7d739542",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -21034,7 +21070,9 @@
       "file": "infrastructure/local-fallback/api/src/playback-cache-policy.js",
       "phase": "server",
       "gitBlobId": "019c4bd42cbeeb5f720d0b025b9c8bb2504317ba",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/playmatch-candidate-constraints.js",
@@ -21178,7 +21216,9 @@
       "file": "infrastructure/local-fallback/api/src/request-observability.js",
       "phase": "server",
       "gitBlobId": "e419ab40701e524813e78bfb639f657556b30262",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/request-security.js",

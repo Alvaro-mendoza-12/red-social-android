@@ -709,8 +709,7 @@ fun VideoFeedScreen(
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
             
-        // Use Cached DataSource
-        val cacheDataSourceFactory = conectate.com.util.VideoCache.getCacheDataSourceFactory(context)
+        val cacheDataSourceFactory = conectate.com.util.VideoCache.feedDataSourceFactory(context)
 
         ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
@@ -1980,11 +1979,15 @@ fun VideoFeedScreen(
                     when (val entry = feedEntries.getOrNull(page)) {
                         is VideoFeedVideoEntry -> {
                             val video = entry.video
+                            val pageVisible by remember(pagerState, page) {
+                                derivedStateOf { pagerState.layoutInfo.visiblePagesInfo.any { it.index == page } }
+                            }
                             VideoItem(
                             video = video,
                             exoPlayer = exoPlayer, // Pass the SINGLE player
                             renderedVideoId = renderedVideoId,
                             isSelected = pagerState.settledPage == page && !isSystemBusy,
+                            showThumbnail = pageVisible || pagerState.settledPage == page,
                             showCellularPlayHint = cellularAutoplayBlocked && manuallyStartedVideoId != video.id,
                             onTogglePlayback = {
                                 if (pagerState.settledPage == page) {
@@ -2494,6 +2497,7 @@ fun VideoItem(
     video: Video, 
     exoPlayer: ExoPlayer, 
     isSelected: Boolean,
+    showThumbnail: Boolean,
     renderedVideoId: String?,
     showCellularPlayHint: Boolean,
     onTogglePlayback: () -> Unit,
@@ -2676,12 +2680,10 @@ fun VideoItem(
             )
         } 
         
-        // 🚀 THUMBNAIL OVERLAY with smooth fade transition
-        // Visible if:
-        // 1. Not selected (standard list behavior)
-        // 2. Selected but frame NOT YET rendered (hides the loading black screen)
+        // The pager keeps neighbours composed. Request their artwork only
+        // when they enter the viewport, while keeping the selected cover until its first frame.
         AnimatedVisibility(
-            visible = !isSelected || !isFirstFrameRendered,
+            visible = showThumbnail && (!isSelected || !isFirstFrameRendered),
             exit = fadeOut(animationSpec = androidx.compose.animation.core.tween(50))
         ) {
             val thumbnailRequest = remember(video.thumbnailUrl) {

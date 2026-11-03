@@ -52,10 +52,15 @@ object VideoCache {
     fun getCacheDataSourceFactory(context: Context): DataSource.Factory =
         createCacheDataSourceFactory(context, requireStorageCacheAdmission = false)
 
+    /** Start uncached feed ranges with the authorized GET and reuse admitted preload bytes. */
+    internal fun feedDataSourceFactory(context: Context): DataSource.Factory =
+        createCacheDataSourceFactory(context, requireStorageCacheAdmission = false, preferDirectOnMiss = true)
+
     private fun createCacheDataSourceFactory(
         context: Context,
         requireStorageCacheAdmission: Boolean,
         prefetchTimeoutMs: Long? = null,
+        preferDirectOnMiss: Boolean = false,
     ): DataSource.Factory {
         // ChatMediaOfflineCache and pending uploads return file:/ or content:/ URIs.
         // An HTTP-only upstream fails as soon as the playback cache misses those local bytes.
@@ -74,11 +79,14 @@ object VideoCache {
                 .createDataSource()
             else upstreamDataSourceFactory.createDataSource()
         }
-        // Every private cache open still checks current server permissions and
-        // ETag. Prefetch must stop if those bytes could not be reused by playback.
+        val existingCache = if (preferDirectOnMiss) {
+            { getOrCreateCache(context.applicationContext) }
+        } else null
+        // Cache reuse checks current permissions and ETag. Prefetch can still
+        // populate the cache after admission so the next video can reuse it.
         return DataSource.Factory {
             StorageReadDataSource(upstreamDataSourceFactory, cachedFactory, requireStorageCacheAdmission) { spec ->
-                PlaybackCacheAdmission.key(spec, sourceFactory = upstreamDataSourceFactory)
+                PlaybackCacheAdmission.key(spec, sourceFactory = upstreamDataSourceFactory, existingCache = existingCache)
             }
         }
     }
