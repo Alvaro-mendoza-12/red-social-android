@@ -9,6 +9,7 @@ import conectate.com.core.testing.RuntimeSessionOverride
 import conectate.com.core.testing.TestRuntimeOverrides
 import conectate.com.data.auth.AccountSwitchSession
 import conectate.com.data.auth.LocalAccountSwitchSession
+import conectate.com.data.auth.AccountLocalStorageGate
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.LocalFallbackAuthResponse
@@ -149,6 +150,7 @@ class AuthService @Inject constructor(
     private val localSessionRefreshMutex = Mutex()
     private val localSessionActivationMutex = Mutex()
     private val localSessionMutationGuard = AuthSessionMutationGuard()
+    private val localStorageGate = AccountLocalStorageGate(localSessionActivationMutex, localSessionMutationGuard)
     private val localCompatibilitySessionMutex = Mutex()
     private val logoutRevocationMutex = Mutex()
     private val logoutQueueLock = Any()
@@ -207,6 +209,10 @@ class AuthService @Inject constructor(
 
     internal fun commitForAccountLease(lease: AuthSessionLease, mutation: () -> Unit): Boolean =
         localSessionMutationGuard.commitForLease(lease, mutation)
+
+    /** No HTTP or flow publication here; Room callers provide their own atomic transaction. */
+    internal suspend fun <T> withAccountLocalStorage(lease: AuthSessionLease, write: suspend () -> T): T =
+        localStorageGate.withOwner(lease, write)
 
     internal fun commitAccountDeletion(notice: conectate.com.data.auth.AccountDeletionNotice, onDelete: () -> Unit): Boolean =
         notice.commitIfCurrent(localSessionMutationGuard, ::getCurrentUserId, ::getAccessToken, onDelete)
