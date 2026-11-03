@@ -12,7 +12,7 @@ El AAB firmado más reciente es **9.1.36 / 176**, descrito en la [operación R2 
 
 El backend activo es el servidor propio Ubuntu. Empieza por [arquitectura](01-arquitectura.md), [backend](03-backend-mini-pc.md) y [operación](06-operaciones-runbook.md); contrasta cualquier cambio de infraestructura con su estado real. Los nombres de contratos o tablas de importación no son evidencia de que otro servicio esté en producción.
 
-La [operación R2 102](102-r2-replica-y-entrega-multimedia.md) registra la réplica activa desde Ubuntu a un bucket privado, la entrega mediante Worker, la preparación de avatares y la reducción medida de la consulta previa web. Distingue los despliegues web/servidor, las pruebas automatizadas, la excepción de conversión de un JPEG antiguo y la entrega Android 176.
+La [operación R2 102](102-r2-replica-y-entrega-multimedia.md) registra la réplica activa desde Ubuntu a un bucket privado, la entrega mediante Worker, la preparación de avatares y la reducción medida de la consulta previa web. Distingue despliegues, pruebas automatizadas, recuperación del JPEG antiguo y entregas Android. El chat de voz usa contenido temporal con vencimiento de una hora.
 
 La última revisión web documentada está en la [entrega 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md); el historial de personas y grupos y el envío de documentos se revalidarán después del móvil. El proveedor de retiros sigue pendiente; las preferencias de compra están en [91](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md).
 

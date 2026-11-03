@@ -101,8 +101,8 @@ type FeedPageProps = {
   onClosePromotions?: () => void
 }
 
-function FeedAvatar({ url, name }: { url: string; name: string }) {
-  return <SafeAvatar url={url} name={name} />
+function FeedAvatar({ url, name, priority = false }: { url: string; name: string; priority?: boolean }) {
+  return <SafeAvatar url={url} name={name} priority={priority} />
 }
 
 export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen = false, onClosePromotions }: FeedPageProps) {
@@ -722,7 +722,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
         <Fragment key={item.id}><article className="surface-card feed-card">
           <div className="row-between feed-head">
             <Link className="identity-link" to={profilePathFor(item.authorId, user?.id)}>
-              <FeedAvatar url={item.authorAvatarUrl} name={item.authorName} />
+              <FeedAvatar url={item.authorAvatarUrl} name={item.authorName} priority={itemIndex < 2} />
               <span>
                 <strong>{item.authorName}</strong>
                 <small>{formatDateTime(item.createdAt)}</small>

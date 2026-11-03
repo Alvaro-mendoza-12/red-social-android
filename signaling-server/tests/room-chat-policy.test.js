@@ -15,7 +15,22 @@ test('session ledger authorizes deletion, prevents retry resurrection, and expir
  assert.equal(ledger.accept({...message,id:'third'}).error,'ROOM_CHAT_BUSY')
  at=1101;const expired=ledger.expire();assert.equal(ledger.size(),0)
  assert.deepEqual(expired,[{roomId:'r',userId:'owner',id:'second',reason:'expired'}])
- assert.equal(ROOM_CHAT_TTL_MS,90*60*1000)
+ assert.equal(ROOM_CHAT_TTL_MS,60*60*1000)
+})
+
+test('relays and acknowledgements keep the original one-hour deadline',()=>{
+ let at=1000
+ const ledger=createRoomChatLedger({now:()=>at})
+ const message={roomId:'r',userId:'owner',id:'one-hour',text:'temporary',imageData:photo(),timestamp:at}
+ const first=ledger.accept(message)
+ at+=ROOM_CHAT_TTL_MS-1
+ assert.equal(ledger.accept(message).expiresAt,first.expiresAt)
+ const other=createRoomChatLedger({now:()=>at})
+ assert.equal(other.accept({...message,expiresAt:first.expiresAt}).expiresAt,first.expiresAt)
+ at=first.expiresAt
+ assert.equal(other.accept({...message,id:'late',expiresAt:first.expiresAt}).ok,false)
+ assert.equal(ledger.expire().length,1)
+ assert.equal(ledger.size(),0)
 })
 test('deletion after metadata loss is scoped to the authenticated author and blocks retries',()=>{
  const ledger=createRoomChatLedger()

@@ -1028,7 +1028,7 @@ const roomChatLedger = createRoomChatLedger();
 const broadcastRoomChat = createRoomChatTransport(io, roomChatLedger, () => distributedAdapterRuntime.getStatus().connected);
 const roomChatExpiry = setInterval(() => {
     for (const expired of roomChatLedger.expire()) broadcastRoomChat('chat-message-deleted', expired);
-}, 15000);
+}, 1000);
 roomChatExpiry.unref?.();
 const voiceRoomCleanupTimers = new Map();
 const voiceCaptionTranscripts = new Map();

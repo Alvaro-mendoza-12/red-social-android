@@ -24,6 +24,14 @@ test('rejects invalid profiles and preserves nonimage/original semantics', () =>
   for (const query of [{ width: 63 }, { width: 1921 }, { width: 'bad' }, { width: 720, quality: 91 }, { width: 720, quality: 59.5 }, { width: 720, format: 'jpeg' }])
     assert.throws(() => normalizeImageVariant(query, 'image/png'), { message: 'INVALID_IMAGE_VARIANT', status: 400 });
 });
+
+test('video posters require explicit admission and a bounded image profile', () => {
+  const query = { width: 160, quality: 75, poster: '1' };
+  assert.equal(normalizeImageVariant(query, 'video/mp4'), null);
+  assert.equal(normalizeImageVariant({ width: 160 }, 'video/mp4', true), null);
+  assert.deepEqual(normalizeImageVariant(query, 'video/mp4', true), { width: 160, quality: 78, format: 'webp', poster: true });
+  assert.throws(() => normalizeImageVariant({ ...query, width: 9000 }, 'video/mp4', true), { message: 'INVALID_IMAGE_VARIANT' });
+});
 test('queue limits concurrency and queued entries; excess is rejected before work', async () => {
   const queue = boundedWorkQueue({ concurrency: 2, maxQueued: 2, queueWaitMs: 1000 });
   const gate = deferred(); let executed = 0;
@@ -60,6 +68,8 @@ test('proposed storage integration deduplicates and creates a harmless actual We
   const originalRequire = loaded.require.bind(loaded);
   loaded._compile(fs.readFileSync(sourceFile, 'utf8'), sourceFile);
   try {
+    assert.equal(loaded.exports.requestedImageVariant({ width: 160, poster: '1' }, 'video/mp4', 'chat-media'), null);
+    assert.equal(loaded.exports.requestedImageVariant({ width: 160, poster: '1' }, 'video/mp4', 'avatars').poster, true);
     const sharp = originalRequire('sharp'); const input = path.join(fixture, 'input.png');
     await sharp({ create: { width: 80, height: 40, channels: 3, background: '#4080C0' } }).png().toFile(input);
     const stat = fs.statSync(input); const variant = loaded.exports.requestedImageVariant({ width: 65, quality: 76 }, 'image/png');

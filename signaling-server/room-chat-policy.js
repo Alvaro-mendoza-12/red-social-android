@@ -1,7 +1,7 @@
 'use strict';
 const crypto = require('crypto');
 const MAX_IMAGE_DATA = 132000;
-const ROOM_CHAT_TTL_MS = 90 * 60 * 1000;
+const ROOM_CHAT_TTL_MS = 60 * 60 * 1000;
 function validRoomImage(value) {
     if (typeof value !== 'string' || value.length > MAX_IMAGE_DATA || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
     const bytes = Buffer.from(value.slice(23), 'base64');
@@ -53,7 +53,10 @@ function createRoomChatLedger({ now = Date.now, ttl = ROOM_CHAT_TTL_MS, capacity
         }
         // Do not evict active ownership checks: callers may retry after expiry.
         if (records.size >= capacity) return { ok: false, error: 'ROOM_CHAT_BUSY' };
-        const metadata = { roomId: message.roomId, userId: message.userId, id: message.id, timestamp: at, expiresAt: at + ttl, digest, deleted: false };
+        const timestamp = Number.isFinite(message.timestamp) ? Math.min(at, message.timestamp) : at;
+        const expiresAt = Math.min(timestamp + ttl, Number.isFinite(message.expiresAt) ? message.expiresAt : Infinity);
+        if (expiresAt <= at) return { ok: false, error: 'MESSAGE_EXPIRED_OR_DELETED' };
+        const metadata = { roomId: message.roomId, userId: message.userId, id: message.id, timestamp, expiresAt, digest, deleted: false };
         records.set(name, metadata);
         return { ok: true, duplicate: false, id: message.id, timestamp: at, expiresAt: metadata.expiresAt };
     }

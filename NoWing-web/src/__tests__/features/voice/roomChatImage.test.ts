@@ -1,4 +1,4 @@
-import {boundedRoomChat,firstRoomClipboardImage,validRoomImage} from '../../../features/voice/roomChatImage'
+import {boundedRoomChat,firstRoomClipboardImage,validRoomImage,roomChatTtlMs} from '../../../features/voice/roomChatImage'
 test('session memory is bounded and a duplicate echo does not create another entry',()=>{
  const values=Array.from({length:110},(_,i)=>({id:String(i),text:'Photo',imageData:'data'}))
  const result=boundedRoomChat([...values,values[109]])
@@ -23,4 +23,11 @@ test('expired text and images are purged, while a server echo updates its pendin
  const sent={...pending,delivery:'sent'}
  expect(boundedRoomChat([pending,sent],1500)).toEqual([sent])
  expect(boundedRoomChat([sent],2000)).toEqual([])
+})
+
+test('old ninety-minute deadlines cannot retain text or photos past one hour',()=>{
+ expect(roomChatTtlMs).toBe(60*60*1000)
+ const message={id:'legacy',text:'temporary',imageData:'bytes',timestamp:1000,expiresAt:1000+90*60*1000}
+ expect(boundedRoomChat([message],1000+roomChatTtlMs-1)).toHaveLength(1)
+ expect(boundedRoomChat([message],1000+roomChatTtlMs)).toEqual([])
 })

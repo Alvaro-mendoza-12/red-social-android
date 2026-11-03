@@ -1,8 +1,11 @@
 export const maxRoomImageData = 132000
-export const roomChatTtlMs = 90 * 60 * 1000
-export function boundedRoomChat<T extends { id: string; text: string; imageData?: string; userId?: string; expiresAt?: number }>(messages: T[], now = Date.now()): T[] {
+export const roomChatTtlMs = 60 * 60 * 1000
+export function boundedRoomChat<T extends { id: string; text: string; imageData?: string; userId?: string; expiresAt?: number; timestamp?: number }>(messages: T[], now = Date.now()): T[] {
   const byId = new Map<string,T>()
-  for (const item of messages) if (!item.expiresAt || item.expiresAt > now) byId.set(`${item.userId || ''}:${item.id}`, item)
+  for (const item of messages) {
+    const deadline = Math.min(item.expiresAt ?? Infinity, item.timestamp === undefined ? Infinity : item.timestamp + roomChatTtlMs)
+    if (deadline > now) byId.set(`${item.userId || ''}:${item.id}`, item)
+  }
   const unique = [...byId.values()].slice(-100)
   const photos = new Set(unique.filter(item => item.imageData).slice(-10).map(item => item.id))
   return unique.map(item => item.imageData && !photos.has(item.id) ? { ...item, imageData: undefined, text: 'Foto anterior de esta sesión' } : item)

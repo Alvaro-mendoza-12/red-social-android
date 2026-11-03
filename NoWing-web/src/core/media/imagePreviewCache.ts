@@ -21,9 +21,9 @@ onStorageReadInvalidated(() => {
   for (const key of entries.keys()) remove(key)
 })
 
-export function cachedStorageImagePreview(url: string, identity: BoundedStorageReadOptions['identity'], maxBytes: number) {
+export function cachedStorageImagePreview(url: string, identity: BoundedStorageReadOptions['identity'], maxBytes: number, avatarVideo = false) {
   requireStorageReadIdentity(identity)
-  const key = `${identity.generation}/${maxBytes}/${url}`
+  const key = `${avatarVideo ? 'avatar-video/' : ''}${identity.generation}/${maxBytes}/${url}`
   const entry = entries.get(key)
   if (!entry || entry.expires <= Date.now()) return undefined
   if (!entry.url) entry.url = URL.createObjectURL(entry.blob)
@@ -32,9 +32,17 @@ export function cachedStorageImagePreview(url: string, identity: BoundedStorageR
 
 /** Session memory only: a chat remount must not download its images again. */
 export async function readCachedStorageImage(options: BoundedStorageReadOptions, refresh = false): Promise<Blob> {
+  return readCachedPreview(options, refresh, false)
+}
+
+export async function readCachedAvatarVideo(options: BoundedStorageReadOptions): Promise<Blob> {
+  return readCachedPreview(options, false, true)
+}
+
+async function readCachedPreview(options: BoundedStorageReadOptions, refresh: boolean, avatarVideo: boolean): Promise<Blob> {
   requireStorageReadIdentity(options.identity)
   if (options.signal.aborted) throw new DOMException('Media read cancelled', 'AbortError')
-  const key = `${options.identity.generation}/${options.maxBytes}/${options.url}`
+  const key = `${avatarVideo ? 'avatar-video/' : ''}${options.identity.generation}/${options.maxBytes}/${options.url}`
   const cached = entries.get(key)
   if (cached && !refresh && cached.expires > Date.now()) {
     entries.delete(key); entries.set(key, cached)
@@ -46,8 +54,8 @@ export async function readCachedStorageImage(options: BoundedStorageReadOptions,
     const promise = readBoundedStorageBlob({ ...options, signal: controller.signal }).then(blob => {
       requireStorageReadIdentity(options.identity)
       if (controller.signal.aborted) throw new DOMException('Media read cancelled', 'AbortError')
-      // Keep animated image bytes intact. Never retain documents or oversized reads.
-      if (/^image\/(png|apng|jpeg|webp|gif|avif|bmp)$/.test(blob.type) && blob.size <= options.maxBytes && blob.size <= MAX_BYTES) {
+      const supported = avatarVideo ? /^video\/(mp4|webm|quicktime|3gpp)$/.test(blob.type) : /^image\/(png|apng|jpeg|webp|gif|avif|bmp)$/.test(blob.type)
+      if (supported && blob.size <= options.maxBytes && blob.size <= MAX_BYTES) {
         remove(key)
         while (entries.size && (entries.size >= MAX_ENTRIES || bytes + blob.size > MAX_BYTES)) remove(entries.keys().next().value!)
         entries.set(key, { blob, expires: Date.now() + MAX_AGE }); bytes += blob.size
