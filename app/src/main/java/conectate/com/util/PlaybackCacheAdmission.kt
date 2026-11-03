@@ -1,6 +1,7 @@
 package conectate.com.util
 
 import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.cache.Cache
 import conectate.com.core.media.StorageReadSession
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import java.security.MessageDigest
@@ -12,6 +13,7 @@ internal object PlaybackCacheAdmission {
         spec: DataSpec,
         allowAudio: Boolean = false,
         sourceFactory: androidx.media3.datasource.DataSource.Factory = MediaPlaybackDataSources.httpFactory(),
+        existingCache: (() -> Cache?)? = null,
     ): String? {
         val url = spec.uri.toString()
         if (!StorageReadSession.isStorageRequest(url) || spec.uri.getQueryParameter("lease") != null || spec.httpMethod != DataSpec.HTTP_METHOD_GET) return null
@@ -19,6 +21,14 @@ internal object PlaybackCacheAdmission {
         // The guest contract is streaming-only and never advertises playback
         // disk admission. Avoid an extra HEAD before every guest GET/Range.
         if (identity.accountId.startsWith("guest_")) return null
+        val originalKey = spec.key ?: UbuntuStorageUrl.stableCacheKey(url) ?: url
+        if (existingCache != null) {
+            // The feed can start with the authorized GET when it has no bytes
+            // at the requested position. A disk hit still needs fresh admission.
+            val prefix = StorageReadSession.scopedCacheKey(url, "$originalKey:revision:")
+            val cache = existingCache() ?: return null
+            if (cache.keys.none { it.startsWith(prefix) && cache.isCached(it, spec.position, 1L) }) return null
+        }
         val source = sourceFactory.createDataSource()
         val headers = try {
             StorageReadSession.requireCurrent(identity)
@@ -27,7 +37,7 @@ internal object PlaybackCacheAdmission {
         } finally { source.close() }
         StorageReadSession.requireCurrent(identity)
         fun header(name: String) = headers.entries.firstOrNull { it.key.equals(name, true) }?.value?.firstOrNull()
-        return revisionKey(url, spec.key ?: UbuntuStorageUrl.stableCacheKey(url) ?: url,
+        return revisionKey(url, originalKey,
             header("X-Novvin-Playback-Cache"), header("ETag"), header("Content-Type"), allowAudio)
     }
 

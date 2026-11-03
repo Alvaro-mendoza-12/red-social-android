@@ -60,6 +60,41 @@ El alcance de esta verificación conectada fue la lectura de contenido de
 invitado. Las pruebas físicas, los flujos autenticados y una entrega Android
 posterior a 178 conservan el estado de la revisión 101.
 
+## Arranque del feed Android, 3 de noviembre de 2026
+
+Al abrir un tramo de video, la ruta con caché pedía un `HEAD` a Ubuntu para
+validar la admisión y la revisión del archivo antes de un posible `GET`.
+En el feed, si la caché de la cuenta y la generación actuales carece del
+primer byte solicitado, Media3 pasa directamente al `GET` autorizado.
+El `GET` conserva el enrutamiento a R2, la autorización de Ubuntu y la
+recuperación por el origen cuando falla la entrega acelerada.
+
+Cuando el tramo empieza en un segmento local, se exige una admisión fresca
+y se usa la revisión confirmada por el servidor. La precarga de vecinos
+sigue poblando segmentos admitidos. Un tramo reproducido por la ruta directa
+no se escribe en la caché de reproducción. La política se limita al feed
+Android. Los archivos que el usuario guarda explícitamente para ver sin
+conexión siguen su ruta local.
+
+El feed solicita portadas para la página seleccionada y para las páginas
+que entran en pantalla durante el desplazamiento. La portada seleccionada
+permanece hasta que el reproductor dibuja el primer cuadro.
+
+La selección Android aprobó **140 pruebas en 19 clases**, sin fallos,
+errores ni omisiones, y compiló las pruebas instrumentadas. Cuatro
+regresiones usan una caché Media3 real y un origen controlado. En frío
+registraron un solo `GET` frente a `HEAD` más `GET` en la ruta anterior.
+Con caché comprobaron permiso fresco en cada apertura, rechazo tras
+revocación y descarga de la revisión nueva en vez de entregar bytes
+antiguos. También comprobaron que un hueco o una generación anterior no
+activa la consulta de admisión. Pasaron 12 controles de mantenimiento.
+
+El primer intento de Gradle agotó la espera del bloqueo del checkout
+ocupado por Android Studio. El segundo ejecutó la selección cuando el
+checkout se liberó. Los resultados miden solicitudes y contratos con
+respuestas controladas. La comparación del primer cuadro en una red
+móvil sigue pendiente.
+
 ## Avatares animados y chat de voz, 2 de noviembre de 2026
 
 La preparación de medios revisó 140 objetos limpios de perfiles, grupos y
