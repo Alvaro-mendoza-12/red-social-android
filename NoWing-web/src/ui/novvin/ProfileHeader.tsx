@@ -63,6 +63,7 @@ export function ProfileHeader({
               mediaType={avatarMediaType}
               name={name}
               size="lg"
+              priority
               className="mobile-profile-avatar"
             /></ProfileMediaButton>
             {identity.verified ? (

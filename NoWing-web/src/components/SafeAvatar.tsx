@@ -17,26 +17,28 @@ export function CachedProfileImage({ src, mediaType, previewWidth = 160, onSourc
   const [ready, setReady] = useState<typeof cache>()
   const image = useRef<HTMLImageElement>(null)
   const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
+  const eager = props.loading === 'eager'
+  const shouldLoad = eager || visible
   const key = `${identity.generation}/${source}`
   const [streamingKey, setStreamingKey] = useState('')
   const delivered = cache || (ready?.source === source && ready.identity === identity ? ready : undefined)
   const hasCached = Boolean(cache)
   useEffect(() => {
-    if (visible || !image.current) return
+    if (shouldLoad || !image.current) return
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect() }
     }, { rootMargin: '128px' })
     observer.observe(image.current)
     return () => observer.disconnect()
-  }, [visible])
+  }, [shouldLoad])
   useEffect(() => {
-    if (!backendBase || !identity.accountId || !visible || hasCached || streamingKey === key) return
+    if (!backendBase || !identity.accountId || !shouldLoad || hasCached || streamingKey === key) return
     let active = true, retries = 0
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     const load = () => {
       void readCachedStorageImage({ url: source, backendBase, identity, maxBytes: STORAGE_PREVIEW_MAX_BYTES,
-        signal: controller.signal, getAccessToken: () => prepareStorageReadAccessToken(identity),
+        signal: controller.signal, priority: eager, getAccessToken: () => prepareStorageReadAccessToken(identity),
       }).then(() => {
         if (!active) return
         const cached = cachedStorageImagePreview(source, identity, STORAGE_PREVIEW_MAX_BYTES)
@@ -50,7 +52,7 @@ export function CachedProfileImage({ src, mediaType, previewWidth = 160, onSourc
     }
     load()
     return () => { active = false; clearTimeout(timer); controller.abort() }
-  }, [backendBase, identity, visible, hasCached, streamingKey, key, source])
+  }, [backendBase, identity, shouldLoad, hasCached, streamingKey, key, source, eager])
   return backendBase && streamingKey !== key
     ? <img {...props} ref={image} src={delivered?.url} decoding="async"/>
     : <StreamingImage {...props} ref={image} src={source} onSourceUnavailable={onSourceUnavailable}/>
@@ -65,6 +67,7 @@ type SafeAvatarProps = {
   className?: string
   title?: string
   mediaType?: string | null
+  priority?: boolean
 }
 
 const sizeClassByVariant: Record<AvatarSize, string> = {
@@ -101,6 +104,7 @@ export function SafeAvatar({
   className,
   title,
   mediaType,
+  priority = false,
 }: SafeAvatarProps) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const trimmedUrl = (url ?? '').trim()
@@ -146,7 +150,8 @@ export function SafeAvatar({
         mediaType={normalizedMediaType}
         alt={initialName}
         title={title ?? initialName}
-        loading="lazy"
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : undefined}
         referrerPolicy="no-referrer"
         onError={() => setFailedSignature(signature)}
         onSourceUnavailable={() => setFailedSignature(signature)}

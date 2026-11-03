@@ -188,6 +188,29 @@ describe('bounded authorized streaming', () => {
     invalidateStorageReadIdentity(); expect((await settled).every((result) => result.status === 'rejected')).toBe(true)
     expect(fetcher).not.toHaveBeenCalled()
   })
+
+  test('a profile image takes the next available slot before queued list images', async () => {
+    const controllers = Array.from({ length: 6 }, () => new AbortController())
+    const inputs = controllers.map((controller, index) => {
+      const input = { ...options(), signal: controller.signal, priority: index === 5 }
+      input.getAccessToken.mockImplementation(() => new Promise(() => {}))
+      return input
+    })
+    const jobs = inputs.map(readBoundedStorageBlob)
+    const settled = Promise.allSettled(jobs)
+    try {
+      await Promise.resolve()
+      expect(inputs[4].getAccessToken).not.toHaveBeenCalled()
+      expect(inputs[5].getAccessToken).not.toHaveBeenCalled()
+      controllers[0].abort()
+      await jobs[0].catch(() => {})
+      expect(inputs[5].getAccessToken).toHaveBeenCalledTimes(1)
+      expect(inputs[4].getAccessToken).not.toHaveBeenCalled()
+    } finally {
+      controllers.forEach(controller => controller.abort())
+      await settled
+    }
+  })
   test('cancelling a queued read releases its queue capacity', async () => {
     const inputs = Array.from({ length: 28 }, () => {
       const controller = new AbortController(); const input = { ...options(), signal: controller.signal }

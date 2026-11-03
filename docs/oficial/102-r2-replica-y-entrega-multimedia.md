@@ -1,5 +1,81 @@
 # R2: réplica y entrega multimedia
 
+## Avatares y latencia, 2 de noviembre de 2026
+
+Android evita descargar en segundo plano el original completo después de
+mostrar una miniatura de avatar. Conserva la miniatura para uso sin conexión
+y obtiene el original al abrir la foto completa. La prueba recorre ambas
+entradas mediante la factoría real de solicitudes y el interceptor de Coil.
+El código está en `efdd7453`, con versión `9.1.36` y código `176`.
+Pasaron 79 pruebas de lectura multimedia en seis clases, con cero fallos,
+errores y omisiones. La entrega firmada se registra al terminar su validación.
+
+En web, la foto principal de `ProfileHeader` comienza su lectura al montar el
+componente y tiene prioridad en la cola acotada de imágenes. Los avatares de
+listas se solicitan al acercarse a la zona visible. La caché de imágenes
+pertenece a la generación de cuenta y comparte las lecturas simultáneas.
+Pasaron 96 pruebas seleccionadas de lectura, caché y avatares, y la compilación
+de producción de Vite con generación SEO.
+
+La API activa usa `novvin-api:r2-avatar-prewarm-20261102`, con imagen
+`sha256:0b69f59f723ecadc7d8d7565c8ffa229eda51e8517fbcfa7da8a4f348f5613d3`.
+La capa prepara los perfiles WebP de 160/78 y 384/86 después de aceptar una
+foto JPEG o PNG de avatar. Son los perfiles canónicos de las peticiones web y
+Android. El marcador de release de `/ready` identifica la base
+`novvin-r2-edge-http-20261102`. Se verificaron disponibilidad y coincidencia
+de la fuente desplegada tras normalizar terminaciones de línea, con SHA-256
+`495c4a27ea94e07dddf86f5ca3d107bc970630dbc94045477dc6b11ceb55142b`.
+El respaldo previo de Compose está en
+`/home/alvaro/.config/novvin/avatar-prewarm-deploy.URFwOLEv/docker-compose.override.before.yml`.
+
+La preparación acotada de las 99 fotos JPEG/PNG limpias encontró 52 variantes
+existentes y generó 144. Se comprobaron 196 variantes disponibles. Las dos
+variantes de una foto antigua fallan con
+`VipsJpeg: Invalid SOS parameters for sequential JPEG`. Un reintento por la
+función real confirmó el fallo y la selección del original como respuesta.
+Este archivo queda identificado como excepción de conversión. La consulta
+del registro se ejecutó en transacción de solo lectura y el proceso solo
+escribió derivados en `_variants`.
+
+El Worker publicado es `f7b5df4c-180d-4a72-bdb0-aea72d93f2d9`.
+Responde directamente las consultas CORS previas de GET/HEAD del dominio web
+de producción para las cabeceras permitidas de lectura. El navegador puede
+reutilizar esa autorización previa durante 600 segundos. Cada lectura real
+se autoriza en Ubuntu antes de entregar bytes del bucket privado. El Worker
+añade tiempos separados de autorización en origen y consulta al bucket.
+Pasaron diez pruebas de almacenamiento y Worker. Se comprobó en producción
+un rango autorizado `206` desde R2 y una sesión inválida `401`.
+
+En cinco mediciones de la consulta previa, el intervalo observado pasó de
+0,68–1,71 s a 0,43–0,47 s. Estas cifras miden OPTIONS en esa conexión. El
+tiempo completo de una imagen o video también incluye autorización,
+transferencia y decodificación. Una respuesta de video registró 343 ms en
+el origen y 173 ms en la lectura de R2.
+
+Vercel publicó `dpl_3TnSMViAo8Q4QK4ZVSprhhCqFhoq`, servido como
+`red-social-android-6zrbx2kta-alvaro-s-projects1.vercel.app`. Chrome verificó
+el dominio público, el reproductor con `readyState=4`, cinco respuestas `200`
+y una `206` de R2 mediante service worker, y una foto de perfil decodificada
+de 160 píxeles. El primer ensayo agotó su espera durante el arranque de la
+sesión nueva. La inspección posterior encontró tres videos listos y cero
+errores de consola, y el nuevo ensayo conectado aprobó. El punto previo de
+reversión de Vercel es
+`red-social-android-1150ophh0-alvaro-s-projects1.vercel.app`.
+
+Se consultaron las instrucciones oficiales de Cloudflare sobre ubicación de
+R2, Placement y Cache API. Las sugerencias de ubicación de bucket se aplican
+al crearlo. Smart Placement necesita tráfico y mediciones para decidir dónde
+ejecutar el Worker. Cache API requiere dominio propio o ruta y carece de
+efecto en el despliegue actual `workers.dev`. La optimización de esta ronda
+consiste en las miniaturas, la prioridad de carga y la consulta previa
+resuelta en el Worker. Fuentes consultadas el 2 de noviembre de 2026.
+[Ubicación de R2](https://developers.cloudflare.com/r2/reference/data-location/),
+[Placement](https://developers.cloudflare.com/workers/configuration/placement/),
+[Cache API](https://developers.cloudflare.com/r2/examples/cache-api/).
+
+La revisión integral sigue abierta. La validación física y la publicación de
+Android en Google Play corresponden al propietario.
+
 ## Entrega verificada desde Cloudflare, 2 de noviembre de 2026
 
 La API `novvin-r2-edge-http-20261102` añade únicamente el soporte R2 a la

@@ -1489,15 +1489,17 @@ async function writeValidatedStoredObject(pool, req, options) {
   if (backupPath) await fs.promises.rm(backupPath, { force: true }).catch(() => {})
 
   if (transformableImageTypes.has(validated.contentType)) {
+    // Prepare the sizes used by the web and Android profile avatars.
+    const previews = bucket === 'avatars' && validated.contentType !== 'image/webp'
+      ? [{ width: 160, quality: 78 }, { width: 384, quality: 86 }]
+      : [{ width: 1080, quality: 78 }]
     // Generate the preview as soon as the upload is accepted. It runs in the
     // background and shares the same in-flight job with an immediate GET, so
     // browsing does not pay the full conversion cost several seconds later.
     fs.promises.stat(destination)
-      .then((stat) => ensureImageVariant(bucket, objectPath, destination, stat, {
-        width: 1080,
-        quality: 78,
-        format: 'webp',
-      }))
+      .then((stat) => Promise.all(previews.map((preview) =>
+        ensureImageVariant(bucket, objectPath, destination, stat, { ...preview, format: 'webp' })
+      )))
       .catch((error) => {
         console.warn('[storage] image preview prewarm failed', {
           bucket,
