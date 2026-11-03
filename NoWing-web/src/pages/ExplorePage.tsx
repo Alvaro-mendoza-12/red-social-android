@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { StreamingImage, StreamingVideo } from '../components/StreamingMedia'
 import { SafeAvatar } from '../components/SafeAvatar'
 import { StatusView } from '../components/StatusView'
-import { loadGuestContent, stopGuestBrowsing, type GuestKind } from '../core/auth/guestAccess'
+import { loadGuestContent, type GuestKind } from '../core/auth/guestAccess'
 import { resolveSupabasePublicUrl } from '../core/supabase'
 import { textOf, type GenericRow } from '../core/utils'
 import { mixBasicVideoSession } from '../core/videoRecommendations'
@@ -55,7 +55,6 @@ function GuestAuthor({ id, name }: { id: string; name: string }) {
 
 export function ExplorePage() {
   const params = useParams()
-  useEffect(() => () => stopGuestBrowsing(), [])
   return <ExploreContent key={`${params.kind}/${params.id}`} />
 }
 function ExploreContent() {
