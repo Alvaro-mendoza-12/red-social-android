@@ -1,8 +1,11 @@
 package conectate.com.data.supabase
 
 internal class AuthSessionLease internal constructor(
-    val accountId: String?, private val matches: () -> Boolean,
+    val accountId: String?,
+    private val ownerGuard: AuthSessionMutationGuard? = null,
+    private val matches: () -> Boolean,
 ) {
+    internal fun isOwnedBy(guard: AuthSessionMutationGuard): Boolean = ownerGuard === guard
     fun isCurrent(): Boolean = accountId != null && matches()
     fun requireCurrent() {
         if (!isCurrent()) throw kotlinx.coroutines.CancellationException("La sesión cambió. Vuelve a abrir este apartado.")
@@ -16,10 +19,17 @@ internal class AuthSessionMutationGuard {
 
     fun captureAccountLease(currentAccount: () -> String?): AuthSessionLease = synchronized(lock) {
         val expected = generation
-        val account = currentAccount()?.trim()?.lowercase()?.takeIf(String::isNotBlank)
-        AuthSessionLease(account) {
-            commitIfCurrent(expected, eligible = { account != null && account.equals(currentAccount(), ignoreCase = true) }) {}
+        val account = currentAccount()?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf(String::isNotBlank)
+        AuthSessionLease(account, this) {
+            commitIfCurrent(expected, eligible = { account != null && account.equals(currentAccount()?.trim(), ignoreCase = true) }) {}
         }
+    }
+
+    /** Local non-suspending writes share the same lock as a login/logout, including ABA checks. */
+    fun commitForLease(lease: AuthSessionLease, mutation: () -> Unit): Boolean = synchronized(lock) {
+        if (!lease.isOwnedBy(this) || !lease.isCurrent()) return@synchronized false
+        mutation()
+        true
     }
 
     internal class Transition internal constructor(

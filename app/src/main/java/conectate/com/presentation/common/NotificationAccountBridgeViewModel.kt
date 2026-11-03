@@ -62,7 +62,7 @@ class NotificationAccountBridgeViewModel @Inject constructor(
             opening.wrongAccount()
             return
         }
-        opening.complete(lease, destinationRoute, multiAccountInboxRepository::acknowledgeCurrentAccount)
+        opening.complete(lease, destinationRoute) { multiAccountInboxRepository.acknowledgeCurrentAccount(lease) }
     }
 
     internal fun observeRestoredSignInSession(

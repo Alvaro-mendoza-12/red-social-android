@@ -205,6 +205,9 @@ class AuthService @Inject constructor(
 
     internal fun captureAccountLease(): AuthSessionLease = localSessionMutationGuard.captureAccountLease(::getCurrentUserId)
 
+    internal fun commitForAccountLease(lease: AuthSessionLease, mutation: () -> Unit): Boolean =
+        localSessionMutationGuard.commitForLease(lease, mutation)
+
     internal fun commitAccountDeletion(notice: conectate.com.data.auth.AccountDeletionNotice, onDelete: () -> Unit): Boolean =
         notice.commitIfCurrent(localSessionMutationGuard, ::getCurrentUserId, ::getAccessToken, onDelete)
 

@@ -7,6 +7,71 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 class AuthSessionMutationGuardTest {
+    @Test fun leaseMutationRejectsAnOldVisitEvenAfterReturningToTheSameAccount() {
+        val guard = AuthSessionMutationGuard()
+        var account = "a"
+        val pending = mutableMapOf("a" to 3, "b" to 5)
+        val lease = guard.captureAccountLease { account }
+        guard.invalidate { account = "b" }
+        guard.invalidate { account = "a" }
+        assertFalse(guard.commitForLease(lease) { pending[account] = 0 })
+        assertEquals(mapOf("a" to 3, "b" to 5), pending)
+        val current = guard.captureAccountLease { account }
+        assertTrue(guard.commitForLease(current) { pending[account] = 0 })
+        assertEquals(mapOf("a" to 0, "b" to 5), pending)
+    }
+
+    @Test fun aForeignOrReadOnlyLeaseCannotAuthorizeAnotherGuardsWrites() {
+        val guard = AuthSessionMutationGuard()
+        val foreign = AuthSessionMutationGuard().captureAccountLease { "a" }
+        val readOnly = AuthSessionLease("a") { true }
+        var written = false
+        assertTrue(foreign.isCurrent())
+        assertTrue(readOnly.isCurrent())
+        assertFalse(guard.commitForLease(foreign) { written = true })
+        assertFalse(guard.commitForLease(readOnly) { written = true })
+        assertFalse(written)
+    }
+
+    @Test fun loginCannotChangeTheOwnerBetweenCheckingItsLeaseAndClearingItsHints() {
+        val guard = AuthSessionMutationGuard()
+        var account = "a"
+        var acknowledged: String? = null
+        val lease = guard.captureAccountLease { account }
+        val writing = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val loginStarted = CountDownLatch(1)
+        val loginCommitted = CountDownLatch(1)
+        val workers = Executors.newFixedThreadPool(2)
+        try {
+            val acknowledgement = workers.submit<Boolean> {
+                guard.commitForLease(lease) {
+                    writing.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                    acknowledged = account
+                }
+            }
+            assertTrue(writing.await(5, TimeUnit.SECONDS))
+            val login = workers.submit {
+                loginStarted.countDown()
+                guard.invalidate { account = "b" }
+                loginCommitted.countDown()
+            }
+            assertTrue(loginStarted.await(5, TimeUnit.SECONDS))
+            assertFalse(loginCommitted.await(100, TimeUnit.MILLISECONDS))
+            release.countDown()
+            assertTrue(acknowledgement.get(5, TimeUnit.SECONDS))
+            login.get(5, TimeUnit.SECONDS)
+            assertEquals("a", acknowledged)
+            assertEquals("b", account)
+            assertFalse(guard.commitForLease(lease) { acknowledged = account })
+        } finally {
+            release.countDown()
+            workers.shutdownNow()
+            workers.awaitTermination(5, TimeUnit.SECONDS)
+        }
+    }
+
     @Test fun anAccountLeaseSurvivesBackgroundRenewalButNotAnExplicitLoginOfTheSameIdentity() {
         val guard = AuthSessionMutationGuard()
         var account: String? = "a"
