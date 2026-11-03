@@ -2,6 +2,7 @@ package conectate.com.core.media
 
 import android.content.Context
 import coil.request.ImageRequest
+import conectate.com.data.localfallback.UbuntuStorageUrl
 import java.util.Locale
 
 internal fun isVideoProfileAvatar(source: String?, mediaType: String?): Boolean {
@@ -30,6 +31,20 @@ internal fun profileAvatarImageRequest(
     } else {
         MediaImageRequestFactory.avatar(context, source)
     }
+}
+
+internal fun profileAvatarPosterRequest(context: Context, source: String?, mediaType: String?): ImageRequest? {
+    if (!isVideoProfileAvatar(source, mediaType)) return null
+    val preview = MediaImageRequestFactory.avatarUrl(source) ?: return null
+    if (!preview.startsWith("${UbuntuStorageUrl.baseUrl.trimEnd('/')}/storage/v1/object/public/avatars/")) return null
+    val poster = "$preview&poster=1"
+    val key = UbuntuStorageUrl.stableCacheKey(poster)
+    return MediaImageRequestFactory.avatar(context, source)?.newBuilder()
+        ?.data(poster)
+        ?.memoryCacheKey(key)
+        ?.diskCacheKey(key)
+        ?.setParameter(MediaImageRequestFactory.AVATAR_THUMBNAIL, true)
+        ?.build()
 }
 
 private fun String?.avatarPath(): String = this
