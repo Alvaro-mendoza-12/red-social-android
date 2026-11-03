@@ -50,6 +50,11 @@ al compilar Android. Los dos valores son una URL pública del Worker. Las
 claves S3 y el secreto de la consulta privada permanecen en el servidor y en
 Cloudflare según su uso.
 
+El candidato Android `9.1.35-qa` (175) se compiló con el origen multimedia
+habilitado. Se verificaron la firma APK, la alineación de 16 KiB y la presencia
+del origen del Worker en el APK. La variante se instala como `conectate.com.qa`.
+La validación en dispositivo y la entrega en Google Play se registran aparte.
+
 En tres lecturas del mismo video completo de 7.266.761 bytes desde Windows
 por la red privada, Ubuntu tardó entre 0,93 y 1,05 s y R2 entre 4,88 y 7,36 s.
 Esta comparación corresponde a una conexión con acceso directo a Ubuntu por
@@ -87,6 +92,15 @@ origen tenía 1.008 registros limpios y 235 históricos sin verificación. Se
 observó `ETIMEDOUT` al conectar al endpoint S3 durante una tanda, seguido de
 respuestas del endpoint al recuperarse. El diario conserva el siguiente
 reintento de los objetos pendientes.
+
+Durante otra pausa, la conexión directa del host a S3 respondió por IPv6
+mientras IPv4 agotaba el tiempo de espera. El replicador conservó su red
+predeterminada para PostgreSQL y recibió una red puente IPv6 dedicada de
+Docker, `novvin-r2-egress`. Un contenedor aislado y luego el replicador activo
+verificaron la consulta PostgreSQL y un objeto real mediante S3 autenticado.
+El diario registró nuevas copias después del cambio. La red quedó declarada
+en Compose para ese servicio. La copia previa de la configuración está en
+`r2-mirror-ipv6.eCRgHBvL`.
 
 La cuenta carece de una zona DNS disponible. Se publicó el Worker independiente
 en `workers.dev`, fijado al origen HTTPS de Ubuntu y limitado a lecturas de
