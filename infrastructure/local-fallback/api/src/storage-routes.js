@@ -376,8 +376,8 @@ function storageCacheControl(objectPath) {
     : 'public, max-age=300, stale-while-revalidate=86400, must-revalidate'
 }
 
-function requestedImageVariant(query, contentType) {
-  return normalizeImageVariant(query, canonicalContentType(contentType))
+function requestedImageVariant(query, contentType, bucket) {
+  return normalizeImageVariant(query, canonicalContentType(contentType), ['avatars', 'groups', 'communities'].includes(bucket) && (bucket === 'avatars' || !String(contentType).startsWith('video/')))
 }
 
 function objectVariantDirectory(bucket, objectPath) {
@@ -389,18 +389,35 @@ async function removeImageVariants(bucket, objectPath) {
   await fs.promises.rm(objectVariantDirectory(bucket, objectPath), { recursive: true, force: true })
 }
 
-async function createImageVariant(inputPath, outputPath, variant) {
-  await sharp(inputPath, { limitInputPixels: 50_000_000 })
-    .timeout({ seconds: 10 })
-    .rotate()
-    .resize({ width: variant.width, fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: variant.quality, effort: 2 })
-    .toFile(outputPath)
-}
-
+async function createFrameVariant(inputPath, outputPath, variant) {
+  await execFileAsync('ffmpeg', [
+    '-hide_banner', '-loglevel', 'error', '-y', '-threads', '1',
+    '-i', inputPath, '-frames:v', '1', '-an',
+    '-vf', `scale=w='min(${variant.width},iw)':h=-2`, '-c:v', 'libwebp',
+    '-quality', String(variant.quality), '-threads', '1', '-f', 'webp', outputPath,
+  ], { timeout: 10_000, maxBuffer: 1024 * 1024 })
+}
+
+async function createImageVariant(inputPath, outputPath, variant) {
+  if (variant.poster) return createFrameVariant(inputPath, outputPath, variant)
+  try {
+    await sharp(inputPath, { limitInputPixels: 50_000_000, animated: variant.animated === true })
+      .timeout({ seconds: 10 })
+      .rotate()
+      .resize({ width: variant.width, fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: variant.quality, effort: 2 })
+      .toFile(outputPath)
+  } catch (error) {
+    // A legacy sequential JPEG can be decodable despite inconsistent scan flags.
+    // Use the bounded frame decoder for this exact header error and keep the source.
+    if (variant.animated || !String(error.message).includes('VipsJpeg: Invalid SOS parameters for sequential JPEG')) throw error
+    await createFrameVariant(inputPath, outputPath, variant)
+  }
+}
+
 async function ensureImageVariant(bucket, objectPath, filePath, stat, variant) {
   const directory = objectVariantDirectory(bucket, objectPath)
-  const identity = `${stat.size}-${Math.trunc(stat.mtimeMs)}-${variant.width}-${variant.quality}`
+  const identity = `${stat.size}-${Math.trunc(stat.mtimeMs)}-${variant.poster ? "poster-" : variant.animated ? "animated-" : ""}${variant.width}-${variant.quality}`
   const outputPath = path.join(directory, `${identity}.webp`)
   if (await fs.promises.access(outputPath, fs.constants.R_OK).then(() => true).catch(() => false)) {
     return outputPath
@@ -1488,10 +1505,13 @@ async function writeValidatedStoredObject(pool, req, options) {
   }
   if (backupPath) await fs.promises.rm(backupPath, { force: true }).catch(() => {})
 
-  if (transformableImageTypes.has(validated.contentType)) {
+  const identityImage = ['avatars', 'groups', 'communities'].includes(bucket)
+  const avatarVideo = bucket === 'avatars' && validated.contentType.startsWith('video/')
+  if (transformableImageTypes.has(validated.contentType) || avatarVideo) {
     // Prepare the sizes used by the web and Android profile avatars.
-    const previews = bucket === 'avatars' && validated.contentType !== 'image/webp'
-      ? [{ width: 160, quality: 78 }, { width: 384, quality: 86 }]
+    const previews = identityImage && validated.contentType !== 'image/webp'
+      ? [{ width: 160, quality: 78 }, { width: 384, quality: 86 }].map(preview =>
+        avatarVideo ? { ...preview, poster: true } : preview)
       : [{ width: 1080, quality: 78 }]
     // Generate the preview as soon as the upload is accepted. It runs in the
     // background and shares the same in-flight job with an immediate GET, so
@@ -1538,7 +1558,7 @@ async function serveStoredObject(pool, req, res, bucketParam, pathParam, coordin
   const filePath = storedObjectFilePath(row, bucket, objectPath)
   await fs.promises.access(filePath, fs.constants.R_OK)
   const stat = await fs.promises.stat(filePath)
-  const requestedVariant = requestedImageVariant(req.query, row?.content_type)
+  const requestedVariant = requestedImageVariant(req.query, row?.content_type, bucket)
   const { responsePath, servedVariant, variantError } = await resolveImageVariantResponse({
     bucket,
     objectPath,
@@ -1558,7 +1578,7 @@ async function serveStoredObject(pool, req, res, bucketParam, pathParam, coordin
   const responseStat = servedVariant ? await fs.promises.stat(responsePath) : stat
   const lastModified = row?.updated_at ? new Date(row.updated_at) : stat.mtime
   const variantIdentity = servedVariant
-    ? `:${servedVariant.width}:${servedVariant.quality}:${servedVariant.format}`
+    ? `:${servedVariant.width}:${servedVariant.quality}:${servedVariant.format}${servedVariant.poster ? ":poster" : servedVariant.animated ? ":animated" : ""}`
     : ''
   const etag = `"${Buffer.from(`${bucket}:${objectPath}:${row?.object_revision || "legacy"}:${row?.scan_sha256 || ""}:${stat.size}:${Math.trunc(stat.mtimeMs)}${variantIdentity}`).toString('base64url')}"`
   res.setHeader('Access-Control-Allow-Origin', '*')

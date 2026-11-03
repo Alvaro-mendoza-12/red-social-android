@@ -125,6 +125,10 @@
 .social-page .feed-head .identity-link>span:not(.safe-avatar) { min-width: 0; }
 .social-page .feed-head strong { overflow: hidden; text-overflow: ellipsis; }
 .social-page .feed-card .feed-media { min-height: 80px; max-height: min(760px,85dvh); }
+.social-page .feed-media-open { display: flex; justify-content: center; background: var(--surface); line-height: 0; }
+.social-page .feed-media-open > .feed-media:not(.feed-media-grid-item) { width: auto; max-width: 100%; height: auto; }
+.conversation-scroll { scrollbar-width: none; }
+.conversation-scroll::-webkit-scrollbar { display: none; }
 .social-page .feed-stats { gap: 14px; }
 .settings-page-shell #privacidad-ajustes>.composer { gap: 20px; padding-top: 10px; }
 .settings-privacy-field { display: grid; gap: 8px; font-size: 14px; font-weight: 600; }

@@ -50,10 +50,10 @@ function useSource(raw?: string, retryKey = 0) {
   const loaded = useCallback(() => loadedRef.current(), [])
   return { url: !protectedSource ? source || undefined : ready?.source === source && ready.identity === identity ? ready.url : cachedBrowserStreamingSource(source, identity), unavailable: unavailable?.source === source && unavailable.identity === identity && unavailable.retryKey === retryKey, retry, loaded }
 }
-export const StreamingImage = forwardRef<HTMLImageElement, ImgHTMLAttributes<HTMLImageElement> & { onSourceUnavailable?: () => void }>(function StreamingImage({ src, onError, onLoad, onSourceUnavailable, ...props }, ref) {
+export const StreamingImage = forwardRef<HTMLImageElement, ImgHTMLAttributes<HTMLImageElement> & { onSourceUnavailable?: () => void; pendingSrc?: string }>(function StreamingImage({ src, onError, onLoad, onSourceUnavailable, pendingSrc, ...props }, ref) {
   const source = useSource(src)
   useEffect(() => { if (source.unavailable) onSourceUnavailable?.() }, [source.unavailable, onSourceUnavailable])
-  return <img {...props} ref={ref} src={source.url} onLoad={event => { source.loaded(); onLoad?.(event) }} onError={event => { if (!source.retry()) onError?.(event) }} data-novvin-media={src ? '' : undefined} />
+  return <img {...props} ref={ref} src={source.url || pendingSrc} onLoad={event => { if (source.url) { source.loaded(); onLoad?.(event) } }} onError={event => { if (!source.retry()) onError?.(event) }} data-novvin-media={src ? '' : undefined} />
 })
 export const StreamingVideo = forwardRef<HTMLVideoElement, VideoHTMLAttributes<HTMLVideoElement> & { onSourceUnavailable?: () => void; retryKey?: number }>(function StreamingVideo({ src, poster, onError, onLoadedData, onSourceUnavailable, retryKey, ...props }, ref) {
   const source = useSource(src, retryKey)

@@ -1728,37 +1728,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           </div>
         </main>
 
-        <aside className="voice-room-side-panel">
-          <section className="voice-side-section voice-chat-section">
-            <button type="button" className="voice-chat-heading" aria-expanded={chatOpen} onClick={() => setChatOpen(value => !value)}><MessageCircle size={18}/><strong>Chat de la sala</strong>{chatUnread > 0 ? <span>{chatUnread}</span> : null}</button>
-            {chatOpen ? <>
-              <div className="voice-chat-messages" role="log" aria-label="Mensajes de la sala" aria-live="polite">
-                {!chatMessages.length ? <p className="voice-room-subtle">Los mensajes de esta sesión aparecen aquí al entrar en la sala.</p> : null}
-                {chatMessages.map(message => <article key={`${message.userId}:${message.id}`} className={message.userId === user?.id ? 'own' : ''}><header><strong>{message.userId === user?.id ? 'Tú' : message.userName}</strong><time>{new Date(message.timestamp).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}</time>{message.userId === user?.id ? <details className="voice-message-menu"><summary aria-label="Opciones del mensaje"><MoreHorizontal size={17}/></summary><button type="button" disabled={!signalingReady} onClick={() => removeRoomMessage(message)}><Trash2 size={15}/>Eliminar para todos</button></details> : null}</header>{message.imageData ? <RoomChatPhoto source={message.imageData} author={message.userName} active={!minimized && chatOpen} /> : null}<MessageText text={message.text}/>{message.delivery === 'sending' ? <small role="status">Enviando…</small> : message.delivery === 'failed' ? <button type="button" className="voice-message-retry" onClick={() => dispatchRoomMessage(message)}>Reintentar envío</button> : null}</article>)}
-                <div ref={chatEndRef}/>
-              </div>
-              <form className="voice-chat-composer" onSubmit={event => {
-                event.preventDefault()
-                if (!photoBusy) sendRoomMessage(chatDraft, chatPhoto, true)
-              }} onPaste={event => {
-                const file = firstRoomClipboardImage(event.clipboardData.items)
-                if (!file) return
-                event.preventDefault()
-                void prepareChatPhoto(file)
-              }}>
-                <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={event => {
-                  const file = event.target.files?.[0]; event.target.value = ''; if (file) void prepareChatPhoto(file)
-                }} />
-                {chatPhoto ? <div className="voice-photo-draft"><img src={chatPhoto} alt="Foto lista para enviar" /><button type="button" aria-label="Cancelar foto" onClick={() => { photoOperation.current++; setChatPhoto(''); setPhotoError('') }}><X size={18}/></button></div> : null}
-                <button type="button" title="Añadir foto" aria-label="Añadir foto a la sala" disabled={!isJoined || !signalingReady || photoBusy} onClick={() => photoInput.current?.click()}><ImagePlus size={18}/></button>
-                <input aria-label="Mensaje para la sala" placeholder={isJoined ? signalingReady ? 'Escribe un mensaje…' : 'Conectando chat…' : 'Únete para escribir'} spellCheck lang="es" maxLength={2000} value={chatDraft} disabled={!isJoined || !signalingReady} onChange={event => setChatDraft(event.target.value)}/>
-                <button type="submit" aria-label="Enviar mensaje a la sala" disabled={!isJoined || !signalingReady || photoBusy || (!chatDraft.trim() && !chatPhoto)}><Send size={18}/></button>
-              </form>
-              {photoBusy ? <div className="voice-photo-preparing" role="status"><small>Preparando foto…</small><button type="button" onClick={() => { photoOperation.current++; setPhotoBusy(false); setChatPhoto('') }}>Cancelar</button></div> : null}
-              {photoError ? <p role="alert">{photoError}</p> : null}
-              <small className="voice-chat-retention">Chat temporal: los mensajes y las fotos desaparecen a los 90 minutos.</small>
-            </> : null}
-          </section>
+        <div className="voice-room-info-grid" aria-label="Información de la sala">
           <section className="voice-side-section">
             <small>Detalle</small>
             <h3>{room.title}</h3>
@@ -1800,6 +1770,39 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
               <span className={socketRef.current?.connected ? 'active' : ''} />
               <span className={connectedPeerCount > 0 ? 'active' : ''} />
             </div>
+          </section>
+        </div>
+
+        <aside className="voice-room-side-panel">
+          <section className="voice-side-section voice-chat-section">
+            <button type="button" className="voice-chat-heading" aria-expanded={chatOpen} onClick={() => setChatOpen(value => !value)}><MessageCircle size={18}/><strong>Chat de la sala</strong>{chatUnread > 0 ? <span>{chatUnread}</span> : null}</button>
+            {chatOpen ? <>
+              <div className="voice-chat-messages" role="log" aria-label="Mensajes de la sala" aria-live="polite">
+                {!chatMessages.length ? <p className="voice-room-subtle">Los mensajes de esta sesión aparecen aquí al entrar en la sala.</p> : null}
+                {chatMessages.map(message => <article key={`${message.userId}:${message.id}`} className={message.userId === user?.id ? 'own' : ''}><header><strong>{message.userId === user?.id ? 'Tú' : message.userName}</strong><time>{new Date(message.timestamp).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}</time>{message.userId === user?.id ? <details className="voice-message-menu"><summary aria-label="Opciones del mensaje"><MoreHorizontal size={17}/></summary><button type="button" disabled={!signalingReady} onClick={() => removeRoomMessage(message)}><Trash2 size={15}/>Eliminar para todos</button></details> : null}</header>{message.imageData ? <RoomChatPhoto source={message.imageData} author={message.userName} active={!minimized && chatOpen} /> : null}<MessageText text={message.text}/>{message.delivery === 'sending' ? <small role="status">Enviando…</small> : message.delivery === 'failed' ? <button type="button" className="voice-message-retry" onClick={() => dispatchRoomMessage(message)}>Reintentar envío</button> : null}</article>)}
+                <div ref={chatEndRef}/>
+              </div>
+              <form className="voice-chat-composer" onSubmit={event => {
+                event.preventDefault()
+                if (!photoBusy) sendRoomMessage(chatDraft, chatPhoto, true)
+              }} onPaste={event => {
+                const file = firstRoomClipboardImage(event.clipboardData.items)
+                if (!file) return
+                event.preventDefault()
+                void prepareChatPhoto(file)
+              }}>
+                <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={event => {
+                  const file = event.target.files?.[0]; event.target.value = ''; if (file) void prepareChatPhoto(file)
+                }} />
+                {chatPhoto ? <div className="voice-photo-draft"><img src={chatPhoto} alt="Foto lista para enviar" /><button type="button" aria-label="Cancelar foto" onClick={() => { photoOperation.current++; setChatPhoto(''); setPhotoError('') }}><X size={18}/></button></div> : null}
+                <button type="button" title="Añadir foto" aria-label="Añadir foto a la sala" disabled={!isJoined || !signalingReady || photoBusy} onClick={() => photoInput.current?.click()}><ImagePlus size={18}/></button>
+                <input aria-label="Mensaje para la sala" placeholder={isJoined ? signalingReady ? 'Escribe un mensaje…' : 'Conectando chat…' : 'Únete para escribir'} spellCheck lang="es" maxLength={2000} value={chatDraft} disabled={!isJoined || !signalingReady} onChange={event => setChatDraft(event.target.value)}/>
+                <button type="submit" aria-label="Enviar mensaje a la sala" disabled={!isJoined || !signalingReady || photoBusy || (!chatDraft.trim() && !chatPhoto)}><Send size={18}/></button>
+              </form>
+              {photoBusy ? <div className="voice-photo-preparing" role="status"><small>Preparando foto…</small><button type="button" onClick={() => { photoOperation.current++; setPhotoBusy(false); setChatPhoto('') }}>Cancelar</button></div> : null}
+              {photoError ? <p role="alert">{photoError}</p> : null}
+              <small className="voice-chat-retention">Los mensajes y las fotos se eliminan al cumplir una hora.</small>
+            </> : null}
           </section>
         </aside>
       </div>

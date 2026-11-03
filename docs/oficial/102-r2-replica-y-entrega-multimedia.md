@@ -1,5 +1,56 @@
 # R2: réplica y entrega multimedia
 
+## Avatares animados y chat de voz, 2 de noviembre de 2026
+
+La preparación de medios revisó 140 objetos limpios de perfiles, grupos y
+comunidades y dejó 280 variantes disponibles, sin fallos. El único archivo
+GIF/WebP del conjunto ocupa 359.750 bytes. Su variante web de 160 píxeles
+ocupa 5.074 bytes. Las variantes con `animated=1` conservan los fotogramas y
+sus tiempos. Las doce portadas de los seis avatares de video ocupan 105.388
+bytes en total. Las solicitudes normales del original conservan su contrato
+de reproducción. Los GIF/WebP externos siguen su contrato de origen.
+
+El JPEG histórico con cabecera SOS inconsistente ya admite una miniatura de
+3.190 bytes. El generador usa el decodificador de fotogramas acotado para ese
+error concreto. La prueba comprueba que el original conserva su hash. La
+prueba de animación comprueba múltiples fotogramas y sus tiempos, y la prueba
+HTTP comprueba imagen derivada autorizada, rechazo sin permiso y rango del
+video original. La interpretación de animación se contrastó con las
+[instrucciones de sharp](https://sharp.pixelplumbing.com/api-constructor/).
+
+La web pide variantes pequeñas para avatares GIF/WebP propios, prioriza los
+dos primeros autores de Social y reutiliza imágenes y clips cortos en una
+caché acotada por cuenta y generación de sesión. Al cargar una foto conserva
+una fuente de imagen válida en el elemento. Se compactó la sala de voz,
+moviendo información bajo el escenario y conservando el chat a la derecha.
+Las barras de desplazamiento de conversaciones y chat de voz están ocultas,
+con el desplazamiento disponible. La validación visual se registra aparte.
+
+El chat de voz vence al cumplir 60 minutos desde el envío. Android y web
+limitan también los mensajes que conservaban un plazo anterior de 90 minutos.
+El servidor conserva el vencimiento inicial en reintentos y retransmisiones
+entre nodos. Su diario en memoria guarda metadatos de entrega. El texto y los
+JPEG pequeños viajan por el canal temporal y Pub/Sub, sin crear objetos de
+storage o réplicas R2. La limpieza de Redis elimina los eventos de chat
+antiguos que hubieran quedado en Streams de una versión previa.
+
+La API activa es `novvin-api:r2-animated-thumbnails-20261102`, con imagen
+`sha256:5aaac072246f67f658199ee9eba2b7b5a93e861bcf13c4d8f3bf7707f031c256`.
+Señalización usa `novvin-signaling:room-chat-hour-20261102`, con imagen
+`sha256:543dd35388d8ac727985fd90eb79242acb489a54b350251c64ad884a90c37808`.
+Ambos servicios aprobaron disponibilidad después de recrearse. La copia
+anterior de Compose está en
+`/home/alvaro/.config/novvin/media-hour-deploy.5wmU7u3u/`.
+Se compararon las fuentes previas de señalización con Git antes de aplicar
+la capa que cambia el plazo y sus comprobaciones periódicas.
+
+Pasaron 128 pruebas web seleccionadas y 16 del service worker. Pasaron 79
+pruebas de API en Linux con ffmpeg y 12 de señalización, sin fallos ni casos
+omitidos. Pasó el build web con sus comprobaciones de SEO. Android 9.1.38 /
+178 incorpora las portadas de avatar y el plazo de una hora. Su paquete y las
+comprobaciones finales se registran al terminar su construcción. La entrega
+177 previa a esta nueva política queda sustituida por ese candidato.
+
 ## Avatares y latencia, 2 de noviembre de 2026
 
 Android evita descargar en segundo plano el original completo después de

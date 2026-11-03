@@ -46,6 +46,29 @@ test('a previously loaded avatar returns on the first render without another tra
   expect(readBoundedStorageBlob).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://owned.test/photo.png?width=160' }))
 })
 
+test('a pending photo has a valid placeholder instead of an empty broken image source', () => {
+  ;(readBoundedStorageBlob as jest.Mock).mockImplementation(() => new Promise(() => {}))
+  render(<SafeAvatar url="https://owned.test/pending.png" name="Pendiente" />)
+  expect(screen.getByRole('img', { name: 'Pendiente' })).toHaveAttribute('src', expect.stringMatching(/^data:image\//))
+})
+
+test('a short animated profile keeps its video when returning to a tab and clears it on account changes', async () => {
+  ;(readBoundedStorageBlob as jest.Mock).mockImplementation(async ({ url }) =>
+    new Blob(['avatar'], { type: url.includes('poster=1') ? 'image/webp' : 'video/mp4' }))
+  const avatar = <SafeAvatar url="https://owned.test/storage/v1/object/public/avatars/person/clip.mp4" name="Animado" />
+  const first = render(avatar)
+  await waitFor(() => expect(first.container.querySelector('video')).toHaveAttribute('src', expect.stringMatching(/^blob:/)))
+  const source = first.container.querySelector('video')!.getAttribute('src')
+  const calls = (readBoundedStorageBlob as jest.Mock).mock.calls.length
+  first.unmount()
+  const next = render(avatar)
+  expect(next.container.querySelector('video')).toHaveAttribute('src', source)
+  expect(readBoundedStorageBlob).toHaveBeenCalledTimes(calls)
+  act(() => updateStorageReadIdentity('account-b', 'fallback'))
+  expect(next.container.querySelector('video')).not.toHaveAttribute('src', source)
+  await waitFor(() => expect(readBoundedStorageBlob).toHaveBeenCalledTimes(calls + 2))
+})
+
 test('the profile photo starts immediately while a list avatar waits for visibility', async () => {
   const observe = jest.fn()
   const observer = jest.fn(() => ({ observe, disconnect: jest.fn() }))
@@ -79,6 +102,15 @@ test('animated avatar bytes retain their original source instead of a static thu
   render(<SafeAvatar url="https://owned.test/animated.gif" name="Animado" />)
   await waitFor(() => expect(screen.getByRole('img', { name: 'Animado' }).getAttribute('src')).toMatch(/^blob:/))
   expect(readBoundedStorageBlob).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://owned.test/animated.gif' }))
+})
+
+test('owned GIF avatars request a small variant that explicitly preserves their animation', async () => {
+  ;(readBoundedStorageBlob as jest.Mock).mockResolvedValue(new Blob(['animated-webp'], { type: 'image/webp' }))
+  render(<SafeAvatar url="https://owned.test/storage/v1/object/public/avatars/member/animated.gif" name="Animación" />)
+  await waitFor(() => expect(screen.getByRole('img', { name: 'Animación' }).getAttribute('src')).toMatch(/^blob:/))
+  expect(readBoundedStorageBlob).toHaveBeenCalledWith(expect.objectContaining({
+    url: expect.stringMatching(/animated\.gif\?width=160&animated=1$/),
+  }))
 })
 
 test('failure before a streaming source is assigned reaches accessible initials', async () => {

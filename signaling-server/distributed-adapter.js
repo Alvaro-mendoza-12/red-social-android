@@ -165,7 +165,7 @@ async function connectDistributedAdapter(io, options = {}) {
             finally { pruning = false; }
         };
         void cleanup();
-        chatCleanupTimer = setInterval(cleanup, 60000);
+        chatCleanupTimer = setInterval(cleanup, 10000);
         chatCleanupTimer.unref?.();
         logger.info?.('[SIGNALING_REDIS] Redis Streams adapter connected');
     });

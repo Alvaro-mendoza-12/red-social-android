@@ -1,4 +1,4 @@
-import { readCachedStorageImage } from '../../core/media/imagePreviewCache'
+import { readCachedStorageImage, readCachedAvatarVideo } from '../../core/media/imagePreviewCache'
 import { readBoundedStorageBlob } from '../../core/media/boundedStorageRead'
 import { getStorageReadIdentity, invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 
@@ -7,6 +7,20 @@ const read = readBoundedStorageBlob as jest.MockedFunction<typeof readBoundedSto
 const options = () => ({ url: 'https://private.test/storage/v1/object/public/chat-media/a/sticker.webp', backendBase: 'https://private.test', identity: getStorageReadIdentity(), maxBytes: 16 * 1024 * 1024, getAccessToken: async () => 'synthetic-token', signal: new AbortController().signal })
 beforeEach(() => { read.mockReset(); updateStorageReadIdentity('account-a', 'fallback') })
 afterEach(() => { invalidateStorageReadIdentity(); jest.restoreAllMocks() })
+
+test('short avatar videos share their session cache and cannot populate the image cache', async () => {
+  const blob = new Blob(['short-avatar-video'], { type: 'video/mp4' })
+  read.mockResolvedValue(blob)
+  expect(await readCachedAvatarVideo(options())).toBe(blob)
+  expect(await readCachedAvatarVideo(options())).toBe(blob)
+  expect(read).toHaveBeenCalledTimes(1)
+  await readCachedStorageImage(options())
+  await readCachedStorageImage(options())
+  expect(read).toHaveBeenCalledTimes(3)
+  updateStorageReadIdentity('account-b', 'fallback')
+  await readCachedAvatarVideo(options())
+  expect(read).toHaveBeenCalledTimes(4)
+})
 
 test('reopening an image reuses its exact bytes and retry explicitly refreshes them', async () => {
   const blob = new Blob(['animated-webp'], { type: 'image/webp' })

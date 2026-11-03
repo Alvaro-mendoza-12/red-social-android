@@ -1,17 +1,25 @@
 import { StreamingImage, StreamingVideo } from '../components/StreamingMedia'
-import { useEffect, useRef, useState, useSyncExternalStore, type ImgHTMLAttributes } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ImgHTMLAttributes, type VideoHTMLAttributes } from 'react'
 import { isVideoAvatarSource } from '../core/profileMediaFields'
 import { rewriteRuntimeStorageUrl, runtimeStoragePreviewUrl } from '../core/runtimeBackend'
-import { cachedStorageImagePreview, readCachedStorageImage } from '../core/media/imagePreviewCache'
+import { cachedStorageImagePreview, readCachedStorageImage, readCachedAvatarVideo } from '../core/media/imagePreviewCache'
 import { STORAGE_PREVIEW_MAX_BYTES } from '../core/media/boundedStorageRead'
 import { prepareStorageReadAccessToken, trustedStorageBackend } from '../core/media/storageReadClient'
 import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../core/media/storageReadSession'
 
+const pendingImage = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='
+const avatarVideoMaxBytes = 8 * 1024 * 1024
+
 /** Reuse the existing account-scoped Blob cache, including its decoded browser resource. */
 export function CachedProfileImage({ src, mediaType, previewWidth = 160, onSourceUnavailable, ...props }: ImgHTMLAttributes<HTMLImageElement> & { src: string; mediaType: string; previewWidth?: number; onSourceUnavailable: () => void }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
-  const source = /\.(gif|webp|apng)(?:[?#]|$)/i.test(src) || /gif|webp|apng/i.test(mediaType)
-    ? rewriteRuntimeStorageUrl(src) : runtimeStoragePreviewUrl(src, previewWidth, 75)
+  const animated = /\.(gif|webp|apng)(?:[?#]|$)/i.test(src) || /gif|webp|apng/i.test(mediaType)
+  let source = animated ? rewriteRuntimeStorageUrl(src) : runtimeStoragePreviewUrl(src, previewWidth, 75)
+  if (animated && trustedStorageBackend(source) && /^\/storage\/v1\/object\/public\/(avatars|groups|communities)\//.test(new URL(source).pathname)) {
+    const preview = new URL(runtimeStoragePreviewUrl(source, previewWidth, 75))
+    preview.searchParams.set('animated', '1')
+    source = preview.href
+  }
   const backendBase = trustedStorageBackend(source)
   const cache = backendBase && identity.accountId ? cachedStorageImagePreview(source, identity, STORAGE_PREVIEW_MAX_BYTES) : undefined
   const [ready, setReady] = useState<typeof cache>()
@@ -54,8 +62,60 @@ export function CachedProfileImage({ src, mediaType, previewWidth = 160, onSourc
     return () => { active = false; clearTimeout(timer); controller.abort() }
   }, [backendBase, identity, shouldLoad, hasCached, streamingKey, key, source, eager])
   return backendBase && streamingKey !== key
-    ? <img {...props} ref={image} src={delivered?.url} decoding="async"/>
-    : <StreamingImage {...props} ref={image} src={source} onSourceUnavailable={onSourceUnavailable}/>
+    ? <img {...props} ref={image} src={delivered?.url || pendingImage} decoding="async" aria-busy={!delivered}/>
+    : <StreamingImage {...props} ref={image} src={source} pendingSrc={pendingImage} onSourceUnavailable={onSourceUnavailable}/>
+}
+
+function CachedProfileVideo({ src, priority, onSourceUnavailable, ...props }: VideoHTMLAttributes<HTMLVideoElement> & {
+  src: string; priority: boolean; onSourceUnavailable: () => void
+}) {
+  const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  const source = rewriteRuntimeStorageUrl(src)
+  const backendBase = trustedStorageBackend(source)
+  const cache = backendBase && identity.accountId ? cachedStorageImagePreview(source, identity, avatarVideoMaxBytes, true) : undefined
+  const [ready, setReady] = useState<typeof cache>()
+  const [poster, setPoster] = useState<typeof cache>()
+  const [visible, setVisible] = useState(() => typeof IntersectionObserver === 'undefined')
+  const video = useRef<HTMLVideoElement>(null)
+  const key = `${identity.generation}/${source}`
+  const [streamingKey, setStreamingKey] = useState('')
+  const delivered = cache || (ready?.source === source && ready.identity === identity ? ready : undefined)
+  const hasCached = Boolean(cache)
+  const posterUrl = poster?.identity === identity && poster.source === `${source}#poster` ? poster.url : undefined
+  const shouldLoad = priority || visible
+  useEffect(() => {
+    if (shouldLoad || !video.current) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) { setVisible(true); observer.disconnect() }
+    }, { rootMargin: '128px' })
+    observer.observe(video.current)
+    return () => observer.disconnect()
+  }, [shouldLoad])
+  useEffect(() => {
+    if (!backendBase || !identity.accountId || !shouldLoad || hasCached || streamingKey === key) return
+    const controller = new AbortController()
+    const options = { backendBase, identity, signal: controller.signal, priority,
+      getAccessToken: () => prepareStorageReadAccessToken(identity) }
+    if (new URL(source).pathname.startsWith('/storage/v1/object/public/avatars/')) {
+      const preview = new URL(runtimeStoragePreviewUrl(source, 160, 78))
+      preview.searchParams.set('poster', '1')
+      void readCachedStorageImage({ ...options, url: preview.href, maxBytes: STORAGE_PREVIEW_MAX_BYTES }).then(() => {
+        if (controller.signal.aborted) return
+        const image = cachedStorageImagePreview(preview.href, identity, STORAGE_PREVIEW_MAX_BYTES)
+        if (image) setPoster({ ...image, source: `${source}#poster` })
+      }).catch(() => {})
+    }
+    void readCachedAvatarVideo({ ...options, url: source, maxBytes: avatarVideoMaxBytes }).then(() => {
+      if (controller.signal.aborted) return
+      const clip = cachedStorageImagePreview(source, identity, avatarVideoMaxBytes, true)
+      if (clip) setReady(clip)
+      else setStreamingKey(key)
+    }).catch(() => { if (!controller.signal.aborted) setStreamingKey(key) })
+    return () => controller.abort()
+  }, [backendBase, identity, source, key, shouldLoad, hasCached, streamingKey, priority])
+  return backendBase && streamingKey !== key
+    ? <video {...props} ref={video} src={delivered?.url} poster={posterUrl} preload="auto" onError={() => setStreamingKey(key)} data-novvin-media=""/>
+    : <StreamingVideo {...props} ref={video} src={source} poster={posterUrl} onSourceUnavailable={onSourceUnavailable}/>
 }
 
 type AvatarSize = 'sm' | 'md' | 'lg'
@@ -126,9 +186,10 @@ export function SafeAvatar({
 
   if (canRenderMedia && isVideoAvatarSource(trimmedUrl, normalizedMediaType)) {
     return (
-      <StreamingVideo
+      <CachedProfileVideo
         className={combinedClassName}
         src={trimmedUrl}
+        priority={priority}
         title={title ?? initialName}
         aria-label={initialName}
         muted
