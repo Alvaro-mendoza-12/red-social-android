@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
 /** No networking: invoke the real per-attempt interceptor with synthetic responses. */
 class StorageReadInterceptorsTest {
     private val backend = "https://api.example.test"
+    private val edge = "https://media.example.test"
     private val storage = "$backend/storage/v1/object/public/chat-media/u/a.jpg"
     private val a = StorageReadCredential(StorageReadIdentity("a", 1), "first.jwt")
 
@@ -25,6 +26,30 @@ class StorageReadInterceptorsTest {
         StorageReadRequestInterceptor({ backend }, { a }, { a }).intercept(chain).close()
         assertNull(chain.sent!!.header("Authorization"))
         assertEquals(a.identity, chain.sent!!.tag(StorageReadRequestContext::class.java)!!.identity)
+    }
+    @Test fun edgeFailureRetriesCanonicalReadWithTheSameRange() {
+        val original = Request.Builder().url(storage).header("Range", "bytes=0-9").build()
+        val chain = Chain(original, status = { if (it.url.host == "media.example.test") 503 else 206 })
+        StorageReadRequestInterceptor({ backend }, { a }, { a }, edge, backend).intercept(chain).use {
+            assertEquals(206, it.code)
+        }
+        assertEquals(listOf(storage.replace(backend, edge), storage), chain.attempts.map { it.url.toString() })
+        assertTrue(chain.attempts.all { it.header("Range") == "bytes=0-9" })
+    }
+    @Test fun edgeDenialDoesNotRetryAndOnlyExactEdgeUrlGetsBearer() {
+        val original = Request.Builder().url(storage).build()
+        val chain = Chain(original, status = { 403 })
+        StorageReadRequestInterceptor({ backend }, { a }, { a }, edge, backend).intercept(chain).use {
+            assertEquals(403, it.code)
+        }
+        val accelerated = chain.attempts.single()
+        val network = StorageReadNetworkInterceptor({ backend }, { a })
+        val authorized = Chain(accelerated)
+        network.intercept(authorized).close()
+        assertEquals("Bearer first.jwt", authorized.sent!!.header("Authorization"))
+        val redirected = Chain(accelerated.newBuilder().url("$edge/other").build())
+        network.intercept(redirected).close()
+        assertNull(redirected.sent!!.header("Authorization"))
     }
     @Test fun ownGetAddsCurrentBearerAndNoStore() {
         val chain = Chain(request(storage))
@@ -129,13 +154,14 @@ class StorageReadInterceptorsTest {
     private fun request(url: String, identity: StorageReadIdentity? = a.identity, startedAtStorageOrigin: Boolean = true): Request =
         Request.Builder().url(url).tag(StorageReadRequestContext::class.java, StorageReadRequestContext(identity, startedAtStorageOrigin)).build()
 
-    private class Chain(private val original: Request, private val beforeResponse: () -> Unit = {}, private val body: okhttp3.ResponseBody? = null) : Interceptor.Chain {
-        var sent: Request? = null
+    private class Chain(private val original: Request, private val beforeResponse: () -> Unit = {}, private val body: okhttp3.ResponseBody? = null, private val status: (Request) -> Int = { 200 }) : Interceptor.Chain {
+        val attempts = mutableListOf<Request>()
+        val sent: Request? get() = attempts.lastOrNull()
         override fun request(): Request = original
         override fun proceed(request: Request): Response {
-            sent = request
+            attempts += request
             beforeResponse()
-            return Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("Synthetic")
+            return Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(status(request)).message("Synthetic")
                 .body(body ?: byteArrayOf(1, 2, 3).toResponseBody()).build()
         }
         override fun connection(): Connection? = null

@@ -1,6 +1,7 @@
 package conectate.com.core.media
 
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Test
@@ -10,6 +11,17 @@ class StorageReadPolicyTest {
     private val backend = "https://api.example.test"
     private val path = "/storage/v1/object/public/chat-media/user/photo.jpg"
     @After fun reset() { StorageReadSession.install { null } }
+
+    @Test fun edgeKeepsOriginalPathAndQueryAndRequiresPinnedBackend() {
+        val edge = "https://media.example.test"
+        val source = "$backend$path?download=1".toHttpUrl()
+        assertEquals("$edge$path?download=1", StorageReadPolicy.edgeUrl(source, backend, backend, edge).toString())
+        assertNull(StorageReadPolicy.edgeUrl(source, backend, "https://another.example.test", edge))
+        assertNull(StorageReadPolicy.edgeUrl(source, backend, backend, "$edge/proxy"))
+        assertNull(StorageReadPolicy.edgeUrl("$backend$path?lease=example".toHttpUrl(), backend, backend, edge))
+        assertNull(StorageReadPolicy.edgeUrl("$backend$path?width=384".toHttpUrl(), backend, backend, edge))
+        assertNull(StorageReadPolicy.edgeUrl("$backend${path.replace("/public/", "/sign/")}?token=example".toHttpUrl(), backend, backend, edge))
+    }
 
     @Test fun exactOriginAndAllThreeReadRoutesAreAccepted() {
         for (route in listOf("public/", "sign/", ""))

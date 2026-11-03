@@ -63,6 +63,17 @@ function safeSource(source, base) {
       ![...url.searchParams.keys()].some(key => /token|authorization/i.test(key))
   } catch { return false }
 }
+function matchingEdge(source, edge) {
+  if (typeof edge !== 'string' || !edge) return ''
+  try {
+    const original = new URL(source), url = new URL(edge)
+    if (original.protocol !== 'https:' || url.protocol !== 'https:' || url.port || url.username || url.password || url.hash ||
+        url.origin === original.origin || url.pathname !== original.pathname || url.search !== original.search ||
+        !url.pathname.startsWith('/storage/v1/object/') || url.pathname.startsWith('/storage/v1/object/sign/') ||
+        [...url.searchParams.keys()].some(key => /^width$/i.test(key) || /lease|token|authorization/i.test(key))) return ''
+    return url.href
+  } catch { return '' }
+}
 self.addEventListener('message', event => {
   const client = event.source?.id, data = event.data
   if (!client || !data || typeof data !== 'object') return
@@ -78,8 +89,9 @@ self.addEventListener('message', event => {
   if (previous && previous.generation === data.generation && previous.base === data.base) previous.token = data.token
   else { clearClientImages(client); tokens.set(client, { token: data.token, generation: data.generation, base: data.base }) }
   const key = `${client}/${data.id}`, existing = records.get(key)
-  if (!existing || existing.source !== data.source || existing.generation !== data.generation)
-    records.set(key, { client, source: data.source, generation: data.generation, downloadName: typeof data.downloadName === 'string' ? data.downloadName.replace(/[\u0000-\u001f\u007f/\\]/g,'_').slice(0,180) : '' })
+  const edge = matchingEdge(data.source, data.edge)
+  if (!existing || existing.source !== data.source || existing.generation !== data.generation || existing.edge !== edge)
+    records.set(key, { client, source: data.source, edge, generation: data.generation, downloadName: typeof data.downloadName === 'string' ? data.downloadName.replace(/[\u0000-\u001f\u007f/\\]/g,'_').slice(0,180) : '' })
   for (const done of [...(pending.get(`${client}/${data.id}`) || [])]) done()
   event.ports[0]?.postMessage({ ok: true })
 })
@@ -105,15 +117,26 @@ async function stream(event, id) {
     removeImage(key)
   }
   try {
+    const init = { headers, signal: event.request.signal, credentials: 'omit', cache: 'no-store', redirect: 'error' }
+    const read = async () => {
+      if (record.edge) {
+        let accelerated
+        try { accelerated = await fetch(record.edge, init) } catch (error) { if (init.signal.aborted) throw error }
+        if (accelerated && ![429, 500, 502, 503, 504].includes(accelerated.status)) return accelerated
+        void accelerated?.body?.cancel().catch(() => {})
+      }
+      if (tokens.get(event.clientId) !== auth || records.get(key) !== record) return new Response('', { status: 403 })
+      return fetch(record.source, init)
+    }
     const oldToken = auth.token
-    let response = await fetch(record.source, { headers, signal: event.request.signal, credentials: 'omit', cache: 'no-store', redirect: 'error' })
+    let response = await read()
     if (response.status === 401) {
       await refresh(event.clientId, id)
       if (tokens.get(event.clientId) !== auth || records.get(key) !== record) return new Response('', { status: 403 })
       if (auth.token !== oldToken) {
         await response.body?.cancel()
         headers.set('Authorization', `Bearer ${auth.token}`)
-        response = await fetch(record.source, { headers, signal: event.request.signal, credentials: 'omit', cache: 'no-store', redirect: 'error' })
+        response = await read()
       }
     }
     // Identity changes during a fetch discard its response before it reaches the DOM.

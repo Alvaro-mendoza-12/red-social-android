@@ -135,6 +135,10 @@ android {
             buildConfigField("String", "SUPABASE_URL", "\"\"")
             buildConfigField("String", "SUPABASE_ANON_KEY", "\"\"")
             buildConfigField("String", "FALLBACK_API_URL", fallbackApiUrl.asBuildConfigString())
+            val mediaEdgeOrigin = environmentNonBlank("NOVVIN_MEDIA_EDGE_ORIGIN")
+                ?: props.getNonBlank("MEDIA_EDGE_ORIGIN")
+                ?: ""
+            buildConfigField("String", "MEDIA_EDGE_ORIGIN", mediaEdgeOrigin.asBuildConfigString())
             buildConfigField("String", "SIGNALING_URL", signalingUrl.asBuildConfigString())
             buildConfigField("String", "BACKEND_CONFIG_URL", backendConfigUrl.asBuildConfigString())
             buildConfigField("String", "BACKEND_DISCOVERY_HOST", backendDiscoveryHost.asBuildConfigString())

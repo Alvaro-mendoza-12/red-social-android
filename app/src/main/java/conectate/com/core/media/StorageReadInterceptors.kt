@@ -1,6 +1,8 @@
 package conectate.com.core.media
 
+import conectate.com.BuildConfig
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.MediaType
 import okhttp3.Request
@@ -14,6 +16,7 @@ import java.io.IOException
 internal class StorageReadRequestContext(
     val identity: StorageReadIdentity?,
     val startedAtStorageOrigin: Boolean,
+    val edgeUrl: HttpUrl? = null,
 )
 
 /** Capture identity once, before redirects; credentials themselves are read at each attempt. */
@@ -21,14 +24,31 @@ internal class StorageReadRequestInterceptor(
     private val backendUrl: () -> String = { UbuntuStorageUrl.baseUrl },
     private val credentials: () -> StorageReadCredential? = StorageReadSession::snapshot,
     private val prepareCredentials: () -> StorageReadCredential? = StorageReadSession::readySnapshot,
+    private val edgeOrigin: String = BuildConfig.MEDIA_EDGE_ORIGIN,
+    private val pinnedBackend: String = BuildConfig.FALLBACK_API_URL,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val storageRead = StorageReadPolicy.accepts(original.url.toString(), backendUrl())
         val captured = if (storageRead) prepareCredentials() else credentials()
         val context = StorageReadRequestContext(captured?.identity, storageRead)
-        return chain.proceed(original.newBuilder().removeHeader("Authorization")
-            .tag(StorageReadRequestContext::class.java, context).build())
+        val request = original.newBuilder().removeHeader("Authorization")
+            .tag(StorageReadRequestContext::class.java, context).build()
+        val edgeUrl = if (storageRead && original.method == "GET" && edgeOrigin.isNotBlank()) {
+            StorageReadPolicy.edgeUrl(original.url, backendUrl(), pinnedBackend, edgeOrigin)
+        } else null
+        if (edgeUrl != null) {
+            val accelerated = request.newBuilder().url(edgeUrl).removeHeader("Cookie")
+                .tag(StorageReadRequestContext::class.java, StorageReadRequestContext(captured?.identity, true, edgeUrl)).build()
+            try {
+                val response = chain.proceed(accelerated)
+                if (response.code !in setOf(429, 500, 502, 503, 504)) return response
+                response.close()
+            } catch (error: IOException) {
+                if (chain.call().isCanceled() || credentials()?.identity != captured?.identity) throw error
+            }
+        }
+        return chain.proceed(request)
     }
 }
 
@@ -42,7 +62,7 @@ internal class StorageReadNetworkInterceptor(
         val current = credentials()
         val context = original.tag(StorageReadRequestContext::class.java)
             ?: StorageReadRequestContext(current?.identity, StorageReadPolicy.accepts(original.url.toString(), backendUrl()))
-        val trusted = StorageReadPolicy.accepts(original.url.toString(), backendUrl())
+        val trusted = StorageReadPolicy.accepts(original.url.toString(), backendUrl()) || original.url == context.edgeUrl
         if (context.startedAtStorageOrigin && current?.identity != context.identity) throw changedAccount()
         val request = authorizedRequest(original, context, current, trusted)
         val response = chain.proceed(request)

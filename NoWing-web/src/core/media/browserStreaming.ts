@@ -1,6 +1,7 @@
 import { prepareStorageReadAccessToken, trustedStorageBackend } from './storageReadClient'
 import { getStorageReadIdentity, onStorageReadInvalidated, requireStorageReadIdentity, type StorageReadIdentity } from './storageReadSession'
 import { rewriteRuntimeStorageUrl } from '../runtimeBackend'
+import { storageReadEdgeUrl } from './boundedStorageRead'
 
 type Registered = { id: string; source: string; identity: StorageReadIdentity; downloadName?: string; registeredOn?: ServiceWorker; registration?: Promise<void> }
 const records = new Map<string, Registered>()
@@ -41,7 +42,9 @@ async function register(record: Registered, retry = true): Promise<void> {
     const timer = window.setTimeout(fail, 5000)
     target.addEventListener('statechange', changed)
     channel.port1.onmessage = event => { cleanup(); if (event.data?.ok) resolve(); else reject(new Error('MEDIA_STREAMING_UNAVAILABLE')) }
-    try { target.postMessage({ type: 'NOVVIN_MEDIA_REGISTER', id: record.id, source: record.source, base: trustedStorageBackend(record.source), token, generation: record.identity.generation, downloadName: record.downloadName }, [channel.port2]) } catch { fail() }
+    const base = trustedStorageBackend(record.source)
+    const edge = record.identity.provider !== 'supabase' ? storageReadEdgeUrl(record.source, base) : undefined
+    try { target.postMessage({ type: 'NOVVIN_MEDIA_REGISTER', id: record.id, source: record.source, base, edge, token, generation: record.identity.generation, downloadName: record.downloadName }, [channel.port2]) } catch { fail() }
   }) } catch (error) {
     requireStorageReadIdentity(record.identity)
     if (retry && target !== navigator.serviceWorker.controller) return register(record, false)

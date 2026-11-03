@@ -7,9 +7,30 @@ function originalHeaders(request) {
   return headers
 }
 
-function fromOrigin(request, headers, fetchOrigin) {
+function fromOrigin(request, headers, fetchOrigin, target) {
   // Pass credentials only to the configured route origin, never follow a redirect.
-  return fetchOrigin(new Request(request, { headers, redirect: 'manual' }), { cache: 'no-store' })
+  const upstream = target ? new Request(target, { method: request.method, headers, signal: request.signal, redirect: 'manual' })
+    : new Request(request, { headers, redirect: 'manual' })
+  return fetchOrigin(upstream, { cache: 'no-store' })
+}
+
+function standaloneTarget(request, url, configuredOrigin) {
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) || !url.pathname.startsWith('/storage/v1/object/')) return null
+  try {
+    const origin = new URL(configuredOrigin)
+    if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' ||
+        origin.search || origin.hash || origin.origin === url.origin) return null
+    const segments = url.pathname.slice('/storage/v1/object/'.length).split('/')
+    if (segments.length < 2 || segments.some(part => {
+      const decoded = decodeURIComponent(part)
+      return !decoded || decoded === '.' || decoded === '..' || /[\/\\%\x00-\x1f\x7f]/.test(decoded)
+    })) return null
+    origin.pathname = url.pathname
+    origin.search = url.search
+    return origin
+  } catch {
+    return null
+  }
 }
 
 function parseRange(value, size) {
@@ -48,6 +69,8 @@ async function cloudBody(response, request, media) {
   }
   const headers = stripInternal(response.headers)
   headers.set('Cache-Control', 'private, no-store')
+  headers.append('Server-Timing', 'novvin_r2')
+  headers.set('X-Novvin-Media-Source', 'r2')
   headers.set('Content-Type', type)
   const length = range?.length ?? size
   headers.set('Content-Length', String(length))
@@ -64,12 +87,21 @@ async function cloudBody(response, request, media) {
 export async function deliver(request, env, fetchOrigin = fetch) {
   const url = new URL(request.url)
   const headers = originalHeaders(request)
-  const fallback = () => fromOrigin(request, headers, fetchOrigin)
+  const standalone = typeof env.MEDIA_UPSTREAM_ORIGIN === 'string' && env.MEDIA_UPSTREAM_ORIGIN !== ''
+  const target = standalone ? standaloneTarget(request, url, env.MEDIA_UPSTREAM_ORIGIN) : undefined
+  if (standalone && !target) return new Response(null, { status: 404 })
+  if (standalone) {
+    headers.delete('cookie')
+    headers.delete('host')
+    headers.delete('forwarded')
+    for (const key of [...headers.keys()]) if (key.startsWith('x-forwarded-')) headers.delete(key)
+  }
+  const fallback = () => fromOrigin(request, headers, fetchOrigin, target)
   if (!url.pathname.startsWith('/storage/v1/object/') || request.method !== 'GET' ||
       url.searchParams.has('lease') || !env.MEDIA || !/^[a-f0-9]{64}$/.test(env.R2_EDGE_SECRET || '')) return fallback()
   const probeHeaders = new Headers(headers)
   probeHeaders.set(probe, env.R2_EDGE_SECRET)
-  const response = await fromOrigin(request, probeHeaders, fetchOrigin)
+  const response = await fromOrigin(request, probeHeaders, fetchOrigin, target)
   if (!response.headers.has(`${prefix}key`)) return response
   if (response.status === 204) {
     try {

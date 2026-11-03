@@ -1,7 +1,7 @@
 /** @jest-environment node */
 import { ReadableStream } from 'node:stream/web'
 import {
-  readBoundedStorageBlob, isTrustedStorageReadUrl,
+  readBoundedStorageBlob, isTrustedStorageReadUrl, storageReadEdgeUrl,
 } from '../../core/media/boundedStorageRead'
 import {
   getStorageReadIdentity, invalidateStorageReadBackend, invalidateStorageReadIdentity,
@@ -39,6 +39,15 @@ beforeEach(() => { jest.useRealTimers(); fetcher.mockReset(); invalidateStorageR
 afterEach(() => { invalidateStorageReadIdentity(); jest.useRealTimers() })
 
 describe('storage origin policy', () => {
+  test('uses the official same-origin Vercel transport without trusting a different upstream', () => {
+    const pageOrigin = 'https://red-social-android.vercel.app'
+    const path = '/storage/v1/object/public/videos/u/video.mp4'
+    const config = { backendOrigin: 'https://conectate.tail9b267c.ts.net', edgeOrigin: 'https://worker.example', pageOrigin }
+    expect(storageReadEdgeUrl(pageOrigin + path, pageOrigin, config)).toBe(config.edgeOrigin + path)
+    expect(storageReadEdgeUrl(pageOrigin + path + '?width=384', pageOrigin, config)).toBeUndefined()
+    expect(storageReadEdgeUrl(pageOrigin + path, pageOrigin, { ...config, backendOrigin: base })).toBeUndefined()
+  })
+
   test.each([
     `${base}/storage/v1/object/public/chat-media/a.png`,
     `${base}/storage/v1/object/sign/chat-media/a.png?token=object-capability`,

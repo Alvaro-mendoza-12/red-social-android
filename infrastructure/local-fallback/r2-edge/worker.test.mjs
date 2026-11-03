@@ -7,6 +7,31 @@ import path from 'node:path'
 import express from '../api/node_modules/express/index.js'
 import { deliver } from './worker.mjs'
 
+test('standalone media host confines authenticated reads to the configured HTTPS origin', async () => {
+  const env = { MEDIA_UPSTREAM_ORIGIN: 'https://ubuntu.example', R2_EDGE_SECRET: 'a'.repeat(64) }
+  let calls = 0
+  const fetchOrigin = async request => {
+    calls++
+    assert.equal(request.url, 'https://ubuntu.example/storage/v1/object/public/chat-media/owner/photo.jpg?width=640')
+    assert.equal(request.headers.get('authorization'), 'Bearer fixture')
+    assert.equal(request.headers.get('cookie'), null)
+    assert.equal(request.headers.get('x-forwarded-host'), null)
+    assert.equal(request.headers.get('x-novvin-r2-probe'), null)
+    assert.equal(request.redirect, 'manual')
+    return new Response('fixture')
+  }
+  const source = 'https://media.example/storage/v1/object/public/chat-media/owner/photo.jpg?width=640'
+  const headers = { authorization: 'Bearer fixture', cookie: 'ignored=1', 'x-forwarded-host': 'wrong.example', 'x-novvin-r2-probe': 'spoofed' }
+  assert.equal(await (await deliver(new Request(source, { headers }), env, fetchOrigin)).text(), 'fixture')
+  for (const request of [new Request(source, { method: 'PUT' }), new Request('https://media.example/api/session'),
+    new Request('https://media.example/storage/v1/object/public/chat-media/owner%2Fphoto.jpg'),
+    new Request('https://media.example/storage/v1/object/public/chat-media/owner/%252e%252e')]) {
+    assert.equal((await deliver(request, env, fetchOrigin)).status, 404)
+  }
+  assert.equal((await deliver(new Request(source), { MEDIA_UPSTREAM_ORIGIN: 'https://media.example' }, fetchOrigin)).status, 404)
+  assert.equal(calls, 1)
+})
+
 test('edge delivery uses the actual storage route, preserves access and falls back to Ubuntu', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'novvin-r2-edge-'))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
@@ -81,9 +106,16 @@ test('edge delivery uses the actual storage route, preserves access and falls ba
   assert.equal(original.status, 200)
   assert.equal(original.headers.get('content-type'), 'video/mp4')
   assert.equal(original.headers.get('cache-control'), 'private, no-store')
+  assert.equal(original.headers.get('server-timing'), 'novvin_r2')
+  assert.equal(original.headers.get('x-novvin-media-source'), 'r2')
   assert.equal(original.headers.get('x-novvin-r2-key'), null)
   assert.deepEqual(Buffer.from(await original.arrayBuffer()), bytes)
   assert.equal(hits, 1)
+  const probe = await fetch(url, { headers: { ...headers, 'x-novvin-r2-probe': secret } })
+  assert.equal(probe.status, 204)
+  assert.equal(probe.headers.get('content-length'), null)
+  assert.equal(probe.headers.get('content-type'), null)
+  assert.equal(probe.headers.get('x-novvin-r2-type'), 'video/mp4')
 
   const head = await download({ method: 'HEAD', headers })
   assert.equal(head.status, 200)
@@ -108,6 +140,7 @@ test('edge delivery uses the actual storage route, preserves access and falls ba
   absent = true
   const missing = await download({ headers })
   assert.equal(missing.status, 200)
+  assert.equal(missing.headers.get('server-timing'), null)
   assert.deepEqual(Buffer.from(await missing.arrayBuffer()), bytes)
   assert.equal(hits, 3)
 

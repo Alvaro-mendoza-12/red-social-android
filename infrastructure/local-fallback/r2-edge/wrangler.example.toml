@@ -8,6 +8,11 @@ preview_urls = false
 binding = "MEDIA"
 bucket_name = "novvin-media"
 
+# An account without a proxied DNS zone can use workers_dev = true above.
+# Pin the trusted Ubuntu HTTPS origin and enable the corresponding client setting.
+# [vars]
+# MEDIA_UPSTREAM_ORIGIN = "https://api.example.com"
+
 # Use a proxied API hostname whose origin is already verified. Apply this route
 # only after the backend and Worker agree on the private probe secret and target.
 # [[routes]]
