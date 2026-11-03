@@ -33,6 +33,8 @@ class NotificationAccountBridgeDeviceTest {
         awaitBridge()
         compose.onNodeWithText("Iniciar sesión con Comprobación local").performScrollTo().performClick()
         compose.onNodeWithTag("auth-login").assertIsDisplayed()
+        compose.activityRule.scenario.recreate()
+        compose.onNodeWithTag("auth-login").assertIsDisplayed()
         pressBack()
         awaitBridge()
         compose.onNodeWithText("Iniciar sesión con Comprobación local").assertExists()

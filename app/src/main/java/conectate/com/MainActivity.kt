@@ -12,6 +12,7 @@ import androidx.lifecycle.lifecycleScope
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.model.LiveRole
 import conectate.com.presentation.common.MainActivityContent
+import conectate.com.presentation.navigation.AuthenticationJourneyRestoration
 import conectate.com.presentation.messages.isIncomingShareIntent
 import conectate.com.presentation.messages.shouldAcceptRestoredShare
 import conectate.com.presentation.messages.parseIncomingShareIntent
@@ -39,12 +40,10 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
 
     companion object {
-        private const val PROCESS_INSTANCE_KEY = "novvin_process_instance"
         private const val SHARE_CONSUMED_KEY = "novvin_incoming_share_consumed"
         private const val NAVIGATION_INTENT_ID_KEY = "novvin_navigation_intent_id"
         private const val SHARE_REQUEST_ID_KEY = "novvin_incoming_share_request_id"
         private const val SHARE_PAYLOAD_ID_KEY = "novvin_incoming_share_payload_id"
-        private val processInstanceId = java.util.UUID.randomUUID().toString()
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -60,6 +59,7 @@ class MainActivity : ComponentActivity() {
     private var pendingShareIntent: Intent? = null
     private var presenceHeartbeatJob: Job? = null
     private var presenceOfflineJob: Job? = null
+    private var authenticationJourneyPending = false
 
     @Inject
     lateinit var authRepository: AuthRepository
@@ -93,12 +93,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val createStartedAtMs = android.os.SystemClock.elapsedRealtime()
-        // A process restored after the app was closed must start at Messages, not
-        // restore an old tab from Navigation's saved back stack. Rotation in the
-        // same process still keeps its state.
-        super.onCreate(savedInstanceState?.takeIf {
-            it.getString(PROCESS_INSTANCE_KEY) == processInstanceId
-        })
+        // Keep unfinished authentication and its original content after process death.
+        // Ordinary cold starts still use Messages; rotation keeps the existing stack.
+        val restoredState = AuthenticationJourneyRestoration.stateForCreate(savedInstanceState)
+        authenticationJourneyPending = AuthenticationJourneyRestoration.wasPending(restoredState)
+        super.onCreate(restoredState)
         if (BuildConfig.DEBUG) {
             android.util.Log.d(
                 "StartupTiming",
@@ -116,7 +115,7 @@ class MainActivity : ComponentActivity() {
         acceptIncomingIntent(if (replayedShare) {
             Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java)
         } else restoredIntent, savedInstanceState?.getString(SHARE_PAYLOAD_ID_KEY), savedInstanceState?.getString(SHARE_REQUEST_ID_KEY),
-            savedInstanceState?.takeIf { it.getString(PROCESS_INSTANCE_KEY) == processInstanceId }?.getString(NAVIGATION_INTENT_ID_KEY))
+            restoredState?.getString(NAVIGATION_INTENT_ID_KEY))
 
         lifecycleScope.launch {
             moderationNoticeCenter.notices.collect { notice ->
@@ -169,7 +168,8 @@ class MainActivity : ComponentActivity() {
                         voiceRoomRepositoryProvider = voiceRoomRepository,
                         callRepositoryProvider = callRepository,
                         liveRepositoryProvider = liveRepository,
-                        activityScope = lifecycleScope
+                        activityScope = lifecycleScope,
+                        onAuthenticationFlowChanged = { authenticationJourneyPending = it },
                     )
                 }
             }
@@ -183,7 +183,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
-        outState.putString(PROCESS_INSTANCE_KEY, processInstanceId)
+        AuthenticationJourneyRestoration.save(outState, authenticationJourneyPending)
         outState.putString(NAVIGATION_INTENT_ID_KEY, navigationIntentState.value)
         outState.putString(SHARE_REQUEST_ID_KEY, incomingShareState.value?.requestId)
         outState.putString(SHARE_PAYLOAD_ID_KEY, incomingShareState.value?.payload?.id)

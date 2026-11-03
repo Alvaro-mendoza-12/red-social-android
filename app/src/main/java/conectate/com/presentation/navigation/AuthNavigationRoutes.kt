@@ -157,15 +157,21 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
         conectate.com.presentation.auth.ChangePasswordScreen(navController = navController)
     }
 
-    composable(Screen.AccountRecoveryHelp.route) {
-        NovvinAuthTheme { LoginScreen(navController = navController, isAddAccountMode = true, initialAssistedRecovery = true) }
+    composable(Screen.AccountRecoveryHelp.route) { entry ->
+        val authViewModel: conectate.com.presentation.auth.AuthViewModel = hiltViewModel()
+        RestoreNotificationSignIn(navController, entry, authViewModel)
+        NovvinAuthTheme { LoginScreen(navController = navController, isAddAccountMode = true,
+            initialAssistedRecovery = true, viewModel = authViewModel) }
     }
 
-    composable(Screen.AddAccountLogin.route) {
+    composable(Screen.AddAccountLogin.route) { entry ->
+        val authViewModel: conectate.com.presentation.auth.AuthViewModel = hiltViewModel()
+        RestoreNotificationSignIn(navController, entry, authViewModel)
         NovvinAuthTheme {
             LoginScreen(
                 navController = navController,
-                isAddAccountMode = true
+                isAddAccountMode = true,
+                viewModel = authViewModel,
             )
         }
     }
