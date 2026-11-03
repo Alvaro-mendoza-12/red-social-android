@@ -12,6 +12,7 @@ bucket_name = "novvin-media"
 # Pin the trusted Ubuntu HTTPS origin and enable the corresponding client setting.
 # [vars]
 # MEDIA_UPSTREAM_ORIGIN = "https://api.example.com"
+# MEDIA_CORS_ORIGIN = "https://app.example.com"
 
 # Use a proxied API hostname whose origin is already verified. Apply this route
 # only after the backend and Worker agree on the private probe secret and target.

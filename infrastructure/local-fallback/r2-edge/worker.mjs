@@ -1,5 +1,6 @@
 const probe = 'x-novvin-r2-probe'
 const prefix = 'x-novvin-r2-'
+const readCorsHeaders = new Set(['authorization', 'cache-control', 'range'])
 
 function originalHeaders(request) {
   const headers = new Headers(request.headers)
@@ -33,6 +34,26 @@ function standaloneTarget(request, url, configuredOrigin) {
   }
 }
 
+function mediaPreflight(request, allowedOrigin) {
+  const origin = request.headers.get('origin')
+  const method = request.headers.get('access-control-request-method')
+  if (request.method !== 'OPTIONS' || !origin || origin !== allowedOrigin ||
+      (method !== 'GET' && method !== 'HEAD') || request.headers.has('access-control-request-private-network')) return null
+  const requested = request.headers.get('access-control-request-headers')
+  const headers = requested ? requested.split(',').map(name => name.trim().toLowerCase()) : []
+  if (!headers.every(name => readCorsHeaders.has(name))) return null
+  const response = new Headers({
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Methods': 'GET, HEAD',
+    'Access-Control-Max-Age': '600',
+    'Cache-Control': 'no-store',
+    'Server-Timing': 'novvin_preflight',
+    'Vary': 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers',
+  })
+  if (headers.length) response.set('Access-Control-Allow-Headers', headers.join(', '))
+  return new Response(null, { status: 204, headers: response })
+}
+
 function parseRange(value, size) {
   if (value === null) return null
   const match = /^bytes=(\d*)-(\d*)$/.exec(value)
@@ -51,7 +72,7 @@ function stripInternal(headers) {
   return cleaned
 }
 
-async function cloudBody(response, request, media) {
+async function cloudBody(response, request, media, originDuration) {
   const key = response.headers.get(`${prefix}key`)
   const sha = response.headers.get(`${prefix}sha256`)
   const sizeText = response.headers.get(`${prefix}size`)
@@ -61,7 +82,9 @@ async function cloudBody(response, request, media) {
       !/^[1-9]\d*$/.test(sizeText || '') || !Number.isSafeInteger(size) || !type) return null
   const range = parseRange(request.headers.get('range'), size)
   if (range === false) return null
+  const started = performance.now()
   const object = await media.get(key, range ? { range } : undefined)
+  const bucketDuration = Math.round(performance.now() - started)
   const matchesRange = !range || (object?.range?.offset === range.offset && object.range.length === range.length)
   if (!object?.body || object.size !== size || object.customMetadata?.sha256 !== sha || !matchesRange) {
     await object?.body?.cancel().catch(() => {})
@@ -69,7 +92,7 @@ async function cloudBody(response, request, media) {
   }
   const headers = stripInternal(response.headers)
   headers.set('Cache-Control', 'private, no-store')
-  headers.append('Server-Timing', 'novvin_r2')
+  headers.append('Server-Timing', `novvin_r2, novvin_origin;dur=${originDuration}, novvin_bucket;dur=${bucketDuration}`)
   headers.set('X-Novvin-Media-Source', 'r2')
   headers.set('Content-Type', type)
   const length = range?.length ?? size
@@ -91,6 +114,8 @@ export async function deliver(request, env, fetchOrigin = fetch) {
   const target = standalone ? standaloneTarget(request, url, env.MEDIA_UPSTREAM_ORIGIN) : undefined
   if (standalone && !target) return new Response(null, { status: 404 })
   if (standalone) {
+    const preflight = mediaPreflight(request, env.MEDIA_CORS_ORIGIN)
+    if (preflight) return preflight
     headers.delete('cookie')
     headers.delete('host')
     headers.delete('forwarded')
@@ -101,11 +126,13 @@ export async function deliver(request, env, fetchOrigin = fetch) {
       url.searchParams.has('lease') || !env.MEDIA || !/^[a-f0-9]{64}$/.test(env.R2_EDGE_SECRET || '')) return fallback()
   const probeHeaders = new Headers(headers)
   probeHeaders.set(probe, env.R2_EDGE_SECRET)
+  const started = performance.now()
   const response = await fromOrigin(request, probeHeaders, fetchOrigin, target)
+  const originDuration = Math.round(performance.now() - started)
   if (!response.headers.has(`${prefix}key`)) return response
   if (response.status === 204) {
     try {
-      const accelerated = await cloudBody(response, request, env.MEDIA)
+      const accelerated = await cloudBody(response, request, env.MEDIA, originDuration)
       if (accelerated) return accelerated
     } catch {
       // An unavailable replica is a delivery miss. Retry through the original route.

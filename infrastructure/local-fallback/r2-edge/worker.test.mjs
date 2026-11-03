@@ -32,6 +32,31 @@ test('standalone media host confines authenticated reads to the configured HTTPS
   assert.equal(calls, 1)
 })
 
+test('only allowlisted media preflights are served without contacting Ubuntu', async () => {
+  const origin = 'https://app.example'
+  const env = { MEDIA_UPSTREAM_ORIGIN: 'https://ubuntu.example', MEDIA_CORS_ORIGIN: origin }
+  const url = 'https://media.example/storage/v1/object/public/avatars/owner/photo.jpg'
+  let upstreamCalls = 0
+  const fetchOrigin = async () => { upstreamCalls++; return new Response(null, { status: 204 }) }
+  const request = (headers = {}, method = 'OPTIONS') => new Request(url, { method, headers: {
+    Origin: origin, 'Access-Control-Request-Method': 'GET', 'Access-Control-Request-Headers': 'authorization, range', ...headers,
+  } })
+  const accepted = await deliver(request(), env, fetchOrigin)
+  assert.equal(accepted.status, 204)
+  assert.equal(accepted.headers.get('access-control-allow-origin'), origin)
+  assert.equal(accepted.headers.get('access-control-allow-headers'), 'authorization, range')
+  assert.equal(accepted.headers.get('access-control-max-age'), '600')
+  assert.equal(upstreamCalls, 0)
+
+  for (const refused of [request({ Origin: 'https://other.example' }),
+    request({ 'Access-Control-Request-Method': 'POST' }), request({ 'Access-Control-Request-Headers': 'x-admin' }),
+    request({ 'Access-Control-Request-Private-Network': 'true' }), request({}, 'GET')]) {
+    const forwarded = await deliver(refused, env, fetchOrigin)
+    assert.equal(forwarded.headers.get('access-control-max-age'), null)
+  }
+  assert.equal(upstreamCalls, 5)
+})
+
 test('edge delivery uses the actual storage route, preserves access and falls back to Ubuntu', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'novvin-r2-edge-'))
   t.after(() => fs.rm(root, { recursive: true, force: true }))
@@ -106,7 +131,7 @@ test('edge delivery uses the actual storage route, preserves access and falls ba
   assert.equal(original.status, 200)
   assert.equal(original.headers.get('content-type'), 'video/mp4')
   assert.equal(original.headers.get('cache-control'), 'private, no-store')
-  assert.equal(original.headers.get('server-timing'), 'novvin_r2')
+  assert.match(original.headers.get('server-timing'), /novvin_r2, novvin_origin;dur=\d+, novvin_bucket;dur=\d+/)
   assert.equal(original.headers.get('x-novvin-media-source'), 'r2')
   assert.equal(original.headers.get('x-novvin-r2-key'), null)
   assert.deepEqual(Buffer.from(await original.arrayBuffer()), bytes)

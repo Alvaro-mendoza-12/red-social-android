@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T01:26:12.575076+00:00",
-  "baseCommit": "70315b777a6cc68b9561059edd13109497060ce1",
+  "generatedAtUtc": "2026-11-03T02:20:39.212841+00:00",
+  "baseCommit": "efdd74532d8622aee3b9a40bc2b73aa431781c83",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3824,
-    "code-read": 306,
+    "pending": 3817,
+    "code-read": 313,
     "partial": 52
   },
   "countsByPhase": {
     "android": {
-      "pending": 1638,
+      "pending": 1636,
       "partial": 41,
-      "code-read": 276
+      "code-read": 278
     },
     "documentation": {
       "pending": 563,
@@ -26,8 +26,8 @@
       "partial": 4
     },
     "server": {
-      "pending": 876,
-      "code-read": 25,
+      "pending": 875,
+      "code-read": 26,
       "partial": 4
     },
     "tooling-and-other": {
@@ -36,8 +36,8 @@
     },
     "web": {
       "partial": 3,
-      "pending": 578,
-      "code-read": 3
+      "pending": 574,
+      "code-read": 7
     }
   },
   "files": [
@@ -896,8 +896,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/SafeAvatarCache.test.tsx",
       "phase": "web",
-      "gitBlobId": "1f688e518bb4b27c07c4b64f2acc63a5cdd214b2",
-      "reviewStatus": "pending"
+      "gitBlobId": "c45f7c37b5fb124e7194d0e944a4becdea87ae8d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/StickerPicker.test.tsx",
@@ -998,7 +1000,7 @@
     {
       "file": "NoWing-web/src/__tests__/core/boundedStorageRead.test.ts",
       "phase": "web",
-      "gitBlobId": "1102f96f2d1925575275e6ddc2646dbd5800feb9",
+      "gitBlobId": "807b75dc6ada40b054ad9eca56e82950f69b0b8a",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -1990,8 +1992,10 @@
     {
       "file": "NoWing-web/src/components/SafeAvatar.tsx",
       "phase": "web",
-      "gitBlobId": "b4afe309619d8bf31a55c2e58e3c0c63d0e6e73d",
-      "reviewStatus": "pending"
+      "gitBlobId": "e317579018120fd63bebad1d06d757b28e5b2c56",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/ShareVideoDialog.tsx",
@@ -2494,7 +2498,7 @@
     {
       "file": "NoWing-web/src/core/media/boundedStorageRead.ts",
       "phase": "web",
-      "gitBlobId": "158f5dda6f4881a848f1bf04cc50b268ce4a3ecf",
+      "gitBlobId": "99e564f077227ada45106815ce164d0b1b48116c",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -2523,7 +2527,9 @@
       "file": "NoWing-web/src/core/media/imagePreviewCache.ts",
       "phase": "web",
       "gitBlobId": "e8d3792b5648078cb14c49cc4e7e90f9249624b9",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/media/outboxPreviewRegistry.ts",
@@ -3512,8 +3518,10 @@
     {
       "file": "NoWing-web/src/ui/novvin/ProfileHeader.tsx",
       "phase": "web",
-      "gitBlobId": "f8e01ae4e27e7d42b448d0ecc8c8405cc8623977",
-      "reviewStatus": "pending"
+      "gitBlobId": "100c5b82e8d2bcdadcdf8e1ccfb7e4578da73103",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/PublicHome.tsx",
@@ -3828,7 +3836,7 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "b89eb2133db143c4770485cef96098c7e61efc5c",
+      "gitBlobId": "5cacc67d6208bada6081450fe7c2f8057660cf0d",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -5266,8 +5274,10 @@
     {
       "file": "app/src/main/java/conectate/com/core/media/MediaImageRequestFactory.kt",
       "phase": "android",
-      "gitBlobId": "9f6efb57bec0e62c638e6cbbd42d7553c5e78227",
-      "reviewStatus": "pending"
+      "gitBlobId": "d8b17f7bdee9d7146ee1bc886cc43a9128c7f3a6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/core/media/MediaUploadGuard.kt",
@@ -5366,7 +5376,7 @@
     {
       "file": "app/src/main/java/conectate/com/core/media/StorageReadCoilInterceptor.kt",
       "phase": "android",
-      "gitBlobId": "3bf03de494a3d99ac7bb9d5d5a8863c1b53c581a",
+      "gitBlobId": "1c8f468df259e2b7ad051dcec32a543d577add3c",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -13124,8 +13134,10 @@
     {
       "file": "app/src/test/java/conectate/com/core/media/StorageReadCoilOfflineTest.kt",
       "phase": "android",
-      "gitBlobId": "261db968f19531070ce7ec4d8392cd5c0a9f536b",
-      "reviewStatus": "pending"
+      "gitBlobId": "58b9bbaf8ffd855f82080f66ea859e15ef46ef6f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/core/media/StorageReadDownloadsTest.kt",
@@ -18560,7 +18572,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "481420f78ceb4f308e68d36b7154390c3ffd7822",
+      "gitBlobId": "9d767d74dfa24ba0963a5ee5c8d8c2c490122311",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18568,7 +18580,7 @@
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "phase": "documentation",
-      "gitBlobId": "0efe8ca7d07b502d826126dcb487437f57c859ae",
+      "gitBlobId": "a45c55904c05dbfa2bf1e8255a473ac395b6857d",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -19104,7 +19116,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "c134cd309f8c0878b3e3d21c97e9925b52ab0453",
+      "gitBlobId": "5af82e398f593ecd5c40c83b3c66675c3e8b448c",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20531,7 +20543,9 @@
       "file": "infrastructure/local-fallback/api/src/image-variant-policy.js",
       "phase": "server",
       "gitBlobId": "ed829156060592184b721fbdad51dbf3d069a6c6",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/import-all-csv.js",
@@ -21112,7 +21126,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/storage-routes.js",
       "phase": "server",
-      "gitBlobId": "872a7a1a076bda00cbe9c4136c2bef045b85b02d",
+      "gitBlobId": "1d7bed8a88826e4f1286ae3add09a07f4cc68480",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -22974,7 +22988,7 @@
     {
       "file": "infrastructure/local-fallback/r2-edge/worker.mjs",
       "phase": "server",
-      "gitBlobId": "0dc1cabbd4dc9d38faf98a393a5f0c0fd4a2907f",
+      "gitBlobId": "599b5e8477f95e8f389899b5a8a3b182596e9c49",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -22982,7 +22996,7 @@
     {
       "file": "infrastructure/local-fallback/r2-edge/worker.test.mjs",
       "phase": "server",
-      "gitBlobId": "e80e34e91c1e939b302e376771723e05224c2727",
+      "gitBlobId": "8f923575734dbb30ce03b41cf25cb5723aab44f7",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -22990,7 +23004,7 @@
     {
       "file": "infrastructure/local-fallback/r2-edge/wrangler.example.toml",
       "phase": "server",
-      "gitBlobId": "8705a9bb5208fe355335507e81092135be787715",
+      "gitBlobId": "6c7c190950e639f8c71aceb3c2986e3b1f4f8c53",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

@@ -46,6 +46,22 @@ test('a previously loaded avatar returns on the first render without another tra
   expect(readBoundedStorageBlob).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://owned.test/photo.png?width=160' }))
 })
 
+test('the profile photo starts immediately while a list avatar waits for visibility', async () => {
+  const observe = jest.fn()
+  const observer = jest.fn(() => ({ observe, disconnect: jest.fn() }))
+  Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: observer })
+  try {
+    render(<><SafeAvatar url="https://owned.test/list.png" name="Lista" />
+      <SafeAvatar url="https://owned.test/profile.png" name="Perfil" priority /></>)
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Perfil' }).getAttribute('src')).toMatch(/^blob:/))
+    expect(readBoundedStorageBlob).toHaveBeenCalledTimes(1)
+    expect(readBoundedStorageBlob).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://owned.test/profile.png?width=160', priority: true }))
+    expect(observe).toHaveBeenCalledWith(screen.getByRole('img', { name: 'Lista' }))
+  } finally {
+    Object.defineProperty(globalThis, 'IntersectionObserver', { configurable: true, value: undefined })
+  }
+})
+
 test('simultaneous avatars share a transfer and account changes discard their decoded source', async () => {
   render(<><SafeAvatar url="https://owned.test/photo.png" name="Uno"/><SafeAvatar url="https://owned.test/photo.png" name="Dos"/></>)
   await waitFor(() => expect(screen.getByRole('img', { name: 'Uno' }).getAttribute('src')).toMatch(/^blob:/))

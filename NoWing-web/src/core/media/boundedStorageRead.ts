@@ -11,7 +11,7 @@ const maxCredentialMillis = 8_000
 const maxActiveReads = 4
 const maxQueuedReads = 24
 let activeReads = 0
-const waiting: Array<{ grant: () => void; signal: AbortSignal }> = []
+const waiting: Array<{ grant: () => void; signal: AbortSignal; priority: boolean }> = []
 
 export function isTrustedStorageReadUrl(value: string, backendBase: string): boolean {
   try {
@@ -68,18 +68,20 @@ function releaseRead() {
   }
 }
 
-async function acquireRead(signal: AbortSignal): Promise<() => void> {
+async function acquireRead(signal: AbortSignal, priority: boolean): Promise<() => void> {
   if (signal.aborted) throw abortError()
   if (activeReads < maxActiveReads) { activeReads += 1; return releaseRead }
   if (waiting.length >= maxQueuedReads) throw new Error('MEDIA_READ_QUEUE_FULL')
   await new Promise<void>((resolve, reject) => {
-    const entry = { signal, grant: () => { signal.removeEventListener('abort', abort); activeReads += 1; resolve() } }
+    const entry = { signal, priority, grant: () => { signal.removeEventListener('abort', abort); activeReads += 1; resolve() } }
     const abort = () => {
       const index = waiting.indexOf(entry)
       if (index >= 0) waiting.splice(index, 1)
       reject(abortError())
     }
-    waiting.push(entry)
+    const before = priority ? waiting.findIndex(item => !item.priority) : -1
+    if (before === -1) waiting.push(entry)
+    else waiting.splice(before, 0, entry)
     signal.addEventListener('abort', abort, { once: true })
     if (signal.aborted) abort()
   })
@@ -104,6 +106,7 @@ export type BoundedStorageReadOptions = {
   getAccessToken: () => Promise<string>
   signal: AbortSignal
   maxBytes: number
+  priority?: boolean
   fetcher?: typeof fetch
 }
 
@@ -123,7 +126,7 @@ export async function readBoundedStorageBlob(options: BoundedStorageReadOptions)
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   let credentialTimer: ReturnType<typeof setTimeout> | undefined
   try {
-    release = await acquireRead(controller.signal)
+    release = await acquireRead(controller.signal, options.priority === true)
     credentialTimer = setTimeout(abort, maxCredentialMillis)
     const token = (await untilAbort(options.getAccessToken(), controller.signal)).trim()
     clearTimeout(credentialTimer)
