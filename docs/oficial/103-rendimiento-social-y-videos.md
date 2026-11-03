@@ -109,14 +109,25 @@ La revisión automática rechazó ejecutar la compilación y las pruebas de la
 versión modificada con el mensaje `blocked by policy`. No dio una razón más
 específica. Las regresiones de resolución, observación visible de Social y
 estados de las fotos están añadidas, con ejecución Android pendiente.
-El pipeline habitual de GitHub debe contrastarse con el commit que se publique.
-Un resultado anterior no valida los cambios de este documento.
+El pipeline de GitHub del commit `4ac5544a` terminó con errores. El trabajo
+Android `quality-gate` se detuvo en `processDebugGoogleServices` porque
+faltaba `google-services.json`, antes de compilar Kotlin. La misma causa ya
+había afectado a la referencia. Tampoco hubo ejecución de las pruebas Android
+nuevas en ese entorno. [Ejecución de este bloque](https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/41672870771).
 
 La ejecución anterior de GitHub, correspondiente a la referencia
 `6001ad95`, falló antes de compilar Kotlin porque faltaba la configuración
 Firebase `google-services.json` en el entorno de CI. Esa configuración local
 está ignorada por Git. El archivo de producción no se debe publicar para
 resolver el entorno de pruebas. [Ejecución de referencia](https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/41667820172).
+
+El trabajo compartido `backend-contracts` también falló al arrancar
+`signaling-server/index.js` desde una prueba porque no encontraba
+`dotenv`. Ese job instala únicamente las dependencias de la API. Hay que
+completar su preparación antes de usar esa batería como evidencia de una
+instalación limpia. Los trabajos de web también terminaron con errores y
+conservan su revisión posterior al móvil. No se deduce un fallo del servidor
+desplegado a partir de esas instalaciones de CI.
 
 Faltan compilar y ensayar esta versión, repetir el primer cuadro del mismo
 objeto con ambas conexiones y recorrer el feed autenticado con desplazamiento,
