@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T02:20:39.212841+00:00",
-  "baseCommit": "efdd74532d8622aee3b9a40bc2b73aa431781c83",
+  "generatedAtUtc": "2026-11-03T02:31:24.200782+00:00",
+  "baseCommit": "d7d63433b05aa6dd8e82d861040d1f4f5ea03870",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -18572,7 +18572,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "9d767d74dfa24ba0963a5ee5c8d8c2c490122311",
+      "gitBlobId": "0a509c7fb204e2979f30b9c33ebb8403725bcf1d",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18580,7 +18580,7 @@
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "phase": "documentation",
-      "gitBlobId": "a45c55904c05dbfa2bf1e8255a473ac395b6857d",
+      "gitBlobId": "fd2e37aec34db5fc3903424fa9cc97021df1b449",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -19116,7 +19116,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "5af82e398f593ecd5c40c83b3c66675c3e8b448c",
+      "gitBlobId": "acda735b5d4bda5fffbb4e5de9bf1b0199f9f353",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
