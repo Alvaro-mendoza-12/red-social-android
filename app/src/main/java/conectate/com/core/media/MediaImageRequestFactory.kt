@@ -15,6 +15,7 @@ object MediaImageRequestFactory {
     internal const val OFFLINE_CHAT_IMAGE = "novvin_offline_chat_image"
     internal const val PREFETCH_CHAT_IMAGE = "novvin_prefetch_chat_image"
     internal const val MEMORY_ONLY_PREVIEW = "novvin_memory_only_preview"
+    internal const val AVATAR_THUMBNAIL = "novvin_avatar_thumbnail"
     const val DEFAULT_PREVIEW_WIDTH = 1080
     const val AVATAR_PREVIEW_WIDTH = 384
     const val AVATAR_PREVIEW_QUALITY = 84
@@ -52,6 +53,7 @@ object MediaImageRequestFactory {
         return ImageRequest.Builder(context)
             .data(data)
             .setParameter(OFFLINE_CHAT_IMAGE, true)
+            .setParameter(AVATAR_THUMBNAIL, UbuntuStorageUrl.originalObjectUrl(data) != data)
             .size(AVATAR_PREVIEW_WIDTH, AVATAR_PREVIEW_WIDTH)
             .memoryCacheKey(cacheKey)
             .diskCacheKey(cacheKey)
