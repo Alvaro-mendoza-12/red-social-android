@@ -9,25 +9,24 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.net.InetAddress
 import java.net.URI
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 /**
  * Android can inherit a Tailscale split-DNS answer from a shared Wi-Fi network
  * without having a Tailscale route itself. Resolve our public Funnel hostname
- * over HTTPS when the system supplies only private addresses. TLS still uses
- * the original hostname, so normal certificate validation is preserved.
+ * over HTTPS. The configured media edge uses the same bounded race so a
+ * stalled system lookup cannot delay playback before falling back to Ubuntu.
+ * TLS still validates each original hostname.
  */
 object PublicBackendDns : Dns {
     private const val TAG = "PublicBackendDns"
-    private val resolverExecutor = Executors.newFixedThreadPool(4) { task ->
+    private val resolverExecutor = Executors.newFixedThreadPool(8) { task ->
         Thread(task, "NovvinPublicDns").apply { isDaemon = true }
     }
-    private val backendHost = runCatching {
-        URI(BuildConfig.FALLBACK_API_URL.trim()).host.orEmpty().lowercase()
-    }.getOrDefault("").takeIf { it.endsWith(".ts.net") }.orEmpty()
-
-    private val addressCache = BackendAddressCache(backendHost, SystemClock::elapsedRealtime)
+    private val addressCaches = configuredPublicDnsHosts(BuildConfig.FALLBACK_API_URL, BuildConfig.MEDIA_EDGE_ORIGIN)
+        .associateWith { BackendAddressCache(it, SystemClock::elapsedRealtime) }
 
     private data class Resolver(val host: String, val path: String, val ip: ByteArray? = null)
 
@@ -38,16 +37,14 @@ object PublicBackendDns : Dns {
     )
 
     override fun lookup(hostname: String): List<InetAddress> {
-        if (backendHost.isBlank() || !hostname.equals(backendHost, ignoreCase = true)) {
-            return Dns.SYSTEM.lookup(hostname)
-        }
+        val addressCache = addressCaches[hostname.lowercase(Locale.ROOT)] ?: return Dns.SYSTEM.lookup(hostname)
 
         return addressCache.lookup {
             val lookups = listOf<() -> List<InetAddress>>({ Dns.SYSTEM.lookup(hostname).filter(::isPublicAddress) }) +
                 resolvers.map { resolver -> { resolveOverHttps(resolver, hostname).filter(::isPublicAddress) } }
             val addresses = firstSuccessfulDnsLookup(resolverExecutor, lookups, 4_000L)
             if (addresses.isNotEmpty()) {
-                Log.i(TAG, "Public backend address resolved; parallel resolver race complete")
+                Log.i(TAG, "Public delivery address resolved; parallel resolver race complete")
             }
             addresses
         }
@@ -106,4 +103,17 @@ object PublicBackendDns : Dns {
         if (bytes.size == 16 && (bytes[0].toInt() and 0xfe) == 0xfc) return false
         return true
     }
+}
+
+internal fun configuredPublicDnsHosts(backend: String, edgeOrigin: String): Set<String> {
+    val backendHost = runCatching { URI(backend.trim()).host?.lowercase(Locale.ROOT) }
+        .getOrNull()?.takeIf { it.endsWith(".ts.net") }
+    val edgeHost = runCatching { URI(edgeOrigin.trim()) }.getOrNull()?.let { edge ->
+        edge.host?.lowercase(Locale.ROOT)?.takeIf {
+            edge.scheme.equals("https", true) && edge.port in listOf(-1, 443) &&
+                edge.rawUserInfo == null && edge.rawPath in listOf("", "/") &&
+                edge.rawQuery == null && edge.rawFragment == null
+        }
+    }
+    return setOfNotNull(backendHost, edgeHost)
 }

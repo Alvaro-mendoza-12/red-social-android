@@ -109,8 +109,6 @@ import coil.compose.SubcomposeAsyncImage
 import conectate.com.util.UbuntuMedia
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.collectLatest
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -397,23 +395,14 @@ fun SocialScreen(
         }
     }
 
-    LaunchedEffect(socialListState, posts) {
-        snapshotFlow {
-            socialListState.layoutInfo.visibleItemsInfo
-                .mapNotNull { socialPostIdFromListKey(it.key) }
-                .toSet()
-        }
-            .distinctUntilChanged()
-            .collectLatest { visibleIds ->
-                visibleIds.forEach { id ->
-                    posts.firstOrNull { it.id == id }?.let(viewModel::recordPostImpression)
-                }
-                delay(250)
-                val authors = posts.filter { it.id in visibleIds }.ifEmpty { posts.take(20) }
-                    .map { it.userId }.distinct()
-                momentViewModel.refreshAuthorMoments(authors)
-            }
-    }
+    SocialFeedViewportEffect(
+        listState = socialListState,
+        active = pagerState.currentPage == 0 && feedLifecycleState == Lifecycle.State.RESUMED,
+        accountId = viewModel.currentUserId,
+        posts = posts,
+        onImpression = viewModel::recordPostImpression,
+        onVisibleAuthors = momentViewModel::refreshAuthorMoments,
+    )
 
     // A failed refresh can replace a long list with only the feed selector and
     // an error/empty state. Reset the list position in that transition so the

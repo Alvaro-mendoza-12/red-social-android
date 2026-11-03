@@ -10,6 +10,19 @@ import org.junit.Test
 class FirstSuccessfulDnsLookupTest {
     private val answer = listOf(InetAddress.getByAddress(byteArrayOf(1, 1, 1, 1)))
 
+    @Test fun publicDnsRaceIncludesOnlyTheConfiguredDeliveryHosts() {
+        assertEquals(
+            setOf("api.example.ts.net", "media.example.workers.dev"),
+            configuredPublicDnsHosts("https://api.example.ts.net", "https://Media.Example.Workers.dev:443/"),
+        )
+        listOf(
+            "", "http://media.example", "https://user@media.example", "https://media.example:444",
+            "https://media.example/path", "https://media.example/?x=y", "https://media.example/#fragment",
+        ).forEach { edge ->
+            assertEquals(setOf("api.example.ts.net"), configuredPublicDnsHosts("https://api.example.ts.net", edge))
+        }
+    }
+
     @Test fun slowPrimaryDoesNotBlockSuccessfulSecondaryAndIsCancelled() {
         val executor = Executors.newFixedThreadPool(2)
         val started = CountDownLatch(1)
