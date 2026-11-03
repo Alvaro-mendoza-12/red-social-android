@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T16:17:34.228880+00:00",
-  "baseCommit": "6001ad954555e22a362bac9562dbfd42c1d39b3d",
+  "generatedAtUtc": "2026-11-03T16:24:14.238078+00:00",
+  "baseCommit": "4ac5544adfd93f8a3525e09d698ace4c972bb428",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -18899,7 +18899,7 @@
     {
       "file": "docs/oficial/103-rendimiento-social-y-videos.md",
       "phase": "documentation",
-      "gitBlobId": "7f3475977c3aa21e42422261308be1f0b0832bd3",
+      "gitBlobId": "e1a222c4f9e7dfe1b0cac049b452da48c0e203ae",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
