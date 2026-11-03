@@ -33,8 +33,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -43,6 +45,8 @@ import java.util.UUID
 
 private const val SOCIAL_AUTHORITATIVE_REQUEST_TIMEOUT_MS = 5_000L
 private const val SOCIAL_FEED_UI_WATCHDOG_MS = 12_000L
+private const val SOCIAL_COLD_PAGE_SIZE = 24
+private const val SOCIAL_PAGE_SIZE = 60
 
 @HiltViewModel
 class SocialViewModel @Inject constructor(
@@ -497,18 +501,13 @@ class SocialViewModel @Inject constructor(
         }
     }
 
-    private fun beginDiscoverySession(userInitiated: Boolean) {
+    fun refreshDiscovery() {
         previousDiscoveryFirstId = _posts.value.firstOrNull()?.id
         discoverySessionSeed = UUID.randomUUID().toString()
 
-        // History is reloaded asynchronously before the next cached or network page.
-        _posts.value = emptyList()
+        // Keep the current page usable while refreshing within the same account and mode.
         _feedScrollReset.value++
-        loadPosts(forceLegacy = false, refreshSeed = discoverySessionSeed, userInitiated = userInitiated)
-    }
-
-    fun refreshDiscovery() {
-        beginDiscoverySession(userInitiated = true)
+        loadPosts(forceLegacy = false, refreshSeed = discoverySessionSeed, userInitiated = true)
         scheduleSupplementalContent()
     }
 
@@ -571,7 +570,7 @@ class SocialViewModel @Inject constructor(
                 if (!forceLegacy && selectedMode == SocialFeedMode.DISCOVER && canWaitForPersonalization) {
                     val authoritativePage = withTimeoutOrNull(SOCIAL_AUTHORITATIVE_REQUEST_TIMEOUT_MS) {
                         algorithmRepository
-                            .loadSocialRecommendationPage(cursor = null, limit = 60, refreshSeed = refreshSeed)
+                            .loadSocialRecommendationPage(cursor = null, limit = SOCIAL_PAGE_SIZE, refreshSeed = refreshSeed)
                             .getOrNull()
                     }
                     if (generation != postsGeneration) return@launch
@@ -588,7 +587,10 @@ class SocialViewModel @Inject constructor(
                             authoritativeExplanations.putAll(authoritativePage.explanationsByCandidateId)
                             val ordered = orderSocialDiscoveryForSession(withCachedPostAuthors(visiblePosts), authService.getCurrentUserId(), refreshSeed, previousDiscoveryFirstId, previousVisitSeenIds)
                             if (generation != postsGeneration) return@launch
-                            _posts.value = reconcileSocialFeed(_posts.value, ordered.map { reactionWriter.reconcile(it, reactionReadVersion) }, preserveVisibleOrder = true)
+                            _posts.value = reconcileSocialFeed(
+                                _posts.value, ordered.map { reactionWriter.reconcile(it, reactionReadVersion) },
+                                preserveVisibleOrder = !userInitiated,
+                            )
                             recordFeedLoaded(startedAt, visiblePosts.size, "authoritative", generation)
                             refreshVisibleAuthors(generation)
                             return@launch
@@ -599,7 +601,8 @@ class SocialViewModel @Inject constructor(
                         resetAuthoritativeFeedState()
                     }
                 }
-                val publicPage = postRepository.getGlobalPostPage(limit = 60, mode = selectedMode.apiValue)
+                val firstPageSize = if (canWaitForPersonalization) SOCIAL_PAGE_SIZE else SOCIAL_COLD_PAGE_SIZE
+                val publicPage = postRepository.getGlobalPostPage(limit = firstPageSize, mode = selectedMode.apiValue)
                     .getOrThrow()
                 if (generation != postsGeneration) return@launch
                 publicFeedNextOffset = publicPage.nextOffset
@@ -608,14 +611,19 @@ class SocialViewModel @Inject constructor(
                     val visiblePosts = prioritizePreviousVisit(applyFeedControls(withCachedPostAuthors(publicPage.items)))
                     if (generation != postsGeneration) return@launch
                     val ranked = if (selectedMode == SocialFeedMode.DISCOVER) {
-                        rankPosts(visiblePosts, refreshSeed)
+                        val ordered = rankPosts(visiblePosts, refreshSeed)
+                        if (generation != postsGeneration) return@launch
+                        applyFeedControls(ordered)
                     } else {
                         visiblePosts.sortedByDescending { it.createdAt }
                     }
                     // Keep cached content on a failed request, but honor an
                     // authoritative empty result (e.g. removed/private posts).
                     if (ranked.isEmpty() && postRepository.globalFeedError.value != null) return@run
-                    _posts.value = reconcileSocialFeed(_posts.value, ranked.map { reactionWriter.reconcile(it, reactionReadVersion) }, preserveVisibleOrder = true)
+                    _posts.value = reconcileSocialFeed(
+                        _posts.value, ranked.map { reactionWriter.reconcile(it, reactionReadVersion) },
+                        preserveVisibleOrder = !userInitiated,
+                    )
                     recordFeedLoaded(startedAt, ranked.size, selectedMode.apiValue, generation)
                     refreshVisibleAuthors(generation)
                 }
@@ -649,7 +657,7 @@ class SocialViewModel @Inject constructor(
             try {
                 val items = if (authoritativeFeedActive) {
                     val requested = requireNotNull(cursor)
-                    val page = algorithmRepository.loadSocialRecommendationPage(cursor = requested, limit = 60).getOrThrow()
+                    val page = algorithmRepository.loadSocialRecommendationPage(cursor = requested, limit = SOCIAL_PAGE_SIZE).getOrThrow()
                     if (generation != postsGeneration) return@launch
                     consumedRecommendationCursors.add(requested)
                     authoritativeCursor = page.nextCursor?.takeUnless { it in consumedRecommendationCursors }
@@ -661,7 +669,7 @@ class SocialViewModel @Inject constructor(
                     page.items
                 } else {
                     val requested = requireNotNull(offset)
-                    val page = postRepository.getGlobalPostPage(requested, 60, feedMode.value.apiValue).getOrThrow()
+                    val page = postRepository.getGlobalPostPage(requested, SOCIAL_PAGE_SIZE, feedMode.value.apiValue).getOrThrow()
                     if (generation != postsGeneration) return@launch
                     publicFeedNextOffset = page.nextOffset?.takeIf { it > requested }
                     _authoritativeHasMore.value = publicFeedNextOffset != null
@@ -735,16 +743,17 @@ class SocialViewModel @Inject constructor(
         }
     }
 
-    private fun rankPosts(posts: List<Post>, refreshSeed: String? = null): List<Post> {
+    private suspend fun rankPosts(posts: List<Post>, refreshSeed: String): List<Post> {
+        val account = authService.getCurrentUserId()
         val friendIds = _friends.value.map { it.id }.toSet()
-        val ranked = feedRankingEngine.rankPosts(
-            posts = posts,
-            currentUserId = authService.getCurrentUserId(),
-            friendIds = friendIds,
-            signalSnapshot = feedSignalTracker.snapshot(),
-            interestTerms = profileInterestTerms()
-        )
-        return orderSocialDiscoveryForSession(ranked, authService.getCurrentUserId(), refreshSeed ?: discoverySessionSeed, previousDiscoveryFirstId, previousVisitSeenIds)
+        val signals = feedSignalTracker.snapshot()
+        val interests = profileInterestTerms()
+        val previousFirstId = previousDiscoveryFirstId
+        val seenIds = previousVisitSeenIds
+        return withContext(Dispatchers.Default) {
+            val ranked = feedRankingEngine.rankPosts(posts, account, friendIds, signals, interests)
+            orderSocialDiscoveryForSession(ranked, account, refreshSeed, previousFirstId, seenIds)
+        }
     }
 
     private fun profileInterestTerms(): Set<String> {

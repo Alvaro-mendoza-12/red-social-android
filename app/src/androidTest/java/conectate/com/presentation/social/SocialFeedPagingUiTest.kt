@@ -3,6 +3,7 @@ package conectate.com.presentation.social
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import conectate.com.data.model.Post
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -75,5 +77,52 @@ class SocialFeedPagingUiTest {
         compose.waitForIdle()
         compose.runOnIdle { assertEquals(0, requests); error = false }
         compose.waitUntil(5000) { requests == 1 }
+    }
+
+    @Test fun viewportIgnoresCounterUpdatesAndStopsWhenHidden() {
+        var active by mutableStateOf(false)
+        var posts by mutableStateOf(List(12) { index ->
+            Post(id = "$index", userId = "author-$index", userName = "Author", content = "Publicación $index")
+        })
+        val impressions = mutableListOf<String>()
+        val authorLoads = mutableListOf<List<String>>()
+        compose.setContent {
+            val list = rememberLazyListState()
+            SocialFeedViewportEffect(list, active, "owner", posts, { impressions.add(it.id) }) {
+                authorLoads.add(it)
+            }
+            LazyColumn(Modifier.height(80.dp).testTag("viewport"), state = list) {
+                item("header") { Text("Social", Modifier.height(80.dp)) }
+                items(posts, key = { "post:${it.id}" }) { post ->
+                    Text(post.content, Modifier.height(80.dp))
+                }
+            }
+        }
+
+        compose.runOnIdle { active = true }
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle {
+            assertTrue(impressions.isEmpty())
+            assertTrue(authorLoads.isEmpty())
+        }
+        compose.onNodeWithTag("viewport").performScrollToIndex(1)
+        compose.waitUntil(5000) { authorLoads.isNotEmpty() }
+        compose.runOnIdle {
+            assertEquals(listOf("0"), impressions)
+            assertEquals(listOf(listOf("author-0")), authorLoads)
+            posts = posts.map { it.copy(likeCount = 1) }
+        }
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle {
+            assertEquals(listOf("0"), impressions)
+            assertEquals(listOf(listOf("author-0")), authorLoads)
+            active = false
+        }
+        compose.onNodeWithTag("viewport").performScrollToIndex(2)
+        compose.mainClock.advanceTimeBy(500)
+        compose.runOnIdle {
+            assertEquals(listOf("0"), impressions)
+            assertEquals(listOf(listOf("author-0")), authorLoads)
+        }
     }
 }
