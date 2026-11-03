@@ -6766,7 +6766,7 @@ class LocalFallbackApiClient @Inject constructor(
             "INVALID_CREDENTIALS" -> Exception("Correo o contraseña incorrectos.")
             "ACCOUNT_NOT_FOUND" -> Exception("No existe una cuenta con ese correo. Regístrate para crear una cuenta.")
             "INVALID_PASSWORD" -> Exception("Contraseña incorrecta. Intenta otra vez o restablece tu contraseña.")
-            "EMAIL_ALREADY_EXISTS" -> Exception("Ese correo ya existe en el servidor Ubuntu.")
+            "EMAIL_ALREADY_EXISTS" -> Exception("Ese correo ya está registrado. Inicia sesión o recupera tu contraseña.")
             "USERNAME_TAKEN" -> Exception("Ese @usuario ya está en uso. Elige una de las sugerencias u otro nombre.")
             "USERNAME_INVALID" -> Exception("El @usuario debe tener entre 3 y 24 letras, números, puntos, guiones o guiones bajos.")
             "USERNAME_RESERVED" -> Exception("Ese @usuario está reservado o no está permitido. Elige otro.")
@@ -6797,7 +6797,7 @@ class LocalFallbackApiClient @Inject constructor(
             "INVALID_TOKEN" -> Exception("Tu sesión venció y no pudo renovarse. Inicia sesión nuevamente.")
             "INVALID_REFRESH_TOKEN" -> LocalFallbackSessionRenewalRequiredException()
             "ACCOUNT_DELETED" -> {
-                AccountDeletedEvents.notifyAccountDeleted()
+                AccountDeletedEvents.notifyAccountDeletedFromAuthorization(response.call.request.headers[HttpHeaders.Authorization])
                 AccountDeletedException()
             }
             "AI_SERVICE_TIMEOUT" -> Exception("Novvin tardó demasiado en responder. Intenta nuevamente.")

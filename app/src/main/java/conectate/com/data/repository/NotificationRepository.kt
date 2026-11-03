@@ -561,7 +561,7 @@ class NotificationRepository @Inject constructor(
             ubuntuRealtimeClient.events.collect { envelope ->
                 if (!envelope.channel.equals("user:$userId", ignoreCase = true) || !lease.isCurrent()) return@collect
                 if (envelope.event == "account_deleted") {
-                    AccountDeletedEvents.notifyAccountDeleted()
+                    AccountDeletedEvents.notifyAccountDeleted(lease)
                     return@collect
                 }
                 if (envelope.event != "notification") return@collect

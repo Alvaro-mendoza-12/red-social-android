@@ -683,6 +683,9 @@ class AuthRepository @Inject constructor(
         forceLocalLogout()
     }
 
+    internal fun handleAccountDeleted(notice: conectate.com.data.auth.AccountDeletionNotice): Boolean =
+        authService.commitAccountDeletion(notice, ::forceLocalLogout)
+
     /**
      * Immediate, non-suspending logout gate for UI actions.
      *
@@ -692,7 +695,7 @@ class AuthRepository @Inject constructor(
      * This method:
      * - Forces local logout instantly (clears cached tokens + blocks auto session recovery).
      * - Clears in-memory caches.
-     * - Starts the heavier Supabase signOut + DB wipe in the background (best-effort).
+     * - Starts captured session revocation and account-owned local cleanup in the background.
      */
     fun forceLocalLogout() {
         val fcmTokenSnapshot = notificationRepository.capturedFcmToken()
@@ -707,7 +710,7 @@ class AuthRepository @Inject constructor(
 
         clearSessionScopedState()
 
-        // Fire-and-forget full cleanup (DB wipe + Supabase SDK signOut).
+        // Captured credentials and generation keep background cleanup tied to the outgoing account.
         repositoryScope.launch {
             runCatching {
                 notificationRepository.unregisterFcmToken(userIdSnapshot, accessTokenSnapshot, fcmTokenSnapshot, wasLocalFallbackSession)
