@@ -7,6 +7,7 @@ import conectate.com.data.model.Chat
 import conectate.com.data.model.MultiAccountPendingDestination
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.supabase.AuthService
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.util.NotificationAccountTarget
 import conectate.com.util.countDistinctUnreadDirectConversations
@@ -21,6 +22,7 @@ import io.ktor.http.isSuccess
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -52,6 +54,14 @@ internal data class InactiveAccountUnreadSnapshot(
     val latestPendingDestination: MultiAccountPendingDestination?
 )
 
+private data class ActiveInboxIdentity(
+    val userId: String,
+    val email: String?,
+    val lease: AuthSessionLease,
+) {
+    val target get() = NotificationAccountTarget(userId, email)
+}
+
 @Singleton
 class MultiAccountInboxRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
@@ -74,20 +84,14 @@ class MultiAccountInboxRepository @Inject constructor(
     private var scope = newSafeScope("MultiAccountInboxRepository", Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    private val activeIdentity = combine(
-        authService.currentSession
-            .map { session ->
-                session?.user?.id?.trim()?.lowercase() ?: authService.getCurrentUserId()?.trim()?.lowercase()
-            }
-            .distinctUntilChanged(),
-        authService.currentSession
-            .map { session ->
-                session?.user?.email?.trim()?.lowercase() ?: authService.getCurrentUserEmail()?.trim()?.lowercase()
-            }
-            .distinctUntilChanged()
-    ) { userId, email ->
-        userId to email
-    }
+    private val activeIdentity = authService.currentSession.map { session ->
+        val user = session?.user ?: return@map null
+        val lease = authService.captureAccountLease()
+        // Both fields come from one published response, never two separately combined emissions.
+        ActiveInboxIdentity(user.id.trim().lowercase(java.util.Locale.ROOT),
+            user.email.trim().lowercase(java.util.Locale.ROOT).takeIf(String::isNotBlank), lease)
+            .takeIf { lease.isCurrent() && it.userId == lease.accountId && authService.currentSession.value === session }
+    }.distinctUntilChanged()
 
     private val activeUnreadConversationCount = combine(
         messageRepository.getUserChatsFlow()
@@ -111,11 +115,14 @@ class MultiAccountInboxRepository @Inject constructor(
                 accountSessionRepository.accounts,
                 activeIdentity,
                 activeUnreadConversationCount
-            ) { accounts, (activeUserId, activeEmail), unreadCount ->
-                Triple(accounts, NotificationAccountTarget(activeUserId, activeEmail), unreadCount)
-            }.collectLatest { (accounts, activeTarget, unreadCount) ->
-                var activeAccount = resolveStoredAccountForTarget(activeTarget, accounts) ?: return@collectLatest
-                persistActiveAccountSnapshot(activeAccount, unreadCount)
+            ) { accounts, identity, unreadCount ->
+                Triple(accounts, identity, unreadCount)
+            }.collectLatest { (accounts, identity, unreadCount) ->
+                if (identity == null) return@collectLatest
+                val activeAccount = resolveStoredAccountForTarget(identity.target, accounts) ?: return@collectLatest
+                authService.commitForAccountLease(identity.lease) {
+                    persistActiveAccountSnapshot(activeAccount, unreadCount)
+                }
             }
         }
     }
@@ -123,15 +130,13 @@ class MultiAccountInboxRepository @Inject constructor(
     val accountSummaries: StateFlow<List<MultiAccountInboxSummary>> = combine(
         accountSessionRepository.accounts,
         activeIdentity,
-        activeUnreadConversationCount
-    ) { accounts, (activeUserId, activeEmail), activeUnread ->
+        activeUnreadConversationCount,
+        observeInboxPreferenceChanges { prefs },
+    ) { accounts, identity, activeUnread, _ ->
         accounts
             .sortedByDescending { it.last_used_at }
             .map { account ->
-                var isActive = NotificationAccountTarget(
-                    userId = activeUserId,
-                    email = activeEmail
-                ).matches(account)
+                val isActive = identity != null && identity.lease.isCurrent() && identity.target.matches(account)
                 var latestPendingDestination = loadLatestPendingDestination(account)
                 val pendingCount = loadPendingConversationKeys(account).size
                 val cachedCount = loadCachedUnreadConversations(account)
@@ -269,8 +274,19 @@ class MultiAccountInboxRepository @Inject constructor(
     }
 
     fun acknowledgeCurrentAccount() {
-        var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
-        var currentEmail = authService.getCurrentUserEmail()?.trim()?.lowercase()
+        authService.commitForAccountLease(authService.captureAccountLease(), ::clearCurrentAccountHints)
+    }
+
+    internal fun acknowledgeCurrentAccount(lease: AuthSessionLease) {
+        if (!authService.commitForAccountLease(lease, ::clearCurrentAccountHints)) {
+            throw CancellationException("La cuenta cambió mientras se abrían sus avisos.")
+        }
+    }
+
+    /** Called only while the captured auth generation excludes a newer login. */
+    private fun clearCurrentAccountHints() {
+        val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase(java.util.Locale.ROOT)
+        val currentEmail = authService.getCurrentUserEmail()?.trim()?.lowercase(java.util.Locale.ROOT)
         var activeAccount = accountSessionRepository.accounts.value.firstOrNull {
             NotificationAccountTarget(userId = currentUserId, email = currentEmail).matches(it)
         } ?: return
