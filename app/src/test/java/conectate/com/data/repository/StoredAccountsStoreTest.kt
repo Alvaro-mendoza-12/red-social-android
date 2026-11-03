@@ -12,6 +12,65 @@ class StoredAccountsStoreTest {
         id = id, user_id = id, email = "$id@example.test", access_token = token, refresh_token = "refresh-$token",
     )
 
+    @Test fun lateInboxResponsesCannotWriteForRemovedOrReplacedCredentials() {
+        val old = account("one")
+        val store = StoredAccountsStore(listOf(old)) {}
+        var written = false
+        store.update { listOf(account("one", "newer")) }
+        assertFalse(store.commitIfCredentialsCurrent(old) { written = true })
+        val current = store.state.value.single()
+        store.update { emptyList() }
+        assertFalse(store.commitIfCredentialsCurrent(current) { written = true })
+        assertFalse(written)
+    }
+
+    @Test fun aProfileEditDoesNotInvalidateTheSameAccountCredentials() {
+        val old = account("one")
+        val edited = old.copy(display_name = "New display name")
+        val store = StoredAccountsStore(listOf(edited)) {}
+        var observed: StoredAccountSession? = null
+        assertTrue(store.commitIfCredentialsCurrent(old) { observed = it })
+        assertEquals(edited, observed)
+        assertEquals(listOf(edited), store.readCurrent { it })
+    }
+
+    @Test fun removalCannotInterleaveBetweenTheCredentialCheckAndItsLocalWrite() {
+        val old = account("one")
+        val store = StoredAccountsStore(listOf(old)) {}
+        val writing = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val removing = CountDownLatch(1)
+        val removed = CountDownLatch(1)
+        val workers = Executors.newFixedThreadPool(2)
+        var writtenFor: String? = null
+        try {
+            val response = workers.submit<Boolean> {
+                store.commitIfCredentialsCurrent(old) {
+                    writing.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                    writtenFor = it.id
+                }
+            }
+            assertTrue(writing.await(5, TimeUnit.SECONDS))
+            val removal = workers.submit {
+                removing.countDown()
+                store.update { emptyList() }
+                removed.countDown()
+            }
+            assertTrue(removing.await(5, TimeUnit.SECONDS))
+            assertFalse(removed.await(100, TimeUnit.MILLISECONDS))
+            release.countDown()
+            assertTrue(response.get(5, TimeUnit.SECONDS))
+            removal.get(5, TimeUnit.SECONDS)
+            assertEquals("one", writtenFor)
+            assertTrue(store.state.value.isEmpty())
+        } finally {
+            release.countDown()
+            workers.shutdownNow()
+            workers.awaitTermination(5, TimeUnit.SECONDS)
+        }
+    }
+
     @Test fun storageFailureDoesNotPublishUnsavedCredentialsAndCanBeRetried() {
         val original = account("one")
         var available = false

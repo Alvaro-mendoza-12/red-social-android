@@ -77,7 +77,7 @@ internal fun createLocalInboxReader(
 class LocalInboxRepository @Inject constructor(
     private val authService: AuthService,
     private val databaseProvider: Lazy<AppDatabase>,
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
 ) {
     private val scope = newSafeScope("LocalInboxRepository", Dispatchers.IO)
 

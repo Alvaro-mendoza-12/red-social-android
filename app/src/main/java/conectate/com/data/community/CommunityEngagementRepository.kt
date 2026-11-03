@@ -35,7 +35,7 @@ fun questionApiError(code: String) = when(code) {
     else -> "No se pudo completar la acción. Inténtalo de nuevo."
 }
 @Singleton
-class CommunityEngagementRepository @Inject constructor(private val config: SupabaseConfig, private val auth: AuthService, private val storage: StorageService, @ApplicationContext private val context: Context) {
+class CommunityEngagementRepository @Inject constructor(private val config: SupabaseConfig, private val auth: AuthService, private val storage: StorageService, @param:ApplicationContext private val context: Context) {
     private fun base(kind: String, roomId: String): String {
         require(kind in setOf("group", "community")); require(roomId.matches(Regex("[a-fA-F0-9-]{36}")))
         return "/v1/data/questions/$kind/$roomId"

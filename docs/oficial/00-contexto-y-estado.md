@@ -2,7 +2,7 @@
 
 ## Trabajo de código en curso
 
-La [revisión 101](101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md) continúa la corrección del código Android, primero móvil y después web. Sigue abierta la revisión integral; sus resultados no equivalen a una APK nueva ni a cobertura completa del aplicativo. La entrega firmada anterior es **9.1.35 / 175**, documentada en la [revisión 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md). La validación física entre dispositivos permanece pendiente por decisión del propietario; `correciones` sigue reservada al otro chat.
+Estado del 3 de noviembre de 2026: la [revisión 101](101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md) mantiene la corrección móvil en curso, antes de la web. La revisión integral sigue abierta. La [operación 102](102-r2-replica-y-entrega-multimedia.md) identifica el servidor Ubuntu con réplica a R2 privado y su Worker de lectura, y el AAB firmado **9.1.38 / 178**. Ese paquete no contiene automáticamente las correcciones posteriores de acceso y bandeja; su APK universal no pasó los presupuestos de tamaño. La APK entregada anteriormente fue 9.1.35 / 175. La validación física corresponde al propietario. `main` y `feature/live-gifts` deben tener árboles iguales; `correciones` permanece para el otro chat. Las versiones y mediciones de los apartados fechados siguientes conservan su alcance histórico.
 
 ## Compartidos y documentos del 31/10
 
@@ -143,8 +143,7 @@ Estos puntos se observan directamente en el código/configuración local:
   - `targetSdk`: 36.
   - Android Gradle Plugin: 8.13.2.
   - Gradle wrapper: 8.13.
-  - `versionCode`: 117.
-  - `versionName`: 9.0.20. El incremento está pendiente por indicación del propietario.
+  - La versión de código se consulta en [app/build.gradle.kts](../../app/build.gradle.kts); la revisión 102 identifica la última entrega firmada y la 101 los cambios posteriores.
   - Backend principal configurado por `FALLBACK_API_URL` y `BACKEND_DISCOVERY_HOST`.
 
 - Backend:
@@ -160,7 +159,7 @@ Estos puntos se observan directamente en el código/configuración local:
   - Existe lógica de migración de cuentas Supabase a Ubuntu.
 
 - Web:
-  - Existe `Conectate-web/`.
+  - El cliente está en `NoWing-web/`.
   - Usa React/Vite/TypeScript.
   - Debe considerarse cliente secundario. No asumir paridad total con Android sin probar.
 
@@ -191,8 +190,9 @@ El estado saludable debe mostrar:
 El router está detrás de CGNAT. Por eso:
 
 - No se puede depender de abrir puertos normales del router.
-- La arquitectura objetivo usa un hostname HTTPS estable, por ejemplo
-  `https://api.novvin.example`, conectado a un Cloudflare Tunnel nombrado.
+- El ingreso activo usa `https://conectate.tail9b267c.ts.net` mediante Tailscale
+  Funnel. El dominio propio sigue siendo una evolución de configuración; el
+  runbook de Cloudflare nombrado describe una alternativa, no el servicio activo.
 - Un Quick Tunnel no es una base admisible para producción: su URL puede cambiar
   y no ofrece las garantías operativas requeridas.
 - La app no debe aceptar ni conservar una URL `trycloudflare.com` como origen
@@ -217,7 +217,7 @@ eso indica casi siempre que la app o la configuración quedó apuntando a una UR
 Para llamadas, salas de voz, cámara y compartir pantalla:
 
 - WebRTC necesita señalización y también rutas de media.
-- Cloudflare Tunnel sirve para HTTP/WebSocket de señalización, pero no resuelve por sí solo todo el tráfico media WebRTC.
+- El ingreso HTTPS/WebSocket sirve a la señalización; las rutas de audio y video WebRTC requieren su propia conectividad ICE.
 - En redes distintas, especialmente móvil + casa con CGNAT, se necesita STUN/TURN funcional.
 - El proyecto soporta credenciales TURN por variables de entorno en `signaling-server`.
 
@@ -225,7 +225,7 @@ No se debe marcar llamadas/salas como terminadas si solo funcionan dentro de la 
 
 ## Usuarios y escala actual
 
-Contexto reportado por el dueño del proyecto:
+Contexto histórico reportado por el dueño; no es una medición actual de usuarios ni de capacidad:
 
 - Aproximadamente 60 usuarios registrados.
 - Usuarios activos reales: bajo volumen, normalmente 1–5 por semana.
@@ -238,7 +238,7 @@ Esta escala permite optimizaciones pragmáticas:
 - Servicios Docker en SSD.
 - Archivos de usuario y backups en discos externos si están bien montados.
 - Cache en memoria para bajo volumen.
-- Redis puede agregarse si los perfiles/feed/mensajes hacen demasiadas consultas repetidas.
+- La configuración versionada de señalización ya integra Redis Streams. Parte de una réplica; aumentar esa cifra exige verificar los demás servicios y estados compartidos. Esto no acredita escalado horizontal del conjunto ni autoriza una ampliación sin comprobarla.
 
 ## Qué no debe asumirse
 

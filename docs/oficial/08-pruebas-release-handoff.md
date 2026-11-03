@@ -2,18 +2,7 @@
 
 Este documento define cómo probar, publicar y entregar el proyecto a otro equipo o IA.
 
-La evidencia vigente del 29/10/2026 está en el
-[cierre 90](90-cierre-produccion-red-y-presupuesto-2026-10-29.md), después de la
-[revisión 89](89-colas-por-cuenta-y-recuperacion-visor-2026-10-29.md) y la
-[continuación móvil 85](85-conectividad-cancelacion-y-carga-movil-2026-10-29.md).
-Los últimos APK y AAB firmados y contrastados son **9.1.30 / 170**, locales y
-sin publicación en Play. Firma, R8, objetivo API 36 y empaquetado de 16 KiB
-aprobaron; el APK release abrió bienvenida/acceso/registro inicial, entró y salió
-como invitado y volvió a bienvenida después del reinicio en AOSP 35. No equivale
-a registro/login completos, restauración autenticada ni aceptación física entre
-redes. Antes de distribuir, contrastar la versión disponible en Play, la firma
-real de instalación y los pendientes de los recorridos; las pruebas QA no
-sustituyen esos controles. El cierre 90 registra los hashes y alcances concretos.
+Estado del 3 de noviembre de 2026: la [revisión 101](101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md) mantiene la revisión móvil abierta y separa pruebas de código, ensayos de dispositivo y despliegues. La [operación 102](102-r2-replica-y-entrega-multimedia.md) identifica el AAB firmado **9.1.38 / 178**, su huella y las comprobaciones de firma, R8, 16 KiB y tamaño. La APK universal 178 excede presupuestos y no se presenta como entrega aprobada. Los commits posteriores de acceso y bandeja todavía requieren una entrega firmada nueva. La APK histórica entregada es 9.1.35 / 175. Estos documentos no acreditan una publicación en Google Play. Antes de distribuir, contrastar versión disponible, firma de instalación y pendientes; las pruebas QA no sustituyen esos controles ni las pruebas físicas del propietario.
 
 La revisión 85 registra la comparación de carga anterior/candidata y sus límites. Las revisiones 78/79 conservan la historia del host y de la publicación web; ninguna sustituye la aceptación física del APK ni acredita capacidad sostenida de todos los módulos.
 
@@ -308,6 +297,7 @@ Desde Windows:
 
 ```powershell
 Set-Location "D:\red social - live-gifts"
+python -m pip install -r tools/requirements.txt
 python -m unittest discover -s tools/tests -p "test_*.py"
 .\gradlew.bat :app:qualityGateDebug :app:assembleRelease :app:bundleRelease
 python tools/verify_android_release.py app/build/outputs/bundle/release/app-release.aab --expected-cert-sha256 $env:NOVVIN_UPLOAD_CERT_SHA256
@@ -322,10 +312,11 @@ python tools/performance_budget_check.py --artifacts app/build/outputs/bundle/re
 original. Para ensayos locales se usa debug. Nunca publicar un artefacto firmado
 con una clave de prueba ni configurar ese flag en el workflow de producción.
 
-La línea Android validada para 3.3.4/66 es Kotlin 2.2.10, KSP
-2.2.10-2.0.2, Media3 1.11.0, Compose BOM 2026.06.00, Room 2.8.4 y Hilt
-2.57.2. `tools/tests/test_media3_dependency_guard.py` falla si esas versiones
-se desalinean o regresan APIs de Transformer retiradas.
+Las versiones de Kotlin, KSP, Media3, Compose, Room y Hilt se consultan en
+`gradle/libs.versions.toml` y en los scripts Gradle versionados.
+`tools/tests/test_media3_dependency_guard.py` comprueba su contrato y las APIs
+de Transformer. La evidencia de cada paquete registra la versión realmente
+construida; una lista copiada de una entrega antigua no define el build actual.
 
 `testDebugUnitTest` debe incluir
 `DatabaseMigrationSchemaContractTest.latestNormalizerExactlyMatchesAuthoritativeRoomSchema`.
@@ -367,6 +358,13 @@ Secrets requeridos en el entorno de GitHub `production`:
 - `ANDROID_FALLBACK_API_URL`;
 - `ANDROID_SIGNALING_URL`;
 - `ANDROID_BACKEND_DISCOVERY_HOST`.
+
+La variable pública de Actions `ANDROID_MEDIA_EDGE_ORIGIN` configura el origen
+R2 del candidato. Si no se define, el workflow usa el Worker identificado en
+la operación 102. La preparación valida una raíz HTTPS sin credenciales ni
+parámetros y escribe `MEDIA_EDGE_ORIGIN` en las propiedades del build. No es una
+llave R2 y no debe sustituirse por una URL firmada de un objeto. El workflow
+genera candidatos; esta configuración no ejecuta una publicación en Play.
 
 Antes de cerrar un despliegue backend:
 
