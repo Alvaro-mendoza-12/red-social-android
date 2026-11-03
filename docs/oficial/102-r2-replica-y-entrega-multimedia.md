@@ -78,6 +78,23 @@ funcional con barra oculta. En escritorio la separación de información bajo
 el escenario quedó en 14 píxeles. Este ensayo de presentación no verifica
 una llamada autenticada ni sustituye pruebas físicas.
 
+Vercel publicó el código web de `43dbd85a3d41` en el despliegue
+`dpl_9WM7jt3QEkG68PXw4eqo7R7ezkED`, servido como
+`red-social-android-qkde3aia2-alvaro-s-projects1.vercel.app`. Se verificó que
+el dominio público apuntaba a ese candidato con estado `READY`. Un navegador
+aislado en modo invitado recorrió Social, Videos y Social. Las fotos visibles
+se decodificaron, siete avatares conservaron la misma fuente Blob y las tres
+lecturas iniciales de archivos de avatar siguieron siendo tres al volver.
+Solo se creó una sesión de invitado y no hubo respuestas multimedia de error.
+Otro recorrido de Videos dejó el reproductor en `readyState=4`, controlado
+por service worker, con lecturas `200` y `206` desde R2. La consola registró
+cero errores y cero advertencias en esos ensayos. No se usó una cuenta real.
+
+Un ensayo aislado del módulo de señalización desplegado, con reloj controlado,
+comprobó conservación hasta el milisegundo anterior y eliminación al alcanzar
+3.600.000 ms, dejando cero entradas en el diario de ese proceso de prueba.
+No envió mensajes a usuarios ni esperó una hora real en una sala activa.
+
 ### AAB firmado 9.1.38 / 178
 
 `bundleRelease` y `assembleRelease` terminaron correctamente. El AAB usa
