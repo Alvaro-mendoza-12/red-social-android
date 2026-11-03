@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T15:09:13.871043+00:00",
-  "baseCommit": "90afcc84b24acb18ee1995f680c4eb67dd5b9da9",
+  "generatedAtUtc": "2026-11-03T15:22:23.356730+00:00",
+  "baseCommit": "1097d40c46f8c27559423d9c58a1f45fd1e685f5",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,8 +11,8 @@
   },
   "counts": {
     "pending": 3747,
-    "code-read": 391,
-    "partial": 62
+    "code-read": 392,
+    "partial": 61
   },
   "countsByPhase": {
     "android": {
@@ -22,8 +22,8 @@
     },
     "documentation": {
       "pending": 558,
-      "code-read": 4,
-      "partial": 6
+      "code-read": 5,
+      "partial": 5
     },
     "server": {
       "pending": 874,
@@ -18819,8 +18819,8 @@
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "phase": "documentation",
-      "gitBlobId": "04321c87c892a98394b14b3e1fd113e32da647c9",
-      "reviewStatus": "partial",
+      "gitBlobId": "e4242b9ddc5f7f2365182c3842822d239b066ca7",
+      "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },

@@ -1,5 +1,65 @@
 # R2: réplica y entrega multimedia
 
+## Verificación de Android y web, 3 de noviembre de 2026
+
+La entrega mediante R2 está activa para originales elegibles. Ubuntu conserva
+los originales y autoriza cada lectura. El Worker consulta el bucket privado
+cuando hay una réplica verificada y usa Ubuntu si la copia falta o falla.
+Las variantes por ancho, los enlaces firmados y los archivos de una sola
+visualización siguen la ruta de Ubuntu. Los bloques posteriores conservan el
+historial de preparación y activación.
+
+El AAB firmado **9.1.38 / 178** conserva su SHA-256 registrado y contiene el
+origen del Worker dentro del DEX. La comprobación previa en emulador Android 15
+confirmó una lectura real de 4 KiB desde R2 con Media3. En esta revisión,
+Chrome abrió Videos como invitado en el dominio público, bajo el service worker
+de multimedia. Tras recargar, observó ocho respuestas `200` y una `206`
+desde R2, además de 18 consultas CORS previas. Un video llegó al estado
+reproducible en 3,63 s desde la recarga, en esa muestra. La consulta previa
+directa al Worker devolvió `204` y permite que el navegador la reutilice hasta
+600 s por URL, sujeto al límite del navegador. [Estándar Fetch](https://fetch.spec.whatwg.org/#cors-preflight-cache).
+
+Cinco rondas alternaron tres rutas para los mismos 4 KiB de un video público
+con sesión de invitado. Las 15 respuestas fueron `206`, con la misma huella.
+Las cinco respuestas del Worker confirmaron origen R2. Ubuntu público y el
+Worker rechazaron una sesión inválida con `401`. La resolución local de
+Windows usó la IP privada de Tailscale y se midió por separado.
+
+| Ruta | Mediana hasta cabeceras | Rango observado |
+|---|---:|---:|
+| Ubuntu por el acceso público | 637 ms | 370–881 ms |
+| Ubuntu por Tailscale privado | 253 ms | 237–1.159 ms |
+| Worker con R2 | 663 ms | 600–4.888 ms |
+
+En las cinco respuestas R2, el tramo de autorización en Ubuntu reportó
+316–4.275 ms y la consulta al bucket 55–108 ms. Estas cifras separan la
+espera inicial de la transferencia. Corresponden a un video, cinco intentos
+y una conexión. Pasaron 19 pruebas locales del Worker de Cloudflare y del
+service worker web, incluidas autorización, rangos y retorno a Ubuntu.
+
+En tres rondas adicionales de 512 KiB por ruta pública, Ubuntu completó
+las tres lecturas en 2,44–12,44 s. R2 completó dos en 0,50 y 10,26 s.
+La tercera lectura por el Worker falló en la resolución DNS de Windows
+antes de recibir HTTP. Los cinco rangos completos tuvieron la misma huella.
+En los dos intentos exitosos de R2, el cuerpo se recibió en 112 y 442 ms
+después de las cabeceras. Hasta las cabeceras transcurrieron 391 ms y
+9.814 ms. Esta muestra orienta la investigación de DNS, conexión y
+autorización antes de la entrega y deja abierta la comparación en más redes.
+
+La prioridad de mejora es medir y reducir el tiempo de autorización por rango
+y la cantidad de solicitudes que compiten con el primer video visible. Para
+comparar cambios conviene medir tiempo hasta el primer cuadro, caudal y
+reintentos desde una red móvil y una externa al servidor. Los primeros
+experimentos pueden limitar lecturas fuera de pantalla y medir variantes
+pequeñas de portadas. Si se dispone de un dominio propio, se puede evaluar
+la caché de variantes públicas e inmutables en una ruta del Worker. Los
+archivos privados mantienen autorización por cuenta y la revocación vigente.
+La Cache API del Worker requiere dominio o ruta propios. [Cloudflare R2](https://developers.cloudflare.com/r2/examples/cache-api/).
+
+El alcance de esta verificación conectada fue la lectura de contenido de
+invitado. Las pruebas físicas, los flujos autenticados y una entrega Android
+posterior a 178 conservan el estado de la revisión 101.
+
 ## Avatares animados y chat de voz, 2 de noviembre de 2026
 
 La preparación de medios revisó 140 objetos limpios de perfiles, grupos y
