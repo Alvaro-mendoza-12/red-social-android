@@ -28,9 +28,12 @@ con el desplazamiento disponible. La validación visual se registra aparte.
 
 En el invitado se encontró una causa adicional de recarga. La limpieza de
 sesión estaba dentro del contenido cuya clave cambia al navegar entre
-Social, Videos y Momentos. Ahora pertenece a la página exterior y se
-ejecuta al abandonar Explorar. Una regresión recorre Social, Videos,
-Social e inicio de sesión y comprueba que la sesión solo se limpia al salir.
+Social, Videos y Momentos. La primera corrección movió el cierre a la página
+exterior, pero la regresión ampliada con el contenedor de errores real volvió
+a fallar porque ese contenedor también se desmonta por ruta. El cierre ahora
+pertenece a un ámbito situado junto al router y por encima de esos
+contenedores. Una regresión recorre Social, Videos, Social e inicio de sesión
+y comprueba que la sesión solo se limpia al salir de Explorar.
 Los APNG mantienen el archivo original para conservar su animación.
 
 El servidor prepara los tamaños canónicos 160/78 y 384/86 de nuevas subidas
@@ -63,7 +66,10 @@ Pasaron 80 pruebas de API en Linux con ffmpeg y 12 de señalización, sin fallos
 ni casos omitidos. Pasó el build web con sus comprobaciones de SEO. Android
 aprobó 107 pruebas seleccionadas en once clases, sin fallos, errores ni
 omisiones. La entrega 177 previa a esta nueva política queda sustituida
-por 178.
+por 178. Después de reproducir el segundo reinicio del invitado, pasaron las
+30 pruebas seleccionadas de ciclo de sesión, acceso invitado, caché de avatar
+y contenedor de errores en cuatro suites. Estas suites se solapan con las
+130 anteriores y no se suman como casos distintos.
 
 La referencia visual de sala usó el CSS construido en un navegador aislado,
 con participantes de ejemplo. Se comprobaron anchos de 1366, 768 y 360

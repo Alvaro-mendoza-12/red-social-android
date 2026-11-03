@@ -9,6 +9,7 @@ import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { StatusView } from './components/StatusView'
 import { AuthProvider, GuestOnlyRoute, RequireAuth, useAuth } from './core/auth/AuthProvider'
+import { GuestBrowsingSession } from './core/auth/GuestBrowsingSession'
 import { VoiceRoomInvitePage } from './features/voice/VoiceRoomInvitePage'
 import { PostInvitePage } from './features/social/PostInvitePage'
 import { LoginPage } from './pages/auth/LoginPage'
@@ -184,6 +185,7 @@ function RootRoute() {
 function AppRouter() {
   return (
     <BrowserRouter>
+      <GuestBrowsingSession />
       <PageMetadata />
       <Routes>
         <Route path="/" element={<RootRoute />} />

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T03:49:19.635968+00:00",
-  "baseCommit": "b166016415f495908e9367a3f00f3825c95b99fe",
+  "generatedAtUtc": "2026-11-03T03:53:26.146614+00:00",
+  "baseCommit": "9b58990a90abd0eb6811af3a5ac9c73b83e77efb",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,8 +10,8 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3794,
-    "code-read": 325,
+    "pending": 3792,
+    "code-read": 328,
     "partial": 65
   },
   "countsByPhase": {
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 10,
-      "pending": 565,
-      "code-read": 10
+      "pending": 563,
+      "code-read": 13
     }
   },
   "files": [
@@ -645,8 +645,10 @@
     {
       "file": "NoWing-web/src/App.tsx",
       "phase": "web",
-      "gitBlobId": "e4957520298b0256df91aeffc220b79b03d7fb50",
-      "reviewStatus": "pending"
+      "gitBlobId": "c6d8af3780ac56a8907a5fdebbb125a2478716d5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/AccountSettingsAppearance.test.tsx",
@@ -1595,7 +1597,7 @@
     {
       "file": "NoWing-web/src/__tests__/pages/ExploreSession.test.tsx",
       "phase": "web",
-      "gitBlobId": "c80cd2e7cadf45128f95c79e8d486b8e6d037951",
+      "gitBlobId": "dc98184b5e31c164407161c514434e5ecf901522",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -1658,7 +1660,9 @@
       "file": "NoWing-web/src/components/AppErrorBoundary.tsx",
       "phase": "web",
       "gitBlobId": "7a4e711c5f4c0c0f7dad5674a12ec6e343270c2f",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/AttachmentJobsStatus.tsx",
@@ -2245,6 +2249,14 @@
       "phase": "web",
       "gitBlobId": "0bdf834166a2993c54d74f1527c232ea6db37ef2",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/core/auth/GuestBrowsingSession.tsx",
+      "phase": "web",
+      "gitBlobId": "b9cd4ba086a7de30a0d5c96af8eb6e43651c2b11",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/auth/authRequest.ts",
@@ -3413,7 +3425,7 @@
     {
       "file": "NoWing-web/src/pages/ExplorePage.tsx",
       "phase": "web",
-      "gitBlobId": "e780ebb58a1c1ea54fa378b4aec6d3f85d243326",
+      "gitBlobId": "a8eb64d5b6537e8a5334d55058e1d06df5fea5c7",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18619,7 +18631,7 @@
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "phase": "documentation",
-      "gitBlobId": "8d591e2d85464b8d79e6899ffd8e81d84e56b5bc",
+      "gitBlobId": "07d102335361f4082e5a84ce3eea4ec9e590dfb8",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
