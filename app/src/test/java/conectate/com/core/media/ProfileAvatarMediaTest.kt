@@ -52,4 +52,16 @@ class ProfileAvatarMediaTest {
         }
         assertTrue(isVideoProfileAvatar(source, "video/webm"))
     }
+
+    @Test fun `a stored video avatar has an independently cached bounded poster`() {
+        val url = "$source.mp4?version=2"
+        val request = checkNotNull(profileAvatarPosterRequest(context, url, "video"))
+        assertTrue(request.data.toString().contains("width=384"))
+        assertTrue(request.data.toString().contains("poster=1"))
+        assertEquals(url, UbuntuStorageUrl.originalObjectUrl(request.data.toString()))
+        assertEquals(true, request.parameters.value<Boolean>(MediaImageRequestFactory.AVATAR_THUMBNAIL))
+        assertNotEquals(UbuntuStorageUrl.stableCacheKey(url), request.memoryCacheKey?.key)
+        assertNull(profileAvatarPosterRequest(context, "https://external.test/avatar.mp4", "video"))
+        assertNull(profileAvatarPosterRequest(context, "$source.jpg", "image"))
+    }
 }

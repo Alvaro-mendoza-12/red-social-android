@@ -57,6 +57,7 @@ import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.core.media.ProfileIdentityImageStore
 import conectate.com.core.media.isVideoProfileAvatar
 import conectate.com.core.media.profileAvatarImageRequest
+import conectate.com.core.media.profileAvatarPosterRequest
 import conectate.com.core.media.profileIdentityPreviewDimensions
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import java.text.Normalizer
@@ -143,6 +144,9 @@ fun CircularProfileImage(
     val request = remember(context, resolvedImageUrl, mediaType, identityAccountId) {
         profileAvatarImageRequest(context, resolvedImageUrl, mediaType)
     }
+    val posterRequest = remember(context, resolvedImageUrl, mediaType, identityAccountId) {
+        profileAvatarPosterRequest(context, resolvedImageUrl, mediaType)
+    }
     val cachedIdentityImage = remember(resolvedImageUrl, identityAccountId) {
         mutableStateOf(ProfileIdentityImageStore.peek(resolvedImageUrl, identityAccountId))
     }
@@ -212,6 +216,19 @@ fun CircularProfileImage(
                     posterFile = cachedIdentityImage.value,
                     preview = cachedIdentityPreview.value,
                 )
+                if (!firstFrameRendered.value && cachedIdentityPreview.value == null && posterRequest != null) {
+                    AsyncImage(
+                        model = posterRequest,
+                        contentDescription = "Foto del perfil",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        onSuccess = { state ->
+                            cachedIdentityPreview.value = ProfileIdentityImageStore.retainDrawable(
+                                context, resolvedImageUrl, state.result.drawable, identityAccountId, identityGeneration,
+                            )
+                        },
+                    )
+                }
                 DisposableEffect(resolvedImageUrl, identityAccountId) {
                     playerReleased.set(false)
                     firstFrameRendered.value = false
