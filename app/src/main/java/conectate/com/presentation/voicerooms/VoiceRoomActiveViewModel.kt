@@ -737,7 +737,7 @@ data class CinemaState(
     val currentPosition: Long = 0L
 )
 
-const val ROOM_CHAT_TTL_MS=90L*60*1000
+const val ROOM_CHAT_TTL_MS=60L*60*1000
 enum class RoomChatDelivery { SENDING, SENT, FAILED }
 data class ChatMessage(
     val id: String,
@@ -752,7 +752,7 @@ data class ChatMessage(
 )
 
 internal fun boundedRoomChat(messages: List<ChatMessage>, now: Long=System.currentTimeMillis()): List<ChatMessage> {
-    val unique = messages.filter { it.expiresAt>now }.associateBy { "${it.userId}:${it.id}" }.values.toList().takeLast(100)
+    val unique = messages.filter { minOf(it.expiresAt, it.timestamp + ROOM_CHAT_TTL_MS)>now }.associateBy { "${it.userId}:${it.id}" }.values.toList().takeLast(100)
     val photoIds = unique.filter { it.imageData != null }.takeLast(10).map { it.id }.toSet()
     return unique.map { if (it.imageData != null && it.id !in photoIds) it.copy(imageData = null, text = "Foto anterior de esta sesión") else it }
 }

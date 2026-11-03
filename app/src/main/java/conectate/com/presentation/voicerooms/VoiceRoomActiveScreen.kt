@@ -1965,7 +1965,7 @@ fun ChatBottomSheet(
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Enviar")
                 }
             }
-            Text("Chat temporal · Los mensajes y fotos desaparecen a los 90 minutos",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Los mensajes y fotos se eliminan al cumplir una hora",style=MaterialTheme.typography.labelSmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
