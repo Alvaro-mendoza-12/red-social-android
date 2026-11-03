@@ -205,6 +205,9 @@ class AuthService @Inject constructor(
 
     internal fun captureAccountLease(): AuthSessionLease = localSessionMutationGuard.captureAccountLease(::getCurrentUserId)
 
+    internal fun commitAccountDeletion(notice: conectate.com.data.auth.AccountDeletionNotice, onDelete: () -> Unit): Boolean =
+        notice.commitIfCurrent(localSessionMutationGuard, ::getCurrentUserId, ::getAccessToken, onDelete)
+
     /** Trusted identifiers of this local session, including an imported profile's id. */
     internal fun currentAccountUserIds(): Set<String> = localSessionMutationGuard.readCurrent {
         val current = getCurrentUserId()?.trim()?.lowercase() ?: return@readCurrent emptySet()

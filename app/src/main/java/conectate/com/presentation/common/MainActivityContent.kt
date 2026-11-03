@@ -190,8 +190,8 @@ fun MainActivityContent(
         }
 
         LaunchedEffect(Unit) {
-            AccountDeletedEvents.events.collect {
-                authRepository.forceLocalLogout()
+            AccountDeletedEvents.events.collect { notice ->
+                if (!authRepository.handleAccountDeleted(notice)) return@collect
                 showAccountDeletedDialog = true
                 navController.navigate(Screen.Login.route) {
                     popUpTo(navController.graph.findStartDestination().id) { inclusive = true }
@@ -417,7 +417,7 @@ fun MainActivityContent(
                     AlertDialog(
                         onDismissRequest = {},
                         title = { Text("Cuenta eliminada") },
-                        text = { Text("Tu cuenta ha sido eliminada. La sesión y los datos locales de esta cuenta se limpiaron del dispositivo.") },
+                        text = { Text("La cuenta ya no está disponible. Se cerró su sesión en este dispositivo.") },
                         confirmButton = {
                             TextButton(onClick = { showAccountDeletedDialog = false }) {
                                 Text("Entendido")
