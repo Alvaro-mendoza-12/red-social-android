@@ -14,7 +14,7 @@ El backend activo es el servidor propio Ubuntu. Empieza por [arquitectura](01-ar
 
 La [operación R2 102](102-r2-replica-y-entrega-multimedia.md) registra la réplica activa desde Ubuntu a un bucket privado, la entrega mediante Worker, la preparación de avatares y la reducción medida de la consulta previa web. Distingue despliegues, pruebas automatizadas, recuperación del JPEG antiguo y entregas Android. El chat de voz usa contenido temporal con vencimiento de una hora.
 
-La última revisión web documentada está en la [entrega 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md); el historial de personas y grupos y el envío de documentos se revalidarán después del móvil. El proveedor de retiros sigue pendiente; las preferencias de compra están en [91](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md).
+La revisión web de compartidos está en la [entrega 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md); el historial de personas y grupos y el envío de documentos se revalidarán después del móvil. La operación 102 registra las correcciones y los ensayos posteriores de multimedia. El proveedor de retiros sigue pendiente; las preferencias de compra están en [91](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md).
 
 ## Cómo interpretar el historial
 

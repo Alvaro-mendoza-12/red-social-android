@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T03:53:26.146614+00:00",
-  "baseCommit": "9b58990a90abd0eb6811af3a5ac9c73b83e77efb",
+  "generatedAtUtc": "2026-11-03T03:57:55.325738+00:00",
+  "baseCommit": "94301ec89719ef1095ab6753a8537d3264d32dc3",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -18631,7 +18631,7 @@
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "phase": "documentation",
-      "gitBlobId": "07d102335361f4082e5a84ce3eea4ec9e590dfb8",
+      "gitBlobId": "04321c87c892a98394b14b3e1fd113e32da647c9",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -19167,7 +19167,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "54c8e276cfa8dd030c02501462cdc09571b091d7",
+      "gitBlobId": "a576cb6d5bcab224d07e6e3cad21024e162ced5c",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
