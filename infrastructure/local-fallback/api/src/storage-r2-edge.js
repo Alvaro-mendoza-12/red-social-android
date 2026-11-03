@@ -43,9 +43,11 @@ function createR2EdgeDelivery(config, onFailure = () => {}) {
     res.setHeader('X-Novvin-R2-Key', replica)
     res.setHeader('X-Novvin-R2-SHA256', row.scan_sha256)
     res.setHeader('X-Novvin-R2-Size', String(size))
-    // 204 strips representation headers in Express. Keep the exact authorized
-    // type in a private header for the Worker to restore.
+    // Express end() preserves headers already set by the storage route.
+    // A bodyless 204 must not carry the length of the stored file.
     res.setHeader('X-Novvin-R2-Type', res.getHeader('Content-Type'))
+    res.removeHeader('Content-Length')
+    res.removeHeader('Content-Type')
     res.status(204).end()
     return true
   }

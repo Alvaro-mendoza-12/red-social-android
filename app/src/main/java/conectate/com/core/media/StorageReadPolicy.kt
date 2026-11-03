@@ -1,11 +1,27 @@
 package conectate.com.core.media
 
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URI
 import java.net.URLDecoder
 import java.util.Locale
 
 /** Authority and route checks for reads. A filename never determines its visibility. */
 internal object StorageReadPolicy {
+    fun edgeUrl(source: HttpUrl, backend: String, pinnedBackend: String, edgeOrigin: String): HttpUrl? {
+        if (!accepts(source.toString(), backend) || !accepts(source.toString(), pinnedBackend)) return null
+        if (source.fragment != null || source.queryParameterNames.any {
+                it.equals("lease", true) || it.equals("width", true) || it.contains("token", true) || it.contains("authorization", true)
+            } ||
+            source.encodedPath.startsWith("/storage/v1/object/sign/") ||
+            source.pathSegments.any { it.contains('%') }) return null
+        val edge = edgeOrigin.toHttpUrlOrNull() ?: return null
+        if (!edge.isHttps || edge.port != 443 || edge.username.isNotEmpty() || edge.password.isNotEmpty() ||
+            edge.encodedPath != "/" || edge.query != null || edge.fragment != null || edge.host == source.host) return null
+        if (!source.encodedPath.startsWith("/storage/v1/object/")) return null
+        return edge.newBuilder().encodedPath(source.encodedPath).encodedQuery(source.encodedQuery).build()
+    }
+
     fun accepts(url: String?, backendUrl: String?): Boolean = runCatching {
         val source = URI(url ?: return false)
         val backend = URI(backendUrl ?: return false)

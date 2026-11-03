@@ -31,6 +31,31 @@ test('authorized native media streaming preserves Range without URL tokens', asy
   assert.equal(f.requests[0][1].redirect, 'error')
 })
 
+test('media edge preserves the range and falls back to the canonical origin on service errors', async () => {
+  const edge = source.replace('api.example.invalid', 'media.example.invalid')
+  const f = fixture(async url => url === edge ? new Response('', { status: 503 }) : new Response('ab', { status: 206 }))
+  f.register('a', { edge })
+  assert.equal((await f.read()).status, 206)
+  assert.deepEqual(f.requests.map(([url]) => url), [edge, source])
+  for (const [, request] of f.requests) {
+    assert.equal(request.headers.get('Authorization'), `Bearer ${token}`)
+    assert.equal(request.headers.get('Range'), 'bytes=0-1')
+    assert.equal(request.redirect, 'error')
+  }
+})
+
+test('edge denial is preserved and credentials cannot follow a mismatched media path', async () => {
+  const edge = source.replace('api.example.invalid', 'media.example.invalid')
+  const denied = fixture(async () => new Response('', { status: 403 }))
+  denied.register('a', { edge })
+  assert.equal((await denied.read()).status, 403)
+  assert.deepEqual(denied.requests.map(([url]) => url), [edge])
+  const mismatch = fixture()
+  mismatch.register('a', { edge: `${edge}?other=true` })
+  assert.equal((await mismatch.read()).status, 206)
+  assert.deepEqual(mismatch.requests.map(([url]) => url), [source])
+})
+
 test('document downloads stream as inert attachments in the same authenticated client', async () => {
   const f=fixture(async()=>new Response('<html>document</html>',{headers:{'Content-Type':'text/html'}}));f.register('a',{downloadName:'Carpeta.zip'})
   const response=await f.read('a')

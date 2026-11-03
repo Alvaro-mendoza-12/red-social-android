@@ -1,6 +1,125 @@
-# R2: preparación de réplica y entrega multimedia
+# R2: réplica y entrega multimedia
 
-## Estado al 2 de noviembre de 2026
+## Entrega verificada desde Cloudflare, 2 de noviembre de 2026
+
+La API `novvin-r2-edge-http-20261102` añade únicamente el soporte R2 a la
+imagen de producción anterior. La verificación directa y pública de `/ready`
+pasó. La imagen tiene la huella
+`sha256:81f4c5b5f410fc676d2f37a3d2c686a13b0a967814a78d90ba628df104b43a62`.
+El Worker `a42aa3b5-0693-426c-bb41-a4928c2bd931` se publicó con el origen
+HTTPS de Ubuntu y el binding privado de `novvin-media`. El rol de la API
+solo tiene permiso de lectura sobre el diario.
+
+Una sesión diagnóstica temporal verificó bytes idénticos para una foto
+completa (`200`) y un rango de video (`206`) por la API y el Worker. La
+cabecera de origen confirmó que ambos cuerpos llegaron de R2. Una sesión
+inválida recibió `401` en ambos orígenes. La variante de avatar se sirvió
+desde Ubuntu y el ensayo HTTP del Worker comprobó el retorno al original
+cuando falta la copia. Desde el dominio web de producción, Chrome leyó cuatro
+rangos con una sesión de invitado y CORS real. Tres llegaron de R2 y uno de
+Ubuntu. Una lectura autenticada de un documento de Word de chat devolvió
+`200` con el mismo SHA-256 en Ubuntu y R2. La prueba de audio seleccionada
+recibió `404` desde la ruta directa y queda pendiente una muestra autorizada
+para verificar entrega de audio en producción. El primer despliegue se
+revirtió tras detectar una
+cabecera `Content-Length` inválida en la respuesta `204`. La corrección retira
+esa cabecera antes de que la API responda al Worker. La copia de reversión de
+Compose y del marcador de release quedó en `r2-edge-deploy.EgyV0e4u`.
+
+Android y web admiten un origen multimedia opcional, con rutas y enlaces
+persistidos en Ubuntu. La selección requiere que coincidan el origen activo
+y el configurado del backend. Los archivos con enlace firmado, lease de una
+sola visualización y variantes solicitadas por ancho usan la ruta directa.
+Pasaron 78 pruebas de lectura de Android, 85 del cliente de lectura web,
+16 del service worker web, dos del Worker de Cloudflare y la compilación de
+producción web. Chrome reprodujo video en el candidato web con el mismo origen
+que usa Vercel. Con 18 errores `503` provocados en el Worker, recuperó cinco
+rangos desde Ubuntu y el reproductor volvió a estar listo.
+
+Vercel promovió `dpl_DWeDPDk5byeRQscCLatkjjtQW7pt` al dominio público de
+Novvin. El service worker servido coincidió con el código validado y, como
+invitado en el dominio público, Chrome dejó listo el reproductor y observó
+19 respuestas servidas por R2. En el mismo despliegue, el navegador reprodujo
+tras 19 errores `503` simulados y recuperó diez rangos desde Ubuntu. El
+despliegue previo de Vercel fue
+`red-social-android-9iz2ue35e-alvaro-s-projects1.vercel.app`.
+
+El origen opcional se fija con `VITE_MEDIA_EDGE_ORIGIN` al compilar la web y
+con `NOVVIN_MEDIA_EDGE_ORIGIN` o `MEDIA_EDGE_ORIGIN` en `secrets.properties`
+al compilar Android. Los dos valores son una URL pública del Worker. Las
+claves S3 y el secreto de la consulta privada permanecen en el servidor y en
+Cloudflare según su uso.
+
+En tres lecturas del mismo video completo de 7.266.761 bytes desde Windows
+por la red privada, Ubuntu tardó entre 0,93 y 1,05 s y R2 entre 4,88 y 7,36 s.
+Esta comparación corresponde a una conexión con acceso directo a Ubuntu por
+Tailscale. La prueba inicial forzando el relay público desde Ubuntu agotó 25 s
+con 592.767 de 1.048.576 bytes. Las mediciones por red se conservan separadas.
+Desde Windows y fijando la resolución al relay público, el video completo
+tardó 11,31 s por Ubuntu y 3,28 s por R2, con SHA-256 idéntico. El primer byte
+llegó a los 0,29 s desde Ubuntu y 1,98 s desde R2. La muestra demuestra una
+mejora de tiempo total en esa descarga, con más espera inicial.
+
+## Activación de la réplica en Ubuntu, 2 de noviembre de 2026
+
+El trabajador de réplica está en ejecución. Ubuntu conserva los originales en
+`conectate-fallback-storage` y el trabajador solo puede leer ese volumen. Se
+verificaron las credenciales S3 limitadas a `novvin-media` mediante escritura,
+lectura con SHA-256 y borrado de una muestra. Las credenciales quedan en un
+archivo con modo `0600` fuera del repositorio. Antes de crear el diario se
+guardó un volcado PostgreSQL con lista restaurable y suma SHA-256.
+
+El rol del trabajador solo tiene lectura del registro y permisos para mantener
+su diario. La primera tanda verificó archivos reales. Hubo una interrupción en
+la copia, con reintentos registrados, y el trabajador volvió a verificar objetos
+después de reiniciarlo. A las 19:53 (Bogotá), PostgreSQL registraba 111 copias
+listas con 330.980.076 bytes y una en curso. El límite operativo es de
+9.000.000.000 bytes. Los archivos históricos que siguen sin verificación
+antivirus esperan el procedimiento de revisión y asociación de propietario.
+El trabajador se incorporó a la configuración de Compose que usa la operación
+normal, con `restart: unless-stopped`, para conservarlo tras reconciliar el
+stack. La configuración se comparó contra el overlay de réplica y el resto de
+los servicios antes de aplicarla.
+
+La carga inicial sigue en curso. La consulta de producción registró 530 copias
+verificadas por 965.240.746 bytes y 19 filas en reintento. El inventario de
+origen tenía 1.008 registros limpios y 235 históricos sin verificación. Se
+observó `ETIMEDOUT` al conectar al endpoint S3 durante una tanda, seguido de
+respuestas del endpoint al recuperarse. El diario conserva el siguiente
+reintento de los objetos pendientes.
+
+La cuenta carece de una zona DNS disponible. Se publicó el Worker independiente
+en `workers.dev`, fijado al origen HTTPS de Ubuntu y limitado a lecturas de
+storage. El bucket conserva su acceso privado. La prueba de preparación del
+Worker comprobó la coincidencia de una respuesta 404 con Ubuntu y el rechazo de
+rutas ajenas al almacenamiento.
+
+## Estado al 2 de noviembre de 2026, 19:36 (Bogotá)
+
+El propietario autorizó Wrangler desde el navegador. Se creó `novvin-media`
+con almacenamiento Standard, sin URL `r2.dev` pública ni dominios conectados.
+Una prueba desde Windows subió un archivo sintético, descargó sus bytes,
+comparó SHA-256 y retiró ese archivo del bucket. En Cloudflare se publicó
+`novvin-media-delivery`, versión `250d05d1-3288-4587-b2c0-7359271b1e14`, con
+acceso al bucket y sin rutas ni URLs públicas. No recibe tráfico de Novvin.
+
+Falta la clave S3 de lectura y escritura limitada al bucket para el trabajador
+de Ubuntu. El OAuth disponible para Wrangler recibió HTTP 403, código 9109,
+al consultar la administración de claves de la cuenta. El archivo local
+protegido ya tiene el endpoint y el nombre del bucket. Los campos de las dos
+claves siguen vacíos. La cuenta devuelve cero zonas DNS y ya tiene un
+subdominio de Workers. Usar ese subdominio requiere adaptar y verificar los
+clientes para que utilicen un origen multimedia separado del origen API.
+
+En Ubuntu, la API activa estaba saludable y el diario de réplica seguía sin
+aplicar. Se comprobó la imagen candidata y la integridad del respaldo externo
+`20261102T081648Z`. El inventario de archivos heredados en modo de solo lectura
+encontró 53 candidatos para análisis posterior y 182 sin propietario. Los 182
+requieren resolver su propiedad antes de replicarlos. El inventario no cambió
+filas ni archivos. La réplica y la entrega desde R2 siguen pendientes de
+activación y verificación en los clientes.
+
+## Preparación anterior del 2 de noviembre de 2026
 
 El propietario pidió integrar Cloudflare R2 conservando los originales en Ubuntu,
 con posibilidad de volver a almacenamiento exclusivamente local. Esta petición

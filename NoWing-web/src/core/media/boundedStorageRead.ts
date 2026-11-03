@@ -2,6 +2,7 @@ import {
   onStorageReadInvalidated, requireStorageReadIdentity,
   type StorageReadIdentity,
 } from './storageReadSession'
+import { publicBackendTransportUrl } from '../publicBackendTransport'
 
 export const STORAGE_PREVIEW_MAX_BYTES = 16 * 1024 * 1024
 export const STORAGE_SHORT_MEDIA_MAX_BYTES = 32 * 1024 * 1024
@@ -31,6 +32,30 @@ export function isTrustedStorageReadUrl(value: string, backendBase: string): boo
     })) return false
     return true
   } catch { return false }
+}
+
+export function storageReadEdgeUrl(source: string, backendBase: string, config: {
+  backendOrigin: string
+  edgeOrigin: string
+  pageOrigin?: string
+} = {
+  backendOrigin: String(import.meta.env.VITE_FALLBACK_API_URL ?? ''),
+  edgeOrigin: String(import.meta.env.VITE_MEDIA_EDGE_ORIGIN ?? ''),
+}): string | undefined {
+  const pinned = publicBackendTransportUrl(config.backendOrigin.trim(), config.pageOrigin)
+  const configured = config.edgeOrigin.trim()
+  if (!configured || !isTrustedStorageReadUrl(source, backendBase) || !isTrustedStorageReadUrl(source, pinned)) return
+  try {
+    const url = new URL(source), edge = new URL(configured)
+    if (edge.protocol !== 'https:' || edge.port || edge.username || edge.password || edge.pathname !== '/' ||
+        edge.search || edge.hash || edge.origin === url.origin || url.hash ||
+        !url.pathname.startsWith('/storage/v1/object/') || url.pathname.startsWith('/storage/v1/object/sign/') ||
+        [...url.searchParams.keys()].some(key => /^width$/i.test(key) || /lease|token|authorization/i.test(key)) ||
+        url.pathname.split('/').some(part => decodeURIComponent(part).includes('%'))) return
+    edge.pathname = url.pathname
+    edge.search = url.search
+    return edge.href
+  } catch { return }
 }
 
 function abortError(): Error { return new DOMException('Media read cancelled', 'AbortError') }
@@ -107,16 +132,33 @@ export async function readBoundedStorageBlob(options: BoundedStorageReadOptions)
     const headers = new Headers({ Authorization: `Bearer ${token}`, 'Cache-Control': 'no-store' })
     const hostname = new URL(options.url).hostname
     if (/\.(ngrok-free\.dev|ngrok-free\.app|ngrok\.io)$/.test(hostname)) headers.set('ngrok-skip-browser-warning', 'true')
-    const response = await untilAbort((options.fetcher ?? fetch)(options.url, {
+    const fetcher = options.fetcher ?? fetch
+    const init: RequestInit = {
       method: 'GET', headers, cache: 'no-store', redirect: 'error', credentials: 'omit',
       referrerPolicy: 'no-referrer', signal: controller.signal,
-    }), controller.signal)
+    }
+    const edge = options.identity.provider !== 'supabase' ? storageReadEdgeUrl(options.url, options.backendBase) : undefined
+    let response: Response | undefined
+    if (edge) {
+      try { response = await untilAbort(fetcher(edge, init), controller.signal) } catch (error) {
+        if (controller.signal.aborted) throw error
+      }
+      if (response && [429, 500, 502, 503, 504].includes(response.status)) {
+        void response.body?.cancel().catch(() => {})
+        response = undefined
+      }
+    }
+    const fromEdge = response !== undefined
+    if (!response) {
+      requireStorageReadIdentity(options.identity)
+      response = await untilAbort(fetcher(options.url, init), controller.signal)
+    }
     requireStorageReadIdentity(options.identity)
     if (!response.ok || response.status !== 200 || response.redirected || response.type === 'opaque') {
       void response.body?.cancel().catch(() => {})
       throw new Error(`MEDIA_READ_${response.status}`)
     }
-    if (response.url && !isTrustedStorageReadUrl(response.url, options.backendBase)) {
+    if (response.url && (fromEdge ? response.url !== edge : !isTrustedStorageReadUrl(response.url, options.backendBase))) {
       void response.body?.cancel().catch(() => {})
       throw new Error('MEDIA_REDIRECT_DENIED')
     }
