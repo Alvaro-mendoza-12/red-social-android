@@ -9,6 +9,10 @@ const { boundedWorkQueue } = require('./bounded-work-queue')
 const { createStorageObjectReadGuard } = require('./storage-read-access')
 const { storageReadConfiguration } = require('./storage-read-config')
 const storageReadConfig = storageReadConfiguration()
+const { createR2EdgeDelivery, edgeConfiguration } = require('./storage-r2-edge')
+const defaultR2EdgeDelivery = createR2EdgeDelivery(edgeConfiguration(), error => {
+  console.warn('[storage] R2 delivery lookup failed', safeErrorLogDetails(error))
+})
 const { normalizeImageVariant } = require('./image-variant-policy')
 const { createStorageScanCoordinator, cleanStorageRow, revisionFilePath, ensureStorageScanSchema, STORAGE_SCAN_TICKET } = require('./storage-scan-coordinator')
 const SCAN_COORDINATOR = Symbol('trusted-storage-coordinator')
@@ -1505,7 +1509,7 @@ async function writeValidatedStoredObject(pool, req, options) {
   return storedRow
 }
 
-async function serveStoredObject(pool, req, res, bucketParam, pathParam, coordinator = defaultScanCoordinator, readGuard = null) {
+async function serveStoredObject(pool, req, res, bucketParam, pathParam, coordinator = defaultScanCoordinator, readGuard = null, r2EdgeDelivery = null) {
   const bucket = cleanBucketName(bucketParam)
   const objectPath = normalizeObjectPath(decodeURIComponent(pathParam || ''), '')
   if (!bucket || !objectPath) return res.status(404).json({ error: 'NOT_FOUND' })
@@ -1590,6 +1594,9 @@ async function serveStoredObject(pool, req, res, bucketParam, pathParam, coordin
     await pipeline(fs.createReadStream(responsePath, { start, end }), res)
     return
   }
+  if (r2EdgeDelivery && await r2EdgeDelivery({
+    pool, req, res, row, admission: readAdmission, size: responseStat.size, requestedVariant,
+  })) return
   if (storageAccelPrefix && !readAdmission?.viewOnce) {
     // Authorization, signed-URL validation and object lookup remain in the
     // API. Nginx performs only the internal file transfer, preserving byte
@@ -1617,6 +1624,7 @@ async function storageScanReadiness(coordinator = defaultScanCoordinator) {
 
 function registerStorageRoutes(app, { pool, authRequired, storageScanCoordinator = defaultScanCoordinator,
   storageUploadAdmission,
+  storageR2EdgeDelivery = defaultR2EdgeDelivery,
   storageFinalizationConnection = acquireStorageFinalizationClient,
   storageObjectReadGuard = storageReadConfig.enforced
     ? createStorageObjectReadGuard({ pool, authRequired, origins: storageReadConfig.origins }) : null,
@@ -2174,7 +2182,7 @@ function registerStorageRoutes(app, { pool, authRequired, storageScanCoordinator
   app.get(/^\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/, async (req, res, next) => {
     try {
       if (signedOnlyBuckets.has(cleanBucketName(req.params[0]))) return res.status(404).json({ error: 'NOT_FOUND' })
-      await serveStoredObject(pool, req, res, req.params[0], req.params[1], storageScanCoordinator, storageObjectReadGuard)
+      await serveStoredObject(pool, req, res, req.params[0], req.params[1], storageScanCoordinator, storageObjectReadGuard, storageR2EdgeDelivery)
     } catch (error) {
       if (error?.code === 'ENOENT') return res.status(404).json({ error: 'NOT_FOUND' })
       next(error)
@@ -2191,7 +2199,7 @@ function registerStorageRoutes(app, { pool, authRequired, storageScanCoordinator
       if (!verifyStorageObjectToken(bucket, objectPath, req.query?.token)) {
         return res.status(401).json({ error: 'SIGNED_URL_INVALID_OR_EXPIRED' })
       }
-      await serveStoredObject(pool, req, res, bucket, objectPath, storageScanCoordinator, storageObjectReadGuard)
+      await serveStoredObject(pool, req, res, bucket, objectPath, storageScanCoordinator, storageObjectReadGuard, storageR2EdgeDelivery)
     } catch (error) {
       if (error?.code === 'ENOENT') return res.status(404).json({ error: 'NOT_FOUND' })
       next(error)
@@ -2201,7 +2209,7 @@ function registerStorageRoutes(app, { pool, authRequired, storageScanCoordinator
   app.get(/^\/storage\/v1\/object\/([^/]+)\/(.+)$/, async (req, res, next) => {
     try {
       if (signedOnlyBuckets.has(cleanBucketName(req.params[0]))) return res.status(404).json({ error: 'NOT_FOUND' })
-      await serveStoredObject(pool, req, res, req.params[0], req.params[1], storageScanCoordinator, storageObjectReadGuard)
+      await serveStoredObject(pool, req, res, req.params[0], req.params[1], storageScanCoordinator, storageObjectReadGuard, storageR2EdgeDelivery)
     } catch (error) {
       if (error?.code === 'ENOENT') return res.status(404).json({ error: 'NOT_FOUND' })
       next(error)

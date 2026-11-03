@@ -1,0 +1,14 @@
+# Copy outside Git and restrict permissions to 0600. Never put these keys in clients.
+R2_MIRROR_ENABLED=false
+R2_ENDPOINT=https://ACCOUNT_ID.r2.cloudflarestorage.com
+R2_BUCKET=novvin-media
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+# Dedicated restricted database role, not PostgreSQL owner/superuser.
+DATABASE_URL=
+STORAGE_ROOT=/data/storage
+# This bounds new object bytes tracked for this target. It is not a billing cap:
+# request charges, other buckets and unfinished multipart uploads also count.
+R2_MIRROR_MAX_BYTES=9000000000
+R2_MIRROR_BATCH_SIZE=8
+R2_MIRROR_INTERVAL_MS=30000

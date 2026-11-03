@@ -1,0 +1,21 @@
+# Optional overlay. Do not start before schema/permissions and a private R2 bucket
+# are verified. Use the candidate API image that includes the mirror scripts.
+services:
+  storage-r2-mirror:
+    image: ${R2_MIRROR_IMAGE:?Set the tested candidate API image}
+    command: ["node", "scripts/storage-r2-mirror.js", "--run"]
+    user: "10001:10001"
+    restart: unless-stopped
+    env_file:
+      - ${R2_MIRROR_ENV_FILE:?Set absolute path to the private R2 environment file}
+    environment:
+      STORAGE_ROOT: /data/storage
+    volumes:
+      - conectate-fallback-storage:/data/storage:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    cpus: "0.5"
+    pids_limit: 64
+    stop_grace_period: 11m
