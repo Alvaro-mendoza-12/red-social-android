@@ -50,7 +50,9 @@ internal class StorageReadCoilInterceptor(
             val speculative = original.parameters.value<Boolean>(MediaImageRequestFactory.PREFETCH_CHAT_IMAGE) == true
             if (offlineAllowed && !speculative && result is SuccessResult) {
                 if (cached == null) runCatching { retainPreview(source, checkNotNull(identity), result.drawable) }
-                runCatching { retainImage(source, checkNotNull(identity)) }
+                if (original.parameters.value<Boolean>(MediaImageRequestFactory.AVATAR_THUMBNAIL) != true) {
+                    runCatching { retainImage(source, checkNotNull(identity)) }
+                }
             }
             result
         }

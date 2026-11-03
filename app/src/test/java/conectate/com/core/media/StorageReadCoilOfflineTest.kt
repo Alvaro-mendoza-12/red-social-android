@@ -89,6 +89,25 @@ class StorageReadCoilOfflineTest {
         assertEquals(request.data.toString(), retained)
     }
 
+    @Test fun `an avatar thumbnail retains the preview and downloads the original only when opened`() = runBlocking {
+        install()
+        val avatar = UbuntuStorageUrl.baseUrl.trimEnd('/') + "/storage/v1/object/public/avatars/account-a/photo.jpg"
+        val previews = mutableListOf<String>()
+        val originals = mutableListOf<String>()
+        val interceptor = StorageReadCoilInterceptor(
+            retainImage = { url, _ -> originals += url },
+            retainPreview = { url, _, _ -> previews += url },
+        )
+        val thumbnail = requireNotNull(MediaImageRequestFactory.avatar(context, avatar))
+        assertTrue(interceptor.intercept(Chain(thumbnail)) is SuccessResult)
+        assertEquals(listOf(thumbnail.data.toString()), previews)
+        assertTrue(originals.isEmpty())
+
+        val opened = requireNotNull(MediaImageRequestFactory.fullScreen(context, avatar))
+        assertTrue(interceptor.intercept(Chain(opened)) is SuccessResult)
+        assertEquals(listOf(avatar), originals)
+    }
+
     @Test fun `account switch while checking disk never returns the previous accounts image`() = runBlocking {
         install()
         val chain = Chain(requireNotNull(MediaImageRequestFactory.animated(context, source)))
