@@ -2,7 +2,7 @@
 
 ## Trabajo de código en curso
 
-La [revisión 101](101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md) continúa la corrección del código Android, primero móvil y después web. Sigue abierta la revisión integral; sus resultados no equivalen a una APK nueva ni a cobertura completa del aplicativo. La entrega firmada anterior es **9.1.35 / 175**, documentada en la [revisión 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md). La validación física entre dispositivos permanece pendiente por decisión del propietario; `correciones` sigue reservada al otro chat.
+Estado del 3 de noviembre de 2026: la [revisión 101](101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md) mantiene la corrección de Android, primero móvil y después web. Sigue abierta la revisión integral. El último AAB firmado es **9.1.38 / 178**, identificado en la [operación R2 102](102-r2-replica-y-entrega-multimedia.md); no incluye automáticamente los commits posteriores de acceso y bandeja. La APK universal 178 excedió presupuestos de tamaño y no es una entrega aprobada. La APK histórica entregada es 9.1.35 / 175. Las pruebas físicas corresponden al propietario y `correciones` sigue reservada al otro chat. Los apartados de versiones siguientes son evidencia histórica, no el estado vigente.
 
 ## Actualización 9.1.35 / 175
 
@@ -43,8 +43,7 @@ Estado observado:
 - `compileSdk`: 36
 - `minSdk`: 24
 - `targetSdk`: 36
-- `versionCode`: 172
-- `versionName`: 9.1.32
+- La versión del código se consulta en [app/build.gradle.kts](../../app/build.gradle.kts). Cada entrega identifica por separado versión, firma y huella; los commits siguientes requieren un paquete nuevo.
 - Java/Kotlin target: 17
 - Runtime de Gradle soportado: JDK 17–21. JDK 22+ se rechaza antes de compilar; el target de bytecode permanece en 17.
 - Android Gradle Plugin: 8.13.2
@@ -66,12 +65,10 @@ Ejemplo base:
 
 ```properties
 FALLBACK_API_URL=https://conectate.tail9b267c.ts.net
+MEDIA_EDGE_ORIGIN=https://novvin-media-delivery.gamergamerff004.workers.dev
 BACKEND_DISCOVERY_HOST=conectate-alvaro.duckdns.org
 BACKEND_CONFIG_URL=
-BACKEND_DISCOVERY_PUBLIC_KEY=PEGA_SPKI_DER_BASE64
-
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
+BACKEND_DISCOVERY_PUBLIC_KEY=
 
 OPENRELAY_TURN_URL=
 OPENRELAY_USERNAME=
@@ -80,6 +77,8 @@ OPENRELAY_PASSWORD=
 
 Reglas:
 
+- `MEDIA_EDGE_ORIGIN` configura la lectura multimedia por el Worker de R2. Ubuntu conserva la API y la fuente del archivo; el cliente comprueba sesión y admite el retorno al origen. No se incluyen llaves R2 en Android. La operación y sus límites están en la revisión 102.
+- El build deja vacías las antiguas constantes `SUPABASE_*`. No se configura un backend externo para activar el móvil. Los nombres de paquetes y campos que aún mantienen contratos de importación se conservan hasta sustituir y verificar sus consumidores.
 - No subir `secrets.properties` real.
 - No subir `keystore.properties`.
 - No subir keystores.
@@ -107,7 +106,7 @@ app/src/main/java/conectate/com/data/
 app/src/main/java/conectate/com/domain/
 app/src/main/java/conectate/com/presentation/
 app/src/main/java/conectate/com/services/
-app/src/main/java/conectate/com/firebase/
+app/src/main/java/conectate/com/data/service/
 ```
 
 ### `data/`
@@ -163,12 +162,12 @@ VoiceForegroundService.kt
 LiveForegroundService.kt
 ```
 
-### `firebase/`
+### `data/service/`
 
 FCM:
 
 ```text
-MyFirebaseMessagingService.kt
+app/src/main/java/conectate/com/data/service/MyFirebaseMessagingService.kt
 ```
 
 ## Flujos principales
@@ -181,12 +180,12 @@ Casos que deben distinguirse:
    - mostrar mensaje de registro/no tienes cuenta;
    - no mostrar “cambia contraseña por migración”.
 
-2. Cuenta importada de Supabase sin contraseña local final:
+2. Cuenta importada sin contraseña Ubuntu final:
    - mostrar flujo de creación/cambio de contraseña una sola vez.
 
 3. Cuenta local Ubuntu con contraseña incorrecta:
    - mostrar contraseña incorrecta;
-   - no mostrar migración Supabase.
+   - no ofrecer otra migración a quien ya tiene credenciales Ubuntu.
 
 4. Cuenta local válida:
    - iniciar sesión normal.
@@ -234,8 +233,11 @@ La bandeja debe mostrar:
 - Un avatar de video no se descarga completo mediante Coil. Al mostrarse por
   primera vez, `CircularProfileImage` captura el primer fotograma renderizado y
   `ProfileIdentityImageStore` guarda un WebP durable bajo `noBackupFilesDir`.
-  El almacén está serializado y limitado a 96 archivos/24 MiB; con Media3 sin
-  red se presenta ese póster en lugar de volver a una inicial.
+  Las identidades durables se aíslan por cuenta y su borrado explícito comprueba
+  ese propietario. La retención LRU sólo corresponde a entradas anónimas o
+  especulativas; no es un límite global de las identidades guardadas. Con
+  Media3 sin red se conserva el póster disponible. La operación 102 documenta
+  también las portadas pequeñas obtenidas del servidor para avatares de video.
 
 #### Conservación de historial y cola de salida — 2026-09-04
 

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T09:33:42.174596+00:00",
-  "baseCommit": "d1b0a651290e1be8343574576215d55c0af39fd0",
+  "generatedAtUtc": "2026-11-03T10:54:28.101358+00:00",
+  "baseCommit": "892664afee951346c14a5613afe841f2f1253435",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,20 +10,20 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3761,
-    "code-read": 371,
-    "partial": 59
+    "pending": 3749,
+    "code-read": 384,
+    "partial": 62
   },
   "countsByPhase": {
     "android": {
-      "pending": 1599,
-      "code-read": 323,
+      "pending": 1595,
+      "code-read": 329,
       "partial": 39
     },
     "documentation": {
-      "pending": 563,
-      "code-read": 2,
-      "partial": 3
+      "pending": 558,
+      "code-read": 4,
+      "partial": 6
     },
     "server": {
       "pending": 874,
@@ -31,9 +31,9 @@
       "partial": 5
     },
     "tooling-and-other": {
-      "pending": 162,
-      "partial": 2,
-      "code-read": 6
+      "pending": 159,
+      "code-read": 11,
+      "partial": 2
     },
     "web": {
       "partial": 10,
@@ -75,8 +75,10 @@
     {
       "file": ".github/workflows/android-production-release.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "804d8077f7c8c2e56850c1eef75ed76b1e56a4f8",
-      "reviewStatus": "pending"
+      "gitBlobId": "618668405b356bd61bbf467e45c1f69d3f83eccc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": ".github/workflows/manual-build.yml",
@@ -5795,8 +5797,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/community/CommunityEngagementRepository.kt",
       "phase": "android",
-      "gitBlobId": "27d663dee93dda255edb3327197bd1d4706085a8",
-      "reviewStatus": "pending"
+      "gitBlobId": "1c8f23a08f3f59835e7cf05ab765599eb5ced13b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/documents/DocumentCatalog.kt",
@@ -6865,7 +6869,7 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/AccountSessionRepository.kt",
       "phase": "android",
-      "gitBlobId": "b7742963d11f469a8a7c5b0025a733854ff53398",
+      "gitBlobId": "b41cca7927d50be1b4bb132ebc738527b21dab07",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -7061,6 +7065,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/data/repository/InboxStateStore.kt",
+      "phase": "android",
+      "gitBlobId": "6c19f43e89ab9bfd9a68ab543ff415df54e48a92",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/repository/LinkPreviewRepository.kt",
       "phase": "android",
       "gitBlobId": "c1f7958e09633308fe405c18c7938a1673794495",
@@ -7137,8 +7149,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/LocalInboxRepository.kt",
       "phase": "android",
-      "gitBlobId": "f76af568da220919702d4668b782b241284e692b",
-      "reviewStatus": "pending"
+      "gitBlobId": "6067c86041599ceed06cea37b9ceec4cbd35d0b8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/MessageRepository.kt",
@@ -7175,7 +7189,7 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/MultiAccountInboxRepository.kt",
       "phase": "android",
-      "gitBlobId": "438d5a5457e9dc26a651bd84a641229843edcc65",
+      "gitBlobId": "3d6910e236e16efcd3813e9df411c3200cd67876",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -7327,7 +7341,7 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/StoredAccountsStore.kt",
       "phase": "android",
-      "gitBlobId": "de3431e1f6f53a7fd4cb6698951ce8ef4f9e2d5d",
+      "gitBlobId": "41807a25c937b479d19a590f90d6f80f25712678",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -9983,8 +9997,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/QuestionAnswerSheet.kt",
       "phase": "android",
-      "gitBlobId": "4dbbe23b0ba9028489702a8b4fe739ee11299107",
-      "reviewStatus": "pending"
+      "gitBlobId": "02cfdf1938a8332c28bc22f062a360f902b4ba6a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/QuestionCloudMotion.kt",
@@ -12046,7 +12062,9 @@
       "file": "app/src/main/java/conectate/com/util/DeletedMessageStore.kt",
       "phase": "android",
       "gitBlobId": "fa13e0582be4738c02d3973db07d8339b883d3a0",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/DeviceUtils.kt",
@@ -13987,6 +14005,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/InboxStateStoreTest.kt",
+      "phase": "android",
+      "gitBlobId": "0e345d002ffdc7e49b0dd45e76ff822651dd25f4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/LinkPreviewRepositoryTest.kt",
       "phase": "android",
       "gitBlobId": "40f47a2ef8bfb5d306c907c892e8ddca66ba46cc",
@@ -14155,7 +14181,7 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/StoredAccountsStoreTest.kt",
       "phase": "android",
-      "gitBlobId": "4eb57eeb421b6f3b047a47344d09972e240be483",
+      "gitBlobId": "479fa36908a8a72af578c89beb4bb1bf47d60a7f",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18655,20 +18681,26 @@
     {
       "file": "docs/oficial/00-contexto-y-estado.md",
       "phase": "documentation",
-      "gitBlobId": "a690f9dded0e63ef10755edeb63946427eadd87e",
-      "reviewStatus": "pending"
+      "gitBlobId": "e4c3b4097264f58a4b0aeedb4cfe39bf89346066",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/01-arquitectura.md",
       "phase": "documentation",
-      "gitBlobId": "a98dcb71176e71403f67643c484d9f948888f694",
-      "reviewStatus": "pending"
+      "gitBlobId": "07f2bf59e8d9b102b99b06ec55334a929afedd7a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/02-android.md",
       "phase": "documentation",
-      "gitBlobId": "52f8431ade2065a9be0b43e163e0700bf154d72b",
-      "reviewStatus": "pending"
+      "gitBlobId": "1dfd216de8526b2e45541049cf9fdeaf201a5688",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/03-backend-mini-pc.md",
@@ -18703,8 +18735,10 @@
     {
       "file": "docs/oficial/08-pruebas-release-handoff.md",
       "phase": "documentation",
-      "gitBlobId": "3730f2a89cbc4397f7e4f552faf81189d31d4786",
-      "reviewStatus": "pending"
+      "gitBlobId": "e5c87c0bff07314360542b08d2e5d41cd48a594b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/09-ia-conectate.md",
@@ -18733,7 +18767,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "a134371fb2bff40c35412bd4a7d0087018ed1d14",
+      "gitBlobId": "9bb4ac240de5564138bc61c53db46011b66b28f0",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -25839,6 +25873,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "tools/configure_android_media_origin.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "4daed0c58bb002cba61b2553b05ed589e46606e2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "tools/fixtures/release-signing/build.gradle.kts",
       "phase": "tooling-and-other",
       "gitBlobId": "cf455e3a32d6a9fff69d9489495ec8de43b2b8e5",
@@ -25896,7 +25938,9 @@
       "file": "tools/requirements.txt",
       "phase": "documentation",
       "gitBlobId": "1f0dc65f5e8dff6249551ebd09b50054dd151780",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/runtime_security_audit.py",
@@ -25932,13 +25976,23 @@
       "file": "tools/tests/test_android_maintenance_guard.py",
       "phase": "tooling-and-other",
       "gitBlobId": "4046cdb7b4e292d6761be5b68fbd15491ac53785",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/tests/test_backend_discovery_envelope.py",
       "phase": "tooling-and-other",
       "gitBlobId": "a5ec6edf59164e76493ae50b7f51b8f0e6e1d858",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_configure_android_media_origin.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "519e4342cbcc0bf8716d756a65cdadb0e37721e7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/tests/test_edge_upload_streaming_contract.py",
@@ -25962,7 +26016,9 @@
       "file": "tools/tests/test_monitoring_rules.py",
       "phase": "tooling-and-other",
       "gitBlobId": "bbea5319d4a818fb5d4b9a3fa77666b0dd4b78df",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/tests/test_performance_budget_check.py",

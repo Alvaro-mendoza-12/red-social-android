@@ -28,7 +28,7 @@ internal fun QuestionAnswerSheet(question: CommunityQuestion?, prompt: String, i
     ModalBottomSheet(onDismissRequest=onClose, sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true)) {
         Column(Modifier.fillMaxWidth().height(with(LocalDensity.current) { LocalWindowInfo.current.containerSize.height.toDp() } * .75f).imePadding().padding(horizontal=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Row { Text(prompt,Modifier.weight(1f),style=MaterialTheme.typography.titleLarge,maxLines=3,overflow=TextOverflow.Ellipsis);TextButton(onClick=onClose){Text("Cerrar")}}
-            TabRow(selectedTabIndex=tab) {
+            PrimaryTabRow(selectedTabIndex=tab) {
                 Tab(selected=tab==0,onClick={tab=0},text={Text("Tu respuesta")})
                 Tab(selected=tab==1,onClick={tab=1},text={Text("Respuestas (${question?.total ?: 0})")})
             }

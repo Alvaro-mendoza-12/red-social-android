@@ -75,6 +75,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
           CERT_SHA256: ${{ secrets.ANDROID_UPLOAD_CERT_SHA256 }}
           FALLBACK_API_URL: ${{ secrets.ANDROID_FALLBACK_API_URL }}
+          MEDIA_EDGE_ORIGIN: ${{ vars.ANDROID_MEDIA_EDGE_ORIGIN || 'https://novvin-media-delivery.gamergamerff004.workers.dev' }}
           SIGNALING_URL: ${{ secrets.ANDROID_SIGNALING_URL }}
           BACKEND_DISCOVERY_HOST: ${{ secrets.ANDROID_BACKEND_DISCOVERY_HOST }}
         run: |
@@ -94,6 +95,7 @@ jobs:
             printf 'SIGNALING_URL=%s\n' "$SIGNALING_URL"
             printf 'BACKEND_DISCOVERY_HOST=%s\n' "$BACKEND_DISCOVERY_HOST"
           } > secrets.properties
+          python tools/configure_android_media_origin.py --properties secrets.properties --origin "$MEDIA_EDGE_ORIGIN"
           {
             echo "NOVVIN_UPLOAD_STORE_FILE=$RUNNER_TEMP/novvin-upload.jks"
             echo "NOVVIN_UPLOAD_STORE_PASSWORD=$STORE_PASSWORD"

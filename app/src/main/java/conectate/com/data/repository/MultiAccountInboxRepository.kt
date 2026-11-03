@@ -23,6 +23,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -32,7 +34,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -75,14 +76,11 @@ class MultiAccountInboxRepository @Inject constructor(
 
     companion object {
         private const val PREFS = "multi_account_inbox"
-        private const val KEY_CACHED_DIRECT_PREFIX = "cached_direct_unread_"
-        private const val KEY_PENDING_CONVERSATION_PREFIX = "pending_conversation_"
-        private const val KEY_LATEST_DESTINATION_PREFIX = "latest_destination_"
     }
 
     private val prefs by lazy { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    private val inboxState = InboxStateStore { prefs }
     private var scope = newSafeScope("MultiAccountInboxRepository", Dispatchers.IO)
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     private val activeIdentity = authService.currentSession.map { session ->
         val user = session?.user ?: return@map null
@@ -106,8 +104,11 @@ class MultiAccountInboxRepository @Inject constructor(
 
     init {
         scope.launch {
-            accountSessionRepository.accounts.collectLatest { accounts ->
-                pruneCachedState(accounts)
+            accountSessionRepository.accounts.collectLatest {
+                // An older observer emission must not prune an account just added by another thread.
+                accountSessionRepository.withStoredAccountsSnapshot { current ->
+                    inboxState.prune(current.map { it.id }.toSet())
+                }
             }
         }
         scope.launch {
@@ -121,7 +122,9 @@ class MultiAccountInboxRepository @Inject constructor(
                 if (identity == null) return@collectLatest
                 val activeAccount = resolveStoredAccountForTarget(identity.target, accounts) ?: return@collectLatest
                 authService.commitForAccountLease(identity.lease) {
-                    persistActiveAccountSnapshot(activeAccount, unreadCount)
+                    accountSessionRepository.commitIfStoredAccountCurrent(activeAccount) {
+                        inboxState.persistActive(it.id, unreadCount)
+                    }
                 }
             }
         }
@@ -137,19 +140,18 @@ class MultiAccountInboxRepository @Inject constructor(
             .sortedByDescending { it.last_used_at }
             .map { account ->
                 val isActive = identity != null && identity.lease.isCurrent() && identity.target.matches(account)
-                var latestPendingDestination = loadLatestPendingDestination(account)
-                val pendingCount = loadPendingConversationKeys(account).size
-                val cachedCount = loadCachedUnreadConversations(account)
+                val saved = inboxState.snapshot(account.id)
+                val pendingCount = saved.pendingConversationKeys.size
                 MultiAccountInboxSummary(
                     account = account,
                     isActive = isActive,
                     unreadConversationCount = if (isActive) {
                         activeUnread
                     } else {
-                        maxOf(cachedCount, pendingCount)
+                        maxOf(saved.cachedUnreadConversations, pendingCount)
                     },
                     hasPendingHints = pendingCount > 0,
-                    latestPendingDestination = latestPendingDestination
+                    latestPendingDestination = saved.latestPendingDestination
                 )
             }
             .sortedWith(
@@ -164,21 +166,17 @@ class MultiAccountInboxRepository @Inject constructor(
         initialValue = emptyList()
     )
 
-
-
     suspend fun refreshInactiveAccounts() = withContext(Dispatchers.IO) {
-        var currentUserId = authService.getCurrentUserId()?.trim()?.lowercase()
-        var currentEmail = authService.getCurrentUserEmail()?.trim()?.lowercase()
+        val session = authService.currentSession.value
+        val activeTarget = NotificationAccountTarget(session?.user?.id, session?.user?.email)
         accountSessionRepository.accounts.value.forEach { account ->
-            var isActive = NotificationAccountTarget(
-                userId = currentUserId,
-                email = currentEmail
-            ).matches(account)
-            if (isActive) return@forEach
+            currentCoroutineContext().ensureActive()
+            if (activeTarget.matches(account)) return@forEach
+            val beforeRefresh = inboxState.beginRefresh(account.id)
 
-            val successfulSnapshots = listOf(
-                fetchUnreadDirectConversationSnapshot(account),
-                fetchUnreadCollectionConversationSnapshot(
+            val results = mapOf(
+                InboxUnreadSection.DIRECT to fetchUnreadDirectConversationSnapshot(account),
+                InboxUnreadSection.GROUP to fetchUnreadCollectionConversationSnapshot(
                     account = account,
                     membershipTable = "group_members",
                     collectionTable = "groups",
@@ -186,7 +184,7 @@ class MultiAccountInboxRepository @Inject constructor(
                     scopeColumn = "group_id",
                     targetType = "group"
                 ),
-                fetchUnreadCollectionConversationSnapshot(
+                InboxUnreadSection.COMMUNITY to fetchUnreadCollectionConversationSnapshot(
                     account = account,
                     membershipTable = "community_members",
                     collectionTable = "communities",
@@ -194,19 +192,25 @@ class MultiAccountInboxRepository @Inject constructor(
                     scopeColumn = "community_id",
                     targetType = "community"
                 )
-            ).mapNotNull { result ->
+            )
+            val successfulSnapshots = results.mapNotNull { (section, result) ->
                 result.onFailure {
                     android.util.Log.w(
                         "MultiAccountInboxRepo",
-                        "Inactive inbox partial refresh failed for ${account.email}",
+                        "Inactive inbox section ${section.targetType} could not be refreshed",
                         it
                     )
                 }
-                result.getOrNull()
-            }
+                result.getOrNull()?.let { section to it }
+            }.toMap()
 
             if (successfulSnapshots.isNotEmpty()) {
-                persistUnreadSnapshot(account, mergeInactiveUnreadSnapshots(successfulSnapshots))
+                // Keep the captured credential pair, including when no account is active.
+                // Removed/replaced credentials and newer local hints cannot be revived by this read.
+                currentCoroutineContext().ensureActive()
+                accountSessionRepository.commitIfStoredAccountCurrent(account) {
+                    inboxState.applyRefresh(beforeRefresh, successfulSnapshots)
+                }
             }
         }
     }
@@ -218,36 +222,29 @@ class MultiAccountInboxRepository @Inject constructor(
         if (target == null || !target.isDefined) return
         val normalizedConversationId = destination.normalizedConversationId
         if (normalizedConversationId.isBlank()) return
-        var account = resolveStoredAccountForTarget(target, accountSessionRepository.accounts.value) ?: return
-        val normalizedDestination = destination.copy(
-            targetType = destination.normalizedTargetType,
-            conversationId = normalizedConversationId,
-            userId = destination.normalizedUserId,
-            conversationTitle = destination.conversationTitle?.trim()?.ifBlank { null },
-            senderName = destination.senderName?.trim()?.ifBlank { null },
-            preview = if (conectate.com.util.DeletedMessageIdentity.create(account.user_id, destination.normalizedTargetType,
-                    normalizedConversationId, destination.focusMessageId)?.let { conectate.com.util.DeletedMessageStore(context).isDeleted(it) } == true)
-                "Mensaje eliminado" else destination.preview?.trim()?.ifBlank { null },
-            focusMessageId = destination.focusMessageId?.trim()?.ifBlank { null }
-        )
-        val updated = loadPendingConversationKeys(account)
-            .toMutableSet()
-            .apply { add(normalizedDestination.conversationKey) }
-        prefs.edit()
-            .putStringSet(pendingKey(account), updated)
-            .putString(
-                latestDestinationKey(account),
-                json.encodeToString(normalizedDestination)
+        accountSessionRepository.withStoredAccountsSnapshot { accounts ->
+            val account = resolveStoredAccountForTarget(target, accounts) ?: return@withStoredAccountsSnapshot
+            val normalizedDestination = destination.copy(
+                targetType = destination.normalizedTargetType,
+                conversationId = normalizedConversationId,
+                userId = destination.normalizedUserId,
+                conversationTitle = destination.conversationTitle?.trim()?.ifBlank { null },
+                senderName = destination.senderName?.trim()?.ifBlank { null },
+                preview = if (conectate.com.util.DeletedMessageIdentity.create(account.user_id, destination.normalizedTargetType,
+                        normalizedConversationId, destination.focusMessageId)?.let { conectate.com.util.DeletedMessageStore(context).isDeleted(it) } == true)
+                    "Mensaje eliminado" else destination.preview?.trim()?.ifBlank { null },
+                focusMessageId = destination.focusMessageId?.trim()?.ifBlank { null }
             )
-            .apply()
+            inboxState.registerHint(account.id, normalizedDestination)
+        }
     }
 
     fun redactDeletedMessageHint(identity: conectate.com.util.DeletedMessageIdentity) {
-        val account = accountSessionRepository.accounts.value.firstOrNull { it.user_id?.trim()?.lowercase() == identity.accountId } ?: return
-        val latest = loadLatestPendingDestination(account) ?: return
-        if (latest.normalizedTargetType != identity.targetType || latest.normalizedConversationId != identity.conversationId ||
-            latest.focusMessageId?.trim()?.lowercase() != identity.messageId) return
-        prefs.edit().putString(latestDestinationKey(account), json.encodeToString(latest.copy(preview = "Mensaje eliminado"))).apply()
+        accountSessionRepository.withStoredAccountsSnapshot { accounts ->
+            val account = accounts.firstOrNull { it.user_id?.trim()?.lowercase(java.util.Locale.ROOT) == identity.accountId }
+                ?: return@withStoredAccountsSnapshot
+            inboxState.redactLatest(account.id, identity.targetType, identity.conversationId, identity.messageId)
+        }
     }
 
     fun registerUnreadDirectConversationHint(
@@ -266,11 +263,10 @@ class MultiAccountInboxRepository @Inject constructor(
     }
 
     fun acknowledgeAccount(accountId: String) {
-        var account = accountSessionRepository.accounts.value.firstOrNull { it.id == accountId.trim() } ?: return
-        prefs.edit()
-            .remove(pendingKey(account))
-            .remove(latestDestinationKey(account))
-            .apply()
+        accountSessionRepository.withStoredAccountsSnapshot { accounts ->
+            val account = accounts.firstOrNull { it.id == accountId.trim() } ?: return@withStoredAccountsSnapshot
+            inboxState.acknowledge(account.id)
+        }
     }
 
     fun acknowledgeCurrentAccount() {
@@ -287,19 +283,17 @@ class MultiAccountInboxRepository @Inject constructor(
     private fun clearCurrentAccountHints() {
         val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase(java.util.Locale.ROOT)
         val currentEmail = authService.getCurrentUserEmail()?.trim()?.lowercase(java.util.Locale.ROOT)
-        var activeAccount = accountSessionRepository.accounts.value.firstOrNull {
-            NotificationAccountTarget(userId = currentUserId, email = currentEmail).matches(it)
-        } ?: return
-        prefs.edit()
-            .remove(pendingKey(activeAccount))
-            .remove(latestDestinationKey(activeAccount))
-            .apply()
+        accountSessionRepository.withStoredAccountsSnapshot { accounts ->
+            val activeAccount = resolveStoredAccountForTarget(NotificationAccountTarget(currentUserId, currentEmail), accounts)
+                ?: return@withStoredAccountsSnapshot
+            inboxState.acknowledge(activeAccount.id)
+        }
     }
 
     private suspend fun fetchUnreadDirectConversationSnapshot(
         account: StoredAccountSession
     ): Result<InactiveAccountUnreadSnapshot> = withContext(Dispatchers.IO) {
-        runCatching {
+        inboxReadResult {
             var accessToken = account.access_token.trim().ifBlank {
                 throw IllegalStateException("Account token missing")
             }
@@ -330,7 +324,7 @@ class MultiAccountInboxRepository @Inject constructor(
             val directChatIds = directChats.keys.toList()
 
             if (directChatIds.isEmpty()) {
-                return@runCatching InactiveAccountUnreadSnapshot(
+                return@inboxReadResult InactiveAccountUnreadSnapshot(
                     unreadConversationCount = 0,
                     pendingConversationKeys = emptySet(),
                     latestPendingDestination = null
@@ -416,7 +410,7 @@ class MultiAccountInboxRepository @Inject constructor(
         scopeColumn: String,
         targetType: String
     ): Result<InactiveAccountUnreadSnapshot> = withContext(Dispatchers.IO) {
-        runCatching {
+        inboxReadResult {
             var accessToken = account.access_token.trim().ifBlank {
                 throw IllegalStateException("Account token missing")
             }
@@ -445,7 +439,7 @@ class MultiAccountInboxRepository @Inject constructor(
                 .distinct()
 
             if (joinedIds.isEmpty()) {
-                return@runCatching InactiveAccountUnreadSnapshot(
+                return@inboxReadResult InactiveAccountUnreadSnapshot(
                     unreadConversationCount = 0,
                     pendingConversationKeys = emptySet(),
                     latestPendingDestination = null
@@ -505,7 +499,7 @@ class MultiAccountInboxRepository @Inject constructor(
             }
 
             if (activeCollectionIds.isEmpty()) {
-                return@runCatching InactiveAccountUnreadSnapshot(
+                return@inboxReadResult InactiveAccountUnreadSnapshot(
                     unreadConversationCount = 0,
                     pendingConversationKeys = emptySet(),
                     latestPendingDestination = null
@@ -614,90 +608,6 @@ class MultiAccountInboxRepository @Inject constructor(
             )
         }
     }
-
-    private fun loadCachedUnreadConversations(account: StoredAccountSession): Int {
-        return prefs.getInt(cachedKey(account), 0).coerceAtLeast(0)
-    }
-
-    private fun persistCachedUnreadConversations(account: StoredAccountSession, count: Int) {
-        prefs.edit()
-            .putInt(cachedKey(account), count.coerceAtLeast(0))
-            .apply()
-    }
-
-    private fun persistActiveAccountSnapshot(
-        account: StoredAccountSession,
-        unreadConversationCount: Int
-    ) {
-        persistCachedUnreadConversations(account, unreadConversationCount)
-        if (unreadConversationCount > 0) return
-        prefs.edit()
-            .remove(pendingKey(account))
-            .remove(latestDestinationKey(account))
-            .apply()
-    }
-
-    private fun persistUnreadSnapshot(
-        account: StoredAccountSession,
-        snapshot: InactiveAccountUnreadSnapshot
-    ) {
-        var relevantLatest = snapshot.latestPendingDestination
-            ?: loadLatestPendingDestination(account)?.takeIf { existing ->
-                existing.conversationKey in snapshot.pendingConversationKeys
-            }
-
-        persistCachedUnreadConversations(account, snapshot.unreadConversationCount.coerceAtLeast(0))
-        prefs.edit()
-            .putStringSet(pendingKey(account), snapshot.pendingConversationKeys)
-            .apply()
-
-        if (relevantLatest == null) {
-            prefs.edit().remove(latestDestinationKey(account)).apply()
-        } else {
-            prefs.edit()
-                .putString(latestDestinationKey(account), json.encodeToString(relevantLatest))
-                .apply()
-        }
-    }
-
-    private fun loadPendingConversationKeys(account: StoredAccountSession): Set<String> {
-        return prefs.getStringSet(pendingKey(account), emptySet())
-            ?.mapNotNull { it.trim().lowercase().takeIf { value -> value.isNotBlank() } }
-            ?.toSet()
-            ?: emptySet()
-    }
-
-    private fun loadLatestPendingDestination(account: StoredAccountSession): MultiAccountPendingDestination? {
-        val raw = prefs.getString(latestDestinationKey(account), null) ?: return null
-        return runCatching { json.decodeFromString<MultiAccountPendingDestination>(raw) }
-            .getOrNull()
-    }
-
-    private fun cachedKey(account: StoredAccountSession): String = KEY_CACHED_DIRECT_PREFIX + account.id
-
-    private fun pendingKey(account: StoredAccountSession): String = KEY_PENDING_CONVERSATION_PREFIX + account.id
-
-    private fun latestDestinationKey(account: StoredAccountSession): String = KEY_LATEST_DESTINATION_PREFIX + account.id
-
-    private fun pruneCachedState(accounts: List<StoredAccountSession>) {
-        if (prefs.all.isEmpty()) return
-        val validAccountIds = accounts.map { it.id }.toSet()
-        val keysToDelete = prefs.all.keys.filter { key ->
-            when {
-                key.startsWith(KEY_CACHED_DIRECT_PREFIX) ->
-                    key.removePrefix(KEY_CACHED_DIRECT_PREFIX) !in validAccountIds
-                key.startsWith(KEY_PENDING_CONVERSATION_PREFIX) ->
-                    key.removePrefix(KEY_PENDING_CONVERSATION_PREFIX) !in validAccountIds
-                key.startsWith(KEY_LATEST_DESTINATION_PREFIX) ->
-                    key.removePrefix(KEY_LATEST_DESTINATION_PREFIX) !in validAccountIds
-                else -> false
-            }
-        }
-        if (keysToDelete.isEmpty()) return
-        prefs.edit().apply {
-            keysToDelete.forEach(::remove)
-        }.apply()
-    }
 }
 
 internal fun mergeInactiveUnreadSnapshots(
@@ -758,8 +668,11 @@ private fun String?.toSortableEpochMillis(): Long {
         ).toEpochMilli()
     }.getOrElse { System.currentTimeMillis() }
 }
-
-
-
-
-
+/** Cancellation is control flow; a background read must not turn it into an empty section. */
+internal inline fun <T> inboxReadResult(read: () -> T): Result<T> = try {
+    Result.success(read())
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (error: Exception) {
+    Result.failure(error)
+}

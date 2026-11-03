@@ -70,6 +70,12 @@ class AccountSessionRepository @Inject constructor(
     private val accountStore = StoredAccountsStore(loadAccounts(), ::persist)
     private val _accounts = accountStore.state
     val accounts: StateFlow<List<StoredAccountSession>> = _accounts
+
+    internal fun <T> withStoredAccountsSnapshot(read: (List<StoredAccountSession>) -> T): T = accountStore.readCurrent(read)
+
+    internal fun commitIfStoredAccountCurrent(expected: StoredAccountSession, mutation: (StoredAccountSession) -> Unit): Boolean =
+        accountStore.commitIfCredentialsCurrent(expected, mutation)
+
     private val repositoryScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, throwable ->
             android.util.Log.e("AccountSessionRepository", "Stored account sync failed", throwable)

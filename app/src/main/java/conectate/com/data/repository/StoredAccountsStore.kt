@@ -13,6 +13,18 @@ internal class StoredAccountsStore(
     private val mutable = MutableStateFlow(initial)
     val state = mutable.asStateFlow()
 
+    /** Fast local consumers share the same exclusion as removal and credential replacement. */
+    fun <T> readCurrent(read: (List<StoredAccountSession>) -> T): T = synchronized(lock) { read(mutable.value) }
+
+    fun commitIfCredentialsCurrent(expected: StoredAccountSession, mutation: (StoredAccountSession) -> Unit): Boolean =
+        synchronized(lock) {
+            val current = mutable.value.firstOrNull { it.id == expected.id } ?: return@synchronized false
+            if (current.user_id != expected.user_id || current.email != expected.email ||
+                current.access_token != expected.access_token || current.refresh_token != expected.refresh_token) return@synchronized false
+            mutation(current)
+            true
+        }
+
     fun update(transform: (List<StoredAccountSession>) -> List<StoredAccountSession>): List<StoredAccountSession> =
         synchronized(lock) {
             val next = transform(mutable.value)
