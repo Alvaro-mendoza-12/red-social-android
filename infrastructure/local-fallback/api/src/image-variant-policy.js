@@ -20,4 +20,13 @@ function normalizeImageVariant(query, contentType, allowIdentityVariants = false
   return { width: canonicalWidth, quality: canonicalQuality, format: 'webp', ...(poster ? { poster: true } : {}), ...(animated ? { animated: true } : {}) }
 }
 
-module.exports = { WIDTHS, QUALITIES, normalizeImageVariant }
+function prewarmImageVariants(bucket, contentType) {
+  const identity = ['avatars', 'groups', 'communities'].includes(bucket)
+  const poster = bucket === 'avatars' && contentType.startsWith('video/')
+  const animated = identity && ['image/gif', 'image/webp'].includes(contentType)
+  if (!poster && !animated && !['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) return []
+  const profiles = identity ? [{ width: 160, quality: 78 }, { width: 384, quality: 86 }] : [{ width: 1080, quality: 78 }]
+  return profiles.map(profile => ({ ...profile, format: 'webp', ...(poster ? { poster: true } : {}), ...(animated ? { animated: true } : {}) }))
+}
+
+module.exports = { WIDTHS, QUALITIES, normalizeImageVariant, prewarmImageVariants }

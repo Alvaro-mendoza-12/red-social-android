@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Module = require('node:module');
 const { boundedWorkQueue } = require('../src/bounded-work-queue');
-const { normalizeImageVariant, WIDTHS, QUALITIES } = require('../src/image-variant-policy');
+const { normalizeImageVariant, prewarmImageVariants, WIDTHS, QUALITIES } = require('../src/image-variant-policy');
 function deferred() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
 const immediate = () => new Promise(resolve => setImmediate(resolve));
 
@@ -31,6 +31,22 @@ test('video posters require explicit admission and a bounded image profile', () 
   assert.equal(normalizeImageVariant({ width: 160 }, 'video/mp4', true), null);
   assert.deepEqual(normalizeImageVariant(query, 'video/mp4', true), { width: 160, quality: 78, format: 'webp', poster: true });
   assert.throws(() => normalizeImageVariant({ ...query, width: 9000 }, 'video/mp4', true), { message: 'INVALID_IMAGE_VARIANT' });
+});
+
+test('new identity uploads prepare exactly the static, animated or poster profiles used by clients', () => {
+  for (const bucket of ['avatars', 'groups', 'communities']) {
+    for (const contentType of ['image/jpeg', 'image/png', 'image/gif', 'image/webp']) {
+      const profiles = prewarmImageVariants(bucket, contentType);
+      assert.deepEqual(profiles.map(profile => profile.width), [160, 384]);
+      for (const profile of profiles) {
+        assert.deepEqual(profile, normalizeImageVariant({ ...profile, animated: profile.animated ? '1' : undefined }, contentType, true));
+      }
+    }
+  }
+  assert.equal(prewarmImageVariants('avatars', 'video/mp4').every(profile => profile.poster), true);
+  assert.deepEqual(prewarmImageVariants('chat-media', 'video/mp4'), []);
+  assert.deepEqual(prewarmImageVariants('chat-media', 'image/gif'), []);
+  assert.deepEqual(prewarmImageVariants('post-media', 'image/jpeg'), [{ width: 1080, quality: 78, format: 'webp' }]);
 });
 test('queue limits concurrency and queued entries; excess is rejected before work', async () => {
   const queue = boundedWorkQueue({ concurrency: 2, maxQueued: 2, queueWaitMs: 1000 });
