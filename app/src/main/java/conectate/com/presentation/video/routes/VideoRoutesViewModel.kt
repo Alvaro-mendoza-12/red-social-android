@@ -147,7 +147,7 @@ class VideoRoutesViewModel internal constructor(
                 throw cancelled
             } catch (_: Exception) {
                 if (isCurrent(version, lease)) _state.value = _state.value.copy(
-                    error = "No se pudo preparar la ruta. Revisa tu conexión y vuelve a intentarlo. Tu ruta anterior se conserva.",
+                    error = "No se pudo preparar la ruta. Revisa tu conexión y vuelve a intentarlo.",
                 )
             } finally {
                 if (isCurrent(version, lease)) _state.value = _state.value.copy(busy = false)
@@ -209,12 +209,14 @@ class VideoRoutesViewModel internal constructor(
 
     fun erase() {
         val lease = activeLease() ?: return
-        if (_state.value.busy || _state.value.loading) return
+        val snapshot = _state.value
+        if (snapshot.busy || snapshot.loading || (snapshot.route == null && !snapshot.storageBlocked)) return
         val version = ++requestVersion
         _state.value = _state.value.copy(busy = true, error = null)
         operation = viewModelScope.launch {
             try {
-                eraseStored(lease)
+                if (snapshot.route == null) eraseStored(lease)
+                else replaceStored(lease, snapshot.route, null)
                 if (isCurrent(version, lease)) _state.value = VideoRoutesState(accountId = lease.accountId, loading = false)
             } catch (cancelled: CancellationException) {
                 throw cancelled

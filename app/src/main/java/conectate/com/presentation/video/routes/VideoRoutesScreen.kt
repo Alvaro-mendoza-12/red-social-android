@@ -99,6 +99,7 @@ internal fun VideoRoutesContent(
 ) {
     var confirmErase by remember(state.accountId) { mutableStateOf(false) }
     var confirmLeave by remember(state.accountId) { mutableStateOf(false) }
+    var confirmReload by remember(state.accountId) { mutableStateOf(false) }
     val route = state.route
     val enabled = state.accountId != null && !state.loading && !state.busy && !state.storageBlocked
     val unsavedConclusion = route != null && route.conclusion != state.conclusion
@@ -133,7 +134,11 @@ internal fun VideoRoutesContent(
                     Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
                         Column(Modifier.padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
                             Text(error, color = MaterialTheme.colorScheme.onErrorContainer)
-                            if (!state.busy) TextButton(onClick = onReload) { Text("Volver a cargar") }
+                            if (!state.busy && (state.storageBlocked || !state.composerVisible)) {
+                                TextButton(onClick = {
+                                    if (unsavedConclusion) confirmReload = true else onReload()
+                                }) { Text("Volver a cargar") }
+                            }
                         }
                     }
                 }
@@ -256,5 +261,12 @@ internal fun VideoRoutesContent(
         text = { Text("Has escrito cambios que todavía no se han guardado.") },
         confirmButton = { TextButton(onClick = { confirmLeave = false; onSaveAndBack() }) { Text("Guardar y salir") } },
         dismissButton = { TextButton(onClick = { confirmLeave = false; onBack() }) { Text("Salir sin guardar") } },
+    )
+    if (confirmReload) AlertDialog(
+        onDismissRequest = { confirmReload = false },
+        title = { Text("¿Cargar la ruta guardada?") },
+        text = { Text("Se descartarán los cambios de esta conclusión que todavía no has guardado.") },
+        confirmButton = { TextButton(onClick = { confirmReload = false; onReload() }) { Text("Cargar lo guardado") } },
+        dismissButton = { TextButton(onClick = { confirmReload = false }) { Text("Conservar cambios") } },
     )
 }

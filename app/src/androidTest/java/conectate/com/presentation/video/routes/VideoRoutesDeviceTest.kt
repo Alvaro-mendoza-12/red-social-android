@@ -4,9 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -14,9 +16,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import conectate.com.presentation.theme.RedSocialTheme
+import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -32,7 +38,7 @@ class VideoRoutesDeviceTest {
         var prepared = false
         compose.setContent {
             RedSocialTheme {
-                content(
+                RouteTestContent(
                     state = state.value,
                     onQuery = { state.value = state.value.copy(query = it) },
                     onSize = { state.value = state.value.copy(requestedCount = it) },
@@ -55,7 +61,7 @@ class VideoRoutesDeviceTest {
         var opened: String? = null
         compose.setContent {
             RedSocialTheme {
-                content(state = VideoRoutesState(accountId = "alice", route = route, composerVisible = false, loading = false),
+                RouteTestContent(state = VideoRoutesState(accountId = "alice", route = route, composerVisible = false, loading = false),
                     onOpen = { opened = it })
             }
         }
@@ -63,6 +69,7 @@ class VideoRoutesDeviceTest {
         compose.onNodeWithText("Abrir video").performClick()
         compose.runOnIdle { assertEquals("Video-A", opened) }
         compose.onNodeWithText("Encontramos 1 de los 3 que pediste. Puedes recorrer esta selección o probar otro tema.").assertIsDisplayed()
+        saveScreenshot("routes105-route.png")
     }
 
     @Test fun leavingWithAnUnsavedConclusionRequiresAnExplicitChoice() {
@@ -70,7 +77,7 @@ class VideoRoutesDeviceTest {
         var left = false
         compose.setContent {
             RedSocialTheme {
-                content(
+                RouteTestContent(
                     state = VideoRoutesState(accountId = "alice", route = route, conclusion = "Practicar acordes", composerVisible = false, loading = false),
                     onBack = { left = true }, onSaveAndBack = { saved = true },
                 )
@@ -92,7 +99,7 @@ class VideoRoutesDeviceTest {
             val density = LocalDensity.current.density
             CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 1.6f)) {
                 RedSocialTheme {
-                    content(
+                    RouteTestContent(
                         state = VideoRoutesState(accountId = "alice", route = enlarged, composerVisible = false, loading = false),
                         modifier = Modifier.requiredWidth(280.dp),
                     )
@@ -103,10 +110,43 @@ class VideoRoutesDeviceTest {
         compose.onNodeWithText("Borrar ruta guardada").performScrollTo().performClick()
         compose.onNodeWithText("¿Borrar esta ruta?").assertIsDisplayed()
         compose.onNodeWithText("Conservar").performClick()
+        saveScreenshot("routes105-narrow.png")
+    }
+
+    @Test fun searchRetryPreservesTheQueryAndReloadWarnsBeforeDiscardingAConclusion() {
+        val state = mutableStateOf(VideoRoutesState(
+            accountId = "alice", loading = false, query = "guitarra", error = "No se pudo preparar la ruta.",
+        ))
+        var prepared = false
+        var reloaded = false
+        compose.setContent {
+            RedSocialTheme {
+                RouteTestContent(state.value, onPrepare = { prepared = true }, onReload = { reloaded = true })
+            }
+        }
+        compose.onNodeWithText("Volver a cargar").assertDoesNotExist()
+        compose.onNodeWithText("Preparar ruta").performClick()
+        compose.runOnIdle {
+            assertTrue(prepared)
+            assertEquals("guitarra", state.value.query)
+            state.value = state.value.copy(route = route, conclusion = "Borrador", composerVisible = false)
+        }
+        compose.onNodeWithText("Volver a cargar").performClick()
+        compose.onNodeWithText("¿Cargar la ruta guardada?").assertIsDisplayed()
+        compose.runOnIdle { assertFalse(reloaded) }
+        compose.onNodeWithText("Cargar lo guardado").performClick()
+        compose.runOnIdle { assertTrue(reloaded) }
+    }
+
+    private fun saveScreenshot(name: String) {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val path = File(checkNotNull(context.getExternalFilesDir(null)), name)
+        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        path.outputStream().use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
     }
 
     @Composable
-    private fun content(
+    private fun RouteTestContent(
         state: VideoRoutesState,
         onQuery: (String) -> Unit = {},
         onSize: (Int) -> Unit = {},
@@ -114,13 +154,14 @@ class VideoRoutesDeviceTest {
         onOpen: (String) -> Unit = {},
         onBack: () -> Unit = {},
         onSaveAndBack: () -> Unit = {},
+        onReload: () -> Unit = {},
         modifier: Modifier = Modifier,
     ) {
         VideoRoutesContent(
             state = state, onBack = onBack, onQueryChange = onQuery, onSizeChange = onSize,
             onPrepare = onPrepare, onNewRoute = {}, onShowRoute = {}, onOpen = onOpen,
             onUseful = {}, onConclusionChange = {}, onSave = {}, onSaveAndBack = onSaveAndBack,
-            onCompleted = {}, onErase = {}, onReload = {}, modifier = modifier,
+            onCompleted = {}, onErase = {}, onReload = onReload, modifier = modifier,
         )
     }
 }

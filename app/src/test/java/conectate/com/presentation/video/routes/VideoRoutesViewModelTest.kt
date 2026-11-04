@@ -266,4 +266,19 @@ class VideoRoutesViewModelTest {
         assertEquals(saved, fixture.vm.state.value.route)
         assertEquals("", fixture.vm.state.value.conclusion)
     }
+
+    @Test fun aStaleScreenCannotEraseANewerSelectionSavedInAnotherScreen() = runTest(dispatcher) {
+        val fixture = Fixture()
+        advanceUntilIdle()
+        fixture.vm.changeQuery("guitarra")
+        fixture.vm.prepare()
+        advanceUntilIdle()
+        val newer = fixture.stored["alice"]!!.copy(id = "newer-route")
+        fixture.stored["alice"] = newer
+        fixture.vm.erase()
+        advanceUntilIdle()
+        assertEquals(newer, fixture.stored["alice"])
+        assertNotNull(fixture.vm.state.value.error)
+        assertFalse(fixture.vm.state.value.busy)
+    }
 }
