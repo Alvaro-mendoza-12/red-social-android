@@ -3,17 +3,25 @@ package conectate.com.presentation.video.routes
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.ComposeNavigator
 import androidx.navigation.createGraph
+import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import conectate.com.presentation.navigation.Screen
 import conectate.com.presentation.navigation.addMainRoutes
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /** Exercises the registered graph and the arguments Hilt receives from the destination. */
 @RunWith(AndroidJUnit4::class)
 class VideoRouteNavigationDeviceTest {
+    private val viewModels = ViewModelStore()
+
+    @After fun clearNavigationState() {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { viewModels.clear() }
+    }
+
     @Test fun theRoutePlayerReceivesItsEncodedIdentityAndBoundedModeAndReturnsToItsRoute() {
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
             val controller = newController()
@@ -48,6 +56,7 @@ class VideoRouteNavigationDeviceTest {
     private fun newController(): NavHostController {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         return NavHostController(context).apply {
+            setViewModelStore(viewModels)
             navigatorProvider.addNavigator(ComposeNavigator())
             graph = createGraph(startDestination = Screen.VideoRoutes.route) {
                 addMainRoutes(this@apply, isLoggedIn = true)
