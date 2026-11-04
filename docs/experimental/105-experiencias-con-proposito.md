@@ -137,6 +137,44 @@ La revisión del plan mantuvo el tema visual existente y centró la diferencia e
 
 ## Estado de implementación
 
-El prototipo Android está implementado y comienza su comprobación. Se accede desde Videos, botón de creación y biblioteca, opción «Rutas con propósito». La búsqueda conserva hasta ochenta candidatos y selecciona tres o cinco videos públicos, con variedad de autores cuando existe. El registro local cifrado contiene una ruta por cuenta. La conclusión se guarda por acción explícita y el regreso avisa de cambios sin guardar. Borrar la ruta exige confirmación.
+El prototipo Android está implementado en la rama experimental. Se accede desde Videos, botón de creación y biblioteca, opción «Rutas con propósito». La búsqueda conserva hasta ochenta candidatos y selecciona tres o cinco videos públicos, con variedad de autores cuando existe. El registro local cifrado contiene una ruta por cuenta. La conclusión se guarda por acción explícita y el regreso avisa de cambios sin guardar. Borrar la ruta exige confirmación.
 
-Mensajería, Social, comunidades y gaming conservan las prioridades y dependencias descritas. Su implementación y la adaptación web siguen pendientes. La validación de este prototipo se documentará con su commit y pruebas efectivamente ejecutadas.
+Mensajería, Social, comunidades y gaming conservan las prioridades y dependencias descritas. Su implementación y la adaptación web siguen pendientes. Las comprobaciones de este prototipo se registran al final del documento con sus identidades de código.
+
+## Razones de elección que deben comprobarse
+
+| Apartado | Beneficio concreto que se quiere probar | Evidencia necesaria |
+| --- | --- | --- |
+| Videos | Encontrar material útil para un tema dentro de una selección cuyo final se conoce y recuperar lo elegido | Resolver la misma tarea con menos esfuerzo declarado y conservar los hallazgos al volver |
+| Mensajes | Identificar el acuerdo vigente y las personas que lo aceptaron, incluyendo cambios posteriores | Reconstruir decisiones con menos errores, sin atribuir una aceptación a quien todavía no respondió |
+| Social | Encontrar cómo terminó una petición y qué contribuciones ayudaron | Recuperar la conclusión y sus referencias sin reconstruir todas las respuestas |
+| Comunidades | Completar una primera contribución que el grupo considere útil | Aumentar las primeras contribuciones aceptadas y reducir el tiempo que lleva encontrar dónde participar |
+| Gaming | Llegar a una partida con horario, expectativas y compatibilidad confirmados | Aumentar las partidas realizadas y la satisfacción con los compañeros elegidos |
+
+La experiencia transversal propuesta conserva la intención, las referencias y el resultado cuando la persona decide pasar a otro apartado. Su valor dependerá de que cada recorrido resuelva su propia tarea y de que el cambio de contexto resulte comprensible. Los futuros traspasos entre módulos exigirán una acción explícita del usuario y los permisos del destino.
+
+El prototipo de Videos permite comprobar funcionamiento. La preferencia frente a productos consolidados requiere evaluación con personas y un catálogo suficiente. Las otras cuatro ventajas continúan como propuestas con sus condiciones técnicas y de validación.
+
+## Plan de aceptación de Rutas
+
+Primero se comprueban selección finita, referencias válidas, guardado, errores, cuenta cambiada, regreso y accesibilidad. Después se propone un ensayo de tarea con un grupo pequeño de usuarios, alternando el orden entre el flujo actual y Rutas. Se utilizarán las mismas palabras de búsqueda y catálogo, y una tarea elegida por cada participante.
+
+El ensayo de producto recogerá si encontró algo útil, esfuerzo percibido, facilidad para volver al hallazgo, consumo de datos y preferencia razonada. Se registrarán también rutas abandonadas y consultas sin catálogo. Las conclusiones privadas se conservarán en cada dispositivo. La participación en el ensayo y cualquier envío de métricas deberán ser voluntarios.
+
+La hipótesis se reconsiderará si la selección resulta insuficiente, el esfuerzo de preparar una ruta supera su beneficio o las personas prefieren el flujo actual para esa tarea. El prototipo aún no añade sincronización de conclusiones ni un sistema nuevo de recomendación semántica. Esas ampliaciones requieren justificar el valor de la primera experiencia.
+
+## Comprobaciones del 4 de noviembre
+
+La batería completa del commit `08c9d1a17e49` aprobó **2.716 pruebas JVM en 510 clases**, con cero fallos, errores y omisiones. Las 27 regresiones nuevas cubren selección finita, autores, duplicados, referencias sin URLs de reproducción, restauración, revisiones simultáneas, error de guardado, tiempo de espera, doble pulsación, salida y regreso a una cuenta y respuestas atrasadas. Una ejecución anterior se interrumpió al finalizar el proceso de pruebas. Se repitió con el límite ya utilizado de un proceso, 768 MiB y renovación cada 75 clases.
+
+El primer ensayo de emulador aprobó **28 pruebas de interfaz en Android 15**, incluidas cinco de Rutas y una del almacén de claves de Android. Se comprobó que el XML guardado no contuviera el tema ni la conclusión legibles, su recuperación con una instancia nueva y el borrado separado por cuenta. Se revisaron capturas normales y de 280 puntos de ancho con escala de texto 1,6. Después se corrigió el singular cuando hay un solo video.
+
+La primera lectura conectada de este bloque comparó un fragmento de 4 KiB del mismo objeto por Media3 desde R2 y Ubuntu. Coincidieron los bytes y R2 fue la fuente efectiva. Ambas rutas devolvieron 401 con sesión inválida. El ensayo utilizó acceso de invitado a contenido público.
+
+Se añadieron dos comprobaciones sobre el grafo registrado para verificar el destino acotado, los identificadores codificados, el regreso y los argumentos del reproductor habitual. La primera ejecución señaló una aserción incorrecta del ensayo. `NavBackStackEntry.savedStateHandle` conserva resultados entre destinos. El modelo recibe los argumentos mediante sus extras de creación y `createSavedStateHandle()`. Se contrastó la fuente local de Navigation 2.7.5 y se corrigió la prueba para usar la creación de un modelo con esos extras. [Navegación programática](https://developer.android.com/guide/navigation/use-graph/programmatic), [alcance de ViewModel](https://developer.android.com/topic/libraries/architecture/viewmodel/viewmodel-apis).
+
+La compilación posterior y Lint K1 finalizaron correctamente. Lint informó **cero errores, cero errores fatales y 321 avisos**, con sus reglas vigentes. Los paquetes de emulador son de depuración y conservan la numeración 9.1.39 / 179. El código principal y su identificador incorporado corresponden a `5030b962a5d2`. La prueba corregida de navegación está en `c04cbfc9`. Su paquete de instrumentación se vuelve a compilar fijando el identificador del código principal con la variable existente `NOVVIN_BUILD_COMMIT`. Las fuentes principales se comparan con `5030b962` antes de hacerlo.
+
+La última repetición aprobó **30 pruebas de interfaz y navegación en 51,858 segundos**. Incluyó los dos ensayos corregidos sobre los destinos registrados y las comprobaciones anteriores de cámara, Social, ciclo de reproducción y compartidos. La lectura nativa R2/Ubuntu volvió a aprobar en una ejecución posterior separada. Se conservaron capturas de pantalla y huellas de las fuentes y de ambos APK de depuración. La aserción incorrecta anterior y los ensayos aprobados se conservaron como evidencias distintas.
+
+El AAB firmado estable está identificado en la revisión oficial 104. Este bloque conserva abiertos el ensayo completo con una cuenta autenticada a través de la interfaz, las pruebas físicas, la evaluación de preferencia y la sincronización entre dispositivos. La prueba del grafo, las acciones de la pantalla, el almacenamiento y la lectura conectada tienen evidencias independientes.

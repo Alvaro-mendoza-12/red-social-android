@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-04T03:40:57.875227+00:00",
-  "baseCommit": "dde3c49f09651cc4d6ef98ee7c0e90272ef01ec9",
+  "generatedAtUtc": "2026-11-04T05:27:53.865543+00:00",
+  "baseCommit": "c04cbfc943c10c46793cbcff969798688f751b72",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3680,
-    "code-read": 453,
-    "partial": 86
+    "pending": 3677,
+    "code-read": 465,
+    "partial": 88
   },
   "countsByPhase": {
     "android": {
-      "pending": 1540,
-      "partial": 50,
-      "code-read": 391
+      "pending": 1537,
+      "partial": 52,
+      "code-read": 402
     },
     "documentation": {
       "pending": 557,
-      "code-read": 5,
+      "code-read": 6,
       "partial": 8
     },
     "server": {
@@ -4583,6 +4583,30 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/androidTest/java/conectate/com/presentation/video/routes/VideoRouteEncryptionDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "d7e135caa97f9bf210384418bc1cc2d2a90fa280",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/video/routes/VideoRouteNavigationDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "f89f7cf62657d5bb80f60cac1d9f4ed77f9b30b7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/video/routes/VideoRoutesDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "e84045234044c9fed49de53c15caa30d67b1b750",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/androidTest/java/conectate/com/presentation/videos/VideoUploadDraftStoreTest.kt",
       "phase": "android",
       "gitBlobId": "fe5ef25f28cbf7c0efd0fe57766116a8bd2cf1eb",
@@ -5798,7 +5822,9 @@
       "file": "app/src/main/java/conectate/com/core/testing/TestRuntimeOverrides.kt",
       "phase": "android",
       "gitBlobId": "0050ae70554b4757f8176dc0bf5b8ba402dabd5c",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/algorithm/AlgorithmApiClient.kt",
@@ -10459,8 +10485,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/MainNavigationRoutes.kt",
       "phase": "android",
-      "gitBlobId": "c7d5b47e55ccddb09a0747f7bdc289f2a04ba253",
-      "reviewStatus": "code-read",
+      "gitBlobId": "9e2ec637bd2346d566e08d7f91992486392f25dd",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -10492,13 +10518,15 @@
       "file": "app/src/main/java/conectate/com/presentation/navigation/RaffleNavigation.kt",
       "phase": "android",
       "gitBlobId": "95c89ff2c0e6c0475538489c4a07b8789e63fc40",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/Screen.kt",
       "phase": "android",
-      "gitBlobId": "25c98251cb79538444524b399a80509cc3e4adbe",
-      "reviewStatus": "code-read",
+      "gitBlobId": "31d4d0e91befc4c2b81df2928d8c30e493778a48",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -11544,7 +11572,9 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoDetailFeedScreen.kt",
       "phase": "android",
       "gitBlobId": "c06382a74c637e79c05c67125178025493a3d4d7",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoDiscoveryTopics.kt",
@@ -11603,7 +11633,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
       "phase": "android",
-      "gitBlobId": "e69d9e2042e28851860d00ebd90b77c020f43969",
+      "gitBlobId": "82af55467da78ec3e8408cf35b84cc9d646250c4",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -11625,7 +11655,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedViewModel.kt",
       "phase": "android",
-      "gitBlobId": "af4c7303848b91e5b71f3a3262d6ecdba6c0ee61",
+      "gitBlobId": "655a83d320d45e63c4117bff324f2f204fb46562",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -11713,6 +11743,38 @@
       "phase": "android",
       "gitBlobId": "49fb611cca628ca1134e61cc1fc4b58b3ce5a172",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/video/routes/VideoRoute.kt",
+      "phase": "android",
+      "gitBlobId": "6df0f3f058257815a8416cb21b2014a52da86932",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/video/routes/VideoRouteStore.kt",
+      "phase": "android",
+      "gitBlobId": "3d18e1ef81e8625d39a71e4acd27bd4a7c48a9cc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/video/routes/VideoRoutesScreen.kt",
+      "phase": "android",
+      "gitBlobId": "214019b08e82018e93fe7ed0e9c53d09d6fbf8f5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/video/routes/VideoRoutesViewModel.kt",
+      "phase": "android",
+      "gitBlobId": "d67fa221cc456e2d6ebe745dc53a9c3d6cc3a49f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/videos/CommentSheet.kt",
@@ -16079,6 +16141,30 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/video/routes/VideoRouteJournalTest.kt",
+      "phase": "android",
+      "gitBlobId": "c5006eb00cb57abbcd22b8d1521c13684f716878",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/video/routes/VideoRouteTest.kt",
+      "phase": "android",
+      "gitBlobId": "f3be6846f6213e7041414602d44b7b8ffd0507c0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/video/routes/VideoRoutesViewModelTest.kt",
+      "phase": "android",
+      "gitBlobId": "5241fdfd46918792211c76b9d41ccee0f26a25af",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/videos/CommentSheetThreadingSupport.kt",
       "phase": "android",
       "gitBlobId": "323174991696a0c6932247e1a4b273984a06a90d",
@@ -18927,6 +19013,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/experimental/105-experiencias-con-proposito.md",
+      "phase": "documentation",
+      "gitBlobId": "755987e4c08b5bb4b1d24ce09edec3274c90867e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/groups_communities_backup_20260212.md",
       "phase": "documentation",
       "gitBlobId": "4eea44ffd09eca22a103239047b36286c6797adc",
@@ -19583,7 +19677,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "6616c5680ffcf268a5dee09345077fb7b4b4c506",
+      "gitBlobId": "95794f5f17e394bb210e9b25ae13594f07fe5013",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
