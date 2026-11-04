@@ -60,7 +60,7 @@ class ChatAgreementsDeviceTest {
         compose.onNodeWithText("Cancelar acuerdo").performScrollTo().performClick()
         compose.runOnIdle { assertNull(action) }
         compose.onNodeWithText("¿Cancelar el acuerdo?").assertIsDisplayed()
-        compose.onAllNodesWithText("Cancelar acuerdo").last().performClick()
+        compose.onAllNodesWithText("Cancelar acuerdo").let { nodes -> nodes[nodes.fetchSemanticsNodes().lastIndex].performClick() }
         compose.runOnIdle { assertEquals("cancel", action) }
     }
     @Test fun largeTextInDarkThemeCanReachTheSourceAndWithdrawal() {

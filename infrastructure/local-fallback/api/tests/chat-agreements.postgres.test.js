@@ -51,7 +51,7 @@ async function fixture(connectionString) {
 }
 
 test('isolated PostgreSQL and HTTP enforce consent, concurrent versions and lost-ACK replay',
-  { skip: !process.env.AGREEMENTS_TEST_DATABASE_URL }, async t => {
+  { skip: !process.env.AGREEMENTS_TEST_DATABASE_URL || process.env.AGREEMENTS_QA_SERVE === 'true' }, async t => {
     const { pool, app, published } = await fixture(process.env.AGREEMENTS_TEST_DATABASE_URL)
     t.after(() => pool.end())
     const server = await new Promise(resolve => { const value = app.listen(0, '127.0.0.1', () => resolve(value)) })

@@ -96,7 +96,7 @@ class ChatAgreementsHttpDeviceTest {
             compose.onNodeWithText("Ensayamos este sábado").assertIsDisplayed()
             compose.onNodeWithText("Volver al acuerdo").performClick()
             compose.onNodeWithText("Cancelar acuerdo").performScrollTo().performClick()
-            compose.onAllNodesWithText("Cancelar acuerdo").last().performClick()
+            compose.onAllNodesWithText("Cancelar acuerdo").let { nodes -> nodes[nodes.fetchSemanticsNodes().lastIndex].performClick() }
             compose.waitUntil(15_000) { !vm.state.value.busy && vm.state.value.agreements.first().cancelled }
             assertEquals("cancelled", runBlocking(Dispatchers.IO) { api.load(bobLease, chat) }.first().status)
         } finally {
