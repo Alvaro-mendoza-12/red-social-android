@@ -1,10 +1,7 @@
 package conectate.com.presentation.video.routes
 
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onRoot
 import androidx.test.platform.app.InstrumentationRegistry
 import coil.Coil
 import coil.EventListener
@@ -72,12 +69,10 @@ class VideoRoutePublicCoversDeviceTest {
             }
             assertEquals(route.items.map { it.thumbnailPath }.distinct().size, completed.size)
             saveScreenshot("routes106-public-light.png")
-            saveDisplayScreenshot("routes106-public-light-display.png")
             compose.runOnIdle { dark.value = true }
             compose.mainClock.advanceTimeBy(300)
             compose.waitForIdle()
             saveScreenshot("routes106-public-dark.png")
-            saveDisplayScreenshot("routes106-public-dark-display.png")
         } finally {
             if (contentInstalled) {
                 compose.runOnIdle { visible.value = false }
@@ -91,14 +86,6 @@ class VideoRoutePublicCoversDeviceTest {
     }
 
     private fun saveScreenshot(name: String) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val path = File(checkNotNull(context.getExternalFilesDir(null)), name)
-        path.outputStream().use {
-            check(compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
-        }
-    }
-
-    private fun saveDisplayScreenshot(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync()

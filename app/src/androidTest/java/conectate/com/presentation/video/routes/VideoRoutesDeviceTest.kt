@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
@@ -15,8 +14,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import conectate.com.presentation.theme.RedSocialTheme
@@ -230,10 +227,17 @@ class VideoRoutesDeviceTest {
     }
 
     private fun saveScreenshot(name: String) {
-        val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val path = File(checkNotNull(context.getExternalFilesDir(null)), name)
-        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
-        path.outputStream().use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
+        compose.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.waitForIdleSync()
+        instrumentation.uiAutomation.waitForIdle(100, 2_000)
+        val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        try {
+            val path = File(checkNotNull(instrumentation.targetContext.getExternalFilesDir(null)), name)
+            path.outputStream().use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
+        } finally {
+            bitmap.recycle()
+        }
     }
 
     @Composable
