@@ -22,7 +22,7 @@ stage_runtime_secret() {
 # temporarily unavailable, the API still starts, but upload validation fails
 # closed while MUSIC_ANTIVIRUS_REQUIRED=true until valid signatures exist.
 if [ "${MUSIC_ANTIVIRUS_REQUIRED:-true}" = "true" ]; then
-  freshclam --stdout || echo "ClamAV signatures could not be refreshed; music uploads remain blocked."
+  sh scripts/refresh-antivirus.sh || echo "ClamAV refresh did not complete; uploads still require valid antivirus signatures."
 fi
 
 if [ "$(id -u)" = "0" ]; then

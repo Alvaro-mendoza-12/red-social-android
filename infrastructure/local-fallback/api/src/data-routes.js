@@ -1891,6 +1891,7 @@ function playbackUrlWithVersion(rawUrl, row) {
 
 function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
   const id = textOf(row, ['id'], '')
+  const reactionKey = normalizeId(id)
   const userId = textOf(row, ['user_id', 'userId'], '')
   const profile = profilesById.get(normalizeId(userId)) || {}
   const cover = textOf(row, ['cover_url', 'thumbnail_url', 'coverUrl', 'thumbnailUrl'], '')
@@ -1933,11 +1934,11 @@ function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
     trim_start_seconds: numberOf(row, ['trim_start_seconds', 'trimStartSeconds'], 0),
     trim_end_seconds: numberOf(row, ['trim_end_seconds', 'trimEndSeconds'], 0),
     views: numberOf(row, ['views', 'view_count', 'viewCount'], 0),
-    like_count: likeCounts.get(id) ?? numberOf(row, ['like_count', 'likeCount'], 0),
+    like_count: likeCounts.get(reactionKey) ?? numberOf(row, ['like_count', 'likeCount'], 0),
     comment_count: numberOf(row, ['comment_count', 'commentCount'], 0),
     share_count: numberOf(row, ['share_count', 'shareCount'], 0),
     is_public: boolOf(row, ['is_public', 'isPublic'], true),
-    liked_by_me: likedVideoIds.has(id),
+    liked_by_me: likedVideoIds.has(reactionKey),
     created_at: textOf(row, ['created_at', 'updated_at'], ''),
     updated_at: textOf(row, ['updated_at', 'created_at'], ''),
   }
@@ -4205,7 +4206,7 @@ function enrichPost(
 ) {
   const authorId = normalizeId(textOf(row, ['user_id', 'owner_id', 'author_id', 'creator_id'], ''))
   const profile = authorId ? profilesById.get(authorId) : null
-  const postId = textOf(row, ['id'], '')
+  const postId = normalizeId(textOf(row, ['id'], ''))
   const mediaUrls = normalizePostMediaUrls(row)
   const countsForPost = reactionCounts.get(postId) || {}
   const reactionTotal = Object.values(countsForPost).reduce((total, count) => total + Number(count || 0), 0)
@@ -4234,7 +4235,7 @@ function enrichPost(
 }
 
 function postIdOf(row) {
-  return normalizeId(textOf(row, ['post_id', 'id'], ''))
+  return normalizeId(textOf(row, ['post_id', 'postId', 'id'], ''))
 }
 
 function postOwnerId(row) {
@@ -15051,6 +15052,8 @@ async function processBirthdayNotifications(
 }
 
 module.exports = {
+  buildPostReactionState,
+  enrichPost,
   readConversationHistoryPage,
   ownChatParticipant,
   chatPreferencesOf,
