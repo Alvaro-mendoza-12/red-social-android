@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-04T03:40:57.875227+00:00",
-  "baseCommit": "dde3c49f09651cc4d6ef98ee7c0e90272ef01ec9",
+  "generatedAtUtc": "2026-11-04T23:24:33.550050+00:00",
+  "baseCommit": "b3a5343f77833755fdced03c022485cd2c8f5142",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,25 +10,25 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3680,
-    "code-read": 453,
-    "partial": 86
+    "pending": 3677,
+    "code-read": 457,
+    "partial": 92
   },
   "countsByPhase": {
     "android": {
-      "pending": 1540,
-      "partial": 50,
-      "code-read": 391
+      "pending": 1539,
+      "partial": 54,
+      "code-read": 390
     },
     "documentation": {
       "pending": 557,
-      "code-read": 5,
+      "code-read": 6,
       "partial": 8
     },
     "server": {
-      "pending": 865,
-      "code-read": 34,
-      "partial": 11
+      "pending": 863,
+      "code-read": 38,
+      "partial": 13
     },
     "tooling-and-other": {
       "pending": 155,
@@ -113,7 +113,7 @@
     {
       "file": "AGENTS.md",
       "phase": "documentation",
-      "gitBlobId": "30b94207700639d9494d6b5376df671481173e63",
+      "gitBlobId": "21cef0f8cb88a93bb4367229ef544c324f2e2fd7",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3877,7 +3877,7 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "913ecd9e6b7f70a44080bb2d79d5e932427058a4",
+      "gitBlobId": "adbda3806d67ffc4ee5976ec2f2bdd2c526e6355",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -4197,7 +4197,7 @@
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/MediaPlaybackLifecycleDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "d0b23b79271c585d33077b41824b6e3a5d59420c",
+      "gitBlobId": "e5f8ad0743ac2d3eeee7991a2575bc6ad3d3d3be",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -5430,6 +5430,14 @@
       "gitBlobId": "f764e1f0d159ea4583ac591d1057dfaea1e930a6",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/core/media/ProfileAvatarPlayback.kt",
+      "phase": "android",
+      "gitBlobId": "c07a829c1ee439feebe388fc7802926b45bc3698",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8703,8 +8711,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/CircularProfileImage.kt",
       "phase": "android",
-      "gitBlobId": "b2d018eea92f3b83831e8da6281e087aec289739",
-      "reviewStatus": "code-read",
+      "gitBlobId": "5438469e12efcd03466102677a7ed2d451bab55b",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -9501,7 +9509,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/media/FullScreenVideoScreen.kt",
       "phase": "android",
-      "gitBlobId": "99f6f2118012c4131a2c65607fa1d87f9ac7a154",
+      "gitBlobId": "d253f48bcbd0e13e102dea2c60b83f3e0ebe29ee",
       "reviewStatus": "pending"
     },
     {
@@ -10459,8 +10467,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/MainNavigationRoutes.kt",
       "phase": "android",
-      "gitBlobId": "c7d5b47e55ccddb09a0747f7bdc289f2a04ba253",
-      "reviewStatus": "code-read",
+      "gitBlobId": "99d3a6afe2b07d6192e5d127268377a9293a3500",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -10497,8 +10505,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/Screen.kt",
       "phase": "android",
-      "gitBlobId": "25c98251cb79538444524b399a80509cc3e4adbe",
-      "reviewStatus": "code-read",
+      "gitBlobId": "e001d9ee64e6513a0fd4d15b9af5c9ea6ca7d4c3",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -10631,8 +10639,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/EditProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "1d85db0d77a4d5b81b75eb7bd22fd9acd4dbf6a7",
-      "reviewStatus": "pending"
+      "gitBlobId": "a06c8d66a785fa0497ce3ada38284166f55b8f4b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/FollowListScreen.kt",
@@ -10795,7 +10805,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "d632db8182a5fe6dce02da56ae9fedc50d38aa3e",
+      "gitBlobId": "bbdd56693f93d7347026d75cdaaa8331242a7607",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -13408,6 +13418,14 @@
       "gitBlobId": "75d52c2d87b4f13a5e3255cc866d0e596ed6c977",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/core/media/ProfileAvatarPlaybackTest.kt",
+      "phase": "android",
+      "gitBlobId": "5d13ff795b112f78692a8580a37757a8ede51edb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19021,7 +19039,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "fa74ddc8137fa6494fe8a43abdfc6f937c8a2ed3",
+      "gitBlobId": "57fb8eb76d184a0211adabee78a873273fc6eddd",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -19055,6 +19073,14 @@
       "phase": "documentation",
       "gitBlobId": "c7e774d8bfa45d6a6f738d3bc5ace38991c4f54a",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/110-contadores-social-y-avatares.md",
+      "phase": "documentation",
+      "gitBlobId": "321e65c91f08d7682acfda57b2dccbf14fcdee6d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/12-production-readiness-audit.md",
@@ -19583,7 +19609,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "6616c5680ffcf268a5dee09345077fb7b4b4c506",
+      "gitBlobId": "1fa7aa27c4ca66e94122293c991eb1d72490f311",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20781,14 +20807,18 @@
     {
       "file": "infrastructure/local-fallback/api/src/algorithm-recommendation-bootstrap.js",
       "phase": "server",
-      "gitBlobId": "c1e222cd5a7fefd1c25f9aa20d5c04b845f56ef3",
-      "reviewStatus": "pending"
+      "gitBlobId": "5da903f2fde93a54b2ecb1881ede66539f7c6603",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/algorithm-recommendation-routes.js",
       "phase": "server",
-      "gitBlobId": "e8c35f8403d4199b4c9aaba3fac6fc480776457a",
-      "reviewStatus": "pending"
+      "gitBlobId": "986a63cb50a7264189cd4a4328266d6359d37d8d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/algorithm-routes.js",
@@ -20943,7 +20973,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "4994d07993e72db349e51d97f7bb4af30d754d6b",
+      "gitBlobId": "f82bf890ed1709eecb02562c90a17d791549295c",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -21319,6 +21349,14 @@
       "phase": "server",
       "gitBlobId": "040461bafb237239fb338a8b85a31dbfb2efc696",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/post-engagement-reader.js",
+      "phase": "server",
+      "gitBlobId": "a717967a9ed92ef1a647dcb24da7b119e62a028c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/postgrest-compat-routes.js",
@@ -21799,7 +21837,7 @@
     {
       "file": "infrastructure/local-fallback/api/tests/algorithm-candidate-provider.test.js",
       "phase": "server",
-      "gitBlobId": "1dc969541f15b713b772665c20df479ca9f255f3",
+      "gitBlobId": "f6b6e280f8fbfd1bc4686f7f30eab48465d4e0b1",
       "reviewStatus": "pending"
     },
     {
@@ -21809,9 +21847,17 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/algorithm-engagement.test.js",
+      "phase": "server",
+      "gitBlobId": "f4fb9f26f2619d0049dd7439096e2eb32a012c65",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/algorithm-feed-continuation.test.js",
       "phase": "server",
-      "gitBlobId": "d808874a908255221e291ba6cbda21f59c3289f8",
+      "gitBlobId": "bd1aba7ee9893ac41b191fe6cd4e55d8dda9283c",
       "reviewStatus": "pending"
     },
     {
@@ -21823,7 +21869,7 @@
     {
       "file": "infrastructure/local-fallback/api/tests/algorithm-keyset-continuation.test.js",
       "phase": "server",
-      "gitBlobId": "282b0600230b84268c1e3fa6d617e2151b1a6abb",
+      "gitBlobId": "dd5964a39cb3c755732e88032a8717f3c7913761",
       "reviewStatus": "pending"
     },
     {
@@ -21841,13 +21887,13 @@
     {
       "file": "infrastructure/local-fallback/api/tests/algorithm-recommendation-bootstrap.test.js",
       "phase": "server",
-      "gitBlobId": "b8b5bc6bc22ad50fbb4580e15fb48c68495e2360",
+      "gitBlobId": "cd05fee419dbf5fd2e96c42cd4d74051f8b4463b",
       "reviewStatus": "pending"
     },
     {
       "file": "infrastructure/local-fallback/api/tests/algorithm-recommendation-routes.test.js",
       "phase": "server",
-      "gitBlobId": "142cdf2a117faae7179420c1f41fd0e8838184de",
+      "gitBlobId": "0a36ab40834058d07e34f84e785831211b1b3f5a",
       "reviewStatus": "pending"
     },
     {
@@ -22573,6 +22619,22 @@
       "phase": "server",
       "gitBlobId": "90892df5ac8eba1dd52bb68f435d7a71f49b016d",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/post-engagement-reader.test.js",
+      "phase": "server",
+      "gitBlobId": "e3f8b1950cb0dbbacdbd9f0a1e95de853d6e5fd0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/post-engagement.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "04a24c6e23e6c0d995003400d20ff0bc83d889a1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/post-reaction-read-contract.test.js",
