@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-04T23:24:33.550050+00:00",
-  "baseCommit": "b3a5343f77833755fdced03c022485cd2c8f5142",
+  "generatedAtUtc": "2026-11-04T23:25:06.165850+00:00",
+  "baseCommit": "7b6f385e8de12cf23f2d7d75b3f4a9f1f8dd43a8",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,14 +10,14 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3677,
+    "pending": 3676,
     "code-read": 457,
-    "partial": 92
+    "partial": 93
   },
   "countsByPhase": {
     "android": {
-      "pending": 1539,
-      "partial": 54,
+      "pending": 1538,
+      "partial": 55,
       "code-read": 390
     },
     "documentation": {
@@ -9510,7 +9510,9 @@
       "file": "app/src/main/java/conectate/com/presentation/media/FullScreenVideoScreen.kt",
       "phase": "android",
       "gitBlobId": "d253f48bcbd0e13e102dea2c60b83f3e0ebe29ee",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/BirthdayGreetingSheet.kt",
