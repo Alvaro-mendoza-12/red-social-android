@@ -362,5 +362,5 @@ function registerCollectionMembershipRoutes(app,{pool,authRequired,getCurrentUse
     return {...result,roomId,targetUserId:preferred(user)}
   }))
 }
-module.exports={SYSTEM_MEMBERSHIP,ensureCollectionMembershipTables,loadCollectionMembershipState,collectionMembershipStateFromSnapshot,collectionMessageRecipients,
+module.exports={SYSTEM_MEMBERSHIP,ensureCollectionMembershipTables,loadCollectionMembershipSnapshot,loadCollectionMembershipState,collectionMembershipStateFromSnapshot,collectionMessageRecipients,
   collectionHistoryAllows,freezeCollectionHistory,parseHistoryGrant,addCollectionMember,registerCollectionMembershipRoutes,lockRoom}

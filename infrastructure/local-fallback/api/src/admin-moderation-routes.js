@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const { purgeImportedRows } = require('./imported-mutation-capabilities')
 const { purgeChatAgreementsForAccounts } = require('./chat-agreements-cleanup')
+const { purgePurposeForAccounts } = require('./purpose-store')
 const fs = require('fs')
 const path = require('path')
 const { publishRealtimeEvent } = require('./realtime-publish')
@@ -1002,6 +1003,9 @@ async function deleteCounted(client, counts, label, statement, params) {
 async function purgeFallbackUserData(client, localUserId, identityValues, relations) {
   const r = relations
   const counts = {}
+  const purposes = await purgePurposeForAccounts(client, identityValues)
+  counts.experimental_purpose_objects = purposes.objects
+  counts.experimental_purpose_operations = purposes.operations
   const agreements = await purgeChatAgreementsForAccounts(client, identityValues)
   counts.experimental_chat_agreements = agreements.agreements
   counts.experimental_chat_agreement_operations = agreements.operations

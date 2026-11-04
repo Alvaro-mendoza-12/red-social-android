@@ -66,6 +66,7 @@ const { ensureMessageMarkerTables, registerMessageMarkerRoutes } = require('./me
 const { ensureChatAgreementTables } = require('./chat-agreements-store')
 const { registerChatAgreementRoutes } = require('./chat-agreements-routes')
 const experimentalAgreementsEnabled = process.env.NOVVIN_EXPERIMENTAL_AGREEMENTS === 'true'
+const experimentalPurposesEnabled = process.env.NOVVIN_EXPERIMENTAL_PURPOSES === 'true'
 const { ensureRaffleTables } = require('./raffles/service')
 const { registerRaffleRoutes } = require('./raffles/routes')
 const { ensureVideoWatchLaterTables, registerVideoWatchLaterRoutes } = require('./video-watch-later-routes')
@@ -6958,6 +6959,7 @@ async function ensureLocalDataTables(pool) {
   await ensurePlayMatchTables(pool)
   await ensureMessageMarkerTables(pool)
   if (experimentalAgreementsEnabled) await ensureChatAgreementTables(pool)
+  if (experimentalPurposesEnabled) await require('./purpose-store').ensurePurposeTables(pool)
   await ensureRaffleTables(pool)
   await require('./community-questions').ensureCommunityQuestionTables(pool)
   await require('./social-promotions').ensureSocialPromotionTables(pool)
@@ -7086,6 +7088,10 @@ function registerDataRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
     lookupMessage: lookupMarkerMessage, lookupMessages: lookupMarkerMessages,
     enabled: experimentalAgreementsEnabled, publish: publishRealtimeEvent,
+  })
+  require('./purpose-routes').registerPurposeRoutes(app, {
+    pool, authRequired, getCurrentUser, userIdentity, loadPostDetailPayload, importedRowsByFieldValues,
+    enabled: experimentalPurposesEnabled, publish: publishRealtimeEvent,
   })
   registerVideoWatchLaterRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, videoRowsByIds,

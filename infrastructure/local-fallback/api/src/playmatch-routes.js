@@ -1535,6 +1535,10 @@ function registerPlayMatchRoutes(app, {
 }
 
 module.exports = {
+  findUserByAlias,
+  blockedPair,
+  acceptedConnection,
+  loadBundle,
   availabilityOverlapMinutes,
   bundleAvailableNow,
   candidateBundles,
