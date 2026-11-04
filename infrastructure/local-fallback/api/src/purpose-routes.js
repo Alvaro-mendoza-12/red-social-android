@@ -9,7 +9,7 @@ function projectGame(state,actorId,now=new Date().toISOString()) {
   return {...visible,status:domain.gamingStatus(state,now),myOutcome:outcomes?.[actorId] || null,serverTime:now}
 }
 function registerPurposeRoutes(app,dependencies) {
-  const {pool,authRequired,enabled=false,publish=async()=>{}}=dependencies
+  const {pool,authRequired,enabled=false,publish=async()=>{},persistInvitation=async()=>null,dispatchInvitation=()=>{}}=dependencies
   const base='/v1/experimental/purpose'
   app.get(base+'/capabilities',authRequired,(_req,res)=>res.set('Cache-Control','no-store').json({supported:enabled,schema:1}))
   if (!enabled) return
@@ -90,8 +90,9 @@ function registerPurposeRoutes(app,dependencies) {
     const playerId=domain.id(req.params.playerId), planId=domain.id(req.params.planId), command=domain.gamingCommand(req.body)
     if (command.action!=='propose') throw domain.fail('PURPOSE_INVALID_COMMAND')
     let authorized
-    await writePurpose(pool,{kind:'gaming',key:planId,targetId:playerId,command,
+    const result=await writePurpose(pool,{kind:'gaming',key:planId,targetId:playerId,command,
       apply:(previous,cmd,context,now)=>({...domain.changeGaming(previous,cmd,context,now),id:planId}),
+      afterApply:persistInvitation,
       authorize:async db=>{
         const context=await contexts.game(db,req,playerId); authorized=context
         await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[`purpose:gaming-limit:${context.actorId}`])
@@ -99,6 +100,7 @@ function registerPurposeRoutes(app,dependencies) {
           AND state->>'cancelledAt' IS NULL AND (state->>'startsAt')::timestamptz>NOW()`,[context.actorId])).rows[0].total>=10 && !await readPurpose(db,'gaming',planId)) throw domain.fail('PURPOSE_PLAN_LIMIT',409)
         return context
       }})
+    if(result.effect) dispatchInvitation(result.effect)
     announce(authorized,'gaming',planId)
     res.json(await gamePayload(req,planId))
   }))
@@ -106,13 +108,15 @@ function registerPurposeRoutes(app,dependencies) {
     const planId=domain.id(req.params.planId), command=domain.gamingCommand(req.body)
     if (command.action==='propose') throw domain.fail('PURPOSE_INVALID_COMMAND')
     let authorized
-    await writePurpose(pool,{kind:'gaming',key:planId,targetId:planId,command,apply:domain.changeGaming,
+    const result=await writePurpose(pool,{kind:'gaming',key:planId,targetId:planId,command,apply:domain.changeGaming,
+      afterApply:command.action==='replan' ? persistInvitation : async()=>null,
       authorize:async db=>{
         const state=await readPurpose(db,'gaming',planId),actor=await contexts.actor(db,req)
         if (!state || !state.participants.some(member=>member.id===actor.actorId)) throw domain.fail('PURPOSE_NOT_FOUND',404)
         authorized=await contexts.game(db,req,state.participants.find(member=>member.id!==actor.actorId).id)
         return authorized
       }})
+    if(result.effect) dispatchInvitation(result.effect)
     announce(authorized,'gaming',planId)
     res.json(await gamePayload(req,planId))
   }))

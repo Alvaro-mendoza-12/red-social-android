@@ -78,6 +78,32 @@ fun CommunityDetailScreen(
     var showRolePreviewDialog by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
     var showCreateEventDialog by remember { mutableStateOf(false) }
+    var showFirstContribution by remember(communityId,currentUserId) { mutableStateOf(false) }
+    var purposeEventId by remember(communityId,currentUserId) { mutableStateOf<String?>(null) }
+    if(showFirstContribution) conectate.com.presentation.purpose.PurposeExperienceDialog(
+        conectate.com.presentation.purpose.PurposeTarget("community",communityId),onDismiss = { showFirstContribution = false },onSource = { source ->
+            when(source.kind) {
+                "question" -> navController.navigate(Screen.CommunityChat.createRoute(communityId,source.id))
+                "guide" -> navController.navigate(Screen.UserProfile.createRoute(source.id))
+                "event" -> { purposeEventId = source.id; viewModel.loadCommunityDetails(communityId) }
+                else -> conectate.com.presentation.common.AppFeedbackBus.show("Esa actividad ya no está disponible.")
+            }
+        })
+    purposeEventId?.let { id ->
+        val event = events.find { it.id == id }
+        AlertDialog(onDismissRequest = { purposeEventId = null },title = { Text("Encuentro de la comunidad") },text = {
+            Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if(isLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                if(event != null) CommunityEventCard(event,
+                    onAttendanceChange = { attending,reminder -> viewModel.setEventAttendance(event,attending,reminder) },
+                    onCancel = { viewModel.cancelCommunityEvent(event) })
+                else if(!isLoading) Text("El encuentro ya no está disponible. Actualiza para comprobarlo.")
+                actionMessage?.let { Text(it) }
+            }
+        },confirmButton = { TextButton(onClick = { purposeEventId = null }) { Text("Cerrar") } },dismissButton = {
+            TextButton(enabled = !isLoading,onClick = { viewModel.loadCommunityDetails(communityId) }) { Text("Actualizar") }
+        })
+    }
     
     val normalizedCurrentUserId = currentUserId?.trim()?.lowercase().orEmpty()
     val normalizedCreatorId = community?.creator_id?.trim()?.lowercase().orEmpty()
@@ -142,6 +168,7 @@ fun CommunityDetailScreen(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
+                        if(isMember) DropdownMenuItem(text = { Text("Tu primera contribución") },onClick = { showMenu = false; showFirstContribution = true },leadingIcon = { Icon(Icons.Default.PersonAdd,null) })
                         if (isMember) DropdownMenuItem(
                             text = { Text("Compartir enlace o QR") },
                             onClick = { showMenu = false; viewModel.createShareLink { shareLink = it } },

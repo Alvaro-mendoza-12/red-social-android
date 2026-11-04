@@ -18,7 +18,7 @@ async function ensurePurposeTables(db) {
 async function readPurpose(db, kind, key) {
   return (await db.query('SELECT state FROM experimental_purpose_objects WHERE kind=$1 AND object_key=$2', [kind,key])).rows[0]?.state || null
 }
-async function writePurpose(pool, {kind, key, targetId, command, authorize, apply}) {
+async function writePurpose(pool, {kind, key, targetId, command, authorize, apply, afterApply=async()=>null}) {
   const db = await pool.connect()
   try {
     await db.query('BEGIN')
@@ -33,7 +33,7 @@ async function writePurpose(pool, {kind, key, targetId, command, authorize, appl
       if (receipt.request_hash !== digest) throw fail('PURPOSE_OPERATION_CONFLICT',409)
       if (!previous) throw fail('PURPOSE_NOT_FOUND',404)
       await db.query('COMMIT')
-      return {state:previous,replayed:true}
+      return {state:previous,replayed:true,effect:null}
     }
     if ((previous?.revision || 0) !== command.expectedRevision) throw fail('PURPOSE_REVISION_CONFLICT',409)
     const now = new Date().toISOString()
@@ -43,8 +43,9 @@ async function writePurpose(pool, {kind, key, targetId, command, authorize, appl
     [kind,key,targetId,state.authorId,JSON.stringify(state)])
     await db.query('INSERT INTO experimental_purpose_operations(actor_id,operation_id,request_hash,kind,object_key) VALUES($1,$2,$3,$4,$5)',
       [context.actorId,command.operationId,digest,kind,key])
+    const effect=await afterApply(db,state,context)
     await db.query('COMMIT')
-    return {state,replayed:false}
+    return {state,replayed:false,effect}
   } catch (error) {
     try {await db.query('ROLLBACK')} catch (rollback) {console.warn('[purpose] rollback failed',{code:rollback.code || 'DATABASE_FAILURE'})}
     if (error.code === '23505') throw fail('PURPOSE_OPERATION_CONFLICT',409)

@@ -80,6 +80,10 @@ fun GamesHomeScreen(
 ) {
     PlayMatchSystemBars()
     val state by viewModel.state.collectAsState()
+    var purposeTarget by remember { mutableStateOf<conectate.com.presentation.purpose.PurposeTarget?>(null) }
+    purposeTarget?.let { target -> conectate.com.presentation.purpose.PurposeExperienceDialog(target,onDismiss = { purposeTarget = null },onSource = { source ->
+        if(source.kind == "player") onOpenPlayer(source.id) else conectate.com.presentation.common.AppFeedbackBus.show("Ese contenido ya no está disponible.")
+    }) }
     val currentInboxCallback by rememberUpdatedState(onInboxVisible)
     val inboxLifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     LaunchedEffect(state.capabilities.enabled, state.connections, state.matches, inboxLifecycleState) {
@@ -116,6 +120,7 @@ fun GamesHomeScreen(
             }
             return@LazyColumn
         }
+        item { OutlinedButton(onClick = { purposeTarget = conectate.com.presentation.purpose.PurposeTarget("gaming") },modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Mis partidas acordadas") } }
         item {
             OutlinedTextField(
                 value = state.query,
@@ -544,10 +549,15 @@ fun PlayerDetailScreen(
     playerId: String,
     onBack: () -> Unit,
     onMessage: (String) -> Unit,
+    onOpenPlayer: (String) -> Unit,
     viewModel: PlayMatchViewModel = hiltViewModel(),
 ) {
     PlayMatchSystemBars()
     val state by viewModel.state.collectAsState()
+    var purposeTarget by remember(playerId) { mutableStateOf<conectate.com.presentation.purpose.PurposeTarget?>(null) }
+    purposeTarget?.let { target -> conectate.com.presentation.purpose.PurposeExperienceDialog(target,onDismiss = { purposeTarget = null },onSource = { source ->
+        if(source.kind == "player") onOpenPlayer(source.id) else conectate.com.presentation.common.AppFeedbackBus.show("Ese contenido ya no está disponible.")
+    }) }
     var reportDialog by remember { mutableStateOf(false) }
     var blockDialog by remember { mutableStateOf(false) }
     var selectedPhotoIndex by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -571,6 +581,10 @@ fun PlayerDetailScreen(
         }
         if (state.isLoading || player == null) { item { CenteredProgress("Cargando jugador…") }; return@LazyColumn }
         item { PlayerIdentityHeader(player) }
+        if(player.connected) item { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { purposeTarget = conectate.com.presentation.purpose.PurposeTarget("proposal",player.userId,java.util.UUID.randomUUID().toString()) },modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Proponer partida") }
+            TextButton(onClick = { purposeTarget = conectate.com.presentation.purpose.PurposeTarget("gaming") },modifier = Modifier.fillMaxWidth()) { Text("Ver partidas acordadas") }
+        } }
         item { PlayerMetaChips(player) }
         if (player.gamerBio.isNotBlank()) item { Text(player.gamerBio, color = PlayMatchColors.SecondaryText, fontSize = 16.sp, lineHeight = 23.sp) }
         item { SectionTitle("Juegos en común") }

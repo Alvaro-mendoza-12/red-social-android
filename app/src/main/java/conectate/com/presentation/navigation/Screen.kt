@@ -35,6 +35,9 @@ sealed class Screen(val route: String) {
     object PlayerDetail : Screen("games_player/{playerId}") {
         fun createRoute(playerId: String) = "games_player/${android.net.Uri.encode(playerId)}"
     }
+    object GamePlan : Screen("game_plan/{planId}") {
+        fun createRoute(planId: String) = "game_plan/${android.net.Uri.encode(planId)}"
+    }
     object MatchFound : Screen("games_match/{sessionId}") {
         fun createRoute(sessionId: String) = "games_match/${android.net.Uri.encode(sessionId)}"
     }

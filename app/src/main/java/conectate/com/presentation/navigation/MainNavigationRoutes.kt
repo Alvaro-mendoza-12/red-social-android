@@ -17,6 +17,18 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
     isLoggedIn: Boolean
 ) {
     addRaffleRoutes(navController, isLoggedIn)
+    composable(Screen.GamePlan.route,arguments = listOf(navArgument("planId") { type = NavType.StringType })) { entry ->
+        RequireLoggedIn(isLoggedIn,navController) {
+            val planId = entry.arguments?.getString("planId").orEmpty()
+            if(conectate.com.presentation.purpose.purposeUuid(planId)) {
+                conectate.com.presentation.purpose.PurposeExperienceDialog(
+                    conectate.com.presentation.purpose.PurposeTarget("plan",planId),onDismiss = { navController.popBackStack() },
+                    onSource = { source -> if(source.kind == "player") navController.navigate(Screen.UserProfile.createRoute(source.id)) { launchSingleTop = true }
+                        else conectate.com.presentation.common.AppFeedbackBus.show("Ese contenido ya no está disponible.") },
+                )
+            } else LaunchedEffect(planId) { conectate.com.presentation.common.AppFeedbackBus.show("Esa propuesta ya no está disponible."); navController.popBackStack() }
+        }
+    }
     composable(Screen.Surveys.route, arguments = listOf(
         navArgument("id") { type = NavType.StringType; defaultValue = "" },
         navArgument("key") { type = NavType.StringType; defaultValue = "" },

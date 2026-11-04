@@ -45,6 +45,8 @@ fun PostDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val accountId = viewModel.currentUserId
+    var showOutcome by remember(postId,accountId) { mutableStateOf(false) }
+    if(showOutcome) conectate.com.presentation.purpose.PostPurposeDialog(postId,navController) { showOutcome = false }
     val commentPosting by viewModel.commentPosting.collectAsStateWithLifecycle()
     var commentText by rememberSaveable(postId, accountId) { mutableStateOf("") }
     val draftRevision = remember(postId, accountId) { PostCommentDraftRevision() }
@@ -286,6 +288,7 @@ fun PostDetailScreen(
                             onLikeClick = { viewModel.toggleLike(state.post.id) },
                             onReactionSelect = { viewModel.setReaction(state.post.id, it) },
                             onReactionSummaryClick = { reactionFilter = null; showReactions = true },
+                            onOutcomeClick = { showOutcome = true },
                             onCommentClick = { /* Already here */ },
                             onShareClick = { viewModel.toggleShare(state.post.id) },
                             onUserClick = { userId ->

@@ -402,6 +402,7 @@ fun HomeScreen(
                     playerId = entry.arguments?.getString("playerId").orEmpty(),
                     onBack = { navController.popBackStack() },
                     onMessage = { userId -> mainNavController.navigate(Screen.Chat.createRoute(userId)) },
+                    onOpenPlayer = { playerId -> navController.navigate(Screen.PlayerDetail.createRoute(playerId)) { launchSingleTop = true } },
                 )
             }
 

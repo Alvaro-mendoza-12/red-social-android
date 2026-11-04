@@ -80,6 +80,7 @@ fun PostCard(
     authorMoment: conectate.com.data.model.Moment? = null,
     onMomentClick: (String) -> Unit = {},
     onMentionClick: ((String) -> Unit)? = null,
+    onOutcomeClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val internalShare = conectate.com.presentation.messages.LocalUniversalForwardCoordinator.current
@@ -311,7 +312,7 @@ fun PostCard(
                     }
                 }
 
-                if ((isOwner && showOwnerActions) || (!isOwner && showReportAction)) {
+                if ((isOwner && showOwnerActions) || (!isOwner && showReportAction) || onOutcomeClick != null) {
                     var showMenu by remember { mutableStateOf(false) }
                     
                     Box {
@@ -326,7 +327,12 @@ fun PostCard(
                             expanded = showMenu,
                             onDismissRequest = { showMenu = false }
                         ) {
-                            if (isOwner) {
+                            onOutcomeClick?.let { open -> DropdownMenuItem(
+                                text = { Text("Cómo terminó esta petición") },
+                                onClick = { showMenu = false; open() },
+                                leadingIcon = { Icon(Icons.Default.TaskAlt,null) },
+                            ) }
+                            if (isOwner && showOwnerActions) {
                                 val visibilityText = if (post.visibility == "private") "Hacer público" else "Hacer privado"
                                 val newVisibility = if (post.visibility == "private") "public" else "private"
 
@@ -365,7 +371,7 @@ fun PostCard(
                                     leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
                                     colors = MenuDefaults.itemColors(textColor = Color.Red)
                                 )
-                            } else {
+                            } else if (!isOwner && showReportAction) {
                                 if (onWhyThisPost != null) DropdownMenuItem(
                                     text = { Text("¿Por qué veo esto?") },
                                     onClick = {

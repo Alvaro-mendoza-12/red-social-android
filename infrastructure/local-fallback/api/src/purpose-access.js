@@ -35,6 +35,8 @@ function createPurposeContexts(dependencies) {
     const payload=await loadPostDetailPayload(db,context.user,postId,{includeComments:false})
     const post=payload?.post
     if (!post || deleted(post)) throw fail('PURPOSE_ORIGIN_UNAVAILABLE',404)
+    const local=(await db.query('SELECT is_deleted FROM fallback_posts WHERE id=$1',[postId])).rows[0]
+    if (local?.is_deleted || (!local && (await importedRowsByFieldValues(db,'posts',['id'],[postId],4)).some(deleted))) throw fail('PURPOSE_ORIGIN_UNAVAILABLE',404)
     const authors=await usersByIds(db,[String(post.user_id).toLowerCase()])
     if (!authors.length || !(await allowedUsers(db,context,authors)).length) throw fail('PURPOSE_ORIGIN_UNAVAILABLE',404)
     return {...context,postId,post,isAuthor:context.identity.ids.has(String(post.user_id).toLowerCase())}

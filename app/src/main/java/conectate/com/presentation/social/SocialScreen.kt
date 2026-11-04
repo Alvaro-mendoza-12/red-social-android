@@ -268,6 +268,8 @@ fun SocialScreen(
     var postToEdit by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var postToReport by remember { mutableStateOf<conectate.com.data.model.Post?>(null) }
     var reactionPost by remember { mutableStateOf<Post?>(null) }
+    var outcomePostId by remember { mutableStateOf<String?>(null) }
+    outcomePostId?.let { id -> conectate.com.presentation.purpose.PostPurposeDialog(id,navController) { outcomePostId = null } }
     var explanationPost by remember { mutableStateOf<Post?>(null) }
     var notInterestedPost by remember { mutableStateOf<Post?>(null) }
     var showFeedPreferences by remember { mutableStateOf(false) }
@@ -1896,6 +1898,7 @@ fun SocialScreen(
                                             onLikeClick = { viewModel.toggleLike(post) },
                                             onReactionSelect = { reaction -> viewModel.setReaction(post, reaction) },
                                             onReactionSummaryClick = { reactionPost = post },
+                                            onOutcomeClick = { outcomePostId = post.id },
                                             onCommentClick = {
                                                 viewModel.recordPostComment(post)
                                                 navController.navigate(Screen.PostDetail.createRoute(post.id))

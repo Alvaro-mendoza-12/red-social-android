@@ -109,6 +109,13 @@ object IntentRouter {
         }
 
         when (type) {
+            "gaming_plan" -> {
+                val planId = incomingIntent.getStringExtra("target_id")
+                if(planId != null && conectate.com.presentation.purpose.purposeUuid(planId)) {
+                    navigateNotificationDestination(incomingIntent,navController,authRepository,Screen.GamePlan.createRoute(planId),launchSingleTop = true)
+                    clearIntent(); return true
+                }
+            }
             "new_message", "message_reaction" -> {
                 val route = notificationConversationDestination(incomingIntent)
                 if (route != null) {

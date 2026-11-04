@@ -29,6 +29,7 @@ internal fun notificationDestination(notice: Notification): String? {
         else -> null
     }
     return when (type) {
+        "gaming_plan" -> target?.takeIf { conectate.com.presentation.purpose.purposeUuid(it) }?.let(Screen.GamePlan::createRoute)
         "birthday" -> (extra("birthday_user_id") ?: actor ?: target)?.let { Screen.Chat.createRoute(it, birthdayGreeting = true) }
         "follow", "friend_request_accepted", "voice_access_request" -> actor?.let(Screen.UserProfile::createRoute)
         "friend_request" -> Screen.FriendRequests.route

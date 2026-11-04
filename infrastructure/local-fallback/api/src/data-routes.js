@@ -7092,6 +7092,14 @@ function registerDataRoutes(app, {
   require('./purpose-routes').registerPurposeRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, loadPostDetailPayload, importedRowsByFieldValues,
     enabled: experimentalPurposesEnabled, publish: publishRealtimeEvent,
+    persistInvitation: (db,state,context) => createLocalNotification(db, {
+      recipientId: context.participants.find(member => member.id !== context.actorId).id,
+      actorId: context.actorId, actorName: context.participants.find(member => member.id === context.actorId).name,
+      type: 'gaming_plan', targetId: state.id, targetType: 'gaming_plan',
+      content: state.planRevision === 1 ? 'Te propuso una partida. Revisa el objetivo y la hora antes de aceptar.' : 'Replanificó la partida. Revisa los cambios antes de volver a aceptar.',
+      extraData: { plan_id: state.id, plan_revision: state.planRevision }, deferDispatch: true,
+    }),
+    dispatchInvitation: notification => dispatchLocalNotification(pool, notification, notification.extra_data || {}),
   })
   registerVideoWatchLaterRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, videoRowsByIds,
