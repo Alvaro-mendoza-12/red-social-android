@@ -306,6 +306,7 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
     getCurrentUser,
     userIdentity,
     loadCandidates,
+    hydrateItems,
     algorithmFeatureFlags = defaultAlgorithmFeatureFlags,
     findOwnedProfile = defaultFindOwnedProfile,
     loadAlgorithmConfiguration = defaultLoadAlgorithmConfiguration,
@@ -320,6 +321,7 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
     throw new TypeError('getCurrentUser and userIdentity are required')
   }
   if (typeof loadCandidates !== 'function') throw new TypeError('loadCandidates is required')
+  if (typeof hydrateItems !== 'function') throw new TypeError('hydrateItems is required')
   if (typeof algorithmFeatureFlags !== 'function'
     || typeof findOwnedProfile !== 'function'
     || typeof loadAlgorithmConfiguration !== 'function'
@@ -443,8 +445,20 @@ function registerAlgorithmRecommendationRoutes(app, options = {}) {
         }, cursorSecret)
         : null
 
+      const selectedItems = selected.map((entry) => candidateItem(loaded.candidates[entry.sourceIndex]))
+      const selectedIds = selectedItems.map(item => item.id)
+      let hydrated
+      try { hydrated = await hydrateItems({ items: selectedItems, surface, owner }) }
+      catch (error) {
+        console.warn('[recommendations] response details unavailable', { code: /^[A-Z0-9_]{1,40}$/.test(error?.code || '') ? error.code : 'READ_FAILED' })
+        throw new RecommendationRouteError('RECOMMENDATION_DETAILS_UNAVAILABLE', 503)
+      }
+      if (!Array.isArray(hydrated) || hydrated.length !== selectedIds.length ||
+          hydrated.some((item, index) => !isPlainObject(item) || item.id !== selectedIds[index])) {
+        throw new RecommendationRouteError('RECOMMENDATION_DETAILS_INVALID', 502)
+      }
       const payload = {
-        items: selected.map((entry) => candidateItem(loaded.candidates[entry.sourceIndex])),
+        items: hydrated,
         page: {
           nextCursor,
           hasMore,

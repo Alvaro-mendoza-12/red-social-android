@@ -67,6 +67,7 @@ function createHarness(overrides = {}) {
   const calls = []
   const defaults = {
     pool: {},
+    hydrateItems: async ({ items }) => items,
     authRequired: (_req, _res, next) => next(),
     getCurrentUser: async () => currentUser,
     userIdentity: (user) => ({ localUserId: user.id }),

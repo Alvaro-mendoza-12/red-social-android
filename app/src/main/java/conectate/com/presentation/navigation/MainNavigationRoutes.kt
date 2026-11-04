@@ -537,13 +537,15 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
     composable(
         route = Screen.FullScreenVideo.route,
         arguments = listOf(
-            navArgument("videoUrl") { type = NavType.StringType }
+            navArgument("videoUrl") { type = NavType.StringType },
+            navArgument("loop") { type = NavType.BoolType; defaultValue = true },
         )
     ) { backStackEntry ->
         val videoUrl = backStackEntry.arguments?.getString("videoUrl") ?: ""
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.media.FullScreenVideoScreen(
                 videoUrl = videoUrl,
+                loopVideo = backStackEntry.arguments?.getBoolean("loop") ?: true,
                 onBack = { navController.popBackStack() }
             )
         }

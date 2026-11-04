@@ -44,6 +44,7 @@ function fixture(rows, { preferences = [] } = {}) {
   const provider = createAlgorithmCandidateProvider(source)
   let handler
   registerAlgorithmRecommendationRoutes({ get(_path, ...handlers) { handler = handlers.at(-1) } }, {
+    hydrateItems: async ({ items }) => items,
     pool, authRequired: (_q, _r, next) => next(), getCurrentUser: async () => ({ id: owner }),
     userIdentity: user => ({ localUserId: user.id }),
     findOwnedProfile: async () => ({ id: 'profile', is_enabled: true, revision }),
