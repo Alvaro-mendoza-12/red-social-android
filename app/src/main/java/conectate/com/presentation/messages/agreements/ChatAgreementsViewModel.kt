@@ -181,7 +181,8 @@ class ChatAgreementsViewModel internal constructor(
                     _state.value = _state.value.copy(agreements = catalog.agreements, loading = false, cursor = catalog.cursor,
                         nextCursor = catalog.nextCursor, previousCursor = catalog.previousCursor,
                         focusedAgreement = if (_state.value.editingId == focus) catalog.focus ?: catalog.agreements.find { it.id == focus } else _state.value.focusedAgreement,
-                        focusMissing = _state.value.editingId == focus && catalog.focusMissing)
+                        focusMissing = _state.value.editingId == focus && catalog.focusMissing,
+                        notice = if (catalog.reset) AgreementNotice(UUID.randomUUID().toString(), "La lista cambió. Volviste a los acuerdos más recientes.") else _state.value.notice)
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
@@ -195,7 +196,8 @@ class ChatAgreementsViewModel internal constructor(
                         cursor = if (denied || badCursor) null else _state.value.cursor,
                         nextCursor = if (denied || badCursor) null else _state.value.nextCursor,
                         previousCursor = if (denied || badCursor) null else _state.value.previousCursor,
-                        focusedAgreement = if (denied) null else _state.value.focusedAgreement, focusMissing = denied && _state.value.editingId != null,
+                        focusedAgreement = if (denied) null else _state.value.focusedAgreement,
+                        focusMissing = if (denied) _state.value.editingId != null else _state.value.focusMissing,
                         serverAvailable = if (error is AgreementApiException && error.statusCode == 404 && !error.definitive) false else _state.value.serverAvailable)
                 }
             }

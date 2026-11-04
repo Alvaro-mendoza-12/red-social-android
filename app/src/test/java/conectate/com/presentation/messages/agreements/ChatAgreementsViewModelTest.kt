@@ -356,7 +356,10 @@ class ChatAgreementsViewModelTest {
     }
     @Test fun anEditorUsesItsFocusedAgreementEvenWhenTheCurrentPageNoLongerContainsIt() = runTest(dispatcher) {
         val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle(); f.vm.edit(agreement()); f.vm.changeDraft("Mi revisión")
-        f.pageRead = { _, _, _, focus -> assertEquals(agreement().id, focus); AgreementCatalog(emptyList(), focus = agreement(2, "Otro dispositivo")) }
+        f.pageRead = { _, _, _, focus ->
+            if (focus != null) { assertEquals(agreement().id, focus); AgreementCatalog(emptyList(), focus = agreement(2, "Otro dispositivo")) }
+            else AgreementCatalog(listOf(agreement(3, "Mi revisión")))
+        }
         f.vm.refresh(); advanceUntilIdle(); assertTrue(f.vm.state.value.agreements.isEmpty())
         f.vm.keepDraftAgainstLatestRevision(); f.vm.saveDraft(); advanceUntilIdle()
         assertEquals(2, f.commands.single().expectedVersion); assertEquals("Mi revisión", f.commands.single().text)
@@ -377,5 +380,20 @@ class ChatAgreementsViewModelTest {
         f.read = { throw AgreementApiException(403, "AGREEMENT_ACCESS_DENIED") }; f.vm.selectArchive(false); advanceUntilIdle()
         assertTrue(f.vm.state.value.agreements.isEmpty()); f.vm.selectArchive(true)
         assertTrue(f.vm.state.value.agreements.isEmpty()); advanceUntilIdle()
+    }
+    @Test fun aFailedReadCannotReenableEditingAnAgreementAlreadyConfirmedMissing() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle(); f.vm.edit(agreement()); f.vm.changeDraft("Conservar")
+        f.pageRead = { _, _, _, _ -> AgreementCatalog(emptyList(), focusMissing = true) }; f.vm.refresh(); advanceUntilIdle()
+        assertTrue(f.vm.state.value.focusMissing)
+        f.pageRead = { _, _, _, _ -> throw IOException("offline") }; f.vm.refresh(); advanceUntilIdle(); f.vm.saveDraft(); advanceUntilIdle()
+        assertTrue(f.vm.state.value.focusMissing); assertTrue(f.commands.isEmpty()); assertEquals("Conservar", f.vm.state.value.draft)
+    }
+    @Test fun aVanishedPagePositionCommunicatesItsResetWithoutKeepingOldNavigation() = runTest(dispatcher) {
+        val f = Fixture(); f.pageRead = { _, _, cursor, _ ->
+            if (cursor == null) AgreementCatalog(listOf(agreement()), nextCursor = "older") else AgreementCatalog(emptyList(), reset = true)
+        }
+        f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle(); f.vm.page("older"); advanceUntilIdle()
+        assertNull(f.vm.state.value.cursor); assertNull(f.vm.state.value.nextCursor)
+        assertEquals("La lista cambió. Volviste a los acuerdos más recientes.", f.vm.state.value.notice?.text)
     }
 }
