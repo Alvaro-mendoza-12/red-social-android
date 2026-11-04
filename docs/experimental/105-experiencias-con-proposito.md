@@ -212,3 +212,54 @@ Lo que me llevo                [ Escribir ]
 ```
 
 La revisión del plan sustituyó las cajas de texto permanentes y la fila de botones por contenido visual y acciones de mayor jerarquía. La numeración representa los elementos reales de la selección. Las tarjetas de temas son sugerencias de búsqueda y el catálogo decide qué videos hay disponibles. Las portadas se cargarán con el cliente y la autorización multimedia existentes. Los registros anteriores conservarán su lectura y mostrarán una portada gráfica cuando falte la referencia de imagen.
+
+### Revisión de las primeras capturas
+
+El commit `4cba90bdf3b9` compiló los dos APK de depuración y aprobó 31 pruebas JVM de Rutas, 33 pruebas nativas de interfaz, una lectura pública de portadas, un ensayo de pantalla ancha y la lectura autorizada R2/Ubuntu. Las capturas del catálogo muestran portadas reales en las superficies clara y oscura. El ensayo de portadas utiliza el acceso autorizado de invitado y un estado visual de prueba. No acredita una búsqueda completa con una cuenta autenticada a través de la interfaz.
+
+La inspección visual de 280 puntos con texto a escala 1,6 identificó una mejora que esas 33 pruebas funcionales no detectaban. «Volver a abrir», «Me sirvió» y «Escribir» podían partirse excesivamente. `ec17dbf1` lleva las acciones debajo del contenido cuando necesitan más ancho, separa la acción de la conclusión, apila los indicadores y calcula las columnas de temas y videos considerando el tamaño de texto. Se añadió una comprobación de preparación con tema y cinco videos en esa configuración. El ensayo de portadas cuenta referencias distintas y espera el dibujo del tema antes de capturar la superficie oscura.
+
+La segunda composición, del commit `b873130350b1`, aprobó 31 pruebas JVM, 34 pruebas de interfaz, portadas públicas, pantalla ancha y lectura R2/Ubuntu. Se abrieron sus nuevas capturas estrechas y se comprobó la lectura completa de esas acciones. Las evidencias de cada composición se conservan por separado.
+
+La revisión de los gestos identificó además una interacción ausente en el nuevo diseño. El símbolo de reproducción de la portada necesitaba abrir el video igual que el botón textual. `7d9a5a86` conecta la portada al mismo callback protegido y añade una etiqueta accesible. La prueba comprueba ambos accesos y la desactivación mientras se procesa la apertura. La fuente de los nuevos paquetes se fija a `b5923575e3a1`, que incorpora también las capturas completas de pantalla mediante la [API UiAutomation de Android](https://developer.android.com/reference/android/app/UiAutomation#takeScreenshot()). Se conservan las capturas anteriores de composición como evidencia independiente.
+
+La ejecución conjunta generó ambos APK y terminó las pruebas JVM. El proceso de Lint con 2 GiB de heap avisó de memoria insuficiente y alcanzó un uso superior al 99 %. Se detuvieron únicamente los procesos propios identificados de Gradle y Kotlin. El informe de esa ejecución queda inconcluso. Se repitió únicamente Lint con 4 GiB, manteniendo el código y sus reglas. Finalizó correctamente en 12 minutos y 18 segundos, con cero errores, cero errores fatales y 321 avisos. Estos avisos no se presentan como corregidos.
+
+### Comprobación del rediseño con apertura desde portadas
+
+Los dos paquetes de depuración y sus identificadores de compilación corresponden a `b5923575e3a1`. Incluyen la corrección principal de `7d9a5a86`. Conservan la numeración de depuración 9.1.39 / 179. El AAB firmado estable de la revisión 104 mantiene su código anterior y no incorpora este experimento.
+
+| Comprobación | Resultado de esta fuente |
+| --- | --- |
+| Modelo, diario y modelo de pantalla | 31 pruebas JVM, 3 clases, cero fallos, errores u omisiones |
+| Interfaz y navegación Android 15 | 34 pruebas aprobadas, 59,863 segundos |
+| Portadas del catálogo público | 1 prueba aprobada, 7,657 segundos |
+| Pantalla ancha de 1920 × 1600 píxeles, densidad 320 | 1 repetición aprobada, 6,074 segundos |
+| Lectura Media3 del mismo fragmento R2/Ubuntu y rechazo de sesión inválida | 1 prueba aprobada, 6,554 segundos |
+| Lint K1 con 4 GiB | Completado, cero errores, cero errores fatales y 321 avisos |
+
+Se examinaron las nueve capturas de pantalla completa del emulador. Incluyen descubrimiento, selección, catálogo con portadas reales, tema claro, tema oscuro, disposición ancha y un contenedor de 280 puntos con texto a escala 1,6. En este último ensayo, el ancho adicional visible pertenece al contenedor de la prueba. La pantalla completa confirmó el dibujo de los iconos del catálogo en oscuro que faltaban en una captura de composición anterior. El ensayo de gestos comprobó tanto el botón textual como la portada y su desactivación mientras la apertura está pendiente.
+
+Las huellas SHA-256 de los paquetes de esa ejecución son las siguientes.
+
+```text
+app-debug.apk              C3BFCC5F35E52A1D573BEBDA4E2B738D681FB810CD2FD8046F1593FD08090B1C
+app-debug-androidTest.apk   F65CDEAE88C15B103852B9E3805FA11432BCBADEF20A7E06CDD81BBC9E8FB077
+```
+
+Los registros `routes106-native-ui.log`, `routes106-native-public-covers.log`, `routes106-native-wide.log`, `routes106-native-r2.log` y `routes106-build-evidence.json` se conservan en el directorio local de evidencias. Las composiciones anteriores están separadas en `routes106-first-pass-4cba90bd` y `routes106-adaptive-pass-b8731303`. Se conservan sus resultados y sus límites.
+
+Estas comprobaciones cubren el prototipo descrito. Siguen pendientes el recorrido completo de búsqueda con una cuenta autenticada desde la interfaz, la evaluación con personas y la sincronización de rutas entre dispositivos. La revisión móvil integral y los otros cuatro módulos del plan continúan abiertos.
+
+## Siguiente módulo. Preparación del contrato de acuerdos
+
+La lectura inicial de `ChatWorkspaceModels`, `ChatWorkspaceStore`, `ChatWorkspaceViewModel` y `ChatWorkspaceSheet` confirma que las tareas actuales son privadas del dispositivo. La programación de una fecha está conectada desde `ChatScreen`. No contienen aceptaciones compartidas. La preparación del módulo de acuerdos continúa con estas condiciones extraídas de sus consumidores actuales.
+
+- La lectura de una sala pública puede admitir una vista previa. Un acuerdo requiere comprobar además la membresía activa y la identidad canónica de cada participante. Las operaciones de un chat directo deben respetar bloqueos y el estado de solicitud de mensajes. El permiso de leer marcadores no sustituye esos requisitos.
+- La referencia al mensaje original se resuelve bajo los permisos de cada lector. El contrato actual de marcadores excluye mensajes borrados y de una sola vista, aplica el historial permitido y acota su fragmento. El acuerdo volverá a comprobar esas condiciones al abrirse y evitará duplicar automáticamente contenido del origen.
+- Proponer atribuye la autoría de una propuesta. La aceptación requiere una acción expresa de cada persona. Un administrador tampoco podrá aceptar por otros. Cambiar el texto o los participantes inicia una revisión nueva y deja pendientes las confirmaciones de esa revisión. Pedir cambios, retirarse y cancelar tendrán estados visibles.
+- Cada modificación enviará la revisión esperada y una clave de operación ligada a actor, acuerdo y contenido. La API resolverá concurrencia y repetición dentro de una transacción. La pérdida del acuse podrá recuperarse con la misma clave sin generar dos propuestas ni dos decisiones.
+- Se conservará el contexto de cuenta y conversación durante las peticiones. Una respuesta antigua no modificará otro chat ni otra sesión. Los avisos de tiempo real transportarán referencias y provocarán una lectura autorizada del estado vigente.
+- El almacenamiento cifrado de `ChatWorkspaceStore` protege material local. No demuestra por sí solo cifrado de extremo a extremo de los acuerdos compartidos. El recorrido actual de envío de texto llama a la API Ubuntu con su contenido. No se añadirá procesamiento por IA ni se copiará una conversación completa al nuevo módulo por defecto.
+
+El contrato, el almacenamiento compartido, los controles Android y su contraparte web siguen pendientes de implementación y ensayo. Esta preparación no habilita botones nuevos ni despliega rutas experimentales sobre el servidor de producción.
