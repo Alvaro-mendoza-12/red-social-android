@@ -79,7 +79,7 @@ class AgreementRecoveryDeviceTest {
                 .also { models.put("recovery", it); it.bind(chat) }
         }
         try {
-            withTimeout(15_000) { while (!model.state.value.supported) delay(25) }
+            withTimeout(15_000) { while (!model.state.value.supported || !model.state.value.serverAvailable) delay(25) }
             withContext(Dispatchers.Main) { model.propose(source); model.changeDraft("Proceso:$owner"); model.saveDraft() }
             withTimeout(15_000) { while (!model.state.value.retryPending) delay(25) }
             val saved = persistence.read(lease, chat)
@@ -103,7 +103,7 @@ class AgreementRecoveryDeviceTest {
                 }, { _, _, _ -> null }, persistence).also { models.put("recovery", it); it.bind(chat) }
         }
         try {
-            withTimeout(15_000) { while (!model.state.value.supported) delay(25) }
+            withTimeout(15_000) { while (!model.state.value.supported || !model.state.value.serverAvailable) delay(25) }
             assertTrue(calls.isEmpty()); assertTrue(model.state.value.retryPending)
             assertEquals("Proceso:$owner", model.state.value.draft)
             withContext(Dispatchers.Main) { model.retry() }

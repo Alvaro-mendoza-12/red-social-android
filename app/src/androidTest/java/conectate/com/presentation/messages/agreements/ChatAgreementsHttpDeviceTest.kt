@@ -63,7 +63,7 @@ class ChatAgreementsHttpDeviceTest {
                 vm = ChatAgreementsViewModel({ aliceLease }, MutableStateFlow(0), emptyFlow(), api::supported, api::load, api::send, api::source, recovery)
                 models.put("qa-agreements", vm); vm.bind(chat)
             }
-            compose.waitUntil(15_000) { vm.state.value.supported }
+            compose.waitUntil(15_000) { vm.state.value.supported && vm.state.value.serverAvailable }
             compose.setContent {
                 val state by vm.state.collectAsState()
                 RedSocialTheme {
