@@ -47,7 +47,7 @@ class VideoRoutesDeviceTest {
         }
         compose.onNodeWithText("Preparar ruta").assertIsNotEnabled()
         compose.onNodeWithText("¿Qué quieres explorar?").performTextInput("guitarra")
-        compose.onNodeWithText("5 videos").performClick()
+        compose.onNodeWithText("5 videos").performScrollTo().performClick()
         compose.onNodeWithText("Preparar ruta").performClick()
         compose.runOnIdle {
             assertEquals("guitarra", state.value.query)
@@ -64,11 +64,11 @@ class VideoRoutesDeviceTest {
                     onOpen = { opened = it })
             }
         }
-        compose.onNodeWithText("Me sirvió").assertIsNotEnabled()
-        compose.onNodeWithText("Abrir video").performClick()
+        saveScreenshot("routes106-route.png")
+        compose.onNodeWithText("Me sirvió").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Abrir video").performScrollTo().performClick()
         compose.runOnIdle { assertEquals("Video-A", opened) }
-        compose.onNodeWithText("Encontramos 1 de los 3 que pediste. Puedes recorrer esta selección o probar otro tema.").assertIsDisplayed()
-        saveScreenshot("routes105-route.png")
+        compose.onNodeWithText("Encontramos 1 de los 3 que pediste. Puedes recorrer esta selección o probar otro tema.").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun leavingWithAnUnsavedConclusionRequiresAnExplicitChoice() {
@@ -106,10 +106,11 @@ class VideoRoutesDeviceTest {
             }
         }
         compose.onNodeWithText("Terminar ruta").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Borrar ruta guardada").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("Opciones de la ruta").performClick()
+        compose.onNodeWithText("Borrar ruta guardada").performClick()
         compose.onNodeWithText("¿Borrar esta ruta?").assertIsDisplayed()
         compose.onNodeWithText("Conservar").performClick()
-        saveScreenshot("routes105-narrow.png")
+        saveScreenshot("routes106-narrow.png")
     }
 
     @Test fun searchRetryPreservesTheQueryAndReloadWarnsBeforeDiscardingAConclusion() {
@@ -137,6 +138,64 @@ class VideoRoutesDeviceTest {
         compose.runOnIdle { assertTrue(reloaded) }
     }
 
+    @Test fun suggestedTopicsChooseAQueryWithoutStartingAnUnrequestedSearch() {
+        val state = mutableStateOf(VideoRoutesState(accountId = "alice", loading = false))
+        var searches = 0
+        compose.setContent {
+            RedSocialTheme {
+                RouteTestContent(state.value, onQuery = { state.value = state.value.copy(query = it) }, onPrepare = { searches++ })
+            }
+        }
+        compose.onNodeWithText("Música").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("Música", state.value.query); assertEquals(0, searches) }
+        saveScreenshot("routes106-discovery.png")
+        compose.onNodeWithText("Preparar ruta").performClick()
+        compose.runOnIdle { assertEquals(1, searches) }
+    }
+
+    @Test fun conclusionAppearsOnRequestAndClosesOnlyAfterADurableAcknowledgement() {
+        val state = mutableStateOf(VideoRoutesState(accountId = "alice", route = route, composerVisible = false, loading = false))
+        compose.setContent {
+            RedSocialTheme {
+                RouteTestContent(
+                    state.value,
+                    onConclusion = { state.value = state.value.copy(conclusion = it) },
+                    onSave = { state.value = state.value.copy(busy = true, error = null) },
+                )
+            }
+        }
+        compose.onNodeWithText("Mi conclusión").assertDoesNotExist()
+        compose.onNodeWithText("Escribir").performScrollTo().performClick()
+        compose.onNodeWithText("Mi conclusión").performTextInput("Practicar acordes")
+        compose.onNodeWithText("Guardar conclusión").performScrollTo().performClick()
+        compose.onNodeWithText("Guardar conclusión").assertIsNotEnabled()
+        compose.runOnIdle { state.value = state.value.copy(busy = false, error = "No se pudo guardar el cambio.") }
+        compose.onNodeWithText("Mi conclusión").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { assertEquals("", state.value.route?.conclusion) }
+        compose.onNodeWithText("Guardar conclusión").performScrollTo().performClick()
+        compose.runOnIdle {
+            state.value = state.value.copy(busy = false, route = route.copy(conclusion = state.value.conclusion, revision = 1))
+        }
+        compose.onNodeWithText("Mi conclusión").assertDoesNotExist()
+        compose.onNodeWithText("Practicar acordes").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test fun darkThemeKeepsTheSelectionAndOutcomeReadable() {
+        val selection = route.copy(items = listOf(
+            route.items.single().copy(opened = true, useful = true),
+            VideoRouteItem("Video-B", "Cambios de acorde", "author-b", "Luis", durationSeconds = 43),
+            VideoRouteItem("Video-C", "Tu primer ritmo", "author-c", "Cami", durationSeconds = 75),
+        ))
+        compose.setContent {
+            RedSocialTheme(darkTheme = true) {
+                RouteTestContent(VideoRoutesState(accountId = "alice", route = selection, composerVisible = false, loading = false))
+            }
+        }
+        compose.onNodeWithText("Continuar ruta").assertIsDisplayed()
+        saveScreenshot("routes106-dark.png")
+        compose.onNodeWithText("Terminar ruta").performScrollTo().assertIsDisplayed()
+    }
+
     private fun saveScreenshot(name: String) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val path = File(checkNotNull(context.getExternalFilesDir(null)), name)
@@ -154,12 +213,14 @@ class VideoRoutesDeviceTest {
         onBack: () -> Unit = {},
         onSaveAndBack: () -> Unit = {},
         onReload: () -> Unit = {},
+        onConclusion: (String) -> Unit = {},
+        onSave: () -> Unit = {},
         modifier: Modifier = Modifier,
     ) {
         VideoRoutesContent(
             state = state, onBack = onBack, onQueryChange = onQuery, onSizeChange = onSize,
             onPrepare = onPrepare, onNewRoute = {}, onShowRoute = {}, onOpen = onOpen,
-            onUseful = {}, onConclusionChange = {}, onSave = {}, onSaveAndBack = onSaveAndBack,
+            onUseful = {}, onConclusionChange = onConclusion, onSave = onSave, onSaveAndBack = onSaveAndBack,
             onCompleted = {}, onErase = {}, onReload = onReload, modifier = modifier,
         )
     }

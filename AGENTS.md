@@ -13,6 +13,11 @@ paquetes no son el estado actual de todo el proyecto.
 - Publica las correcciones terminadas en `main` y `feature/live-gifts`, con árboles
   iguales. Usa los worktrees existentes y comprueba cambios ajenos antes de editar.
 - No modifiques `correciones`: pertenece al otro chat.
+- Las funciones y los rediseños del plan experimental 105 se desarrollan y
+  publican exclusivamente en `codex/experiencias-con-proposito`. El propietario
+  confirmó esta separación el 4 de noviembre. La regla de publicar en las dos
+  ramas estables se aplica a sus correcciones, y la incorporación de los
+  experimentos requiere una nueva instrucción expresa del propietario.
 - No borres a ciegas respaldos, entregas, claves ni temporales ignorados. No los
   añadas a Git para conseguir un estado aparentemente limpio.
 - El servidor activo es propio, en Ubuntu. Conserva los contratos de importación

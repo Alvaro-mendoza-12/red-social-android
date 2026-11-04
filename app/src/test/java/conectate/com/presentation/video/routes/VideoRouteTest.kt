@@ -82,4 +82,51 @@ class VideoRouteTest {
         assertThrows(IllegalArgumentException::class.java) { route.copy(conclusion = "x".repeat(1001)).validate() }
         assertThrows(IllegalArgumentException::class.java) { route.copy(items = emptyList()).validate() }
     }
+
+    @Test fun thumbnailReferencesKeepOnlyTheObjectPathAndDurationWithoutSignedCredentials() {
+        val route = prepareVideoRoute("tema", 3, listOf(video("one").copy(
+            thumbnailUrl = "https://media.example/storage/v1/object/public/thumbnails/one.jpg?token=private&width=720#fragment",
+            duration = 93,
+        )))!!
+        assertEquals("/storage/v1/object/public/thumbnails/one.jpg", route.items.single().thumbnailPath)
+        assertEquals(93L, route.items.single().durationSeconds)
+        val encoded = Json.encodeToString(route)
+        assertFalse(encoded.contains("https://"))
+        assertFalse(encoded.contains("token"))
+        assertFalse(encoded.contains("private"))
+        assertEquals(route, Json.decodeFromString<VideoRoute>(encoded).validate())
+    }
+
+    @Test fun olderRecordsRestoreWithAPlaceholderAndKeepTheirNotesAndChoices() {
+        val route = prepareVideoRoute("tema", 3, listOf(video("one")))!!.open("one")
+            .toggleUseful("one").copy(conclusion = "Conservar mi idea")
+        val oldRecord = Json.encodeToString(route)
+        assertFalse(oldRecord.contains("thumbnailPath"))
+        assertFalse(oldRecord.contains("durationSeconds"))
+        val restored = Json.decodeFromString<VideoRoute>(oldRecord).validate()
+        assertEquals(route, restored)
+        assertEquals("", restored.items.single().thumbnailPath)
+        assertEquals("Conservar mi idea", restored.conclusion)
+        assertTrue(restored.items.single().useful)
+    }
+
+    @Test fun unsafeOrExternalThumbnailInputsNeverBecomePersistentFetchTargets() {
+        listOf("https://external.test/image.jpg", "file:///storage/v1/object/public/thumbnails/a.jpg",
+            "content://images/1", "https://user:password@media.test/storage/v1/object/public/thumbnails/a.jpg",
+            "/storage/v1/object/public/thumbnails/../a.jpg", "/storage/v1/object/public/thumbnails/%2e%2e/a.jpg",
+            "/storage/v1/object/sign/thumbnails/a.jpg?token=private").forEach { value ->
+            assertEquals(value, "", routeThumbnailReference(value))
+        }
+        val route = prepareVideoRoute("tema", 3, listOf(video("one")))!!
+        assertThrows(IllegalArgumentException::class.java) {
+            route.copy(items = listOf(route.items.single().copy(thumbnailPath = "https://external.test/image.jpg"))).validate()
+        }
+    }
+
+    @Test fun invalidDurationsDoNotRenderAnInventedLength() {
+        listOf(-1L, Long.MAX_VALUE, 86_401L).forEach { duration ->
+            val route = prepareVideoRoute("tema", 3, listOf(video("one").copy(duration = duration)))!!
+            assertEquals(0L, route.items.single().durationSeconds)
+        }
+    }
 }

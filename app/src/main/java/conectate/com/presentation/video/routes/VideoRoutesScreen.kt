@@ -1,52 +1,20 @@
 package conectate.com.presentation.video.routes
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,25 +27,17 @@ fun VideoRoutesScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     VideoRoutesContent(
-        state = state,
-        onBack = onBack,
-        onQueryChange = viewModel::changeQuery,
-        onSizeChange = viewModel::changeSize,
-        onPrepare = viewModel::prepare,
-        onNewRoute = viewModel::showComposer,
-        onShowRoute = viewModel::showRoute,
-        onOpen = { viewModel.openVideo(it, onOpenVideo) },
-        onUseful = viewModel::toggleUseful,
-        onConclusionChange = viewModel::changeConclusion,
-        onSave = { viewModel.saveConclusion() },
-        onSaveAndBack = { viewModel.saveConclusion(onBack) },
-        onCompleted = viewModel::setCompleted,
-        onErase = viewModel::erase,
-        onReload = viewModel::reload,
+        state = state, onBack = onBack, onQueryChange = viewModel::changeQuery,
+        onSizeChange = viewModel::changeSize, onPrepare = viewModel::prepare,
+        onNewRoute = viewModel::showComposer, onShowRoute = viewModel::showRoute,
+        onOpen = { viewModel.openVideo(it, onOpenVideo) }, onUseful = viewModel::toggleUseful,
+        onConclusionChange = viewModel::changeConclusion, onSave = { viewModel.saveConclusion() },
+        onSaveAndBack = { viewModel.saveConclusion(onBack) }, onCompleted = viewModel::setCompleted,
+        onErase = viewModel::erase, onReload = viewModel::reload,
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun VideoRoutesContent(
     state: VideoRoutesState,
@@ -100,9 +60,18 @@ internal fun VideoRoutesContent(
     var confirmErase by remember(state.accountId) { mutableStateOf(false) }
     var confirmLeave by remember(state.accountId) { mutableStateOf(false) }
     var confirmReload by remember(state.accountId) { mutableStateOf(false) }
+    var menuOpen by remember(state.accountId) { mutableStateOf(false) }
+    var noteOpen by remember(state.accountId, state.route?.id) { mutableStateOf(false) }
+    var noteSaveRequested by remember(state.accountId, state.route?.id) { mutableStateOf(false) }
     val route = state.route
     val enabled = state.accountId != null && !state.loading && !state.busy && !state.storageBlocked
     val unsavedConclusion = route != null && route.conclusion != state.conclusion
+    LaunchedEffect(noteSaveRequested, state.busy, unsavedConclusion, state.error) {
+        if (noteSaveRequested && !state.busy) {
+            if (!unsavedConclusion && state.error == null) noteOpen = false
+            noteSaveRequested = false
+        }
+    }
     val requestBack = {
         when {
             state.composerVisible && route != null && !state.busy -> onShowRoute()
@@ -112,159 +81,119 @@ internal fun VideoRoutesContent(
     }
     BackHandler(onBack = requestBack)
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().imePadding(),
         topBar = {
-            TopAppBar(
-                title = { Text("Rutas de video") },
-                navigationIcon = {
-                    IconButton(onClick = requestBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
+            CenterAlignedTopAppBar(
+                title = { Text("Rutas", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = { IconButton(onClick = requestBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") } },
+                actions = {
+                    if (route != null || state.storageBlocked) Box {
+                        IconButton(onClick = { menuOpen = true }, enabled = !state.busy) {
+                            Icon(Icons.Default.MoreHoriz, "Opciones de la ruta")
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            if (route != null) DropdownMenuItem(
+                                text = { Text("Crear otra ruta") }, leadingIcon = { Icon(Icons.Default.Add, null) },
+                                onClick = { menuOpen = false; onNewRoute() }, enabled = enabled,
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Borrar ruta guardada") }, leadingIcon = { Icon(Icons.Default.DeleteOutline, null) },
+                                onClick = { menuOpen = false; confirmErase = true },
+                            )
+                        }
+                    }
                 },
             )
         },
+        bottomBar = {
+            if (!state.loading && state.composerVisible) Surface(tonalElevation = 2.dp) {
+                Box(Modifier.fillMaxWidth().navigationBarsPadding(), contentAlignment = Alignment.Center) {
+                    Column(Modifier.widthIn(max = 880.dp).fillMaxWidth().padding(20.dp, 12.dp)) {
+                        Button(
+                            onClick = onPrepare, enabled = enabled && state.query.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = RouteIndigo, contentColor = Color.White),
+                        ) {
+                            if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            else Icon(Icons.Default.Route, null)
+                            Spacer(Modifier.width(10.dp))
+                            Text(if (route == null) "Preparar ruta" else "Preparar y reemplazar")
+                        }
+                    }
+                }
+            }
+        },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.TopCenter) {
-            Column(
-                Modifier.widthIn(max = 640.dp).fillMaxWidth().verticalScroll(rememberScrollState())
-                    .imePadding().padding(horizontal = 20.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                if (state.loading) CircularProgressIndicator()
-                if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-                state.error?.let { error ->
-                    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
-                        Column(Modifier.padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
-                            Text(error, color = MaterialTheme.colorScheme.onErrorContainer)
-                            if (!state.busy && (state.storageBlocked || !state.composerVisible)) {
-                                TextButton(onClick = {
+        key(state.accountId) {
+            Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding), contentAlignment = Alignment.TopCenter) {
+                Column(
+                    Modifier.widthIn(max = 880.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp, 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    if (state.loading) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally()))
+                    if (state.busy && !state.composerVisible) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    state.error?.let { error ->
+                        Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
+                            Column(Modifier.padding(16.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
+                                Text(error, color = MaterialTheme.colorScheme.onErrorContainer)
+                                if (!state.busy && (state.storageBlocked || !state.composerVisible)) TextButton(onClick = {
                                     if (unsavedConclusion) confirmReload = true else onReload()
                                 }) { Text("Volver a cargar") }
                             }
                         }
                     }
-                }
-                if (!state.loading && state.composerVisible) {
-                    Text("Elige qué te quieres llevar", style = MaterialTheme.typography.headlineSmall)
-                    Text(
-                        "Explora un tema en una selección pequeña. Abre cada video y guarda lo que te sirva.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (!state.loading && state.composerVisible) VideoRouteDiscovery(
+                        state = state, enabled = enabled, onQueryChange = onQueryChange, onSizeChange = onSizeChange,
+                        onPrepare = onPrepare, onShowRoute = onShowRoute,
                     )
-                    OutlinedTextField(
-                        value = state.query,
-                        onValueChange = onQueryChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = enabled,
-                        label = { Text("¿Qué quieres explorar?") },
-                        supportingText = { Text("Busca por palabras del catálogo, como guitarra o cocina.") },
-                        singleLine = true,
-                    )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        VideoRoute.SIZES.forEach { count ->
-                            FilterChip(
-                                selected = count == state.requestedCount,
-                                onClick = { onSizeChange(count) },
-                                enabled = enabled,
-                                label = { Text("$count videos") },
-                            )
-                        }
+                    if (!state.loading && !state.composerVisible && route != null) key(route.id) {
+                        VideoRouteCollection(
+                            route = route, conclusion = state.conclusion, unsavedConclusion = unsavedConclusion,
+                            enabled = enabled, onOpen = onOpen, onUseful = onUseful,
+                            onEditConclusion = { noteOpen = true }, onCompleted = onCompleted,
+                        )
                     }
-                    if (route != null) Text(
-                        "Al preparar otra ruta se reemplazará la selección y su conclusión en este dispositivo.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Button(onClick = onPrepare, enabled = enabled && state.query.isNotBlank()) {
-                        Text(if (route == null) "Preparar ruta" else "Preparar y reemplazar")
-                    }
-                    if (route != null) OutlinedButton(onClick = onShowRoute, enabled = !state.busy) { Text("Volver a mi ruta") }
-                }
-                if (!state.loading && !state.composerVisible && route != null) {
-                    Text(
-                        if (route.completed) "Ruta terminada" else route.topic,
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    if (route.completed) Text(route.topic, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "${route.items.size} ${if (route.items.size == 1) "video" else "videos"} de ${route.authorCount} " +
-                            if (route.authorCount == 1) "creador" else "creadores",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (route.items.size < route.requestedCount) Text(
-                        "Encontramos ${route.items.size} de los ${route.requestedCount} que pediste. Puedes recorrer esta selección o probar otro tema.",
-                    )
-                    Text("${route.openedCount} de ${route.items.size} abiertos. ${route.usefulCount} te sirvieron.")
-                    route.items.forEachIndexed { index, item ->
-                        OutlinedCard(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                    Text("${index + 1}", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-                                    Column(Modifier.weight(1f)) {
-                                        Text(item.title, style = MaterialTheme.typography.titleMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                                        Text(item.authorName, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                }
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                                ) {
-                                    OutlinedButton(onClick = { onOpen(item.videoId) }, enabled = enabled) {
-                                        Icon(Icons.Default.PlayArrow, null)
-                                        Text(if (item.opened) "Volver a abrir" else "Abrir video")
-                                    }
-                                    FilterChip(
-                                        selected = item.useful,
-                                        onClick = { onUseful(item.videoId) },
-                                        enabled = enabled && item.opened,
-                                        label = { Text("Me sirvió") },
-                                        leadingIcon = if (item.useful) { { Icon(Icons.Default.Check, null) } } else null,
-                                    )
-                                }
-                            }
-                        }
-                    }
-                    Text("Lo que me llevo", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
-                        value = state.conclusion,
-                        onValueChange = onConclusionChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = enabled,
-                        minLines = 3,
-                        label = { Text("Mi conclusión") },
-                        supportingText = { Text("${state.conclusion.length}/${VideoRoute.MAX_CONCLUSION}. Solo en este dispositivo y esta cuenta.") },
-                    )
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedButton(onClick = onSave, enabled = enabled && unsavedConclusion) { Text("Guardar conclusión") }
-                        Button(onClick = { onCompleted(!route.completed) }, enabled = enabled) {
-                            Text(if (route.completed) "Reabrir ruta" else "Terminar ruta")
-                        }
-                    }
-                    Text(
-                        "Puedes terminar cuando quieras y volver a los videos que elegiste. Tus marcas y tu conclusión son privadas.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    OutlinedButton(onClick = onNewRoute, enabled = enabled) { Text("Crear otra ruta") }
-                }
-                if (!state.loading && (route != null || state.storageBlocked)) {
-                    TextButton(onClick = { confirmErase = true }, enabled = !state.busy) { Text("Borrar ruta guardada") }
                 }
             }
         }
     }
+    if (noteOpen && route != null) ModalBottomSheet(
+        onDismissRequest = { noteOpen = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Lo que me llevo", style = MaterialTheme.typography.headlineSmall)
+            Text("Una idea para recordar cuando vuelvas.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = state.conclusion, onValueChange = onConclusionChange, enabled = enabled,
+                modifier = Modifier.fillMaxWidth(), minLines = 3, maxLines = 8,
+                label = { Text("Mi conclusión") },
+                supportingText = { Text("${state.conclusion.length}/${VideoRoute.MAX_CONCLUSION}. Solo para ti en este dispositivo.") },
+            )
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            Button(
+                onClick = { noteSaveRequested = true; onSave() }, enabled = enabled && unsavedConclusion,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = RouteIndigo, contentColor = Color.White),
+            ) { Text("Guardar conclusión") }
+        }
+    }
     if (confirmErase) AlertDialog(
-        onDismissRequest = { confirmErase = false },
-        title = { Text("¿Borrar esta ruta?") },
+        onDismissRequest = { confirmErase = false }, title = { Text("¿Borrar esta ruta?") },
         text = { Text("Se borrarán la selección, las marcas y la conclusión de esta cuenta en este dispositivo.") },
         confirmButton = { TextButton(onClick = { confirmErase = false; onErase() }) { Text("Borrar ruta") } },
         dismissButton = { TextButton(onClick = { confirmErase = false }) { Text("Conservar") } },
     )
     if (confirmLeave) AlertDialog(
-        onDismissRequest = { confirmLeave = false },
-        title = { Text("¿Guardar tu conclusión?") },
+        onDismissRequest = { confirmLeave = false }, title = { Text("¿Guardar tu conclusión?") },
         text = { Text("Has escrito cambios que todavía no se han guardado.") },
         confirmButton = { TextButton(onClick = { confirmLeave = false; onSaveAndBack() }) { Text("Guardar y salir") } },
         dismissButton = { TextButton(onClick = { confirmLeave = false; onBack() }) { Text("Salir sin guardar") } },
     )
     if (confirmReload) AlertDialog(
-        onDismissRequest = { confirmReload = false },
-        title = { Text("¿Cargar la ruta guardada?") },
+        onDismissRequest = { confirmReload = false }, title = { Text("¿Cargar la ruta guardada?") },
         text = { Text("Se descartarán los cambios de esta conclusión que todavía no has guardado.") },
         confirmButton = { TextButton(onClick = { confirmReload = false; onReload() }) { Text("Cargar lo guardado") } },
         dismissButton = { TextButton(onClick = { confirmReload = false }) { Text("Conservar cambios") } },

@@ -4,6 +4,8 @@ Investigación y decisión inicial del 3 de noviembre de 2026. El propietario au
 
 ## Criterio de producto
 
+El 4 de noviembre el propietario confirmó que todo el plan de innovación y sus rediseños pertenece exclusivamente a `codex/experiencias-con-proposito`. Las ramas estables contienen las correcciones anteriores documentadas en 104. Se verificó con los árboles de Git la ausencia de los archivos de Rutas en `main` y `feature/live-gifts`.
+
 La hipótesis común consiste en permitir que una persona declare para qué entra, recorra una cantidad comprensible de contenido o acciones, produzca un resultado y pueda retomarlo. La utilidad se medirá por tarea resuelta, control y satisfacción declarada. La duración de la visita por sí sola será insuficiente para aceptar una propuesta.
 
 Cada módulo tendrá una ventaja que se pueda probar por separado. La combinación de módulos servirá para conservar el contexto cuando el usuario decida pasar de uno a otro. La investigación documental permite identificar antecedentes y oportunidades. La preferencia real del público requiere ensayos de producto.
@@ -178,3 +180,35 @@ La compilación posterior y Lint K1 finalizaron correctamente. Lint informó **c
 La última repetición aprobó **30 pruebas de interfaz y navegación en 51,858 segundos**. Incluyó los dos ensayos corregidos sobre los destinos registrados y las comprobaciones anteriores de cámara, Social, ciclo de reproducción y compartidos. La lectura nativa R2/Ubuntu volvió a aprobar en una ejecución posterior separada. Se conservaron capturas de pantalla y huellas de las fuentes y de ambos APK de depuración. La aserción incorrecta anterior y los ensayos aprobados se conservaron como evidencias distintas.
 
 El AAB firmado estable está identificado en la revisión oficial 104. Este bloque conserva abiertos el ensayo completo con una cuenta autenticada a través de la interfaz, las pruebas físicas, la evaluación de preferencia y la sincronización entre dispositivos. La prueba del grafo, las acciones de la pantalla, el almacenamiento y la lectura conectada tienen evidencias independientes.
+
+## Rediseño visual solicitado el 4 de noviembre
+
+El propietario señaló que la primera pantalla parecía un formulario y carecía de atractivo visual. El nuevo diseño presenta descubrimiento por temas, portadas y progreso. La conclusión se abre mediante una acción dentro del recorrido. La interfaz conserva el tamaño de texto y el tema elegidos en la aplicación.
+
+Se revisaron los ejemplos oficiales de Android. Jetsnack muestra colecciones y filtros dentro del contenido. Jetcaster prioriza las portadas y las categorías. Reply adapta la composición al espacio disponible. Son referencias de organización y jerarquía. El código del rediseño se escribe sobre los componentes y los contratos existentes de Novvin. [Jetsnack](https://github.com/android/compose-samples/tree/main/Jetsnack), [Jetcaster](https://github.com/android/compose-samples/tree/main/Jetcaster), [Reply](https://github.com/android/compose-samples/tree/main/Reply), [adaptación de tamaños](https://developer.android.com/develop/ui/compose/layouts/adaptive/support-different-display-sizes).
+
+La paleta combina índigo `#535BC1`, menta `#B7E5DF`, melocotón `#F8D1BB`, azul claro `#D2DFFC` y tinta `#263149`. Las superficies y el texto general proceden del tema activo. El índigo identifica el recorrido y las acciones principales. Los colores suaves distinguen sugerencias de temas. Se utiliza la tipografía configurada por la cuenta, con un título destacado, subtítulos de sección y metadatos secundarios.
+
+```text
+Volver              Rutas              Opciones
+
+Tu próximo descubrimiento      [recorrido visual]
+Un tema. Algo que te llevas.
+[ Buscar un tema                             ]
+[ Música       ] [ Cocina                    ]
+[ Juegos       ] [ Ciencia                   ]
+[ 3 videos ] [ 5 videos ]
+                         [ Preparar ruta      ]
+
+Guitarra                         En curso
+[ 1 ]────[ 2 ]────[ 3 ]           1 de 3 abiertos
+[ Continuar ruta                              ]
+[ portada ] Título del video
+            Autor          [ Me sirvió ]
+[ portada ] Título del siguiente video
+
+Lo que me llevo                [ Escribir ]
+                         [ Terminar ruta      ]
+```
+
+La revisión del plan sustituyó las cajas de texto permanentes y la fila de botones por contenido visual y acciones de mayor jerarquía. La numeración representa los elementos reales de la selección. Las tarjetas de temas son sugerencias de búsqueda y el catálogo decide qué videos hay disponibles. Las portadas se cargarán con el cliente y la autorización multimedia existentes. Los registros anteriores conservarán su lectura y mostrarán una portada gráfica cuando falte la referencia de imagen.

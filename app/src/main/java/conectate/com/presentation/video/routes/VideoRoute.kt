@@ -3,6 +3,7 @@ package conectate.com.presentation.video.routes
 import conectate.com.data.model.Video
 import java.util.Locale
 import java.util.UUID
+import java.net.URI
 import kotlinx.serialization.Serializable
 
 /** Device-only references. Playback URLs and credentials must never be saved in this record. */
@@ -14,6 +15,8 @@ data class VideoRouteItem(
     val authorName: String,
     val opened: Boolean = false,
     val useful: Boolean = false,
+    val thumbnailPath: String = "",
+    val durationSeconds: Long = 0,
 )
 
 @Serializable
@@ -40,7 +43,8 @@ data class VideoRoute(
         require(items.all {
             it.videoId.isNotBlank() && it.videoId.length <= 128 &&
                 it.authorId.isNotBlank() && it.authorId.length <= 128 &&
-                it.title.length <= 200 && it.authorName.length <= 80 && (!it.useful || it.opened)
+                it.title.length <= 200 && it.authorName.length <= 80 && (!it.useful || it.opened) &&
+                it.thumbnailPath == routeThumbnailReference(it.thumbnailPath) && it.durationSeconds in 0..86_400L
         })
         require(conclusion.length <= MAX_CONCLUSION)
         return this
@@ -79,6 +83,8 @@ internal fun prepareVideoRoute(topic: String, count: Int, videos: List<Video>): 
             title = video.title.trim().ifBlank { "Video de ${video.userName.ifBlank { "la comunidad" }}" }.take(200),
             authorId = video.userId.trim(),
             authorName = video.userName.trim().ifBlank { "Creador de Novvin" }.take(80),
+            thumbnailPath = routeThumbnailReference(video.thumbnailUrl),
+            durationSeconds = video.duration.takeIf { it in 1..86_400L } ?: 0,
         )
     }
     if (items.isEmpty()) return null
@@ -86,6 +92,17 @@ internal fun prepareVideoRoute(topic: String, count: Int, videos: List<Video>): 
 }
 
 internal fun routeIdentity(value: String): String = value.trim().lowercase(Locale.ROOT)
+
+/** Save the own-storage image reference, leaving signed queries and transient hosts out of the journal. */
+internal fun routeThumbnailReference(value: String): String {
+    val raw = value.trim().takeIf { it.isNotEmpty() && it.length <= 4096 } ?: return ""
+    val uri = runCatching { URI(raw) }.getOrNull() ?: return ""
+    if (uri.isAbsolute && (!uri.scheme.equals("https", true) || uri.host.isNullOrBlank() || uri.userInfo != null)) return ""
+    val path = uri.rawPath.orEmpty()
+    if (!path.startsWith("/storage/v1/object/public/") || path.length > 2048 ||
+        uri.path.split('/').any { it == "." || it == ".." } || path.contains('\\')) return ""
+    return path
+}
 
 /** The route player keeps only its selected reference, even if unrelated metadata arrives. */
 internal fun routePlaybackVideos(videos: List<Video>, videoId: String?): List<Video> {
