@@ -130,7 +130,7 @@ internal fun VideoRoutesContent(
                     Modifier.widthIn(max = 880.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(20.dp, 12.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
-                    if (state.loading) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally()))
+                    if (state.loading) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
                     if (state.busy && !state.composerVisible) LinearProgressIndicator(Modifier.fillMaxWidth())
                     state.error?.let { error ->
                         Surface(color = MaterialTheme.colorScheme.errorContainer, shape = MaterialTheme.shapes.medium) {
