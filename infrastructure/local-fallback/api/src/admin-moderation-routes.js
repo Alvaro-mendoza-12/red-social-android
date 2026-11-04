@@ -1,5 +1,6 @@
 const crypto = require('crypto')
 const { purgeImportedRows } = require('./imported-mutation-capabilities')
+const { purgeChatAgreementsForAccounts } = require('./chat-agreements-cleanup')
 const fs = require('fs')
 const path = require('path')
 const { publishRealtimeEvent } = require('./realtime-publish')
@@ -18,6 +19,8 @@ const DEFAULT_STORAGE_ROOT = path.resolve(
 )
 const HARD_DELETE_CONFIRMATION_PREFIX = 'ELIMINAR '
 const HARD_DELETE_LOCK_TABLES = [
+  'experimental_chat_agreements',
+  'experimental_chat_agreement_operations',
   'fallback_active_challenges',
   'fallback_challenge_submissions',
   'fallback_challenge_votes',
@@ -999,6 +1002,9 @@ async function deleteCounted(client, counts, label, statement, params) {
 async function purgeFallbackUserData(client, localUserId, identityValues, relations) {
   const r = relations
   const counts = {}
+  const agreements = await purgeChatAgreementsForAccounts(client, identityValues)
+  counts.experimental_chat_agreements = agreements.agreements
+  counts.experimental_chat_agreement_operations = agreements.operations
   const markerRoomIds = [...r.chatIds, ...r.roomIds]
   const steps = [
     ['saved_posts', `DELETE FROM fallback_saved_posts WHERE lower(user_id) = ANY($1::text[]) OR lower(post_id) = ANY($2::text[])`, [identityValues, r.postIds]],

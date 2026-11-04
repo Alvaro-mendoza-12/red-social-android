@@ -3,6 +3,8 @@ const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+// This fixture must never publish its fake identities to a running gateway.
+require('../src/realtime-publish').publishRealtimeEvent = async () => true
 const {
   executeAdminHardDelete,
   hardDeleteConfirmation,
@@ -38,6 +40,7 @@ function hardDeletePool({
   isSuspended = false,
   storageRow,
   restoredAuth = false,
+  experimentalAgreements = false,
 } = {}) {
   const statements = []
   let released = false
@@ -81,6 +84,10 @@ function hardDeletePool({
         return { rows: [{ affected: 0 }], rowCount: 1 }
       }
       if (sql.includes("SELECT to_regclass('auth.users')")) return { rows: [{ oid: restoredAuth ? 'auth.users' : null }] }
+      if (sql.includes("to_regclass('public.experimental_chat_agreements')")) return { rows: [{
+        agreements: experimentalAgreements ? 'experimental_chat_agreements' : null,
+        operations: experimentalAgreements ? 'experimental_chat_agreement_operations' : null,
+      }] }
       if (sql.startsWith('SELECT EXISTS(SELECT 1 FROM fallback_users')) {
         return { rows: [{ user_row: false, storage_rows: false, profile_override: false, web_sessions: false, moderation_rows: false }] }
       }
@@ -400,6 +407,7 @@ async function testFakeAccountHardDelete() {
 
     const fixture = hardDeletePool({
       restoredAuth: true,
+      experimentalAgreements: true,
       storageRow: { id: 'object-1', bucket_id: 'avatars', name: objectName, local_path: objectPath },
     })
     const result = await executeAdminHardDelete({
@@ -418,6 +426,10 @@ async function testFakeAccountHardDelete() {
     assert.strictEqual(fixture.statements.includes('COMMIT'), true)
     assert.strictEqual(fixture.statements.includes('ROLLBACK'), false)
     assert.strictEqual(fixture.wasReleased(), true)
+    const agreementPurge = fixture.statements.findIndex(sql => sql.startsWith('DELETE FROM experimental_chat_agreements'))
+    const accountPurge = fixture.statements.findIndex(sql => sql.startsWith('DELETE FROM fallback_users'))
+    assert.strictEqual(agreementPurge >= 0 && agreementPurge < accountPurge, true)
+    assert.strictEqual(fixture.statements.some(sql => sql.startsWith('DELETE FROM experimental_chat_agreement_operations')), true)
 
     const protectedFixture = hardDeletePool({ isTestAccount: false })
     await assert.rejects(

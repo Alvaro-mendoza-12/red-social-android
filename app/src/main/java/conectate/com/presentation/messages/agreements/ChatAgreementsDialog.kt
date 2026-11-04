@@ -40,13 +40,16 @@ internal fun ChatAgreementsDialog(
     onKeepDraft: () -> Unit,
     onRespond: (ChatAgreement, String) -> Unit, onEdit: (ChatAgreement) -> Unit,
     onSource: (ChatAgreement) -> Unit, onDismissSource: () -> Unit,
+    onRecoverSavedState: () -> Unit,
 ) {
     var confirmDiscard by remember(state.accountId, state.chatId) { mutableStateOf(false) }
     var cancel by remember(state.accountId, state.chatId) { mutableStateOf<ChatAgreement?>(null) }
     var compare by remember(state.accountId, state.chatId) { mutableStateOf(false) }
+    var confirmRecovery by remember(state.accountId, state.chatId) { mutableStateOf(false) }
     val editing = state.sourceId != null
     val latest = state.agreements.find { it.id == state.editingId }
     val needsReview = latest != null && latest.version != state.editingVersion
+    val requestRefresh = { if (state.recoveryConflict) confirmRecovery = true else onRefresh() }
     val requestBack = {
         if (editing && !state.busy && !state.retryPending) {
             if (state.draft.isNotBlank()) confirmDiscard = true else onDismissEditor()
@@ -70,7 +73,7 @@ internal fun ChatAgreementsDialog(
                 CenterAlignedTopAppBar(
                     title = { Text(if (editing) if (state.editingId == null) "Proponer acuerdo" else "Editar propuesta" else "Acuerdos") },
                     navigationIcon = { IconButton(onClick = requestBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver al chat") } },
-                    actions = { if (!editing) IconButton(onClick = onRefresh, enabled = !state.busy && !state.loading) { Icon(Icons.Default.Refresh, "Actualizar acuerdos") } },
+                    actions = { if (!editing) IconButton(onClick = requestRefresh, enabled = !state.busy && !state.loading) { Icon(Icons.Default.Refresh, "Actualizar acuerdos") } },
                 )
             },
         ) { padding ->
@@ -81,8 +84,9 @@ internal fun ChatAgreementsDialog(
                         Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(18.dp)) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(state.error, color = MaterialTheme.colorScheme.onErrorContainer)
-                                TextButton(onClick = if (state.retryPending) onRetry else onRefresh, enabled = !state.busy) {
-                                    Text(if (state.retryPending) "Reintentar envío" else "Actualizar acuerdos")
+                                TextButton(onClick = if (state.retryPending) onRetry else requestRefresh, enabled = !state.busy) {
+                                    Text(when { state.recoveryConflict -> "Recuperar borrador guardado"; state.retryPending -> "Reintentar envío"
+                                        state.recoveryUnavailable -> "Reintentar recuperación"; else -> "Actualizar acuerdos" })
                                 }
                             }
                         }
@@ -92,7 +96,7 @@ internal fun ChatAgreementsDialog(
                             Text("La propuesta tiene cambios posteriores. Compara los textos antes de guardar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             TextButton(onClick = { compare = true }) { Text("Comparar revisiones") }
                         }
-                        AgreementEditor(state, onDraft, onSave, canSave = !needsReview && latest?.cancelled != true)
+                        AgreementEditor(state, onDraft, onSave, canSave = !needsReview && latest?.cancelled != true && !state.recoveryConflict)
                     } else {
                         item {
                             Text("Lo que decidimos", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -109,7 +113,7 @@ internal fun ChatAgreementsDialog(
                             }
                         }
                         items(state.agreements, key = { it.id }) { agreement ->
-                            AgreementCard(agreement, state.accountId.orEmpty(), enabled = !state.busy && !state.retryPending,
+                            AgreementCard(agreement, state.accountId.orEmpty(), enabled = !state.busy && !state.retryPending && !state.recoveryUnavailable,
                                 onRespond = { onRespond(agreement, it) }, onEdit = { onEdit(agreement) },
                                 onCancel = { cancel = agreement }, onSource = { onSource(agreement) })
                         }
@@ -122,6 +126,12 @@ internal fun ChatAgreementsDialog(
             text = { Text("La propuesta todavía no se ha enviado.") },
             confirmButton = { TextButton(onClick = { confirmDiscard = false; onDismissEditor() }) { Text("Descartar") } },
             dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Seguir escribiendo") } },
+        )
+        if (confirmRecovery) AlertDialog(
+            onDismissRequest = { confirmRecovery = false }, title = { Text("¿Volver al borrador guardado?") },
+            text = { Text("Otra pantalla cambió la recuperación. El texto sin guardar de esta pantalla se sustituirá por el estado guardado en el dispositivo.") },
+            confirmButton = { TextButton(onClick = { confirmRecovery = false; onRecoverSavedState() }) { Text("Recuperar estado guardado") } },
+            dismissButton = { TextButton(onClick = { confirmRecovery = false }) { Text("Seguir revisando") } },
         )
         cancel?.let { agreement -> AlertDialog(
             onDismissRequest = { cancel = null }, title = { Text("¿Cancelar el acuerdo?") },
@@ -157,10 +167,12 @@ private fun AgreementEditor(state: ChatAgreementsState, onDraft: (String) -> Uni
         Text(if (state.editingId == null) "Escribe lo que quieres acordar. Ambos podrán confirmarlo o pedir cambios."
             else "Al guardar, las dos confirmaciones volverán a quedar pendientes.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(
-            value = state.draft, onValueChange = onDraft, enabled = !state.busy && !state.retryPending,
+            value = state.draft, onValueChange = onDraft, enabled = !state.busy && !state.retryPending && !state.recoveryConflict,
             label = { Text("Propuesta") }, supportingText = { Text("${state.draft.length}/1000") }, minLines = 4, maxLines = 10,
             modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
         )
+        if (state.savingDraft) Text("Guardando borrador…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        else if (state.draftSaved) Text("Borrador guardado en este dispositivo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Button(onClick = onSave, enabled = canSave && state.draft.isNotBlank() && !state.busy && !state.retryPending,
             modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
             colors = ButtonDefaults.buttonColors(containerColor = AgreementIndigo, contentColor = Color.White)) {

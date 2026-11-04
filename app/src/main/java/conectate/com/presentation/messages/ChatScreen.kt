@@ -472,6 +472,7 @@ fun ChatScreen(
             onKeepDraft = agreementsViewModel::keepDraftAgainstLatestRevision,
             onRespond = agreementsViewModel::respond, onEdit = agreementsViewModel::edit,
             onSource = agreementsViewModel::showSource, onDismissSource = agreementsViewModel::dismissSource,
+            onRecoverSavedState = agreementsViewModel::recoverSavedState,
         )
     }
 

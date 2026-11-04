@@ -215,7 +215,18 @@ class AuthService @Inject constructor(
         localStorageGate.withOwner(lease, write)
 
     internal fun commitAccountDeletion(notice: conectate.com.data.auth.AccountDeletionNotice, onDelete: () -> Unit): Boolean =
-        notice.commitIfCurrent(localSessionMutationGuard, ::getCurrentUserId, ::getAccessToken, onDelete)
+        notice.commitIfCurrent(localSessionMutationGuard, ::getCurrentUserId, ::getAccessToken) {
+            val owner = getCurrentUserId()?.trim()?.lowercase(java.util.Locale.ROOT)
+            onDelete()
+            if (owner != null) runCatching { conectate.com.data.sync.AgreementRecoveryCleanup.enqueue(context, owner) }
+                .onFailure {
+                    Log.w("AuthService", "Cannot schedule agreement recovery cleanup; attempting it directly")
+                    authScope.launch {
+                        runCatching { conectate.com.data.sync.AgreementRecoveryCleanup.erase(context, owner) }
+                            .onFailure { Log.w("AuthService", "Agreement recovery cleanup remains pending") }
+                    }
+                }
+        }
 
     /** Trusted identifiers of this local session, including an imported profile's id. */
     internal fun currentAccountUserIds(): Set<String> = localSessionMutationGuard.readCurrent {

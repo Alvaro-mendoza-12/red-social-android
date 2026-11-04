@@ -55,10 +55,12 @@ class ChatAgreementsHttpDeviceTest {
         val aliceLease = guard.captureAccountLease { alice }
         val bobLease = AuthSessionMutationGuard().captureAccountLease { bob }
         val models = ViewModelStore()
+        val journal = AgreementRecoveryJournal(encryptedAgreementRecoveryPreferences(InstrumentationRegistry.getInstrumentation().targetContext))
+        val recovery = AgreementRecoveryStore({ journal }, guard::commitForLease)
         lateinit var vm: ChatAgreementsViewModel
         try {
             compose.runOnIdle {
-                vm = ChatAgreementsViewModel({ aliceLease }, MutableStateFlow(0), emptyFlow(), api::supported, api::load, api::send, api::source)
+                vm = ChatAgreementsViewModel({ aliceLease }, MutableStateFlow(0), emptyFlow(), api::supported, api::load, api::send, api::source, recovery)
                 models.put("qa-agreements", vm); vm.bind(chat)
             }
             compose.waitUntil(15_000) { vm.state.value.supported }
@@ -66,7 +68,7 @@ class ChatAgreementsHttpDeviceTest {
                 val state by vm.state.collectAsState()
                 RedSocialTheme {
                     if (state.open) ChatAgreementsDialog(state, vm::close, vm::refresh, vm::changeDraft, vm::saveDraft,
-                        vm::dismissEditor, vm::retry, vm::keepDraftAgainstLatestRevision, vm::respond, vm::edit, vm::showSource, vm::dismissSource)
+                        vm::dismissEditor, vm::retry, vm::keepDraftAgainstLatestRevision, vm::respond, vm::edit, vm::showSource, vm::dismissSource, vm::recoverSavedState)
                 }
             }
             compose.runOnIdle { vm.propose(source) }
@@ -102,6 +104,7 @@ class ChatAgreementsHttpDeviceTest {
         } finally {
             compose.runOnIdle { models.clear() }
             client.close()
+            runBlocking(Dispatchers.IO) { journal.eraseAccount(alice) }
         }
     }
 }

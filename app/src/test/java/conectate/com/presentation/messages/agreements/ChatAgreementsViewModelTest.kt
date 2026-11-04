@@ -27,7 +27,25 @@ class ChatAgreementsViewModelTest {
     @Before fun before() { Dispatchers.setMain(dispatcher) }
     @After fun after() { models.clear(); Dispatchers.resetMain() }
 
-    private inner class Fixture {
+    private class MemoryRecovery : AgreementRecoveryPersistence {
+        val rows = mutableMapOf<Pair<String?, String>, AgreementRecovery>()
+        var failRead = false
+        var failWrite = false
+        var failCompletion = false
+        override suspend fun read(lease: conectate.com.data.supabase.AuthSessionLease, chatId: String): AgreementRecovery? {
+            lease.requireCurrent(); if (failRead) throw IOException("storage read")
+            return rows[lease.accountId to chatId]
+        }
+        override suspend fun replace(lease: conectate.com.data.supabase.AuthSessionLease, chatId: String,
+            expected: AgreementRecovery?, draft: AgreementDraft?, pending: AgreementPendingWrite?): AgreementRecovery {
+            lease.requireCurrent()
+            if (failWrite || (failCompletion && expected?.pending != null && pending == null)) throw IOException("storage write")
+            val key = lease.accountId to chatId
+            if (rows[key] != expected) throw AgreementRecoveryConflict()
+            return AgreementRecovery(revision = (expected?.revision ?: 0) + 1, draft = draft, pending = pending).validate().also { rows[key] = it }
+        }
+    }
+    private inner class Fixture(val persistence: MemoryRecovery = MemoryRecovery()) {
         val guard = AuthSessionMutationGuard()
         val changes = MutableStateFlow(0)
         val events = MutableSharedFlow<AgreementChange>(extraBufferCapacity = 4)
@@ -43,7 +61,8 @@ class ChatAgreementsViewModelTest {
             capture = { guard.captureAccountLease { owner } }, changes = changes, events = events,
             capability = { supported }, load = { _, id -> reads++; read(id) },
             send = { _, _, _, command -> commands.add(command); send(command) }, source = { _, _, _ -> source() },
-        ).also { models.put("agreements", it) }
+            recovery = persistence,
+        ).also { models.put(java.util.UUID.randomUUID().toString(), it) }
         fun switch(next: String?) { guard.invalidate { owner = next }; changes.value++ }
         fun bind() { vm.bind(chat) }
     }
@@ -132,5 +151,72 @@ class ChatAgreementsViewModelTest {
         val f = Fixture(); f.bind(); advanceUntilIdle(); f.read = { awaitCancellation() }; f.vm.open(); runCurrent()
         advanceTimeBy(10_001); runCurrent(); assertFalse(f.vm.state.value.loading); assertNotNull(f.vm.state.value.error)
         f.read = { emptyList() }; f.vm.refresh(); advanceUntilIdle(); assertNull(f.vm.state.value.error)
+    }
+    @Test fun aNewModelRestoresItsSavedDraftWithoutSendingOrCopyingAnotherAccountsDraft() = runTest(dispatcher) {
+        val first = Fixture(); first.bind(); advanceUntilIdle(); first.vm.propose(sourceId); first.vm.changeDraft("Volver mañana"); advanceUntilIdle()
+        assertTrue(first.vm.state.value.draftSaved)
+        val reopened = Fixture(first.persistence); reopened.bind(); advanceUntilIdle()
+        assertEquals("Volver mañana", reopened.vm.state.value.draft); assertEquals(sourceId, reopened.vm.state.value.sourceId)
+        assertTrue(reopened.commands.isEmpty()); assertFalse(reopened.vm.state.value.open)
+        reopened.switch(bob); advanceUntilIdle()
+        assertEquals("", reopened.vm.state.value.draft); assertNull(reopened.vm.state.value.sourceId)
+        reopened.switch(alice); advanceUntilIdle(); assertEquals("Volver mañana", reopened.vm.state.value.draft)
+    }
+    @Test fun anUncertainOperationSurvivesANewModelAndRetriesTheExactCommandOnlyWhenRequested() = runTest(dispatcher) {
+        val first = Fixture(); first.bind(); advanceUntilIdle(); first.vm.propose(sourceId); first.vm.changeDraft("Propuesta persistente")
+        first.send = { throw IOException("ACK lost") }; first.vm.saveDraft(); advanceUntilIdle()
+        val original = first.commands.single()
+        val reopened = Fixture(first.persistence); reopened.bind(); advanceUntilIdle(); reopened.vm.open(); advanceUntilIdle()
+        assertTrue(reopened.commands.isEmpty()); assertTrue(reopened.vm.state.value.retryPending)
+        assertEquals("Propuesta persistente", reopened.vm.state.value.draft)
+        reopened.vm.retry(); advanceUntilIdle()
+        assertEquals(listOf(original), reopened.commands); assertFalse(reopened.vm.state.value.retryPending)
+        assertNull(reopened.persistence.rows[alice to chat]?.pending)
+        assertNull(reopened.persistence.rows[alice to chat]?.draft)
+    }
+    @Test fun failureToPersistTheOperationPreventsTheNetworkWriteAndKeepsTheDraft() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose(sourceId); f.vm.changeDraft("No perder")
+        f.persistence.failWrite = true; f.vm.saveDraft(); advanceUntilIdle()
+        assertTrue(f.commands.isEmpty()); assertEquals("No perder", f.vm.state.value.draft); assertTrue(f.vm.state.value.retryPending)
+        f.persistence.failWrite = false; f.vm.retry(); advanceUntilIdle()
+        assertEquals(1, f.commands.size); assertFalse(f.vm.state.value.retryPending)
+    }
+    @Test fun failureToRetireThePendingRecordAfterAnAcknowledgementKeepsTheSameRecoveryKey() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose(sourceId); f.vm.changeDraft("No duplicar")
+        f.persistence.failCompletion = true; f.vm.saveDraft(); advanceUntilIdle()
+        val original = f.commands.single(); assertTrue(f.vm.state.value.retryPending)
+        assertEquals(original, f.persistence.rows[alice to chat]?.pending?.command)
+        f.persistence.failCompletion = false; f.vm.retry(); advanceUntilIdle()
+        assertEquals(listOf(original, original), f.commands)
+    }
+    @Test fun anUnreadableLocalRecordIsNeverOverwrittenAndCanBeRetried() = runTest(dispatcher) {
+        val f = Fixture(); f.persistence.failRead = true; f.bind(); advanceUntilIdle(); f.vm.propose(sourceId)
+        assertNull(f.vm.state.value.sourceId); assertTrue(f.vm.state.value.recoveryUnavailable)
+        assertTrue(f.persistence.rows.isEmpty()); assertTrue(f.commands.isEmpty())
+        f.persistence.failRead = false; f.vm.open(); advanceUntilIdle(); f.vm.propose(sourceId); advanceUntilIdle()
+        assertEquals(sourceId, f.vm.state.value.sourceId); assertFalse(f.vm.state.value.recoveryUnavailable)
+    }
+    @Test fun aStaleScreenCannotOverwriteNewerLocalStateOrSendUntilTheUserRecoversIt() = runTest(dispatcher) {
+        val first = Fixture(); first.bind(); advanceUntilIdle(); first.vm.propose(sourceId); first.vm.changeDraft("Primero"); advanceUntilIdle()
+        val second = Fixture(first.persistence); second.bind(); advanceUntilIdle(); second.vm.changeDraft("Más reciente"); advanceUntilIdle()
+        first.vm.changeDraft("Pantalla antigua"); advanceUntilIdle()
+        assertTrue(first.vm.state.value.recoveryConflict); assertEquals("Más reciente", first.persistence.rows[alice to chat]?.draft?.text)
+        first.vm.saveDraft(); advanceUntilIdle(); assertTrue(first.commands.isEmpty())
+        first.vm.refresh(); advanceUntilIdle(); assertEquals("Pantalla antigua", first.vm.state.value.draft)
+        first.vm.recoverSavedState(); advanceUntilIdle()
+        assertEquals("Más reciente", first.vm.state.value.draft); assertFalse(first.vm.state.value.recoveryConflict)
+    }
+    @Test fun proposingAnotherMessageNeverSilentlyReplacesARestoredDraft() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose(sourceId); f.vm.changeDraft("Conservar este contexto"); advanceUntilIdle()
+        f.vm.propose(otherChat); advanceUntilIdle()
+        assertEquals(sourceId, f.vm.state.value.sourceId); assertEquals("Conservar este contexto", f.vm.state.value.draft)
+        f.vm.dismissEditor(); advanceUntilIdle(); f.vm.propose(otherChat); advanceUntilIdle()
+        assertEquals(otherChat, f.vm.state.value.sourceId)
+    }
+    @Test fun aResponseLostAfterAnAccessChangeRetainsTheOperationForLaterReconciliation() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle()
+        f.send = { throw AgreementApiException(403, "AGREEMENT_CHAT_UNAVAILABLE") }; f.vm.respond(agreement(), "accept"); advanceUntilIdle()
+        assertTrue(f.vm.state.value.retryPending)
+        assertEquals(f.commands.single(), f.persistence.rows[alice to chat]?.pending?.command)
     }
 }

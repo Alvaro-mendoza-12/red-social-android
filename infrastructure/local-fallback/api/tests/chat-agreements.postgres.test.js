@@ -7,6 +7,7 @@ const { Pool } = require('pg')
 const express = require('express')
 const { ensureChatAgreementTables } = require('../src/chat-agreements-store')
 const { registerChatAgreementRoutes } = require('../src/chat-agreements-routes')
+const { purgeChatAgreementsForAccounts } = require('../src/chat-agreements-cleanup')
 
 const ALICE = '11111111-1111-4111-8111-111111111111', BOB = '22222222-2222-4222-8222-222222222222'
 const CHAT = '33333333-3333-4333-8333-333333333333', SOURCE = '44444444-4444-4444-8444-444444444444'
@@ -102,6 +103,19 @@ test('isolated PostgreSQL and HTTP enforce consent, concurrent versions and lost
     assert.ok(published.every(event => Object.keys(event.payload).sort().join(',') === 'agreementId,chatId,event'))
     await pool.query("UPDATE fallback_chats SET policy='open' WHERE id=$1", [CHAT])
     await pool.query('UPDATE fallback_messages SET deleted_for_all=FALSE WHERE id=$1', [SOURCE])
+    // The real purge participates in the caller's transaction and receipt cascades.
+    const transaction = await pool.connect()
+    try {
+      await transaction.query('BEGIN')
+      await purgeChatAgreementsForAccounts(transaction, [BOB])
+      assert.equal((await transaction.query('SELECT count(*)::int AS total FROM experimental_chat_agreements WHERE id=$1', [create.id])).rows[0].total, 0)
+      await transaction.query('ROLLBACK')
+      assert.equal((await pool.query('SELECT count(*)::int AS total FROM experimental_chat_agreements WHERE id=$1', [create.id])).rows[0].total, 1)
+      await transaction.query('BEGIN')
+      await purgeChatAgreementsForAccounts(transaction, [BOB])
+      await transaction.query('COMMIT')
+      assert.equal((await pool.query('SELECT count(*)::int AS total FROM experimental_chat_agreement_operations WHERE agreement_id=$1', [create.id])).rows[0].total, 0)
+    } finally { transaction.release() }
   })
 
 module.exports = { fixture }

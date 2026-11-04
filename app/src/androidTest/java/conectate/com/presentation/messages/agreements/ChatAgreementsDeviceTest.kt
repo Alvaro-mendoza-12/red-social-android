@@ -91,10 +91,32 @@ class ChatAgreementsDeviceTest {
         compose.runOnIdle { assertFalse(dismissed) }
     }
 
+    @Test fun restoringAnotherScreensDraftRequiresASeparateConfirmation() {
+        var recovered = false
+        val conflicted = state().copy(sourceId = "source", draft = "Texto sin guardar", recoveryConflict = true,
+            recoveryUnavailable = true, error = "El borrador cambió en otra pantalla.")
+        compose.setContent { RedSocialTheme { Content(conflicted, onRecover = { recovered = true }) } }
+        compose.onNodeWithText("Enviar propuesta").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Recuperar borrador guardado").performScrollTo().performClick()
+        compose.runOnIdle { assertFalse(recovered) }
+        compose.onNodeWithText("¿Volver al borrador guardado?").assertIsDisplayed()
+        compose.onNodeWithText("Recuperar estado guardado").performClick()
+        compose.runOnIdle { assertTrue(recovered) }
+    }
+    @Test fun theEditorDistinguishesAnInProgressSaveFromADurableDraft() {
+        val state = mutableStateOf(state().copy(sourceId = "source", draft = "Texto", savingDraft = true))
+        compose.setContent { RedSocialTheme { Content(state.value) } }
+        compose.onNodeWithText("Guardando borrador…").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { state.value = state.value.copy(savingDraft = false, draftSaved = true) }
+        compose.onNodeWithText("Borrador guardado en este dispositivo").performScrollTo().assertIsDisplayed()
+    }
+
     @Composable private fun Content(state: ChatAgreementsState, onRespond: (ChatAgreement, String) -> Unit = { _, _ -> },
-        onRetry: () -> Unit = {}, onKeepDraft: () -> Unit = {}, onSource: () -> Unit = {}, onDismissSource: () -> Unit = {}, onDismissEditor: () -> Unit = {}) {
+        onRetry: () -> Unit = {}, onKeepDraft: () -> Unit = {}, onSource: () -> Unit = {}, onDismissSource: () -> Unit = {}, onDismissEditor: () -> Unit = {},
+        onRecover: () -> Unit = {}) {
         ChatAgreementsDialog(state, onClose = {}, onRefresh = {}, onDraft = {}, onSave = {}, onDismissEditor = onDismissEditor,
-            onRetry = onRetry, onKeepDraft = onKeepDraft, onRespond = onRespond, onEdit = {}, onSource = { onSource() }, onDismissSource = onDismissSource)
+            onRetry = onRetry, onKeepDraft = onKeepDraft, onRespond = onRespond, onEdit = {}, onSource = { onSource() }, onDismissSource = onDismissSource,
+            onRecoverSavedState = onRecover)
     }
     private fun screenshot(name: String) {
         compose.waitForIdle()

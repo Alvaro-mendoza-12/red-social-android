@@ -56,7 +56,8 @@ data class AgreementCommand(
 @Serializable internal data class AgreementCapability(val supported: Boolean = false, val schema: Int = 0)
 
 internal class AgreementApiException(val statusCode: Int, val code: String) : IOException("No se pudo completar la acción.") {
-    val definitive: Boolean get() = statusCode in 400..499 && statusCode !in setOf(408, 429)
+    // Access can change between commit and response hydration. A 403 does not prove no write occurred.
+    val definitive: Boolean get() = statusCode in setOf(400, 401, 404, 409, 422)
 }
 
 internal data class AgreementChange(val chatId: String, val accountChannel: String)

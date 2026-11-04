@@ -19,7 +19,8 @@ async function directAgreementContext(db, req, chatId, dependencies) {
   const rawIds = [...new Set([...(access.chat.participants || []), ...access.participantRows.map(row => row.user_id || row.profile_id)]
     .map(value => String(value || '').trim().toLowerCase()).filter(Boolean))]
   const users = (await db.query(`SELECT id::text,supabase_user_id::text,display_name,to_jsonb(fallback_users)->>'username' AS username FROM fallback_users
-    WHERE lower(id::text)=ANY($1::text[]) OR lower(COALESCE(supabase_user_id::text,''))=ANY($1::text[])`, [rawIds])).rows
+    WHERE lower(id::text)=ANY($1::text[]) OR lower(COALESCE(supabase_user_id::text,''))=ANY($1::text[])
+    FOR KEY SHARE`, [rawIds])).rows
   const participants = users.map(member => ({ id: String(member.supabase_user_id || member.id).toLowerCase(),
     name: String(member.display_name || member.username || 'Usuario').slice(0, 80) }))
   const actorId = identity.displayUserId

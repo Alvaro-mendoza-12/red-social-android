@@ -89,3 +89,9 @@ app-debug-androidTest.apk   1AF8F4F364BDFF88891A89601CBF25322E84A1BA4EA213EABEC8
 ```
 
 Los archivos de los tres módulos del servidor y sus dos ensayos tuvieron las mismas huellas en Windows y en la copia de QA en Ubuntu. Al terminar se detuvieron exclusivamente los dos contenedores de QA, tras comprobar sus nombres y etiquetas, y se cerró el túnel propio. Se conservaron sus archivos y evidencias. La API activa mantuvo `novvin-api:likes104-20261103_84ae4912` y respondió correctamente a `/health`. Este control de continuidad no activa el contrato nuevo en producción.
+
+## Continuación. Recuperación local antes de ampliar el módulo
+
+Se conservará un registro cifrado por cuenta y chat, excluido de las copias de Android, con el borrador y la operación exacta pendiente. La operación debe quedar confirmada en disco antes de iniciar su petición. Recuperarla no enviará ni aceptará nada automáticamente. El acuse de red retirará el registro pendiente únicamente después de confirmar su actualización local. Una revisión local impedirá que otra pantalla sobrescriba el borrador o elimine una operación posterior.
+
+El editor indicará cuándo está guardando y cuándo el borrador quedó guardado. Una escritura fallida conservará el contenido visible y ofrecerá reintentar. Si otra pantalla cambió el registro, se exigirá una acción expresa antes de recuperar ese estado. Se comprobarán reapertura del registro, aislamiento de cuentas, fallos de almacenamiento, pérdida de acuse y recuperación con el almacén de claves de Android. Las siguientes comprobaciones se registrarán separadas de las del primer prototipo.

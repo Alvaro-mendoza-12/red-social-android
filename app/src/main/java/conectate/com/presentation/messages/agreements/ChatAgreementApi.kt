@@ -70,6 +70,8 @@ internal class ChatAgreementApi internal constructor(
         if (allowMissing && response.status.value in setOf(404, 405)) return null
         if (!response.status.isSuccess()) {
             val code = runCatching { json.parseToJsonElement(body).jsonObject["error"]?.jsonPrimitive?.contentOrNull }.getOrNull().orEmpty()
+            if (code == "ACCOUNT_DELETED") conectate.com.data.localfallback.AccountDeletedEvents
+                .notifyAccountDeletedFromAuthorization(response.call.request.headers[HttpHeaders.Authorization])
             throw AgreementApiException(response.status.value, code)
         }
         return body
