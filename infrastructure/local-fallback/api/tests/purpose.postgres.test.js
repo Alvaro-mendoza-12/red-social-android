@@ -92,7 +92,11 @@ test('complete purpose flows use HTTP, existing permissions and real PostgreSQL'
     const proposal=await request(`/gaming/with/${ALIAS_B}`);assert.equal(proposal.games[0].id,'purpose-qa')
     const planId=randomUUID(),path=`/gaming/${planId}`
     const fields={gameId:'purpose-qa',objective:'Practicar una ronda',durationMinutes:45,startsAt:new Date(Date.now()+45*60000).toISOString()}
-    let data=await request(`/gaming/with/${ALIAS_B}/${planId}`,'qa-a',cmd('propose',0,fields))
+    const create=cmd('propose',0,fields)
+    let data=await request(`/gaming/with/${ALIAS_B}/${planId}`,'qa-a',create)
+    await request(`/gaming/with/${ALIAS_B}/${planId}`,'qa-a',create)
+    const notice=(await pool.query("SELECT recipient_id,target_type,extra_data FROM fallback_notifications WHERE type='gaming_plan' AND target_id=$1",[planId])).rows
+    assert.equal(notice.length,1);assert.equal(notice[0].recipient_id,ALIAS_B);assert.equal(notice[0].target_type,'gaming_plan');assert.equal(notice[0].extra_data.plan_id,planId)
     assert.equal(data.plan.status,'pending')
     assert.equal((await request('/gaming','qa-b')).plans[0].id,planId)
     await request(path,'qa-c',null,404)
@@ -104,6 +108,7 @@ test('complete purpose flows use HTTP, existing permissions and real PostgreSQL'
     await request(path+'/actions','qa-b',cmd('replan',5,fields),403)
     data=await request(path+'/actions','qa-a',cmd('replan',5,{...fields,startsAt:new Date(Date.now()+2*3600000).toISOString()}))
     assert.equal(data.plan.planRevision,2);assert.deepEqual(data.plan.accepted,{})
+    assert.equal((await pool.query("SELECT count(*)::int AS total FROM fallback_notifications WHERE type='gaming_plan' AND target_id=$1",[planId])).rows[0].total,2)
     data=await request(path+'/actions','qa-b',cmd('decline',6));assert.equal(data.plan.status,'cancelled')
     await request(path+'/actions','qa-a',cmd('feedback',7,{outcome:'played'}),409)
     await pool.query("UPDATE experimental_purpose_objects SET state=jsonb_set(state,'{startsAt}',to_jsonb((NOW()-INTERVAL '1 hour')::text)) WHERE kind='gaming' AND object_key=$1",[planId])
