@@ -2,7 +2,7 @@
 
 Trabajo del 4 de noviembre de 2026, exclusivamente en `codex/experiencias-con-proposito`. Continúa la segunda prioridad del [plan 105](105-experiencias-con-proposito.md). La entrega estable conserva su estado en la [revisión 104](../oficial/104-camara-y-reacciones-android.md). La revisión integral sigue abierta.
 
-**Estado vigente:** la recuperación local de la fuente `46ee09b5b711` tiene las comprobaciones del último apartado. La nueva validación PostgreSQL/HTTPS espera a que vuelva el servidor, apagado por un corte eléctrico. Los resultados anteriores de este documento conservan sus fuentes y no sustituyen esa comprobación pendiente.
+**Estado vigente:** la continuación de [archivo e historial 109](109-archivo-de-acuerdos.md) contiene el trabajo posterior. La recuperación local de `46ee09b5b711` conserva aquí sus resultados. Su ensayo HTTP/PostgreSQL pendiente se ejecutó después en una base aislada de Windows, sin depender de Ubuntu. La disponibilidad de producción y la repetición en Ubuntu siguen sin verificar tras el corte eléctrico. Los resultados anteriores conservan sus fuentes.
 
 ## Alcance del primer recorrido
 
@@ -146,4 +146,4 @@ El archivo local `agreements108-qa-46ee09b5b711.tar` contiene siete fuentes y en
 
 Para reanudar, se copia a un directorio nuevo bajo `/home/alvaro/novvin-candidates/agreements108/46ee09b5b711`, se extrae allí y se ejecuta `bash run-isolated-qa.sh`. El ejecutor verifica las fuentes y crea su propia red interna y base temporal `novvin_agreements_test`, sin puertos públicos ni montajes de producción. Reutiliza únicamente las dependencias de la imagen histórica. Comprueba nombres y etiquetas y detiene su base al terminar; conserva contenedor, red y logs para inspección. Una instalación anterior con esos nombres exige revisarla antes de repetir.
 
-El ensayo pendiente incorpora rollback de la limpieza, cascada de recibos y la carrera entre una propuesta y el borrado de un participante. No se ha ejecutado mientras Ubuntu permanece apagado. El nuevo recorrido Android por HTTPS requiere además preparar el servidor de QA y un certificado de prueba vigente. Siguen pendientes la entrada completa desde un chat autenticado, la entrega real de eventos entre clientes, archivo y retención, la ampliación a grupos y web y la evaluación de producto. La revisión móvil integral continúa abierta.
+Al preparar ese paquete quedaron pendientes el rollback de la limpieza, la cascada de recibos y la carrera entre una propuesta y el borrado de un participante. Su ejecución local posterior, el nuevo recorrido HTTPS y el archivo se documentan en [109](109-archivo-de-acuerdos.md). La repetición en Ubuntu, la entrada completa desde un chat autenticado, la entrega real de eventos entre clientes, la ampliación a grupos y web y la evaluación de producto continúan pendientes. La revisión móvil integral sigue abierta.
