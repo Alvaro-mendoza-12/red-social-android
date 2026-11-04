@@ -101,14 +101,14 @@ class ChatAgreementsHttpDeviceTest {
             compose.onNodeWithText("Archivar en el chat").performScrollTo().performClick()
             compose.onNodeWithText("Archivar acuerdo").performClick()
             compose.waitUntil(15_000) { !vm.state.value.busy && !vm.state.value.loading && vm.state.value.agreements.none { it.id == first.id } }
-            compose.onNodeWithText("Archivo").performScrollTo().performClick()
+            scrollTo("Archivo").performClick()
             compose.waitUntil(15_000) { !vm.state.value.loading && vm.state.value.agreements.any { it.id == first.id && it.archived } }
             val archived = vm.state.value.agreements.single { it.id == first.id }
             assertEquals(changed.text, archived.text); assertEquals(changed.participants, archived.participants)
             compose.onNodeWithText("Restaurar en Activos").performScrollTo().performClick()
             compose.onNodeWithText("Restaurar acuerdo").performClick()
             compose.waitUntil(15_000) { !vm.state.value.busy && !vm.state.value.loading && vm.state.value.agreements.none { it.id == first.id } }
-            compose.onNodeWithText("Activos").performScrollTo().performClick()
+            scrollTo("Activos").performClick()
             compose.waitUntil(15_000) { !vm.state.value.loading && vm.state.value.agreements.any { it.id == first.id && !it.archived } }
             compose.onNodeWithText("Cancelar acuerdo").performScrollTo().performClick()
             compose.onAllNodesWithText("Cancelar acuerdo").let { nodes -> nodes[nodes.fetchSemanticsNodes().lastIndex].performClick() }
@@ -119,5 +119,9 @@ class ChatAgreementsHttpDeviceTest {
             client.close()
             runBlocking(Dispatchers.IO) { journal.eraseAccount(alice) }
         }
+    }
+    private fun scrollTo(text: String): SemanticsNodeInteraction {
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text))
+        return compose.onNodeWithText(text).performScrollTo()
     }
 }

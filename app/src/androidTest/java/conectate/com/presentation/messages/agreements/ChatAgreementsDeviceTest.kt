@@ -24,7 +24,7 @@ class ChatAgreementsDeviceTest {
         var action: Pair<String, String>? = null
         compose.setContent { RedSocialTheme { Content(state(), onRespond = { agreement, value -> action = agreement.id to value }) } }
         compose.onNodeWithText("Tú").assertIsDisplayed()
-        compose.onNodeWithText("Luis").assertIsDisplayed()
+        compose.onNodeWithText("Luis").performScrollTo().assertIsDisplayed()
         compose.onAllNodesWithText("Por confirmar").assertCountEquals(2)
         screenshot("agreements107-light.png")
         compose.onNodeWithText("Confirmar").performScrollTo().performClick()
@@ -125,7 +125,7 @@ class ChatAgreementsDeviceTest {
             serverAvailable = false, error = "No se pudo conectar."), onRefresh = { refreshed = true }) } }
         compose.onNodeWithText("Propuesta").assertIsEnabled()
         compose.onNodeWithText("Enviar propuesta").performScrollTo().assertIsNotEnabled()
-        compose.onNodeWithText("Volver a conectar").performScrollTo().performClick()
+        scrollTo("Volver a conectar").performClick()
         compose.runOnIdle { assertTrue(refreshed) }
     }
     @Test fun archivingExplainsThatItAffectsBothPeopleAndDispatchesOnlyAfterConfirmation() {
@@ -164,9 +164,9 @@ class ChatAgreementsDeviceTest {
         var cursor: String? = null
         val state = mutableStateOf(state().copy(editorVisible = false, nextCursor = "older", previousCursor = "newer"))
         compose.setContent { RedSocialTheme { Content(state.value, onPage = { cursor = it }) } }
-        compose.onNodeWithText("Más antiguos").performScrollTo().performClick(); compose.runOnIdle { assertEquals("older", cursor) }
-        compose.onNodeWithText("Más recientes").performScrollTo().performClick(); compose.runOnIdle { assertEquals("newer", cursor); state.value = state.value.copy(loading = true) }
-        compose.onNodeWithText("Más antiguos").performScrollTo().assertIsNotEnabled()
+        scrollTo("Más antiguos").performClick(); compose.runOnIdle { assertEquals("older", cursor) }
+        scrollTo("Más recientes").performClick(); compose.runOnIdle { assertEquals("newer", cursor); state.value = state.value.copy(loading = true) }
+        scrollTo("Más antiguos").assertIsNotEnabled()
     }
     @Test fun largeTextCanReachArchiveAndContinueWithoutOpeningAFormInTheList() {
         var resumed = false
@@ -178,7 +178,7 @@ class ChatAgreementsDeviceTest {
             }
         }
         compose.onNodeWithText("Continuar borrador").performScrollTo().performClick(); compose.runOnIdle { assertTrue(resumed) }
-        compose.onNodeWithText("Archivar en el chat").performScrollTo().assertIsDisplayed()
+        scrollTo("Archivar en el chat").assertIsDisplayed()
         screenshot("agreements109-active-large.png")
     }
 
@@ -190,6 +190,11 @@ class ChatAgreementsDeviceTest {
             onRetry = onRetry, onKeepDraft = onKeepDraft, onRespond = onRespond, onEdit = {}, onSource = { onSource() }, onDismissSource = onDismissSource,
             onRecoverSavedState = onRecover, onSelectArchive = onSelectArchive, onPage = onPage,
             onResumeDraft = onResumeDraft, onParkDraft = onParkDraft, onMakeNewProposal = {})
+    }
+    private fun scrollTo(text: String): SemanticsNodeInteraction {
+        // A different lazy item may be disposed after scrolling away from it.
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(text))
+        return compose.onNodeWithText(text).performScrollTo()
     }
     private fun screenshot(name: String) {
         compose.waitForIdle()
