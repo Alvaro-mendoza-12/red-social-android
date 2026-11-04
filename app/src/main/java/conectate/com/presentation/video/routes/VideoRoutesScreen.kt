@@ -183,7 +183,7 @@ internal fun VideoRoutesContent(
                     )
                     if (route.completed) Text(route.topic, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "${route.items.size} videos de ${route.authorCount} " +
+                        "${route.items.size} ${if (route.items.size == 1) "video" else "videos"} de ${route.authorCount} " +
                             if (route.authorCount == 1) "creador" else "creadores",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
