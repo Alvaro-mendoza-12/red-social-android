@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-03T16:24:14.238078+00:00",
-  "baseCommit": "4ac5544adfd93f8a3525e09d698ace4c972bb428",
+  "generatedAtUtc": "2026-11-04T01:10:38.941467+00:00",
+  "baseCommit": "df77d84eb898d03d09771330aff53dd3ca40008e",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3721,
-    "code-read": 422,
-    "partial": 61
+    "pending": 3717,
+    "code-read": 428,
+    "partial": 62
   },
   "countsByPhase": {
     "android": {
-      "pending": 1569,
-      "code-read": 363,
-      "partial": 39
+      "pending": 1564,
+      "code-read": 370,
+      "partial": 40
     },
     "documentation": {
-      "pending": 558,
-      "code-read": 6,
+      "pending": 559,
+      "code-read": 5,
       "partial": 5
     },
     "server": {
@@ -4127,9 +4127,17 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/androidTest/java/conectate/com/performance/PublicMediaTransferDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "c5efe7e470d629b7881999db52631a564b473af4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/androidTest/java/conectate/com/performance/PublicVideoFrameTimingDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "f189732c8db0af06395193e0968d1ebb94089ffc",
+      "gitBlobId": "5a7ccc329b309d8f179d94b051910e3f0114c906",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -4138,7 +4146,9 @@
       "file": "app/src/androidTest/java/conectate/com/presentation/auth/GuestMediaDeviceTest.kt",
       "phase": "android",
       "gitBlobId": "97a9a54136055de2d052de1d9446895c4a336d39",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/calls/CallInvitationOverlayHandlingTest.kt",
@@ -4180,7 +4190,9 @@
       "file": "app/src/androidTest/java/conectate/com/presentation/components/MediaPlaybackLifecycleDeviceTest.kt",
       "phase": "android",
       "gitBlobId": "d0b23b79271c585d33077b41824b6e3a5d59420c",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/MessageEmojiLayoutTest.kt",
@@ -4373,6 +4385,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/androidTest/java/conectate/com/presentation/messages/ShareBatchJournalDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "a5f5bef425460e250c4f63c642514ca04ecaad21",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/androidTest/java/conectate/com/presentation/messages/StickerDeliveryUiTest.kt",
       "phase": "android",
       "gitBlobId": "3ee3809461cc2fe77437abda71c67aa03da29b3c",
@@ -4472,7 +4492,9 @@
       "file": "app/src/androidTest/java/conectate/com/presentation/social/MediaStreamingDiagnosticsTest.kt",
       "phase": "android",
       "gitBlobId": "ea5b61e16d1b7f69b3440416f7312674d3c8fd58",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/social/MomentAuthorHeaderTest.kt",
@@ -4540,7 +4562,9 @@
       "file": "app/src/androidTest/java/conectate/com/presentation/video/VideoEntryPositionTest.kt",
       "phase": "android",
       "gitBlobId": "61807dfd1197222b12d479632e084e22b152d52f",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/videos/VideoUploadDraftStoreTest.kt",
@@ -12183,7 +12207,7 @@
     {
       "file": "app/src/main/java/conectate/com/util/MediaPlaybackDataSources.kt",
       "phase": "android",
-      "gitBlobId": "80862f6c9223818b9baec1df8989939379a7500f",
+      "gitBlobId": "dfdf0716f6343d97033d378fae1b4a9f18f466ca",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -15223,6 +15247,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/messages/PortableFileUriShadow.java",
+      "phase": "android",
+      "gitBlobId": "de0a59dc230cdaf82eca1c9a92ecfad554fd4a5a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/messages/QuestionCloudMotionTest.kt",
       "phase": "android",
       "gitBlobId": "c5412e9daabb4286ed478c6a32cd1294dda1740e",
@@ -15255,7 +15287,7 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/messages/ShareBatchJournalTest.kt",
       "phase": "android",
-      "gitBlobId": "c61e3e4b35beb65c4137c6d9248621181b585b0c",
+      "gitBlobId": "90f48d198d7e61a7082d8eb0b676bbad1cb8e23f",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -16211,8 +16243,10 @@
     {
       "file": "app/src/test/java/conectate/com/util/MediaPlaybackDataSourcesTest.kt",
       "phase": "android",
-      "gitBlobId": "3e0446a3c7e8a3aa8278e65ffd736bb939804be4",
-      "reviewStatus": "pending"
+      "gitBlobId": "b79a6b32d67d7efe157da115b7b6ec6891886d6e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/util/MentionNotificationPreviewTest.kt",
@@ -18883,7 +18917,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "8807ab900789927925f8ff86aff123934a1609fa",
+      "gitBlobId": "661189461872dc67e23e13aed4294b1dc6cb63ef",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18899,7 +18933,7 @@
     {
       "file": "docs/oficial/103-rendimiento-social-y-videos.md",
       "phase": "documentation",
-      "gitBlobId": "e1a222c4f9e7dfe1b0cac049b452da48c0e203ae",
+      "gitBlobId": "7d60f78ea0787206fbe3215d42db277615ec60ac",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -19435,10 +19469,8 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "353c71ece1b6f11b640d8b45c8e5bc226f8ab3ca",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "9dbbd11673aa0765d4cfac256431b46bd400316b",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/VALIDACION_ANDROID_E729365.json",

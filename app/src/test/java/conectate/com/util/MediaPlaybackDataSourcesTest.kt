@@ -7,11 +7,11 @@ import org.junit.Test
 
 class MediaPlaybackDataSourcesTest {
     @Test
-    fun `timeouts leave enough room for mobile startup and range seeks`() {
-        assertTrue(MediaPlaybackDataSources.CONNECT_TIMEOUT_MS >= 10_000)
+    fun `a stalled route has a short budget while slow reads keep their allowance`() {
+        assertTrue(MediaPlaybackDataSources.CONNECT_TIMEOUT_MS in 3_000..5_000)
         assertTrue(
             MediaPlaybackDataSources.READ_TIMEOUT_MS >=
-                MediaPlaybackDataSources.CONNECT_TIMEOUT_MS,
+                30_000,
         )
     }
 

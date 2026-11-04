@@ -20,7 +20,10 @@ import java.util.concurrent.TimeUnit
  */
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 object MediaPlaybackDataSources {
-    const val CONNECT_TIMEOUT_MS = 15_000
+    // Bound each TCP route attempt. A black-holed CDN address must not consume
+    // fifteen seconds before OkHttp tries the next address. This is separate
+    // from the read budget, which still allows slow transfers and range seeks.
+    const val CONNECT_TIMEOUT_MS = 5_000
     const val READ_TIMEOUT_MS = 30_000
     const val NETWORK_STACK = "okhttp-http2"
 

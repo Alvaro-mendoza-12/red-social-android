@@ -145,11 +145,20 @@ class PublicVideoFrameTimingDeviceTest {
                         prepare()
                     }
             }
-            assertTrue("Public clip never rendered", completed.await(25, TimeUnit.SECONDS))
+            val rendered = completed.await(25, TimeUnit.SECONDS)
+            val sample = JSONObject().put("firstByteMs", firstByte.get()).put("firstFrameMs", firstFrame.get())
+                .put("networkBytesObserved", bytes.get()).put("r2", receivedR2.get()).put("deviceTier", profile.tier.name)
+            instrumentation.runOnMainSync {
+                sample.put("playbackState", player?.playbackState)
+                    .put("bufferedMs", player?.totalBufferedDuration)
+                    .put("errorCode", failure.get()?.errorCode ?: 0)
+            }
+            // Retain numeric evidence on failure too; never print the source or credentials.
+            instrumentation.sendStatus(0, Bundle().apply { putString("stream", "\nPUBLIC_FRAME_SAMPLE $sample\n") })
+            assertTrue("Public clip never rendered", rendered)
             assertNull("Public video failed: ${failure.get()?.errorCodeName}", failure.get())
             assertTrue("Expected network bytes and a decoded frame", firstByte.get() >= 0 && firstFrame.get() >= 0)
-            return JSONObject().put("firstByteMs", firstByte.get()).put("firstFrameMs", firstFrame.get())
-                .put("networkBytesObserved", bytes.get()).put("r2", receivedR2.get()).put("deviceTier", profile.tier.name)
+            return sample
         } finally {
             instrumentation.runOnMainSync { player?.release(); surface?.release(); texture?.release() }
         }
