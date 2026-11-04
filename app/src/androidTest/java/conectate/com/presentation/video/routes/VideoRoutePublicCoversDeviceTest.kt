@@ -70,7 +70,7 @@ class VideoRoutePublicCoversDeviceTest {
             compose.waitUntil(20_000) {
                 route.items.all { item -> completed.any { url -> url.endsWith(item.thumbnailPath) } }
             }
-            assertEquals(route.items.size, completed.size)
+            assertEquals(route.items.map { it.thumbnailPath }.distinct().size, completed.size)
             saveScreenshot("routes106-public-light.png")
             compose.runOnIdle { dark.value = true }
             saveScreenshot("routes106-public-dark.png")

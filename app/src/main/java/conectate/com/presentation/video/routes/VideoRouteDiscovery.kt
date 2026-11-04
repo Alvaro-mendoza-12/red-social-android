@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
@@ -63,7 +64,12 @@ internal fun VideoRouteDiscovery(
         Icon(Icons.Default.AutoAwesome, null, tint = routeAccent(), modifier = Modifier.size(20.dp))
     }
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = if (maxWidth >= 640.dp) 4 else 2
+        val minimumTile = 148.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val columns = when {
+            maxWidth >= minimumTile * 4 + 36.dp -> 4
+            maxWidth >= minimumTile * 2 + 12.dp -> 2
+            else -> 1
+        }
         val tileWidth = (maxWidth - 12.dp * (columns - 1)) / columns
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             routeTopics.forEach { topic ->

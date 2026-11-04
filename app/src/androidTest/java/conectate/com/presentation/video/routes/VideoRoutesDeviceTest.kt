@@ -105,6 +105,7 @@ class VideoRoutesDeviceTest {
                 }
             }
         }
+        saveScreenshot("routes106-narrow-top.png")
         compose.onNodeWithText("Terminar ruta").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("Opciones de la ruta").performClick()
         compose.onNodeWithText("Borrar ruta guardada").performClick()
@@ -151,6 +152,31 @@ class VideoRoutesDeviceTest {
         saveScreenshot("routes106-discovery.png")
         compose.onNodeWithText("Preparar ruta").performClick()
         compose.runOnIdle { assertEquals(1, searches) }
+    }
+
+    @Test fun narrowDiscoveryWithLargeTextCanChooseATopicAndPrepareFiveVideos() {
+        val state = mutableStateOf(VideoRoutesState(accountId = "alice", loading = false))
+        var prepared = false
+        compose.setContent {
+            val density = LocalDensity.current.density
+            CompositionLocalProvider(LocalDensity provides Density(density, fontScale = 1.6f)) {
+                RedSocialTheme {
+                    RouteTestContent(state.value, modifier = Modifier.requiredWidth(280.dp),
+                        onQuery = { state.value = state.value.copy(query = it) },
+                        onSize = { state.value = state.value.copy(requestedCount = it) },
+                        onPrepare = { prepared = true })
+                }
+            }
+        }
+        compose.onNodeWithText("Música").performScrollTo().performClick()
+        saveScreenshot("routes106-narrow-discovery.png")
+        compose.onNodeWithText("5 videos").performScrollTo().performClick()
+        compose.onNodeWithText("Preparar ruta").assertIsDisplayed().performClick()
+        compose.runOnIdle {
+            assertTrue(prepared)
+            assertEquals("Música", state.value.query)
+            assertEquals(5, state.value.requestedCount)
+        }
     }
 
     @Test fun conclusionAppearsOnRequestAndClosesOnlyAfterADurableAcknowledgement() {

@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,9 +45,12 @@ internal fun VideoRouteCollection(
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             RouteTrailArtwork(route.items.map(VideoRouteItem::opened), Modifier.fillMaxWidth().height(32.dp), onColor = routeAccent())
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${route.openedCount} de ${route.items.size} abiertos", style = MaterialTheme.typography.labelMedium)
-                Text("${route.usefulCount} útiles para ti", style = MaterialTheme.typography.labelMedium, color = routeAccent())
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                if (maxWidth < 300.dp || LocalDensity.current.fontScale > 1.3f) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    VideoRouteMetrics(route)
+                } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    VideoRouteMetrics(route)
+                }
             }
             val next = route.items.firstOrNull { !it.opened }
             if (!route.completed && next != null) Button(
@@ -66,7 +70,8 @@ internal fun VideoRouteCollection(
     )
     Text("Tu selección", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val columns = if (maxWidth >= 600.dp) 2 else 1
+        val minimumCard = 300.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)
+        val columns = if (maxWidth >= minimumCard * 2 + 12.dp) 2 else 1
         val cardWidth = (maxWidth - 12.dp * (columns - 1)) / columns
         FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             route.items.forEachIndexed { index, item ->
@@ -84,13 +89,12 @@ internal fun VideoRouteCollection(
                 conclusion.ifBlank { "Quédate con una idea para después." }, maxLines = 3, overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(if (unsavedConclusion) "Cambios sin guardar" else "Solo para ti", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = onEditConclusion, enabled = enabled) {
-                    Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(if (conclusion.isBlank()) "Escribir" else "Editar")
-                }
+            // Keep the complete action on its own line when large type needs the width.
+            Text(if (unsavedConclusion) "Cambios sin guardar" else "Solo para ti", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TextButton(onClick = onEditConclusion, enabled = enabled, modifier = Modifier.align(Alignment.End)) {
+                Icon(Icons.Default.Edit, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (conclusion.isBlank()) "Escribir" else "Editar")
             }
         }
     }
@@ -98,6 +102,12 @@ internal fun VideoRouteCollection(
         onClick = { onCompleted(!route.completed) }, enabled = enabled,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
     ) { Text(if (route.completed) "Reabrir ruta" else "Terminar ruta") }
+}
+
+@Composable
+private fun VideoRouteMetrics(route: VideoRoute) {
+    Text("${route.openedCount} de ${route.items.size} abiertos", style = MaterialTheme.typography.labelMedium)
+    Text("${route.usefulCount} ${if (route.usefulCount == 1) "útil" else "útiles"} para ti", style = MaterialTheme.typography.labelMedium, color = routeAccent())
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -111,35 +121,52 @@ private fun VideoRouteEntryCard(
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier, shape = RoundedCornerShape(24.dp), tonalElevation = 2.dp) {
-        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Box(Modifier.width(78.dp).height(120.dp)) {
-                VideoRoutePoster(item, Modifier.fillMaxSize())
-                Surface(Modifier.align(Alignment.TopStart).padding(5.dp), shape = CircleShape, color = RouteInk, contentColor = Color.White) {
-                    Text("${index + 1}", Modifier.padding(horizontal = 7.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
-                }
-                if (item.durationSeconds > 0) Surface(
-                    Modifier.align(Alignment.BottomEnd).padding(5.dp), shape = RoundedCornerShape(6.dp), color = RouteInk, contentColor = Color.White,
-                ) {
-                    Text("${item.durationSeconds / 60}:${(item.durationSeconds % 60).toString().padStart(2, '0')}", Modifier.padding(4.dp, 2.dp), style = MaterialTheme.typography.labelSmall)
-                }
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(item.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                Text(item.authorName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    TextButton(
-                        onClick = { onOpen(item.videoId) }, enabled = enabled, contentPadding = PaddingValues(horizontal = 2.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = routeAccent()),
-                    ) {
-                        Text(if (item.opened) "Volver a abrir" else "Abrir video")
+        BoxWithConstraints(Modifier.fillMaxWidth().padding(12.dp)) {
+            val actionsBelow = maxWidth < 300.dp || LocalDensity.current.fontScale > 1.3f
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    VideoRouteNumberedPoster(item, index)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(item.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                        Text(item.authorName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!actionsBelow) VideoRouteEntryActions(item, enabled, onOpen, onUseful)
                     }
-                    FilterChip(
-                        selected = item.useful, onClick = { onUseful(item.videoId) }, enabled = enabled && item.opened,
-                        label = { Text("Me sirvió") },
-                        leadingIcon = if (item.useful) { { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) } } else null,
-                    )
                 }
+                if (actionsBelow) VideoRouteEntryActions(item, enabled, onOpen, onUseful)
             }
         }
+    }
+}
+
+@Composable
+private fun VideoRouteNumberedPoster(item: VideoRouteItem, index: Int) {
+    Box(Modifier.width(78.dp).height(120.dp)) {
+        VideoRoutePoster(item, Modifier.fillMaxSize())
+        Surface(Modifier.align(Alignment.TopStart).padding(5.dp), shape = CircleShape, color = RouteInk, contentColor = Color.White) {
+            Text("${index + 1}", Modifier.padding(horizontal = 7.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
+        }
+        if (item.durationSeconds > 0) Surface(
+            Modifier.align(Alignment.BottomEnd).padding(5.dp), shape = RoundedCornerShape(6.dp), color = RouteInk, contentColor = Color.White,
+        ) {
+            Text("${item.durationSeconds / 60}:${(item.durationSeconds % 60).toString().padStart(2, '0')}", Modifier.padding(4.dp, 2.dp), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VideoRouteEntryActions(item: VideoRouteItem, enabled: Boolean, onOpen: (String) -> Unit, onUseful: (String) -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        TextButton(
+            onClick = { onOpen(item.videoId) }, enabled = enabled, contentPadding = PaddingValues(horizontal = 2.dp),
+            colors = ButtonDefaults.textButtonColors(contentColor = routeAccent()),
+        ) {
+            Text(if (item.opened) "Volver a abrir" else "Abrir video")
+        }
+        FilterChip(
+            selected = item.useful, onClick = { onUseful(item.videoId) }, enabled = enabled && item.opened,
+            label = { Text("Me sirvió") },
+            leadingIcon = if (item.useful) { { Icon(Icons.Default.Check, null, Modifier.size(16.dp)) } } else null,
+        )
     }
 }
