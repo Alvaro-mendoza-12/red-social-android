@@ -78,6 +78,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.automirrored.filled.Forward
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import conectate.com.presentation.messages.agreements.ChatAgreementsViewModel
+import conectate.com.presentation.messages.agreements.ChatAgreementsDialog
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -94,17 +96,27 @@ fun ChatScreen(
     val markersViewModel: ConversationMarkersViewModel = hiltViewModel()
     val markerFeedback by markersViewModel.feedback.collectAsStateWithLifecycle()
     val workspaceState by workspaceViewModel.state.collectAsStateWithLifecycle()
+    val agreementsViewModel: ChatAgreementsViewModel = hiltViewModel()
+    val agreementsState by agreementsViewModel.state.collectAsStateWithLifecycle()
     var showWorkspace by rememberSaveable { mutableStateOf(false) }
     var workspaceKind by rememberSaveable { mutableStateOf(ChatWorkspaceKind.TASK) }
     var workspaceSource by remember { mutableStateOf<Message?>(null) }
     val workspaceChat = (chatState as? ChatUiState.Success)?.chat
-    LaunchedEffect(workspaceChat?.id) {
+    LaunchedEffect(workspaceChat?.id, workspaceChat?.is_group) {
+        agreementsViewModel.bind(workspaceChat?.id, direct = workspaceChat?.is_group == false)
         workspaceChat?.let {
             workspaceViewModel.bind(it)
             markersViewModel.bind("chat", it.id)
         }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, agreementsViewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && agreementsViewModel.state.value.open) agreementsViewModel.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val openCollectionInvitation = rememberCollectionInvitationOpener(navController)
 
     DisposableEffect(lifecycleOwner) {
@@ -452,6 +464,17 @@ fun ChatScreen(
         selectedForwardUsers = emptySet()
     }
 
+    if (agreementsState.open && agreementsState.accountId.equals(currentUserId, ignoreCase = true) && agreementsState.chatId == workspaceChat?.id) {
+        ChatAgreementsDialog(
+            state = agreementsState, onClose = agreementsViewModel::close, onRefresh = agreementsViewModel::refresh,
+            onDraft = agreementsViewModel::changeDraft, onSave = agreementsViewModel::saveDraft,
+            onDismissEditor = agreementsViewModel::dismissEditor, onRetry = agreementsViewModel::retry,
+            onKeepDraft = agreementsViewModel::keepDraftAgainstLatestRevision,
+            onRespond = agreementsViewModel::respond, onEdit = agreementsViewModel::edit,
+            onSource = agreementsViewModel::showSource, onDismissSource = agreementsViewModel::dismissSource,
+        )
+    }
+
     if (selectedMessage != null) {
         ModalBottomSheet(onDismissRequest = { viewModel.dismissMessageActions() }) {
             Column(modifier = Modifier.padding(16.dp)
@@ -459,6 +482,14 @@ fun ChatScreen(
                 .then(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()))) {
                 MessageMarkerActions(selectedMessage, markersViewModel, viewModel::dismissMessageActions)
                 selectedMessage?.takeIf { canSaveMessageInWorkspace(it, currentUserId) }?.let { source ->
+                    if (agreementsState.supported && agreementsState.accountId.equals(currentUserId, true)) TextButton(onClick = {
+                        agreementsViewModel.propose(source.id)
+                        viewModel.dismissMessageActions()
+                    }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Handshake, null)
+                        Spacer(Modifier.width(12.dp))
+                        Text("Proponer acuerdo")
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = {
                             workspaceKind = ChatWorkspaceKind.TASK
@@ -1049,6 +1080,10 @@ fun ChatScreen(
                             Icon(Icons.Default.MoreVert, "Opciones")
                         }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                if (agreementsState.supported && agreementsState.accountId.equals(currentUserId, true)) DropdownMenuItem(
+                                    text = { Text("Acuerdos") }, leadingIcon = { Icon(Icons.Default.Handshake, null) },
+                                    onClick = { showMenu = false; agreementsViewModel.open() },
+                                )
                                 DropdownMenuItem(
                                     text = { Text("Mi espacio: pendientes, contexto y borradores") },
                                     leadingIcon = { Icon(Icons.Default.Bookmarks, contentDescription = null) },

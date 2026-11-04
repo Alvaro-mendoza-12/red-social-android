@@ -62,6 +62,9 @@ const scanReadySql = readyStorageSql()
 const { cleanUsername, usernameOwnedByAnother, usernameProblem } = require('./username-policy')
 const { ensureDirectMessageRequestPolicy, introPolicyError, publishAutomaticFriendRequest, registerDirectMessageRequestRoutes } = require('./direct-message-request-policy')
 const { ensureMessageMarkerTables, registerMessageMarkerRoutes } = require('./message-markers-routes')
+const { ensureChatAgreementTables } = require('./chat-agreements-store')
+const { registerChatAgreementRoutes } = require('./chat-agreements-routes')
+const experimentalAgreementsEnabled = process.env.NOVVIN_EXPERIMENTAL_AGREEMENTS === 'true'
 const { ensureRaffleTables } = require('./raffles/service')
 const { registerRaffleRoutes } = require('./raffles/routes')
 const { ensureVideoWatchLaterTables, registerVideoWatchLaterRoutes } = require('./video-watch-later-routes')
@@ -6953,6 +6956,7 @@ async function ensureLocalDataTables(pool) {
   await ensureCreatorPayoutTables(pool)
   await ensurePlayMatchTables(pool)
   await ensureMessageMarkerTables(pool)
+  if (experimentalAgreementsEnabled) await ensureChatAgreementTables(pool)
   await ensureRaffleTables(pool)
   await require('./community-questions').ensureCommunityQuestionTables(pool)
   await require('./social-promotions').ensureSocialPromotionTables(pool)
@@ -7076,6 +7080,11 @@ function registerDataRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
     loadCollectionRoomAccess, lookupMessage: lookupMarkerMessage, lookupMessages: lookupMarkerMessages, memberUserId,
     rowMatchesAny, boolOf, importedMessageTableExists: (table) => tableExists(pool, table),
+  })
+  registerChatAgreementRoutes(app, {
+    pool, authRequired, getCurrentUser, userIdentity, privateChatAccessContext,
+    lookupMessage: lookupMarkerMessage, lookupMessages: lookupMarkerMessages,
+    enabled: experimentalAgreementsEnabled, publish: publishRealtimeEvent,
   })
   registerVideoWatchLaterRoutes(app, {
     pool, authRequired, getCurrentUser, userIdentity, videoRowsByIds,
