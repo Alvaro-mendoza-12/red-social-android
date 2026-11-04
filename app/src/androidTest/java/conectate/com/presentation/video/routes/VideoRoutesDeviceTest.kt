@@ -57,17 +57,24 @@ class VideoRoutesDeviceTest {
     }
 
     @Test fun playbackUsesTheSelectedIdAndUsefulnessWaitsForAnOpening() {
-        var opened: String? = null
+        val opened = mutableListOf<String>()
+        val state = mutableStateOf(VideoRoutesState(accountId = "alice", route = route, composerVisible = false, loading = false))
         compose.setContent {
             RedSocialTheme {
-                RouteTestContent(state = VideoRoutesState(accountId = "alice", route = route, composerVisible = false, loading = false),
-                    onOpen = { opened = it })
+                RouteTestContent(state = state.value,
+                    onOpen = { opened.add(it); state.value = state.value.copy(busy = true) })
             }
         }
         saveScreenshot("routes106-route.png")
         compose.onNodeWithText("Me sirvió").performScrollTo().assertIsNotEnabled()
         compose.onNodeWithText("Abrir video").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals("Video-A", opened) }
+        compose.onNodeWithContentDescription("Abrir video Acordes para empezar").assertIsNotEnabled()
+        compose.runOnIdle {
+            assertEquals(listOf("Video-A"), opened)
+            state.value = state.value.copy(busy = false)
+        }
+        compose.onNodeWithContentDescription("Abrir video Acordes para empezar").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(listOf("Video-A", "Video-A"), opened) }
         compose.onNodeWithText("Encontramos 1 de los 3 que pediste. Puedes recorrer esta selección o probar otro tema.").performScrollTo().assertIsDisplayed()
     }
 

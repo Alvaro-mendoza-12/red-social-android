@@ -72,10 +72,12 @@ class VideoRoutePublicCoversDeviceTest {
             }
             assertEquals(route.items.map { it.thumbnailPath }.distinct().size, completed.size)
             saveScreenshot("routes106-public-light.png")
+            saveDisplayScreenshot("routes106-public-light-display.png")
             compose.runOnIdle { dark.value = true }
             compose.mainClock.advanceTimeBy(300)
             compose.waitForIdle()
             saveScreenshot("routes106-public-dark.png")
+            saveDisplayScreenshot("routes106-public-dark-display.png")
         } finally {
             if (contentInstalled) {
                 compose.runOnIdle { visible.value = false }
@@ -93,6 +95,20 @@ class VideoRoutePublicCoversDeviceTest {
         val path = File(checkNotNull(context.getExternalFilesDir(null)), name)
         path.outputStream().use {
             check(compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
+        }
+    }
+
+    private fun saveDisplayScreenshot(name: String) {
+        compose.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.waitForIdleSync()
+        instrumentation.uiAutomation.waitForIdle(100, 2_000)
+        val bitmap = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+        try {
+            val path = File(checkNotNull(instrumentation.targetContext.getExternalFilesDir(null)), name)
+            path.outputStream().use { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)) }
+        } finally {
+            bitmap.recycle()
         }
     }
 }

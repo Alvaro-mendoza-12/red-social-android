@@ -1,6 +1,7 @@
 package conectate.com.presentation.video.routes
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,8 +11,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -125,7 +130,7 @@ private fun VideoRouteEntryCard(
             val actionsBelow = maxWidth < 300.dp || LocalDensity.current.fontScale > 1.3f
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    VideoRouteNumberedPoster(item, index)
+                    VideoRouteNumberedPoster(item, index, enabled, onOpen)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(item.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         Text(item.authorName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -139,8 +144,10 @@ private fun VideoRouteEntryCard(
 }
 
 @Composable
-private fun VideoRouteNumberedPoster(item: VideoRouteItem, index: Int) {
-    Box(Modifier.width(78.dp).height(120.dp)) {
+private fun VideoRouteNumberedPoster(item: VideoRouteItem, index: Int, enabled: Boolean, onOpen: (String) -> Unit) {
+    Box(Modifier.width(78.dp).height(120.dp).clip(RoundedCornerShape(18.dp))
+        .clickable(enabled = enabled, role = Role.Button, onClickLabel = "Abrir video") { onOpen(item.videoId) }
+        .semantics { contentDescription = "Abrir video ${item.title}" }) {
         VideoRoutePoster(item, Modifier.fillMaxSize())
         Surface(Modifier.align(Alignment.TopStart).padding(5.dp), shape = CircleShape, color = RouteInk, contentColor = Color.White) {
             Text("${index + 1}", Modifier.padding(horizontal = 7.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall)
