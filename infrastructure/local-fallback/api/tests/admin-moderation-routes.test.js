@@ -41,6 +41,7 @@ function hardDeletePool({
   storageRow,
   restoredAuth = false,
   experimentalAgreements = false,
+  experimentalPurposes = false,
 } = {}) {
   const statements = []
   let released = false
@@ -84,6 +85,10 @@ function hardDeletePool({
         return { rows: [{ affected: 0 }], rowCount: 1 }
       }
       if (sql.includes("SELECT to_regclass('auth.users')")) return { rows: [{ oid: restoredAuth ? 'auth.users' : null }] }
+      if (sql.includes("to_regclass('public.experimental_purpose_objects')")) return { rows: [{
+        objects: experimentalPurposes ? 'experimental_purpose_objects' : null,
+        operations: experimentalPurposes ? 'experimental_purpose_operations' : null,
+      }] }
       if (sql.includes("to_regclass('public.experimental_chat_agreements')")) return { rows: [{
         agreements: experimentalAgreements ? 'experimental_chat_agreements' : null,
         operations: experimentalAgreements ? 'experimental_chat_agreement_operations' : null,
@@ -408,6 +413,7 @@ async function testFakeAccountHardDelete() {
     const fixture = hardDeletePool({
       restoredAuth: true,
       experimentalAgreements: true,
+      experimentalPurposes: true,
       storageRow: { id: 'object-1', bucket_id: 'avatars', name: objectName, local_path: objectPath },
     })
     const result = await executeAdminHardDelete({
@@ -430,6 +436,9 @@ async function testFakeAccountHardDelete() {
     const accountPurge = fixture.statements.findIndex(sql => sql.startsWith('DELETE FROM fallback_users'))
     assert.strictEqual(agreementPurge >= 0 && agreementPurge < accountPurge, true)
     assert.strictEqual(fixture.statements.some(sql => sql.startsWith('DELETE FROM experimental_chat_agreement_operations')), true)
+    const purposePurge = fixture.statements.findIndex(sql => sql.startsWith('DELETE FROM experimental_purpose_objects'))
+    assert.strictEqual(purposePurge >= 0 && purposePurge < accountPurge, true)
+    assert.strictEqual(fixture.statements.some(sql => sql.startsWith('DELETE FROM experimental_purpose_operations')), true)
 
     const protectedFixture = hardDeletePool({ isTestAccount: false })
     await assert.rejects(
