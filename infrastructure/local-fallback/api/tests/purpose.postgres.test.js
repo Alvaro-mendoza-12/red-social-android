@@ -109,7 +109,7 @@ test('complete purpose flows use HTTP, existing permissions and real PostgreSQL'
     await pool.query("UPDATE experimental_purpose_objects SET state=jsonb_set(state,'{startsAt}',to_jsonb((NOW()-INTERVAL '1 hour')::text)) WHERE kind='gaming' AND object_key=$1",[planId])
     data=await request(path+'/actions','qa-a',cmd('feedback',7,{outcome:'played'}));assert.equal(data.plan.myOutcome,'played')
     data=await request(path,'qa-b');assert.equal(data.plan.myOutcome,null);assert.equal(Object.hasOwn(data.plan,'outcomes'),false)
-    await pool.query("UPDATE fallback_gaming_connection_requests SET status='DECLINED' WHERE requester_user_id=$1 AND recipient_user_id=$2",[A,B])
+    await pool.query("UPDATE fallback_gaming_connection_requests SET status='REJECTED' WHERE requester_user_id=$1 AND recipient_user_id=$2",[A,B])
     assert.equal((await request('/gaming','qa-b')).plans.length,0)
     await request(path,'qa-b',null,403)
   })
