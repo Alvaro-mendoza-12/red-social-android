@@ -49,6 +49,7 @@ function testRegistrationUsesAuthenticatedDependenciesAndGatedFlags() {
     authRequired: () => {},
     getCurrentUser: async () => ({ id: 'user' }),
     userIdentity: () => ({ localUserId: 'user' }),
+    hydrateItems: async ({ items }) => items,
     createLoader: (receivedPool) => {
       assert.equal(receivedPool, pool)
       return async () => ({ snapshotId: 's', candidates: [] })
@@ -63,6 +64,7 @@ function testRegistrationUsesAuthenticatedDependenciesAndGatedFlags() {
   assert.equal(typeof calls[0].getCurrentUser, 'function')
   assert.equal(typeof calls[0].userIdentity, 'function')
   assert.equal(typeof calls[0].loadCandidates, 'function')
+  assert.equal(typeof calls[0].hydrateItems, 'function')
 }
 
 Promise.resolve()

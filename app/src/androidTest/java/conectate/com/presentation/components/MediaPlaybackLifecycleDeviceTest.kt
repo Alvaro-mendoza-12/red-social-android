@@ -19,6 +19,8 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
+import conectate.com.core.media.profileAvatarPreviewItem
+import conectate.com.core.media.useSingleProfilePlayback
 
 @RunWith(AndroidJUnit4::class)
 class MediaPlaybackLifecycleDeviceTest {
@@ -26,6 +28,53 @@ class MediaPlaybackLifecycleDeviceTest {
     private class Owner:LifecycleOwner {
         val registry=LifecycleRegistry(this)
         override val lifecycle:Lifecycle get()=registry
+    }
+    @Test fun aProfilePreviewEndsOnceAndDoesNotRestartAfterReturningFromTheBackground() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val context = instrumentation.targetContext
+        val file = File(context.cacheDir, "qa-avatar-once-${UUID.randomUUID()}.mp4").apply {
+            instrumentation.context.assets.open("video-cache-smoke.mp4").use { input -> outputStream().use(input::copyTo) }
+        }
+        lateinit var player: ExoPlayer
+        lateinit var owner: Owner
+        var endings = 0
+        val shown = mutableStateOf(true)
+        instrumentation.runOnMainSync {
+            owner = Owner().apply { registry.currentState = Lifecycle.State.RESUMED }
+            player = ExoPlayer.Builder(context).build().apply {
+                useSingleProfilePlayback(); volume = 0f
+                addListener(object : androidx.media3.common.Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) { if (state == androidx.media3.common.Player.STATE_ENDED) endings++ }
+                })
+                setMediaItem(profileAvatarPreviewItem(android.net.Uri.fromFile(file).toString(), 0, 300))
+                prepare(); playWhenReady = true
+            }
+        }
+        fun ended(): Boolean {
+            var value = false
+            instrumentation.runOnMainSync { value = player.playbackState == androidx.media3.common.Player.STATE_ENDED }
+            return value
+        }
+        try {
+            compose.setContent { if (shown.value) CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                PauseMediaPlayerOnBackground(player, resumeOnReturn = true)
+            } }
+            compose.waitUntil(10_000) { ended() }
+            compose.runOnIdle { owner.registry.currentState = Lifecycle.State.STARTED }
+            compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+            android.os.SystemClock.sleep(900)
+            compose.runOnIdle {
+                assertEquals(1, endings)
+                assertEquals(androidx.media3.common.Player.STATE_ENDED, player.playbackState)
+                assertFalse(player.isPlaying)
+                assertTrue(player.currentPosition in 250L..450L)
+            }
+        } finally {
+            compose.runOnIdle { shown.value = false }
+            compose.waitForIdle()
+            instrumentation.runOnMainSync { player.release(); owner.registry.currentState = Lifecycle.State.DESTROYED }
+            file.delete()
+        }
     }
     @Test fun avatarAutoplayWaitsForResumeAndRecoversWithoutOverridingAManualPause() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

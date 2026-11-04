@@ -43,13 +43,14 @@ function registerAuthoritativeRecommendationRoutes(
     authRequired,
     getCurrentUser,
     userIdentity,
+    hydrateItems,
     registerRoutes = defaultRegisterRoutes,
     algorithmFeatureFlags = defaultAlgorithmFeatureFlags,
     createLoader = createAuthoritativeRecommendationLoader,
   } = {},
 ) {
   if (!pool || typeof pool.query !== 'function') throw new TypeError('pool.query is required')
-  if (typeof registerRoutes !== 'function' || typeof createLoader !== 'function') {
+  if (typeof registerRoutes !== 'function' || typeof createLoader !== 'function' || typeof hydrateItems !== 'function') {
     throw new TypeError('recommendation route dependencies are required')
   }
   return registerRoutes(app, {
@@ -57,6 +58,7 @@ function registerAuthoritativeRecommendationRoutes(
     authRequired,
     getCurrentUser,
     userIdentity,
+    hydrateItems,
     loadCandidates: createLoader(pool),
     algorithmFeatureFlags: () => recommendationFeatureFlags(algorithmFeatureFlags),
   })

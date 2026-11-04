@@ -32,6 +32,7 @@ checked('spread-still-denies-duplicates-unsafe-and-explicitly-blocked', () => {
 async function routeCase() {
   let handler;
   registerAlgorithmRecommendationRoutes({ get: (_route, _auth, fn) => { handler = fn; } }, {
+    hydrateItems: async ({ items }) => items,
     pool: {}, authRequired: () => {}, getCurrentUser: async () => ({ id: 'owner' }),
     userIdentity: user => ({ localUserId: user.id }),
     algorithmFeatureFlags: () => ({ core: true, explanations: true }),
