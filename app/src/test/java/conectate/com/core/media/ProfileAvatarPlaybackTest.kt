@@ -1,5 +1,6 @@
 package conectate.com.core.media
 
+import android.app.Application
 import conectate.com.presentation.navigation.Screen
 import org.junit.Assert.*
 import org.junit.Test
@@ -8,7 +9,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(application = Application::class, sdk = [34])
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 class ProfileAvatarPlaybackTest {
     @Test fun aTrimmedPreviewHasRealPlaybackBoundariesInsteadOfAPollingSeekLoop() {
