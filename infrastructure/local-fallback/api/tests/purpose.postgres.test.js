@@ -33,12 +33,14 @@ async function fixture(connectionString) {
   await pool.query("INSERT INTO fallback_gaming_connection_requests(requester_user_id,recipient_user_id,status,idempotency_key) VALUES($1,$2,'ACCEPTED','qa-purpose')",[A,B])
   const app=express();app.use(express.json({limit:'32kb'}))
   const authRequired=(req,res,next)=>{const actor=({ 'Bearer qa-a':A,'Bearer qa-b':B,'Bearer qa-c':C })[req.headers.authorization];if(!actor)return res.status(401).json({error:'UNAUTHORIZED'});req.auth={sub:actor};next()}
-  registerDataRoutes(app,{pool,authRequired,appealAuthRequired:authRequired})
+  const events=[],dispatches=[]
+  registerDataRoutes(app,{pool,authRequired,appealAuthRequired:authRequired,
+    purposePublish:async(channel,payload)=>{events.push({channel,payload});return true},purposeDispatchInvitation:notification=>dispatches.push(notification)})
   app.use((error,_req,res,_next)=>{console.error('Purpose QA error',{code:error.code,message:error.message,stack:error.stack});res.status(500).json({error:'QA_FAILURE'})})
-  return {pool,app}
+  return {pool,app,events,dispatches}
 }
 test('complete purpose flows use HTTP, existing permissions and real PostgreSQL', {skip:!process.env.PURPOSE_TEST_DATABASE_URL || process.env.PURPOSE_QA_SERVE==='true'},async t=>{
-  const {pool,app}=await fixture(process.env.PURPOSE_TEST_DATABASE_URL)
+  const {pool,app,events,dispatches}=await fixture(process.env.PURPOSE_TEST_DATABASE_URL)
   const server=await new Promise(resolve=>{const value=app.listen(0,'127.0.0.1',()=>resolve(value))})
   t.after(async()=>{await new Promise(resolve=>server.close(resolve));await pool.end()})
   const origin=`http://127.0.0.1:${server.address().port}`
@@ -97,6 +99,8 @@ test('complete purpose flows use HTTP, existing permissions and real PostgreSQL'
     await request(`/gaming/with/${ALIAS_B}/${planId}`,'qa-a',create)
     const notice=(await pool.query("SELECT recipient_id,target_type,extra_data FROM fallback_notifications WHERE type='gaming_plan' AND target_id=$1",[planId])).rows
     assert.equal(notice.length,1);assert.equal(notice[0].recipient_id,ALIAS_B);assert.equal(notice[0].target_type,'gaming_plan');assert.equal(notice[0].extra_data.plan_id,planId)
+    assert.equal(dispatches.filter(row=>row.target_id===planId).length,1)
+    assert.ok(events.some(row=>row.channel===`user:${ALIAS_B}` && row.payload.objectId===planId))
     assert.equal(data.plan.status,'pending')
     assert.equal((await request('/gaming','qa-b')).plans[0].id,planId)
     await request(path,'qa-c',null,404)
