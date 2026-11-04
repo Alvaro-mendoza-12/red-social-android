@@ -141,7 +141,7 @@ La revisión del plan mantuvo el tema visual existente y centró la diferencia e
 
 El prototipo Android está implementado en la rama experimental. Se accede desde Videos, botón de creación y biblioteca, opción «Rutas con propósito». La búsqueda conserva hasta ochenta candidatos y selecciona tres o cinco videos públicos, con variedad de autores cuando existe. El registro local cifrado contiene una ruta por cuenta. La conclusión se guarda por acción explícita y el regreso avisa de cambios sin guardar. Borrar la ruta exige confirmación.
 
-Mensajería, Social, comunidades y gaming conservan las prioridades y dependencias descritas. Su implementación y la adaptación web siguen pendientes. Las comprobaciones de este prototipo se registran al final del documento con sus identidades de código.
+El [primer recorrido experimental de Acuerdos en mensajes](107-acuerdos-con-origen.md) continúa la segunda prioridad en chats privados entre dos personas. Su documento identifica implementación, comprobaciones y límites pendientes. Social, comunidades, gaming y la adaptación web conservan las prioridades y dependencias descritas. Las comprobaciones de Rutas se registran al final de este documento con sus identidades de código.
 
 ## Razones de elección que deben comprobarse
 
@@ -155,7 +155,7 @@ Mensajería, Social, comunidades y gaming conservan las prioridades y dependenci
 
 La experiencia transversal propuesta conserva la intención, las referencias y el resultado cuando la persona decide pasar a otro apartado. Su valor dependerá de que cada recorrido resuelva su propia tarea y de que el cambio de contexto resulte comprensible. Los futuros traspasos entre módulos exigirán una acción explícita del usuario y los permisos del destino.
 
-El prototipo de Videos permite comprobar funcionamiento. La preferencia frente a productos consolidados requiere evaluación con personas y un catálogo suficiente. Las otras cuatro ventajas continúan como propuestas con sus condiciones técnicas y de validación.
+Los prototipos de Videos y Acuerdos permiten comprobar sus recorridos implementados. La preferencia frente a productos consolidados requiere evaluación con personas y un catálogo suficiente. Las ventajas de Social, comunidades y gaming continúan como propuestas con sus condiciones técnicas y de validación.
 
 ## Plan de aceptación de Rutas
 
@@ -262,4 +262,4 @@ La lectura inicial de `ChatWorkspaceModels`, `ChatWorkspaceStore`, `ChatWorkspac
 - Se conservará el contexto de cuenta y conversación durante las peticiones. Una respuesta antigua no modificará otro chat ni otra sesión. Los avisos de tiempo real transportarán referencias y provocarán una lectura autorizada del estado vigente.
 - El almacenamiento cifrado de `ChatWorkspaceStore` protege material local. No demuestra por sí solo cifrado de extremo a extremo de los acuerdos compartidos. El recorrido actual de envío de texto llama a la API Ubuntu con su contenido. No se añadirá procesamiento por IA ni se copiará una conversación completa al nuevo módulo por defecto.
 
-El contrato, el almacenamiento compartido, los controles Android y su contraparte web siguen pendientes de implementación y ensayo. Esta preparación no habilita botones nuevos ni despliega rutas experimentales sobre el servidor de producción.
+Esa preparación dio paso al [primer prototipo Android y API de Acuerdos](107-acuerdos-con-origen.md). Su alcance inicial es un chat privado de dos personas y conserva pendientes propios antes de promoverlo. Los grupos, las comunidades y la contraparte web continúan pendientes. La implementación experimental y sus ensayos aislados no equivalen a activar el contrato en el servidor de producción.

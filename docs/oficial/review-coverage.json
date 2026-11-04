@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-04T06:59:27.354430+00:00",
-  "baseCommit": "b5923575e3a18a5cf43b0a38bebf99126a275f28",
+  "generatedAtUtc": "2026-11-04T08:04:54.757153+00:00",
+  "baseCommit": "74fd855db3ecbea57c205ae1f7c699c01e90abb0",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,23 +11,23 @@
   },
   "counts": {
     "pending": 3670,
-    "code-read": 476,
+    "code-read": 490,
     "partial": 88
   },
   "countsByPhase": {
     "android": {
       "pending": 1533,
       "partial": 52,
-      "code-read": 410
+      "code-read": 418
     },
     "documentation": {
       "pending": 557,
-      "code-read": 6,
+      "code-read": 7,
       "partial": 8
     },
     "server": {
       "pending": 862,
-      "code-read": 36,
+      "code-read": 41,
       "partial": 12
     },
     "tooling-and-other": {
@@ -4425,6 +4425,22 @@
       "phase": "android",
       "gitBlobId": "1556aa0a7b2ac2cbe3d5f438302a58011bb454aa",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/messages/agreements/ChatAgreementsDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "3159b028ffb7e2401485536e26c658892a3295ae",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/messages/agreements/ChatAgreementsHttpDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "2bea28078aa878959ee53be10026dd4e3b085ad4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/navigation/IntentRouterResolutionTest.kt",
@@ -9619,7 +9635,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "8c65fd93a1595db74be5524f38cae02ce5623664",
+      "gitBlobId": "9b708f3f3db12edb82af9f53548f7c288c5237e4",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -10399,6 +10415,38 @@
       "phase": "android",
       "gitBlobId": "6d333728c65530304cb31e045cf6a8dcebb080f1",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/messages/agreements/ChatAgreement.kt",
+      "phase": "android",
+      "gitBlobId": "051e760c39d9b7209cd834f0c901d42c537261db",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/messages/agreements/ChatAgreementApi.kt",
+      "phase": "android",
+      "gitBlobId": "ded3c6c32482fa168450a82c4132be541b685650",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/messages/agreements/ChatAgreementsDialog.kt",
+      "phase": "android",
+      "gitBlobId": "623464ef9798a52f454778ae08ae8943b97c116c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/messages/agreements/ChatAgreementsViewModel.kt",
+      "phase": "android",
+      "gitBlobId": "088be79875187e8eabfcc9c9e16e39e5d4385797",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/stickers/StickerButton.kt",
@@ -15563,6 +15611,22 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/messages/agreements/ChatAgreementTest.kt",
+      "phase": "android",
+      "gitBlobId": "48932bc046753e470d506ea1bd2251ba05a0160d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/messages/agreements/ChatAgreementsViewModelTest.kt",
+      "phase": "android",
+      "gitBlobId": "745f2d0d9121a3d7c1217e13b4793facba988b6a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/navigation/AuthenticationJourneyRestorationTest.kt",
       "phase": "android",
       "gitBlobId": "dd09870ab06e066d9b93fccbd58bdb1ffc3fbd71",
@@ -19055,9 +19119,17 @@
     {
       "file": "docs/experimental/105-experiencias-con-proposito.md",
       "phase": "documentation",
-      "gitBlobId": "bdf7be6926064d4609d70f933b26b4f52606ea75",
+      "gitBlobId": "87f95abd72ab5dfb6a773e1cab0917d5159bf1cb",
       "reviewStatus": "code-read",
       "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/experimental/107-acuerdos-con-origen.md",
+      "phase": "documentation",
+      "gitBlobId": "285b0b475c328ac43a318d4f4ae1b13350e51679",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20981,6 +21053,30 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/src/chat-agreements-domain.js",
+      "phase": "server",
+      "gitBlobId": "304453437e47b489c3378b5783744ddcc1435a0d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/chat-agreements-routes.js",
+      "phase": "server",
+      "gitBlobId": "7217ff834f4b383fbef84fec63ba405d85b1f4cf",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/chat-agreements-store.js",
+      "phase": "server",
+      "gitBlobId": "ecfec7eeaede9c66190dff1dc232f2ccb7611bb0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/src/client-auth-session.js",
       "phase": "server",
       "gitBlobId": "589a02f0346e506f5c7fce541934bc6d3c2882ed",
@@ -21077,7 +21173,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "4994d07993e72db349e51d97f7bb4af30d754d6b",
+      "gitBlobId": "06788bc9cc4a203caa517d00a641e4cdcefc141d",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -22065,6 +22161,22 @@
       "phase": "server",
       "gitBlobId": "8b1dfc825fe97f0420a4a7c66100bdc3dfb8c3a7",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/chat-agreements.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "6aeb32add574ce388d3cdc442dfbfaea0ffe0d87",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/chat-agreements.test.js",
+      "phase": "server",
+      "gitBlobId": "9851554296de6930eb5d2c7378bd02ba4056cc9f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/107-acuerdos-con-origen.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/chat-clear-ownership.test.js",

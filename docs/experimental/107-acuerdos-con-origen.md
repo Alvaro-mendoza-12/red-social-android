@@ -43,4 +43,49 @@ Se toman como referencias de organización los [ejemplos oficiales Compose, Repl
 - El resultado aparece confirmado después del acuse del servidor. Una pérdida de respuesta mantiene el identificador de operación para reintentar. El borrador permanece ante fallo.
 - Los eventos de tiempo real contienen referencias. El receptor vuelve a leer el estado bajo autorización. La pantalla también permite actualizar y relee al volver a primer plano.
 
-Las pruebas se registrarán con sus fuentes, distinguiendo dominio, HTTP, PostgreSQL, interfaz y ejecución efectiva. El cifrado local del espacio privado no se presenta como prueba del cifrado de extremo a extremo de este nuevo contrato compartido.
+Las pruebas se registran con sus fuentes, distinguiendo dominio, HTTP, PostgreSQL, interfaz y ejecución efectiva. El cifrado local del espacio privado no se presenta como prueba del cifrado de extremo a extremo de este nuevo contrato compartido.
+
+## Implementación y primeras comprobaciones
+
+El primer prototipo está en `4c84b2fcaa9c`. La API usa tres módulos separados para dominio, persistencia y HTTP. El chat Android tiene entradas desde su menú y desde un mensaje de texto visible. Se ocultan cuando el servidor no ofrece la capacidad. El origen se abre como fragmento autorizado consultado de nuevo. La edición conserva su revisión inicial y compara el texto actual con el borrador antes de aplicar cambios sobre una versión posterior.
+
+La tanda de lógica aprobó **45 pruebas JVM en cinco clases**, catorce de Acuerdos y 31 de Rutas. El primer paquete instrumentado detectó un uso de `last()` que esta versión de la colección de nodos de Compose no proporciona. `3cf8682e` corrigió únicamente ese selector y la separación del servidor de pruebas respecto de su ensayo automático. La aplicación principal no cambió para resolver ese error del ensayo.
+
+Los paquetes correspondientes aprobaron **40 pruebas de interfaz y navegación en 54,759 segundos** y una prueba conectada de **9,627 segundos**. Esta última recorrió la pantalla, el modelo Android, el cliente HTTPS y PostgreSQL para proponer, confirmar desde dos identidades, editar, volver a confirmar el estado pendiente, consultar el origen y cancelar. Utiliza cuentas ficticias y adaptadores de acceso del entorno de prueba. No es una prueba del inicio de sesión real ni de todo el chat de producción.
+
+Se inspeccionaron las capturas clara y oscura. Se corrigieron después el contraste de los iconos de sistema de la ventana clara y la invalidación de una lectura de origen que terminase tras cerrar el módulo. Se añadió una regresión de esa lectura tardía. La ampliación de letra se comprobó también cambiando el ajuste real del sistema del emulador a 1,6 en una pantalla de 280 puntos, porque una densidad de composición exterior no representa necesariamente la de una ventana de diálogo.
+
+El servidor pasó **13 pruebas sin fallos ni omisiones**, incluidas las operaciones HTTP y su transacción con PostgreSQL 16.15. El ensayo confirmó un solo registro al repetir una creación, la reutilización de la misma operación tras perder el acuse, el rechazo de otro contenido con esa clave, una confirmación anterior que no acepta la nueva revisión, un conflicto entre dos escrituras simultáneas y la ocultación de un origen eliminado. La base de pruebas carece de la columna opcional `username`; el adaptador conserva la compatibilidad con el esquema base.
+
+## Entorno de prueba y límites actuales
+
+Se crearon dos contenedores de QA, una red interna y una base `novvin_agreements_test` con datos ficticios. La API de prueba usa HTTPS y un certificado específico. Su acceso desde Android pasa por un túnel local y la prueba confía únicamente en ese certificado. No se deshabilita la verificación de nombre ni se modifica la seguridad de red de la aplicación. La imagen de producción se reutiliza como runtime para las dependencias de QA. Sus servicios activos no se reemplazan.
+
+Los eventos de la prueba se capturan mediante un publicador ficticio. La pantalla está conectada al canal de usuario existente y tiene ensayos de filtrado por cuenta y conversación. La entrega de esos eventos entre dispositivos reales y la entrada completa desde un chat autenticado siguen pendientes. El contrato de la prueba no sustituye esas comprobaciones.
+
+El borrador y la operación de envío incierto permanecen en el modelo mientras siga vivo el proceso. Antes de promover este experimento falta conservarlos de forma segura tras muerte del proceso, integrar la retirada de sus datos en la eliminación de cuentas, definir archivo y retención al alcanzar el límite de 50 y validar su utilidad con personas. Los grupos, las comunidades, la adaptación web y los demás módulos del plan siguen pendientes. La activación en producción requiere la instrucción expresa del propietario.
+
+## Comprobaciones del ajuste final
+
+La fuente Android final de este bloque es `74fd855db3ec`. Ambos paquetes de depuración incorporan ese identificador y conservan la numeración **9.1.39-debug / 179**. El AAB firmado estable descrito en 104 corresponde a su código anterior y conserva su propia entrega. No se ha generado ni publicado una actualización de Google Play de este experimento.
+
+| Comprobación | Resultado sobre el ajuste final |
+| --- | --- |
+| Acuerdos y regresiones de Rutas | 46 pruebas JVM en cinco clases, cero fallos, errores u omisiones |
+| Interfaz y navegación Android 15 | 40 pruebas aprobadas en 54,136 segundos |
+| Pantalla, modelo, cliente HTTPS y PostgreSQL de QA | Un recorrido aprobado en 9,137 segundos |
+| Pantalla de 735 × 1920 píxeles a densidad 420 y fuente del sistema 1,6 | Una comprobación aprobada en 3,597 segundos |
+| Regresiones del servidor, incluido el dominio de Acuerdos | 33 pruebas aprobadas, sin omisiones |
+| PostgreSQL y HTTP, junto con el dominio de Acuerdos | 13 pruebas aprobadas, sin omisiones |
+| Lint K1 | Completado en 9 minutos y 45 segundos: cero errores, cero errores fatales y 321 avisos |
+
+Las dos selecciones del servidor comparten las doce pruebas del dominio. No se suman como si fueran casos diferentes. Sus logs y las capturas iniciales y finales se conservan por separado. La comprobación de fuente grande verificó el valor efectivo de `Configuration.fontScale` de Android. Se examinaron las capturas finales, incluido el contraste corregido de la barra clara y las acciones accesibles al desplazar con letra grande. El emulador recuperó su configuración anterior antes de apagarse. Lint mantuvo sus reglas y no señaló avisos en los archivos nuevos de Acuerdos; los 321 avisos del conjunto no se presentan como corregidos.
+
+Las huellas SHA-256 de los paquetes ensayados son las siguientes.
+
+```text
+app-debug.apk              6290FEC8D047529F9FD95D4C1C8FEF4CE83C29812F4AC261CD59D7836943B8AC
+app-debug-androidTest.apk   1AF8F4F364BDFF88891A89601CBF25322E84A1BA4EA213EABEC85F31648273E8
+```
+
+Los archivos de los tres módulos del servidor y sus dos ensayos tuvieron las mismas huellas en Windows y en la copia de QA en Ubuntu. Al terminar se detuvieron exclusivamente los dos contenedores de QA, tras comprobar sus nombres y etiquetas, y se cerró el túnel propio. Se conservaron sus archivos y evidencias. La API activa mantuvo `novvin-api:likes104-20261103_84ae4912` y respondió correctamente a `/health`. Este control de continuidad no activa el contrato nuevo en producción.
