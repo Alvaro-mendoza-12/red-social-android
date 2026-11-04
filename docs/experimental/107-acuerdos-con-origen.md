@@ -2,13 +2,15 @@
 
 Trabajo del 4 de noviembre de 2026, exclusivamente en `codex/experiencias-con-proposito`. Continúa la segunda prioridad del [plan 105](105-experiencias-con-proposito.md). La entrega estable conserva su estado en la [revisión 104](../oficial/104-camara-y-reacciones-android.md). La revisión integral sigue abierta.
 
+**Estado vigente:** la recuperación local de la fuente `46ee09b5b711` tiene las comprobaciones del último apartado. La nueva validación PostgreSQL/HTTPS espera a que vuelva el servidor, apagado por un corte eléctrico. Los resultados anteriores de este documento conservan sus fuentes y no sustituyen esa comprobación pendiente.
+
 ## Alcance del primer recorrido
 
-Dos personas de un chat privado pueden proponer un acuerdo desde un mensaje visible, consultar lo propuesto, confirmar, pedir cambios, retirar su confirmación y revisar el texto. La persona que propuso puede cancelar. Proponer conserva la autoría y deja las dos confirmaciones pendientes. Modificar el texto inicia otra revisión y reinicia ambas confirmaciones. La pantalla muestra quién respondió y permite volver al mensaje de origen cuando siga disponible.
+Dos personas de un chat privado pueden proponer un acuerdo desde un mensaje visible, consultar lo propuesto, confirmar, pedir cambios, retirar su confirmación y revisar el texto. La persona que propuso puede cancelar. Proponer conserva la autoría y deja las dos confirmaciones pendientes. Modificar el texto inicia otra revisión y reinicia ambas confirmaciones. La pantalla muestra quién respondió y permite consultar un fragmento de hasta 300 caracteres del mensaje de origen cuando siga disponible.
 
 El servidor determina los dos participantes a partir de la conversación y sus identidades canónicas. Exige acceso vigente, ausencia de bloqueos y una solicitud de mensajes ya aceptada. Los chats de grupo, comunidades, invitaciones adicionales, IA, notificaciones push nuevas y el cliente web quedan para ampliaciones posteriores. Esta selección permite comprobar el consentimiento y la concurrencia antes de extenderlos a más participantes.
 
-La API se activa explícitamente con `NOVVIN_EXPERIMENTAL_AGREEMENTS=true`. El valor predeterminado mantiene el experimento desactivado. El móvil consulta esa capacidad y oculta las entradas cuando el servidor no la ofrece. La implementación de esta rama no implica activar el experimento en el servidor de producción.
+La API se activa explícitamente con `NOVVIN_EXPERIMENTAL_AGREEMENTS=true`. El valor predeterminado mantiene el experimento desactivado. El móvil consulta esa capacidad. Una cuenta sin material local oculta las entradas cuando el servidor no la ofrece. Si ya hay un borrador o un envío sin confirmar, permite recuperarlo localmente y exige verificar la capacidad antes de escribir en el servidor. La implementación de esta rama no implica activar el experimento en el servidor de producción.
 
 ## Diseño antes de implementar
 
@@ -63,7 +65,7 @@ Se crearon dos contenedores de QA, una red interna y una base `novvin_agreements
 
 Los eventos de la prueba se capturan mediante un publicador ficticio. La pantalla está conectada al canal de usuario existente y tiene ensayos de filtrado por cuenta y conversación. La entrega de esos eventos entre dispositivos reales y la entrada completa desde un chat autenticado siguen pendientes. El contrato de la prueba no sustituye esas comprobaciones.
 
-El borrador y la operación de envío incierto permanecen en el modelo mientras siga vivo el proceso. Antes de promover este experimento falta conservarlos de forma segura tras muerte del proceso, integrar la retirada de sus datos en la eliminación de cuentas, definir archivo y retención al alcanzar el límite de 50 y validar su utilidad con personas. Los grupos, las comunidades, la adaptación web y los demás módulos del plan siguen pendientes. La activación en producción requiere la instrucción expresa del propietario.
+El primer prototipo conservaba el borrador y la operación de envío incierto en memoria. La continuación al final de este documento incorpora su recuperación cifrada y la limpieza al eliminar una cuenta, con comprobaciones propias. Antes de promover el experimento siguen pendientes la política de archivo y retención al alcanzar el límite de 50 y la evaluación con personas, además de los recorridos conectados que se indican en cada bloque. Los grupos, las comunidades, la adaptación web y los demás módulos del plan siguen pendientes. La activación en producción requiere la instrucción expresa del propietario.
 
 ## Comprobaciones del ajuste final
 
@@ -95,3 +97,53 @@ Los archivos de los tres módulos del servidor y sus dos ensayos tuvieron las mi
 Se conservará un registro cifrado por cuenta y chat, excluido de las copias de Android, con el borrador y la operación exacta pendiente. La operación debe quedar confirmada en disco antes de iniciar su petición. Recuperarla no enviará ni aceptará nada automáticamente. El acuse de red retirará el registro pendiente únicamente después de confirmar su actualización local. Una revisión local impedirá que otra pantalla sobrescriba el borrador o elimine una operación posterior.
 
 El editor indicará cuándo está guardando y cuándo el borrador quedó guardado. Una escritura fallida conservará el contenido visible y ofrecerá reintentar. Si otra pantalla cambió el registro, se exigirá una acción expresa antes de recuperar ese estado. Se comprobarán reapertura del registro, aislamiento de cuentas, fallos de almacenamiento, pérdida de acuse y recuperación con el almacén de claves de Android. Las siguientes comprobaciones se registrarán separadas de las del primer prototipo.
+
+### Implementación de la recuperación y preparación sin Ubuntu
+
+`b26604ba` incorpora el registro cifrado por cuenta y conversación. La fuente Android posterior de este bloque es `46ee09b5b711`. El registro guarda el texto elegido, su revisión y la operación exacta. Una revisión local y la guardia de autenticación impiden que otra pantalla o una sesión anterior sobrescriban ese material. Los registros vacíos conservan su revisión para evitar que una respuesta tardía resucite un borrador descartado. Un archivo ilegible conserva su contenido y comunica el fallo.
+
+El guardado al escribir agrupa cambios durante 150 milisegundos y diferencia «Guardando» de «Borrador guardado». Esa confirmación corresponde al acuse de almacenamiento. Las últimas pulsaciones todavía sin confirmar pueden perderse si el sistema termina el proceso durante ese intervalo. Volver desde el editor guarda antes de cerrarlo. Descartar es una acción separada con confirmación. Una caída de Ubuntu permite seguir trabajando en un borrador recuperado; volver a conectar no envía nada automáticamente.
+
+La operación se confirma en disco antes del POST. Si falta el acuse de red o falla la retirada local del pendiente, el reintento conserva su clave y contenido. Un 403 puede ocurrir después del commit del servidor, al comprobar nuevamente el acceso: se conserva la operación para conciliarla. Proponer desde otro mensaje mientras hay una operación pendiente abre su recuperación. Un origen no admitido produce una explicación visible.
+
+La eliminación autenticada de una cuenta captura su propietario y programa la limpieza con WorkManager. La tarea no necesita red y elimina únicamente su material local de Acuerdos, conservando una marca que impide su restauración tardía. Utiliza el [trabajo persistente de Android](https://developer.android.com/develop/background-work/background-tasks/persistent). El commit local se completa sin sustituir su dispatcher al protegerlo frente a la cancelación, siguiendo el contrato de [`withContext`](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-context.html). El registro no acredita cifrado de extremo a extremo del contenido compartido.
+
+La API incorpora la limpieza de los acuerdos y sus recibos en la transacción de borrado definitivo existente. Reconoce los alias canónicos y funciona también cuando el esquema experimental nunca se instaló. Las escrituras bloquean las filas de sus dos usuarios con `FOR KEY SHARE`, para que un borrado concurrente no deje aparecer un acuerdo después de eliminar al participante.
+
+El propietario informó un corte eléctrico y el apagado del servidor durante esta continuación. Las nuevas comprobaciones con PostgreSQL, el recorrido HTTPS y la disponibilidad actual de producción quedan pendientes de su regreso. Las pruebas anteriores de 107 corresponden a su fuente y momento. No se reinició ni desplegó la API de producción en este bloque.
+
+Las dos compilaciones intermedias aprobaron 69 y 73 pruebas JVM seleccionadas, respectivamente. Se conservan sus logs y XML por separado; sus cifras no sustituyen la comprobación final de `46ee09b5b711`. El ensayo preparado para emulador separa interfaz, almacén de claves, limpieza sin red y dos ejecuciones con cierre real del proceso entre ellas. El transporte de esas dos fases se simula para poder verificar la persistencia con Ubuntu apagado.
+
+### Comprobación local de `46ee09b5b711`
+
+Ambos APK de depuración incorporan esa identidad. La ejecución conjunta de pruebas y compilación terminó correctamente en cinco minutos y tres segundos. Conservan **9.1.39-debug / 179**. El AAB estable 179 mantiene su código anterior. Este bloque no genera una entrega firmada de producción.
+
+| Comprobación | Resultado |
+| --- | --- |
+| Lógica de Acuerdos, registro, Rutas y avisos de cuenta eliminada | 75 pruebas JVM en siete clases, cero fallos, errores u omisiones |
+| Interfaz y navegación | 44 pruebas aprobadas, 53,843 segundos |
+| Almacén de claves, aislamiento y limpieza mediante WorkManager con Wi-Fi y datos desactivados | Dos pruebas aprobadas, 0,719 segundos |
+| Preparación del envío pendiente antes del cierre de proceso | Una prueba aprobada, 0,366 segundos |
+| Recuperación en otro proceso y reintento explícito con la misma operación | Una prueba aprobada, 0,572 segundos |
+| Repetición de dos recorridos con 735 × 1920 píxeles, densidad 420 y escala de texto 1,6 | Dos comprobaciones aprobadas, 4,312 segundos |
+| Regresiones Node del módulo, limpieza, marcadores y política de mensajes | 36 pruebas aprobadas, sin omisiones |
+| Suite local de administración, incluido el borrado experimental | Aprobada; el publicador se sustituye en el ensayo para evitar eventos de identidades ficticias fuera de él |
+| Lint K1 | Completado en diez minutos y 43 segundos: cero errores, cero errores fatales y 326 avisos |
+| Nueva ejecución PostgreSQL y HTTPS | Pendiente: servidor apagado |
+
+El cierre explícito se realizó entre las dos fases de instrumentación: el proceso cambió de PID `2500` a `2561`. Se recuperó el registro cifrado y no se envió nada hasta solicitar el reintento. La prueba usa un transporte simulado, por lo que no se presenta como repetición del recorrido HTTPS/PostgreSQL. Las dos comprobaciones de letra grande repiten recorridos de la selección de interfaz y no se suman como casos distintos. Se abrieron y examinaron ambas capturas del editor. Los ajustes del emulador se restauraron antes de apagarlo.
+
+Lint conserva sus reglas. Cinco avisos nuevos son sugerencias `ApplySharedPref` y `UseKtx` en el registro y la limpieza local. Estas operaciones necesitan comprobar el resultado de [`SharedPreferences.Editor.commit()`](https://developer.android.com/reference/android/content/SharedPreferences.Editor#commit()) antes de confirmar el guardado o iniciar el POST. Se ejecutan en E/S. Sustituirlas por el guardado asíncrono recomendado de forma general eliminaría ese acuse. Los 321 avisos anteriores continúan sin resolverse y no se presentan como corregidos.
+
+```text
+app-debug.apk              2830D63C6FC090F41CDF6F336F9B8DB981479F354D4B59C89461A0879A854BD2
+app-debug-androidTest.apk   94B14A802C9FDEB5768A50BEF10BF1F44ED150D2422D5459537EFC372708122D
+```
+
+### Preparación para reanudar con Ubuntu encendido
+
+El archivo local `agreements108-qa-46ee09b5b711.tar` contiene siete fuentes y ensayos de Git, su manifiesto, las sumas de comprobación, instrucciones y un ejecutor de QA. Su SHA-256 es `F10B7B5954A9E938EAC851D2086401B723D51706A19C474C3DFEB0D94B3B2CB6`. Se verificaron las huellas y la sintaxis del ejecutor con Git Bash. No incluye archivos de entorno, claves SSH, claves TLS privadas ni credenciales de cuentas reales.
+
+Para reanudar, se copia a un directorio nuevo bajo `/home/alvaro/novvin-candidates/agreements108/46ee09b5b711`, se extrae allí y se ejecuta `bash run-isolated-qa.sh`. El ejecutor verifica las fuentes y crea su propia red interna y base temporal `novvin_agreements_test`, sin puertos públicos ni montajes de producción. Reutiliza únicamente las dependencias de la imagen histórica. Comprueba nombres y etiquetas y detiene su base al terminar; conserva contenedor, red y logs para inspección. Una instalación anterior con esos nombres exige revisarla antes de repetir.
+
+El ensayo pendiente incorpora rollback de la limpieza, cascada de recibos y la carrera entre una propuesta y el borrado de un participante. No se ha ejecutado mientras Ubuntu permanece apagado. El nuevo recorrido Android por HTTPS requiere además preparar el servidor de QA y un certificado de prueba vigente. Siguen pendientes la entrada completa desde un chat autenticado, la entrega real de eventos entre clientes, archivo y retención, la ampliación a grupos y web y la evaluación de producto. La revisión móvil integral continúa abierta.
