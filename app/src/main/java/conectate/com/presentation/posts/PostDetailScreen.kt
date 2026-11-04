@@ -283,11 +283,11 @@ fun PostDetailScreen(
                     item(key = "post_${state.post.id}") {
                         PostCard(
                             post = state.post,
-                            onLikeClick = { viewModel.toggleLike(postId) },
-                            onReactionSelect = { viewModel.setReaction(postId, it) },
+                            onLikeClick = { viewModel.toggleLike(state.post.id) },
+                            onReactionSelect = { viewModel.setReaction(state.post.id, it) },
                             onReactionSummaryClick = { reactionFilter = null; showReactions = true },
                             onCommentClick = { /* Already here */ },
-                            onShareClick = { viewModel.toggleShare(postId) },
+                            onShareClick = { viewModel.toggleShare(state.post.id) },
                             onUserClick = { userId ->
                                 navController.navigate(conectate.com.presentation.navigation.Screen.UserProfile.createRoute(userId))
                             },
