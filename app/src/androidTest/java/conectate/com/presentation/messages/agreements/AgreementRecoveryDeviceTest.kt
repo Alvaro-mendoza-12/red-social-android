@@ -74,7 +74,7 @@ class AgreementRecoveryDeviceTest {
         val lease = guard.captureAccountLease { owner }
         val persistence = AgreementRecoveryStore(::journal, guard::commitForLease)
         val model = withContext(Dispatchers.Main) {
-            ChatAgreementsViewModel({ lease }, MutableStateFlow(0), emptyFlow(), { true }, { _, _ -> emptyList() },
+            ChatAgreementsViewModel({ lease }, MutableStateFlow(0), emptyFlow(), { AgreementCapability(true, 1) }, { _, _, _, _, _ -> AgreementCatalog(emptyList()) },
                 { _, _, _, _ -> throw IOException("Simulated lost acknowledgement") }, { _, _, _ -> null }, persistence)
                 .also { models.put("recovery", it); it.bind(chat) }
         }
@@ -95,7 +95,7 @@ class AgreementRecoveryDeviceTest {
         val saved = checkNotNull(persistence.read(lease, chat)); val operation = checkNotNull(saved.pending)
         val calls = mutableListOf<AgreementCommand>(); val models = ViewModelStore()
         val model = withContext(Dispatchers.Main) {
-            ChatAgreementsViewModel({ lease }, MutableStateFlow(0), emptyFlow(), { true }, { _, _ -> emptyList() },
+            ChatAgreementsViewModel({ lease }, MutableStateFlow(0), emptyFlow(), { AgreementCapability(true, 1) }, { _, _, _, _, _ -> AgreementCatalog(emptyList()) },
                 { _, _, id, command ->
                     calls.add(command)
                     ChatAgreement(id, source, owner, "Proceso:$owner", 1, 1,

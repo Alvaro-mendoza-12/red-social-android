@@ -8,6 +8,7 @@ const express = require('express')
 const { ensureChatAgreementTables } = require('../src/chat-agreements-store')
 const { registerChatAgreementRoutes } = require('../src/chat-agreements-routes')
 const { purgeChatAgreementsForAccounts } = require('../src/chat-agreements-cleanup')
+const { createAgreement } = require('../src/chat-agreements-domain')
 
 const ALICE = '11111111-1111-4111-8111-111111111111', BOB = '22222222-2222-4222-8222-222222222222'
 const CHAT = '33333333-3333-4333-8333-333333333333', SOURCE = '44444444-4444-4444-8444-444444444444'
@@ -92,7 +93,7 @@ test('isolated PostgreSQL and HTTP enforce consent, concurrent versions and lost
     assert.equal((await pool.query('SELECT count(*)::int AS total FROM experimental_chat_agreements WHERE id=$1', [create.id])).rows[0].total, 1)
     await pool.query('UPDATE fallback_messages SET deleted_for_all=TRUE WHERE id=$1', [SOURCE])
     const listing = await request(BOB)
-    assert.equal(listing.body.agreements[0].sourceAvailable, false)
+    assert.equal(listing.body.agreements.find(row => row.id === create.id).sourceAvailable, false)
     assert.equal((await request(BOB, `/${create.id}/source`)).body.source, null)
     assert.equal((await request(ALICE, '', { ...create, id: crypto.randomUUID(), operationId: crypto.randomUUID() })).status, 404)
     await pool.query("UPDATE fallback_chats SET policy='blocked' WHERE id=$1", [CHAT])
@@ -141,11 +142,78 @@ test('isolated PostgreSQL and HTTP enforce consent, concurrent versions and lost
 
 module.exports = { fixture }
 
+test('archive pagination is stable at microsecond ties and active quotas serialize create/restore races',
+  { skip: !process.env.AGREEMENTS_TEST_DATABASE_URL || process.env.AGREEMENTS_QA_SERVE === 'true' }, async t => {
+    const { pool, app } = await fixture(process.env.AGREEMENTS_TEST_DATABASE_URL)
+    const chat = crypto.randomUUID(), foreignChat = crypto.randomUUID(), source = crypto.randomUUID()
+    const server = await new Promise(resolve => { const value = app.listen(0, '127.0.0.1', () => resolve(value)) })
+    t.after(async () => {
+      await new Promise(resolve => server.close(resolve))
+      try {
+        await pool.query('DELETE FROM experimental_chat_agreements WHERE chat_id=ANY($1::text[])', [[chat, foreignChat]])
+        await pool.query('DELETE FROM fallback_messages WHERE id=$1', [source])
+        await pool.query('DELETE FROM fallback_chats WHERE id=ANY($1::uuid[])', [[chat, foreignChat]])
+      } finally { await pool.end() }
+    })
+    await pool.query('INSERT INTO fallback_chats(id,participants) VALUES($1,$2)', [chat, [ALICE, BOB]])
+    await pool.query("INSERT INTO fallback_messages(id,chat_id,content) VALUES($1,$2,'Origen de paginación')", [source, chat])
+    const ids = Array.from({ length: 50 }, () => crypto.randomUUID()).sort().reverse()
+    const time = '2026-11-04T08:00:00.123456Z'
+    const make = id => createAgreement({ id, sourceMessageId: source, text: 'Acuerdo conservado' }, ALICE, [{ id: ALICE }, { id: BOB }], time)
+    for (const id of ids) await pool.query('INSERT INTO experimental_chat_agreements(id,chat_id,author_id,state,created_at) VALUES($1,$2,$3,$4::jsonb,$5::timestamptz)',
+      [id, chat, ALICE, JSON.stringify(make(id)), time])
+    const base = `http://127.0.0.1:${server.address().port}/v1/data/messages/chats/${chat}/agreements`
+    const request = async (suffix = '', body, actor = ALICE) => {
+      const res = await fetch(base + suffix, { method: body ? 'POST' : 'GET', headers: { Authorization: `Bearer ${actor}`, 'Content-Type': 'application/json' },
+        ...(body ? { body: JSON.stringify(body) } : {}) })
+      return { status: res.status, body: await res.json() }
+    }
+    const action = (id, name, version, actor = ALICE, operationId = crypto.randomUUID()) => request(`/${id}/actions`, { action: name, expectedVersion: version, operationId }, actor)
+    const first = (await request('?limit=25')).body
+    assert.deepEqual(first.agreements.map(row => row.id), ids.slice(0, 25))
+    assert.equal(first.previousCursor, null); assert.ok(first.nextCursor)
+    const second = (await request(`?limit=25&cursor=${first.nextCursor}`)).body
+    assert.deepEqual(second.agreements.map(row => row.id), ids.slice(25)); assert.equal(second.nextCursor, null)
+    const back = (await request(`?limit=25&cursor=${second.previousCursor}`)).body
+    assert.deepEqual(back.agreements, first.agreements)
+    assert.equal((await request(`?archived=true&cursor=${first.nextCursor}`)).status, 400)
+    const creation = { operationId: crypto.randomUUID(), id: crypto.randomUUID(), sourceMessageId: source, text: 'El siguiente' }
+    assert.equal((await request('', creation)).body.error, 'AGREEMENT_ROOM_LIMIT')
+    const archiveKey = crypto.randomUUID()
+    assert.equal((await action(ids[0], 'archive', 1, BOB, archiveKey)).body.agreement.archived, true)
+    assert.equal((await request('', creation)).status, 201, 'A rolled-back quota failure must not consume the operation key')
+    assert.equal((await action(ids[0], 'restore', 2)).body.error, 'AGREEMENT_ROOM_LIMIT')
+    await action(ids[1], 'archive', 1)
+    assert.equal((await action(ids[0], 'restore', 2)).body.agreement.archived, false)
+    const replay = (await action(ids[0], 'archive', 1, BOB, archiveKey)).body.agreement
+    assert.equal(replay.archived, false); assert.equal(replay.version, 3)
+    await action(ids[2], 'archive', 1)
+    const focused = (await request(`?limit=25&focus=${ids[2]}`)).body
+    assert.equal(focused.focus.id, ids[2]); assert.equal(focused.focus.archived, true)
+    assert.ok(focused.agreements.every(row => !row.archived))
+    const archived = (await request('?archived=true&limit=25')).body
+    assert.deepEqual(new Set(archived.agreements.map(row => row.id)), new Set([ids[1], ids[2]]))
+    const competing = await Promise.all([action(ids[1], 'restore', 2), action(ids[2], 'restore', 2, BOB)])
+    assert.deepEqual(competing.map(row => row.status).sort(), [200, 409])
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM experimental_chat_agreements WHERE chat_id=$1 AND archived=FALSE', [chat])).rows[0].n, 50)
+    const foreignId = crypto.randomUUID()
+    await pool.query('INSERT INTO experimental_chat_agreements(id,chat_id,author_id,state) VALUES($1,$2,$3,$4::jsonb)', [foreignId, foreignChat, ALICE, JSON.stringify(make(foreignId))])
+    const hidden = (await request(`?focus=${foreignId}`)).body
+    assert.equal(hidden.focus, null); assert.equal(hidden.focusMissing, true)
+    // An archive that removes every row beyond a cursor returns the newest page.
+    await pool.query('UPDATE experimental_chat_agreements SET archived=TRUE,state=jsonb_set(state,\'{archived}\',\'true\'::jsonb) WHERE chat_id=$1', [chat])
+    const reset = (await request(`?limit=25&cursor=${first.nextCursor}`)).body
+    assert.equal(reset.reset, true); assert.equal(reset.cursor, null); assert.deepEqual(reset.agreements, [])
+  })
+
 // The standalone fixture is only for the isolated QA container and its emulator tunnel.
 if (require.main === module && process.env.AGREEMENTS_QA_SERVE === 'true') {
   fixture(process.env.AGREEMENTS_TEST_DATABASE_URL).then(({ app }) => {
     const fs = require('node:fs')
-    require('node:https').createServer({ cert: fs.readFileSync('/qa/tls/cert.pem'), key: fs.readFileSync('/qa/tls/key.pem') }, app)
-      .listen(18107, '0.0.0.0', () => console.log('Isolated agreement fixture ready'))
+    const host = process.env.AGREEMENTS_QA_BIND || '127.0.0.1'
+    if (!['127.0.0.1', '0.0.0.0'].includes(host)) throw Error('Invalid isolated QA binding')
+    require('node:https').createServer({ cert: fs.readFileSync(process.env.AGREEMENTS_QA_CERT || '/qa/tls/cert.pem'),
+      key: fs.readFileSync(process.env.AGREEMENTS_QA_KEY || '/qa/tls/key.pem') }, app)
+      .listen(18107, host, () => console.log('Isolated agreement fixture ready'))
   }).catch(error => { console.error(error.message); process.exitCode = 1 })
 }

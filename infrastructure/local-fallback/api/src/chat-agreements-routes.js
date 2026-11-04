@@ -2,6 +2,7 @@
 
 const { agreementCommand, agreementId: id, agreementStatus, agreementFail: fail } = require('./chat-agreements-domain')
 const { writeAgreement } = require('./chat-agreements-store')
+const { agreementPageQuery, readAgreementPage } = require('./chat-agreements-pages')
 
 /** Access is intentionally stricter than the ability to preview a room or a marker. */
 async function directAgreementContext(db, req, chatId, dependencies) {
@@ -42,14 +43,14 @@ async function directAgreementContext(db, req, chatId, dependencies) {
 async function projectAgreement(db, state, context, sources = null) {
   if (!state.participants.every(member => context.participants.some(current => current.id === member.id))) throw fail('AGREEMENT_ACCESS_DENIED', 403)
   const source = sources ? sources.get(state.sourceMessageId) : await context.sourceVisible(db, state.sourceMessageId)
-  return { ...state, status: agreementStatus(state), sourceAvailable: Boolean(source),
+  return { ...state, archived: Boolean(state.archived), status: agreementStatus(state), sourceAvailable: Boolean(source),
     participants: state.participants.map(member => ({ ...member, name: context.participants.find(current => current.id === member.id)?.name || 'Usuario' })) }
 }
 
 function registerChatAgreementRoutes(app, dependencies) {
   const { pool, authRequired, enabled = false, publish = async () => {} } = dependencies
   app.get('/v1/data/messages/agreements/capabilities', authRequired, (_req, res) => {
-    res.set('Cache-Control', 'no-store').json({ supported: enabled, schema: 1 })
+    res.set('Cache-Control', 'no-store').json({ supported: enabled, schema: 1, ...(enabled ? { archive: true, pagination: true } : {}) })
   })
   if (!enabled) return
   const base = '/v1/data/messages/chats/:chatId/agreements'
@@ -67,12 +68,19 @@ function registerChatAgreementRoutes(app, dependencies) {
   }
   app.get(base, authRequired, handle(async (req, res) => {
     const chatId = target(req)
+    const query = agreementPageQuery(req.query, chatId)
     const context = await directAgreementContext(pool, req, chatId, dependencies)
-    const rows = (await pool.query('SELECT state FROM experimental_chat_agreements WHERE chat_id=$1 ORDER BY created_at DESC,id LIMIT 50', [chatId])).rows
-    const sources = await context.sourcesVisible(pool, [...new Set(rows.map(row => row.state.sourceMessageId))])
+    const page = await readAgreementPage(pool, chatId, query)
+    const ids = [...new Set([...page.states, ...(page.focus ? [page.focus] : [])].map(state => state.sourceMessageId))]
+    const sources = new Map()
+    for (let offset = 0; offset < ids.length; offset += 50) {
+      for (const [key, message] of await context.sourcesVisible(pool, ids.slice(offset, offset + 50))) sources.set(key, message)
+    }
     const agreements = []
-    for (const row of rows) agreements.push(await projectAgreement(pool, row.state, context, sources))
-    res.json({ agreements })
+    for (const state of page.states) agreements.push(await projectAgreement(pool, state, context, sources))
+    res.json({ agreements, focus: page.focus ? await projectAgreement(pool, page.focus, context, sources) : null,
+      focusMissing: page.focusMissing, cursor: page.cursor, nextCursor: page.nextCursor, previousCursor: page.previousCursor,
+      archived: page.archived, reset: page.reset })
   }))
   app.get(`${base}/:agreementId/source`, authRequired, handle(async (req, res) => {
     const chatId = target(req), agreementId = id(req.params.agreementId)

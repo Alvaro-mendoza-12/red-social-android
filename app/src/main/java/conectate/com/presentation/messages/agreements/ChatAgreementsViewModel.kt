@@ -30,14 +30,18 @@ data class ChatAgreementsState(
     val savingDraft: Boolean = false, val draftSaved: Boolean = false,
     val recoveryConflict: Boolean = false, val recoveryUnavailable: Boolean = false,
     val serverAvailable: Boolean = true,
+    val archivingSupported: Boolean = false, val showArchived: Boolean = false,
+    val cursor: String? = null, val nextCursor: String? = null, val previousCursor: String? = null,
+    val focusedAgreement: ChatAgreement? = null, val focusMissing: Boolean = false,
+    val editorVisible: Boolean = true, val pendingAction: String? = null, val notice: AgreementNotice? = null,
 )
 
 @HiltViewModel
 class ChatAgreementsViewModel internal constructor(
     private val capture: () -> AuthSessionLease,
     changes: Flow<*>, events: Flow<AgreementChange>,
-    private val capability: suspend (AuthSessionLease) -> Boolean,
-    private val load: suspend (AuthSessionLease, String) -> List<ChatAgreement>,
+    private val capability: suspend (AuthSessionLease) -> AgreementCapability,
+    private val load: suspend (AuthSessionLease, String, Boolean, String?, String?) -> AgreementCatalog,
     private val send: suspend (AuthSessionLease, String, String, AgreementCommand) -> ChatAgreement,
     private val source: suspend (AuthSessionLease, String, String) -> AgreementSource?,
     private val recovery: AgreementRecoveryPersistence,
@@ -46,9 +50,9 @@ class ChatAgreementsViewModel internal constructor(
         auth::captureAccountLease, auth.currentSession,
         realtime.events.mapNotNull { event ->
             if (event.event == "chat_agreement") event.payload["chatId"]?.jsonPrimitive?.contentOrNull?.let { AgreementChange(it, event.channel) } else null
-        }, api::supported, api::load, api::send, api::source, recovery,
+        }, api::capabilities, api::load, api::send, api::source, recovery,
     )
-    private val _state = MutableStateFlow(ChatAgreementsState(serverAvailable = false))
+    private val _state = MutableStateFlow(ChatAgreementsState(serverAvailable = false, editorVisible = false))
     val state = _state.asStateFlow()
     private var lease: AuthSessionLease? = null
     private var target: String? = null
@@ -63,6 +67,8 @@ class ChatAgreementsViewModel internal constructor(
     private var recoveryReady = false
     private var recoveryRecord: AgreementRecovery? = null
     private val recoveryMutex = Mutex()
+    // At most one bounded page for each filter; history is never accumulated in memory.
+    private val pages = mutableMapOf<Boolean, AgreementCatalog>()
 
     init {
         viewModelScope.launch { changes.collect { if (lease?.isCurrent() != true) bindTarget(target, force = true) } }
@@ -75,10 +81,10 @@ class ChatAgreementsViewModel internal constructor(
         val clean = chatId?.lowercase()?.takeIf { runCatching { UUID.fromString(it).toString() == it }.getOrDefault(false) }
         if (!force && target == clean && lease?.isCurrent() == true) return
         generation++; readingVersion++; draftVersion++; readJob?.cancel(); writeJob?.cancel(); draftJob?.cancel(); pending = null
-        recoveryReady = false; recoveryRecord = null; draftDirty = false
+        recoveryReady = false; recoveryRecord = null; draftDirty = false; pages.clear()
         target = clean; lease = capture()
         val current = checkNotNull(lease)
-        _state.value = ChatAgreementsState(accountId = current.accountId, chatId = clean, serverAvailable = false)
+        _state.value = ChatAgreementsState(accountId = current.accountId, chatId = clean, serverAvailable = false, editorVisible = false)
         if (clean == null || !current.isCurrent()) return
         val epoch = generation
         readJob = viewModelScope.launch {
@@ -90,16 +96,19 @@ class ChatAgreementsViewModel internal constructor(
             catch (_: Exception) { if (valid(epoch, current)) _state.value = _state.value.copy(
                 recoveryUnavailable = true, error = "No se pudo recuperar el borrador de este dispositivo. Reintenta antes de escribir.") }
             try {
-                val supported = runReadWithDeadline(10_000) { capability(current) }.getOrThrow()
-                if (valid(epoch, current)) _state.value = _state.value.copy(supported = supported || hasRecovery(), serverAvailable = supported,
-                    error = if (!supported && hasRecovery()) "Acuerdos no está disponible ahora. El borrador y los envíos pendientes siguen guardados." else _state.value.error)
+                val info = runReadWithDeadline(10_000) { capability(current) }.getOrThrow()
+                if (valid(epoch, current)) _state.value = _state.value.copy(supported = info.available || hasRecovery(), serverAvailable = info.available,
+                    archivingSupported = info.available && info.archive && info.pagination,
+                    error = if (!info.available && hasRecovery()) "Acuerdos no está disponible ahora. El borrador y los envíos pendientes siguen guardados." else _state.value.error)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { if (valid(epoch, current)) _state.value = _state.value.copy(supported = hasRecovery(), serverAvailable = false,
                 error = if (hasRecovery()) "No se pudo conectar. Puedes continuar el borrador y volver a conectar para enviarlo." else _state.value.error) }
         }
     }
-    fun open() { if (active() && _state.value.supported) { _state.value = _state.value.copy(open = true); refresh() } }
-    fun close() {
+    fun open() { if (active() && _state.value.supported) { _state.value = _state.value.copy(open = true, notice = null); refresh() } }
+    fun close() = leaveEditor(closeModule = true)
+    fun parkDraft() { if (!_state.value.busy) leaveEditor(closeModule = false) }
+    private fun leaveEditor(closeModule: Boolean) {
         readingVersion++; readJob?.cancel()
         _state.value = _state.value.copy(loading = false, source = null)
         val current = lease; val chat = target
@@ -112,13 +121,13 @@ class ChatAgreementsViewModel internal constructor(
                     persistRecovery(epoch, current, chat, draft, null)
                     if (valid(epoch, current)) {
                         draftDirty = false
-                        _state.value = _state.value.copy(open = false, busy = false, savingDraft = false,
+                        _state.value = _state.value.copy(open = !closeModule, editorVisible = false, busy = false, savingDraft = false,
                             draftSaved = draft != null, recoveryUnavailable = false, error = null)
                     }
                 } catch (cancelled: CancellationException) { throw cancelled }
                 catch (error: Exception) { if (valid(epoch, current)) storageFailure(error) }
             }
-        } else _state.value = _state.value.copy(open = false)
+        } else _state.value = _state.value.copy(open = !closeModule, editorVisible = false)
     }
     fun refresh() = refresh(keepError = false)
     fun recoverSavedState() {
@@ -128,31 +137,66 @@ class ChatAgreementsViewModel internal constructor(
         _state.value = _state.value.copy(recoveryConflict = false)
         refresh()
     }
-    private fun refresh(keepError: Boolean) {
+    fun selectArchive(archived: Boolean) {
+        val snapshot = _state.value
+        if (!active() || !snapshot.archivingSupported || snapshot.showArchived == archived || snapshot.busy || snapshot.editorVisible) return
+        val cached = pages[archived]
+        _state.value = snapshot.copy(showArchived = archived, agreements = cached?.agreements.orEmpty(), cursor = cached?.cursor,
+            nextCursor = cached?.nextCursor, previousCursor = cached?.previousCursor, source = null, notice = null)
+        refresh()
+    }
+    fun page(cursor: String) {
+        val snapshot = _state.value
+        if (!active() || snapshot.busy || snapshot.loading || snapshot.editorVisible ||
+            !snapshot.archivingSupported || cursor !in listOfNotNull(snapshot.nextCursor, snapshot.previousCursor)) return
+        refresh(keepError = false, requestedCursor = cursor)
+    }
+    private fun refresh(keepError: Boolean, requestedCursor: String? = _state.value.cursor) {
         val current = lease ?: return
         val chat = target ?: return
         if (!active() || !_state.value.supported || _state.value.busy || _state.value.recoveryConflict) return
         val epoch = generation; val read = ++readingVersion
+        var archived = _state.value.showArchived
+        var cursor = requestedCursor
         readJob?.cancel()
         if (draftDirty && recoveryReady && pending == null) saveLocalDraft(immediate = true)
         _state.value = _state.value.copy(loading = true, error = if (keepError || pending != null || draftDirty) _state.value.error else null)
         readJob = viewModelScope.launch {
             try {
                 if (!recoveryReady) restoreRecovery(epoch, current, chat)
+                val focus = _state.value.editingId
                 if (!_state.value.serverAvailable) {
-                    val available = runReadWithDeadline(10_000) { capability(current) }.getOrThrow()
+                    val info = runReadWithDeadline(10_000) { capability(current) }.getOrThrow()
                     if (!valid(epoch, current) || read != readingVersion) return@launch
-                    _state.value = _state.value.copy(serverAvailable = available)
-                    if (!available) throw AgreementApiException(503, "AGREEMENT_DISABLED")
+                    _state.value = _state.value.copy(serverAvailable = info.available, archivingSupported = info.available && info.archive && info.pagination)
+                    if (!info.available) throw AgreementApiException(503, "AGREEMENT_DISABLED")
+                    if (archived && (!info.archive || !info.pagination)) {
+                        archived = false; cursor = null; pages.clear()
+                        _state.value = _state.value.copy(showArchived = false, agreements = emptyList(), cursor = null, nextCursor = null, previousCursor = null)
+                    }
                 }
-                val rows = runReadWithDeadline(10_000) { load(current, chat) }.getOrThrow()
-                if (valid(epoch, current) && read == readingVersion) _state.value = _state.value.copy(agreements = rows, loading = false)
+                val catalog = runReadWithDeadline(10_000) { load(current, chat, archived, cursor, focus) }.getOrThrow()
+                if (valid(epoch, current) && read == readingVersion) {
+                    pages[archived] = catalog
+                    _state.value = _state.value.copy(agreements = catalog.agreements, loading = false, cursor = catalog.cursor,
+                        nextCursor = catalog.nextCursor, previousCursor = catalog.previousCursor,
+                        focusedAgreement = if (_state.value.editingId == focus) catalog.focus ?: catalog.agreements.find { it.id == focus } else _state.value.focusedAgreement,
+                        focusMissing = _state.value.editingId == focus && catalog.focusMissing)
+                }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
                 if (valid(epoch, current) && read == readingVersion) {
                     val denied = error is AgreementApiException && error.statusCode in setOf(401, 403, 404)
+                    val badCursor = error is AgreementApiException && error.code == "AGREEMENT_INVALID_CURSOR"
+                    if (denied) pages.clear()
+                    if (badCursor) pages.remove(archived)
                     _state.value = _state.value.copy(loading = false, error = feedback(error),
-                        agreements = if (denied) emptyList() else _state.value.agreements, source = null)
+                        agreements = if (denied) emptyList() else _state.value.agreements, source = null,
+                        cursor = if (denied || badCursor) null else _state.value.cursor,
+                        nextCursor = if (denied || badCursor) null else _state.value.nextCursor,
+                        previousCursor = if (denied || badCursor) null else _state.value.previousCursor,
+                        focusedAgreement = if (denied) null else _state.value.focusedAgreement, focusMissing = denied && _state.value.editingId != null,
+                        serverAvailable = if (error is AgreementApiException && error.statusCode == 404 && !error.definitive) false else _state.value.serverAvailable)
                 }
             }
         }
@@ -164,19 +208,34 @@ class ChatAgreementsViewModel internal constructor(
             _state.value = _state.value.copy(open = true, error = "No se pudo usar ese mensaje como origen. Elige otro mensaje enviado."); return
         }
         if (_state.value.sourceId != null && _state.value.draft.isNotBlank()) {
-            _state.value = _state.value.copy(open = true, error = "Tienes un borrador guardado. Continúa o descártalo antes de proponer otro acuerdo.")
+            _state.value = _state.value.copy(open = true, editorVisible = true, error = "Tienes un borrador guardado. Continúa o descártalo antes de proponer otro acuerdo.")
             return
         }
-        _state.value = _state.value.copy(open = true, sourceId = sourceId, editingId = null, editingVersion = null, draft = "", error = null)
+        _state.value = _state.value.copy(open = true, editorVisible = true, sourceId = sourceId, editingId = null, editingVersion = null,
+            focusedAgreement = null, focusMissing = false, draft = "", error = null, notice = null)
         draftDirty = true; saveLocalDraft()
         refresh()
     }
     fun edit(agreement: ChatAgreement) {
-        if (!active() || !recoveryReady || _state.value.busy || pending != null || agreement.authorId != _state.value.accountId || agreement.cancelled) return
+        if (!active() || !recoveryReady || _state.value.busy || pending != null || agreement.authorId != _state.value.accountId || agreement.cancelled || agreement.archived) return
         if (_state.value.sourceId != null && _state.value.draft.isNotBlank()) {
             _state.value = _state.value.copy(error = "Continúa o descarta el borrador actual antes de editar otra propuesta."); return
         }
-        _state.value = _state.value.copy(editingId = agreement.id, editingVersion = agreement.version, sourceId = agreement.sourceMessageId, draft = agreement.text, error = null)
+        _state.value = _state.value.copy(editorVisible = true, editingId = agreement.id, editingVersion = agreement.version,
+            focusedAgreement = agreement, focusMissing = false, sourceId = agreement.sourceMessageId, draft = agreement.text, error = null, notice = null)
+        draftDirty = true; saveLocalDraft()
+    }
+    fun resumeDraft() {
+        if (!active() || _state.value.sourceId == null || _state.value.busy) return
+        _state.value = _state.value.copy(editorVisible = true, notice = null)
+        refresh()
+    }
+    fun makeNewProposal() {
+        val snapshot = _state.value
+        val original = snapshot.focusedAgreement ?: snapshot.agreements.find { it.id == snapshot.editingId }
+        if (!active() || !recoveryReady || snapshot.busy || pending != null || snapshot.editingId == null ||
+            (!snapshot.focusMissing && original?.cancelled != true)) return
+        _state.value = snapshot.copy(editingId = null, editingVersion = null, focusedAgreement = null, focusMissing = false, error = null)
         draftDirty = true; saveLocalDraft()
     }
     fun changeDraft(value: String) {
@@ -185,8 +244,8 @@ class ChatAgreementsViewModel internal constructor(
     }
     fun keepDraftAgainstLatestRevision() {
         val snapshot = _state.value
-        val current = snapshot.agreements.find { it.id == snapshot.editingId } ?: return
-        if (!active() || snapshot.busy || pending != null || current.cancelled || current.authorId != snapshot.accountId) return
+        val current = snapshot.focusedAgreement ?: snapshot.agreements.find { it.id == snapshot.editingId } ?: return
+        if (!active() || snapshot.busy || pending != null || current.cancelled || current.archived || current.authorId != snapshot.accountId) return
         _state.value = snapshot.copy(editingVersion = current.version, error = null)
         draftDirty = true; saveLocalDraft()
     }
@@ -202,6 +261,7 @@ class ChatAgreementsViewModel internal constructor(
                 if (valid(epoch, current)) {
                     draftDirty = false
                     _state.value = _state.value.copy(sourceId = null, editingId = null, editingVersion = null,
+                        focusedAgreement = null, focusMissing = false, editorVisible = false,
                         draft = "", busy = false, draftSaved = false, error = null)
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -211,16 +271,22 @@ class ChatAgreementsViewModel internal constructor(
     fun saveDraft() {
         if (!active() || !recoveryReady || !_state.value.serverAvailable || _state.value.busy || pending != null || _state.value.draft.isBlank()) return
         val snapshot = _state.value
-        val original = snapshot.agreements.find { it.id == snapshot.editingId }
-        if (snapshot.editingId != null && original == null) return
-        val id = original?.id ?: UUID.randomUUID().toString()
-        val command = if (original != null) AgreementCommand(UUID.randomUUID().toString(), text = snapshot.draft,
+        val original = snapshot.focusedAgreement ?: snapshot.agreements.find { it.id == snapshot.editingId }
+        if (original?.archived == true || original?.cancelled == true || snapshot.focusMissing) {
+            _state.value = snapshot.copy(error = "Esta propuesta cambió de estado. Revisa el acuerdo antes de guardar."); return
+        }
+        val id = snapshot.editingId ?: UUID.randomUUID().toString()
+        val command = if (snapshot.editingId != null) AgreementCommand(UUID.randomUUID().toString(), text = snapshot.draft,
             expectedVersion = snapshot.editingVersion ?: return, action = "revise")
         else AgreementCommand(UUID.randomUUID().toString(), id = id, sourceMessageId = snapshot.sourceId ?: return, text = snapshot.draft)
         dispatch(id to command)
     }
     fun respond(agreement: ChatAgreement, action: String) {
-        if (!active() || !recoveryReady || !_state.value.serverAvailable || _state.value.busy || pending != null || _state.value.sourceId != null || action !in setOf("accept", "changes", "withdraw", "cancel")) return
+        val snapshot = _state.value
+        if (!active() || !recoveryReady || !snapshot.serverAvailable || snapshot.busy || pending != null ||
+            (snapshot.editorVisible && snapshot.sourceId != null) || action !in setOf("accept", "changes", "withdraw", "cancel", "archive", "restore")) return
+        if (action in setOf("archive", "restore") && !snapshot.archivingSupported) return
+        if (agreement.archived && action == "accept") return
         dispatch(agreement.id to AgreementCommand(UUID.randomUUID().toString(), expectedVersion = agreement.version, action = action))
     }
     fun retry() { pending?.let(::dispatch) }
@@ -230,18 +296,36 @@ class ChatAgreementsViewModel internal constructor(
         pending = operation
         val epoch = generation
         val draft = currentDraft()
+        val writesDraft = operation.second.action == null || operation.second.action == "revise"
         draftVersion++; draftJob?.cancel()
         readingVersion++; readJob?.cancel()
-        _state.value = _state.value.copy(busy = true, loading = false, savingDraft = false, retryPending = false, error = null)
+        _state.value = _state.value.copy(busy = true, loading = false, savingDraft = false, retryPending = false,
+            pendingAction = operation.second.action, notice = null, error = null)
         writeJob = viewModelScope.launch {
             try {
                 persistRecovery(epoch, current, chat, draft, AgreementPendingWrite(operation.first, operation.second))
                 val result = send(current, chat, operation.first, operation.second)
-                persistRecovery(epoch, current, chat, null, null)
+                persistRecovery(epoch, current, chat, if (writesDraft) null else draft, null)
                 if (!valid(epoch, current)) return@launch
                 pending = null; draftDirty = false
-                _state.value = _state.value.copy(agreements = listOf(result) + _state.value.agreements.filterNot { it.id == result.id },
-                    sourceId = null, editingId = null, editingVersion = null, draft = "", busy = false, retryPending = false, draftSaved = false)
+                val snapshot = _state.value
+                val archived = if (writesDraft) false else snapshot.showArchived
+                pages.clear()
+                val updated = if (writesDraft) listOf(result) else snapshot.agreements.map { if (it.id == result.id) result else it }
+                _state.value = snapshot.copy(agreements = updated.filter { it.archived == archived }.take(50), showArchived = archived,
+                    cursor = if (writesDraft) null else snapshot.cursor, nextCursor = if (writesDraft) null else snapshot.nextCursor,
+                    previousCursor = if (writesDraft) null else snapshot.previousCursor,
+                    sourceId = if (writesDraft) null else snapshot.sourceId, editingId = if (writesDraft) null else snapshot.editingId,
+                    editingVersion = if (writesDraft) null else snapshot.editingVersion, draft = if (writesDraft) "" else snapshot.draft,
+                    focusedAgreement = if (writesDraft) null else if (snapshot.editingId == result.id) result else snapshot.focusedAgreement,
+                    focusMissing = !writesDraft && snapshot.focusMissing,
+                    editorVisible = if (writesDraft) false else snapshot.editorVisible,
+                    busy = false, retryPending = false, pendingAction = null, draftSaved = !writesDraft && draft != null,
+                    notice = when (operation.second.action) {
+                        "archive", "restore" -> AgreementNotice(operation.second.operationId,
+                            if (result.archived) "Acuerdo archivado en el chat" else "Acuerdo en Activos")
+                        else -> null
+                    })
                 if (_state.value.open) refresh()
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (error: Exception) {
@@ -253,8 +337,10 @@ class ChatAgreementsViewModel internal constructor(
                         catch (local: Exception) { if (valid(epoch, current)) storageFailure(local); return@launch }
                     }
                     if (error is AgreementRecoveryConflict) { storageFailure(error); return@launch }
-                    _state.value = _state.value.copy(busy = false, retryPending = !definitive, error = feedback(error))
-                    if (error is AgreementApiException && error.code == "AGREEMENT_VERSION_CONFLICT") refresh(keepError = true)
+                    _state.value = _state.value.copy(busy = false, retryPending = !definitive,
+                        pendingAction = if (definitive) null else operation.second.action, error = feedback(error),
+                        serverAvailable = if (error is AgreementApiException && error.statusCode == 404 && !definitive) false else _state.value.serverAvailable)
+                    if (error is AgreementApiException && error.code in setOf("AGREEMENT_VERSION_CONFLICT", "AGREEMENT_ARCHIVED", "AGREEMENT_CANCELLED", "AGREEMENT_NOT_FOUND")) refresh(keepError = true)
                 }
             }
         }
@@ -270,7 +356,8 @@ class ChatAgreementsViewModel internal constructor(
         pending = saved?.pending?.let { it.agreementId to it.command }
         _state.value = _state.value.copy(sourceId = saved?.draft?.sourceId, editingId = saved?.draft?.editingId,
             editingVersion = saved?.draft?.editingVersion, draft = saved?.draft?.text.orEmpty(),
-            retryPending = pending != null, recoveryConflict = false, recoveryUnavailable = false,
+            retryPending = pending != null, pendingAction = pending?.second?.action, editorVisible = false,
+            focusedAgreement = null, focusMissing = false, recoveryConflict = false, recoveryUnavailable = false,
             draftSaved = saved?.draft != null, savingDraft = false,
             error = if (pending != null) "Hay un envío sin confirmar. Reintenta para consultar su resultado." else null)
     }
@@ -332,9 +419,13 @@ class ChatAgreementsViewModel internal constructor(
         "AGREEMENT_VERSION_CONFLICT" -> "La propuesta cambió. Revisa la versión actual antes de confirmar."
         "AGREEMENT_CHAT_UNAVAILABLE", "AGREEMENT_ACCESS_DENIED" -> "Este acuerdo ya no está disponible para esta conversación."
         "AGREEMENT_SOURCE_UNAVAILABLE" -> "El mensaje de origen ya no está disponible. Elige otro mensaje."
-        "AGREEMENT_ROOM_LIMIT" -> "Este chat llegó al límite de 50 acuerdos."
+        "AGREEMENT_ROOM_LIMIT" -> "Este chat llegó a 50 acuerdos activos. Archiva uno antes de crear o restaurar otro."
+        "AGREEMENT_ARCHIVED" -> "El acuerdo se archivó. Restáuralo en Activos antes de confirmar o editar."
+        "AGREEMENT_INVALID_CURSOR" -> "La posición de la lista ya no es válida. Actualiza para volver al inicio."
+        "AGREEMENT_NOT_FOUND" -> "El acuerdo ya no está disponible. Tu borrador sigue guardado."
         "AGREEMENT_CANCELLED" -> "La propuesta se canceló. Actualiza para ver su estado."
         "AGREEMENT_DISABLED" -> "Acuerdos no está disponible ahora. El borrador y los envíos pendientes siguen guardados."
+        "AGREEMENT_ARCHIVE_DISABLED" -> "El archivo no está disponible con esta conexión. Vuelve a Activos."
         else -> "No se pudo completar la acción. Conservamos lo que escribiste para reintentar."
     }
 }

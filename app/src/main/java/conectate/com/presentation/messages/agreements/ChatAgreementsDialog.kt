@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -31,7 +32,7 @@ private val AgreementMint = Color(0xFFB7E5DF)
 private val AgreementPeach = Color(0xFFF8D1BB)
 private val AgreementInk = Color(0xFF263149)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun ChatAgreementsDialog(
     state: ChatAgreementsState,
@@ -41,13 +42,18 @@ internal fun ChatAgreementsDialog(
     onRespond: (ChatAgreement, String) -> Unit, onEdit: (ChatAgreement) -> Unit,
     onSource: (ChatAgreement) -> Unit, onDismissSource: () -> Unit,
     onRecoverSavedState: () -> Unit,
+    onSelectArchive: (Boolean) -> Unit, onPage: (String) -> Unit,
+    onResumeDraft: () -> Unit, onParkDraft: () -> Unit, onMakeNewProposal: () -> Unit,
 ) {
     var confirmDiscard by remember(state.accountId, state.chatId) { mutableStateOf(false) }
     var cancel by remember(state.accountId, state.chatId) { mutableStateOf<ChatAgreement?>(null) }
     var compare by remember(state.accountId, state.chatId) { mutableStateOf(false) }
     var confirmRecovery by remember(state.accountId, state.chatId) { mutableStateOf(false) }
-    val editing = state.sourceId != null
-    val latest = state.agreements.find { it.id == state.editingId }
+    var archive by remember(state.accountId, state.chatId) { mutableStateOf<ChatAgreement?>(null) }
+    val snackbar = remember(state.accountId, state.chatId) { SnackbarHostState() }
+    LaunchedEffect(state.notice) { state.notice?.let { snackbar.showSnackbar(it.text) } }
+    val editing = state.sourceId != null && state.editorVisible
+    val latest = state.focusedAgreement ?: state.agreements.find { it.id == state.editingId }
     val needsReview = latest != null && latest.version != state.editingVersion
     val requestRefresh = { if (state.recoveryConflict) confirmRecovery = true else onRefresh() }
     val requestBack = {
@@ -67,6 +73,7 @@ internal fun ChatAgreementsDialog(
         BackHandler(onBack = requestBack)
         Scaffold(
             modifier = Modifier.fillMaxSize().imePadding(),
+            snackbarHost = { SnackbarHost(snackbar) },
             topBar = {
                 CenterAlignedTopAppBar(
                     title = { Text(if (editing) "Acuerdo" else "Acuerdos") },
@@ -83,23 +90,56 @@ internal fun ChatAgreementsDialog(
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(state.error, color = MaterialTheme.colorScheme.onErrorContainer)
                                 TextButton(onClick = if (state.retryPending && state.serverAvailable) onRetry else requestRefresh, enabled = !state.busy) {
-                                    Text(when { state.recoveryConflict -> "Recuperar borrador guardado"; !state.serverAvailable -> "Volver a conectar"; state.retryPending -> "Reintentar envío"
+                                    Text(when { state.recoveryConflict -> "Recuperar borrador guardado"; !state.serverAvailable -> "Volver a conectar";
+                                        state.retryPending -> if (state.pendingAction == null) "Reintentar envío" else "Reintentar acción"
                                         state.recoveryUnavailable -> "Reintentar recuperación"; else -> "Actualizar acuerdos" })
                                 }
                             }
                         }
                     }
                     if (editing) item {
+                        TextButton(onClick = onParkDraft, enabled = !state.busy) { Text("Volver a acuerdos") }
+                        if (latest?.archived == true) {
+                            Text("El acuerdo está en Archivo. Vuelve a acuerdos y restáuralo en Activos antes de editar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (latest?.cancelled == true || state.focusMissing) {
+                            Text("La propuesta ya no se puede editar. Puedes conservar este texto en una propuesta nueva.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = onMakeNewProposal, enabled = !state.busy && !state.retryPending && !state.recoveryConflict) { Text("Usar como nueva propuesta") }
+                        }
                         if (needsReview) {
                             Text("La propuesta tiene cambios posteriores. Compara los textos antes de guardar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             TextButton(onClick = { compare = true }) { Text("Comparar revisiones") }
                         }
                         AgreementEditor(state, onDraft, onSave, onDiscard = { confirmDiscard = true },
-                            canSave = !needsReview && latest?.cancelled != true && !state.recoveryConflict && state.serverAvailable)
+                            canSave = !needsReview && latest?.cancelled != true && latest?.archived != true && !state.focusMissing && !state.recoveryConflict && state.serverAvailable)
                     } else {
+                        if (state.archivingSupported) item {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                FilterChip(selected = !state.showArchived, onClick = { onSelectArchive(false) }, enabled = !state.busy,
+                                    label = { Text("Activos") }, leadingIcon = { Icon(Icons.Default.Handshake, null, Modifier.size(18.dp)) })
+                                FilterChip(selected = state.showArchived, onClick = { onSelectArchive(true) }, enabled = !state.busy,
+                                    label = { Text("Archivo") }, leadingIcon = { Icon(Icons.Default.Inventory2, null, Modifier.size(18.dp)) })
+                            }
+                        }
+                        if (state.sourceId != null) item {
+                            Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(20.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Icon(Icons.Default.EditNote, null)
+                                        Text("Tu borrador", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    if (state.draft.isNotBlank()) Text(state.draft, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    Text(if (state.retryPending) "Hay una acción sin confirmar. Revisa su resultado antes de enviar otra."
+                                        else if (state.savingDraft) "Guardando borrador…" else if (state.draftSaved) "Guardado en este dispositivo" else "Pendiente de guardar",
+                                        style = MaterialTheme.typography.bodySmall)
+                                    TextButton(onClick = onResumeDraft, enabled = !state.busy) { Text(if (state.retryPending) "Revisar envío" else "Continuar borrador") }
+                                }
+                            }
+                        }
                         item {
-                            Text("Lo que decidimos", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                            Text("Cada persona confirma por sí misma. Si cambia el texto, volvemos a confirmar.", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            Text(if (state.showArchived) "Archivo del chat" else "Lo que decidimos", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                            Text(if (state.showArchived) "Los dos pueden consultar estos acuerdos. Restaurar conserva sus respuestas."
+                                else "Cada persona confirma por sí misma. Si cambia el texto, volvemos a confirmar.", color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 8.dp))
                         }
                         if (state.agreements.isEmpty() && !state.loading) item {
@@ -107,14 +147,22 @@ internal fun ChatAgreementsDialog(
                                 Box(Modifier.size(64.dp).background(AgreementMint, CircleShape), contentAlignment = Alignment.Center) {
                                     Icon(Icons.Default.Handshake, null, Modifier.size(32.dp), tint = AgreementInk)
                                 }
-                                Text("Una propuesta con su contexto", style = MaterialTheme.typography.titleLarge)
-                                Text("Mantén pulsado un mensaje del chat y elige Proponer acuerdo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(if (state.showArchived) "Aún no hay acuerdos archivados" else "Una propuesta con su contexto", style = MaterialTheme.typography.titleLarge)
+                                Text(if (state.showArchived) "Archiva un acuerdo desde Activos para guardarlo aquí."
+                                    else "Mantén pulsado un mensaje del chat y elige Proponer acuerdo.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         items(state.agreements, key = { it.id }) { agreement ->
                             AgreementCard(agreement, state.accountId.orEmpty(), enabled = !state.busy && !state.retryPending && !state.recoveryUnavailable && state.serverAvailable,
                                 onRespond = { onRespond(agreement, it) }, onEdit = { onEdit(agreement) },
-                                onCancel = { cancel = agreement }, onSource = { onSource(agreement) })
+                                onCancel = { cancel = agreement }, onSource = { onSource(agreement) },
+                                canArchive = state.archivingSupported, onArchive = { archive = agreement })
+                        }
+                        if (state.previousCursor != null || state.nextCursor != null) item {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                state.previousCursor?.let { cursor -> OutlinedButton(onClick = { onPage(cursor) }, enabled = !state.busy && !state.loading) { Text("Más recientes") } }
+                                state.nextCursor?.let { cursor -> OutlinedButton(onClick = { onPage(cursor) }, enabled = !state.busy && !state.loading) { Text("Más antiguos") } }
+                            }
                         }
                     }
                 }
@@ -138,6 +186,14 @@ internal fun ChatAgreementsDialog(
             confirmButton = { TextButton(onClick = { cancel = null; onRespond(agreement, "cancel") }) { Text("Cancelar acuerdo") } },
             dismissButton = { TextButton(onClick = { cancel = null }) { Text("Conservar propuesta") } },
         ) }
+        archive?.let { agreement -> AlertDialog(
+            onDismissRequest = { archive = null }, title = { Text(if (agreement.archived) "¿Restaurar en Activos?" else "¿Archivar en el chat?") },
+            text = { Text(if (agreement.archived) "El acuerdo volverá a Activos para las dos personas. Su texto y sus respuestas se conservarán."
+                else "El acuerdo pasará a Archivo para las dos personas. Su texto y sus respuestas se conservarán.") },
+            confirmButton = { TextButton(onClick = { archive = null; onRespond(agreement, if (agreement.archived) "restore" else "archive") },
+                enabled = !state.busy && !state.retryPending && state.serverAvailable) { Text(if (agreement.archived) "Restaurar acuerdo" else "Archivar acuerdo") } },
+            dismissButton = { TextButton(onClick = { archive = null }) { Text("Dejar como está") } },
+        ) }
         state.source?.let { source -> AlertDialog(
             onDismissRequest = onDismissSource, title = { Text("Mensaje de origen") },
             text = { Text(source.content, Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) },
@@ -153,7 +209,7 @@ internal fun ChatAgreementsDialog(
                     Text(state.draft)
                 }
             },
-            confirmButton = { TextButton(onClick = { compare = false; onKeepDraft() }, enabled = !latest.cancelled) { Text("Conservar mi borrador") } },
+            confirmButton = { TextButton(onClick = { compare = false; onKeepDraft() }, enabled = !latest.cancelled && !latest.archived) { Text("Conservar mi borrador") } },
             dismissButton = { TextButton(onClick = { compare = false }) { Text("Seguir revisando") } },
         )
     }
@@ -184,7 +240,7 @@ private fun AgreementEditor(state: ChatAgreementsState, onDraft: (String) -> Uni
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AgreementCard(agreement: ChatAgreement, accountId: String, enabled: Boolean, onRespond: (String) -> Unit,
-    onEdit: () -> Unit, onCancel: () -> Unit, onSource: () -> Unit) {
+    onEdit: () -> Unit, onCancel: () -> Unit, onSource: () -> Unit, canArchive: Boolean, onArchive: () -> Unit) {
     Surface(shape = RoundedCornerShape(26.dp), tonalElevation = 2.dp) {
         Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Text(when (agreement.status) {
@@ -213,15 +269,20 @@ private fun AgreementCard(agreement: ChatAgreement, accountId: String, enabled: 
             if (!agreement.cancelled) {
                 val own = agreement.participants.find { it.id == accountId }
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (own?.response != "accepted") Button(onClick = { onRespond("accept") }, enabled = enabled && own != null,
+                    if (own?.response != "accepted" && !agreement.archived) Button(onClick = { onRespond("accept") }, enabled = enabled && own != null,
                         colors = ButtonDefaults.buttonColors(containerColor = AgreementIndigo, contentColor = Color.White)) { Text("Confirmar") }
-                    else OutlinedButton(onClick = { onRespond("withdraw") }, enabled = enabled) { Text("Retirar confirmación") }
+                    else if (own?.response == "accepted") OutlinedButton(onClick = { onRespond("withdraw") }, enabled = enabled) { Text("Retirar confirmación") }
                     if (own?.response != "changes") OutlinedButton(onClick = { onRespond("changes") }, enabled = enabled && own != null) { Text("Pedir cambios") }
                 }
                 if (agreement.authorId == accountId) FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    TextButton(onClick = onEdit, enabled = enabled) { Text("Editar propuesta") }
+                    if (!agreement.archived) TextButton(onClick = onEdit, enabled = enabled) { Text("Editar propuesta") }
                     TextButton(onClick = onCancel, enabled = enabled) { Text("Cancelar acuerdo") }
                 }
+            }
+            if (canArchive) TextButton(onClick = onArchive, enabled = enabled) {
+                Icon(if (agreement.archived) Icons.Default.Unarchive else Icons.Default.Inventory2, null, Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(if (agreement.archived) "Restaurar en Activos" else "Archivar en el chat")
             }
         }
     }

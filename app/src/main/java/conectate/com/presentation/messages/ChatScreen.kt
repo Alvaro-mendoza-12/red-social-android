@@ -473,6 +473,9 @@ fun ChatScreen(
             onRespond = agreementsViewModel::respond, onEdit = agreementsViewModel::edit,
             onSource = agreementsViewModel::showSource, onDismissSource = agreementsViewModel::dismissSource,
             onRecoverSavedState = agreementsViewModel::recoverSavedState,
+            onSelectArchive = agreementsViewModel::selectArchive, onPage = agreementsViewModel::page,
+            onResumeDraft = agreementsViewModel::resumeDraft, onParkDraft = agreementsViewModel::parkDraft,
+            onMakeNewProposal = agreementsViewModel::makeNewProposal,
         )
     }
 

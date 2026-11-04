@@ -52,15 +52,21 @@ class ChatAgreementsViewModelTest {
         var owner: String? = alice
         var supported = true
         var capabilityRead: suspend () -> Boolean = { supported }
+        var archiving = true
         var reads = 0
         var rows = listOf(agreement())
         var read: suspend (String) -> List<ChatAgreement> = { rows }
+        var pageRead: suspend (String, Boolean, String?, String?) -> AgreementCatalog = { id, archived, _, focus ->
+            val found = read(id)
+            AgreementCatalog(found.filter { it.archived == archived }, archived = archived, focus = found.find { it.id == focus })
+        }
         var send: suspend (AgreementCommand) -> ChatAgreement = { agreement(2) }
         var source: suspend () -> AgreementSource? = { AgreementSource(sourceId, "Mensaje original") }
         val commands = mutableListOf<AgreementCommand>()
         val vm = ChatAgreementsViewModel(
             capture = { guard.captureAccountLease { owner } }, changes = changes, events = events,
-            capability = { capabilityRead() }, load = { _, id -> reads++; read(id) },
+            capability = { AgreementCapability(capabilityRead(), 1, archiving, archiving) },
+            load = { _, id, archived, cursor, focus -> reads++; pageRead(id, archived, cursor, focus) },
             send = { _, _, _, command -> commands.add(command); send(command) }, source = { _, _, _ -> source() },
             recovery = persistence,
         ).also { models.put(java.util.UUID.randomUUID().toString(), it) }
@@ -270,5 +276,106 @@ class ChatAgreementsViewModelTest {
         val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose("pending-local-message"); advanceUntilIdle()
         assertTrue(f.vm.state.value.open); assertNotNull(f.vm.state.value.error)
         assertNull(f.vm.state.value.sourceId); assertTrue(f.commands.isEmpty())
+    }
+    @Test fun anOlderCapabilityKeepsBasicAgreementsWithoutExposingArchiveActions() = runTest(dispatcher) {
+        val f = Fixture(); f.archiving = false; f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle()
+        assertTrue(f.vm.state.value.serverAvailable); assertFalse(f.vm.state.value.archivingSupported)
+        f.vm.selectArchive(true); f.vm.respond(agreement(), "archive"); advanceUntilIdle()
+        assertFalse(f.vm.state.value.showArchived); assertTrue(f.commands.isEmpty())
+        f.vm.respond(agreement(), "accept"); advanceUntilIdle(); assertEquals("accept", f.commands.single().action)
+    }
+    @Test fun parkingADraftAndRespondingToAnotherAgreementNeverDeletesIt() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose(sourceId); f.vm.changeDraft("Seguir mañana")
+        f.vm.parkDraft(); advanceUntilIdle()
+        assertTrue(f.vm.state.value.open); assertFalse(f.vm.state.value.editorVisible); assertTrue(f.vm.state.value.draftSaved)
+        f.vm.respond(agreement(), "accept"); advanceUntilIdle()
+        assertEquals("Seguir mañana", f.vm.state.value.draft)
+        assertEquals("Seguir mañana", f.persistence.rows[alice to chat]?.draft?.text)
+        f.vm.resumeDraft(); advanceUntilIdle(); assertTrue(f.vm.state.value.editorVisible)
+        val reopened = Fixture(f.persistence); reopened.bind(); advanceUntilIdle()
+        assertEquals("Seguir mañana", reopened.vm.state.value.draft); assertFalse(reopened.vm.state.value.editorVisible)
+    }
+    @Test fun anUncertainArchiveRestoresItsExactActionAndKeepsTheSeparateDraft() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose(sourceId); f.vm.changeDraft("Mi siguiente propuesta")
+        f.vm.parkDraft(); advanceUntilIdle(); f.send = { throw IOException("lost archive ACK") }
+        f.vm.respond(agreement(), "archive"); advanceUntilIdle()
+        val command = f.commands.single(); assertEquals("archive", command.action)
+        val reopened = Fixture(f.persistence); reopened.bind(); advanceUntilIdle(); reopened.vm.open(); advanceUntilIdle()
+        assertTrue(reopened.commands.isEmpty()); assertEquals("archive", reopened.vm.state.value.pendingAction)
+        reopened.rows = listOf(agreement(2).copy(archived = true)); reopened.send = { reopened.rows.single() }
+        reopened.vm.retry(); advanceUntilIdle()
+        assertEquals(listOf(command), reopened.commands); assertTrue(reopened.vm.state.value.agreements.isEmpty())
+        assertEquals("Mi siguiente propuesta", reopened.persistence.rows[alice to chat]?.draft?.text)
+        assertNull(reopened.persistence.rows[alice to chat]?.pending)
+        assertEquals("Acuerdo archivado en el chat", reopened.vm.state.value.notice?.text)
+        reopened.vm.selectArchive(true); advanceUntilIdle(); assertTrue(reopened.vm.state.value.agreements.single().archived)
+    }
+    @Test fun anUnrecognized404CannotDiscardAWriteThatMayAlreadyBeCommitted() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.send = { throw AgreementApiException(404, "") }
+        f.vm.respond(agreement(), "accept"); advanceUntilIdle(); val original = f.commands.single()
+        assertTrue(f.vm.state.value.retryPending); assertFalse(f.vm.state.value.serverAvailable)
+        assertEquals(original, f.persistence.rows[alice to chat]?.pending?.command)
+        f.vm.retry(); advanceUntilIdle(); assertEquals(1, f.commands.size)
+        f.supported = false; f.vm.open(); advanceUntilIdle(); assertFalse(f.vm.state.value.serverAvailable)
+        f.supported = true; f.send = { agreement(2) }; f.vm.refresh(); advanceUntilIdle()
+        assertEquals(1, f.commands.size); f.vm.retry(); advanceUntilIdle(); assertEquals(listOf(original, original), f.commands)
+    }
+    @Test fun pagingReplacesTheVisiblePageAndAFailurePreservesItsOriginalPosition() = runTest(dispatcher) {
+        val f = Fixture(); val cursors = mutableListOf<String?>()
+        val second = agreement().copy(id = sourceId, text = "Más antiguo")
+        f.pageRead = { _, archived, cursor, _ -> cursors.add(cursor)
+            if (cursor == "older") AgreementCatalog(listOf(second), cursor = cursor, previousCursor = "newer", archived = archived)
+            else AgreementCatalog(listOf(agreement()), nextCursor = "older", archived = archived)
+        }
+        f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle(); f.vm.page("older"); advanceUntilIdle()
+        assertEquals(listOf(second), f.vm.state.value.agreements); assertEquals("older", f.vm.state.value.cursor)
+        f.pageRead = { _, _, _, _ -> throw IOException("offline page") }; f.vm.page("newer"); advanceUntilIdle()
+        assertEquals(listOf(second), f.vm.state.value.agreements); assertEquals("older", f.vm.state.value.cursor)
+        assertEquals("newer", f.vm.state.value.previousCursor); assertNotNull(f.vm.state.value.error)
+        f.vm.page("forged"); advanceUntilIdle(); assertEquals(listOf(null, "older"), cursors)
+    }
+    @Test fun changingFiltersInvalidatesALatePageAndDoesNotMixActiveAndArchivedRows() = runTest(dispatcher) {
+        val f = Fixture(); val late = CompletableDeferred<AgreementCatalog>()
+        f.pageRead = { _, archived, _, _ ->
+            if (!archived) withContext(NonCancellable) { late.await() } else AgreementCatalog(listOf(agreement().copy(archived = true)), archived = true)
+        }
+        f.bind(); advanceUntilIdle(); f.vm.open(); runCurrent(); f.vm.selectArchive(true); runCurrent()
+        assertTrue(f.vm.state.value.showArchived); assertTrue(f.vm.state.value.agreements.single().archived)
+        late.complete(AgreementCatalog(listOf(agreement()))); advanceUntilIdle()
+        assertTrue(f.vm.state.value.showArchived); assertTrue(f.vm.state.value.agreements.single().archived)
+    }
+    @Test fun anInvalidCursorCanBeRefreshedFromTheBeginningWithoutAnEndlessRetry() = runTest(dispatcher) {
+        val f = Fixture(); val cursors = mutableListOf<String?>()
+        f.pageRead = { _, _, cursor, _ -> cursors.add(cursor)
+            if (cursor != null) throw AgreementApiException(400, "AGREEMENT_INVALID_CURSOR")
+            AgreementCatalog(listOf(agreement()), nextCursor = "older")
+        }
+        f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle(); f.vm.page("older"); advanceUntilIdle()
+        assertNull(f.vm.state.value.cursor); assertNull(f.vm.state.value.nextCursor); assertNotNull(f.vm.state.value.error)
+        f.vm.refresh(); advanceUntilIdle(); assertEquals(listOf(null, "older", null), cursors); assertNull(f.vm.state.value.error)
+    }
+    @Test fun anEditorUsesItsFocusedAgreementEvenWhenTheCurrentPageNoLongerContainsIt() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle(); f.vm.edit(agreement()); f.vm.changeDraft("Mi revisión")
+        f.pageRead = { _, _, _, focus -> assertEquals(agreement().id, focus); AgreementCatalog(emptyList(), focus = agreement(2, "Otro dispositivo")) }
+        f.vm.refresh(); advanceUntilIdle(); assertTrue(f.vm.state.value.agreements.isEmpty())
+        f.vm.keepDraftAgainstLatestRevision(); f.vm.saveDraft(); advanceUntilIdle()
+        assertEquals(2, f.commands.single().expectedVersion); assertEquals("Mi revisión", f.commands.single().text)
+    }
+    @Test fun anArchivedOrCancelledFocusedAgreementNeverSendsAnEditAndCanPreserveTextForANewProposal() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle(); f.vm.edit(agreement()); f.vm.changeDraft("No perder")
+        f.pageRead = { _, _, _, _ -> AgreementCatalog(emptyList(), focus = agreement(2).copy(archived = true)) }
+        f.vm.refresh(); advanceUntilIdle(); f.vm.saveDraft(); advanceUntilIdle(); assertTrue(f.commands.isEmpty())
+        f.pageRead = { _, _, _, _ -> AgreementCatalog(emptyList(), focus = agreement(3).copy(cancelled = true, status = "cancelled")) }
+        f.vm.refresh(); advanceUntilIdle(); f.vm.makeNewProposal(); advanceUntilIdle()
+        assertNull(f.vm.state.value.editingId); assertEquals("No perder", f.vm.state.value.draft)
+        f.vm.saveDraft(); advanceUntilIdle(); assertNull(f.commands.single().action); assertEquals(sourceId, f.commands.single().sourceMessageId)
+    }
+    @Test fun accessLossClearsBothCachedPagesBeforeAnotherFilterCanDisplayThem() = runTest(dispatcher) {
+        val f = Fixture(); f.rows = listOf(agreement(), agreement().copy(id = sourceId, archived = true))
+        f.bind(); advanceUntilIdle(); f.vm.open(); advanceUntilIdle(); f.vm.selectArchive(true); advanceUntilIdle()
+        assertTrue(f.vm.state.value.agreements.isNotEmpty())
+        f.read = { throw AgreementApiException(403, "AGREEMENT_ACCESS_DENIED") }; f.vm.selectArchive(false); advanceUntilIdle()
+        assertTrue(f.vm.state.value.agreements.isEmpty()); f.vm.selectArchive(true)
+        assertTrue(f.vm.state.value.agreements.isEmpty()); advanceUntilIdle()
     }
 }

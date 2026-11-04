@@ -33,18 +33,24 @@ internal class ChatAgreementApi internal constructor(
     }, { RuntimeBackendEndpoint.baseUrl })
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun supported(lease: AuthSessionLease): Boolean {
-        val body = request(lease, "/v1/data/messages/agreements/capabilities", allowMissing = true) ?: return false
-        return json.decodeFromString<AgreementCapability>(body).let { it.supported && it.schema == 1 }
+    suspend fun capabilities(lease: AuthSessionLease): AgreementCapability {
+        val body = request(lease, "/v1/data/messages/agreements/capabilities", allowMissing = true) ?: return AgreementCapability()
+        return json.decodeFromString<AgreementCapability>(body)
     }
-    suspend fun load(lease: AuthSessionLease, chatId: String): List<ChatAgreement> =
-        json.decodeFromString<AgreementCatalog>(checkNotNull(request(lease, path(chatId)))).agreements.map { it.validated() }.also { rows ->
-            require(rows.size <= 50 && rows.map { it.id }.distinct().size == rows.size)
-        }
+    suspend fun load(lease: AuthSessionLease, chatId: String, archived: Boolean = false, cursor: String? = null, focus: String? = null): AgreementCatalog {
+        val query = Parameters.build {
+            append("limit", "25"); append("archived", archived.toString())
+            cursor?.let { append("cursor", it) }; focus?.let { append("focus", it) }
+        }.formUrlEncode()
+        return json.decodeFromString<AgreementCatalog>(checkNotNull(request(lease, path(chatId) + "?" + query)))
+            .validated(checkNotNull(lease.accountId), archived, focus)
+    }
 
     suspend fun send(lease: AuthSessionLease, chatId: String, agreementId: String, command: AgreementCommand): ChatAgreement {
         val suffix = if (command.action == null) "" else "/${encoded(agreementId)}/actions"
-        return json.decodeFromString<AgreementReceipt>(checkNotNull(request(lease, path(chatId) + suffix, command))).agreement.validated()
+        return json.decodeFromString<AgreementReceipt>(checkNotNull(request(lease, path(chatId) + suffix, command))).agreement.validated().also {
+            require(it.id == agreementId && it.participants.any { member -> member.id == lease.accountId })
+        }
     }
     suspend fun source(lease: AuthSessionLease, chatId: String, agreementId: String): AgreementSource? =
         json.decodeFromString<AgreementSourceReceipt>(checkNotNull(request(lease, path(chatId) + "/${encoded(agreementId)}/source"))).source

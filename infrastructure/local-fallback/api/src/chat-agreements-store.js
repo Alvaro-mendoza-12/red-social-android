@@ -9,6 +9,9 @@ async function ensureChatAgreementTables(db) {
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`)
   await db.query(`CREATE INDEX IF NOT EXISTS idx_experimental_chat_agreements_room
     ON experimental_chat_agreements(chat_id, created_at DESC, id)`)
+  await db.query('ALTER TABLE experimental_chat_agreements ADD COLUMN IF NOT EXISTS archived BOOLEAN NOT NULL DEFAULT FALSE')
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_experimental_chat_agreements_page
+    ON experimental_chat_agreements(chat_id, archived, created_at DESC, id DESC)`)
   await db.query(`CREATE TABLE IF NOT EXISTS experimental_chat_agreement_operations (
     actor_id TEXT NOT NULL, operation_id UUID NOT NULL, request_hash TEXT NOT NULL,
     agreement_id UUID NOT NULL REFERENCES experimental_chat_agreements(id) ON DELETE CASCADE,
@@ -40,7 +43,7 @@ async function writeAgreement(pool, { chatId, agreementId, command, authorize, c
       if ((await db.query('SELECT id FROM experimental_chat_agreements WHERE id=$1::uuid', [agreementId])).rows.length) {
         throw fail('AGREEMENT_ID_CONFLICT', 409)
       }
-      if ((await db.query('SELECT count(*)::int AS total FROM experimental_chat_agreements WHERE chat_id=$1', [chatId])).rows[0].total >= 50) {
+      if ((await db.query('SELECT count(*)::int AS total FROM experimental_chat_agreements WHERE chat_id=$1 AND archived=FALSE', [chatId])).rows[0].total >= 50) {
         throw fail('AGREEMENT_ROOM_LIMIT', 409)
       }
       if (!await context.sourceVisible(db, command.sourceMessageId)) throw fail('AGREEMENT_SOURCE_UNAVAILABLE', 404)
@@ -51,8 +54,12 @@ async function writeAgreement(pool, { chatId, agreementId, command, authorize, c
       const previous = (await db.query('SELECT state FROM experimental_chat_agreements WHERE chat_id=$1 AND id=$2::uuid FOR UPDATE', [chatId, agreementId])).rows[0]
       if (!previous) throw fail('AGREEMENT_NOT_FOUND', 404)
       state = changeAgreement(previous.state, command, context.actorId, now)
-      await db.query('UPDATE experimental_chat_agreements SET state=$3::jsonb,updated_at=NOW() WHERE chat_id=$1 AND id=$2::uuid',
-        [chatId, agreementId, JSON.stringify(state)])
+      if (command.action === 'restore' && previous.state.archived && !state.archived &&
+          (await db.query('SELECT count(*)::int AS total FROM experimental_chat_agreements WHERE chat_id=$1 AND archived=FALSE', [chatId])).rows[0].total >= 50) {
+        throw fail('AGREEMENT_ROOM_LIMIT', 409)
+      }
+      await db.query('UPDATE experimental_chat_agreements SET state=$3::jsonb,archived=$4,updated_at=NOW() WHERE chat_id=$1 AND id=$2::uuid',
+        [chatId, agreementId, JSON.stringify(state), Boolean(state.archived)])
     }
     await db.query(`INSERT INTO experimental_chat_agreement_operations(actor_id,operation_id,request_hash,agreement_id)
       VALUES($1,$2::uuid,$3,$4::uuid)`, [context.actorId, command.operationId, hash, agreementId])

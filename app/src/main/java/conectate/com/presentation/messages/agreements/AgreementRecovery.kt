@@ -24,7 +24,7 @@ internal data class AgreementPendingWrite(val agreementId: String, val command: 
             require(!command.text.isNullOrBlank() && command.text.length <= 1000)
         } else {
             require(command.id == null && command.sourceMessageId == null && command.expectedVersion != null && command.expectedVersion in 1..10_000)
-            require(command.action in setOf("accept", "changes", "withdraw", "cancel", "revise"))
+            require(command.action in setOf("accept", "changes", "withdraw", "cancel", "revise", "archive", "restore"))
             require(if (command.action == "revise") !command.text.isNullOrBlank() && command.text.length <= 1000 else command.text == null)
         }
     }

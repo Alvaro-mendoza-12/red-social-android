@@ -60,7 +60,7 @@ class ChatAgreementsHttpDeviceTest {
         lateinit var vm: ChatAgreementsViewModel
         try {
             compose.runOnIdle {
-                vm = ChatAgreementsViewModel({ aliceLease }, MutableStateFlow(0), emptyFlow(), api::supported, api::load, api::send, api::source, recovery)
+                vm = ChatAgreementsViewModel({ aliceLease }, MutableStateFlow(0), emptyFlow(), api::capabilities, api::load, api::send, api::source, recovery)
                 models.put("qa-agreements", vm); vm.bind(chat)
             }
             compose.waitUntil(15_000) { vm.state.value.supported && vm.state.value.serverAvailable }
@@ -68,7 +68,8 @@ class ChatAgreementsHttpDeviceTest {
                 val state by vm.state.collectAsState()
                 RedSocialTheme {
                     if (state.open) ChatAgreementsDialog(state, vm::close, vm::refresh, vm::changeDraft, vm::saveDraft,
-                        vm::dismissEditor, vm::retry, vm::keepDraftAgainstLatestRevision, vm::respond, vm::edit, vm::showSource, vm::dismissSource, vm::recoverSavedState)
+                        vm::dismissEditor, vm::retry, vm::keepDraftAgainstLatestRevision, vm::respond, vm::edit, vm::showSource, vm::dismissSource, vm::recoverSavedState,
+                        vm::selectArchive, vm::page, vm::resumeDraft, vm::parkDraft, vm::makeNewProposal)
                 }
             }
             compose.runOnIdle { vm.propose(source) }
@@ -97,10 +98,22 @@ class ChatAgreementsHttpDeviceTest {
             compose.waitUntil(15_000) { vm.state.value.source != null }
             compose.onNodeWithText("Ensayamos este sábado").assertIsDisplayed()
             compose.onNodeWithText("Volver al acuerdo").performClick()
+            compose.onNodeWithText("Archivar en el chat").performScrollTo().performClick()
+            compose.onNodeWithText("Archivar acuerdo").performClick()
+            compose.waitUntil(15_000) { !vm.state.value.busy && !vm.state.value.loading && vm.state.value.agreements.none { it.id == first.id } }
+            compose.onNodeWithText("Archivo").performScrollTo().performClick()
+            compose.waitUntil(15_000) { !vm.state.value.loading && vm.state.value.agreements.any { it.id == first.id && it.archived } }
+            val archived = vm.state.value.agreements.single { it.id == first.id }
+            assertEquals(changed.text, archived.text); assertEquals(changed.participants, archived.participants)
+            compose.onNodeWithText("Restaurar en Activos").performScrollTo().performClick()
+            compose.onNodeWithText("Restaurar acuerdo").performClick()
+            compose.waitUntil(15_000) { !vm.state.value.busy && !vm.state.value.loading && vm.state.value.agreements.none { it.id == first.id } }
+            compose.onNodeWithText("Activos").performScrollTo().performClick()
+            compose.waitUntil(15_000) { !vm.state.value.loading && vm.state.value.agreements.any { it.id == first.id && !it.archived } }
             compose.onNodeWithText("Cancelar acuerdo").performScrollTo().performClick()
             compose.onAllNodesWithText("Cancelar acuerdo").let { nodes -> nodes[nodes.fetchSemanticsNodes().lastIndex].performClick() }
             compose.waitUntil(15_000) { !vm.state.value.busy && vm.state.value.agreements.first().cancelled }
-            assertEquals("cancelled", runBlocking(Dispatchers.IO) { api.load(bobLease, chat) }.first().status)
+            assertEquals("cancelled", runBlocking(Dispatchers.IO) { api.load(bobLease, chat) }.agreements.single { it.id == first.id }.status)
         } finally {
             compose.runOnIdle { models.clear() }
             client.close()

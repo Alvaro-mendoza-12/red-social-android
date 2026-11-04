@@ -14,7 +14,7 @@ function agreementCommand(body, creating) {
     return { operationId: id(body.operationId), id: id(body.id), sourceMessageId: id(body.sourceMessageId), text: agreementText(body.text) }
   }
   if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion < 1 ||
-      !['accept', 'changes', 'withdraw', 'revise', 'cancel'].includes(body.action) ||
+      !['accept', 'changes', 'withdraw', 'revise', 'cancel', 'archive', 'restore'].includes(body.action) ||
       (body.action !== 'revise' && body.text !== undefined)) throw fail('AGREEMENT_INVALID_COMMAND')
   return { operationId: id(body.operationId), expectedVersion: body.expectedVersion, action: body.action,
     ...(body.action === 'revise' ? { text: agreementText(body.text) } : {}) }
@@ -31,14 +31,21 @@ function createAgreement(command, actorId, participants, now) {
     throw fail('AGREEMENT_CHAT_UNAVAILABLE', 403)
   }
   return { id: command.id, sourceMessageId: command.sourceMessageId, authorId: actorId, text: command.text,
-    version: 1, proposalRevision: 1, cancelled: false, createdAt: now, updatedAt: now,
+    version: 1, proposalRevision: 1, cancelled: false, archived: false, createdAt: now, updatedAt: now,
     participants: ids.map(userId => ({ id: userId, response: 'pending', respondedAt: null })) }
 }
 
 function changeAgreement(previous, command, actorId, now) {
   if (!previous.participants.some(member => member.id === actorId)) throw fail('AGREEMENT_ACCESS_DENIED', 403)
   if (previous.version !== command.expectedVersion) throw fail('AGREEMENT_VERSION_CONFLICT', 409)
+  if (['archive', 'restore'].includes(command.action)) {
+    const archived = command.action === 'archive'
+    if (Boolean(previous.archived) === archived) return previous
+    if (previous.version >= 10_000) throw fail('AGREEMENT_REVISION_LIMIT', 409)
+    return { ...previous, archived, version: previous.version + 1, updatedAt: now }
+  }
   if (previous.cancelled) throw fail('AGREEMENT_CANCELLED', 409)
+  if (previous.archived && ['accept', 'revise'].includes(command.action)) throw fail('AGREEMENT_ARCHIVED', 409)
   if (previous.version >= 10_000) throw fail('AGREEMENT_REVISION_LIMIT', 409)
   let next
   switch (command.action) {
