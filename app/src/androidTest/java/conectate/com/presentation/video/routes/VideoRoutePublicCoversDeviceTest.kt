@@ -73,6 +73,8 @@ class VideoRoutePublicCoversDeviceTest {
             assertEquals(route.items.map { it.thumbnailPath }.distinct().size, completed.size)
             saveScreenshot("routes106-public-light.png")
             compose.runOnIdle { dark.value = true }
+            compose.mainClock.advanceTimeBy(300)
+            compose.waitForIdle()
             saveScreenshot("routes106-public-dark.png")
         } finally {
             if (contentInstalled) {
