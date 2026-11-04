@@ -185,6 +185,7 @@ async function testProviderCanFeedTheIsolatedRecommendationRoute() {
     rows: [safeRaw('published-video', 'video', { topics: ['birds'] })],
   }).loadCandidates
   registerAlgorithmRecommendationRoutes(app, {
+    hydrateItems: async ({ items }) => items,
     pool: {},
     authRequired: (_req, _res, next) => next(),
     getCurrentUser: async () => ({ id: 'viewer-public' }),

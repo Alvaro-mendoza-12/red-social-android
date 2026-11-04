@@ -9,6 +9,7 @@ const { isRetiredNotification } = require('./retired-notifications')
 const { isServerManagedNotification } = require('./notification-event-policy')
 const { publicFeedPage } = require('./public-feed-page')
 const { profilePostShareCandidates, postShareProjection } = require('./profile-post-shares')
+const { createPostEngagementReader } = require('./post-engagement-reader')
 const { publicSearchPage, searchPageOptions } = require('./public-search-page')
 const { historyPageOptions, conversationHistoryPage } = require('./conversation-history-page')
 const { deniedPublicCreatorIds, publicCreatorVisibility } = require('./public-creator-visibility')
@@ -7143,11 +7144,28 @@ function registerDataRoutes(app, {
     getCurrentUser,
     userIdentity,
   })
+  const readPostEngagement = createPostEngagementReader({
+    readImported: (table, ids) => importedRowsByFieldValues(pool, table, ['post_id', 'postId'], ids, 10_000),
+    readReactions: ids => localPostReactions(pool, ids, 10_000),
+    readComments: ids => localPostComments(pool, ids, 10_000),
+    readShares: ids => localPostShares(pool, ids, 50_000),
+    mergeReactions: mergePostReactionRows, projectReactions: buildPostReactionState,
+  })
   registerAuthoritativeRecommendationRoutes(app, {
     pool,
     authRequired,
     getCurrentUser,
     userIdentity,
+    hydrateItems: async ({ items, surface, owner }) => {
+      if (surface !== 'social' || !items.length) return items
+      const state = await readPostEngagement(items.map(row => row.id), owner.identity)
+      return items.map(row => {
+        const projected = enrichPost(row, new Map(), state.likeCounts, state.commentCounts, state.likedPostIds, state.reactionCounts, state.myReactions)
+        return { ...row, like_count: projected.like_count, comment_count: projected.comment_count,
+          liked_by_me: projected.liked_by_me, my_reaction: projected.my_reaction, reaction_counts: projected.reaction_counts,
+          share_count: state.shareCounts.get(normalizeId(row.id)) || 0, shared_by_me: state.sharedPostIds.has(normalizeId(row.id)) }
+      })
+    },
   })
   registerSocializationRoutes(app, {
     pool,
@@ -8796,50 +8814,22 @@ function registerDataRoutes(app, {
         ...identity.values,
         ...pagePosts.map((row) => postOwnerId(row)),
       ])
-      const [publicProfiles, likes, reactions, comments, fallbackLikes, fallbackComments, importedShares, localShares] = await Promise.all([
+      const [publicProfiles, engagement] = await Promise.all([
         publicProfilesByIds(pool, authorIds),
-        importedRowsByFieldValues(pool, 'post_likes', ['post_id', 'postId'], postIds, 10_000),
-        importedRowsByFieldValues(pool, 'post_reactions', ['post_id', 'postId'], postIds, 10_000),
-        importedRowsByFieldValues(pool, 'post_comments', ['post_id', 'postId'], postIds, 10_000),
-        localPostReactions(pool, postIds, 10_000),
-        localPostComments(pool, postIds, 10_000),
-        importedRowsByFieldValues(pool, 'shares', ['post_id', 'postId'], postIds, 50_000),
-        localPostShares(pool, postIds, 50_000),
+        readPostEngagement(postIds, identity),
       ])
 
       const profilesById = indexProfiles(publicProfiles)
-      const likeCounts = new Map()
-      const commentCounts = new Map()
-      const likedPostIds = new Set()
-
-      const allReactionRows = mergePostReactionRows([...likes, ...reactions], fallbackLikes)
-      for (const row of allReactionRows) {
-        const postId = textOf(row, ['post_id'], '')
-        if (!postId) continue
-        likeCounts.set(postId, (likeCounts.get(postId) || 0) + 1)
-        if (rowMatchesAny(row, ['user_id', 'profile_id'], identity.ids)) {
-          likedPostIds.add(postId)
-        }
-      }
-
-      for (const row of [...comments, ...fallbackComments]) {
-        const postId = textOf(row, ['post_id'], '')
-        if (!postId) continue
-        commentCounts.set(postId, (commentCounts.get(postId) || 0) + 1)
-      }
-      const reactionState = buildPostReactionState(allReactionRows, identity)
-
-      const shareState = postShareProjection([...importedShares, ...localShares], identity.ids)
       const items = pagePosts.map((row) => ({ ...enrichPost(
           row,
           profilesById,
-          likeCounts,
-          commentCounts,
-          likedPostIds,
-          reactionState.counts,
-          reactionState.mine,
-        ), share_count: shareState.counts.get(normalizeId(row.id)) || 0,
-          shared_by_me: shareState.mine.has(normalizeId(row.id)) }))
+          engagement.likeCounts,
+          engagement.commentCounts,
+          engagement.likedPostIds,
+          engagement.reactionCounts,
+          engagement.myReactions,
+        ), share_count: engagement.shareCounts.get(normalizeId(row.id)) || 0,
+          shared_by_me: engagement.sharedPostIds.has(normalizeId(row.id)) }))
 
       res.json({ items, hasMore: page.hasMore, nextOffset: page.nextOffset,
         candidateLimitReached: page.candidateLimitReached })

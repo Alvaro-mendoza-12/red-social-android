@@ -20,13 +20,15 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import conectate.com.util.UbuntuMedia
+import conectate.com.core.media.useSingleProfilePlayback
 
 @androidx.annotation.OptIn(markerClass = [androidx.media3.common.util.UnstableApi::class])
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullScreenVideoScreen(
     videoUrl: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    loopVideo: Boolean = true,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -56,7 +58,7 @@ fun FullScreenVideoScreen(
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            val exoPlayer = remember(videoUrl, retryRevision) {
+            val exoPlayer = remember(videoUrl, retryRevision, loopVideo) {
                 ExoPlayer.Builder(context)
                     .setMediaSourceFactory(
                         androidx.media3.exoplayer.source.DefaultMediaSourceFactory(
@@ -64,7 +66,7 @@ fun FullScreenVideoScreen(
                         ),
                     )
                     .build().apply {
-                    repeatMode = Player.REPEAT_MODE_ONE
+                    if (loopVideo) repeatMode = Player.REPEAT_MODE_ONE else useSingleProfilePlayback()
                     addListener(object : Player.Listener {
                         override fun onPlayerError(error: PlaybackException) { playbackFailed = true }
                     })

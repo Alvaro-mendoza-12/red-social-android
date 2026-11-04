@@ -166,10 +166,10 @@ sealed class Screen(val route: String) {
         }
     }
     
-    object FullScreenVideo : Screen("fullscreen_video/{videoUrl}") {
-        fun createRoute(videoUrl: String): String {
+    object FullScreenVideo : Screen("fullscreen_video/{videoUrl}?loop={loop}") {
+        fun createRoute(videoUrl: String, loop: Boolean = true): String {
              val encoded = java.net.URLEncoder.encode(videoUrl, java.nio.charset.StandardCharsets.UTF_8.toString())
-             return "fullscreen_video/$encoded"
+             return "fullscreen_video/$encoded" + if (loop) "" else "?loop=false"
         }
     }
 
