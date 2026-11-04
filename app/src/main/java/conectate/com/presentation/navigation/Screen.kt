@@ -54,6 +54,10 @@ sealed class Screen(val route: String) {
     }
     
     object Videos : Screen("videos")
+    object VideoRoutes : Screen("video_routes")
+    object VideoRoutePlayer : Screen("video_route_player/{videoId}") {
+        fun createRoute(videoId: String) = "video_route_player/${android.net.Uri.encode(videoId)}"
+    }
     object VideoDiscovery : Screen("video_discovery/{videoId}") {
         fun createRoute(videoId: String) = "video_discovery/${android.net.Uri.encode(videoId)}"
     }

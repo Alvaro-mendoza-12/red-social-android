@@ -549,6 +549,32 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         }
     }
 
+    composable(Screen.VideoRoutes.route) {
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.video.routes.VideoRoutesScreen(
+                onBack = { navController.popBackStack() },
+                onOpenVideo = { videoId ->
+                    navController.navigate(Screen.VideoRoutePlayer.createRoute(videoId)) { launchSingleTop = true }
+                },
+            )
+        }
+    }
+
+    composable(
+        route = Screen.VideoRoutePlayer.route,
+        arguments = listOf(
+            navArgument("videoId") { type = NavType.StringType },
+            navArgument("singleVideoOnly") { type = NavType.BoolType; defaultValue = true },
+        ),
+    ) { entry ->
+        RequireLoggedIn(isLoggedIn, navController) {
+            conectate.com.presentation.video.VideoDetailFeedScreen(
+                navController = navController,
+                videoId = entry.arguments?.getString("videoId") ?: return@RequireLoggedIn,
+            )
+        }
+    }
+
     composable(
         route = Screen.VideoPlayer.route,
         arguments = listOf(

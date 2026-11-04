@@ -80,6 +80,7 @@ class VideoFeedViewModel @Inject constructor(
         ?.takeIf { it.isNotBlank() }
     private val profileInitialIndex = (savedStateHandle.get<Int>("initialIndex") ?: 0).coerceAtLeast(0)
     val isProfileFeed: Boolean = profileFeedOwnerId != null
+    val isRoutePlayback: Boolean = savedStateHandle.get<Boolean>("singleVideoOnly") == true
     private val _profileVideos = MutableStateFlow<List<Video>>(emptyList())
     val profileVideos: StateFlow<List<Video>> = _profileVideos.asStateFlow()
     private val _profileFeedError = MutableStateFlow<String?>(null)
@@ -221,6 +222,7 @@ class VideoFeedViewModel @Inject constructor(
             return
         }
         if (!focusedVideoIds.add(cleanId)) return
+        if (isRoutePlayback) _isLoading.value = true
         _focusedVideoError.value = null
         val generation = accountGeneration
         val reactionReadVersion = likeWriter.readVersion()
@@ -234,9 +236,10 @@ class VideoFeedViewModel @Inject constructor(
                             focusedVideos = focusedVideosById.values,
                             loadedPage = _forYouVideos.value,
                         )
+                        if (isRoutePlayback) loadFollowedUsers()
                         // Resolve the link before competing catalog/recommendation reads.
                         // They may append afterwards without moving its requested video.
-                        if (forYouJob == null) {
+                        if (!isRoutePlayback && forYouJob == null) {
                             loadForYouVideos()
                             scheduleSupplementalFeedContent()
                         }
@@ -251,7 +254,13 @@ class VideoFeedViewModel @Inject constructor(
                         }
                     }
             } finally {
-                if (generation == accountGeneration) focusedVideoIds.remove(cleanId)
+                if (generation == accountGeneration) {
+                    focusedVideoIds.remove(cleanId)
+                    if (isRoutePlayback) {
+                        _isLoading.value = false
+                        _isRefreshing.value = false
+                    }
+                }
             }
         }
     }
@@ -276,6 +285,7 @@ class VideoFeedViewModel @Inject constructor(
                 }
             }
             "created" -> {
+                if (isRoutePlayback) return
                 if (
                     _forYouVideos.value.any { it.id.equals(event.videoId, true) } ||
                     focusedVideosById.containsKey(event.videoId)
@@ -459,6 +469,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     private fun scheduleSupplementalFeedContent() {
+        if (isRoutePlayback) return
         supplementalFeedJob?.cancel()
         val generation = accountGeneration
         supplementalFeedJob = viewModelScope.launch {
@@ -682,6 +693,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun refreshLives() {
+        if (isRoutePlayback) return
         viewModelScope.launch { liveRepository.refreshActiveStreams() }
     }
 
@@ -802,6 +814,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun onTabSelected(index: Int) {
+        if (isRoutePlayback) return
         val previous = _selectedTab.value
         _selectedTab.value = index
         if (index == 0 && previous != 0 && !isProfileFeed) {
@@ -814,6 +827,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     private fun loadForYouVideos(forceLegacy: Boolean = false) {
+        if (isRoutePlayback) return
         forYouJob?.cancel()
         loadMoreJob?.cancel()
         loadMoreJob = null
@@ -948,6 +962,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun continueRecommendedFeed() {
+        if (isRoutePlayback) return
         if (!isLastPage) { loadMoreVideos(); return }
         if (_isLoading.value || loadMoreJob?.isActive == true) return
         val generation = accountGeneration
@@ -1020,6 +1035,7 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun loadMoreVideos() {
+        if (isRoutePlayback) return
         if (_isLoading.value || isLastPage || loadMoreJob?.isActive == true) return
 
         val generation = accountGeneration

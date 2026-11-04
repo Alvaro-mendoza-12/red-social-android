@@ -22,6 +22,8 @@ La revisión web de compartidos está en la [entrega 100](100-compartidos-comple
 
 ## Cómo interpretar el historial
 
+La rama `codex/experiencias-con-proposito` contiene la [investigación y el prototipo de Rutas de video](../experimental/105-experiencias-con-proposito.md). Ese documento separa la implementación experimental, sus pruebas y las propuestas pendientes de otros módulos. La entrega estable sigue identificada en 104.
+
 Los informes numerados y fechados registran lo que se comprobó en esa versión. Una mención de «cierre», una cifra de pruebas, un paquete o un despliegue antiguo no constituye el estado actual. Para continuar el trabajo usa el apartado **Estado vigente** de la revisión 101, y después el documento operativo correspondiente. La limpieza local de carpetas de [93](93-limpieza-local-y-git-2026-10-30.md) es evidencia fechada, no una autorización para borrar nuevos respaldos o temporales ignorados.
 
 ## Índice recomendado de lectura

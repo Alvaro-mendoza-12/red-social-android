@@ -302,7 +302,11 @@ fun VideoFeedScreen(
     val authoritativeContinuationPending by viewModel.authoritativeContinuationPending.collectAsState()
     val recommendedFeedExhausted by viewModel.recommendedFeedExhausted.collectAsState()
     val followingError by viewModel.followingFeedError.collectAsState()
-    val feedError = if (selectedTab == 1) followingError else recommendationError
+    val feedError = when {
+        viewModel.isRoutePlayback -> null
+        selectedTab == 1 -> followingError
+        else -> recommendationError
+    }
     val currentFollowingCallback by rememberUpdatedState(onFollowingFeedVisible)
     val feedLifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     LaunchedEffect(selectedTab, isLoading, isRefreshing, feedError, followingVideos, feedLifecycleState) {
@@ -347,6 +351,7 @@ fun VideoFeedScreen(
     
     val currentUserId by viewModel.currentUserId.collectAsState()
     val isProfileFeed = viewModel.isProfileFeed
+    val isRoutePlayback = viewModel.isRoutePlayback
     val profilePrependCount by viewModel.profilePrependCount.collectAsState()
 
     val navScope = rememberCoroutineScope()
@@ -455,6 +460,7 @@ fun VideoFeedScreen(
     }
 
     val currentVideos = when {
+        isRoutePlayback -> conectate.com.presentation.video.routes.routePlaybackVideos(forYouVideos, initialVideoId)
         isProfileFeed -> profileVideos
         isSearchMode -> searchResults
         selectedTab == 0 -> forYouVideos
@@ -476,7 +482,7 @@ fun VideoFeedScreen(
         authoritativeFeedAccepted,
     ) {
         if (
-            !isProfileFeed &&
+            !isRoutePlayback && !isProfileFeed &&
             !authoritativeFeedAccepted &&
             selectedTab == 0 &&
             FeedRecoveryPolicy.shouldRetry(
@@ -527,7 +533,7 @@ fun VideoFeedScreen(
         recommendedPeople,
         socializationCards,
     ) {
-        mixedVideoFeed(
+        if (isRoutePlayback) currentVideos.map(::VideoFeedVideoEntry) else mixedVideoFeed(
             videos = currentVideos,
             streams = activeStreams,
             includeLives = !isProfileFeed && showLiveRecommendations && !isSearchMode && selectedTab == 0,
@@ -540,10 +546,10 @@ fun VideoFeedScreen(
     val pagerState = rememberPagerState(pageCount = { feedEntries.size })
     MaintainVideoFeedTailAppendAnchor(
         pagerState, currentVideos, feedEntries, forYouFeed.sessionId,
-        enabled = !isProfileFeed && !isSearchMode && selectedTab == 0,
+        enabled = !isRoutePlayback && !isProfileFeed && !isSearchMode && selectedTab == 0,
     )
     ContinueRecommendedFeedAtTail(pagerState, feedEntries, forYouFeed.sessionId, isLoading, feedError,
-        enabled = !isProfileFeed && !isSearchMode && selectedTab == 0 && currentVideos.isNotEmpty(),
+        enabled = !isRoutePlayback && !isProfileFeed && !isSearchMode && selectedTab == 0 && currentVideos.isNotEmpty(),
         onContinue = viewModel::continueRecommendedFeed)
     var initialVideoPositionApplied by rememberSaveable(initialVideoId, currentUserId) { mutableStateOf(false) }
     var entryCommentOpened by rememberSaveable(initialVideoId, focusCommentId, currentUserId) { mutableStateOf(false) }
@@ -1055,6 +1061,7 @@ fun VideoFeedScreen(
     }
 
     LaunchedEffect(settledVideoId, currentVideos.size, isProfileFeed, isLoading, feedError) {
+        if (isRoutePlayback) return@LaunchedEffect
         // A two-item provisional page can settle while the initial request is
         // still loading. Retry admission once that request completes, but never
         // spin on a failed network page.
@@ -1728,11 +1735,11 @@ fun VideoFeedScreen(
         Box(modifier = Modifier.padding(padding).fillMaxSize().pullToRefresh(
             isRefreshing = isRefreshing,
             state = pullRefreshState,
-            enabled = !isProfileFeed && !isSearchMode,
+            enabled = !isRoutePlayback && !isProfileFeed && !isSearchMode,
             onRefresh = { if (!isRefreshing) viewModel.refreshFeed() },
         )) {
             
-            if (showBackButton && !initialVideoPositionApplied) {
+            if ((showBackButton && !initialVideoPositionApplied) || (isRoutePlayback && focusedVideoError != null)) {
                 Column(
                     Modifier.align(Alignment.Center).padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -2091,7 +2098,11 @@ fun VideoFeedScreen(
                         )
                     }
                     Text(
-                        text = if (isProfileFeed) "Videos del perfil" else "Video",
+                        text = when {
+                            isRoutePlayback -> "Volver a mi ruta"
+                            isProfileFeed -> "Videos del perfil"
+                            else -> "Video"
+                        },
                         color = Color.White,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
@@ -2211,7 +2222,7 @@ fun VideoFeedScreen(
             }
             
             // Keep the create action on the same toolbar row as LIVE, tabs and search.
-            if (!isSearchMode) {
+            if (!isSearchMode && !isRoutePlayback) {
             Column(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -2238,6 +2249,15 @@ fun VideoFeedScreen(
                         expanded = showCreateMenu,
                         onDismissRequest = { showCreateMenu = false }
                     ) {
+                    DropdownMenuItem(
+                        text = { Text("Rutas con propósito") },
+                        leadingIcon = { Icon(Icons.Default.Route, contentDescription = null) },
+                        onClick = {
+                            showCreateMenu = false
+                            exoPlayer.pause()
+                            navController.navigate(Screen.VideoRoutes.route) { launchSingleTop = true }
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text("Subir video") },
                         leadingIcon = { Icon(Icons.Default.VideoLibrary, contentDescription = null) },
