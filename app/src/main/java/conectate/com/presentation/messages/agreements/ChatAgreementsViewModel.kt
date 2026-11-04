@@ -29,6 +29,7 @@ data class ChatAgreementsState(
     val retryPending: Boolean = false, val source: AgreementSource? = null,
     val savingDraft: Boolean = false, val draftSaved: Boolean = false,
     val recoveryConflict: Boolean = false, val recoveryUnavailable: Boolean = false,
+    val serverAvailable: Boolean = true,
 )
 
 @HiltViewModel
@@ -47,7 +48,7 @@ class ChatAgreementsViewModel internal constructor(
             if (event.event == "chat_agreement") event.payload["chatId"]?.jsonPrimitive?.contentOrNull?.let { AgreementChange(it, event.channel) } else null
         }, api::supported, api::load, api::send, api::source, recovery,
     )
-    private val _state = MutableStateFlow(ChatAgreementsState())
+    private val _state = MutableStateFlow(ChatAgreementsState(serverAvailable = false))
     val state = _state.asStateFlow()
     private var lease: AuthSessionLease? = null
     private var target: String? = null
@@ -77,28 +78,47 @@ class ChatAgreementsViewModel internal constructor(
         recoveryReady = false; recoveryRecord = null; draftDirty = false
         target = clean; lease = capture()
         val current = checkNotNull(lease)
-        _state.value = ChatAgreementsState(accountId = current.accountId, chatId = clean)
+        _state.value = ChatAgreementsState(accountId = current.accountId, chatId = clean, serverAvailable = false)
         if (clean == null || !current.isCurrent()) return
         val epoch = generation
         readJob = viewModelScope.launch {
             try {
+                runReadWithDeadline(10_000) { restoreRecovery(epoch, current, clean) }.getOrThrow()
+                if (valid(epoch, current) && hasRecovery()) _state.value = _state.value.copy(supported = true)
+            }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { if (valid(epoch, current)) _state.value = _state.value.copy(
+                recoveryUnavailable = true, error = "No se pudo recuperar el borrador de este dispositivo. Reintenta antes de escribir.") }
+            try {
                 val supported = runReadWithDeadline(10_000) { capability(current) }.getOrThrow()
-                if (valid(epoch, current) && supported) {
-                    try { restoreRecovery(epoch, current, clean) }
-                    catch (cancelled: CancellationException) { throw cancelled }
-                    catch (_: Exception) { if (valid(epoch, current)) _state.value = _state.value.copy(
-                        recoveryUnavailable = true, error = "No se pudo recuperar el borrador de este dispositivo. Reintenta antes de escribir.") }
-                    if (valid(epoch, current)) _state.value = _state.value.copy(supported = true)
-                }
+                if (valid(epoch, current)) _state.value = _state.value.copy(supported = supported || hasRecovery(), serverAvailable = supported,
+                    error = if (!supported && hasRecovery()) "Acuerdos no está disponible ahora. El borrador y los envíos pendientes siguen guardados." else _state.value.error)
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { /* Optional capability stays hidden. Opening a chat does not show an unrelated error. */ }
+            catch (_: Exception) { if (valid(epoch, current)) _state.value = _state.value.copy(supported = hasRecovery(), serverAvailable = false,
+                error = if (hasRecovery()) "No se pudo conectar. Puedes continuar el borrador y volver a conectar para enviarlo." else _state.value.error) }
         }
     }
     fun open() { if (active() && _state.value.supported) { _state.value = _state.value.copy(open = true); refresh() } }
     fun close() {
         readingVersion++; readJob?.cancel()
-        _state.value = _state.value.copy(open = false, loading = false, source = null)
-        if (draftDirty && pending == null && !_state.value.busy) saveLocalDraft(immediate = true)
+        _state.value = _state.value.copy(loading = false, source = null)
+        val current = lease; val chat = target
+        if (draftDirty && recoveryReady && pending == null && !_state.value.busy && current != null && chat != null && active()) {
+            val epoch = generation; val draft = currentDraft()
+            draftVersion++; draftJob?.cancel()
+            _state.value = _state.value.copy(busy = true, savingDraft = true)
+            writeJob = viewModelScope.launch {
+                try {
+                    persistRecovery(epoch, current, chat, draft, null)
+                    if (valid(epoch, current)) {
+                        draftDirty = false
+                        _state.value = _state.value.copy(open = false, busy = false, savingDraft = false,
+                            draftSaved = draft != null, recoveryUnavailable = false, error = null)
+                    }
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (error: Exception) { if (valid(epoch, current)) storageFailure(error) }
+            }
+        } else _state.value = _state.value.copy(open = false)
     }
     fun refresh() = refresh(keepError = false)
     fun recoverSavedState() {
@@ -119,6 +139,12 @@ class ChatAgreementsViewModel internal constructor(
         readJob = viewModelScope.launch {
             try {
                 if (!recoveryReady) restoreRecovery(epoch, current, chat)
+                if (!_state.value.serverAvailable) {
+                    val available = runReadWithDeadline(10_000) { capability(current) }.getOrThrow()
+                    if (!valid(epoch, current) || read != readingVersion) return@launch
+                    _state.value = _state.value.copy(serverAvailable = available)
+                    if (!available) throw AgreementApiException(503, "AGREEMENT_DISABLED")
+                }
                 val rows = runReadWithDeadline(10_000) { load(current, chat) }.getOrThrow()
                 if (valid(epoch, current) && read == readingVersion) _state.value = _state.value.copy(agreements = rows, loading = false)
             } catch (cancelled: CancellationException) { throw cancelled }
@@ -179,7 +205,7 @@ class ChatAgreementsViewModel internal constructor(
         }
     }
     fun saveDraft() {
-        if (!active() || !recoveryReady || _state.value.busy || pending != null || _state.value.draft.isBlank()) return
+        if (!active() || !recoveryReady || !_state.value.serverAvailable || _state.value.busy || pending != null || _state.value.draft.isBlank()) return
         val snapshot = _state.value
         val original = snapshot.agreements.find { it.id == snapshot.editingId }
         if (snapshot.editingId != null && original == null) return
@@ -190,13 +216,13 @@ class ChatAgreementsViewModel internal constructor(
         dispatch(id to command)
     }
     fun respond(agreement: ChatAgreement, action: String) {
-        if (!active() || !recoveryReady || _state.value.busy || pending != null || _state.value.sourceId != null || action !in setOf("accept", "changes", "withdraw", "cancel")) return
+        if (!active() || !recoveryReady || !_state.value.serverAvailable || _state.value.busy || pending != null || _state.value.sourceId != null || action !in setOf("accept", "changes", "withdraw", "cancel")) return
         dispatch(agreement.id to AgreementCommand(UUID.randomUUID().toString(), expectedVersion = agreement.version, action = action))
     }
     fun retry() { pending?.let(::dispatch) }
     private fun dispatch(operation: Pair<String, AgreementCommand>) {
         val current = lease ?: return; val chat = target ?: return
-        if (!active() || !recoveryReady || _state.value.busy) return
+        if (!active() || !recoveryReady || !_state.value.serverAvailable || _state.value.busy) return
         pending = operation
         val epoch = generation
         val draft = currentDraft()
@@ -232,6 +258,7 @@ class ChatAgreementsViewModel internal constructor(
     private fun currentDraft(): AgreementDraft? = _state.value.let { snapshot -> snapshot.sourceId?.let {
         AgreementDraft(it, snapshot.draft, snapshot.editingId, snapshot.editingVersion)
     } }
+    private fun hasRecovery() = _state.value.sourceId != null || pending != null
     private suspend fun restoreRecovery(epoch: Long, current: AuthSessionLease, chat: String) = recoveryMutex.withLock {
         val saved = recovery.read(current, chat)
         if (!valid(epoch, current)) throw CancellationException()
@@ -303,6 +330,7 @@ class ChatAgreementsViewModel internal constructor(
         "AGREEMENT_SOURCE_UNAVAILABLE" -> "El mensaje de origen ya no está disponible. Elige otro mensaje."
         "AGREEMENT_ROOM_LIMIT" -> "Este chat llegó al límite de 50 acuerdos."
         "AGREEMENT_CANCELLED" -> "La propuesta se canceló. Actualiza para ver su estado."
+        "AGREEMENT_DISABLED" -> "Acuerdos no está disponible ahora. El borrador y los envíos pendientes siguen guardados."
         else -> "No se pudo completar la acción. Conservamos lo que escribiste para reintentar."
     }
 }

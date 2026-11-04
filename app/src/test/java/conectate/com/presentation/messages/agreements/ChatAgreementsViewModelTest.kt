@@ -51,6 +51,7 @@ class ChatAgreementsViewModelTest {
         val events = MutableSharedFlow<AgreementChange>(extraBufferCapacity = 4)
         var owner: String? = alice
         var supported = true
+        var capabilityRead: suspend () -> Boolean = { supported }
         var reads = 0
         var rows = listOf(agreement())
         var read: suspend (String) -> List<ChatAgreement> = { rows }
@@ -59,7 +60,7 @@ class ChatAgreementsViewModelTest {
         val commands = mutableListOf<AgreementCommand>()
         val vm = ChatAgreementsViewModel(
             capture = { guard.captureAccountLease { owner } }, changes = changes, events = events,
-            capability = { supported }, load = { _, id -> reads++; read(id) },
+            capability = { capabilityRead() }, load = { _, id -> reads++; read(id) },
             send = { _, _, _, command -> commands.add(command); send(command) }, source = { _, _, _ -> source() },
             recovery = persistence,
         ).also { models.put(java.util.UUID.randomUUID().toString(), it) }
@@ -218,5 +219,42 @@ class ChatAgreementsViewModelTest {
         f.send = { throw AgreementApiException(403, "AGREEMENT_CHAT_UNAVAILABLE") }; f.vm.respond(agreement(), "accept"); advanceUntilIdle()
         assertTrue(f.vm.state.value.retryPending)
         assertEquals(f.commands.single(), f.persistence.rows[alice to chat]?.pending?.command)
+    }
+    @Test fun aSavedDraftRemainsEditableOfflineAndReconnectingNeverSendsItAutomatically() = runTest(dispatcher) {
+        val first = Fixture(); first.bind(); advanceUntilIdle(); first.vm.propose(sourceId); first.vm.changeDraft("Guardado"); advanceUntilIdle()
+        val offline = Fixture(first.persistence); offline.capabilityRead = { throw IOException("server off") }; offline.bind(); advanceUntilIdle()
+        assertTrue(offline.vm.state.value.supported); assertFalse(offline.vm.state.value.serverAvailable)
+        assertEquals("Guardado", offline.vm.state.value.draft)
+        offline.vm.open(); offline.vm.changeDraft("Continué sin conexión"); advanceUntilIdle()
+        assertEquals("Continué sin conexión", offline.persistence.rows[alice to chat]?.draft?.text)
+        offline.vm.saveDraft(); advanceUntilIdle(); assertTrue(offline.commands.isEmpty())
+        offline.capabilityRead = { true }; offline.vm.refresh(); advanceUntilIdle()
+        assertTrue(offline.vm.state.value.serverAvailable); assertTrue(offline.commands.isEmpty())
+        offline.vm.saveDraft(); advanceUntilIdle(); assertEquals(1, offline.commands.size)
+    }
+    @Test fun aDisabledBackendCannotClearAnOperationPreviouslySavedBeforeALostAcknowledgement() = runTest(dispatcher) {
+        val first = Fixture(); first.bind(); advanceUntilIdle(); first.send = { throw IOException("ACK lost") }
+        first.vm.respond(agreement(), "accept"); advanceUntilIdle(); val operation = first.commands.single()
+        val offline = Fixture(first.persistence); offline.supported = false; offline.bind(); advanceUntilIdle()
+        assertTrue(offline.vm.state.value.supported); assertFalse(offline.vm.state.value.serverAvailable)
+        offline.vm.retry(); offline.vm.open(); advanceUntilIdle()
+        assertTrue(offline.commands.isEmpty()); assertEquals(operation, offline.persistence.rows[alice to chat]?.pending?.command)
+        offline.supported = true; offline.vm.refresh(); advanceUntilIdle(); assertTrue(offline.commands.isEmpty())
+        offline.vm.retry(); advanceUntilIdle(); assertEquals(listOf(operation), offline.commands)
+    }
+    @Test fun returningToTheChatWaitsForADurableDraftAndNeverTreatsBackAsDiscard() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose(sourceId); f.vm.changeDraft("Guardar al volver")
+        f.vm.close(); assertTrue(f.vm.state.value.open); assertTrue(f.vm.state.value.busy)
+        advanceUntilIdle(); assertFalse(f.vm.state.value.open); assertTrue(f.vm.state.value.draftSaved)
+        assertEquals("Guardar al volver", f.persistence.rows[alice to chat]?.draft?.text)
+        f.vm.open(); advanceUntilIdle(); assertEquals("Guardar al volver", f.vm.state.value.draft)
+    }
+    @Test fun aStorageFailureWhileLeavingKeepsTheEditorVisibleAndItsTextRecoverable() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose(sourceId); f.vm.changeDraft("Conservar visible")
+        f.persistence.failWrite = true; f.vm.close(); advanceUntilIdle()
+        assertTrue(f.vm.state.value.open); assertFalse(f.vm.state.value.busy); assertFalse(f.vm.state.value.draftSaved)
+        assertEquals("Conservar visible", f.vm.state.value.draft)
+        f.persistence.failWrite = false; f.vm.close(); advanceUntilIdle()
+        assertFalse(f.vm.state.value.open); assertEquals("Conservar visible", f.persistence.rows[alice to chat]?.draft?.text)
     }
 }

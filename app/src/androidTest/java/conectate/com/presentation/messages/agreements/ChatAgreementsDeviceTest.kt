@@ -85,7 +85,7 @@ class ChatAgreementsDeviceTest {
         compose.onNodeWithText("Mensaje de origen").assertIsDisplayed()
         compose.onNodeWithText("Volver al acuerdo").performClick()
         compose.runOnIdle { state.value = state.value.copy(sourceId = "source", draft = "Borrador importante") }
-        compose.onNodeWithContentDescription("Volver al chat").performClick()
+        compose.onNodeWithText("Descartar borrador").performScrollTo().performClick()
         compose.onNodeWithText("¿Descartar este borrador?").assertIsDisplayed()
         compose.onNodeWithText("Seguir escribiendo").performClick()
         compose.runOnIdle { assertFalse(dismissed) }
@@ -109,12 +109,30 @@ class ChatAgreementsDeviceTest {
         compose.onNodeWithText("Guardando borrador…").performScrollTo().assertIsDisplayed()
         compose.runOnIdle { state.value = state.value.copy(savingDraft = false, draftSaved = true) }
         compose.onNodeWithText("Borrador guardado en este dispositivo").performScrollTo().assertIsDisplayed()
+        screenshot("agreements108-recovered-editor.png")
+    }
+    @Test fun returningFromASavedDraftClosesWithoutDiscardingIt() {
+        var closed = false; var discarded = false
+        compose.setContent { RedSocialTheme { Content(state().copy(sourceId = "source", draft = "Conservar", draftSaved = true),
+            onClose = { closed = true }, onDismissEditor = { discarded = true }) } }
+        compose.onNodeWithContentDescription("Volver al chat").performClick()
+        compose.runOnIdle { assertTrue(closed); assertFalse(discarded) }
+        compose.onNodeWithText("¿Descartar este borrador?").assertDoesNotExist()
+    }
+    @Test fun offlineDraftsRemainEditableWithReconnectAndNoNetworkWriteAction() {
+        var refreshed = false
+        compose.setContent { RedSocialTheme { Content(state().copy(sourceId = "source", draft = "Sin conexión", draftSaved = true,
+            serverAvailable = false, error = "No se pudo conectar."), onRefresh = { refreshed = true }) } }
+        compose.onNodeWithText("Propuesta").assertIsEnabled()
+        compose.onNodeWithText("Enviar propuesta").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Volver a conectar").performScrollTo().performClick()
+        compose.runOnIdle { assertTrue(refreshed) }
     }
 
     @Composable private fun Content(state: ChatAgreementsState, onRespond: (ChatAgreement, String) -> Unit = { _, _ -> },
         onRetry: () -> Unit = {}, onKeepDraft: () -> Unit = {}, onSource: () -> Unit = {}, onDismissSource: () -> Unit = {}, onDismissEditor: () -> Unit = {},
-        onRecover: () -> Unit = {}) {
-        ChatAgreementsDialog(state, onClose = {}, onRefresh = {}, onDraft = {}, onSave = {}, onDismissEditor = onDismissEditor,
+        onRecover: () -> Unit = {}, onClose: () -> Unit = {}, onRefresh: () -> Unit = {}) {
+        ChatAgreementsDialog(state, onClose = onClose, onRefresh = onRefresh, onDraft = {}, onSave = {}, onDismissEditor = onDismissEditor,
             onRetry = onRetry, onKeepDraft = onKeepDraft, onRespond = onRespond, onEdit = {}, onSource = { onSource() }, onDismissSource = onDismissSource,
             onRecoverSavedState = onRecover)
     }

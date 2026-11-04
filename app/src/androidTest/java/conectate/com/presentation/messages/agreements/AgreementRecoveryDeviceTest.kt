@@ -85,6 +85,7 @@ class AgreementRecoveryDeviceTest {
             val saved = persistence.read(lease, chat)
             assertEquals("Proceso:$owner", saved?.draft?.text); assertNotNull(saved?.pending)
             assertFalse(model.state.value.busy)
+            withContext(Dispatchers.IO) { File(checkNotNull(context.getExternalFilesDir(null)), "agreements108-process-before.pid").writeText(android.os.Process.myPid().toString()) }
         } finally { withContext(Dispatchers.Main) { models.clear() } }
     }
     @Test fun recoverPendingAfterProcessDeathWithoutAutomaticDispatch() = runBlocking {
@@ -110,6 +111,7 @@ class AgreementRecoveryDeviceTest {
             assertEquals(listOf(operation.command), calls)
             assertNull(persistence.read(lease, chat)?.pending)
             assertNull(persistence.read(lease, chat)?.draft)
+            withContext(Dispatchers.IO) { File(checkNotNull(context.getExternalFilesDir(null)), "agreements108-process-after.pid").writeText(android.os.Process.myPid().toString()) }
         } finally { withContext(Dispatchers.Main) { models.clear() }; withContext(Dispatchers.IO) { journal().eraseAccount(owner) } }
     }
     private fun processOwner(): String {

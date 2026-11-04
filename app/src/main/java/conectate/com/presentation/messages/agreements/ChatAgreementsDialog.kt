@@ -51,9 +51,7 @@ internal fun ChatAgreementsDialog(
     val needsReview = latest != null && latest.version != state.editingVersion
     val requestRefresh = { if (state.recoveryConflict) confirmRecovery = true else onRefresh() }
     val requestBack = {
-        if (editing && !state.busy && !state.retryPending) {
-            if (state.draft.isNotBlank()) confirmDiscard = true else onDismissEditor()
-        } else onClose()
+        if (editing && !state.busy && !state.retryPending && state.draft.isBlank()) onDismissEditor() else onClose()
     }
     Dialog(onDismissRequest = requestBack, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val view = LocalView.current
@@ -84,8 +82,8 @@ internal fun ChatAgreementsDialog(
                         Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(18.dp)) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(state.error, color = MaterialTheme.colorScheme.onErrorContainer)
-                                TextButton(onClick = if (state.retryPending) onRetry else requestRefresh, enabled = !state.busy) {
-                                    Text(when { state.recoveryConflict -> "Recuperar borrador guardado"; state.retryPending -> "Reintentar envío"
+                                TextButton(onClick = if (state.retryPending && state.serverAvailable) onRetry else requestRefresh, enabled = !state.busy) {
+                                    Text(when { state.recoveryConflict -> "Recuperar borrador guardado"; !state.serverAvailable -> "Volver a conectar"; state.retryPending -> "Reintentar envío"
                                         state.recoveryUnavailable -> "Reintentar recuperación"; else -> "Actualizar acuerdos" })
                                 }
                             }
@@ -96,7 +94,8 @@ internal fun ChatAgreementsDialog(
                             Text("La propuesta tiene cambios posteriores. Compara los textos antes de guardar.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             TextButton(onClick = { compare = true }) { Text("Comparar revisiones") }
                         }
-                        AgreementEditor(state, onDraft, onSave, canSave = !needsReview && latest?.cancelled != true && !state.recoveryConflict)
+                        AgreementEditor(state, onDraft, onSave, onDiscard = { confirmDiscard = true },
+                            canSave = !needsReview && latest?.cancelled != true && !state.recoveryConflict && state.serverAvailable)
                     } else {
                         item {
                             Text("Lo que decidimos", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -113,7 +112,7 @@ internal fun ChatAgreementsDialog(
                             }
                         }
                         items(state.agreements, key = { it.id }) { agreement ->
-                            AgreementCard(agreement, state.accountId.orEmpty(), enabled = !state.busy && !state.retryPending && !state.recoveryUnavailable,
+                            AgreementCard(agreement, state.accountId.orEmpty(), enabled = !state.busy && !state.retryPending && !state.recoveryUnavailable && state.serverAvailable,
                                 onRespond = { onRespond(agreement, it) }, onEdit = { onEdit(agreement) },
                                 onCancel = { cancel = agreement }, onSource = { onSource(agreement) })
                         }
@@ -123,7 +122,7 @@ internal fun ChatAgreementsDialog(
         }
         if (confirmDiscard) AlertDialog(
             onDismissRequest = { confirmDiscard = false }, title = { Text("¿Descartar este borrador?") },
-            text = { Text("La propuesta todavía no se ha enviado.") },
+            text = { Text("Se eliminará este borrador guardado en el dispositivo.") },
             confirmButton = { TextButton(onClick = { confirmDiscard = false; onDismissEditor() }) { Text("Descartar") } },
             dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Seguir escribiendo") } },
         )
@@ -161,7 +160,7 @@ internal fun ChatAgreementsDialog(
 }
 
 @Composable
-private fun AgreementEditor(state: ChatAgreementsState, onDraft: (String) -> Unit, onSave: () -> Unit, canSave: Boolean) {
+private fun AgreementEditor(state: ChatAgreementsState, onDraft: (String) -> Unit, onSave: () -> Unit, onDiscard: () -> Unit, canSave: Boolean) {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text(if (state.editingId == null) "¿Qué propones?" else "Una nueva revisión", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(if (state.editingId == null) "Escribe lo que quieres acordar. Ambos podrán confirmarlo o pedir cambios."
@@ -178,6 +177,7 @@ private fun AgreementEditor(state: ChatAgreementsState, onDraft: (String) -> Uni
             colors = ButtonDefaults.buttonColors(containerColor = AgreementIndigo, contentColor = Color.White)) {
             Text(if (state.editingId == null) "Enviar propuesta" else "Guardar nueva revisión")
         }
+        TextButton(onClick = onDiscard, enabled = !state.busy && !state.retryPending && !state.recoveryConflict) { Text("Descartar borrador") }
     }
 }
 
