@@ -1,7 +1,7 @@
 # Rendimiento de Social y Videos Android
 
 Estado del 3 de noviembre de 2026. Las correcciones de este bloque están
-implementadas y su validación Android está pendiente. La revisión integral
+implementadas y tienen comprobaciones Android descritas abajo. La revisión integral
 continúa abierta. La entrega firmada más reciente sigue siendo 9.1.38 / 178.
 
 ## Diagnóstico medido antes de los cambios
@@ -105,10 +105,81 @@ Pasaron 20 controles locales de mantenimiento, dependencias Media3 y avisos.
 La compilación de referencia y su prueba de primer cuadro en Wi-Fi terminaron
 correctamente. El ensayo limitado de referencia falló como se describe arriba.
 
-La revisión automática rechazó ejecutar la compilación y las pruebas de la
-versión modificada con el mensaje `blocked by policy`. No dio una razón más
-específica. Las regresiones de resolución, observación visible de Social y
-estados de las fotos están añadidas, con ejecución Android pendiente.
+La compilación local posterior de la aplicación y de la suite instrumentada
+terminó correctamente. Se usó el worktree de validación existente, con las
+configuraciones locales ignoradas y la clave de depuración existente. La APK
+comprobó las cuatro definiciones necesarias para arrancar antes de instalarse.
+La revisión automática había rechazado una orden combinada anterior con el
+mensaje `blocked by policy`, sin una razón más específica. Las órdenes de
+compilación posteriores sí se ejecutaron y sustituyen ese bloqueo como estado.
+
+La batería JVM completa aprobó **2.673 pruebas en 506 clases**, sin fallos,
+errores u omisiones. Se corrigió el entorno de las pruebas del diario de
+compartidos: Windows no puede reemplazar un archivo existente mediante
+`File.renameTo` como el sistema POSIX de Android. Las 20 pruebas JVM usan
+el protocolo de copia de respaldo de Android 9 y una URI de archivo compatible
+con la unidad de Windows. Cuatro pruebas nuevas ejecutaron el protocolo moderno
+de `AtomicFile` sobre Android 15 del emulador, sin esa sustitución de URI.
+Comprobaron reemplazo, reapertura, aislamiento de cuentas, entrega durable de
+adjuntos, cierre y recuperación de escritura interrumpida. El diario de
+producción no se cambió para acomodarlo a Windows.
+
+Pasaron **15 pruebas instrumentadas** de paginación/visibilidad de Social,
+apertura de fotos y estado de error, posición inicial de Videos, caché de fotos
+por invitado, pausa/reanudación y diario de compartidos. La comprobación nativa
+R2 también pasó: Media3 recibió 4.096 bytes con `206` y `source=r2`, iguales a
+Ubuntu, y ambas rutas rechazaron la sesión inválida con `401`.
+
+La comparación del mismo video público, en el mismo AVD LOW con Wi-Fi, produjo:
+
+| Apertura posterior al ajuste DNS | Primer byte | Primer cuadro | Fuente |
+| --- | --- | --- | --- |
+| 1 | 2.249 ms | 4.378 ms | R2 |
+| 2 | 746 ms | 2.025 ms | R2 |
+| 3 | 836 ms | 1.742 ms | R2 |
+| Mediana | 836 ms | 2.025 ms | R2 |
+
+La mediana del primer cuadro pasó de 11.711 a 2.025 ms en este ensayo. Es una
+comparación de transporte y decodificación del mismo objeto público, con
+sesiones invitadas, no una medida del recorrido completo del feed de miembro.
+La lectura HTTP de Social en esa ejecución tardó 4.911 ms y la de Videos,
+297 ms. No se atribuye a ese ensayo una carga instantánea de Social.
+
+Al repetir con red móvil predeterminada, 2.500 kbit/s de subida y bajada y
+100 ms, se agotó otra vez el límite de 25 segundos del primer cuadro. La traza
+registró DNS en 33 ms, un primer intento TCP fallido tras 15.006 ms y una segunda
+dirección que sí conectó. El primer byte llegó a los 22.304 ms. Se redujo el
+presupuesto de cada intento TCP multimedia a cinco segundos, conservando los
+30 segundos de espera entre lecturas y los reintentos de rutas. Esta versión
+compiló ambos paquetes y volvió a aprobar las 2.673 pruebas JVM y las 15
+instrumentadas anteriores. La lectura nativa R2 volvió a pasar. Sus aperturas
+Wi-Fi dieron primeros cuadros de 4.444, 1.411 y 1.581 ms, con mediana de
+1.581 ms, desde R2 en las tres. Los primeros bytes llegaron a 3.031, 693 y
+704 ms. Social público tardó 1.750 ms y Videos, 287 ms en esa ejecución.
+
+El ensayo limitado sigue fallando: recibió el primer byte a los 9.628 ms,
+pero solo 5.467 bytes en 25 segundos, sin cuadro ni búfer reproducible.
+El fragmento de 4 KiB sí se leyó correctamente desde ambos orígenes en la
+misma configuración y rechazó ambas sesiones inválidas. Un diagnóstico
+acotado comparó 64 KiB desde R2 y Ubuntu, con y sin `Range`, usando HTTP/2
+y HTTP/1.1. Ninguna de esas seis lecturas completó el tramo dentro de su
+presupuesto de 15 segundos. La demora no queda aislada a R2 ni a HTTP/2.
+Un control con el perfil UMTS y 100 ms también agotó el primer cuadro.
+Estos resultados no justifican desactivar HTTP/2 ni declarar corregida la
+carga bajo esas condiciones. Sigue pendiente aislar la limitación efectiva
+del emulador 36.2.12 y repetir la comparación con una red calibrada.
+El control local sin TLS, mediante el puente del emulador al host, completó
+64 KiB con ambas configuraciones, pero no recorre la misma salida pública y
+no se usa para certificar la velocidad de esa salida. Las pruebas conservan
+sus métricas numéricas también cuando fallan, sin ampliar sus límites.
+
+Con datos móviles como ruta predeterminada, velocidad completa y sin retardo
+artificial, las tres aperturas sí pasaron desde R2: primer cuadro de 4.471,
+1.520 y 1.471 ms, con mediana de 1.520 ms. Los primeros bytes llegaron a 2.522,
+697 y 640 ms. La consulta pública de Social tardó 1.642 ms y la de Videos,
+270 ms. Se restauraron Wi-Fi, datos móviles y límites del AVD al terminar
+cada ensayo. No se modifica el resultado fallido de la simulación limitada.
+
 El pipeline de GitHub del commit `4ac5544a` terminó con errores. El trabajo
 Android `quality-gate` se detuvo en `processDebugGoogleServices` porque
 faltaba `google-services.json`, antes de compilar Kotlin. La misma causa ya
@@ -129,16 +200,14 @@ instalación limpia. Los trabajos de web también terminaron con errores y
 conservan su revisión posterior al móvil. No se deduce un fallo del servidor
 desplegado a partir de esas instalaciones de CI.
 
-Faltan compilar y ensayar esta versión, repetir el primer cuadro del mismo
-objeto con ambas conexiones y recorrer el feed autenticado con desplazamiento,
+Faltan resolver la medición limitada y recorrer el feed autenticado con desplazamiento,
 pausa, reanudación y precarga. También falta medir percentiles de cuadros en
-dispositivos físicos de distintas capacidades. No hay una comparación de
-primer cuadro posterior a la corrección ni una certificación de 60 FPS.
+dispositivos físicos de distintas capacidades. No hay una certificación de 60 FPS.
 El host y el renderizado por software afectan las medidas del emulador.
 [Guía de medición Android](https://developer.android.com/topic/performance/baselineprofiles/measure-baselineprofile).
 
-Las evidencias locales están en la carpeta de trabajo, con prefijo
-`feed103-`. Incluyen las dos APK de referencia y sus hashes, las trazas
+Las evidencias locales están en la carpeta de trabajo, con prefijos
+`feed103-` y `feed104-`. Incluyen las dos APK de referencia y sus hashes, las trazas
 numéricas, los dos resultados instrumentados, el ensayo HTTP de paginación
 y los controles de mantenimiento. La prueba conectada guarda un digest de la
 ruta del objeto público y resultados numéricos. Las credenciales temporales

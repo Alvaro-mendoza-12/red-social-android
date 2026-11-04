@@ -19,7 +19,10 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowStatFs
 
 @RunWith(RobolectricTestRunner::class)
-@Config(application = Application::class, sdk = [34])
+// Exercise the legacy backup protocol here. Modern replacement is covered on
+// Android's filesystem by ShareBatchJournalDeviceTest because Windows File.renameTo
+// cannot replace an existing destination as Android's POSIX filesystem does.
+@Config(application = Application::class, sdk = [28], shadows = [PortableFileUriShadow::class])
 class ShareBatchJournalTest {
     @get:Rule val temporary = TemporaryFolder()
     @Before fun diskSpace() { ShadowStatFs.registerStats(temporary.root, 1_000_000, 900_000, 900_000) }
