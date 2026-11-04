@@ -257,4 +257,18 @@ class ChatAgreementsViewModelTest {
         f.persistence.failWrite = false; f.vm.close(); advanceUntilIdle()
         assertFalse(f.vm.state.value.open); assertEquals("Conservar visible", f.persistence.rows[alice to chat]?.draft?.text)
     }
+    @Test fun proposingFromAnotherMessageOpensTheExistingPendingOperationInsteadOfDoingNothing() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.send = { throw IOException("lost ACK") }
+        f.vm.respond(agreement(), "accept"); advanceUntilIdle(); val original = f.commands.single()
+        f.vm.close(); assertFalse(f.vm.state.value.open)
+        f.vm.propose(sourceId); advanceUntilIdle()
+        assertTrue(f.vm.state.value.open); assertTrue(f.vm.state.value.retryPending)
+        assertEquals(listOf(original), f.commands)
+        assertEquals(original, f.persistence.rows[alice to chat]?.pending?.command)
+    }
+    @Test fun anUnsupportedSourceHasAnExplicitVisibleResultWithoutSendingAnything() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose("pending-local-message"); advanceUntilIdle()
+        assertTrue(f.vm.state.value.open); assertNotNull(f.vm.state.value.error)
+        assertNull(f.vm.state.value.sourceId); assertTrue(f.commands.isEmpty())
+    }
 }

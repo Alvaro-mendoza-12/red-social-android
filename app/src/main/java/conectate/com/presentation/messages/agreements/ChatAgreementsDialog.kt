@@ -69,7 +69,7 @@ internal fun ChatAgreementsDialog(
             modifier = Modifier.fillMaxSize().imePadding(),
             topBar = {
                 CenterAlignedTopAppBar(
-                    title = { Text(if (editing) if (state.editingId == null) "Proponer acuerdo" else "Editar propuesta" else "Acuerdos") },
+                    title = { Text(if (editing) "Acuerdo" else "Acuerdos") },
                     navigationIcon = { IconButton(onClick = requestBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver al chat") } },
                     actions = { if (!editing) IconButton(onClick = requestRefresh, enabled = !state.busy && !state.loading) { Icon(Icons.Default.Refresh, "Actualizar acuerdos") } },
                 )

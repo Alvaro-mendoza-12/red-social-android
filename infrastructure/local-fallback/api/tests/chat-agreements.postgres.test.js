@@ -116,6 +116,27 @@ test('isolated PostgreSQL and HTTP enforce consent, concurrent versions and lost
       await transaction.query('COMMIT')
       assert.equal((await pool.query('SELECT count(*)::int AS total FROM experimental_chat_agreement_operations WHERE agreement_id=$1', [create.id])).rows[0].total, 0)
     } finally { transaction.release() }
+    // An account deletion that already owns the user row must win over a new proposal.
+    const deleting = await pool.connect()
+    const raced = { ...create, id: crypto.randomUUID(), operationId: crypto.randomUUID() }
+    let outcome = null, pendingCreation
+    try {
+      await deleting.query('BEGIN')
+      await deleting.query('SELECT id FROM fallback_users WHERE id=$1 FOR UPDATE', [BOB])
+      pendingCreation = request(ALICE, '', raced).then(result => { outcome = result; return result })
+      await new Promise(resolve => setTimeout(resolve, 100))
+      assert.equal(outcome, null, 'The proposal must wait for the deleting participant row')
+      await purgeChatAgreementsForAccounts(deleting, [BOB])
+      await deleting.query('DELETE FROM fallback_users WHERE id=$1', [BOB])
+      await deleting.query('COMMIT')
+      assert.equal((await pendingCreation).status, 403)
+      assert.equal((await pool.query('SELECT count(*)::int AS total FROM experimental_chat_agreements WHERE id=$1', [raced.id])).rows[0].total, 0)
+    } finally {
+      await deleting.query('ROLLBACK')
+      deleting.release()
+      if (pendingCreation) await pendingCreation
+      await pool.query("INSERT INTO fallback_users(id,display_name) VALUES($1,'Luis') ON CONFLICT DO NOTHING", [BOB])
+    }
   })
 
 module.exports = { fixture }

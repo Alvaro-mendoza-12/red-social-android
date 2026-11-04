@@ -158,7 +158,11 @@ class ChatAgreementsViewModel internal constructor(
         }
     }
     fun propose(sourceId: String) {
-        if (!active() || !recoveryReady || !_state.value.supported || _state.value.busy || pending != null || !agreementUuid(sourceId)) return
+        if (!active() || !_state.value.supported) return
+        if (!recoveryReady || _state.value.busy || pending != null) { open(); return }
+        if (!agreementUuid(sourceId)) {
+            _state.value = _state.value.copy(open = true, error = "No se pudo usar ese mensaje como origen. Elige otro mensaje enviado."); return
+        }
         if (_state.value.sourceId != null && _state.value.draft.isNotBlank()) {
             _state.value = _state.value.copy(open = true, error = "Tienes un borrador guardado. Continúa o descártalo antes de proponer otro acuerdo.")
             return
