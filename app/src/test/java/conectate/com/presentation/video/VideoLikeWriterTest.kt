@@ -70,6 +70,36 @@ class VideoLikeWriterTest {
         writer.clear()
     }
 
+    @Test fun oldResponseCannotEraseALikeAfterTheWriteHasFinished() = runTest {
+        var video = original
+        val writer = VideoLikeWriter(backgroundScope, { "account" }, { video }, { _, _ -> Result.success(Unit) },
+            { _, liked -> video = video.withVideoLike(liked) }, { fail() })
+        val read = writer.readVersion()
+        writer.toggle(video.id); runCurrent()
+        assertTrue(writer.reconcile(original, read).likedByMe)
+        assertFalse(writer.reconcile(original, writer.readVersion()).likedByMe)
+    }
+
+    @Test fun completingANewerReadDoesNotExposeTheVideoToAnOlderResponse() = runTest {
+        var video = original
+        val writer = VideoLikeWriter(backgroundScope, { "account" }, { video }, { _, _ -> Result.success(Unit) },
+            { _, liked -> video = video.withVideoLike(liked) }, { fail() })
+        val oldRead = writer.readVersion()
+        writer.toggle(video.id); runCurrent()
+        assertTrue(writer.reconcile(video, writer.readVersion()).likedByMe)
+        assertTrue(writer.reconcile(original, oldRead).likedByMe)
+    }
+
+    @Test fun aFailedUnlikeDoesNotGetRestoredByAnOlderRead() = runTest {
+        var video = original.withVideoLike(true)
+        val writer = VideoLikeWriter(backgroundScope, { "account" }, { video }, { _, _ -> Result.failure(Exception()) },
+            { _, liked -> video = video.withVideoLike(liked) }, {})
+        val read = writer.readVersion()
+        writer.toggle(video.id); runCurrent()
+        assertTrue(video.likedByMe)
+        assertTrue(writer.reconcile(original, read).likedByMe)
+    }
+
     @Test fun lateFailureDoesNotChangeAnotherAccount() = runTest {
         var video = original
         var account = "first"

@@ -170,12 +170,7 @@ fun RankingScreen(
                                 items(posts) { post ->
                                     PostCard(
                                         post = post,
-                                        onLikeClick = {
-                                            viewModel.setPostReaction(
-                                                post,
-                                                if (post.likedByMe) null else "LIKE",
-                                            )
-                                        },
+                                        onLikeClick = { viewModel.togglePostLike(post) },
                                         onReactionSelect = { reaction ->
                                             viewModel.setPostReaction(post, reaction)
                                         },

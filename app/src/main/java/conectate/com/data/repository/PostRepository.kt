@@ -10,6 +10,7 @@ import conectate.com.core.moderation.ModerationContext
 import conectate.com.core.moderation.ModerationVerdict
 import conectate.com.core.observability.AppMetrics
 import conectate.com.data.cache.UpstashCacheService
+import conectate.com.data.cache.PostFeedCache
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.SavedCollection
 import conectate.com.data.localfallback.SavedLibraryResponse
@@ -18,6 +19,7 @@ import conectate.com.data.model.Post
 import conectate.com.data.model.PostReactionUser
 import conectate.com.data.repository.HashtagRepository
 import conectate.com.data.supabase.AuthService
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.supabase.StorageService
 import conectate.com.util.canonicalizeMediaContentType
@@ -43,6 +45,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
@@ -68,6 +72,8 @@ sealed interface PostMutationEvent {
         val audience: String
     ) : PostMutationEvent
 }
+
+internal data class PostReactionChange(val actorId: String, val postId: String, val reaction: String?)
 
 @Singleton
 class PostRepository @Inject constructor(
@@ -101,10 +107,13 @@ class PostRepository @Inject constructor(
     // Keep metadata account-scoped so one signed-in account never sees another
     // account's personalized state on the same device.
     private val localFeedCache by lazy {
-        context.getSharedPreferences("social_feed_metadata_cache", Context.MODE_PRIVATE)
+        PostFeedCache(context.getSharedPreferences("social_feed_metadata_cache", Context.MODE_PRIVATE))
     }
     private val _mutationEvents = MutableSharedFlow<PostMutationEvent>(extraBufferCapacity = 32)
     val mutationEvents: SharedFlow<PostMutationEvent> = _mutationEvents.asSharedFlow()
+    private val _reactionChanges = MutableSharedFlow<PostReactionChange>(extraBufferCapacity = 32)
+    internal val reactionChanges = _reactionChanges.asSharedFlow()
+    private val reactionLocks = Array(32) { Mutex() }
     private val _globalFeedError = MutableStateFlow<String?>(null)
     val globalFeedError: StateFlow<String?> = _globalFeedError.asStateFlow()
 
@@ -144,23 +153,15 @@ class PostRepository @Inject constructor(
     )
     private val maxPostMediaBytes = 25L * 1024 * 1024
 
-    private fun localFeedKey(mode: String, ownerId: String? = authService.getCurrentUserId()): String {
-        val accountId = ownerId?.trim()?.lowercase().orEmpty().ifBlank { "guest" }
-        return "$mode:$accountId"
-    }
-
     private fun readLocalFeed(mode: String, ownerId: String? = authService.getCurrentUserId()): List<Post> = runCatching {
-        localFeedCache.getString(localFeedKey(mode, ownerId), null)
-            ?.let { cacheJson.decodeFromString<List<Post>>(it) }
-            .orEmpty()
+        localFeedCache.read(mode, ownerId)
     }.getOrDefault(emptyList())
 
-    private fun persistLocalFeed(mode: String, posts: List<Post>, ownerId: String? = authService.getCurrentUserId()) {
-        if (ownerId != authService.getCurrentUserId()) return
+    private fun persistLocalFeed(mode: String, posts: List<Post>, ticket: PostFeedCache.ReadTicket) {
         runCatching {
-            localFeedCache.edit()
-                .putString(localFeedKey(mode, ownerId), cacheJson.encodeToString(posts.take(60)))
-                .apply()
+            if (!localFeedCache.persist(mode, posts, ticket, authService.getCurrentUserId())) {
+                android.util.Log.w("PostRepository", "Feed cache was not committed for its original account")
+            }
         }.onFailure { error ->
             android.util.Log.w("PostRepository", "No se pudo guardar la caché local del feed", error)
         }
@@ -247,6 +248,7 @@ class PostRepository @Inject constructor(
         try {
             if (usesLocalFallbackBackend()) {
                 val owner = authService.getCurrentUserId()
+                val readTicket = localFeedCache.beginRead(owner)
                 val token = authService.getAccessToken()
                     ?: return@withContext Result.failure(IllegalStateException("Tu sesión no está disponible. Vuelve a iniciar sesión."))
                 val result = localFallbackApiClient.loadFeed(token, limit, offset, mode = mode)
@@ -256,7 +258,7 @@ class PostRepository @Inject constructor(
                 }
                 val page = result.getOrThrow()
                 _globalFeedError.value = null
-                if (offset == 0) persistLocalFeed(mode, page.items, owner)
+                if (offset == 0) persistLocalFeed(mode, page.items, readTicket)
                 Result.success(GlobalPostPage(page.items, page.nextOffset))
             } else {
                 val items = getGlobalPosts(offset, limit, mode, emitCachedSnapshots = false).last()
@@ -277,10 +279,11 @@ class PostRepository @Inject constructor(
     ): Flow<List<Post>> = flow {
         var startedAt = System.currentTimeMillis()
         val feedOwnerId = authService.getCurrentUserId()
+        val readTicket = localFeedCache.beginRead(feedOwnerId)
         val normalizedMode = mode.trim().lowercase().takeIf { it in setOf("discover", "following") }
             ?: "discover"
         val cacheKey = "posts:$normalizedMode:offset=$offset:limit=$limit"
-        val localSnapshot = if (offset == 0 && emitCachedSnapshots) readLocalFeed(normalizedMode) else emptyList()
+        val localSnapshot = if (offset == 0 && emitCachedSnapshots) readLocalFeed(normalizedMode, feedOwnerId) else emptyList()
         var hasFallbackEmission = false
 
         if (localSnapshot.isNotEmpty()) {
@@ -319,7 +322,7 @@ class PostRepository @Inject constructor(
                 }
                 val posts = result.getOrThrow().items
                 _globalFeedError.value = null
-                if (offset == 0) persistLocalFeed(normalizedMode, posts, feedOwnerId)
+                if (offset == 0) persistLocalFeed(normalizedMode, posts, readTicket)
                 appMetrics.incrementCounter(
                     metric = "posts_fetch_success",
                     attributes = mapOf("source" to "ubuntu", "count" to posts.size.toString())
@@ -363,7 +366,7 @@ class PostRepository @Inject constructor(
                     posts = enrichPostReactions(accessToken, posts, currentUserId)
 
                     if (offset == 0) {
-                        persistLocalFeed(normalizedMode, posts, feedOwnerId)
+                        persistLocalFeed(normalizedMode, posts, readTicket)
                         val stored = runCatching {
                             upstashCache.set(cacheKey, cacheJson.encodeToString(posts), 300)
                         }.getOrDefault(false)
@@ -413,7 +416,7 @@ class PostRepository @Inject constructor(
         try {
             var accessToken = authService.getAccessToken()
             if (accessToken != null) {
-                if (supabaseConfig.isLocalFallbackPrimary) {
+                if (usesLocalFallbackBackend()) {
                     val result = localFallbackApiClient.loadFeed(
                         accessToken = accessToken,
                         limit = 120,
@@ -472,7 +475,7 @@ class PostRepository @Inject constructor(
             var currentUserId = authService.getCurrentUserId()
             
             if (accessToken != null) {
-                if (supabaseConfig.isLocalFallbackPrimary) {
+                if (usesLocalFallbackBackend()) {
                     val result = localFallbackApiClient.loadFeed(accessToken, limit = 40, offset = 0, sharedBy = userId)
                     if (result.isFailure) {
                         android.util.Log.e("PostRepository", "Error fetching Ubuntu shared posts", result.exceptionOrNull())
@@ -542,7 +545,7 @@ class PostRepository @Inject constructor(
     suspend fun getPostById(postId: String): Result<Post> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         try {
             var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-            if (supabaseConfig.isLocalFallbackPrimary) {
+            if (usesLocalFallbackBackend()) {
                 return@withContext localFallbackApiClient.loadPostDetail(accessToken, postId)
                     .map { it.post }
             }
@@ -993,17 +996,32 @@ class PostRepository @Inject constructor(
         reactionType: String?,
         wasReacted: Boolean
     ): Result<Unit> {
-        return try {
-            val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("No user"))
-            val accessToken = authService.ensureValidAccessToken().getOrThrow()
-            if (authService.getCurrentUserId() != userId) {
-                return Result.failure(IllegalStateException("La sesión cambió. Vuelve a intentar la reacción."))
+        val lease = authService.captureAccountLease()
+        return withContext(Dispatchers.IO) {
+            val lock = reactionLocks[(postId.trim().lowercase().hashCode() and Int.MAX_VALUE) % reactionLocks.size]
+            lock.withLock {
+                lease.requireCurrent()
+                setPostReactionLocked(postId, reactionType, wasReacted, lease)
             }
+        }
+    }
+
+    private suspend fun setPostReactionLocked(
+        postId: String,
+        reactionType: String?,
+        wasReacted: Boolean,
+        lease: AuthSessionLease,
+    ): Result<Unit> {
+        return try {
+            val userId = lease.accountId ?: return Result.failure(Exception("No user"))
+            val accessToken = authService.ensureValidAccessToken().getOrThrow()
+            lease.requireCurrent()
             val normalizedReaction = normalizePostReaction(reactionType)
 
             if (usesLocalFallbackBackend()) {
                 val result = localFallbackApiClient.setPostReaction(accessToken, postId, normalizedReaction)
                 if (result.isSuccess) {
+                    confirmCachedReaction(lease, postId, normalizedReaction)
                     invalidateGlobalPostCache()
                     return Result.success(Unit)
                 }
@@ -1053,6 +1071,7 @@ class PostRepository @Inject constructor(
                 }
             }
 
+            confirmCachedReaction(lease, postId, normalizedReaction)
             invalidateGlobalPostCache()
             Result.success(Unit)
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1060,6 +1079,18 @@ class PostRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private suspend fun confirmCachedReaction(lease: AuthSessionLease, postId: String, reaction: String?) = withContext(Dispatchers.IO) {
+        val owner = lease.accountId ?: return@withContext
+        runCatching {
+            authService.commitForAccountLease(lease) {
+                if (!localFeedCache.confirmReaction(owner, postId, reaction, owner)) {
+                    android.util.Log.w("PostRepository", "Acknowledged reaction could not be committed to the feed cache")
+                }
+            }
+        }.onFailure { android.util.Log.w("PostRepository", "Could not cache the acknowledged reaction", it) }
+        if (lease.isCurrent()) _reactionChanges.emit(PostReactionChange(owner, postId, reaction))
     }
 
     suspend fun summarizePostThread(
@@ -1088,7 +1119,7 @@ class PostRepository @Inject constructor(
         return try {
             val accessToken = authService.getAccessToken()
                 ?: return Result.failure(Exception("Inicia sesión para ver las reacciones."))
-            if (supabaseConfig.isLocalFallbackPrimary) {
+            if (usesLocalFallbackBackend()) {
                 return localFallbackApiClient
                     .loadPostReactions(accessToken, postId, reactionType)
                     .map { it.items }

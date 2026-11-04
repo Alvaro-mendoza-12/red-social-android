@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -67,6 +68,7 @@ internal fun ChatCameraCapture(
     onGallery: () -> Unit,
     onCaptured: (OutgoingMessageMedia, Long) -> Unit,
 ) {
+    conectate.com.presentation.components.CaptureSystemBars()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val executor = remember(context) { ContextCompat.getMainExecutor(context) }
@@ -338,9 +340,13 @@ internal fun ChatCameraCapture(
                 color = Color.White, modifier = Modifier.align(Alignment.CenterHorizontally)
                     .background(Color.Black.copy(alpha = .65f)).padding(8.dp),
             )
-            Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween) {
-                IconButton(onClick = { session.close(); onGallery() }, enabled = !busy) { Icon(Icons.Default.Image, "Abrir galería", tint = Color.White) }
+            CameraCaptureActionRow(
+                gallery = {
+                    CameraGalleryShortcut(allowedTypes, enabled = !busy, active = foreground) {
+                        session.close(); onGallery()
+                    }
+                },
+                shutter = {
                 FilledIconButton(
                     onClick = {
                         if (video) {
@@ -383,10 +389,13 @@ internal fun ChatCameraCapture(
                     modifier = Modifier.size(80.dp).border(3.dp, Color.White, CircleShape).padding(6.dp),
                 ) { Icon(if (recording != null) Icons.Default.Stop else if (video) Icons.Default.Videocam else Icons.Default.CameraAlt,
                     if (recording != null) "Detener grabación" else if (video) "Grabar video" else "Tomar foto", Modifier.size(32.dp)) }
+                },
+                switchCamera = {
                 IconButton(onClick = { error = null; flash = ImageCapture.FLASH_MODE_OFF; front = !front }, enabled = streaming && canSwitchCamera && !busy && !flashPending) {
                     Icon(Icons.Default.Cameraswitch, "Cambiar cámara", tint = Color.White)
                 }
-            }
+                },
+            )
             Row(Modifier.fillMaxWidth().background(Color.Black).padding(bottom = 16.dp),
                 horizontalArrangement = Arrangement.Center) {
                 if ("video" in allowedTypes) TextButton(onClick = { error = null; video = true; flash = ImageCapture.FLASH_MODE_OFF }, enabled = !busy) {
@@ -402,3 +411,18 @@ internal fun ChatCameraCapture(
 
 private fun hasCameraPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+
+/** Equal side slots keep the shutter centered regardless of the gallery thumbnail width. */
+@Composable
+internal fun CameraCaptureActionRow(
+    gallery: @Composable () -> Unit,
+    shutter: @Composable () -> Unit,
+    switchCamera: @Composable () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth().testTag("camera_actions").padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { gallery() }
+        shutter()
+        Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { switchCamera() }
+    }
+}

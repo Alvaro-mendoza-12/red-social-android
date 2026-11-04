@@ -39,7 +39,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -135,16 +134,11 @@ fun SimpleImageCropDialog(
     var isSaving by remember(sourceUri) { mutableStateOf(false) }
     var errorMessage by remember(sourceUri) { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(sourceUri) {
-        sourceAspect = readImageAspect(context, sourceUri)
-        crop = cropForPreset(selectedPreset, sourceAspect)
-        sourceReady = true
-    }
-
     Dialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        CaptureSystemBars()
         Surface(
             modifier = Modifier.fillMaxSize(),
             color = Color.Black
@@ -232,17 +226,37 @@ fun SimpleImageCropDialog(
                             model = sourceUri,
                             contentDescription = "Vista previa del recorte",
                             modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.FillBounds
+                            contentScale = ContentScale.Fit,
+                            onSuccess = { loaded ->
+                                // The decoder has already applied EXIF rotation/reflection.
+                                // Raw file bounds can be landscape while these pixels are portrait.
+                                if (!sourceReady) {
+                                    val width = loaded.result.drawable.intrinsicWidth
+                                    val height = loaded.result.drawable.intrinsicHeight
+                                    if (width > 0 && height > 0) {
+                                        sourceAspect = width.toFloat() / height
+                                        crop = cropForPreset(selectedPreset, sourceAspect)
+                                        sourceReady = true
+                                        errorMessage = null
+                                    } else errorMessage = "No se pudo abrir esta foto. Vuelve a elegirla."
+                                }
+                            },
+                            onError = {
+                                sourceReady = false
+                                errorMessage = "No se pudo abrir esta foto. Vuelve a elegirla."
+                            },
                         )
-                        ManualImageCropOverlay(
-                            crop = crop,
-                            onCropChange = { updated ->
-                                crop = updated
-                                selectedPreset = ImageCropPreset.FREE
-                            }
-                        )
+                        if (sourceReady) {
+                            ManualImageCropOverlay(
+                                crop = crop,
+                                onCropChange = { updated ->
+                                    crop = updated
+                                    selectedPreset = ImageCropPreset.FREE
+                                }
+                            )
+                        }
                     }
-                    if (isSaving) {
+                    if (isSaving || (!sourceReady && errorMessage == null)) {
                         CircularProgressIndicator(color = Color.White)
                     }
                 }
@@ -362,18 +376,6 @@ private suspend fun cropImageToCache(
     }
 }
 
-private suspend fun readImageAspect(context: Context, uri: Uri): Float = withContext(Dispatchers.IO) {
-    runCatching {
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri).use { stream ->
-            BitmapFactory.decodeStream(stream, null, options)
-        }
-        val width = options.outWidth.coerceAtLeast(1)
-        val height = options.outHeight.coerceAtLeast(1)
-        width.toFloat() / height.toFloat()
-    }.getOrDefault(1f)
-}
-
 private fun decodeScaledBitmap(context: Context, uri: Uri): Bitmap {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
         val source = ImageDecoder.createSource(context.contentResolver, uri)
@@ -386,6 +388,11 @@ private fun decodeScaledBitmap(context: Context, uri: Uri): Bitmap {
         }
     }
 
+    return decodeLegacyImageCropBitmap(context, uri)
+}
+
+/** BitmapFactory does not apply EXIF; keep API 24-27 export aligned with the preview. */
+internal fun decodeLegacyImageCropBitmap(context: Context, uri: Uri): Bitmap {
     val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     context.contentResolver.openInputStream(uri).use { stream ->
         BitmapFactory.decodeStream(stream, null, options)
@@ -399,26 +406,17 @@ private fun decodeScaledBitmap(context: Context, uri: Uri): Bitmap {
             BitmapFactory.Options().apply { inSampleSize = sampleSize }
         )
     } ?: error("No se pudo leer la imagen")
-    val rotation = context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+    val orientation = context.contentResolver.openInputStream(uri)?.use { stream ->
         runCatching {
-            when (
-                ExifInterface(descriptor.fileDescriptor).getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_NORMAL
-                )
-            ) {
-                ExifInterface.ORIENTATION_ROTATE_90 -> 90f
-                ExifInterface.ORIENTATION_ROTATE_180 -> 180f
-                ExifInterface.ORIENTATION_ROTATE_270 -> 270f
-                else -> 0f
-            }
-        }.getOrDefault(0f)
-    } ?: 0f
-    if (rotation == 0f) return bitmap
+            ExifInterface(stream).let { it.rotationDegrees.toFloat() to it.isFlipped }
+        }.getOrDefault(0f to false)
+    } ?: (0f to false)
+    if (orientation.first == 0f && !orientation.second) return bitmap
     val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, Matrix().apply {
-        postRotate(rotation)
+        if (orientation.second) postScale(-1f, 1f)
+        postRotate(orientation.first)
     }, true)
-    bitmap.recycle()
+    if (rotated !== bitmap) bitmap.recycle()
     return rotated
 }
 

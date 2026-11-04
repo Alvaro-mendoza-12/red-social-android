@@ -27,6 +27,8 @@ class RankingRepository @Inject constructor(
     private val authService: AuthService,
     private val localFallbackApiClient: LocalFallbackApiClient
 ) {
+    private fun usesUbuntuBackend(): Boolean = localFallbackApiClient.isConfigured &&
+        (supabaseConfig.isLocalFallbackPrimary || authService.isLocalFallbackSession())
 
 
 
@@ -34,7 +36,7 @@ class RankingRepository @Inject constructor(
 
     suspend fun getUserRanking(filter: String = "followers"): Result<UserRankingSnapshot> = withContext(Dispatchers.IO) {
         try {
-            if (supabaseConfig.isLocalFallbackPrimary) {
+            if (usesUbuntuBackend()) {
                 val token = authService.getAccessToken()
                     ?: return@withContext Result.failure(Exception("No access token available"))
                 val response = supabaseConfig.httpClient.get("${localFallbackApiClient.baseUrl}/v1/data/profiles/ranking") {
@@ -95,7 +97,7 @@ class RankingRepository @Inject constructor(
 
     suspend fun getTopVideos(filter: String = "views"): Result<List<Video>> = withContext(Dispatchers.IO) {
          try {
-            if (supabaseConfig.isLocalFallbackPrimary) {
+            if (usesUbuntuBackend()) {
                 val token = authService.getAccessToken()
                     ?: return@withContext Result.failure(Exception("No access token available"))
                 val videos = localFallbackApiClient.loadVideos(token, limit = 100, offset = 0).getOrThrow()
@@ -151,7 +153,7 @@ class RankingRepository @Inject constructor(
 
     suspend fun getTopPosts(filter: String = "likes"): Result<List<Post>> = withContext(Dispatchers.IO) {
         try {
-            if (supabaseConfig.isLocalFallbackPrimary) {
+            if (usesUbuntuBackend()) {
                 val token = authService.getAccessToken()
                     ?: return@withContext Result.failure(Exception("No access token available"))
                 val posts = localFallbackApiClient.loadFeed(token, limit = 100, offset = 0).getOrThrow().items

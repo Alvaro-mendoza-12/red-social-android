@@ -115,4 +115,65 @@ class PostReactionWriterTest {
         wait.complete(Result.success(original.copy(likeCount=99)));runCurrent()
         assertEquals("second",post.content);assertEquals(2,post.likeCount)
     }
+
+    @Test fun completingANewerReadDoesNotReleaseTheGuardForAnOlderReadStillInFlight() = runTest {
+        var post=original
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,_,_->Result.success(Unit)},
+            {Result.failure(Exception())},{post=it},{fail()})
+        val oldRead=writer.readVersion()
+        writer.toggleLike("p");runCurrent()
+        assertTrue(writer.reconcile(post,writer.readVersion()).likedByMe)
+        assertTrue(writer.reconcile(original,oldRead).likedByMe)
+    }
+
+    @Test fun anotherScreensAckUpdatesTheVisiblePostAndRejectsAnOlderPage() = runTest {
+        var post=original
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,_,_->fail();Result.success(Unit)},
+            {Result.failure(Exception())},{post=it},{fail()})
+        val read=writer.readVersion()
+        writer.acceptConfirmed("p","LOVE")
+        assertEquals("LOVE",post.myReaction)
+        assertEquals(3,post.likeCount)
+        assertEquals("LOVE",writer.reconcile(original,read).myReaction)
+        writer.acceptConfirmed("p",null)
+        assertFalse(post.likedByMe);assertEquals(2,post.likeCount)
+        runCurrent()
+    }
+
+    @Test fun anotherScreensAckDoesNotCancelANewerPendingChoice() = runTest {
+        var post=original
+        val wait=CompletableDeferred<Result<Unit>>()
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,_,_->wait.await()},
+            {Result.failure(Exception())},{post=it},{fail()})
+        writer.set("p","LOVE");runCurrent()
+        writer.acceptConfirmed("p","LIKE")
+        assertEquals("LOVE",post.myReaction)
+        wait.complete(Result.success(Unit));runCurrent()
+        assertEquals("LOVE",post.myReaction)
+    }
+
+    @Test fun likeButtonTogglesTheLatestStateWhenTheUiCallbackStillHasTheOldPost() = runTest {
+        var post=original.withReaction("LIKE")
+        val writes=mutableListOf<String?>()
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,type,_->writes+=type;Result.success(Unit)},
+            {Result.failure(Exception())},{post=it},{fail()})
+        val displayedBeforeTheNextFrame=post
+        writer.toggleLike(displayedBeforeTheNextFrame.id)
+        assertFalse(post.likedByMe)
+        writer.toggleLike(displayedBeforeTheNextFrame.id)
+        assertTrue(post.likedByMe)
+        runCurrent()
+        assertTrue(writes.isEmpty()) // Two taps returned to the already confirmed state.
+    }
+
+    @Test fun oldProfilePageCannotUndoAReactionSavedWhileItWasLoading() = runTest {
+        var post=original
+        val writer=PostReactionWriter(backgroundScope,{"account"},{post},{_,_,_->Result.success(Unit)},
+            {Result.failure(Exception())},{post=it},{fail()})
+        val profilePageVersion=writer.readVersion()
+        writer.toggleLike("p");runCurrent()
+        val visible=listOf(original).map { writer.reconcile(it,profilePageVersion) }
+        assertTrue(visible.single().likedByMe)
+        assertEquals("LIKE",visible.single().myReaction)
+    }
 }

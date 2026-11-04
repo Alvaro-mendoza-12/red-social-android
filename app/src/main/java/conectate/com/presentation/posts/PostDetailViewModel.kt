@@ -78,6 +78,11 @@ class PostDetailViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            postRepository.reactionChanges.collect { change ->
+                if (change.actorId == authService.getCurrentUserId()) reactionWriter.acceptConfirmed(change.postId, change.reaction)
+            }
+        }
+        viewModelScope.launch {
             shareRepository.postChanges.collect { change ->
                 if (change.actorId == authService.getCurrentUserId()) _uiState.update { state ->
                     state.copy(post = state.post?.let(change::applyTo))

@@ -141,7 +141,12 @@ class ProfileViewModel @Inject constructor(
     private var contentOwner: Pair<String?, String>? = null
     private val postSharesInFlight = mutableSetOf<String>()
     private val sharedPostsPager = ProfileSharedPostsPager(viewModelScope, profileReadScope,
-        postRepository::getSharedPostsPage,
+        { userId, offset ->
+            val version = reactionWriter.readVersion()
+            postRepository.getSharedPostsPage(userId, offset).map { page ->
+                page.copy(items = page.items.map { reactionWriter.reconcile(it, version) })
+            }
+        },
         { page, reset -> _sharedPosts.value = (if (reset) page else _sharedPosts.value + page).distinctBy { it.id } },
         { _contentLoadError.value = "No se pudieron cargar los compartidos. Reintenta." })
     val sharedPostsLoading = sharedPostsPager.loading
@@ -210,6 +215,11 @@ class ProfileViewModel @Inject constructor(
                         )
                     }
                 }
+            }
+        }
+        viewModelScope.launch {
+            postRepository.reactionChanges.collect { change ->
+                if (change.actorId == authService.getCurrentUserId()) reactionWriter.acceptConfirmed(change.postId, change.reaction)
             }
         }
     }
@@ -951,7 +961,10 @@ class ProfileViewModel @Inject constructor(
         { _contentLoadError.value = "No se pudieron cargar los videos del perfil. Reintenta." })
 
     private fun loadUserPosts(userId: String) = contentSubscriptions.observe("posts", userId,
-        { postRepository.getUserPosts(userId) }, { _userPosts.value = it },
+        {
+            val version = reactionWriter.readVersion()
+            postRepository.getUserPosts(userId).map { posts -> posts.map { reactionWriter.reconcile(it, version) } }
+        }, { _userPosts.value = it },
         { _contentLoadError.value = "No se pudieron cargar las publicaciones del perfil. Reintenta." })
 
     private fun loadSharedContent(userId: String) {
@@ -964,7 +977,7 @@ class ProfileViewModel @Inject constructor(
         _selectedTab.value = index
     }
 
-    fun togglePostLike(post: Post) = reactionWriter.set(post.id, if (post.likedByMe) null else "LIKE")
+    fun togglePostLike(post: Post) = reactionWriter.toggleLike(post.id)
 
     fun setPostReaction(post: Post, type: String?) = reactionWriter.set(post.id, type)
 
