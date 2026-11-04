@@ -34,10 +34,28 @@ internal class PostReactionWriter(
     fun reconcile(fresh: Post, readVersion: Long): Post {
         val edit = edits[fresh.id] ?: return fresh
         if (fresh.id !in jobs && readVersion >= edit.stamp) {
-            edits.remove(fresh.id)
+            // Keep the latest accepted baseline for an older read still in flight.
+            edit.confirmed = fresh
+            edit.desired = fresh.reaction()
+            edit.stamp = readVersion
             return fresh
         }
         return fresh.withReaction(edit.desired)
+    }
+
+    fun toggleLike(id: String) {
+        val post = current(id) ?: return
+        set(id, if (post.reaction() == null) "LIKE" else null)
+    }
+
+    /** An ACK from another screen also fences this screen's older remote reads. */
+    fun acceptConfirmed(id: String, reaction: String?) {
+        if (id in jobs) return
+        val post = current(id) ?: return
+        val confirmed = post.withReaction(reaction)
+        edits[id] = Edit(confirmed, reaction, ++revision)
+        publish(confirmed)
+        prune()
     }
 
     fun set(id: String, requested: String?) {
@@ -89,15 +107,18 @@ internal class PostReactionWriter(
                     jobs.remove(id)
                     edit.stamp = ++revision
                     if (!isCurrent()) edits.remove(id)
-                    while (edits.size > 256) {
-                        val oldest = edits.keys.firstOrNull { it !in jobs } ?: break
-                        edits.remove(oldest)
-                    }
+                    prune()
                 }
             }
         }
         jobs[id] = job
         job.start()
+    }
+    private fun prune() {
+        while (edits.size > 256) {
+            val oldest = edits.keys.firstOrNull { it !in jobs } ?: break
+            edits.remove(oldest)
+        }
     }
     private fun Post.reaction() = myReaction ?: if (likedByMe) "LIKE" else null
     private companion object { val TYPES = setOf("LIKE", "LOVE", "HAHA", "WOW", "SAD", "ANGRY", "CARE", "FIRE") }

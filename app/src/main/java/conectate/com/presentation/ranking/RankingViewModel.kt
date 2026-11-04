@@ -9,6 +9,8 @@ import conectate.com.data.repository.RankingRepository
 import conectate.com.data.repository.PostRepository
 import conectate.com.data.repository.ShareRepository
 import conectate.com.data.supabase.AuthService
+import conectate.com.presentation.posts.PostReactionWriter
+import conectate.com.presentation.posts.copyReactionFrom
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,8 +54,18 @@ class RankingViewModel @Inject constructor(
     private var statsJob: Job? = null
     private var loadRevision = 0L
     private val postMutationsInFlight = mutableSetOf<String>()
+    private val reactionWriter = PostReactionWriter(viewModelScope, authService::getCurrentUserId,
+        { id -> _posts.value.firstOrNull { it.id == id } },
+        postRepository::setPostReaction, postRepository::getPostById,
+        { fresh -> _posts.value = _posts.value.map { if (it.id == fresh.id) it.copyReactionFrom(fresh) else it } },
+        { conectate.com.presentation.common.AppFeedbackBus.showError("No se pudo guardar la reacción. Reintenta.") })
 
     init {
+        viewModelScope.launch {
+            postRepository.reactionChanges.collect { change ->
+                if (change.actorId == authService.getCurrentUserId()) reactionWriter.acceptConfirmed(change.postId, change.reaction)
+            }
+        }
         viewModelScope.launch {
             shareRepository.postChanges.collect { change ->
                 if (change.actorId == authService.getCurrentUserId()) _posts.value = _posts.value.map(change::applyTo)
@@ -61,6 +73,7 @@ class RankingViewModel @Inject constructor(
         }
         viewModelScope.launch {
             authService.currentSession.map { it?.user?.id }.distinctUntilChanged().collect {
+                reactionWriter.clear()
                 _users.value = emptyList()
                 _videos.value = emptyList()
                 _posts.value = emptyList()
@@ -81,6 +94,7 @@ class RankingViewModel @Inject constructor(
         loadJob?.cancel()
         statsJob?.cancel()
         loadJob = viewModelScope.launch {
+            val reactionReadVersion = reactionWriter.readVersion()
             _isLoading.value = true
             _error.value = null
             try {
@@ -93,7 +107,7 @@ class RankingViewModel @Inject constructor(
                 val videoResult = videoRequest.await()
                 if (revision != loadRevision) return@coroutineScope
                 userResult.onSuccess { _users.value = it.users; _myRank.value = it.myRank }
-                postResult.onSuccess { _posts.value = it }
+                postResult.onSuccess { rows -> _posts.value = rows.map { reactionWriter.reconcile(it, reactionReadVersion) } }
                 if (listOf(userResult, postResult, videoResult).any { it.isFailure }) {
                     _error.value = "No se pudo actualizar todo el ranking. Puedes reintentar."
                 }
@@ -135,44 +149,10 @@ class RankingViewModel @Inject constructor(
     }
 
     fun setPostReaction(post: Post, reactionType: String?) {
-        val postId = post.id.trim()
-        if (postId.isBlank() || !postMutationsInFlight.add("reaction:$postId")) return
-
-        viewModelScope.launch {
-            val previousReaction = post.myReaction ?: if (post.likedByMe) "LIKE" else null
-            val normalizedReaction = reactionType?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
-            val previousLiked = previousReaction != null
-            val nextLiked = normalizedReaction != null
-            val nextLikeCount = when {
-                !previousLiked && nextLiked -> post.likeCount + 1
-                previousLiked && !nextLiked -> maxOf(0, post.likeCount - 1)
-                else -> post.likeCount
-            }
-            updatePost(postId) {
-                it.copy(
-                    likedByMe = nextLiked,
-                    myReaction = normalizedReaction,
-                    likeCount = nextLikeCount,
-                )
-            }
-
-            val result = postRepository.setPostReaction(
-                postId = postId,
-                reactionType = normalizedReaction,
-                wasReacted = previousLiked,
-            )
-            if (result.isFailure) {
-                updatePost(postId) {
-                    it.copy(
-                        likedByMe = previousLiked,
-                        myReaction = previousReaction,
-                        likeCount = post.likeCount,
-                    )
-                }
-            }
-            postMutationsInFlight.remove("reaction:$postId")
-        }
+        reactionWriter.set(post.id, reactionType)
     }
+
+    fun togglePostLike(post: Post) = reactionWriter.toggleLike(post.id)
 
     fun togglePostShare(post: Post) {
         val postId = post.id.trim()

@@ -75,6 +75,11 @@ class SocialViewModel @Inject constructor(
     
     init {
         viewModelScope.launch {
+            postRepository.reactionChanges.collect { change ->
+                if (change.actorId == authService.getCurrentUserId()) reactionWriter.acceptConfirmed(change.postId, change.reaction)
+            }
+        }
+        viewModelScope.launch {
             postRepository.mutationEvents.collect { event ->
                 _posts.value = when (event) {
                     is PostMutationEvent.Deleted -> _posts.value.filterNot { it.id == event.postId }
@@ -1220,7 +1225,9 @@ class SocialViewModel @Inject constructor(
             val result = postRepository.updateRemixPermission(post.id, allowed, audience)
             if (result.isSuccess) {
                 val updated = result.getOrThrow()
-                _posts.value = _posts.value.map { item -> if (item.id == updated.id) updated else item }
+                _posts.value = _posts.value.map { item -> if (item.id == updated.id) item.copy(
+                    remixAllowed = updated.remixAllowed, remixAudience = updated.remixAudience,
+                    remixRevokedAt = updated.remixRevokedAt) else item }
                 val message = if (updated.remixAllowed) "Remixes permitidos" else "Remixes desactivados"
                 android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
             } else {

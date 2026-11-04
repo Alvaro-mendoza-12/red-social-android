@@ -258,6 +258,7 @@ fun CreateMomentScreen(
 
     // Main Content
     Scaffold(
+        containerColor = if (currentStep == "CAMERA") Color.Black else MaterialTheme.colorScheme.background,
         topBar = {
             if (currentStep != "EDITOR" && currentStep != "CAMERA") {
                 TopAppBar(
@@ -276,7 +277,9 @@ fun CreateMomentScreen(
             }
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+        Box(modifier = Modifier.padding(padding)
+            .then(if (currentStep == "CAMERA") Modifier.consumeWindowInsets(padding) else Modifier)
+            .fillMaxSize()) {
             when (currentStep) {
                 "CAMERA" -> ChatCameraCapture(
                     onClose = { navController.popBackStack() },

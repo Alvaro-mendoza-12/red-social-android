@@ -16,26 +16,40 @@ internal class VideoLikeWriter(
     private val publish: (String, Boolean) -> Unit,
     private val failed: () -> Unit,
 ) {
-    private data class Edit(var confirmed: Boolean, var desired: Boolean)
+    private data class Edit(var confirmed: Boolean, var desired: Boolean, var stamp: Long)
     private val jobs = mutableMapOf<String, Job>()
-    private val edits = mutableMapOf<String, Edit>()
+    private val edits = linkedMapOf<String, Edit>()
     private var epoch = 0L
+    private var revision = 0L
 
     fun clear() {
-        epoch++
+        epoch++; revision++
         jobs.values.toList().forEach { it.cancel() }
         jobs.clear()
         edits.clear()
     }
 
-    fun reconcile(video: Video): Video = edits[video.id]?.let { video.withVideoLike(it.desired) } ?: video
+    fun readVersion(): Long = revision
+
+    fun reconcile(video: Video, readVersion: Long = -1L): Video {
+        val edit = edits[video.id] ?: return video
+        if (video.id !in jobs && readVersion >= edit.stamp) {
+            edit.confirmed = video.likedByMe
+            edit.desired = video.likedByMe
+            edit.stamp = readVersion
+            return video
+        }
+        return video.withVideoLike(edit.desired)
+    }
 
     fun toggle(id: String) {
         val owner = account() ?: return
         val video = current(id) ?: return
         if (id.isBlank()) return
-        val edit = edits.getOrPut(id) { Edit(video.likedByMe, video.likedByMe) }
+        val edit = edits[id]?.takeIf { id in jobs }
+            ?: Edit(video.likedByMe, video.likedByMe, ++revision).also { edits[id] = it }
         edit.desired = !edit.desired
+        edit.stamp = ++revision
         publish(id, edit.desired)
         if (id in jobs) return
         val version = epoch
@@ -47,6 +61,7 @@ internal class VideoLikeWriter(
                     write(id, target).getOrThrow()
                     if (!isCurrent()) return@launch
                     edit.confirmed = target
+                    edit.stamp = ++revision
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -54,12 +69,18 @@ internal class VideoLikeWriter(
                 if (isCurrent()) {
                     // Change only this video's reaction. Keep new comments, views and appended pages.
                     publish(id, edit.confirmed)
+                    edit.desired = edit.confirmed
                     failed()
                 }
             } finally {
                 if (version == epoch) {
                     jobs.remove(id)
-                    edits.remove(id)
+                    edit.stamp = ++revision
+                    if (!isCurrent()) edits.remove(id)
+                    while (edits.size > 256) {
+                        val oldest = edits.keys.firstOrNull { it !in jobs } ?: break
+                        edits.remove(oldest)
+                    }
                 }
             }
         }

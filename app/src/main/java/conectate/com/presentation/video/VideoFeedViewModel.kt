@@ -223,12 +223,13 @@ class VideoFeedViewModel @Inject constructor(
         if (!focusedVideoIds.add(cleanId)) return
         _focusedVideoError.value = null
         val generation = accountGeneration
+        val reactionReadVersion = likeWriter.readVersion()
         viewModelScope.launch {
             try {
                 readFocusedVideo(cleanId, read = videoRepository::getVideoById)
                     .onSuccess { video ->
                         if (generation != accountGeneration) return@onSuccess
-                        focusedVideosById[cleanId] = video
+                        focusedVideosById[cleanId] = likeWriter.reconcile(video, reactionReadVersion)
                         _forYouVideos.value = mergeFocusedVideoPage(
                             focusedVideos = focusedVideosById.values,
                             loadedPage = _forYouVideos.value,
@@ -504,6 +505,7 @@ class VideoFeedViewModel @Inject constructor(
         profilePageRequestInFlight = true
         val generation = accountGeneration
         _profileFeedError.value = null
+        val reactionReadVersion = likeWriter.readVersion()
         viewModelScope.launch {
             try {
                 if (reset) _isLoading.value = true
@@ -514,7 +516,7 @@ class VideoFeedViewModel @Inject constructor(
                 ).getOrThrow() }.onSuccess { page ->
                     if (generation != accountGeneration) return@onSuccess
                     if (reset) {
-                        _profileVideos.value = page.map(likeWriter::reconcile)
+                        _profileVideos.value = page.map { likeWriter.reconcile(it, reactionReadVersion) }
                     } else {
                         val merged = (_profileVideos.value + page).distinctBy { it.id }
                         val window = ProfileVideoFeedPaging.boundedWindow(
@@ -522,7 +524,7 @@ class VideoFeedViewModel @Inject constructor(
                             pageSize = profilePageSize,
                             dropFromStart = true
                         )
-                        _profileVideos.value = window.items.map(likeWriter::reconcile)
+                        _profileVideos.value = window.items.map { likeWriter.reconcile(it, reactionReadVersion) }
                         if (window.removedFromStart > 0) {
                             profileFirstOffset += window.removedFromStart
                             _profilePrependCount.value = -window.removedFromStart
@@ -562,6 +564,7 @@ class VideoFeedViewModel @Inject constructor(
 
         profilePageRequestInFlight = true
         val generation = accountGeneration
+        val reactionReadVersion = likeWriter.readVersion()
         viewModelScope.launch {
             try {
                 conectate.com.core.network.runReadWithDeadline(10_000) { videoRepository.getUserVideosPage(
@@ -578,7 +581,7 @@ class VideoFeedViewModel @Inject constructor(
                             pageSize = profilePageSize,
                             dropFromStart = false
                         )
-                        _profileVideos.value = window.items.map(likeWriter::reconcile)
+                        _profileVideos.value = window.items.map { likeWriter.reconcile(it, reactionReadVersion) }
                         _profilePrependCount.value = newVideos.size
                         if (window.removedFromEnd > 0) {
                             profileNextOffset = request.offset + window.items.size
@@ -761,10 +764,11 @@ class VideoFeedViewModel @Inject constructor(
         _isSearching.value = true
         searchJob = viewModelScope.launch {
             delay(250)
+            val reactionReadVersion = likeWriter.readVersion()
             try {
                 conectate.com.core.network.runReadWithDeadline(10_000) { videoRepository.searchVideos(clean).getOrThrow() }.onSuccess { videos ->
                     if (generation != accountGeneration || revision != searchRevision || !_isSearchMode.value) return@onSuccess
-                    _searchResults.value = videos.map(likeWriter::reconcile)
+                    _searchResults.value = videos.map { likeWriter.reconcile(it, reactionReadVersion) }
                     _isSearching.value = false
                 }.onFailure {
                     if (generation == accountGeneration && revision == searchRevision) {
@@ -816,6 +820,7 @@ class VideoFeedViewModel @Inject constructor(
         val generation = accountGeneration
         val requestSessionId = feedSessionId
         forYouJob = viewModelScope.launch {
+            val reactionReadVersion = likeWriter.readVersion()
             val uiWatchdog = launch {
                 delay(VIDEO_FEED_UI_WATCHDOG_MS)
                 if (
@@ -885,6 +890,7 @@ class VideoFeedViewModel @Inject constructor(
                             ),
                             sessionId = requestSessionId,
                             acceptEmpty = page.items.isEmpty(),
+                            reactionReadVersion = reactionReadVersion,
                         )
                         isLastPage = !page.hasMore
                         if (generation == accountGeneration && requestSessionId == feedSessionId) _isLoading.value = false
@@ -915,6 +921,7 @@ class VideoFeedViewModel @Inject constructor(
                             focusedVideosById.values,
                             newVideos,
                             requestSessionId,
+                            reactionReadVersion = reactionReadVersion,
                         )
                         isLastPage = videoRepository.videoFeedError.value == null && newVideos.size < pageSize
                     }
@@ -950,6 +957,7 @@ class VideoFeedViewModel @Inject constructor(
         _cycleError.value = null
         loadMoreJob = viewModelScope.launch {
             _isLoading.value = true
+            val reactionReadVersion = likeWriter.readVersion()
             try {
                 val nextVideos: List<Video>
                 var hasMore = false
@@ -977,7 +985,7 @@ class VideoFeedViewModel @Inject constructor(
                 if (generation != accountGeneration || previousSession != feedSessionId) return@launch
                 val ordered = filterActiveAlgorithmBlocks(continuedVideoOrder(
                     nextVideos, seen, lastVideo, recent, previousInitialForYouOrder.firstOrNull(),
-                ))
+                ), reactionReadVersion)
                 if (ordered.isEmpty()) {
                     // A successful empty response is not a connection failure.
                     // Remove the provisional page instead of replaying excluded content.
@@ -1018,6 +1026,7 @@ class VideoFeedViewModel @Inject constructor(
         val requestSessionId = feedSessionId
         loadMoreJob = viewModelScope.launch {
             var requestedLegacyPage: Int? = null
+            val reactionReadVersion = likeWriter.readVersion()
             try {
                 _isLoading.value = true
                 if (authoritativeFeedActive) {
@@ -1049,7 +1058,7 @@ class VideoFeedViewModel @Inject constructor(
                         recentIds = previousVisitRecentIds,
                     )
                     _forYouVideos.value = filterActiveAlgorithmBlocks(
-                        (_forYouVideos.value + orderedPage).distinctBy { it.id })
+                        (_forYouVideos.value + orderedPage).distinctBy { it.id }, reactionReadVersion)
                     isLastPage = !page.hasMore
                     loadFollowedUsers()
                     return@launch
@@ -1077,7 +1086,7 @@ class VideoFeedViewModel @Inject constructor(
                             recentIds = previousVisitRecentIds,
                         )
                         _forYouVideos.value = filterActiveAlgorithmBlocks(
-                            (_forYouVideos.value + orderedPage).distinctBy { it.id })
+                            (_forYouVideos.value + orderedPage).distinctBy { it.id }, reactionReadVersion)
                         if (newVideos.size < pageSize) isLastPage = true
                     }
                 }
@@ -1246,6 +1255,7 @@ class VideoFeedViewModel @Inject constructor(
         loadedPage: Iterable<Video>,
         sessionId: String,
         acceptEmpty: Boolean = false,
+        reactionReadVersion: Long = -1L,
     ) {
         val previousOrder = if (lastOrderedForYouSessionId == sessionId) {
             emptyList()
@@ -1261,7 +1271,7 @@ class VideoFeedViewModel @Inject constructor(
             seenIds = previousVisitSeenIds,
             recentIds = previousVisitRecentIds,
         )
-        val merged = filterActiveAlgorithmBlocks(mergeFocusedVideoPage(focusedVideos, orderedPage))
+        val merged = filterActiveAlgorithmBlocks(mergeFocusedVideoPage(focusedVideos, orderedPage), reactionReadVersion)
         if (lastOrderedForYouSessionId != sessionId) {
             previousInitialForYouOrder = merged.map { it.id.trim().lowercase() }
             lastOrderedForYouSessionId = sessionId
@@ -1278,11 +1288,13 @@ class VideoFeedViewModel @Inject constructor(
         stablePage.firstOrNull()?.id?.trim()?.lowercase()?.let(displayedForYouIds::add)
     }
 
-    private fun filterActiveAlgorithmBlocks(videos: List<Video>): List<Video> =
-        videos.filterNot { video -> activeAlgorithmBlocks.any { it.matches(video) } }.map(likeWriter::reconcile)
+    private fun filterActiveAlgorithmBlocks(videos: List<Video>, reactionReadVersion: Long = -1L): List<Video> =
+        videos.filterNot { video -> activeAlgorithmBlocks.any { it.matches(video) } }
+            .map { likeWriter.reconcile(it, reactionReadVersion) }
 
     private fun loadFollowingVideos() {
         val generation = accountGeneration
+        val reactionReadVersion = likeWriter.readVersion()
         viewModelScope.launch {
             val uiWatchdog = launch {
                 delay(VIDEO_FEED_UI_WATCHDOG_MS)
@@ -1294,7 +1306,7 @@ class VideoFeedViewModel @Inject constructor(
                 _isLoading.value = true
                 _followingFeedError.value = null
                 videoRepository.getFollowingVideos(failOnError = true).collect { videos ->
-                    if (generation == accountGeneration) _followingVideos.value = videos.map(likeWriter::reconcile)
+                    if (generation == accountGeneration) _followingVideos.value = videos.map { likeWriter.reconcile(it, reactionReadVersion) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -1792,9 +1804,10 @@ class VideoFeedViewModel @Inject constructor(
         viewModelScope.launch {
             // Wait for DB triggers/functions to update counts
             delay(300) 
+            val reactionReadVersion = likeWriter.readVersion()
             videoRepository.getVideo(videoId).onSuccess { updatedVideo ->
                 if (generation != accountGeneration) return@onSuccess
-                val reactionVideo = likeWriter.reconcile(updatedVideo)
+                val reactionVideo = likeWriter.reconcile(updatedVideo, reactionReadVersion)
                 // Update lists with new video data (including counts)
                 fun updateList(list: List<Video>): List<Video> {
                     return list.map { current ->
