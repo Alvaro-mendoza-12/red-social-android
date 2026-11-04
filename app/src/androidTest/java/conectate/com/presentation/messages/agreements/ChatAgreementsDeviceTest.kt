@@ -1,8 +1,6 @@
 package conectate.com.presentation.messages.agreements
 
 import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -64,6 +62,9 @@ class ChatAgreementsDeviceTest {
         compose.runOnIdle { assertEquals("cancel", action) }
     }
     @Test fun largeTextInDarkThemeCanReachTheSourceAndWithdrawal() {
+        if (InstrumentationRegistry.getArguments().getString("expectSystemLargeText") == "true") {
+            assertTrue(InstrumentationRegistry.getInstrumentation().targetContext.resources.configuration.fontScale >= 1.59f)
+        }
         var sourceRequested = false
         val confirmed = original.copy(version = 3, status = "accepted", participants = original.participants.map { it.copy(response = "accepted") })
         compose.setContent {

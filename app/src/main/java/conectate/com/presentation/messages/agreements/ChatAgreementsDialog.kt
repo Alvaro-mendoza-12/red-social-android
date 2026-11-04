@@ -17,10 +17,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 
 private val AgreementIndigo = Color(0xFF535BC1)
 private val AgreementMint = Color(0xFFB7E5DF)
@@ -49,6 +53,16 @@ internal fun ChatAgreementsDialog(
         } else onClose()
     }
     Dialog(onDismissRequest = requestBack, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+        val view = LocalView.current
+        val lightBars = MaterialTheme.colorScheme.surface.luminance() > .5f
+        SideEffect {
+            (view.parent as? DialogWindowProvider)?.window?.let { window ->
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = lightBars
+                    isAppearanceLightNavigationBars = lightBars
+                }
+            }
+        }
         BackHandler(onBack = requestBack)
         Scaffold(
             modifier = Modifier.fillMaxSize().imePadding(),

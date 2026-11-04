@@ -74,7 +74,10 @@ class ChatAgreementsViewModel internal constructor(
         }
     }
     fun open() { if (active() && _state.value.supported) { _state.value = _state.value.copy(open = true); refresh() } }
-    fun close() { _state.value = _state.value.copy(open = false, source = null) }
+    fun close() {
+        readingVersion++; readJob?.cancel()
+        _state.value = _state.value.copy(open = false, loading = false, source = null)
+    }
     fun refresh() = refresh(keepError = false)
     private fun refresh(keepError: Boolean) {
         val current = lease ?: return

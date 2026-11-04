@@ -120,6 +120,14 @@ class ChatAgreementsViewModelTest {
         f.read = { throw AgreementApiException(403, "AGREEMENT_ACCESS_DENIED") }; f.vm.refresh(); advanceUntilIdle()
         assertTrue(f.vm.state.value.agreements.isEmpty()); assertNotNull(f.vm.state.value.error)
     }
+    @Test fun closingTheModuleInvalidatesALateSourcePreviewWithoutDiscardingTheDraft() = runTest(dispatcher) {
+        val f = Fixture(); f.bind(); advanceUntilIdle(); f.vm.propose(sourceId); advanceUntilIdle(); f.vm.changeDraft("Conservar")
+        val old = CompletableDeferred<AgreementSource?>()
+        f.source = { withContext(NonCancellable) { old.await() } }; f.vm.showSource(agreement()); runCurrent()
+        f.vm.close(); old.complete(AgreementSource(sourceId, "Anterior")); advanceUntilIdle()
+        assertNull(f.vm.state.value.source); assertFalse(f.vm.state.value.open); assertFalse(f.vm.state.value.loading)
+        assertEquals("Conservar", f.vm.state.value.draft)
+    }
     @Test fun readsHaveAnOverallDeadlineAndLeaveTheModuleRecoverable() = runTest(dispatcher) {
         val f = Fixture(); f.bind(); advanceUntilIdle(); f.read = { awaitCancellation() }; f.vm.open(); runCurrent()
         advanceTimeBy(10_001); runCurrent(); assertFalse(f.vm.state.value.loading); assertNotNull(f.vm.state.value.error)
