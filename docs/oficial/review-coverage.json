@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-04T01:10:38.941467+00:00",
-  "baseCommit": "df77d84eb898d03d09771330aff53dd3ca40008e",
+  "generatedAtUtc": "2026-11-04T03:40:57.875227+00:00",
+  "baseCommit": "dde3c49f09651cc4d6ef98ee7c0e90272ef01ec9",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,30 +10,30 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3717,
-    "code-read": 428,
-    "partial": 62
+    "pending": 3680,
+    "code-read": 453,
+    "partial": 86
   },
   "countsByPhase": {
     "android": {
-      "pending": 1564,
-      "code-read": 370,
-      "partial": 40
+      "pending": 1540,
+      "partial": 50,
+      "code-read": 391
     },
     "documentation": {
-      "pending": 559,
+      "pending": 557,
       "code-read": 5,
-      "partial": 5
+      "partial": 8
     },
     "server": {
-      "pending": 872,
-      "code-read": 29,
-      "partial": 5
+      "pending": 865,
+      "code-read": 34,
+      "partial": 11
     },
     "tooling-and-other": {
-      "pending": 159,
-      "code-read": 11,
-      "partial": 2
+      "pending": 155,
+      "code-read": 10,
+      "partial": 7
     },
     "web": {
       "partial": 10,
@@ -3877,8 +3877,8 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "0136dd5641d18f7a14326f54eb79a072af182163",
-      "reviewStatus": "code-read",
+      "gitBlobId": "913ecd9e6b7f70a44080bb2d79d5e932427058a4",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -4181,6 +4181,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/androidTest/java/conectate/com/presentation/components/ImageCropOrientationDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "f15be09340001fcbc499fa8c5453bcbfa308b8fd",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/InAppMediaPickerDeviceTest.kt",
       "phase": "android",
       "gitBlobId": "797cd54c647d728c81df4bbc6c42f066d3340e94",
@@ -4261,6 +4269,14 @@
       "phase": "android",
       "gitBlobId": "ce2bf31833d4259f33c1d7434fe73fdff0da672e",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/messages/CameraGalleryShortcutDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "af9def44632c49d97b21b26fa9592c1615d995c2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/messages/CameraMediaDeliveryServerTest.kt",
@@ -5841,6 +5857,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/data/cache/PostFeedCache.kt",
+      "phase": "android",
+      "gitBlobId": "3e042c169013cc383e57e921c4764b1262350491",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/cache/UpstashCacheService.kt",
       "phase": "android",
       "gitBlobId": "8a034b47714594a3b8797ab2b260ab9b8987f3a5",
@@ -6686,7 +6710,17 @@
       "file": "app/src/main/java/conectate/com/data/model/Post.kt",
       "phase": "android",
       "gitBlobId": "e6c5581a27f12a4d468b8645c27dbd95bf880837",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/model/PostReactionState.kt",
+      "phase": "android",
+      "gitBlobId": "83d8caf4991456df84958bd42ddea4d9e7e22578",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/model/PostReactionUser.kt",
@@ -6788,7 +6822,9 @@
       "file": "app/src/main/java/conectate/com/data/model/Video.kt",
       "phase": "android",
       "gitBlobId": "5ab9001fe56671385d71d958bfda7f4fcdff2147",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/model/VideoChapterPolicy.kt",
@@ -7309,7 +7345,7 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/PostRepository.kt",
       "phase": "android",
-      "gitBlobId": "09e1a82d2b62a67c4ed4c146a760ff36c76e5e91",
+      "gitBlobId": "3ad64136f0a501d30208bb2f7f1656fd33d2b6d3",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -7335,8 +7371,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/RankingRepository.kt",
       "phase": "android",
-      "gitBlobId": "17f1aaf3fc30a523fda575a0084237b71f02638b",
-      "reviewStatus": "pending"
+      "gitBlobId": "e3f07df0338b301ea8fe9970e505eb48fb2170a0",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/SavedAccountsRepository.kt",
@@ -8649,6 +8687,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/components/CaptureSystemBars.kt",
+      "phase": "android",
+      "gitBlobId": "5d2322c50ce30b77f6aeae7e49340770af6036ff",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/components/ChatSpellCheck.kt",
       "phase": "android",
       "gitBlobId": "6fe95728c3d69ea0e49b889997143170e42cbdbc",
@@ -8975,8 +9021,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/SimpleImageCropDialog.kt",
       "phase": "android",
-      "gitBlobId": "199e396eb565e184346cb832d3f498f80f64b8f9",
-      "reviewStatus": "pending"
+      "gitBlobId": "8821a39d4c1c4576ff4cb37a47a0ae37730a3ff1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/SocialBrandComponents.kt",
@@ -9463,6 +9511,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/messages/CameraGalleryShortcut.kt",
+      "phase": "android",
+      "gitBlobId": "509d98abc757291585a48c746b4ae6f50ce11914",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatBackgroundLayer.kt",
       "phase": "android",
       "gitBlobId": "533b417acd38a9d36045d4c32a47ee5cd3f8c6e0",
@@ -9485,8 +9541,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatCameraCapture.kt",
       "phase": "android",
-      "gitBlobId": "ed0b5bd76a5ab48c35a76eb9088156eca17c9379",
-      "reviewStatus": "pending"
+      "gitBlobId": "6d0231e9a10ad214296c7fe0f26b37058ae0b4fc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatCameraCaptureSession.kt",
@@ -9916,7 +9974,9 @@
       "file": "app/src/main/java/conectate/com/presentation/messages/MediaCaptionPreviewDialog.kt",
       "phase": "android",
       "gitBlobId": "3d9e440d76a8ab8dff9673508395d915cfbecbf2",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/MessageAccountsDialog.kt",
@@ -9954,19 +10014,25 @@
       "file": "app/src/main/java/conectate/com/presentation/messages/MessageMediaComposer.kt",
       "phase": "android",
       "gitBlobId": "cd85a0abb003a64ea5738a4ae327bf75bd8fd88e",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/MessagePhotoRendering.kt",
       "phase": "android",
       "gitBlobId": "53b125ecc480c67e4f21c2b1b74aad04dd066397",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/MessagePhotoSourceStore.kt",
       "phase": "android",
       "gitBlobId": "16d2b36765bb6fc9e2f6ff6e91532ab1670060f9",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/MessagePollComponents.kt",
@@ -10479,7 +10545,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/posts/PostDetailScreen.kt",
       "phase": "android",
-      "gitBlobId": "ae0ab70d46d99bbc161acdde1f09eef80f9da565",
+      "gitBlobId": "3b11d17ce2a3bcd04afe0309afc72616fc1a69c5",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -10487,16 +10553,18 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/posts/PostDetailViewModel.kt",
       "phase": "android",
-      "gitBlobId": "9cecfba8c96976b2da5a3dc14a985e79762f8fc3",
-      "reviewStatus": "code-read",
+      "gitBlobId": "0bfe1296404b4138908e37688ee96b46755bab56",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/posts/PostReactionState.kt",
       "phase": "android",
-      "gitBlobId": "2cf089c2fead1c2dfb3b1c32b6944c984c831646",
-      "reviewStatus": "pending"
+      "gitBlobId": "d3e91054ea138a653b7af605969eccdb8ca13eef",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/posts/PostReactionUsersLoader.kt",
@@ -10507,8 +10575,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/posts/PostReactionWriter.kt",
       "phase": "android",
-      "gitBlobId": "1d0e1fcee9051a925a59f553ca2c0f7bdb358965",
-      "reviewStatus": "pending"
+      "gitBlobId": "606343ab69180f88ca9d5496e7b8101451005ab5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/posts/PostReactionsSheet.kt",
@@ -10658,7 +10728,9 @@
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileContentSubscriptions.kt",
       "phase": "android",
       "gitBlobId": "4f93e33ee99c4933ee2768e8797407f6b5fc78ca",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileConversationNavigation.kt",
@@ -10738,12 +10810,14 @@
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileSharedPostsPager.kt",
       "phase": "android",
       "gitBlobId": "4e5926d875e48d7d9073ccf63d4a90781955d3fa",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileViewModel.kt",
       "phase": "android",
-      "gitBlobId": "d250fe763b718e7d66fe072f2abb820f73600367",
+      "gitBlobId": "561b2790c13c042b607b0ef514b0334939da8236",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -10875,14 +10949,18 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/ranking/RankingScreen.kt",
       "phase": "android",
-      "gitBlobId": "6f617b8263138147642bd6e0259bf6ac1170f729",
-      "reviewStatus": "pending"
+      "gitBlobId": "a57124e92ab8211c202376bd22bfec8ae185c7c6",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/ranking/RankingViewModel.kt",
       "phase": "android",
-      "gitBlobId": "f4e4639f6e160f795382c4fb76af307fadb1bd4d",
-      "reviewStatus": "pending"
+      "gitBlobId": "3c4183ecc45de33a63fa32b29f3edf24d452decf",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchDiscovery.kt",
@@ -11005,8 +11083,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/CreateMomentScreen.kt",
       "phase": "android",
-      "gitBlobId": "be7755e2fc507af2c8db0f98effd2020cbcbaa8f",
-      "reviewStatus": "pending"
+      "gitBlobId": "89738773a6cc9d987d1e9bfdafb3d172a0e313cd",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/social/CreateMomentViewModel.kt",
@@ -11293,7 +11373,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/SocialViewModel.kt",
       "phase": "android",
-      "gitBlobId": "8abb1abc6453a16f223a027eedcf56bc02c417da",
+      "gitBlobId": "b885c9b3a1b8b9b202d9f2fb1495fd120aff641d",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -11488,13 +11568,17 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedCyclePolicy.kt",
       "phase": "android",
       "gitBlobId": "d96caa1c660e9c5529977920d7c1bd7b86765b83",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedEntries.kt",
       "phase": "android",
       "gitBlobId": "3a78f4a8bcd5e3fda2b4a543d32c3d72a296f8f9",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedNoMatchesPage.kt",
@@ -11512,7 +11596,9 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedPageStore.kt",
       "phase": "android",
       "gitBlobId": "be9a6c69868713375067f35747fb6fd7c8abbf73",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
@@ -11532,12 +11618,14 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedTailPage.kt",
       "phase": "android",
       "gitBlobId": "3281bf55e2a8a9e10cdaee4cfbd16ed2b2b0212a",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedViewModel.kt",
       "phase": "android",
-      "gitBlobId": "d349dfc3f053a5db26b94b707e72de2abd8e80fb",
+      "gitBlobId": "af4c7303848b91e5b71f3a3262d6ecdba6c0ee61",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -11575,8 +11663,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoLikeWriter.kt",
       "phase": "android",
-      "gitBlobId": "c5e66911c748e6ae5523a9860f8084356ae23ebd",
-      "reviewStatus": "pending"
+      "gitBlobId": "e423b4fd4ac20e5bf1b226d02e0228b5e77fb450",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoPersonalMarkerStore.kt",
@@ -11712,7 +11802,9 @@
       "file": "app/src/main/java/conectate/com/presentation/videos/VideoPlayerScreen.kt",
       "phase": "android",
       "gitBlobId": "667bddc4b2b4ceac52fe42b19ef08a46a3f3840d",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/videos/VideoReportDialog.kt",
@@ -13562,6 +13654,14 @@
       "gitBlobId": "bd7be95bbc1ee277b95090529f8a2a418a00f6f6",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/cache/PostFeedCacheTest.kt",
+      "phase": "android",
+      "gitBlobId": "1274bcca2f98f89f3402d3121e3b5dd91b9d4f39",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15481,8 +15581,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/posts/PostReactionWriterTest.kt",
       "phase": "android",
-      "gitBlobId": "fe80dba597ab595cacecef70569acb56188e455b",
-      "reviewStatus": "pending"
+      "gitBlobId": "9d091d74ae4a282290d2a6eab091e00eacafd86b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/AdminAccessCheckTest.kt",
@@ -15939,8 +16041,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/video/VideoLikeWriterTest.kt",
       "phase": "android",
-      "gitBlobId": "ab3185d66c34b3ae07b3266d6a63356ec85b6abd",
-      "reviewStatus": "pending"
+      "gitBlobId": "b535df22f6a4fafd9ed2c69b6474d82b983e7d07",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/video/VideoPersonalMarkerStoreTest.kt",
@@ -18885,7 +18989,7 @@
     {
       "file": "docs/oficial/08-pruebas-release-handoff.md",
       "phase": "documentation",
-      "gitBlobId": "e5c87c0bff07314360542b08d2e5d41cd48a594b",
+      "gitBlobId": "d0cd7fddad962ac710994e779935947f12485eda",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18917,7 +19021,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "661189461872dc67e23e13aed4294b1dc6cb63ef",
+      "gitBlobId": "fa74ddc8137fa6494fe8a43abdfc6f937c8a2ed3",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -18926,7 +19030,7 @@
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "phase": "documentation",
       "gitBlobId": "67d9a2d4bf51e696f15d4c5c985ffee49e134443",
-      "reviewStatus": "code-read",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -18936,6 +19040,14 @@
       "gitBlobId": "7d60f78ea0787206fbe3215d42db277615ec60ac",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/104-camara-y-reacciones-android.md",
+      "phase": "documentation",
+      "gitBlobId": "64ac78abb43a8ecb67d8d514120ddc7add27f7c4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19062,7 +19174,9 @@
       "file": "docs/oficial/31-perfil-destacados-y-diferenciales-2026-09-17.md",
       "phase": "documentation",
       "gitBlobId": "da0d7aedf9c1967ac0c11e44077b1a4e358bbc18",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/32-permisos-stickers-y-cierre-destacados-2026-09-18.md",
@@ -19469,8 +19583,10 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "9dbbd11673aa0765d4cfac256431b46bd400316b",
-      "reviewStatus": "pending"
+      "gitBlobId": "6616c5680ffcf268a5dee09345077fb7b4b4c506",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/VALIDACION_ANDROID_E729365.json",
@@ -20161,6 +20277,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/scripts/refresh-antivirus.sh",
+      "phase": "server",
+      "gitBlobId": "e1a7b900b48dee61ac6e0f9851163b92a9c2c7ce",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/scripts/serve-survey-validation.js",
       "phase": "server",
       "gitBlobId": "dedb3cfe7834f9146c23f433336fa0ba60b2f560",
@@ -20175,8 +20299,10 @@
     {
       "file": "infrastructure/local-fallback/api/scripts/start-with-antivirus.sh",
       "phase": "server",
-      "gitBlobId": "775f50335e77de608f6ff9e26eac3a657c7b9a5d",
-      "reviewStatus": "pending"
+      "gitBlobId": "3957312a77b90ba64a628af270aa110c0bddc19f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/scripts/storage-r2-mirror.js",
@@ -20451,6 +20577,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/scripts/verify-post-reactions-isolated.js",
+      "phase": "server",
+      "gitBlobId": "bc8a15be8e69664af22f5a8990e6ded8d067fc0e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/scripts/verify-post-remix-e2e.js",
       "phase": "server",
       "gitBlobId": "1d329c2477ea3cbf2b03f3834eac8a1ca243dc58",
@@ -20496,7 +20630,9 @@
       "file": "infrastructure/local-fallback/api/scripts/verify-social-read-paths.js",
       "phase": "server",
       "gitBlobId": "63dcc5d76e2dad88997f2d7c57f2c082c357fcf9",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-source-dependencies.js",
@@ -20807,7 +20943,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "8b8c80df012b2c406fa24bef1b047666e186fd24",
+      "gitBlobId": "4994d07993e72db349e51d97f7bb4af30d754d6b",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20816,7 +20952,9 @@
       "file": "infrastructure/local-fallback/api/src/database-role-policy.js",
       "phase": "server",
       "gitBlobId": "28561e55e237b4fc1fa51f795b4a9c540ea2c435",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/direct-conversation-activity.js",
@@ -20908,7 +21046,9 @@
       "file": "infrastructure/local-fallback/api/src/import-csv.js",
       "phase": "server",
       "gitBlobId": "5d3e40e4e89d3ed3175f74264bffc3974dc4a2e6",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
@@ -21330,7 +21470,9 @@
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
       "gitBlobId": "37d27cf306965840576e6e221e19aebe2bc591e2",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/social-promotions.js",
@@ -21713,6 +21855,14 @@
       "phase": "server",
       "gitBlobId": "9d8a93e997aade446425e9bfadccdde791684ddc",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/antivirus-startup.test.js",
+      "phase": "server",
+      "gitBlobId": "30d90489271e621242dbe94269374a7813be2bed",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/auth-public-username.test.js",
@@ -22425,6 +22575,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/post-reaction-read-contract.test.js",
+      "phase": "server",
+      "gitBlobId": "275dbcb6b8ef48e5d22b3449a80604890f49794f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/postgrest-security.test.js",
       "phase": "server",
       "gitBlobId": "40cbf12da697230126061f4fa0d8a808e8b4cbc9",
@@ -22440,7 +22598,9 @@
       "file": "infrastructure/local-fallback/api/tests/production-config.test.js",
       "phase": "server",
       "gitBlobId": "46dc70c10540aae64254d0085a58830b750187fa",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/profile-merge.test.js",
@@ -22810,7 +22970,7 @@
       "file": "infrastructure/local-fallback/api/tests/storage-r2-journal.postgres.test.js",
       "phase": "server",
       "gitBlobId": "c44d2cbfd6b6de697eb61b15ac56cc5d1a13707e",
-      "reviewStatus": "code-read",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -23040,7 +23200,9 @@
       "file": "infrastructure/local-fallback/db/init/001_schema.sql",
       "phase": "server",
       "gitBlobId": "8eaa7bd2d41d8604702274ecd093761034c81308",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/db/migrations/001_runtime_prerequisites.sql",
@@ -26016,7 +26178,7 @@
       "file": "tools/audit/update_review_coverage.py",
       "phase": "tooling-and-other",
       "gitBlobId": "f71dde172017b8b0989924432f4fa9a4b4561e97",
-      "reviewStatus": "code-read",
+      "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
@@ -26080,7 +26242,9 @@
       "file": "tools/performance_budget_check.py",
       "phase": "tooling-and-other",
       "gitBlobId": "27ec2f927c4dbb9fc195b2263ca0c3270b197067",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/quality_gate.ps1",
@@ -26238,13 +26402,17 @@
       "file": "tools/verify_android_page_size.py",
       "phase": "tooling-and-other",
       "gitBlobId": "ce687c8a0eb8f97dcdac78397ffd8aa789b710cf",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/verify_android_release.py",
       "phase": "tooling-and-other",
       "gitBlobId": "e91f7b08963a9b1b2266dc223e571ef3ccbb7141",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/verify_android_startup.py",
@@ -26256,7 +26424,9 @@
       "file": "tools/verify_r8_release.py",
       "phase": "tooling-and-other",
       "gitBlobId": "e897689cd0a905c34b95a0c7bbdd2f26e0d40ef2",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "vercel.json",
