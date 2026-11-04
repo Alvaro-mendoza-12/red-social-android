@@ -1,9 +1,15 @@
 package conectate.com.presentation.video.routes
 
 import androidx.navigation.NavHostController
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.ComposeNavigator
 import androidx.navigation.createGraph
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import conectate.com.presentation.navigation.Screen
@@ -32,7 +38,7 @@ class VideoRouteNavigationDeviceTest {
             val playerEntry = checkNotNull(controller.currentBackStackEntry)
             assertEquals(Screen.VideoRoutePlayer.route, playerEntry.destination.route)
             assertEquals(identity, playerEntry.arguments?.getString("videoId"))
-            assertEquals(true, playerEntry.savedStateHandle.get<Boolean>("singleVideoOnly"))
+            assertEquals(true, modelState(playerEntry).get<Boolean>("singleVideoOnly"))
             assertTrue(controller.popBackStack())
             assertEquals(Screen.VideoRoutes.route, controller.currentDestination?.route)
             assertSame(routeEntry, controller.currentBackStackEntry)
@@ -49,7 +55,7 @@ class VideoRouteNavigationDeviceTest {
             assertEquals("Video-A", entry.arguments?.getString("videoId"))
             assertEquals(2000L, entry.arguments?.getLong("resumeMs"))
             assertEquals(7000L, entry.arguments?.getLong("endMs"))
-            assertNotEquals(true, entry.savedStateHandle.get<Boolean>("singleVideoOnly"))
+            assertNotEquals(true, modelState(entry).get<Boolean>("singleVideoOnly"))
         }
     }
 
@@ -62,5 +68,16 @@ class VideoRouteNavigationDeviceTest {
                 addMainRoutes(this@apply, isLoggedIn = true)
             }
         }
+    }
+
+    private class NavigationArguments(val state: SavedStateHandle) : ViewModel()
+
+    private fun modelState(entry: NavBackStackEntry): SavedStateHandle {
+        val factory = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T =
+                NavigationArguments(extras.createSavedStateHandle()) as T
+        }
+        return ViewModelProvider(entry, factory)[NavigationArguments::class.java].state
     }
 }
