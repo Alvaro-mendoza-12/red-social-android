@@ -106,7 +106,11 @@ class PurposeHttpDeviceTest {
             val state = model.state.value; state.supported && state.payload != null && !state.loading && !state.busy && predicate(state) }
         assertNull(model.state.value.error)
     }
-    private fun click(text: String) = compose.onNode(hasText(text) and hasClickAction()).performScrollTo().performClick()
+    private fun click(text: String) {
+        val node = compose.onNode(hasText(text) and hasClickAction())
+        if (!node.isDisplayed()) node.performScrollTo()
+        node.assertIsDisplayed().performClick()
+    }
     private fun snapshot(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()

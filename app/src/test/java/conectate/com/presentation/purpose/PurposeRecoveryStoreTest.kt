@@ -23,7 +23,7 @@ class PurposeRecoveryStoreTest {
     private val b = "22222222-2222-4222-8222-222222222222"
     private val target = PurposeTarget("social","33333333-3333-4333-8333-333333333333")
     private fun preferences() = RuntimeEnvironment.getApplication().getSharedPreferences("purpose-qa-"+java.util.UUID.randomUUID(),Context.MODE_PRIVATE)
-    @Test fun recoveryIsScopedByAccountAndAStaleScreenCannotOverwriteANewerRecord() = runBlocking {
+    @Test fun recoveryIsScopedByAccountAndAStaleScreenCannotOverwriteANewerRecord() = runBlocking<Unit> {
         val preferences = preferences(); var owner = a
         val guard = AuthSessionMutationGuard(); val lease = guard.captureAccountLease { owner }
         val store = PurposeRecoveryStore({preferences},guard::commitForLease)
@@ -38,7 +38,7 @@ class PurposeRecoveryStoreTest {
         assertEquals(PurposeRecovery(),store.read(other,target))
         assertFalse(preferences.all.keys.any { it.contains(a) || it.contains(checkNotNull(target.id)) })
     }
-    @Test fun accountDeletionPurgesTheNewNamespaceAndItsTombstonePreventsResurrection() = runBlocking {
+    @Test fun accountDeletionPurgesTheNewNamespaceAndItsTombstonePreventsResurrection() = runBlocking<Unit> {
         val preferences = preferences(); val guard = AuthSessionMutationGuard(); val lease = guard.captureAccountLease { a }
         val store = PurposeRecoveryStore({preferences},guard::commitForLease)
         store.replace(lease,target,PurposeRecovery(),PurposeRecovery(draft = buildJsonObject { put("conclusion","Eliminar") }))
@@ -47,7 +47,7 @@ class PurposeRecoveryStoreTest {
         assertThrows(AccountDeletedException::class.java) { runBlocking { store.read(lease,target) } }
         assertThrows(AccountDeletedException::class.java) { runBlocking { store.replace(lease,target,PurposeRecovery(),PurposeRecovery()) } }
     }
-    @Test fun aFailedDiskCommitDoesNotReplaceThePreviouslyAcknowledgedDraft() = runBlocking {
+    @Test fun aFailedDiskCommitDoesNotReplaceThePreviouslyAcknowledgedDraft() = runBlocking<Unit> {
         val preferences = preferences(); val guard = AuthSessionMutationGuard(); val lease = guard.captureAccountLease { a }
         val real = PurposeRecoveryStore({preferences},guard::commitForLease)
         val old = real.replace(lease,target,PurposeRecovery(),PurposeRecovery(draft = buildJsonObject { put("conclusion","Anterior") }))
