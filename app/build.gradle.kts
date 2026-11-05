@@ -464,6 +464,7 @@ dependencies {
 
     testImplementation("com.google.protobuf:protobuf-javalite:3.25.9")
     testImplementation(libs.junit)
+    testImplementation(libs.ktor.client.mock)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.test.core.ktx)
     testImplementation(libs.androidx.test.ext.junit)
@@ -475,4 +476,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     add("auditImplementation", libs.androidx.compose.ui.test.manifest)
+    add("auditReleaseImplementation", libs.androidx.compose.ui.test.manifest)
 }
