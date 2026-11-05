@@ -1,6 +1,6 @@
 # Archivo del chat y páginas acotadas
 
-Continuación del 4 de noviembre de 2026, sólo en `codex/experiencias-con-proposito`. Parte de la [recuperación local comprobada en 107](107-acuerdos-con-origen.md). La revisión móvil integral y el plan 105 siguen abiertos. El último intento de conexión a Ubuntu no respondió; sus comprobaciones se mantienen separadas.
+Continuación del 4 de noviembre de 2026, sólo en `codex/experiencias-con-proposito`. Parte de la [recuperación local comprobada en 107](107-acuerdos-con-origen.md). La revisión móvil integral y el plan 105 siguen abiertos. El intento inicial de conexión a Ubuntu no respondió. Tras volver la electricidad se repitieron sus 22 pruebas en PostgreSQL 16.15 de Ubuntu: todas aprobaron, sin omisiones, en 5,611 segundos. La [operación 112](../oficial/112-pruebas-android-studio-y-api-experimental.md) registra la activación posterior del contrato de acuerdos, su archivo y los modos de 111, con respaldo y comprobaciones efectivos. Las pruebas históricas siguientes conservan su fuente y entorno originales.
 
 ## Recorrido y contrato antes de implementar
 

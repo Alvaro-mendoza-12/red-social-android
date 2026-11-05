@@ -1,6 +1,6 @@
 # Resultados, primera contribución y partidas acordadas
 
-Plan de continuación del 4 de noviembre de 2026 para `codex/experiencias-con-proposito`. El propietario autorizó completar los modos de 105 y volver a comprobar su servidor. Las correcciones de Social y avatares se mantienen separadas en las ramas estables. Este documento no declara implementados ni desplegados los recorridos que siguen.
+Plan y comprobaciones del 4 de noviembre de 2026 para `codex/experiencias-con-proposito`. El propietario autorizó completar los modos de 105 y volver a comprobar su servidor. Las correcciones de Social y avatares se mantienen separadas en las ramas estables. Los resultados efectivos se distinguen del plan original a continuación.
 
 ## Contratos que se conservan
 
@@ -47,3 +47,23 @@ La revisión del diseño descarta una pantalla inicial con tres formularios igua
 ## Comprobación prevista
 
 Se separarán lógica de estados, HTTP/PostgreSQL, transporte Android, navegación y emulador. Se comprobarán cambios simultáneos, pérdida de acuse, cambio de cuenta, permisos revocados, origen eliminado, referencias bloqueadas, vencimiento y fechas. Un control de salud no sustituye el recorrido autenticado. La activación y migración efectivas se registrarán con imagen, fuentes y respaldo; la prueba de preferencia frente a otras aplicaciones seguirá requiriendo personas.
+
+## Implementación y operación comprobadas
+
+Los cuatro módulos nuevos de API implementan revisiones esperadas, recibos de operación, transacciones y limpieza al borrar cuentas. Android conserva borradores y envíos sin acuse en su almacén cifrado por cuenta; reintentar conserva la operación y abrir no envía. Si cambia el contenido durante la edición, se presenta la versión recibida antes de permitir reemplazarla. Cerrar la composición detiene sus lecturas.
+
+| Modo | Entrada en el prototipo | Recorrido implementado |
+| --- | --- | --- |
+| Social | Menú de la publicación → «Cómo terminó esta petición» | Seguimiento y conclusión del autor; hasta cinco aportaciones reales con acceso a su comentario; revisión y retirada. |
+| Comunidad | Información de la comunidad → menú → «Tu primera contribución» | Preguntas vigentes, encuentros futuros y guías con consentimiento temporal; apertura del destino existente y declaración voluntaria posterior. |
+| PlayMatch | Perfil de una conexión aceptada → «Proponer partida»; inicio de Juegos → «Mis partidas acordadas» | Propuesta, dos aceptaciones, reconfirmación, replanificación con consentimientos reiniciados, cancelación y resultado privado. |
+
+La invitación de partida se guarda en la transacción y se despacha después del commit; repetir la operación no duplica el aviso. Abrir un destino de comunidad no se presenta como participación realizada. No se envían mensajes automáticos a contactos.
+
+La repetición aislada en Ubuntu, PostgreSQL 16.15 y el esquema real aprobó **11 entradas del ejecutor, sin fallos ni omisiones**: seis casos de dominio y cuatro recorridos dentro de una suite HTTP/SQL. Una selección de regresiones de API aprobó **45 entradas**, sin fallos ni omisiones. Algunas entradas agrupan aserciones; no se presentan como 56 recorridos de usuario distintos. Acuerdos se repitió por separado en Ubuntu con 22 pruebas aprobadas.
+
+Antes del despliegue se detectó una consulta a `is_deleted` en una tabla que usa borrado físico. Se sustituyó por comprobación del registro real y, cuando corresponde, de importaciones. Otro ensayo utilizó un nombre de estado de fixture inválido; se corrigió el fixture. Se conservan las ejecuciones fallidas. Los adaptadores ficticios de identidad y notificaciones pertenecen exclusivamente a QA.
+
+El backend se activó el **5 de noviembre de 2026 a las 03:35:43 UTC**: `novvin-api:purpose111-20261104_4c4350e0`, con trece fuentes desde `4c4350e0e371b02dfd211232133b35ba180febdf`, sobre la corrección estable 110. La [operación 112](../oficial/112-pruebas-android-studio-y-api-experimental.md) registra respaldo, huellas, esquema, salud y rechazo sin sesión. La proyección de la incidencia de Social conservó cuatro reacciones y dos comentarios. No se añadieron fixtures a producción.
+
+Las pantallas permanecen sólo en esta rama. El propietario las evaluará antes de autorizar su promoción. Las comprobaciones Android de este bloque, la fluidez física y el inicio de sesión real se registran por separado; una prueba de API no los sustituye. El plan y la revisión integral permanecen abiertos.

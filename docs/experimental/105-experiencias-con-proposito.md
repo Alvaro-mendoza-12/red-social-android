@@ -4,7 +4,9 @@ Investigación y decisión inicial del 3 de noviembre de 2026. El propietario au
 
 ## Criterio de producto
 
-El 4 de noviembre el propietario confirmó que todo el plan de innovación y sus rediseños pertenece exclusivamente a `codex/experiencias-con-proposito`. Las ramas estables contienen las correcciones anteriores documentadas en 104. Se verificó con los árboles de Git la ausencia de los archivos de Rutas en `main` y `feature/live-gifts`.
+El 4 de noviembre el propietario confirmó que todo el plan de innovación y sus rediseños pertenece exclusivamente a `codex/experiencias-con-proposito`. Las ramas estables contienen las correcciones documentadas en 110 y la actualización operativa 112. Se verificó con los árboles de Git la ausencia de los archivos de Rutas en `main` y `feature/live-gifts`.
+
+La continuación vigente es [111: resultados, primera contribución y partidas acordadas](111-resultados-acogida-y-partidas.md), con tres modos añadidos a Rutas y Acuerdos. El backend experimental ya está activo; la [operación 112](../oficial/112-pruebas-android-studio-y-api-experimental.md) identifica respaldo, contratos y acceso desde Android Studio. La aceptación del diseño y la promoción requieren la decisión posterior del propietario. Los apartados siguientes conservan el plan y la evidencia de cada etapa; sus menciones de modos pendientes pertenecen a esas etapas.
 
 La hipótesis común consiste en permitir que una persona declare para qué entra, recorra una cantidad comprensible de contenido o acciones, produzca un resultado y pueda retomarlo. La utilidad se medirá por tarea resuelta, control y satisfacción declarada. La duración de la visita por sí sola será insuficiente para aceptar una propuesta.
 
