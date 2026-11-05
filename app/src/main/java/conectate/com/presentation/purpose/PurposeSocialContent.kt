@@ -15,7 +15,7 @@ internal fun PurposeSocialContent(data: PostOutcomeCatalog, state: PurposeState,
     val result = data.outcome
     val editing = state.draft?.containsKey("conclusion") == true
     var confirmWithdrawal by remember { mutableStateOf(false) }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer,shape = MaterialTheme.shapes.large) {
+    Surface(modifier = Modifier.fillMaxWidth(),color = MaterialTheme.colorScheme.surfaceContainer,shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(18.dp),verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("La publicación de origen",style = MaterialTheme.typography.titleMedium)
             Text(data.postText.ifBlank { "Publicación multimedia" },maxLines = 5,overflow = TextOverflow.Ellipsis)

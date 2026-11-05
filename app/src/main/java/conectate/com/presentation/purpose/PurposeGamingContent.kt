@@ -48,7 +48,7 @@ internal fun PurposeGamingPlan(data: GamingPlanReceipt,state: PurposeState,model
         PurposeGamingEditor(data.games,state,plan,model)
         return
     }
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer,shape = MaterialTheme.shapes.large) {
+    Surface(modifier = Modifier.fillMaxWidth(),color = MaterialTheme.colorScheme.surfaceContainer,shape = MaterialTheme.shapes.large) {
         Column(Modifier.padding(20.dp),verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(plan.gameTitle,style = MaterialTheme.typography.titleMedium)
             Text(purposeDate(plan.startsAt),style = MaterialTheme.typography.headlineSmall)

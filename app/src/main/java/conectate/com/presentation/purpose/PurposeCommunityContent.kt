@@ -23,7 +23,7 @@ internal fun PurposeCommunityContent(data: CommunityPurposeCatalog, state: Purpo
         }
     }
     data.journey?.takeIf { it.targetId != null }?.let { step ->
-        Surface(color = if(step.outcome != null) PurposeMint else MaterialTheme.colorScheme.surfaceContainer,contentColor = if(step.outcome != null) PurposeInk else MaterialTheme.colorScheme.onSurface,shape = MaterialTheme.shapes.large) {
+        Surface(modifier = Modifier.fillMaxWidth(),color = if(step.outcome != null) PurposeMint else MaterialTheme.colorScheme.surfaceContainer,contentColor = if(step.outcome != null) PurposeInk else MaterialTheme.colorScheme.onSurface,shape = MaterialTheme.shapes.large) {
             Column(Modifier.padding(18.dp),verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(if(step.outcome != null) "Gracias por contarnos cómo te fue" else "Tu siguiente paso",style = MaterialTheme.typography.titleLarge,color = if(step.outcome != null) PurposeInk else MaterialTheme.colorScheme.onSurface)
                 if(step.outcome != null) Text("Registraste voluntariamente tu participación.",color = PurposeInk)

@@ -10,6 +10,14 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.lifecycle.ViewModelStore
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.espresso.Espresso.onView
+import androidx.test.espresso.ViewAction
+import androidx.test.espresso.UiController
+import androidx.test.espresso.matcher.ViewMatchers.isAssignableFrom
+import androidx.test.espresso.matcher.ViewMatchers.withId
+import android.view.View
+import android.widget.DatePicker
+import android.widget.TimePicker
 import conectate.com.data.community.CommunityQuestion
 import conectate.com.data.local.AgreementRecoveryPreferences
 import conectate.com.data.model.CommunityEvent
@@ -108,8 +116,29 @@ class PurposeHttpDeviceTest {
     }
     private fun click(text: String) {
         val node = compose.onNode(hasText(text) and hasClickAction())
-        if (!node.isDisplayed()) node.performScrollTo()
-        node.assertIsDisplayed().performClick()
+        try {
+            if (!node.isDisplayed()) node.performScrollTo()
+            node.assertIsDisplayed().performClick()
+        } catch (error: AssertionError) {
+            snapshot("failed-control-"+text.filter { it.isLetterOrDigit() }.take(35))
+            throw error
+        }
+    }
+    private inline fun <reified T: View> setNativeControl(description: String,crossinline set: (T)->Unit) {
+        onView(isAssignableFrom(T::class.java)).perform(object: ViewAction {
+            override fun getConstraints() = isAssignableFrom(T::class.java)
+            override fun getDescription() = description
+            override fun perform(controller: UiController,view: View) { set(view as T);controller.loopMainThreadUntilIdle() }
+        })
+    }
+    private fun chooseHalfHourFromNow(model: PurposeViewModel) {
+        val selected = java.time.Instant.now().plusSeconds(1800).atZone(java.time.ZoneId.systemDefault())
+        val starts = checkNotNull(model.state.value.draft)["startsAt"]!!.jsonPrimitive.content
+        click(purposeDate(starts))
+        setNativeControl<DatePicker>("Choose the proposal date") { it.updateDate(selected.year,selected.monthValue-1,selected.dayOfMonth) }
+        onView(withId(android.R.id.button1)).perform(androidx.test.espresso.action.ViewActions.click())
+        setNativeControl<TimePicker>("Choose the proposal time inside the reconfirmation window") { it.hour = selected.hour;it.minute = selected.minute }
+        onView(withId(android.R.id.button1)).perform(androidx.test.espresso.action.ViewActions.click())
     }
     private fun snapshot(name: String) {
         compose.waitForIdle()
@@ -197,6 +226,7 @@ class PurposeHttpDeviceTest {
         compose.setContent { RedSocialTheme(darkTheme = dark) { key(shown.value) { PurposeExperienceDialog(target.value,{}, { throw AssertionError("No profile was requested") },shown.value) } } }
         await(first)
         compose.onNode(hasSetTextAction()).performTextInput("Practicar juntos una ronda sin clasificación")
+        chooseHalfHourFromNow(first)
         click("Proponer partida");await(first) { it.target?.kind == "plan" }
         snapshot("gaming-proposal")
         click("Aceptar propuesta");await(first)
