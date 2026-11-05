@@ -27,4 +27,14 @@ class PurposePolicyTest {
         }
         assertThrows(IllegalArgumentException::class.java) { validatePurposePayload(PurposeTarget("community",community),payload,actor) }
     }
+    @Test fun oldAndUnavailableCitationsStayVisibleSoTheAuthorCanRemoveThemWhileEditing() {
+        val old = PurposeContribution(actor,content = "Anterior")
+        val recent = PurposeContribution(community,content = "Reciente")
+        val missing = "33333333-3333-4333-8333-333333333333"
+        val data = PostOutcomeCatalog(postId = community,eligible = listOf(recent),contributions = listOf(old))
+        val choices = purposeContributionChoices(data,setOf(actor,missing))
+        assertEquals(setOf(actor,community,missing),choices.map { it.id }.toSet())
+        assertFalse(choices.single { it.id == missing }.available)
+        assertEquals(1,choices.count { it.id == actor })
+    }
 }

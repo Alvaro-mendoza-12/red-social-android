@@ -37,7 +37,7 @@ class PurposeViewModelTest {
         suspend fun write(lease: AuthSessionLease,target: PurposeTarget,expected: PurposeRecovery,next: PurposeRecovery): PurposeRecovery {
             lease.requireCurrent(); if(fail) throw IOException("storage failure")
             val key = lease.accountId to target.key
-            require((rows[key] ?: PurposeRecovery()) == expected)
+            if((rows[key] ?: PurposeRecovery()) != expected) throw PurposeRecoveryConflict()
             return next.copy(revision = expected.revision+1).also { rows[key] = it }
         }
     }
@@ -85,7 +85,7 @@ class PurposeViewModelTest {
         val draft = buildJsonObject { put("conclusion","Guardar esto") }
         fixture.vm.draft(draft); advanceUntilIdle(); fixture.memory.fail = true
         fixture.vm.act("conclude",draft); advanceUntilIdle()
-        assertEquals(0,fixture.commands.size); assertEquals(draft,fixture.vm.state.value.draft); assertFalse(fixture.vm.state.value.recoveryReady)
+        assertEquals(0,fixture.commands.size); assertEquals("Guardar esto",fixture.vm.state.value.draftText("conclusion")); assertFalse(fixture.vm.state.value.recoveryReady)
     }
     @Test fun aResponseFromThePreviousAccountCannotReplaceTheNewAccountsStateOrRecovery() = runTest(dispatcher) {
         val fixture = Fixture(); val delayed = CompletableDeferred<JsonObject>()
@@ -104,9 +104,9 @@ class PurposeViewModelTest {
         fixture.vm.draft(draft); advanceUntilIdle()
         fixture.sender = { throw PurposeApiException(409,"PURPOSE_REVISION_CONFLICT") }
         fixture.vm.act("accept"); advanceUntilIdle()
-        assertFalse(fixture.vm.state.value.pending); assertEquals(draft,fixture.vm.state.value.draft)
+        assertFalse(fixture.vm.state.value.pending); assertEquals("Otra duración",fixture.vm.state.value.draftText("objective"))
         fixture.sender = { plan(revision = 2) }; fixture.vm.refresh(); advanceUntilIdle(); fixture.vm.act("accept"); advanceUntilIdle()
-        assertEquals(draft,fixture.vm.state.value.draft); assertEquals(draft,fixture.memory.rows.values.last().draft)
+        assertEquals("Otra duración",fixture.vm.state.value.draftText("objective")); assertEquals(fixture.vm.state.value.draft,fixture.memory.rows.values.last().draft)
     }
     @Test fun unsupportedServersDoNotReadOrWriteTheFeatureAndClosingFlushesTheLastDraft() = runTest(dispatcher) {
         val fixture = Fixture(); fixture.supported = false
@@ -116,6 +116,46 @@ class PurposeViewModelTest {
         val draft = buildJsonObject { put("conclusion","Último cambio") }
         fixture.vm.draft(draft)
         var closed = false; fixture.vm.close { closed = true }; advanceUntilIdle()
-        assertTrue(closed); assertEquals(draft,fixture.memory.rows.values.last().draft)
+        assertTrue(closed); assertEquals("Último cambio",fixture.memory.rows.values.last().draft?.get("conclusion")?.jsonPrimitive?.content)
+    }
+    @Test fun storageRecoveryKeepsUnsavedTextAndAConflictingScreenRequiresAnExplicitChoice() = runTest(dispatcher) {
+        val fixture = Fixture(); val target = PurposeTarget("social",post)
+        fixture.vm.open(target); advanceUntilIdle()
+        val draft = buildJsonObject { put("conclusion","Lo que acabo de escribir") }
+        fixture.memory.fail = true; fixture.vm.draft(draft); advanceUntilIdle()
+        assertFalse(fixture.vm.state.value.recoveryReady)
+        fixture.memory.fail = false; fixture.vm.refresh(); advanceUntilIdle()
+        assertEquals("Lo que acabo de escribir",fixture.vm.state.value.draftText("conclusion"))
+        fixture.memory.rows[a to target.key] = PurposeRecovery(8,buildJsonObject { put("conclusion","Otra pantalla") })
+        fixture.vm.draft(buildJsonObject { put("conclusion","Mi cambio local") }); advanceUntilIdle()
+        assertTrue(fixture.vm.state.value.recoveryConflict)
+        fixture.vm.refresh(); advanceUntilIdle()
+        assertEquals("Mi cambio local",fixture.vm.state.value.draftText("conclusion"))
+        fixture.vm.recoverSavedDraft(); advanceUntilIdle()
+        assertEquals("Otra pantalla",fixture.vm.state.value.draftText("conclusion"))
+        assertFalse(fixture.vm.state.value.recoveryConflict)
+    }
+    @Test fun aRefreshCannotSilentlyAdvanceTheRevisionOfAnOlderDraft() = runTest(dispatcher) {
+        val fixture = Fixture(); fixture.vm.open(PurposeTarget("social",post)); advanceUntilIdle()
+        fixture.vm.draft(buildJsonObject { put("conclusion","Mi borrador"); put("contributionIds",JsonArray(emptyList())) }); advanceUntilIdle()
+        fixture.reader = { _,_ -> social(2,"Cambió en otro dispositivo") }
+        fixture.vm.refresh(); advanceUntilIdle()
+        assertTrue(fixture.vm.state.value.draftStale)
+        fixture.vm.act("conclude",checkNotNull(fixture.vm.state.value.draft)); advanceUntilIdle()
+        assertEquals(0,fixture.commands.size)
+        fixture.vm.keepDraftAgainstCurrentRevision(); advanceUntilIdle()
+        assertFalse(fixture.vm.state.value.draftStale)
+        fixture.sender = { social(3) }; fixture.vm.act("conclude",checkNotNull(fixture.vm.state.value.draft)); advanceUntilIdle()
+        assertEquals(2,fixture.commands.single().command["expectedRevision"]?.jsonPrimitive?.int)
+    }
+    @Test fun aHiddenModuleStopsRefreshingAndRetainsItsLastDraft() = runTest(dispatcher) {
+        val fixture = Fixture();fixture.vm.open(PurposeTarget("social",post));advanceUntilIdle()
+        fixture.vm.draft(buildJsonObject { put("conclusion","Para retomar") })
+        fixture.vm.hideFromComposition();advanceUntilIdle()
+        val count = fixture.reads
+        fixture.events.emit("user:$a" to post);advanceUntilIdle()
+        assertEquals(count,fixture.reads)
+        fixture.vm.open(PurposeTarget("social",post));advanceUntilIdle()
+        assertEquals("Para retomar",fixture.vm.state.value.draftText("conclusion"))
     }
 }

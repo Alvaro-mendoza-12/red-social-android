@@ -2,6 +2,8 @@ package conectate.com.presentation.purpose
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 internal const val PURPOSE_BASE = "/v1/experimental/purpose"
 internal fun purposeUuid(value: String) = runCatching { java.util.UUID.fromString(value).toString() == value }.getOrDefault(false)
@@ -45,8 +47,14 @@ data class PurposeTarget(val kind: String, val id: String? = null, val relatedId
 @Serializable data class GamingProposalContext(val participants: List<PurposePlayer>, val games: List<PurposeGame>)
 @Serializable internal data class PurposePending(val path: String, val command: JsonObject)
 @Serializable internal data class PurposeRecovery(val revision: Long = 0, val draft: JsonObject? = null, val pending: PurposePending? = null)
+internal fun PurposeState.contentRevision(): Int = ((payload?.get(if(target?.kind == "social") "outcome" else "plan")) as? JsonObject)?.get("revision")?.jsonPrimitive?.intOrNull ?: 0
+internal val PurposeState.draftStale get() = payload != null && draft?.get("baseRevision")?.jsonPrimitive?.intOrNull?.let { it != contentRevision() } == true
+internal val PurposeState.canAct get() = supported && recoveryReady && !loading && !busy && !pending
+internal fun purposeContributionChoices(data: PostOutcomeCatalog,selected: Set<String>): List<PurposeContribution> =
+    (data.contributions + data.eligible + selected.map { PurposeContribution(it,available = false) }).distinctBy { it.id }
 
 internal class PurposeApiException(val status: Int, val code: String) : java.io.IOException(purposeError(code))
+internal class PurposeRecoveryConflict : java.io.IOException("El borrador guardado cambió en otra pantalla. Revísalo antes de continuar.")
 internal fun purposeError(code: String) = when (code) {
     "PURPOSE_REVISION_CONFLICT" -> "Alguien actualizó este contenido. Actualiza para revisar los cambios; tu borrador sigue aquí."
     "PURPOSE_REFERENCE_UNAVAILABLE", "PURPOSE_ORIGIN_UNAVAILABLE" -> "El contenido de origen ya no está disponible. Actualiza para revisar las opciones."

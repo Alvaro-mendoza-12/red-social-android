@@ -74,13 +74,14 @@ internal fun PurposeGamingPlan(data: GamingPlanReceipt,state: PurposeState,model
     val active = plan.status !in setOf("cancelled","expired","finished")
     val accepted = plan.accepted[state.accountId] == plan.planRevision
     val confirmed = plan.confirmed[state.accountId] == plan.planRevision
+    val cancelling = accepted || plan.authorId == state.accountId
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if(active && !accepted) Button(enabled = state.canAct,onClick = { model.act("accept") }) { Text("Aceptar propuesta") }
         if(active && plan.accepted.size == 2 && !confirmed && !now.isBefore(start.minusSeconds(3600))) Button(enabled = state.canAct,onClick = { model.act("confirm") }) { Text("Reconfirmar asistencia") }
         if(plan.authorId == state.accountId) OutlinedButton(enabled = state.canAct,onClick = { model.draft(buildJsonObject {
             put("objective",plan.objective); put("gameId",plan.gameId); put("startsAt",plan.startsAt); put("durationMinutes",plan.durationMinutes)
         }) }) { Text("Replanificar") }
-        if(active) TextButton(enabled = state.canAct,onClick = { confirmCancellation = true }) { Text(if(accepted) "Cancelar partida" else "Rechazar propuesta") }
+        if(active) TextButton(enabled = state.canAct,onClick = { confirmCancellation = true }) { Text(if(cancelling) "Cancelar partida" else "Rechazar propuesta") }
     }
     if(active && plan.accepted.size == 2 && confirmed.not() && now.isBefore(start.minusSeconds(3600))) Text("Podrás reconfirmar cuando falte una hora o menos. Actualiza la propuesta en ese momento.",style = MaterialTheme.typography.bodySmall)
     if(!now.isBefore(start)) {
@@ -95,7 +96,7 @@ internal fun PurposeGamingPlan(data: GamingPlanReceipt,state: PurposeState,model
     }
     Text("Plan ${plan.planRevision} · Revisión ${plan.revision}",style = MaterialTheme.typography.bodySmall)
     if(confirmCancellation) AlertDialog(onDismissRequest = { confirmCancellation = false },title = { Text("¿Cancelar esta propuesta?") },text = { Text("La otra persona podrá ver que esta partida quedó cancelada.") },
-        confirmButton = { TextButton(onClick = { confirmCancellation = false; model.act(if(accepted) "cancel" else "decline") }) { Text("Cancelar propuesta") } },dismissButton = { TextButton(onClick = { confirmCancellation = false }) { Text("Conservar") } })
+        confirmButton = { TextButton(onClick = { confirmCancellation = false; model.act(if(cancelling) "cancel" else "decline") }) { Text("Cancelar propuesta") } },dismissButton = { TextButton(onClick = { confirmCancellation = false }) { Text("Conservar") } })
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -115,7 +116,7 @@ internal fun PurposeGamingEditor(games: List<PurposeGame>,state: PurposeState,pr
     Text("Juego compatible",style = MaterialTheme.typography.titleMedium)
     if(games.isEmpty()) Text("No hay juegos compatibles disponibles. Revisen sus juegos y plataformas en PlayMatch.")
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { games.forEach { item -> FilterChip(selected = game == item.id,onClick = { change("gameId",JsonPrimitive(item.id)) },enabled = state.canAct,label = { Text(item.title) }) } }
-    OutlinedTextField(value = objective,onValueChange = { change("objective",JsonPrimitive(purposeLimit(it,180))) },enabled = state.canAct,modifier = Modifier.fillMaxWidth(),
+    OutlinedTextField(value = objective,onValueChange = { change("objective",JsonPrimitive(purposeLimit(it,180))) },enabled = !state.busy,readOnly = !state.canAct,modifier = Modifier.fillMaxWidth(),
         label = { Text("Qué quieren hacer en esta partida") },minLines = 2,maxLines = 4,supportingText = { Text("Por ejemplo: practicar juntos sin jugar clasificatorias.") })
     OutlinedButton(enabled = state.canAct,onClick = {
         val selected = Instant.parse(starts).atZone(ZoneId.systemDefault())
@@ -133,6 +134,6 @@ internal fun PurposeGamingEditor(games: List<PurposeGame>,state: PurposeState,pr
     Text("Hora de tu dispositivo (${ZoneId.systemDefault().id}). Elige entre quince minutos y treinta días a partir de ahora.",style = MaterialTheme.typography.bodySmall)
     Text("Duración prevista",style = MaterialTheme.typography.titleMedium)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf(15,30,45,60,90,120,180,240).forEach { minutes -> FilterChip(selected = minutes == duration,onClick = { change("durationMinutes",JsonPrimitive(minutes)) },enabled = state.canAct,label = { Text("$minutes min") }) } }
-    Button(enabled = state.canAct && objective.isNotBlank() && games.any { it.id == game },onClick = { model.act(if(previous == null) "propose" else "replan",fields()) }) { Text(if(previous == null) "Proponer partida" else "Guardar nueva propuesta") }
+    Button(enabled = state.canAct && !state.draftStale && objective.isNotBlank() && games.any { it.id == game },onClick = { model.act(if(previous == null) "propose" else "replan",fields()) }) { Text(if(previous == null) "Proponer partida" else "Guardar nueva propuesta") }
     if(previous != null) TextButton(enabled = state.canAct,onClick = { model.draft(null) }) { Text("Conservar propuesta anterior") }
 }

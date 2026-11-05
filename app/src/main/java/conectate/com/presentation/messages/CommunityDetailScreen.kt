@@ -704,7 +704,7 @@ private fun CommunityProfileDialog(
 }
 
 @Composable
-private fun CommunityEventCard(
+internal fun CommunityEventCard(
     event: CommunityEvent,
     onAttendanceChange: (Boolean, Int?) -> Unit,
     onCancel: () -> Unit

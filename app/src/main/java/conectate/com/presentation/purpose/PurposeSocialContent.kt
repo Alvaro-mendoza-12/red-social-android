@@ -42,24 +42,29 @@ internal fun PurposeSocialContent(data: PostOutcomeCatalog, state: PurposeState,
         val conclusion = state.draftText("conclusion")
         val selected = draft["contributionIds"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toSet().orEmpty()
         OutlinedTextField(value = conclusion,onValueChange = { text -> model.draft(buildJsonObject { draft.forEach { (key,value) -> put(key,value) }; put("conclusion",purposeLimit(text,800)) }) },
-            modifier = Modifier.fillMaxWidth(),enabled = state.canAct,label = { Text("Qué te ayudó y cómo terminó") },minLines = 3,maxLines = 7,
+            modifier = Modifier.fillMaxWidth(),enabled = !state.busy,readOnly = !state.canAct,label = { Text("Qué te ayudó y cómo terminó") },minLines = 3,maxLines = 7,
             supportingText = { Text("${conclusion.codePointCount(0,conclusion.length)}/800 caracteres") })
-        if(data.eligible.isNotEmpty()) {
+        val choices = purposeContributionChoices(data,selected)
+        if(choices.isNotEmpty()) {
             Text("Aportaciones que ayudaron",style = MaterialTheme.typography.titleMedium)
             Text("Puedes citar hasta cinco. Se comprobará de nuevo que sigan disponibles.",style = MaterialTheme.typography.bodySmall)
-            data.eligible.forEach { contribution ->
+            choices.forEach { contribution ->
                 val checked = contribution.id in selected
-                Row(Modifier.fillMaxWidth().clickable(enabled = state.canAct && (checked || selected.size < 5)) {
+                Row(Modifier.fillMaxWidth().clickable(enabled = state.canAct && (checked || contribution.available && selected.size < 5)) {
                     val ids = if(checked) selected - contribution.id else selected + contribution.id
                     model.draft(buildJsonObject { draft.forEach { (key,value) -> put(key,value) }; put("contributionIds",JsonArray(ids.map(::JsonPrimitive))) })
                 }.padding(vertical = 6.dp)) {
                     Checkbox(checked,onCheckedChange = null)
-                    Column(Modifier.weight(1f).padding(start = 8.dp)) { Text(contribution.authorName,style = MaterialTheme.typography.titleSmall); Text(contribution.content,maxLines = 3,overflow = TextOverflow.Ellipsis) }
+                    Column(Modifier.weight(1f).padding(start = 8.dp)) {
+                        Text(if(contribution.available) contribution.authorName else "Aportación no disponible",style = MaterialTheme.typography.titleSmall)
+                        Text(if(contribution.available) contribution.content else "Desmarca esta cita para retirarla.",maxLines = 3,overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(enabled = state.canAct && conclusion.isNotBlank(),onClick = { model.act("conclude",buildJsonObject { put("conclusion",conclusion); put("contributionIds",JsonArray(selected.map(::JsonPrimitive))) }) }) { Text("Publicar conclusión") }
+            Button(enabled = state.canAct && !state.draftStale && result != null && conclusion.isNotBlank(),onClick = { model.act("conclude",buildJsonObject { put("conclusion",conclusion); put("contributionIds",JsonArray(selected.map(::JsonPrimitive))) }) }) { Text("Publicar conclusión") }
+            if(result == null) OutlinedButton(enabled = state.canAct,onClick = { model.act("start") }) { Text("Empezar seguimiento") }
             TextButton(enabled = state.canAct,onClick = { model.draft(null) }) { Text("Descartar borrador") }
         }
     } else if(result == null) {

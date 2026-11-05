@@ -37,7 +37,7 @@ internal class PurposeRecoveryStore internal constructor(
             require(raw.length <= 20_000)
             if (!commit(lease) {
                 synchronized(AgreementRecoveryPreferences.lock) {
-                    if (readNow(lease, target) != expected) throw IOException("Este borrador cambió en otra pantalla. Vuelve a abrirlo antes de continuar.")
+                    if (readNow(lease, target) != expected) throw PurposeRecoveryConflict()
                     val key = key(lease, target)
                     val old = preferences.getString(key, null)
                     if (!preferences.edit().putString(key, raw).commit()) {

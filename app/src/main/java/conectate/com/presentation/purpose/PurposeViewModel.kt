@@ -19,6 +19,7 @@ data class PurposeState(
     val supported: Boolean = false, val loading: Boolean = false, val busy: Boolean = false,
     val recoveryReady: Boolean = false, val draft: JsonObject? = null, val pending: Boolean = false,
     val error: String? = null, val notice: String? = null,
+    val recoveryConflict: Boolean = false,
 )
 @HiltViewModel
 class PurposeViewModel internal constructor(
@@ -68,15 +69,19 @@ class PurposeViewModel internal constructor(
                 } }
                 if (version == epoch) { visible = false; reading++; readJob?.cancel(); onClosed() }
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { if (version == epoch) _state.value = _state.value.copy(error = error.message, recoveryReady = false) }
+            catch (error: Exception) { if (version == epoch) _state.value = _state.value.copy(
+                error = if(error is PurposeRecoveryConflict) error.message else "No se pudo guardar el último cambio. Conservamos tu texto; reintenta antes de salir.",
+                recoveryConflict = error is PurposeRecoveryConflict, recoveryReady = false) }
         }
     }
-    private fun bind(target: PurposeTarget?, force: Boolean) {
+    fun leaveWithoutSaving(onClosed: () -> Unit) { visible = false; reading++; readJob?.cancel(); draftJob?.cancel(); onClosed() }
+    fun hideFromComposition() { visible = false; reading++; readJob?.cancel() }
+    private fun bind(target: PurposeTarget?, force: Boolean, keepDraft: JsonObject? = null) {
         if (!force && target == _state.value.target && lease?.isCurrent() == true) return
         epoch++; reading++; readJob?.cancel(); writeJob?.cancel(); draftJob?.cancel()
         record = PurposeRecovery(); lease = capture()
         val current = checkNotNull(lease); val version = epoch
-        _state.value = PurposeState(accountId = current.accountId, target = target, loading = target != null)
+        _state.value = PurposeState(accountId = current.accountId, target = target, loading = target != null, draft = keepDraft)
         if (target == null || !current.isCurrent()) return
         readJob = viewModelScope.launch {
             try {
@@ -90,13 +95,13 @@ class PurposeViewModel internal constructor(
                     target.copy(relatedId = planId)
                 } else target
                 record = saved
-                _state.value = _state.value.copy(target = restoredTarget, recoveryReady = true, draft = saved.draft, pending = saved.pending != null)
+                _state.value = _state.value.copy(target = restoredTarget, recoveryReady = true, draft = if(saved.pending == null) keepDraft ?: saved.draft else saved.draft, pending = saved.pending != null)
                 val supported = available(current)
                 if (!valid(version,current)) return@launch
                 _state.value = _state.value.copy(supported = supported)
                 if (supported) load(current,restoredTarget,version,++reading)
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { if (valid(version,current)) _state.value = _state.value.copy(error = error.message ?: "No se pudo conectar. Reintenta.") }
+            catch (error: Exception) { if (valid(version,current)) _state.value = _state.value.copy(error = if(error is PurposeApiException) error.message else if(!_state.value.recoveryReady) "No se pudo recuperar el borrador de este dispositivo. Reintenta antes de enviar." else "No se pudo cargar este contenido. Comprueba la conexión y actualiza.") }
             finally { if (valid(version,current)) _state.value = _state.value.copy(loading = false) }
         }
     }
@@ -104,16 +109,18 @@ class PurposeViewModel internal constructor(
         val current = lease ?: return
         val target = _state.value.target ?: return
         if (!visible || !current.isCurrent() || _state.value.busy) return
-        if (!_state.value.recoveryReady || !_state.value.supported) { bind(target,true); return }
+        if (_state.value.recoveryConflict) return
+        if (!_state.value.recoveryReady || !_state.value.supported) { bind(target,true,_state.value.draft); return }
         readJob?.cancel(); val version = epoch; val sequence = ++reading
         _state.value = _state.value.copy(loading = true, error = null)
         readJob = viewModelScope.launch {
             try { load(current,target,version,sequence) }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { if (valid(version,current) && sequence == reading) _state.value = _state.value.copy(error = error.message ?: "No se pudo actualizar. Reintenta.") }
+            catch (error: Exception) { if (valid(version,current) && sequence == reading) _state.value = _state.value.copy(error = if(error is PurposeApiException) error.message else "No se pudo actualizar. Comprueba la conexión y reintenta.") }
             finally { if (valid(version,current) && sequence == reading) _state.value = _state.value.copy(loading = false) }
         }
     }
+    fun recoverSavedDraft() { _state.value.target?.let { bind(it,true) } }
     private suspend fun load(current: AuthSessionLease, target: PurposeTarget, version: Long, sequence: Long) {
         val body = read(current,target)
         validatePurposePayload(target,body,checkNotNull(current.accountId))
@@ -122,23 +129,36 @@ class PurposeViewModel internal constructor(
     fun draft(value: JsonObject?) {
         val current = lease ?: return; val target = _state.value.target ?: return; val version = epoch
         if (!current.isCurrent() || !_state.value.recoveryReady || _state.value.busy || _state.value.pending) return
-        _state.value = _state.value.copy(draft = value, notice = null)
+        val prepared = value?.let { buildJsonObject {
+            it.forEach { (key,item) -> put(key,item) }
+            put("baseRevision",it["baseRevision"] ?: _state.value.draft?.get("baseRevision") ?: JsonPrimitive(_state.value.contentRevision()))
+        } }
+        _state.value = _state.value.copy(draft = prepared, notice = null)
         draftJob?.cancel()
         draftJob = viewModelScope.launch {
             delay(300)
             try { journal.withLock { if (valid(version,current)) withContext(NonCancellable) {
-                val updated = recoveryWrite(current,target,record,record.copy(draft = value))
+                val updated = recoveryWrite(current,target,record,record.copy(draft = prepared))
                 if (valid(version,current)) record = updated
             } } }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (error: Exception) { if (valid(version,current)) _state.value = _state.value.copy(recoveryReady = false, error = error.message) }
+            catch (error: Exception) { if (valid(version,current)) _state.value = _state.value.copy(recoveryReady = false, recoveryConflict = error is PurposeRecoveryConflict,
+                error = if(error is PurposeRecoveryConflict) error.message else "No se pudo guardar el borrador. Conservamos tu texto; reintenta antes de enviar.") }
         }
+    }
+    fun keepDraftAgainstCurrentRevision() {
+        val current = _state.value
+        if (!current.canAct || current.draft == null) return
+        draft(buildJsonObject { current.draft.forEach { (key,value) -> put(key,value) }; put("baseRevision",current.contentRevision()) })
     }
     fun act(action: String, fields: JsonObject = buildJsonObject {}, part: String? = null, onConfirmed: (() -> Unit)? = null) {
         val snapshot = _state.value; val target = snapshot.target ?: return
         if (!snapshot.supported || !snapshot.recoveryReady || snapshot.busy || snapshot.loading || snapshot.pending || snapshot.payload == null) return
         val stateKey = when(target.kind) { "social" -> "outcome"; "community" -> if(part == "guide") "guide" else "journey"; else -> "plan" }
-        val revision = (snapshot.payload[stateKey] as? JsonObject)?.get("revision")?.jsonPrimitive?.intOrNull ?: 0
+        val contentWrite = action in setOf("conclude","propose","replan")
+        val revision = if(contentWrite) snapshot.draft?.get("baseRevision")?.jsonPrimitive?.intOrNull ?: snapshot.contentRevision()
+            else (snapshot.payload[stateKey] as? JsonObject)?.get("revision")?.jsonPrimitive?.intOrNull ?: 0
+        if(contentWrite && snapshot.draftStale) { _state.value = snapshot.copy(error = "El contenido cambió mientras editabas. Revisa los cambios antes de publicar."); return }
         val pending = PurposePending(target.writePath(part), buildJsonObject {
             fields.forEach { (key,value) -> put(key,value) }
             put("operationId",UUID.randomUUID().toString()); put("expectedRevision",revision); put("action",action)
@@ -181,9 +201,13 @@ class PurposeViewModel internal constructor(
                     val cleared = withContext(NonCancellable) { recoveryWrite(current,target,saved,saved.copy(pending = null)) }
                     if (valid(version,current)) { record = cleared; _state.value = _state.value.copy(pending = false) }
                 } catch (clearError: Exception) {
-                    if (valid(version,current)) _state.value = _state.value.copy(recoveryReady = false, error = clearError.message)
+                    if (valid(version,current)) _state.value = _state.value.copy(recoveryReady = false, recoveryConflict = clearError is PurposeRecoveryConflict,
+                        error = "No se pudo actualizar el registro guardado. Revisa el borrador antes de continuar.")
                 }
-                if (valid(version,current)) _state.value = _state.value.copy(recoveryReady = _state.value.recoveryReady && persisted != null, error = error.message ?: "No se confirmó el envío. Reintenta para comprobarlo.")
+                if (valid(version,current)) _state.value = _state.value.copy(recoveryReady = _state.value.recoveryReady && persisted != null,
+                    recoveryConflict = _state.value.recoveryConflict || error is PurposeRecoveryConflict,
+                    error = when(error) { is PurposeApiException -> error.message; is PurposeRecoveryConflict -> error.message
+                        else -> if(persisted == null) "No se pudo guardar la acción en este dispositivo. Conservamos tu texto; reintenta antes de enviar." else "No se confirmó el envío. Comprueba la conexión y reintenta la misma acción." })
             } finally { if (valid(version,current)) _state.value = _state.value.copy(busy = false) }
         }
     }
