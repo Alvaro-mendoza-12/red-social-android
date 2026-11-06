@@ -154,7 +154,11 @@ class ChatScrollFrameMetricsDeviceTest {
             fun percentile(p: Double) = sorted[(ceil(sorted.size * p).toInt() - 1).coerceIn(sorted.indices)]
             val result = JSONObject().apply {
                 put("scenario", "400 real text bubbles, native touch/fling, real Choreographer, warmed fonts, no network")
-                put("build", "audit-debug; not a release FPS certification")
+                put("buildType", conectate.com.BuildConfig.BUILD_TYPE)
+                put("debuggable", instrumentation.targetContext.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0)
+                put("debuggerAttached", android.os.Debug.isDebuggerConnected())
+                put("hardware", android.os.Build.HARDWARE)
+                put("buildCommit", conectate.com.BuildConfig.BUILD_COMMIT)
                 put("frames", frames.size)
                 put("frameTotalP50Ms", percentile(.50))
                 put("frameTotalP95Ms", percentile(.95))

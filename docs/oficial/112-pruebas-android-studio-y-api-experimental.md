@@ -23,6 +23,11 @@ de sesión. Las ramas comparten el mismo identificador QA: instalar la otra
 sustituye esa instalación de pruebas. No usar `startupAuditPrimaryPackage=true`
 para esta validación. Esa excepción elimina el aislamiento del paquete.
 
+Estas variantes QA aún no tienen registro propio de Firebase. Sirven para
+probar las pantallas, la API y el dibujo; la entrega de notificaciones push debe
+validarse con una instalación configurada para ese servicio. Su ausencia en QA
+no permite concluir que la entrega de la aplicación publicada esté fallando.
+
 El propietario informó tirones al ejecutar desde Android Studio la carpeta
 LightGif en su celular. Se comprobó que `debug` tiene `isDebuggable=true` y
 `isMinifyEnabled=false`. Eso es un posible contribuyente, no una prueba de que

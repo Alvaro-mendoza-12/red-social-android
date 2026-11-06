@@ -475,4 +475,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     add("auditImplementation", libs.androidx.compose.ui.test.manifest)
+    add("auditReleaseImplementation", libs.androidx.compose.ui.test.manifest)
 }
