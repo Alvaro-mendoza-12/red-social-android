@@ -65,6 +65,7 @@ class PurposeHttpDeviceTest {
     private lateinit var api: PurposeApi
     private var dark = false
     private var failure: Throwable? = null
+    @Volatile private var sendFailure: Exception? = null
     private val base = "https://127.0.0.1:18107"
     private fun token(actor: String) = if(actor == a) "qa-a" else "qa-b"
     private fun lease(actor: String) = AuthSessionMutationGuard().captureAccountLease { actor }
@@ -104,21 +105,32 @@ class PurposeHttpDeviceTest {
         val persistence = PurposeRecoveryStore({AgreementRecoveryPreferences.open(InstrumentationRegistry.getInstrumentation().targetContext)},guard::commitForLease)
         lateinit var value: PurposeViewModel
         InstrumentationRegistry.getInstrumentation().runOnMainSync {
-            value = PurposeViewModel({current},MutableStateFlow(0),emptyFlow(),api::available,api::read,api::send,persistence::read,persistence::replace)
+            value = PurposeViewModel({current},MutableStateFlow(0),emptyFlow(),api::available,api::read,{ lease, pending ->
+                try { api.send(lease,pending) }
+                catch (error: CancellationException) { throw error }
+                catch (error: Exception) { sendFailure = error; throw error }
+            },persistence::read,persistence::replace)
             models.put(UUID.randomUUID().toString(),value)
         }
         return value
     }
     private fun await(model: PurposeViewModel,predicate: (PurposeState)->Boolean = {true}) {
-        compose.waitUntil(20_000) { failure?.let { throw AssertionError("Fixture failed",it) }
-            val state = model.state.value; state.supported && state.payload != null && !state.loading && !state.busy && predicate(state) }
-        assertNull(model.state.value.error)
+        compose.waitUntil(20_000) {
+            failure?.let { throw AssertionError("Fixture failed", it) }
+            val state = model.state.value
+            if (!state.loading && !state.busy) {
+                state.error?.let { throw AssertionError("Purpose action failed: $it",sendFailure) }
+            }
+            state.supported && state.payload != null && !state.loading && !state.busy && predicate(state)
+        }
     }
     private fun click(text: String) {
-        val node = compose.onNode(hasText(text) and hasClickAction())
+        val matcher = hasText(text) and hasClickAction()
+        val node = compose.onNode(matcher)
         try {
+            compose.waitUntil(8_000) { compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() }
             if (!node.isDisplayed()) node.performScrollTo()
-            node.assertIsDisplayed().performClick()
+            node.assertIsDisplayed().assertIsEnabled().performClick()
         } catch (error: AssertionError) {
             snapshot("failed-control-"+text.filter { it.isLetterOrDigit() }.take(35))
             throw error
@@ -200,7 +212,11 @@ class PurposeHttpDeviceTest {
         } }
         await(model);click("Elegir esta acción");await(model) { it.payload?.get("journey") is JsonObject }
         snapshot("community-step")
-        click("Abrir pregunta");compose.waitUntil(15_000) { question.value != null }
+        click("Abrir pregunta");compose.waitUntil(15_000) {
+            failure?.let { throw AssertionError("Question fixture failed",it) }
+            model.state.value.error?.let { throw AssertionError("Could not open the question: $it",sendFailure) }
+            question.value != null
+        }
         assertEquals(PurposeSource("question",messageId,community),source)
         compose.onNode(hasSetTextAction()).performTextReplacement("Una primera aportación útil")
         click(if(question.value?.myAnswer == null) "Enviar respuesta" else "Actualizar respuesta")

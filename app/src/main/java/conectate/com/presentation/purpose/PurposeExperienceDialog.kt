@@ -62,7 +62,10 @@ fun PurposeExperienceDialog(target: PurposeTarget, onDismiss: () -> Unit, onSour
             WindowCompat.getInsetsController(window,view).apply { isAppearanceLightStatusBars = light; isAppearanceLightNavigationBars = light }
         } }
         BackHandler(onBack = back)
-        Scaffold(Modifier.fillMaxSize().imePadding(), snackbarHost = { SnackbarHost(snackbar) }, topBar = {
+        Scaffold(Modifier.fillMaxSize().imePadding(), bottomBar = {
+            // Reserve space so messages never cover the next action at large text sizes.
+            SnackbarHost(snackbar, Modifier.navigationBarsPadding())
+        }, topBar = {
             TopAppBar(title = { Text(when(current.kind) { "social" -> "Cómo terminó"; "community" -> "Tu primera contribución"; else -> "Partidas acordadas" },maxLines = 1,overflow = TextOverflow.Ellipsis) },
                 navigationIcon = { IconButton(onClick = back, enabled = !state.busy || state.pending) { Icon(Icons.AutoMirrored.Filled.ArrowBack,"Volver") } },
                 actions = { IconButton(onClick = viewModel::refresh, enabled = !state.busy && !state.loading) { Icon(Icons.Default.Refresh,"Actualizar") } })
