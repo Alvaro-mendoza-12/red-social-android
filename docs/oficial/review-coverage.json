@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-09T13:27:13.449762+00:00",
-  "baseCommit": "a5b3fdf6bc8bbca23c4ddadcec6f19f4be864b27",
+  "generatedAtUtc": "2026-11-09T13:46:29.017065+00:00",
+  "baseCommit": "6dfd5eb7b117e45958c527819709572a4c15f038",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -19293,7 +19293,7 @@
     {
       "file": "docs/experimental/105-experiencias-con-proposito.md",
       "phase": "documentation",
-      "gitBlobId": "d365223d91337809ff4749314b8d67bea3185390",
+      "gitBlobId": "3868c74a16435be45b26d2c0e6bc49c142ec203f",
       "reviewStatus": "partial",
       "evidence": "docs/experimental/105-experiencias-con-proposito.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
