@@ -79,3 +79,52 @@ En **Comunidades**, ver si la primera contribución resulta clara. En
 **PlayMatch**, comprobar si dos contactos pasan de conectar a coordinar una
 partida. El valor a validar es qué se puede resolver mejor en cada modo. La
 comparación con otras aplicaciones depende de esos recorridos con personas.
+
+## APK para la prueba del propietario
+
+El 8 de noviembre se construyó la variante optimizada **9.1.40-qa-optimized / 180**
+desde `99395d799e47d8376bc59c13fd18ae8cb8e74a13`. Pasaron R8, Lint vital,
+verificación de firma y alineación ZIP de 16 KiB. Se comprobó el identificador
+de fuente y el origen R2 en el DEX. El archivo de 221.643.872 bytes está en
+`artifacts/experimental/9.1.40-180-99395d79/Novvin-Experiencias-9.1.40-180-qa.apk`,
+con SHA-256
+`2c04d2d7a20ecdab84238bf49a73d7275cf5d0e0cd0f608463f420fcf2a38065`.
+
+La instalación del paquete `conectate.com.qa` en el Moto G04 pasó y la actividad
+principal abrió en frío. Esa comprobación cubre instalación y arranque. La
+evaluación de las pantallas con la cuenta del propietario se hace desde el icono
+**Novvin QA**. El paquete requiere su propio inicio de sesión. Se conserva la
+instalación del paquete principal y la distribución de esta APK es de pruebas.
+
+## Repetición en pantalla estrecha
+
+El 9 de noviembre, el ensayo anterior con letra al 160 % mostró el aviso
+«Guardado» encima de la zona de acciones. La apertura de la pregunta y una
+reconfirmación de partida no llegaron a la API. La misma aplicación completó
+ambos recorridos con el tamaño de texto normal. El cambio `d9463f64` da al aviso
+su propio espacio en la parte inferior de la pantalla.
+
+La aplicación de depuración con ese cambio y su paquete de instrumentación
+compilaron. En el emulador pasaron cuatro pruebas con tema claro y cuatro con
+tema oscuro, pantalla estrecha y letra al 160 %. Los casos comprueban una
+conclusión con su comentario y su retirada, la primera contribución con
+pregunta, asistencia a un encuentro y apertura del perfil del guía, la
+propuesta de partida con aceptación y reconfirmación de ambas personas,
+replanificación y cancelación, y el envío de respuesta con el teclado
+visible. Las operaciones se verificaron contra una API local con PostgreSQL y
+cuentas ficticias. Esta ejecución cubre esos recorridos en el emulador. La
+prueba de preferencia con usuarios, la entrega física de notificaciones y la
+fluidez en el Moto G04 se registran por separado.
+
+### APK optimizada con el aviso corregido
+
+El candidato `d9463f64` conserva la versión de prueba
+**9.1.40-qa-optimized / 180** y el icono **Novvin QA**. Pasaron R8, Lint
+vital, la verificación de firma, la alineación ZIP de 16 KiB y la
+instalación y apertura en frío en el emulador. Se comprobó el commit en
+el DEX. El archivo local está en
+`artifacts/experimental/9.1.40-180-d9463f64/Novvin-Experiencias-9.1.40-180-qa.apk`.
+Su SHA-256 es
+`d917e229d563cf11d674fe1cd4982893598234148a79720a6822d9f138335f6d`.
+El Moto G04 quedó con el primer candidato, `99395d79`, porque se desconectó
+antes de esta compilación. Se puede actualizar sobre el mismo paquete QA.
