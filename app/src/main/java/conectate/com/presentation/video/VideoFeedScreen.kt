@@ -651,7 +651,7 @@ fun VideoFeedScreen(
     val settledVideo = (feedEntries.getOrNull(pagerState.settledPage) as? VideoFeedVideoEntry)?.video
     val settledVideoId = settledVideo?.id
     var playbackRequested by remember(currentUserId, settledVideoId) {
-        mutableStateOf(settledVideoId != null && !cellularAutoplayBlocked)
+        mutableStateOf(settledVideoId != null)
     }
     var manuallyStartedVideoId by remember(currentUserId, settledVideoId) { mutableStateOf<String?>(null) }
     LaunchedEffect(settledVideoId, forYouFeed.sessionId, selectedTab, isProfileFeed, feedLifecycleState) {
@@ -668,13 +668,10 @@ fun VideoFeedScreen(
         currentVideos.map { video -> video.id to video.videoUrl }
     }
     // A new video may autoplay on Wi-Fi; on mobile data it needs its own explicit tap
-    // when the account preference disables autoplay. Reopening an overlay does not
-    // discard a manual play request for the current video.
-    LaunchedEffect(settledVideoId, cellularAutoplayBlocked) {
+    // when the account preference disables autoplay. Apply that restriction
+    // separately so a return to Wi-Fi doesn't leave the video paused.
+    LaunchedEffect(settledVideoId) {
         reviewLoop = null
-        if (cellularAutoplayBlocked && manuallyStartedVideoId != settledVideoId) {
-            playbackRequested = false
-        }
     }
 
     fun toggleVisiblePlayback() {
@@ -732,14 +729,14 @@ fun VideoFeedScreen(
     val selectedWantsPlayback = shouldPlayFeedVideo(
         playbackRequested, settledVideoId, isCellular, videoAutoplayOnMobile, manuallyStartedVideoId,
     )
-    val playbackAllowed = selectedWantsPlayback &&
+    val playbackEligible = selectedWantsPlayback &&
         (!showBackButton || initialVideoPositionApplied) &&
         settledVideoIndex >= 0 &&
-        !pagerState.isScrollInProgress &&
         !playbackOverlayOpen &&
         sidePanelState == VideoSidePanel.VIDEO &&
         lifecycleResumed &&
         !isSystemBusy
+    val playbackAllowed = playbackEligible && !pagerState.isScrollInProgress
     val latestPlaybackAllowed = rememberUpdatedState(playbackAllowed)
 
     // Warm the next item only after the visible video owns the player and has
@@ -755,48 +752,64 @@ fun VideoFeedScreen(
                 .distinct()
         }
     }
-    val prefetchAllowed = playbackAllowed && shouldPrefetchFeedVideo(
+    // A gesture pauses playback, but an already running bounded preload can
+    // finish during that gesture. A different settled video cancels this effect.
+    val prefetchAllowed = playbackEligible && shouldPrefetchFeedVideo(
         isConnected, dataSaverEnabled || cellularAutoplayBlocked, lifecycleResumed, playbackOverlayOpen,
     )
-    LaunchedEffect(prefetchAllowed, currentUserId, settledVideoId, neighbourUrls, runtimeBackendBaseUrl, exoPlayer) {
+    LaunchedEffect(prefetchAllowed, currentUserId, settledVideoId, neighbourUrls, runtimeBackendBaseUrl, exoPlayer, playbackSpeed, isCellular) {
         if (!prefetchAllowed || settledVideoId == null || neighbourUrls.isEmpty()) return@LaunchedEffect
 
-        while (kotlinx.coroutines.currentCoroutineContext().isActive) {
-            val visibleVideoProtected = hasProtectedVisibleVideoBuffer(
+        fun hasBufferForPreload(starting: Boolean): Boolean {
+            val scrolling = pagerState.isScrollInProgress
+            if (starting && scrolling) return false
+            val reserveMs = performanceProfile.rebufferMs + if (starting) 1_500L else 250L
+            return hasProtectedVisibleVideoBuffer(
                 currentMediaId = exoPlayer.currentMediaItem?.mediaId,
                 selectedVideoId = settledVideoId,
                 isReady = exoPlayer.playbackState == Player.STATE_READY,
-                isPlaying = exoPlayer.isPlaying,
+                isPlaying = exoPlayer.isPlaying || scrolling,
                 durationMs = exoPlayer.duration,
                 bufferedPositionMs = exoPlayer.bufferedPosition,
                 currentPositionMs = exoPlayer.currentPosition,
+                minimumBufferedAheadMs = (reserveMs * playbackSpeed.coerceAtLeast(1f)).toLong(),
             )
-            if (visibleVideoProtected) break
-            delay(250L)
         }
-
-        if (
-            pagerState.isScrollInProgress ||
-            exoPlayer.currentMediaItem?.mediaId != settledVideoId ||
-            !exoPlayer.isPlaying
-        ) return@LaunchedEffect
+        while (!hasBufferForPreload(starting = true)) delay(200L)
 
         val byteBudget = when (performanceProfile.tier) {
             conectate.com.util.VideoDeviceTier.LOW -> 384L * 1024L
             conectate.com.util.VideoDeviceTier.BALANCED -> 768L * 1024L
             conectate.com.util.VideoDeviceTier.HIGH -> 1L * 1024L * 1024L
         }
+        val timeBudgetMs = if (isCellular) 1_500L else 3_500L
         neighbourUrls.forEach { url ->
-            runCatching {
-                conectate.com.util.VideoCache.preloadStart(
-                    context = context.applicationContext,
-                    url = url,
-                    byteCount = byteBudget,
-                    timeoutMs = 1_500L,
-                )
-            }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+            if (!hasBufferForPreload(starting = true)) return@LaunchedEffect
+            kotlinx.coroutines.coroutineScope {
+                val preload = launch {
+                    try {
+                        conectate.com.util.VideoCache.preloadStart(
+                            context = context.applicationContext,
+                            url = url,
+                            byteCount = byteBudget,
+                            timeoutMs = timeBudgetMs,
+                        )
+                    } catch (error: java.io.IOException) {
+                        // Best effort. The selected clip keeps its normal playback path.
+                        if (conectate.com.BuildConfig.DEBUG) {
+                            android.util.Log.d("FeedPlaybackAudit", "preload_failed=${error.javaClass.simpleName}")
+                        }
+                    }
+                }
+                while (preload.isActive) {
+                    delay(120L)
+                    if (!hasBufferForPreload(starting = false)) preload.cancel()
+                }
+            }
         }
     }
+
+    var renderedVideoId by remember(exoPlayer) { mutableStateOf<String?>(null) }
 
     fun schedulePlaybackRecovery(
         videoId: String,
@@ -831,6 +844,7 @@ fun VideoFeedScreen(
                 val resumePositionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
                 val resolvedUrl = UbuntuMedia.resolveUrl(video.videoUrl) ?: video.videoUrl
                 viewModel.updateVideoPlaybackSource(videoId, resolvedUrl)
+                renderedVideoId = null
                 exoPlayer.replaceMediaItem(targetIndex, buildVideoMediaItem(videoId, resolvedUrl))
                 exoPlayer.seekTo(targetIndex, resumePositionMs)
                 exoPlayer.prepare()
@@ -843,13 +857,14 @@ fun VideoFeedScreen(
     
     // Keep the pager synchronized when ExoPlayer advances to the next item and
     // recover bounded transport failures without retrying corrupt codecs forever.
-    var renderedVideoId by remember(exoPlayer) { mutableStateOf<String?>(null) }
     val latestFeedEntries by rememberUpdatedState(feedEntries)
     val latestReviewLoop by rememberUpdatedState(reviewLoop)
     DisposableEffect(exoPlayer, autoAdvanceEnabled, scrollingLocked) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                renderedVideoId = null
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT || mediaItem?.mediaId != renderedVideoId) {
+                    renderedVideoId = null
+                }
                 exhaustedPlaybackVideoId = null
                 latestReviewLoop?.takeIf {
                     reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT && it.videoId == mediaItem?.mediaId
@@ -1026,6 +1041,7 @@ fun VideoFeedScreen(
                     playerPlaylistGeneration += 1
                 }
                 is VideoPlaylistUpdate.Replace -> {
+                    renderedVideoId = null
                     exoPlayer.setMediaItems(
                         desiredPlaylist.map { entry ->
                             buildVideoMediaItem(entry.mediaId, entry.playbackUri)
@@ -2552,43 +2568,30 @@ fun VideoItem(
         
         // PAUSE ICON OVERLAY
         // We only observe isPlaying state if this item is selected
-        var isPlaying by remember { mutableStateOf(false) }
+        var isPlaying by remember(video.id, isSelected, exoPlayer) { mutableStateOf(false) }
+        var isBuffering by remember(video.id, isSelected, exoPlayer) { mutableStateOf(false) }
         
         // 🚀 SMART TRANSITION STATE
         // Keep thumbnail visible until the FIRST FRAME is actually rendered by the player.
         // This eliminates the black flash completely.
-        var isFirstFrameRendered by remember(video.id) { mutableStateOf(renderedVideoId == video.id) }
-        
-        // Reset the transition guard both for a new item and when an item is
-        // selected again after another page owned the shared player. Without
-        // this, a stale first frame can remain visible while ExoPlayer is
-        // preparing the newly selected source.
-        LaunchedEffect(video.id, isSelected, renderedVideoId) {
-            if (!isSelected) isFirstFrameRendered = false
-            else if (renderedVideoId == video.id) isFirstFrameRendered = true
-        }
+        val isFirstFrameRendered = isSelected && renderedVideoId == video.id
         
         DisposableEffect(video.id, isSelected, exoPlayer) {
+            fun updatePlayerState(player: Player) {
+                val showingThisVideo = player.currentMediaItem?.mediaId == video.id
+                isPlaying = showingThisVideo && player.isPlaying
+                isBuffering = showingThisVideo && player.playbackState == Player.STATE_BUFFERING
+            }
             if (isSelected) {
                 val listener = object : Player.Listener {
-                    override fun onIsPlayingChanged(isPlayingParam: Boolean) {
-                        isPlaying = isPlayingParam
+                    override fun onEvents(player: Player, events: Player.Events) {
+                        updatePlayerState(player)
                     }
-                    
-                    override fun onRenderedFirstFrame() {
-                        super.onRenderedFirstFrame()
-                        if (exoPlayer.currentMediaItem?.mediaId == video.id) {
-                            isFirstFrameRendered = true
-                        }
-                    }
-                    
                 }
                 exoPlayer.addListener(listener)
-                // Initial state
-                isPlaying = exoPlayer.isPlaying
+                updatePlayerState(exoPlayer)
                 onDispose { exoPlayer.removeListener(listener) }
             } else {
-                isPlaying = false
                 onDispose { }
             }
         }
@@ -2605,7 +2608,7 @@ fun VideoItem(
                         // two videos are layered for roughly one second.
                         setKeepContentOnPlayerReset(false)
                          setShutterBackgroundColor(android.graphics.Color.BLACK)
-                         setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                        setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
                         // Preserve the original aspect ratio and keep short or
                         // letterboxed videos centered inside the usable page.
                         findViewById<android.view.View>(androidx.media3.ui.R.id.exo_content_frame)?.let { frame ->
@@ -2661,7 +2664,7 @@ fun VideoItem(
             )
         }
         
-        if (isSelected && playbackRequested && !isFirstFrameRendered && !hasPlaybackError) {
+        if (isSelected && playbackRequested && (!isFirstFrameRendered || isBuffering) && !hasPlaybackError) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center).size(32.dp)
                     .semantics { contentDescription = "Cargando video" },
