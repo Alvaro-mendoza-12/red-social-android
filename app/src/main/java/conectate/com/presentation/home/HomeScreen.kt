@@ -294,6 +294,9 @@ fun HomeScreen(
                     onNavigateToChat = { route ->
                         mainNavController.navigate(route)
                     },
+                    onNavigateToVideoRoutes = {
+                        mainNavController.navigate(Screen.VideoRoutes.route) { launchSingleTop = true }
+                    },
                     // Los directos (LiveSetup/LiveDiscovery/LiveViewer) viven en el NavHost raíz, no
                     // en el grafo anidado de pestañas. Se navega con mainNavController para evitar el
                     // crash "destination cannot be found" al crear/ver directos desde la pestaña Videos.
@@ -442,6 +445,9 @@ fun HomeScreen(
                         mainNavController.navigate(Screen.UserProfile.createRoute(userId))
                     },
                     onNavigateToChat = { route -> mainNavController.navigate(route) },
+                    onNavigateToVideoRoutes = {
+                        mainNavController.navigate(Screen.VideoRoutes.route) { launchSingleTop = true }
+                    },
                     onNavigateToLiveSetup = {
                         mainNavController.navigate(Screen.LiveSetup.route) { launchSingleTop = true }
                     },
@@ -477,6 +483,9 @@ fun HomeScreen(
                         mainNavController.navigate(Screen.UserProfile.createRoute(userId))
                     },
                     onNavigateToChat = { route -> mainNavController.navigate(route) },
+                    onNavigateToVideoRoutes = {
+                        mainNavController.navigate(Screen.VideoRoutes.route) { launchSingleTop = true }
+                    },
                     onNavigateToLiveSetup = {
                         mainNavController.navigate(Screen.LiveSetup.route) { launchSingleTop = true }
                     },

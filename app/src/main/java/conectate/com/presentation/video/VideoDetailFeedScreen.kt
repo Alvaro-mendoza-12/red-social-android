@@ -27,6 +27,9 @@ fun VideoDetailFeedScreen(
         onNavigateToSearch = { navController.navigate(Screen.SearchUsers.route) },
         onNavigateToProfile = { navController.navigate(Screen.UserProfile.createRoute(it)) },
         onNavigateToChat = { navController.navigate(it) },
+        onNavigateToVideoRoutes = {
+            navController.navigate(Screen.VideoRoutes.route) { launchSingleTop = true }
+        },
         onNavigateToLiveSetup = { navController.navigate(Screen.LiveSetup.route) },
         onNavigateToLiveDiscovery = { navController.navigate(Screen.LiveDiscovery.route) },
         onNavigateToLiveViewer = { navController.navigate(Screen.LiveViewer.createRoute(it)) },

@@ -267,6 +267,7 @@ fun VideoFeedScreen(
     onNavigateToSearch: () -> Unit,
     onNavigateToProfile: (String) -> Unit,
     onNavigateToChat: (String) -> Unit,
+    onNavigateToVideoRoutes: () -> Unit,
     onNavigateToLiveSetup: () -> Unit = {},
     onNavigateToLiveDiscovery: () -> Unit = {},
     onNavigateToLiveViewer: (String) -> Unit = {},
@@ -2255,7 +2256,7 @@ fun VideoFeedScreen(
                         onClick = {
                             showCreateMenu = false
                             exoPlayer.pause()
-                            navController.navigate(Screen.VideoRoutes.route) { launchSingleTop = true }
+                            onNavigateToVideoRoutes()
                         },
                     )
                     DropdownMenuItem(

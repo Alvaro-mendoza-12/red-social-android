@@ -136,6 +136,9 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
                     navController.navigate(Screen.UserProfile.createRoute(userId))
                 },
                 onNavigateToChat = { route -> navController.navigate(route) },
+                onNavigateToVideoRoutes = {
+                    navController.navigate(Screen.VideoRoutes.route) { launchSingleTop = true }
+                },
                 onNavigateToLiveSetup = {
                     navController.navigate(Screen.LiveSetup.route) { launchSingleTop = true }
                 },
@@ -174,6 +177,9 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
                     navController.navigate(Screen.UserProfile.createRoute(userId))
                 },
                 onNavigateToChat = { route -> navController.navigate(route) },
+                onNavigateToVideoRoutes = {
+                    navController.navigate(Screen.VideoRoutes.route) { launchSingleTop = true }
+                },
                 onNavigateToLiveSetup = {
                     navController.navigate(Screen.LiveSetup.route) { launchSingleTop = true }
                 },
