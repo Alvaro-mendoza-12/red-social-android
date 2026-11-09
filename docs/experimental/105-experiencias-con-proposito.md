@@ -300,4 +300,14 @@ esa excepción. El selector de accesibilidad de laboratorio no reconoció
 el texto de la ruta ficticia en esas repeticiones, por lo que el recorrido
 completo se acredita con la ejecución de Compose descrita arriba. Se
 conservan los registros del cierre y de ambas formas de comprobación.
-El Moto G04 no se detectó por USB al entregar esta actualización.
+El Moto G04 se detectó por ADB el 9 de noviembre y recibió esta APK con
+`adb install -r`, conservando los datos de Novvin QA. El historial confirma
+el cierre anterior por ausencia de `video_routes`; tras instalar la corrección
+no aparece una excepción nueva de la aplicación. Android registró aparte una
+terminación `LOW_MEMORY` a las 08:39:09.
+
+El recorrido táctil de Rutas en el Moto sigue pendiente. Durante el intento,
+otra aplicación estaba en primer plano y detuve los toques para no modificar
+su estado. La navegación corregida queda comprobada de extremo a extremo en
+el emulador; en el Moto se comprobó la instalación, no la apertura física de
+Rutas ni el regreso desde el reproductor.
