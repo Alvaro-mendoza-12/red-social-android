@@ -18,10 +18,23 @@ Sincronizar Gradle, abrir `Build Variants` y elegir la variante de `app`:
 | `auditRelease` | Comparar fluidez con R8 y reducción de recursos, sin depuración. También usa `Novvin QA`. Ejecutar con `Run`, sin adjuntar el depurador. |
 | `debug` | Depuración del paquete principal. Sus tiempos no son una medición de la versión publicada. |
 
+El 8 de noviembre se comprobó que `D:\AndroidSTUDIO\jbr` ya no contiene
+`bin\java.exe`. Si Gradle apunta a ese directorio, en Android Studio ir a
+**Settings → Build, Execution, Deployment → Build Tools → Gradle** y elegir
+**Gradle JDK → Add JDK**. En esta PC está instalado
+`C:\Users\gamer\.jdks\jbr-21.0.8`. Sincronizar de nuevo, elegir `auditRelease`,
+seleccionar el celular autorizado por USB y pulsar **Run ▶**. La ruta del JDK
+es una configuración local de la máquina.
+
 Las variantes QA conservan la instalación de Play y requieren su propio inicio
 de sesión. Las ramas comparten el mismo identificador QA: instalar la otra
 sustituye esa instalación de pruebas. No usar `startupAuditPrimaryPackage=true`
 para esta validación. Esa excepción elimina el aislamiento del paquete.
+
+Estas variantes QA aún no tienen registro propio de Firebase. Sirven para
+probar las pantallas, la API y el dibujo; la entrega de notificaciones push debe
+validarse con una instalación configurada para ese servicio. Su ausencia en QA
+no permite concluir que la entrega de la aplicación publicada esté fallando.
 
 El propietario informó tirones al ejecutar desde Android Studio la carpeta
 LightGif en su celular. Se comprobó que `debug` tiene `isDebuggable=true` y

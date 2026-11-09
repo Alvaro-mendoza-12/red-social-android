@@ -60,6 +60,8 @@ Los cuatro módulos nuevos de API implementan revisiones esperadas, recibos de o
 
 La invitación de partida se guarda en la transacción y se despacha después del commit; repetir la operación no duplica el aviso. Abrir un destino de comunidad no se presenta como participación realizada. No se envían mensajes automáticos a contactos.
 
+Para probar una partida entre dos personas, ambas necesitan esta versión experimental. Las aplicaciones estables anteriores y la web todavía no contienen su pantalla para responder a una invitación. Las pruebas de persistencia y selección de ruta no certifican recepción física de FCM ni navegación desde esos clientes anteriores. La prueba con personas debe usar dos cuentas que aceptaron conectarse en PlayMatch y perfiles con el acceso adulto vigente.
+
 La repetición aislada en Ubuntu, PostgreSQL 16.15 y el esquema real aprobó **11 entradas del ejecutor, sin fallos ni omisiones**: seis casos de dominio y cuatro recorridos dentro de una suite HTTP/SQL. Una selección de regresiones de API aprobó **45 entradas**, sin fallos ni omisiones. Algunas entradas agrupan aserciones; no se presentan como 56 recorridos de usuario distintos. Acuerdos se repitió por separado en Ubuntu con 22 pruebas aprobadas.
 
 Antes del despliegue se detectó una consulta a `is_deleted` en una tabla que usa borrado físico. Se sustituyó por comprobación del registro real y, cuando corresponde, de importaciones. Otro ensayo utilizó un nombre de estado de fixture inválido; se corrigió el fixture. Se conservan las ejecuciones fallidas. Los adaptadores ficticios de identidad y notificaciones pertenecen exclusivamente a QA.
@@ -67,3 +69,13 @@ Antes del despliegue se detectó una consulta a `is_deleted` en una tabla que us
 El backend se activó el **5 de noviembre de 2026 a las 03:35:43 UTC**: `novvin-api:purpose111-20261104_4c4350e0`, con trece fuentes desde `4c4350e0e371b02dfd211232133b35ba180febdf`, sobre la corrección estable 110. La [operación 112](../oficial/112-pruebas-android-studio-y-api-experimental.md) registra respaldo, huellas, esquema, salud y rechazo sin sesión. La proyección de la incidencia de Social conservó cuatro reacciones y dos comentarios. No se añadieron fixtures a producción.
 
 Las pantallas permanecen sólo en esta rama. El propietario las evaluará antes de autorizar su promoción. Las comprobaciones Android de este bloque, la fluidez física y el inicio de sesión real se registran por separado; una prueba de API no los sustituye. El plan y la revisión integral permanecen abiertos.
+
+Para evaluar la propuesta conviene completar una tarea en cada modo. En
+**Videos → + → Rutas con propósito**, elegir un tema y ver si una ruta corta
+ayuda a encontrar y conservar algo útil. En un **chat directo → Acuerdos**,
+acordar una acción entre dos personas y volver al mensaje que la originó. En
+**Social**, comprobar si se encuentra la conclusión y el comentario que ayudó.
+En **Comunidades**, ver si la primera contribución resulta clara. En
+**PlayMatch**, comprobar si dos contactos pasan de conectar a coordinar una
+partida. El valor a validar es qué se puede resolver mejor en cada modo. La
+comparación con otras aplicaciones depende de esos recorridos con personas.
