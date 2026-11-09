@@ -265,3 +265,39 @@ La lectura inicial de `ChatWorkspaceModels`, `ChatWorkspaceStore`, `ChatWorkspac
 - El almacenamiento cifrado de `ChatWorkspaceStore` protege material local. No demuestra por sí solo cifrado de extremo a extremo de los acuerdos compartidos. El recorrido actual de envío de texto llama a la API Ubuntu con su contenido. No se añadirá procesamiento por IA ni se copiará una conversación completa al nuevo módulo por defecto.
 
 Esa preparación dio paso al [primer prototipo Android y API de Acuerdos](107-acuerdos-con-origen.md). Su alcance inicial es un chat privado de dos personas y conserva pendientes propios antes de promoverlo. Los grupos, las comunidades y la contraparte web continúan pendientes. La implementación experimental y sus ensayos aislados no equivalen a activar el contrato en el servidor de producción.
+
+## Apertura de Rutas desde Videos el 9 de noviembre
+
+El propietario reportó que Novvin QA se cerraba al tocar la entrada de Rutas.
+El menú de Videos le pedía al navegador de pestañas abrir `video_routes`,
+registrada en el navegador principal. El commit `6bd5624e` entrega al menú
+una acción del navegador que sí contiene la pantalla. Las entradas desde
+Videos, descubrimiento y perfil conservan sus respectivos destinos de regreso.
+
+La aplicación corregida y su paquete de instrumentación compilaron. Pasaron
+31 pruebas JVM de Rutas en tres clases. Una ejecución separada del código
+anterior pasó las 12 pruebas existentes de pantalla, argumentos de navegación
+y Android Keystore. Esas pruebas empezaban dentro de Rutas o construían
+directamente el grafo principal. El nuevo recorrido pasa por el menú real de
+Videos y comprueba una ruta guardada, «Volver a mi ruta» desde el editor y el
+regreso desde el reproductor. La primera ejecución completa con el cambio
+pasó en el emulador sin cierre. Se usaron una cuenta ficticia y un video de
+prueba ausente para comprobar la navegación, incluida la posibilidad de
+volver cuando el clip no se puede cargar.
+
+La APK optimizada **9.1.40-qa-optimized / 180** incorpora `6bd5624e`.
+Se verificaron R8, Lint vital, firma, alineación ZIP de 16 KiB y arranque
+en frío del paquete `conectate.com.qa` en el emulador. Se conserva en
+`artifacts/experimental/9.1.40-180-6bd5624e/Novvin-Experiencias-9.1.40-180-qa.apk`.
+SHA-256
+`a6e27a5510abf400728ba65f201701b2e00c17b63215d036029cf694272d8584`.
+Puede instalarse sobre Novvin QA para conservar la ruta local.
+
+La comparación adicional reprodujo dos veces el cierre de la aplicación
+anterior al tocar el menú. Android informó que `video_routes` no existía en
+el grafo de pestañas. Las repeticiones con el código corregido no registraron
+esa excepción. El selector de accesibilidad de laboratorio no reconoció
+el texto de la ruta ficticia en esas repeticiones, por lo que el recorrido
+completo se acredita con la ejecución de Compose descrita arriba. Se
+conservan los registros del cierre y de ambas formas de comprobación.
+El Moto G04 no se detectó por USB al entregar esta actualización.
