@@ -13,22 +13,16 @@ import {
   BarChart3,
   Bell,
   Eye,
-  Gamepad2,
-  Globe,
   LogOut,
-  MessageSquareText,
   MoreVertical,
   Plus,
-  Search,
   Settings,
   Users,
-  Video,
-  VideoIcon,
-  Mic,
 } from 'lucide-react'
 import { primarySection, openProfileVisits } from '../ui/novvin/navigation'
 import { AppNavigation } from '../ui/novvin/AppNavigation'
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { SecondaryNavigation } from '../ui/novvin/SecondaryNavigation'
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   type DeferredMutation,
   flushDeferredMutations,
@@ -59,49 +53,6 @@ import {
 import { useWebPreferences } from '../core/webPreferences'
 import { sendCallResponse, type CallInvitePayload } from '../features/calls/callRealtime'
 import '../features/calls/incomingCallOverlay.css'
-
-type NavIconName =
-  | 'social'
-  | 'videos'
-  | 'messages'
-  | 'calls'
-  | 'profile'
-  | 'voice'
-  | 'search'
-  | 'notifications'
-  | 'monetization'
-  | 'settings'
-  | 'games'
-
-const secondaryNavItems = [
-  { to: '/app/assistant', label: 'Asistente de Novvin', icon: 'messages' as NavIconName },
-  { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
-  {
-    to: '/app/notifications',
-    label: 'Notificaciones',
-    icon: 'notifications' as NavIconName,
-  },
-  { to: '/app/calls', label: 'Llamadas', icon: 'calls' as NavIconName },
-  { to: '/app/voice', label: 'Salas de voz', icon: 'voice' as NavIconName },
-  {
-    to: '/app/create-space',
-    label: 'Crear espacio',
-    icon: 'voice' as NavIconName,
-  },
-  { to: '/app/live', label: 'En vivo', icon: 'videos' as NavIconName },
-  {
-    to: '/app/proximity',
-    label: 'Personas cerca',
-    icon: 'social' as NavIconName,
-  },
-  { to: '/app/settings', label: 'Ajustes', icon: 'settings' as NavIconName },
-  {
-    to: '/app/reports',
-    label: 'Mis reportes',
-    icon: 'notifications' as NavIconName,
-  },
-  { to: '/app/help', label: 'Ayuda', icon: 'settings' as NavIconName },
-]
 
 const localReadStorageKey = 'conectate-web-chat-last-read'
 
@@ -184,24 +135,6 @@ function passwordChangeErrorMessage(error: unknown): string {
   if (code === 'AUTH_REQUIRED' || code === 'INVALID_TOKEN')
     return 'Tu sesión expiró. Vuelve a iniciar sesión.'
   return code || 'No se pudo actualizar la contraseña.'
-}
-
-function ShellIcon({ name }: { name: NavIconName }) {
-  const icons = {
-    social: Globe,
-    videos: Video,
-    messages: MessageSquareText,
-    calls: VideoIcon,
-    profile: Users,
-    voice: Mic,
-    search: Search,
-    notifications: Bell,
-    monetization: BarChart3,
-    settings: Settings,
-    games: Gamepad2,
-  }
-  const Icon = icons[name]
-  return <Icon aria-hidden="true" />
 }
 
 export function AppLayout() {
@@ -1134,19 +1067,7 @@ export function AppLayout() {
                   Cerrar
                 </button>
               </div>
-              {menuMode === 'section' ? sectionMenu(location.pathname).map(item => item.to ? <Link key={item.label} to={item.to} className="mobile-explore-link" onClick={()=>setIsMobileExploreOpen(false)}>{item.label}</Link> : <button key={item.label} type="button" className="mobile-explore-link" onClick={()=>{setIsMobileExploreOpen(false);window.dispatchEvent(new CustomEvent('novvin:voice-action',{detail:item.voiceAction}))}}>{item.label}</button>) : secondaryNavItems.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className="mobile-explore-link"
-                  onClick={() => setIsMobileExploreOpen(false)}
-                >
-                  <span className="nav-icon">
-                    <ShellIcon name={item.icon} />
-                  </span>
-                  {item.label}
-                </NavLink>
-              ))}
+              {menuMode === 'section' ? sectionMenu(location.pathname).map(item => item.to ? <Link key={item.label} to={item.to} className="mobile-explore-link" onClick={()=>setIsMobileExploreOpen(false)}>{item.label}</Link> : <button key={item.label} type="button" className="mobile-explore-link" onClick={()=>{setIsMobileExploreOpen(false);window.dispatchEvent(new CustomEvent('novvin:voice-action',{detail:item.voiceAction}))}}>{item.label}</button>) : <SecondaryNavigation onNavigate={() => setIsMobileExploreOpen(false)} />}
               {menuMode === 'navigation' ? <button className="mobile-explore-link" type="button" onClick={() => void signOut()}>
                 <LogOut aria-hidden="true" />
                 Cerrar sesión
