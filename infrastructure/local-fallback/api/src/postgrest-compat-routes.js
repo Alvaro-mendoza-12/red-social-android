@@ -19,7 +19,10 @@ const {
 const { appAdminHasCapability, isAppAdmin, recordModerationEvent } = require('./admin-moderation-routes')
 const { ADMIN_CAPABILITY } = require('./admin-capabilities')
 const { accountSuspendedPayload, findActiveSuspension } = require('./account-status')
-const { invalidateImportedDataCache, currentUserMayReferenceMessageMedia } = require('./data-routes')
+const { invalidateImportedDataCache, currentUserMayReferenceMessageMedia, feedPostVisible, publicProfilesByIds } = require('./data-routes')
+const { momentAudienceAllows } = require('./moments-routes')
+const { momentTimestamp } = require('./moment-timestamps')
+const { aliasesOf, deniedPublicCreatorIds, publicCreatorVisibility } = require('./public-creator-visibility')
 const { sendPushForNotification } = require('./push-notifications')
 const { removeStorageObjectFiles } = require('./storage-routes')
 const {
@@ -1127,6 +1130,48 @@ async function filterRowsForRead(pool, tableName, rows, auth) {
   if (tableName === 'profiles') {
     return rows.map((row) => sanitizeProfileRow(row, identity))
   }
+  if (tableName === 'posts' || tableName === 'moments') {
+    // Use the same audience decisions as the native feeds, before client filters,
+    // pagination and HEAD counts. Compatibility is not a second privacy policy.
+    const follows = await readTableRows(pool, 'follows', {}, auth)
+    if (tableName === 'posts') {
+      const followingIds = new Set(follows
+        .filter(row => identityOwnsValue(identity, row.follower_id || row.user_id))
+        .map(row => normalizeIdentityValue(row.following_id || row.target_user_id)).filter(Boolean))
+      const ownerId = row => normalizeIdentityValue(row.user_id || row.owner_id || row.author_id || row.creator_id)
+      const ownerIds = new Set(rows.map(ownerId).filter(Boolean))
+      const profiles = await publicProfilesByIds(pool, new Set([...ownerIds, ...followingIds]))
+      for (const profile of profiles) {
+        const aliases = aliasesOf(profile)
+        if ([...aliases].some(alias => followingIds.has(alias))) aliases.forEach(alias => followingIds.add(alias))
+      }
+      const deniedIds = await deniedPublicCreatorIds(pool, { profiles, ownerIds, viewerIds: identity.ids })
+      const creatorVisible = publicCreatorVisibility({ profiles, viewerIds: identity.ids, followingIds, deniedIds })
+      return rows.filter(row => creatorVisible(ownerId(row)) && feedPostVisible(row, { identityIds: identity.ids, followingIds }))
+    }
+    const needsChats = rows.some(row => normalizeIdentityValue(row.visibility) === 'chats')
+    const [compatChats, nativeChats, deleted] = await Promise.all([
+      needsChats ? readTableRows(pool, 'chats', {}, auth) : [],
+      needsChats ? pool.query(`SELECT participants, is_group FROM fallback_chats
+        WHERE participants && $1::text[] AND is_group = FALSE LIMIT $2`, [identity.values, MAX_READ_ROWS]) : { rows: [] },
+      pool.query('SELECT lower(moment_id) AS moment_id FROM fallback_moment_deletions'),
+    ])
+    const chats = [...compatChats, ...nativeChats.rows]
+    const deletedIds = new Set(deleted.rows.map(row => normalizeIdentityValue(row.moment_id)))
+    const now = Date.now()
+    return rows.filter(row => {
+      const expiry = momentTimestamp(row.expires_at)
+      if (!normalizeIdentityValue(row.user_id) || deletedIds.has(normalizeIdentityValue(row.id))) return false
+      if (row.expires_at && (!expiry || Date.parse(expiry) <= now)) return false
+      return momentAudienceAllows({ row, identityIds: identity.ids, followRows: follows, chatRows: chats })
+    })
+  }
+
+  if (['post_comments', 'post_likes', 'post_reactions'].includes(tableName)) {
+    const posts = await readTableRows(pool, 'posts', {}, auth)
+    const readableIds = new Set(posts.map(row => normalizeIdentityValue(row.id)))
+    return rows.filter(row => readableIds.has(normalizeIdentityValue(row.post_id || row.postId)))
+  }
   if (tableName === 'profile_views') {
     const ownRows=rows.filter(row=>identityOwnsValue(identity,row.profile_id)&&row.is_deleted!==true&&row.is_deleted!=='true');
     if(!ownRows.length)return [];
@@ -1429,7 +1474,7 @@ async function readTableRows(pool, tableName, query, auth) {
   return applyOrder(filtered, query?.order)
 }
 
-async function storeCompatRow(pool, tableName, row) {
+async function storeCompatRow(pool, tableName, row, options = {}) {
   const cleaned = compactRow(row)
   const id = normalizeId(rowId(cleaned, tableName))
   const stored = {
@@ -1438,14 +1483,18 @@ async function storeCompatRow(pool, tableName, row) {
     created_at: cleaned.created_at || nowIso(),
     updated_at: nowIso(),
   }
-  await pool.query(
+  const guarded = Object.hasOwn(options, 'expectedRow')
+  const result = await pool.query(
     `INSERT INTO fallback_compat_rows(table_name, row_id, row)
      VALUES ($1, $2, $3)
      ON CONFLICT (table_name, row_id)
      DO UPDATE SET row = fallback_compat_rows.row || EXCLUDED.row,
-                   updated_at = NOW()`,
-    [tableName, id, stored],
+                   updated_at = NOW()
+     ${guarded ? 'WHERE fallback_compat_rows.row = $4::jsonb' : ''}
+     RETURNING row`,
+    guarded ? [tableName, id, stored, options.expectedRow] : [tableName, id, stored],
   )
+  if (guarded && !result.rows.length) throw httpError('COMPAT_ROW_CHANGED', 409)
   if (tableName === 'profile_views' && stored.profile_id) {
     const ownerId = normalizeIdentityValue(stored.profile_id)
     const aliases = await pool.query(`SELECT id::text,supabase_user_id::text FROM fallback_users WHERE lower(id::text)=$1 OR lower(supabase_user_id::text)=$1`, [ownerId])
@@ -1453,6 +1502,90 @@ async function storeCompatRow(pool, tableName, row) {
     await Promise.all([...targets].map(target => publishRealtimeEvent(`user:${target}`, { event: 'profile_views_changed' }))).catch(() => {})
   }
   return stored
+}
+
+// Match the identities used by rowId without scanning a truncated read page.
+function collisionRowKeySql(tableName) {
+  const value = field => `NULLIF(btrim(to_jsonb(t)->>'${field}'), '')`
+  const composites = (COMPOSITE_ROW_ID_FIELDS.get(tableName) || []).map(fields =>
+    `CASE WHEN ${fields.map(field => `${value(field)} IS NOT NULL`).join(' AND ')} THEN ` +
+    fields.map(field => `'${field}:' || lower(${value(field)})`).join(" || '|' || ") + ' END')
+  return `COALESCE(${[value('id'), value('uuid'), ...composites,
+    ...['user_id', 'profile_id', 'chat_id', 'room_id', 'slug'].map(value), "''"].join(', ')})`
+}
+
+function nativeCollisionProjection(tableName, row) {
+  // Match the authoritative aliases exposed by readSpecificRows before comparing
+  // client fields with native storage, which uses different column names.
+  if (['groups', 'communities', 'voice_rooms'].includes(tableName)) return { ...row, owner_id: row.creator_id }
+  if (tableName === 'group_messages') return { ...row, group_id: row.room_id }
+  if (tableName === 'community_messages') return { ...row, community_id: row.room_id }
+  return row
+}
+
+// A generic POST can be an upsert. Authorizing only the submitted owner is
+// insufficient: its supplied ID may already belong to someone else in any source.
+async function insertAuthorizedCompatRow(pool, tableName, identity, row, options = {}) {
+  const id = normalizeId(rowId(row, tableName))
+  const key = normalizeIdentityValue(id)
+  const db = await pool.connect()
+  try {
+    await db.query('BEGIN')
+    await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`compat:${tableName}:${key}`])
+    const existingCompat = await db.query(
+      `SELECT row FROM fallback_compat_rows
+       WHERE table_name = $1 AND lower(row_id) = $2 FOR UPDATE`, [tableName, key],
+    )
+    const existing = existingCompat.rows.map(entry => entry.row)
+    // Look up the exact ID, not a bounded discovery page. Do not use a filtered
+    // read here: a hidden foreign row must still prevent projection takeover.
+    const nativeTable = {
+      posts: 'fallback_posts', post_likes: 'fallback_post_reactions',
+      post_reactions: 'fallback_post_reactions',
+      groups: 'fallback_collection_rooms', communities: 'fallback_collection_rooms',
+      group_messages: 'fallback_room_messages', community_messages: 'fallback_room_messages',
+    }[tableName] || `fallback_${tableName}`
+    const nativeComposite = {
+      post_likes: ['post_id', 'user_id'], post_reactions: ['post_id', 'user_id'],
+      voice_room_participants: ['room_id', 'user_id'],
+    }[tableName]
+    for (const [schema, table] of [['supabase_import', tableName], ['public', nativeTable]]) {
+      if (!(await tableExists(db, schema, table))) continue
+      const keys = [collisionRowKeySql(tableName)]
+      if (schema === 'public' && nativeComposite) {
+        keys.push(nativeComposite.map(field => `(to_jsonb(t)->>'${field}')`).join(" || ':' || "))
+      }
+      const matches = await db.query(
+        `SELECT to_jsonb(t) AS row FROM ${quoteIdentifier(schema)}.${quoteIdentifier(table)} t
+         WHERE ${keys.map(expression => `lower(${expression}) = $1`).join(' OR ')}`, [key],
+      )
+      existing.push(...matches.rows.map(entry => schema === 'public' ? nativeCollisionProjection(tableName, entry.row) : entry.row))
+    }
+    for (const previous of existing) {
+      const patch = options.mutationPatch || Object.fromEntries(Object.entries(row)
+        .filter(([field, value]) => !['id', 'uuid'].includes(field) && JSON.stringify(previous[field]) !== JSON.stringify(value)))
+      // prepareInsertRow has already checked both privacy preferences and current
+      // blocks and replaced supplied IDs/clocks. A repeated visit is a server-dated
+      // refresh of that same pair, not permission to PATCH arbitrary history.
+      const sameProfileVisit = tableName === 'profile_views' &&
+        identityOwnsValue(identity, previous.viewer_id) && identityOwnsValue(identity, row.viewer_id) &&
+        normalizeIdentityValue(previous.profile_id) === normalizeIdentityValue(row.profile_id) &&
+        patchOnlyContains(row, new Set(['profile_id', 'viewer_id', 'viewed_at', 'is_deleted']))
+      if (!sameProfileVisit && !(await authorizeMutation(db, tableName, identity, previous, patch, 'patch'))) {
+        throw httpError('ROW_WRITE_NOT_ALLOWED')
+      }
+    }
+    const stored = await storeCompatRow(db, tableName, { ...row, id }, {
+      expectedRow: existingCompat.rows.find(entry => String(rowId(entry.row, tableName)) === id)?.row || null,
+    })
+    await db.query('COMMIT')
+    return stored
+  } catch (error) {
+    await db.query('ROLLBACK').catch(() => {})
+    throw error
+  } finally {
+    db.release()
+  }
 }
 
 async function canAccessChat(pool, identity, chatId) {
@@ -1791,7 +1924,41 @@ function isSafePayoutProviderReference(value) {
   return !cardLike && !cvvLike
 }
 
+const IMMUTABLE_MUTATION_FIELDS = new Set([
+  ...AUTHORED_TABLE_FIELDS.values(),
+  ...Array.from(PRIVATE_OWNER_FIELDS.values()).flat(),
+  ...Array.from(COMPOSITE_ROW_ID_FIELDS.values()).flat(2),
+  'room_kind',
+  'id', 'uuid', 'row_id', 'local_id', 'supabase_user_id',
+  'user_id', 'owner_id', 'author_id', 'creator_id', 'sender_id', 'receiver_id',
+  'actor_id', 'reporter_id', 'recipient_id', 'profile_id', 'viewer_id',
+  'chat_id', 'group_id', 'community_id', 'room_id', 'post_id', 'video_id',
+  'moment_id', 'highlight_id', 'poll_id', 'option_id', 'folder_id', 'pack_id', 'sticker_id',
+  'scope_id', 'scope_type', 'follower_id', 'following_id', 'target_user_id',
+  'reported_user_id', 'content_id', 'created_by', 'created_by_user_id',
+])
+
+function mutationChangesIdentity(row, patch, identity, tableName) {
+  return Object.entries(patch || {}).some(([field, value]) => {
+    const canonical = field.replace(/[A-Z]/g, letter => '_' + letter.toLowerCase())
+    if (!IMMUTABLE_MUTATION_FIELDS.has(canonical)) return false
+    const camel = canonical.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+    const previous = row[field] ?? row[canonical] ?? row[camel]
+    const projectedActorFields = {
+      groups: ['creator_id', 'owner_id'], communities: ['creator_id', 'owner_id'],
+      voice_rooms: ['creator_id', 'owner_id'], sticker_packs: ['owner_id'],
+      messages: ['sender_id'], group_messages: ['sender_id'], community_messages: ['sender_id'],
+      message_polls: ['creator_id'],
+    }[tableName] || []
+    const actorFields = [AUTHORED_TABLE_FIELDS.get(tableName), ...(PRIVATE_OWNER_FIELDS.get(tableName) || []), ...projectedActorFields]
+    // Local and migrated public IDs may name the same authenticated account.
+    if (actorFields.includes(canonical) && identityOwnsValue(identity, previous) && identityOwnsValue(identity, value)) return false
+    return normalizeIdentityValue(value) !== normalizeIdentityValue(previous)
+  })
+}
+
 async function authorizeMutation(pool, tableName, identity, row, patch, action) {
+  if (action === 'patch' && mutationChangesIdentity(row, patch, identity, tableName)) return false
   if (SERVER_MUTATION_ONLY_TABLES.has(tableName)) return false
   if (tableName === 'sticker_packs') {
     return (await canManageStickerPack(pool, identity, row.id)) &&
@@ -2146,7 +2313,7 @@ async function handleInsert(pool, tableName, auth, body) {
       )
       rows.push({ id: `${videoId}:${userId}`, video_id: videoId, user_id: userId })
     } else {
-      const storedRow = await storeCompatRow(pool, tableName, base)
+      const storedRow = await insertAuthorizedCompatRow(pool, tableName, identity, base)
       if (tableName === 'posts') {
         await ingestTrustedContentClassification(pool, 'post', storedRow)
       }
@@ -2265,7 +2432,7 @@ async function handlePatch(pool, tableName, auth, query, body) {
       ])
       rows.push(next)
     } else {
-      const storedRow = await storeCompatRow(pool, tableName, next)
+      const storedRow = await insertAuthorizedCompatRow(pool, tableName, identity, next, { mutationPatch: patch })
       if (tableName === 'posts' || tableName === 'videos') {
         await ingestTrustedContentClassification(pool, tableName === 'posts' ? 'post' : 'video', storedRow)
       }
@@ -6195,6 +6362,7 @@ function registerPostgrestCompatRoutes(app, { pool, authOptional }) {
 module.exports = {
   canReuseCatalogStickerMedia,
   _test: {
+    insertAuthorizedCompatRow,
     profilePatchRow,
     votePollOption,
     buildPollState,
@@ -6234,3 +6402,4 @@ module.exports = {
   reconcileGooglePlayVoidedPurchases,
   registerPostgrestCompatRoutes,
 }
+

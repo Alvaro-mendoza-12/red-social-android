@@ -7747,7 +7747,7 @@ function registerDataRoutes(app, {
         ),
         localFollowsByParticipantIds(pool, targetValues, 20_000),
       ])
-      const follows = [...importedFollows, ...fallbackFollows]
+      const follows = await visibleFollowRows(pool, [...importedFollows, ...fallbackFollows])
       const viewerIsTarget = Array.from(targetIds).some((id) => identity.ids.has(id))
       if (!viewerIsTarget && textOf(rawProfile, ['break_mode', 'breakMode'], 'off').toLowerCase() === 'hidden') {
         return res.status(404).json({ error: 'PROFILE_HIDDEN' })
@@ -7769,10 +7769,10 @@ function registerDataRoutes(app, {
       )
       const posts = (canSeeProfileContent ? [...importedPosts, ...fallbackPosts] : [])
         .filter((row) => rowMatchesAny(row, ['user_id', 'owner_id', 'author_id', 'creator_id', 'profile_id'], targetIds))
-        .filter((row) => {
-          const visibility = textOf(row, ['visibility'], 'public').toLowerCase()
-          return viewerIsTarget || isFollowing || visibility === 'public' || visibility === ''
-        })
+        .filter((row) => feedPostVisible(row, {
+          identityIds: viewerIsTarget ? targetIds : identity.ids,
+          followingIds: isFollowing ? targetIds : new Set(),
+        }))
       const visiblePosts = sortByDateDesc(posts, ['created_at', 'updated_at']).slice(0, 30)
       const postIds = visiblePosts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
       const [fallbackLikes, fallbackComments, importedLikes, importedReactions, importedComments] = await Promise.all([
@@ -15146,3 +15146,4 @@ module.exports = {
   voiceRoomRowsByAliases,
   isStandaloneVoiceRoom,
 }
+

@@ -27,7 +27,13 @@ def normalize_certificate_fingerprint(value: str) -> str:
 
 def is_verified_jarsigner_output(output: str) -> bool:
     lowered = output.lower()
-    return "jar verified." in lowered and "jar is unsigned" not in lowered
+    # jarsigner can exit successfully and print "jar verified." even when an
+    # entry was added after signing. Such a bundle is not fully authenticated.
+    return (
+        "jar verified." in lowered
+        and "jar is unsigned" not in lowered
+        and "unsigned entries" not in lowered
+    )
 
 
 def extract_certificate_fingerprint(output: str) -> str:
@@ -165,3 +171,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

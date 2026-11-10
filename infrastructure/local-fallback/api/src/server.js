@@ -2425,9 +2425,12 @@ app.post('/v1/auth/login', async (req, res, next) => {
 
     let row = rows[0]
     if (!row) {
-      return res.status(404).json({
-        error: 'ACCOUNT_NOT_FOUND',
-        message: 'No existe una cuenta con ese correo. Regístrate para crear una cuenta.',
+      // This hash is a public, non-authenticating dummy at the same bcrypt cost
+      // used for local passwords. Its result never grants a session.
+      await bcrypt.compare(password, '$2b$12$slXNlgXuK3KwoNr/AYdf/eg9.aSn/OENnMj6sdsre4Z6/upKxKr6G')
+      return res.status(401).json({
+        error: 'INVALID_CREDENTIALS',
+        message: 'Correo o contraseña incorrectos. Intenta otra vez o restablece tu contraseña.',
       })
     }
 
@@ -2437,9 +2440,8 @@ app.post('/v1/auth/login', async (req, res, next) => {
       if (!restoredPasswordOk) {
         await recordAudit('auth_migrated_password_verification_failed', row.id, { email })
         return res.status(401).json({
-          error: 'INVALID_PASSWORD',
-          message:
-            'La contraseña actual no coincide. Escríbela correctamente para autorizar el cambio de contraseña.',
+          error: 'INVALID_CREDENTIALS',
+          message: 'Correo o contraseña incorrectos. Intenta otra vez o restablece tu contraseña.',
         })
       }
 
@@ -2456,8 +2458,8 @@ app.post('/v1/auth/login', async (req, res, next) => {
 
     if (!(await bcrypt.compare(password, row.password_hash))) {
       return res.status(401).json({
-        error: 'INVALID_PASSWORD',
-        message: 'Contraseña incorrecta. Intenta otra vez o restablece tu contraseña.',
+        error: 'INVALID_CREDENTIALS',
+        message: 'Correo o contraseña incorrectos. Intenta otra vez o restablece tu contraseña.',
       })
     }
 
@@ -4034,3 +4036,4 @@ async function shutdown(signal) {
 
 process.on('SIGTERM', shutdown)
 process.on('SIGINT', shutdown)
+
