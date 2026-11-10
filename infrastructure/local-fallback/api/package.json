@@ -100,7 +100,8 @@
     "verify:post-remix-e2e": "node scripts/verify-post-remix-e2e.js",
     "verify:semantic-search-e2e": "node scripts/verify-semantic-search-e2e.js",
     "verify:thread-summary-e2e": "node scripts/verify-thread-summary-e2e.js",
-    "verify:webrtc-e2e": "node ../scripts/verify-webrtc-four-flows.js"
+    "verify:webrtc-e2e": "node ../scripts/verify-webrtc-four-flows.js",
+    "test:friendship": "node --test tests/friend-request-transition.postgres.test.js tests/friend-request-compat.postgres.test.js"
   },
   "engines": {
     "node": ">=22"
