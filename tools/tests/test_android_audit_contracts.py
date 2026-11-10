@@ -32,6 +32,13 @@ class AndroidAuditContracts(unittest.TestCase):
         self.assertIn('val connectionSubscriptionGeneration = userSubscriptionGeneration', code)
         self.assertIn('publishAcceptedEnvelope', code)
 
+    def test_live_collectors_register_before_subscribing_to_filtered_events(self):
+        client = source('app/src/main/java/conectate/com/data/localfallback/UbuntuRealtimeClient.kt')
+        live = source('app/src/main/java/conectate/com/data/repository/LiveRepository.kt')
+        self.assertIn('_events.onSubscription(action).filter(::isCurrent)', client)
+        self.assertNotIn('ubuntuRealtimeClient.events.onSubscription', live)
+        self.assertEqual(2, live.count('ubuntuRealtimeClient.eventsOnSubscription'))
+
     def test_profile_save_omits_other_sections(self):
         code = source('app/src/main/java/conectate/com/presentation/profile/EditProfileScreen.kt')
         for field in ('name = trimmedName', 'bio = trimmedBio', 'country = country.trim()', 'city = city.trim()', 'gender = gender'):

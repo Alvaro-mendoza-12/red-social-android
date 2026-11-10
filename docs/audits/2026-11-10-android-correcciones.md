@@ -16,7 +16,7 @@ Base revisada: `455d26999111116f59ae8bd76dae56a5e137aee3`. Destino de integraci�
 
 ## Verificación realizada
 
-- `python -m unittest discover -s tools/tests -p 'test_*.py'`: **35 pruebas aprobadas** en el snapshot Android. Incluye pruebas de herramientas existentes, cinco del bootstrap de CI, diez contratos de fuente y dos de recursos/etiquetas. Los contratos de fuente son controles estáticos, no pruebas de comportamiento Android.
+- `python -m unittest discover -s tools/tests -p 'test_*.py'`: **36 pruebas aprobadas** en el snapshot Android. Incluye pruebas de herramientas existentes, cinco del bootstrap de CI, once contratos de fuente y dos de recursos/etiquetas. Los contratos de fuente son controles estáticos, no pruebas de comportamiento Android.
 - Los siete contratos estáticos iniciales fallaron antes de modificar la implementación y pasaron después. La comprobación del borrador musical y las dos regresiones de fuente de la revisión posterior (reconexión y comparación social) también fallaron antes de corregirlas.
 - Preparación real de un fixture en un directorio temporal; `keytool -list` verificó la clave debug generada. No se utilizaron claves productivas.
 - Se analizaron los tres workflows Android como YAML y los ocho archivos XML de recursos. Se verificó que todos los nuevos recursos referenciados existen en cada idioma y no tienen nombres duplicados.
@@ -32,3 +32,9 @@ Base revisada: `455d26999111116f59ae8bd76dae56a5e137aee3`. Destino de integraci�
 - Configurar el secreto de Firebase del workflow productivo requiere la configuración real del propietario. No se probó ese servicio con el fixture.
 - A3/A4 se corrigen en el bloque separado de backend/herramientas. Al integrar `.github/workflows/android-ci.yml`, conservar el paso de instalación de `signaling-server` del commit `13593bb315ba8bb5e96c7f45af94d4098d4363f7`.
 - Actualizar `docs/oficial/review-coverage.json` con `tools/audit/update_review_coverage.py` desde el checkout completo. No ejecutarlo sobre este snapshot: eliminaría por omisión miles de entradas válidas. Los archivos grandes de UI/VM siguen con lectura parcial; estas correcciones no constituyen una revisión integral.
+
+## Primera compilación real de CI y corrección de consumidores LIVE
+
+La ejecución [42756060269](https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/42756060269), job `129630611346`, superó la preparación de Firebase pero falló en `:app:compileDebugKotlin`. En `LiveRepository.kt:719` y `:3970`, el compilador indicó que `SharedFlow<T>.onSubscription` no se podía aplicar al `Flow` filtrado de `UbuntuRealtimeClient.events`; los demás errores de `payload` y tipos fueron derivados de esos dos receptores.
+
+Se añadió `eventsOnSubscription`, que registra el callback sobre el `SharedFlow` original **antes** del filtro de vigencia. Se adaptaron los dos consumidores LIVE. No se sustituyó por `onStart`, que ejecutaría la suscripción remota antes de registrar al consumidor y podría perder el primer evento de disponibilidad. Dos pruebas JVM adicionales comprueban la recepción de un evento emitido desde el callback y que el callback no puede omitir el filtro de visita de cuenta. Siguen sin ejecutarse localmente; el candidato corregido requiere una nueva compilación CI. El nuevo contrato de fuente falló antes de la corrección y la suite local de 36 comprobaciones Python pasó después. Esto no convierte la compilación fallida anterior en un resultado verde.

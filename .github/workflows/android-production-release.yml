@@ -43,7 +43,7 @@ jobs:
       - name: Set up Node for private-media release gate
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
 
       - name: Verify unauthenticated access to private chat media is denied
         working-directory: infrastructure/local-fallback/api

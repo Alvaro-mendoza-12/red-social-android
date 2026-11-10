@@ -8,6 +8,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -44,6 +46,11 @@ class UbuntuRealtimeClient @Inject constructor() {
     private val subscribedChannels = ConcurrentHashMap.newKeySet<String>()
     private val _events = MutableSharedFlow<UbuntuRealtimeEnvelope>(extraBufferCapacity = 256)
     val events: Flow<UbuntuRealtimeEnvelope> = _events.filter(::isCurrent)
+
+    /** Register on the shared source before subscribing remotely, then filter every delivered event. */
+    fun eventsOnSubscription(
+        action: suspend FlowCollector<UbuntuRealtimeEnvelope>.() -> Unit,
+    ): Flow<UbuntuRealtimeEnvelope> = _events.onSubscription(action).filter(::isCurrent)
 
     @Volatile
     private var socket: WebSocket? = null

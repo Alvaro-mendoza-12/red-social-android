@@ -19,6 +19,7 @@
     "verify:message-markers:local": "node scripts/verify-message-markers-local.js",
     "verify:message-inserts:local": "node scripts/verify-message-insert-local.js && node scripts/verify-message-send-routes-local.js",
     "test": "node --test tests/*.test.js",
+    "test:firebase-dependency-compat": "node --test tests/firebase-dependency-compat.test.js",
     "test:audit-security": "node --test tests/audit-content-privacy.test.js tests/login-response-privacy.test.js tests/compat-insert-ownership.postgres.test.js",
     "pretest:data-routes": "node tests/community-event-worker.test.js",
     "pretest:security": "node tests/distributed-rate-limit.test.js",
@@ -102,7 +103,7 @@
     "verify:webrtc-e2e": "node ../scripts/verify-webrtc-four-flows.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1161.0",
@@ -129,7 +130,10 @@
     "socket.io-client": "^4.8.3"
   },
   "overrides": {
-    "uuid": "^11.1.1"
+    "uuid": "^11.1.1",
+    "google-gax": {
+      "rimraf": "6.1.4"
+    }
   },
   "devDependencies": {
     "jszip": "^3.10.1"

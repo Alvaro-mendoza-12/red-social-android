@@ -20,6 +20,20 @@ test('preview deployments retain their own public origin for pre-promotion check
   expect(publicBackendTransportUrl(productionBackendOrigin, page)).toBe(page)
 })
 
+test('the corrections branch alias keeps login requests on its public HTTPS gateway', () => {
+  const page = 'https://red-social-android-git-correcciones-dot-alvaro-s-projects1.vercel.app'
+  expect(publicBackendTransportUrl(productionBackendOrigin + '/v1/auth/login', page))
+    .toBe('https://red-social-android-git-correcciones-dot-alvaro-s-projects1.vercel.app/v1/auth/login')
+})
+
+test.each([
+  'https://red-social-android-git-unreviewed-alvaro-s-projects1.vercel.app',
+  'https://red-social-android-git-correcciones-dot-another-team.vercel.app',
+  'https://red-social-android-git-correcciones-dot-alvaro-s-projects1.vercel.app.evil.test',
+])('does not extend branch alias trust to %s', page => {
+  expect(publicBackendTransportUrl(productionBackendOrigin, page)).toBe(productionBackendOrigin)
+})
+
 test.each(['https://attacker.vercel.app', 'http://red-social-android.vercel.app', 'https://red-social-android.vercel.app.evil.test', 'https://red-social-android.vercel.app:444'])('does not install a proxy transport on %s', page => {
   expect(publicBackendTransportUrl(productionBackendOrigin, page)).toBe(productionBackendOrigin)
 })

@@ -1,6 +1,8 @@
 package conectate.com.data.localfallback
 
 import conectate.com.test.UnitTestApplication
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.collect
@@ -26,6 +28,28 @@ class UbuntuRealtimeAdmissionTest {
     private fun reconnectWithoutCredentials(client: UbuntuRealtimeClient) {
         // Exercise the production reconnect path. With a blank access token it opens no socket.
         client.javaClass.getDeclaredMethod("reconnect").apply { isAccessible = true }.invoke(client)
+    }
+
+    @Test fun subscriptionHookRunsAfterRegistrationSoReadinessCannotBeLost() = runTest {
+        val client = UbuntuRealtimeClient()
+        val received = async(UnconfinedTestDispatcher(testScheduler)) {
+            client.eventsOnSubscription {
+                client.publishAcceptedEnvelope(envelope("subscription_ready"))
+            }.first()
+        }
+        runCurrent()
+        assertTrue("The hook must run after the SharedFlow collector is registered", received.isCompleted)
+        assertEquals("subscription_ready", received.await().event)
+    }
+
+    @Test fun subscriptionHookCannotBypassAccountVisitFiltering() = runTest {
+        val client = UbuntuRealtimeClient()
+        client.clearUserSubscriptions()
+        val received = client.eventsOnSubscription {
+            emit(envelope("stale"))
+            emit(envelope("current", subscription = 1L))
+        }.first()
+        assertEquals("current", received.event)
     }
 
     @Test fun anAcceptedEnvelopeRemainsCurrentAfterSameSessionReconnect() {

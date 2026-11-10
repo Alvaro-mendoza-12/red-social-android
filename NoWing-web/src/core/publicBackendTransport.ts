@@ -4,7 +4,7 @@ export const productionBackendOrigin = 'https://conectate.tail9b267c.ts.net'
 export function publicBackendTransportUrl(value: string, pageOrigin = typeof window === 'undefined' ? '' : window.location.origin): string {
   try {
     const upstream = new URL(value), page = new URL(pageOrigin)
-    const official = ['red-social-android.vercel.app', 'red-social-android-alvaro-s-projects1.vercel.app', 'red-social-android-git-main-alvaro-s-projects1.vercel.app'].includes(page.hostname)
+    const official = ['red-social-android.vercel.app', 'red-social-android-alvaro-s-projects1.vercel.app', 'red-social-android-git-main-alvaro-s-projects1.vercel.app', 'red-social-android-git-correcciones-dot-alvaro-s-projects1.vercel.app'].includes(page.hostname)
       || /^red-social-android-[a-z0-9]+-alvaro-s-projects1\.vercel\.app$/.test(page.hostname)
     // Production's voice setting still uses the Funnel's dedicated TLS port.
     // The public gateway serves the same voice routes on its standard HTTPS origin.
