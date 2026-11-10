@@ -78,14 +78,6 @@ export function RegisterPage() {
         `accent-${webPreferences.accentTheme}`,
       ].join(' ')}
     >
-      <div className="auth-bg-scene" aria-hidden="true">
-        <span className="auth-bg-card card-one">Chats</span>
-        <span className="auth-bg-card card-two">Perfil</span>
-        <span className="auth-bg-card card-three">QR</span>
-        <span className="auth-bg-line line-one" />
-        <span className="auth-bg-line line-two" />
-      </div>
-
       <div className="auth-layout-grid auth-layout-single">
         <form className="auth-card auth-login-card" onSubmit={handleSubmit}>
           <div className="section-stack auth-head-copy">
