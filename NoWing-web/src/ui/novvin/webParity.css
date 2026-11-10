@@ -314,3 +314,24 @@
 .profile-name-with-marks { display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
 .message-delivery-error { padding:8px 10px;border-radius:10px;background:var(--surface-alt,#292a33);color:var(--text-primary,#fff);max-width:min(30ch,100%);font-size:.78rem; }
 .sticker-bubble:has(.message-delivery-error) { max-width:min(280px,80%); }
+
+/* Social visual hierarchy follows the user's existing theme and accent. */
+.social-intro { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; padding: 22px 24px; border: 1px solid var(--outline); border-radius: 20px; background: linear-gradient(115deg,var(--surface-container),var(--surface)); }
+.social-intro > div { min-width: 0; }
+.social-intro .social-eyebrow { font-size: .62rem; font-weight: 700; letter-spacing: .12em; color: var(--foreground); margin-bottom: 10px; }
+.social-intro h2 { font-size: clamp(1.4rem,2.5vw,1.85rem); line-height: 1.2; letter-spacing: -.04em; }
+.social-intro p:last-child { margin-top: 8px; color: var(--secondary-text); font-size: .82rem; line-height: 1.6; }
+.social-intro-mark { color: var(--primary); font-size: 3.5rem; line-height: 1; flex-shrink: 0; }
+.social-page .social-tab-bar { padding: 5px; gap: 5px; border: 1px solid var(--divider); border-radius: 16px; margin-bottom: 10px; }
+.social-page .social-tab-bar .chip-btn { min-height: 44px; padding-inline: 10px; border-radius: 11px; font-size: .88rem; }
+.social-page .social-tab-bar .chip-btn.active { background: var(--surface-container); color: var(--foreground); box-shadow: inset 0 -2px var(--primary); }
+.social-page .social-tab-bar .chip-btn.active:after { content: none; }
+.social-page .social-tab-bar .chip-btn:hover { background: var(--surface-raised); }
+.social-page .feed-card { border: 1px solid var(--divider); }
+@media(max-width:799px) {
+  .social-intro { margin: 12px 12px 14px; padding: 18px; border-radius: 16px; }
+  .social-page .social-tab-bar { margin-inline: 12px; }
+  .social-intro-mark { font-size: 2.7rem; }
+}
+@media(max-width:380px) { .social-intro-mark { display: none; } }
+@media(forced-colors:active) { .social-page .social-tab-bar .chip-btn.active { outline: 2px solid Highlight; outline-offset: -2px; } }

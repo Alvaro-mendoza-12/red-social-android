@@ -25,7 +25,11 @@ export function SocialPage() {
 
   return (
     <section className="social-page">
-      <div className="social-tab-bar">
+      <header className="social-intro">
+        <div><p className="social-eyebrow">CONVERSA · COMPARTE · DESCUBRE</p><h2>Tu mundo, en común.</h2><p>Publicaciones, momentos y rondas de tu comunidad.</p></div>
+        <span className="social-intro-mark" aria-hidden="true">✳</span>
+      </header>
+      <div className="social-tab-bar" role="group" aria-label="Contenido de Social">
         <button
           type="button"
           className={activeTab === 'posts' ? 'chip-btn active' : 'chip-btn'}

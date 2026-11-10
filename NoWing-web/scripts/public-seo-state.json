@@ -3,8 +3,8 @@
   "routes": {
     "/": {
       "file": "index.html",
-      "contentHash": "0ffc0bf9b7bf7d5a5be099dea3a69c8c593107ebedbf6af17045757285ca350b",
-      "lastmod": "2026-10-26"
+      "contentHash": "5874f0774193e8a3fe89c65b76d7ffedc86b5b41894277a1582bb7b4f9f62f54",
+      "lastmod": "2026-11-10"
     },
     "/que-es-novvin": {
       "file": "que-es-novvin.html",

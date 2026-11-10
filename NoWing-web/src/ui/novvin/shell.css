@@ -285,3 +285,53 @@
     width: 56px;
   }
 }
+
+/* Navigation keeps the same destinations across phone, tablet and desktop. */
+.novvin-navigation-brand,
+.novvin-navigation-tools { display: none; }
+.novvin-topbar { border-bottom: 1px solid var(--divider); }
+.novvin-nav-item { border-radius: 14px; }
+.novvin-nav-item:hover { background: var(--surface-raised); }
+.novvin-nav-item:focus-visible { outline-offset: -3px; }
+@media(min-width:1100px) {
+  .novvin-app { --desktop-nav-width: 84px; padding-bottom: 0; }
+  .novvin-app:not(.route-conversation),.route-conversation { padding-left: var(--desktop-nav-width); }
+  .novvin-bottom-nav,.route-conversation .novvin-bottom-nav {
+    width: var(--desktop-nav-width);
+    padding: 24px 8px 20px;
+    gap: 12px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .novvin-bottom-nav:before { content: none; }
+  .novvin-navigation-brand { display: flex; align-items: center; justify-content: center; gap: 12px; padding-bottom: 24px; flex-shrink: 0; }
+  .novvin-navigation-brand img { width: 40px; height: 40px; background: white; border-radius: 13px; }
+  .novvin-navigation-brand > span { display: none; }
+  .novvin-nav-item { flex-shrink: 0; min-height: 64px; }
+  .novvin-navigation-tools { display: grid; gap: 10px; padding-top: 28px; margin-top: auto; flex-shrink: 0; }
+  .novvin-navigation-tools a,.novvin-navigation-tools button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 46px; padding: 12px 8px; border-radius: 14px; }
+  .novvin-navigation-tools svg { width: 21px; height: 21px; }
+  .novvin-navigation-tools span { display: none; }
+  .novvin-navigation-create { background: var(--primary); color: var(--on-primary); }
+  .novvin-navigation-explore { color: var(--foreground); border: 1px solid var(--outline); }
+  .novvin-navigation-explore:hover { background: var(--surface-raised); }
+}
+@media(min-width:1440px) {
+  .novvin-app { --desktop-nav-width: 216px; }
+  .novvin-bottom-nav,.route-conversation .novvin-bottom-nav { padding-inline: 16px; gap: 8px; }
+  .novvin-navigation-brand { justify-content: flex-start; padding: 2px 4px 30px; }
+  .novvin-navigation-brand > span { display: block; font-size: 1.4rem; font-weight: 750; letter-spacing: -.04em; }
+  .novvin-navigation-brand small { display: block; font-weight: 400; font-size: .68rem; letter-spacing: 0; margin-top: 5px; }
+  .novvin-nav-item { flex-direction: row; justify-content: flex-start; min-height: 56px; gap: 12px; padding: 8px 12px; font-size: .9rem; font-weight: 500; }
+  .novvin-nav-pill { width: 34px; height: 34px; flex-shrink: 0; }
+  .novvin-nav-item.active { background: var(--surface-container); box-shadow: inset 3px 0 var(--primary); color: var(--foreground); font-weight: 700; }
+  .novvin-nav-item.active .novvin-nav-pill { background: transparent; color: var(--primary); }
+  .novvin-navigation-tools span { display: inline; font-size: .82rem; font-weight: 600; }
+  .novvin-nav-item .nav-badge { right: -5px; top: -7px; }
+  .novvin-nav-item .nav-dot { right: -1px; }
+}
+@media(forced-colors:active) {
+  .novvin-nav-item.active { border: 2px solid Highlight; }
+  .novvin-navigation-create { border: 1px solid ButtonText; }
+}

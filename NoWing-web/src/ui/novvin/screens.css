@@ -1618,8 +1618,8 @@
     height: calc(100dvh - var(--novvin-system-notice-height, 0px) - 64px);
   }
   .route-videos .novvin-bottom-nav {
-    background: #111114;
-    color: #fff;
+    background: var(--surface);
+    color: var(--foreground);
   }
   .reel-feed-item {
     height: calc(100% - 28px);

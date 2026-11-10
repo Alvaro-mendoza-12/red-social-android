@@ -2,7 +2,7 @@ import { PublicFooter, PublicGuideNavigation, PublicHeader } from './PublicNavig
 
 export function PublicHome() {
   return (
-    <div className="public-home">
+    <div className="public-home public-home-refresh">
       <a className="public-skip-link" href="#contenido">Ir al contenido</a>
       <PublicHeader />
       <main id="contenido">
@@ -10,9 +10,9 @@ export function PublicHome() {
           <div>
             <p className="public-home-eyebrow">TU GENTE. TU MUNDO.</p>
             <h1>
-              Novvin. Conversa,
+              Novvin. Tu gente,
               <br />
-              comparte y descubre.
+              <span>más cerca.</span>
             </h1>
             <p>
               Novvin es una red social para conectar con tu gente. Envía mensajes, comparte fotos
@@ -31,12 +31,26 @@ export function PublicHome() {
             </a>
             <a className="public-home-download" href="/descargar">También disponible para Android →</a>
           </div>
-          <div className="public-home-visual" aria-hidden="true">
-            <img src="/novvin-logo.png" alt="" width="220" height="220" />
-            <span>Mensajes · Videos · Social</span>
-          </div>
+          <figure className="public-conversation-preview" aria-label="Una conversación en Novvin, con datos de ejemplo">
+            <div className="public-preview-topline"><span className="public-preview-dot" aria-hidden="true" />Un espacio para tu gente</div>
+            <div className="public-preview-conversation">
+              <div className="public-preview-heading">
+                <span className="public-preview-avatar" aria-hidden="true">N</span>
+                <div><strong>Nuestro próximo plan</strong><span>Una conversación para compartir</span></div>
+              </div>
+              <div className="public-preview-bubbles">
+                <p>¿Compartimos las fotos del viaje?</p>
+                <p>¡Sí! Las dejo en el grupo.<span aria-hidden="true"> ✨</span></p>
+              </div>
+              <div className="public-preview-topics" aria-hidden="true"><span>Fotos</span><span>Notas de voz</span><span>Ideas</span></div>
+              <p className="public-preview-signoff">Las mejores historias<br /><strong>empiezan con un hola.</strong></p>
+            </div>
+            <figcaption>Vista ilustrativa · datos de ejemplo</figcaption>
+          </figure>
         </section>
-        <section className="public-home-features" aria-label="Qué puedes hacer en Novvin">
+        <section className="public-home-feature-section" aria-labelledby="public-features-title">
+          <div className="public-section-heading"><p className="public-home-eyebrow">A TU MANERA</p><h2 id="public-features-title">Elige cómo conectar</h2><p>Una conversación, algo que compartir o un nuevo descubrimiento.</p></div>
+          <div className="public-home-features">
           <article>
             <img className="public-feature-preview" src="/images/novvin-chats.png" alt="Vista ilustrativa de los chats de Novvin con mensajes y fotos de ejemplo" width="1200" height="800" loading="lazy" decoding="async" />
             <span>01</span>
@@ -64,6 +78,7 @@ export function PublicHome() {
             </p>
             <a href="/explore/moments">Ver momentos →</a>
           </article>
+          </div>
         </section>
         <PublicGuideNavigation />
         <section className="public-home-faq">

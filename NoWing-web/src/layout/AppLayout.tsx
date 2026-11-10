@@ -26,8 +26,8 @@ import {
   VideoIcon,
   Mic,
 } from 'lucide-react'
-import { SafeAvatar } from '../components/SafeAvatar'
-import { NOVVIN_TABS, primarySection, openProfileVisits } from '../ui/novvin/navigation'
+import { primarySection, openProfileVisits } from '../ui/novvin/navigation'
+import { AppNavigation } from '../ui/novvin/AppNavigation'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   type DeferredMutation,
@@ -73,7 +73,6 @@ type NavIconName =
   | 'settings'
   | 'games'
 
-const primaryNavItems = NOVVIN_TABS
 const secondaryNavItems = [
   { to: '/app/assistant', label: 'Asistente de Novvin', icon: 'messages' as NavIconName },
   { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
@@ -105,7 +104,6 @@ const secondaryNavItems = [
 ]
 
 const localReadStorageKey = 'conectate-web-chat-last-read'
-const mobileNavItems = primaryNavItems
 
 type IncomingCallInvite = CallInvitePayload & {
   receivedAt: number
@@ -1099,39 +1097,13 @@ export function AppLayout() {
           </div>
         </main>
 
-        <nav className="novvin-bottom-nav" aria-label="Navegación principal">
-          {mobileNavItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={activeSection === item.to ? 'novvin-nav-item active' : 'novvin-nav-item'}
-              aria-current={activeSection === item.to ? 'page' : undefined}
-            >
-              <span className="novvin-nav-pill">
-                {item.icon === 'profile' ? (
-                  <SafeAvatar
-                    url={String(user?.user_metadata?.avatar_url || '')}
-                    name={String(user?.user_metadata?.display_name || 'Perfil')}
-                    size="sm"
-                    className="novvin-nav-avatar"
-                  />
-                ) : (
-                  <ShellIcon name={item.icon} />
-                )}
-                {(navBadgeByPath[item.to] || 0) > 0 ? (
-                  item.icon === 'messages' ? (
-                    <span className="nav-badge">
-                      {navBadgeByPath[item.to] > 9 ? '9+' : navBadgeByPath[item.to]}
-                    </span>
-                  ) : (
-                    <span className="nav-dot" />
-                  )
-                ) : null}
-              </span>
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
+        <AppNavigation
+          activeSection={activeSection}
+          badges={navBadgeByPath}
+          avatarUrl={String(user?.user_metadata?.avatar_url || '')}
+          displayName={String(user?.user_metadata?.display_name || 'Perfil')}
+          menuOpen={isMobileExploreOpen && menuMode === 'navigation'}
+        />
         {isMobileExploreOpen && (
           <div
             className="mobile-explore-backdrop"
