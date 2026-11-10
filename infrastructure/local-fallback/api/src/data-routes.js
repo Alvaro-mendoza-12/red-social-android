@@ -14135,14 +14135,22 @@ function registerDataRoutes(app, {
       const identity = userIdentity(user)
       const targetUserId = normalizeId(req.params.targetUserId)
       if (!targetUserId) return res.status(400).json({ error: 'TARGET_USER_REQUIRED' })
+      const { rows: targetUsers } = await pool.query(
+        `SELECT id::text, supabase_user_id::text FROM fallback_users
+         WHERE lower(id::text) = $1 OR lower(supabase_user_id::text) = $1
+         LIMIT 2`,
+        [targetUserId],
+      )
+      if (targetUsers.length > 1) return res.status(409).json({ error: 'FRIEND_TARGET_AMBIGUOUS' })
+      const targetIds = targetUsers[0] ? userIdentity(targetUsers[0]).values : [targetUserId]
       const { rows } = await pool.query(
         `DELETE FROM fallback_friends
          WHERE (
-           (lower(sender_id) = $1 AND lower(receiver_id) = $2)
-           OR (lower(sender_id) = $2 AND lower(receiver_id) = $1)
+           (lower(sender_id) = ANY($1::text[]) AND lower(receiver_id) = ANY($2::text[]))
+           OR (lower(sender_id) = ANY($2::text[]) AND lower(receiver_id) = ANY($1::text[]))
          )
          RETURNING id::text, sender_id, receiver_id, status, created_at`,
-        [identity.displayUserId, targetUserId],
+        [identity.values, targetIds],
       )
       res.json({ items: rows.map(normalizeImportedRow), deleted: rows.length })
     } catch (error) {

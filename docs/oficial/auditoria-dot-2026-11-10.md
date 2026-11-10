@@ -93,3 +93,11 @@ Se reprodujo un 404 al aceptar una solicitud nativa cuyo receiver_id era el ID l
 Las pruebas cubren aceptación y rechazo, reintento, respuesta contraria, cancelación por ambos participantes, emisor intentando responder su propia solicitud, actor ajeno y privacidad de la consulta posterior sobre una amistad aceptada. Se mantiene el estado pending como condición atómica y accepted protegido frente a DELETE tardío. La suite de API pasó 1.071 pruebas/16 omitidas; el grupo SQL pasa ocho casos. La revisión independiente no encontró bloqueantes.
 
 Este cambio se limita a PATCH/DELETE de solicitudes por ID. Unfriend por usuario todavía requiere revisar resolución de los alias del actor y del destinatario; el P1 de cancelaciones importadas sigue abierto. No se aplicaron migraciones ni despliegues. En el run de `2401e2e3`, backend-contracts ya terminó aprobado después de corregir la dependencia y añadir las regresiones; esto no certifica el resto de jobs ni el siguiente commit.
+
+## Eliminación explícita de amistad y alias
+
+Se reprodujo que unfriend devolvía éxito con cero eliminaciones cuando la fila nativa conservaba IDs locales. La ruta por usuario ahora usa los alias verificados del actor y resuelve el destinatario exclusivamente por ID local o migrado exacto. No busca por correo ni nombre. Si no existe la cuenta, mantiene el ID exacto para permitir limpiar una relación histórica. Si el identificador coincide con dos cuentas distintas, devuelve 409 `FRIEND_TARGET_AMBIGUOUS` antes de borrar nada.
+
+Pruebas SQL: ambos alias del destinatario, ambos sentidos de la relación, actor ajeno sin eliminación, repetición con cero cambios, destino inexistente, histórico sin cuenta y colisión cruzada de IDs que conserva la fila. El DELETE sigue exigiendo actor y destinatario en los dos extremos. Se validó la transición roja→verde tanto del defecto de alias como de la ambigüedad.
+
+Este cambio no elimina importados ni resuelve su persistencia de permisos. Tampoco establece orden temporal entre unfriend por pareja y una nueva invitación concurrente; eso pertenece al diseño de ciclos de solicitud pendiente. No se modifica la vinculación histórica de cuentas ni se despliega la API.

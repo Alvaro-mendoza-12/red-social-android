@@ -118,6 +118,31 @@ async function verifyFriendRequestTransitions(db) {
   await handlers.get('delete /v1/data/friends/users/:targetUserId')({auth:{sub:'receiver-local'},params:{targetUserId:'sender'}},unfriend,error=>{throw error})
   assert.equal(unfriend.statusCode,200)
   assert.ok(unfriend.body.deleted>0)
+  const removeFriend = async (targetAlias,actor='receiver-local') => {
+    const result={statusCode:200,status(code){this.statusCode=code;return this},json(body){this.body=body;return this}}
+    await handlers.get('delete /v1/data/friends/users/:targetUserId')({auth:{sub:actor},params:{targetUserId:targetAlias}},result,error=>{throw error})
+    return result
+  }
+  for (const targetAlias of ['sender','sender-local']) for (const reverse of [false,true]) {
+    const id = `unfriend-local-${targetAlias}-${reverse}`
+    const participants=reverse?['receiver-local','sender-local']:['sender-local','receiver-local']
+    await db.query("INSERT INTO fallback_friends(id,sender_id,receiver_id,status) VALUES($1,$2,$3,'accepted')",[id,...participants])
+    assert.equal((await removeFriend(targetAlias,'stranger')).body.deleted,0,'unrelated actor cannot unfriend another pair')
+    const result=await removeFriend(targetAlias)
+    assert.equal(result.statusCode,200)
+    assert.ok(result.body.deleted>0,'explicit unfriend must resolve both participants verified aliases')
+    assert.equal((await db.query('SELECT id FROM fallback_friends WHERE id=$1',[id])).rows.length,0)
+    assert.equal((await removeFriend(targetAlias)).body.deleted,0,'repeat stays idempotent')
+  }
+  await db.query("INSERT INTO fallback_friends(id,sender_id,receiver_id,status) VALUES('orphan-target','receiver-local','historical-user','accepted')")
+  assert.equal((await removeFriend('unknown-user')).body.deleted,0)
+  assert.equal((await removeFriend('historical-user')).body.deleted,1,'exact historical target without account row remains removable')
+  await db.query("INSERT INTO fallback_users(id,supabase_user_id) VALUES('sender','other-account')")
+  await db.query("INSERT INTO fallback_friends(id,sender_id,receiver_id,status) VALUES('ambiguous-target','receiver-local','sender-local','accepted')")
+  const ambiguous=await removeFriend('sender')
+  assert.equal(ambiguous.statusCode,409,'ambiguous persisted alias must fail closed')
+  assert.equal(ambiguous.body.error,'FRIEND_TARGET_AMBIGUOUS')
+  assert.equal((await db.query("SELECT id FROM fallback_friends WHERE id='ambiguous-target'")).rows.length,1)
   await db.query('DROP TABLE fallback_friends')
   await db.query('DROP TABLE fallback_users')
 }

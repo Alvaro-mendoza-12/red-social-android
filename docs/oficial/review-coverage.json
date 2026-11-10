@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-10T22:50:25.299904+00:00",
-  "baseCommit": "2401e2e321e04e75d370cca9d9ae46ee56d64c3d",
+  "generatedAtUtc": "2026-11-10T22:54:24.676999+00:00",
+  "baseCommit": "983efac83f5801d806c2d563e824e97166a53731",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -19973,7 +19973,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "6735ede2c6a63c50e3a898f041bad9d88097b20c",
+      "gitBlobId": "16606595fc530d9370e44e93052c5e159ca5396d",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -21299,7 +21299,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "078a168e5acb7f95f7c9517c56da29bddc033a79",
+      "gitBlobId": "bd28b7d9488447902badd0a81dd58eb8d0da4133",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -22553,7 +22553,7 @@
     {
       "file": "infrastructure/local-fallback/api/tests/friend-request-transition.postgres.test.js",
       "phase": "server",
-      "gitBlobId": "5f539f01d143ebdd8722cf99a8af4212b081299f",
+      "gitBlobId": "80acaf9447f7619a07c15ea7751dd9d4685fd98d",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
