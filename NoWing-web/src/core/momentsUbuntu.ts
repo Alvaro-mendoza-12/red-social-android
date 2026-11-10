@@ -1,3 +1,4 @@
+import type { StorageReadIdentity } from './media/storageReadSession'
 import { fallbackApiJson } from './auth/fallbackAuth'
 import type { MomentItem } from '../features/moments/momentsData'
 import { mapMomentOverlay, mapMomentSound, momentDuration, type MomentOverlay } from '../features/moments/momentMusic'
@@ -56,9 +57,11 @@ export async function publishUbuntuMoment(input: {
   musicFields?: Record<string, unknown>
   overlay?: MomentOverlay
   expectedAccountId?: string
+  expectedIdentity?: StorageReadIdentity
 }) {
   return fallbackApiJson('/v1/data/moments', {
     method: 'POST',
+    ...(input.expectedIdentity ? { expectedIdentity: input.expectedIdentity } : {}),
     ...(input.expectedAccountId ? { expectedAccountId: input.expectedAccountId } : {}),
     body: JSON.stringify({
       mediaUrl: input.mediaUrl,

@@ -1,3 +1,4 @@
+import { getStorageReadIdentity, type StorageReadIdentity } from '../../core/media/storageReadSession'
 import { isFallbackAuthConfigured, readFallbackSession } from '../../core/auth/fallbackAuth'
 import { deleteUbuntuMoment, fetchUbuntuMomentsFeed, publishUbuntuMoment, recordUbuntuMomentView } from '../../core/momentsUbuntu'
 import { getDataClient } from '../../core/ubuntuDataClient'
@@ -196,7 +197,14 @@ export async function publishMoment(input: {
   music?: MomentMusicSelection
   overlay?: MomentOverlay
   expectedAccountId?: string
+  expectedIdentity?: StorageReadIdentity
 }): Promise<void> {
+  const identity = input.expectedIdentity ?? getStorageReadIdentity()
+  const guardSession = () => {
+    if (!identity.accountId || identity.provider === 'guest' || identity !== getStorageReadIdentity()) throw new Error('Tu sesión cambió. Abre de nuevo el editor para publicar.')
+    if (input.expectedAccountId && identity.accountId !== input.expectedAccountId) throw new Error('Tu cuenta cambió. Abre de nuevo el editor para publicar.')
+  }
+  guardSession()
   const mediaType = input.file.type.startsWith('video/') ? 'video' : 'image'
   const path = `moments/${Date.now()}_${mediaType}_${input.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`
 
@@ -208,10 +216,12 @@ export async function publishMoment(input: {
     if (input.expectedAccountId && profileAccount !== input.expectedAccountId) throw new Error('Tu cuenta cambió. Abre de nuevo el editor para publicar.')
     let audioUrl: string | undefined
     if (input.music?.track.localFile) {
-      const audio = await uploadFallbackFile('community-music', input.music.track.localFile, `moments/music/${crypto.randomUUID()}`, account)
+      const audio = await uploadFallbackFile('community-music', input.music.track.localFile, `moments/music/${crypto.randomUUID()}`, account, undefined, identity)
+      guardSession()
       audioUrl = audio.publicUrl || audio.url
     }
-    const uploaded = await uploadFallbackFile('moment-media', input.file, path, account)
+    const uploaded = await uploadFallbackFile('moment-media', input.file, path, account, undefined, identity)
+    guardSession()
     await publishUbuntuMoment({
       mediaUrl: uploaded.publicUrl || uploaded.url,
       mediaType,
@@ -223,7 +233,9 @@ export async function publishMoment(input: {
       musicFields: musicPublishFields(input.music, momentDuration(mediaType, input.displayDurationMs), audioUrl),
       overlay: input.overlay,
       expectedAccountId: account,
+      expectedIdentity: identity,
     })
+    guardSession()
     return
   }
 
@@ -231,6 +243,7 @@ export async function publishMoment(input: {
   if (!client) throw new Error('Cliente de datos no configurado')
   const { error: uploadError } = await client.storage.from('moment-media').upload(path, input.file)
   if (uploadError) throw uploadError
+  guardSession()
   const { data } = client.storage.from('moment-media').getPublicUrl(path)
   const mediaUrl = String((data as { publicUrl?: string })?.publicUrl ?? '')
   const { error: insertError } = await client.from('moments').insert({
@@ -242,4 +255,5 @@ export async function publishMoment(input: {
     allow_replies: input.allowReplies,
   })
   if (insertError) throw insertError
+  guardSession()
 }

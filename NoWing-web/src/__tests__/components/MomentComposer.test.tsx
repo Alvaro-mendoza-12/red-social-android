@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 import { MomentComposer } from '../../features/moments/MomentComposer'
 import { publishMoment } from '../../features/moments/momentsData'
 import { searchMomentMusic } from '../../features/moments/momentMusic'
@@ -10,11 +11,12 @@ jest.mock('../../features/moments/momentMusic', () => ({ ...jest.requireActual('
 jest.mock('../../components/StreamingMedia', () => { const React = jest.requireActual('react'); return { StreamingAudio: React.forwardRef((p: object, ref: unknown) => React.createElement('audio', { ...p, ref })), StreamingVideo: React.forwardRef((p: object, ref: unknown) => React.createElement('video', { ...p, ref })), StreamingImage: (p: object) => React.createElement('img', p) } })
 const publish = publishMoment as jest.Mock, search = searchMomentMusic as jest.Mock
 beforeEach(() => {
+  invalidateStorageReadIdentity(); updateStorageReadIdentity('owner-a', 'fallback')
   publish.mockReset(); publish.mockResolvedValue(undefined); search.mockReset(); search.mockResolvedValue({ tracks: [], nextCursor: '' })
   Object.assign(URL, { createObjectURL: jest.fn(() => 'blob:local-photo'), revokeObjectURL: jest.fn() })
   jest.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
 })
-afterEach(() => jest.restoreAllMocks())
+afterEach(() => { act(() => invalidateStorageReadIdentity()); jest.restoreAllMocks() })
 
 test.each(['button', 'escape', 'backdrop'])('warns before discarding a draft through %s', async method => {
   const close = jest.fn(), confirm = jest.spyOn(window, 'confirm').mockReturnValue(false)

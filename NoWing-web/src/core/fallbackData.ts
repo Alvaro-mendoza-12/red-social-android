@@ -1,3 +1,4 @@
+import type { StorageReadIdentity } from './media/storageReadSession'
 import type { ImportedSticker } from './webOutbox'
 import { cachedConversation, cacheConversation, cancelPendingWebMessage, editPendingWebMessage, isTransientOutboxError, outboxOwner, pendingConversationMessages, sendDurableWebMessage, stageOfflineChatAttachment } from './webOutbox'
 import { fallbackApiJson } from './auth/fallbackAuth'
@@ -786,6 +787,7 @@ export async function uploadFallbackFile(
   path?: string,
   expectedAccountId?: string,
   favoriteSticker?: ImportedSticker,
+  expectedIdentity?: StorageReadIdentity,
 ): Promise<FallbackStorageObject> {
   if (['chat-media', 'group-media', 'community-media'].includes(bucket)) {
     return stageOfflineChatAttachment(bucket, file, path, favoriteSticker)
@@ -799,6 +801,7 @@ export async function uploadFallbackFile(
     method: 'POST',
     body: formData,
     signal: AbortSignal.timeout(300000),
+    ...(expectedIdentity ? { expectedIdentity } : {}),
     ...(expectedAccountId ? { expectedAccountId } : {}),
   })
   return payload.object
