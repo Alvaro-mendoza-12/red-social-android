@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-09T05:03:08.418948+00:00",
-  "baseCommit": "3906a8c1e64a5d881723ae188a48b82d0325dabd",
+  "generatedAtUtc": "2026-11-10T22:14:00.469654+00:00",
+  "baseCommit": "11902007b225cb7b0f1b024e966680136fc63b87",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,35 +10,35 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3680,
-    "code-read": 456,
-    "partial": 93
+    "pending": 3756,
+    "code-read": 462,
+    "partial": 81
   },
   "countsByPhase": {
     "android": {
-      "pending": 1540,
-      "code-read": 389,
-      "partial": 55
+      "pending": 1563,
+      "code-read": 386,
+      "partial": 48
     },
     "documentation": {
-      "pending": 559,
-      "code-read": 7,
+      "pending": 569,
+      "code-read": 8,
       "partial": 7
     },
     "server": {
-      "pending": 863,
+      "pending": 869,
       "code-read": 37,
-      "partial": 14
+      "partial": 12
     },
     "tooling-and-other": {
-      "pending": 155,
-      "code-read": 10,
-      "partial": 7
+      "pending": 173,
+      "partial": 6,
+      "code-read": 9
     },
     "web": {
-      "partial": 10,
-      "pending": 563,
-      "code-read": 13
+      "partial": 8,
+      "pending": 582,
+      "code-read": 22
     }
   },
   "files": [
@@ -63,27 +63,25 @@
     {
       "file": ".github/workflows/android-ci.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "df2e3c5d48df7bfb13737092f3b65df916b33580",
+      "gitBlobId": "38501cd8f0cec9c0f34ad7426e945cff7c1213c0",
       "reviewStatus": "pending"
     },
     {
       "file": ".github/workflows/android-instrumented-smoke.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "484e244ee7825db4774e71783196dc4a099cfe70",
+      "gitBlobId": "2ad7dd409bc84706f9a55d0fc7c319161858a136",
       "reviewStatus": "pending"
     },
     {
       "file": ".github/workflows/android-production-release.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "618668405b356bd61bbf467e45c1f69d3f83eccc",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "ea92371402184043ffbd03a9c234c07307c8e658",
+      "reviewStatus": "pending"
     },
     {
       "file": ".github/workflows/manual-build.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "34f787e7172761498508d74da5912076302867da",
+      "gitBlobId": "d7def20ca601fba85392ee1129d4eb141833b1df",
       "reviewStatus": "pending"
     },
     {
@@ -255,13 +253,13 @@
     {
       "file": "NoWing-web/middleware.ts",
       "phase": "web",
-      "gitBlobId": "4ec779aa429fdb797d49b915b76f7c693d27df4d",
+      "gitBlobId": "0f9154a0d40bc4e6b8cc09abd2838d73ac705b26",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/package-lock.json",
       "phase": "web",
-      "gitBlobId": "fa3db8100e746d18109a20bd9f3300a585f6c66f",
+      "gitBlobId": "27aafd29d156bb3c8d42f290e506f507521ab71d",
       "reviewStatus": "pending"
     },
     {
@@ -495,10 +493,8 @@
     {
       "file": "NoWing-web/public/novvin-media-worker.js",
       "phase": "web",
-      "gitBlobId": "7d2bf240e6b1116e63c8a247f92dc43d5c826dfc",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "587c0f271037440dd24ad760f33368f8f848b6a8",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/public/novvin-share.png",
@@ -515,7 +511,7 @@
     {
       "file": "NoWing-web/public/sitemap.xml",
       "phase": "web",
-      "gitBlobId": "e954d00faa9aabd9fce646ce25d70c4c62a8ce39",
+      "gitBlobId": "e93d3a256529b941c15a8c7a69a93a2ea68f24f5",
       "reviewStatus": "pending"
     },
     {
@@ -605,7 +601,7 @@
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "12bf41c42c715263da49955cc13a12a1b06dec02",
+      "gitBlobId": "0612686919efef099d6a6e168a0c721ea0660e7d",
       "reviewStatus": "pending"
     },
     {
@@ -659,10 +655,24 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/components/AccountSettingsPassword.test.tsx",
+      "phase": "web",
+      "gitBlobId": "43c907ee91c253b85c40a66bb1008e13dfa28c1a",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/__tests__/components/AppErrorBoundary.test.tsx",
       "phase": "web",
       "gitBlobId": "dfbbeea6c8828055998b588c8f3f5e4e57734fb2",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/AppNavigation.test.tsx",
+      "phase": "web",
+      "gitBlobId": "4ca436edd0f94b08dfcc752a6c89f97242a6b2db",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/ChatAttachmentMedia.test.tsx",
@@ -722,6 +732,28 @@
       "file": "NoWing-web/src/__tests__/components/EnterpriseLayout.test.tsx",
       "phase": "web",
       "gitBlobId": "92952f1976a8bd9532135da1a5e0a0ae755412b7",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/FriendRequestsLegacy.test.tsx",
+      "phase": "web",
+      "gitBlobId": "19b53927eed4e17c24a4feb37f16297c5c3315c5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/FriendRequestsPage.test.tsx",
+      "phase": "web",
+      "gitBlobId": "230f7eb9706aa04d0698de7f5cdec8eb35fe884b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/GameCatalog.test.tsx",
+      "phase": "web",
+      "gitBlobId": "be261fe571b90fca83859ff5bf8cb31b550677b8",
       "reviewStatus": "pending"
     },
     {
@@ -799,13 +831,25 @@
     {
       "file": "NoWing-web/src/__tests__/components/MomentComposer.test.tsx",
       "phase": "web",
-      "gitBlobId": "a4dbae80cb9603c54580357fb0603e55e7fdc6b5",
+      "gitBlobId": "e8708587e680c4bd46c390d6c9bc9a82a695ec94",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/MomentDraftNavigation.test.tsx",
+      "phase": "web",
+      "gitBlobId": "06958e928b3f1360795a89b4b17a2a4af1f2904f",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/__tests__/components/MomentPlayback.test.tsx",
       "phase": "web",
       "gitBlobId": "c19651b4d6bcfce05e653957c09fd28949637192",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/MonetizationUnavailable.test.tsx",
+      "phase": "web",
+      "gitBlobId": "8add56792984ad251fb786ad4785f6457e5e0a6f",
       "reviewStatus": "pending"
     },
     {
@@ -817,7 +861,7 @@
     {
       "file": "NoWing-web/src/__tests__/components/PageMetadata.test.tsx",
       "phase": "web",
-      "gitBlobId": "da586f43387b8fb989683afc7efcaa2608005d03",
+      "gitBlobId": "9278f0ccac7af2019f9505aae5af30da634ea89b",
       "reviewStatus": "pending"
     },
     {
@@ -854,6 +898,12 @@
       "file": "NoWing-web/src/__tests__/components/PublicComments.test.tsx",
       "phase": "web",
       "gitBlobId": "d24fef46effbb8603fb6f021aacad27c73a6d8d0",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/PublicHomeDesign.test.tsx",
+      "phase": "web",
+      "gitBlobId": "474571f954b8b30ddd0b8cffdc2d69b878cee332",
       "reviewStatus": "pending"
     },
     {
@@ -905,6 +955,26 @@
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/SecondaryNavigation.test.tsx",
+      "phase": "web",
+      "gitBlobId": "0c6644246d64ab3be269d54205f23789f3886996",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/ShareDialogs.test.tsx",
+      "phase": "web",
+      "gitBlobId": "2af0c8e34a82655c917ff222c3fef935d3a53926",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/SocialPageNavigation.test.tsx",
+      "phase": "web",
+      "gitBlobId": "080c62ffa9ebb72952fc674e239f180c5780cc24",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/__tests__/components/StickerPicker.test.tsx",
@@ -979,6 +1049,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/authErrorMessage.test.ts",
+      "phase": "web",
+      "gitBlobId": "247dea5428c00250e1396f77b230ee621d77e363",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/authRequest.test.ts",
       "phase": "web",
       "gitBlobId": "2d1a6d3bc452a40c361df875866d0071e389bf3e",
@@ -993,7 +1069,7 @@
     {
       "file": "NoWing-web/src/__tests__/core/backendTrust.test.ts",
       "phase": "web",
-      "gitBlobId": "2a8fc0373473a703d08d3df5dfdbde17fda815e1",
+      "gitBlobId": "84a0703549355503218404cfaada807e3e974ff0",
       "reviewStatus": "pending"
     },
     {
@@ -1005,10 +1081,8 @@
     {
       "file": "NoWing-web/src/__tests__/core/boundedStorageRead.test.ts",
       "phase": "web",
-      "gitBlobId": "807b75dc6ada40b054ad9eca56e82950f69b0b8a",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "82f03a7491f8f5989cbcb790305eea992b7c1219",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/__tests__/core/browserStreaming.test.ts",
@@ -1149,6 +1223,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/fallbackIdentityFence.test.ts",
+      "phase": "web",
+      "gitBlobId": "d31256caa249294e07709651a0f4d6e69d208c80",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/fallbackLiveProximityData.test.ts",
       "phase": "web",
       "gitBlobId": "31a4ab054142b78172f9f232b40a81ac0283dbf3",
@@ -1185,9 +1265,15 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/gatewayCookieIsolation.test.ts",
+      "phase": "web",
+      "gitBlobId": "f99f60db4caa28f91311137c16e9bc7cebcc4cb7",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/guestAccess.test.ts",
       "phase": "web",
-      "gitBlobId": "49bce00fda6ba4d591975f6505f5e0fbb0cf7cba",
+      "gitBlobId": "85dc3e7177e84ff6332bfeb52edb9e4f714a7bea",
       "reviewStatus": "pending"
     },
     {
@@ -1273,7 +1359,7 @@
     {
       "file": "NoWing-web/src/__tests__/core/momentUploadScope.test.ts",
       "phase": "web",
-      "gitBlobId": "1f4b4fea7ef91ee2b98fbb0fdda7b98f24e7dbaa",
+      "gitBlobId": "9c661092fc5e4615ad5a2ea57d0f130a0fb42740",
       "reviewStatus": "pending"
     },
     {
@@ -1327,7 +1413,7 @@
     {
       "file": "NoWing-web/src/__tests__/core/publicBackendTransport.test.ts",
       "phase": "web",
-      "gitBlobId": "980c161696b4539515d25873d46374ba16034cda",
+      "gitBlobId": "2a105e2110a739254858c148a1efe6e6751e9ade",
       "reviewStatus": "pending"
     },
     {
@@ -1340,6 +1426,12 @@
       "file": "NoWing-web/src/__tests__/core/replacePeerTracks.test.ts",
       "phase": "web",
       "gitBlobId": "c6fe8493a8cb4378f11c80fbf77aa15dc24a562d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/runtimeBackendInitialization.test.ts",
+      "phase": "web",
+      "gitBlobId": "3ed53d51a86c426de638426d0976027ff92ef9b5",
       "reviewStatus": "pending"
     },
     {
@@ -1597,6 +1689,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/pages/AuthLogoPersistence.test.tsx",
+      "phase": "web",
+      "gitBlobId": "a5309e40e82a67666dd07d4dd8c60b32afadf390",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/__tests__/pages/ExploreSession.test.tsx",
       "phase": "web",
       "gitBlobId": "dc98184b5e31c164407161c514434e5ecf901522",
@@ -1605,9 +1703,21 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "NoWing-web/src/__tests__/pages/FeedCommentLinks.test.tsx",
+      "phase": "web",
+      "gitBlobId": "1ab13fd4ff60a985297882fb671260efd7f77968",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/__tests__/pages/ForgotPasswordPage.test.tsx",
       "phase": "web",
-      "gitBlobId": "e00fff17f747cd08a6857e1f691220d7b15e8e2e",
+      "gitBlobId": "3ee07dd4e56116c5615bae8c86fa35336dc0281b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/pages/LoginOriginError.test.tsx",
+      "phase": "web",
+      "gitBlobId": "e12b6f6808bf5c79683a20b248668bbe4d01193d",
       "reviewStatus": "pending"
     },
     {
@@ -1623,9 +1733,15 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/pages/PasswordWhitespace.test.tsx",
+      "phase": "web",
+      "gitBlobId": "40052647b4dbcb841d384863756c2bd96269a400",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/__tests__/pages/RegisterRoomReturn.test.tsx",
       "phase": "web",
-      "gitBlobId": "41de6c97f8fb19b487ea076d8f6af75a60719aa9",
+      "gitBlobId": "e89f8190082c0178113cb729740db9beef9ef19b",
       "reviewStatus": "pending"
     },
     {
@@ -1643,8 +1759,10 @@
     {
       "file": "NoWing-web/src/__tests__/ui/novvinNavigation.test.ts",
       "phase": "web",
-      "gitBlobId": "a4d035a602532cdd51734df55499ab2a7f3ccd11",
-      "reviewStatus": "pending"
+      "gitBlobId": "2add18f68a910e019aea789bce939ea7b7420375",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/appEntry.tsx",
@@ -1676,6 +1794,12 @@
       "file": "NoWing-web/src/components/AudioOutputSelect.tsx",
       "phase": "web",
       "gitBlobId": "92922fc3f01444b96b08ad2f2cc89bde9b6e6a83",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/components/AuthErrorText.tsx",
+      "phase": "web",
+      "gitBlobId": "093d0809fd57e8a71b9014653cc6442f2cd6898e",
       "reviewStatus": "pending"
     },
     {
@@ -1825,7 +1949,7 @@
     {
       "file": "NoWing-web/src/components/ForwardMessagesDialog.tsx",
       "phase": "web",
-      "gitBlobId": "5593dcb41158d0851a9163f201586b9a3e0e7450",
+      "gitBlobId": "a262cb21a071bc0384117cc690fd20c913233e9b",
       "reviewStatus": "pending"
     },
     {
@@ -2019,7 +2143,7 @@
     {
       "file": "NoWing-web/src/components/ShareVideoDialog.tsx",
       "phase": "web",
-      "gitBlobId": "d45f07476a362968e3586154b366544adfae932d",
+      "gitBlobId": "9a985dff0e8f7c411c95ab0f592fe5abd9a046d9",
       "reviewStatus": "pending"
     },
     {
@@ -2261,6 +2385,12 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "NoWing-web/src/core/auth/authErrorMessage.ts",
+      "phase": "web",
+      "gitBlobId": "88f52fe38ab2f6eb5ed53f0ebc157745606d2aa0",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/core/auth/authRequest.ts",
       "phase": "web",
       "gitBlobId": "b79d7764d2d886ee6552d93b94d44db183671ce8",
@@ -2269,7 +2399,7 @@
     {
       "file": "NoWing-web/src/core/auth/fallbackAuth.ts",
       "phase": "web",
-      "gitBlobId": "8b48854cd35b8c5c1720d041a3fbf09511463976",
+      "gitBlobId": "60919a104c10d49c6cdcf21448dcf11815d48331",
       "reviewStatus": "pending"
     },
     {
@@ -2281,7 +2411,7 @@
     {
       "file": "NoWing-web/src/core/auth/guestAccess.ts",
       "phase": "web",
-      "gitBlobId": "0c30ccb7fad72410fbba76270dc43cebd4b40f19",
+      "gitBlobId": "a708949f034b13625c67e65be8f0ed72ee0155e3",
       "reviewStatus": "pending"
     },
     {
@@ -2455,7 +2585,7 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "9621bdb19baaf32562fd273884e06f2d268c686b",
+      "gitBlobId": "1688c454029aa7d067ef614d4313b7930a7edd38",
       "reviewStatus": "pending"
     },
     {
@@ -2527,10 +2657,8 @@
     {
       "file": "NoWing-web/src/core/media/boundedStorageRead.ts",
       "phase": "web",
-      "gitBlobId": "99e564f077227ada45106815ce164d0b1b48116c",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "3513b3d28a1dbebf171b9d34f747f289ed9cbb3d",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/core/media/browserStreaming.ts",
@@ -2641,7 +2769,7 @@
     {
       "file": "NoWing-web/src/core/momentsUbuntu.ts",
       "phase": "web",
-      "gitBlobId": "87ce6c94478f5d0e57653b8bca7d8097abd51ce1",
+      "gitBlobId": "46983b35ac3aacb8be7c3e127e1b1320ec6a3747",
       "reviewStatus": "pending"
     },
     {
@@ -2695,7 +2823,7 @@
     {
       "file": "NoWing-web/src/core/publicBackendTransport.ts",
       "phase": "web",
-      "gitBlobId": "046f1a5df73c1f60de0dbed53c4e1c9b03ee647e",
+      "gitBlobId": "785d02c7f15c386d606227d296f185c2d10524e6",
       "reviewStatus": "pending"
     },
     {
@@ -2731,14 +2859,16 @@
     {
       "file": "NoWing-web/src/core/runtimeBackend.ts",
       "phase": "web",
-      "gitBlobId": "86553a2e1fc1dfbbb6afe1858332149b962c4161",
+      "gitBlobId": "26c1f66e497276be2e52f884778ea455856d00df",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/core/sectionMenu.ts",
       "phase": "web",
       "gitBlobId": "360868584ff67a6da641a76fa3cd7fa3d125403f",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/sharedVideoReference.ts",
@@ -2858,7 +2988,9 @@
       "file": "NoWing-web/src/core/webPreferences.ts",
       "phase": "web",
       "gitBlobId": "680ab50b7f5d2bc9b18f91e64b8af14bb4ba1ffa",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/assistant/AssistantPage.tsx",
@@ -2933,9 +3065,15 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/features/games/GameCatalog.tsx",
+      "phase": "web",
+      "gitBlobId": "4aaa945caf20980ff2773f5c0c4ffe1336326724",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/features/games/GamesPage.tsx",
       "phase": "web",
-      "gitBlobId": "8844a777ac184209fd3e8a34501e36cd1a382fe9",
+      "gitBlobId": "c252023a5da5d1163e913609dc5d6845c3d0f2bb",
       "reviewStatus": "pending"
     },
     {
@@ -3073,7 +3211,7 @@
     {
       "file": "NoWing-web/src/features/moments/MomentComposer.tsx",
       "phase": "web",
-      "gitBlobId": "aea01d65b0d99bc073938a5946c2d270e3e5c543",
+      "gitBlobId": "7df2165030ca41b4e62bf9e52f59edb90a6f77b6",
       "reviewStatus": "pending"
     },
     {
@@ -3085,8 +3223,10 @@
     {
       "file": "NoWing-web/src/features/moments/MomentsPage.tsx",
       "phase": "web",
-      "gitBlobId": "c0bbfe18c6f8b89670057ee93292ad17a00f8368",
-      "reviewStatus": "pending"
+      "gitBlobId": "0cc1e81ecd1536c5435df84db170537ddc7c175e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/moments/MomentsViewerPage.tsx",
@@ -3107,6 +3247,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/features/moments/momentDraft.ts",
+      "phase": "web",
+      "gitBlobId": "574551eeb9c3021dc0a296a1f4174e918f8f4b01",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/features/moments/momentMusic.ts",
       "phase": "web",
       "gitBlobId": "2c4a64466390452611fa0566c8f5f520daffaed8",
@@ -3121,7 +3267,7 @@
     {
       "file": "NoWing-web/src/features/moments/momentsData.ts",
       "phase": "web",
-      "gitBlobId": "2b2e3271b13f6144dd6706211666f2e4221cfe0a",
+      "gitBlobId": "fb87e528d0fa0aab2d2e674ad02641230931cfb6",
       "reviewStatus": "pending"
     },
     {
@@ -3163,13 +3309,13 @@
     {
       "file": "NoWing-web/src/features/profile/AccountSettingsPage.tsx",
       "phase": "web",
-      "gitBlobId": "040df4022868e0456c055bb83f51169a681d1460",
+      "gitBlobId": "a1d6c7bed1ff8da1ab3ce19326d4aefb0d313185",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/features/profile/MonetizationCenterPage.tsx",
       "phase": "web",
-      "gitBlobId": "6004b37cada635d3c204951e5b4da2e9acb99472",
+      "gitBlobId": "ef99b81d0c8fc06e14bf0f381dc12037ff158f53",
       "reviewStatus": "pending"
     },
     {
@@ -3265,8 +3411,10 @@
     {
       "file": "NoWing-web/src/features/social/FriendRequestsPage.tsx",
       "phase": "web",
-      "gitBlobId": "2619bdf93740d5afef8b9a46089063b5fd0e084d",
-      "reviewStatus": "pending"
+      "gitBlobId": "9c6624e843609e2ff047ce65c4133e431804acc3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/social/PostInvitePage.tsx",
@@ -3283,7 +3431,7 @@
     {
       "file": "NoWing-web/src/features/social/SocialPage.tsx",
       "phase": "web",
-      "gitBlobId": "9c4d4c13c19ad6503ddabe4937c6874eec467419",
+      "gitBlobId": "917d71bd6f35086c2a852c18034c838254e5f5f1",
       "reviewStatus": "pending"
     },
     {
@@ -3409,8 +3557,10 @@
     {
       "file": "NoWing-web/src/layout/AppLayout.tsx",
       "phase": "web",
-      "gitBlobId": "c93f2d82614a4f2cf8f6cc25300cde188e321f04",
-      "reviewStatus": "pending"
+      "gitBlobId": "025aeda79a75f1c064d07e04b2ab0a513fa65bc8",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/main.tsx",
@@ -3447,25 +3597,25 @@
     {
       "file": "NoWing-web/src/pages/auth/ForgotPasswordPage.tsx",
       "phase": "web",
-      "gitBlobId": "b6421c69bd7ac503da2e5b866881b6fbfff9011b",
+      "gitBlobId": "cdda0a6bf49ab7f3b6b47f6a962a681a332a84b1",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/pages/auth/LoginPage.tsx",
       "phase": "web",
-      "gitBlobId": "3200908f41d6fb1f45cdc5bd81e247663d891af2",
+      "gitBlobId": "f2ad7ccf1f332dca03f8185a2499b1a52a6fa4c0",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/pages/auth/PasswordResetPage.tsx",
       "phase": "web",
-      "gitBlobId": "9fb54aabfc1126aed597f3efa9a917697795115b",
+      "gitBlobId": "92afc3cf63979df7a2142a18694df33d9517b1c5",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/pages/auth/RegisterPage.tsx",
       "phase": "web",
-      "gitBlobId": "7ac07f42942086d251698576a33be4f4e1fe090e",
+      "gitBlobId": "c9412ffb290af15cb84392f5faed965140f7a8bc",
       "reviewStatus": "pending"
     },
     {
@@ -3489,16 +3639,14 @@
     {
       "file": "NoWing-web/src/pages/explore.css",
       "phase": "web",
-      "gitBlobId": "95aafcab0417ab8de0e102ae7d931b0280864b5c",
+      "gitBlobId": "c9c953e61d5eaad0b7467cb67aecbd54b67fc400",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/pages/feed/FeedPage.tsx",
       "phase": "web",
-      "gitBlobId": "7fc2ab678664072f4e43e3d76eab79908adb076b",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "31c871c6d813e9b9db1be2bf82810cdf73283f63",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/pages/feed/PostDetailPage.tsx",
@@ -3543,6 +3691,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/ui/novvin/AppNavigation.tsx",
+      "phase": "web",
+      "gitBlobId": "1ac28e6d32d9a5af1e4642578995e39214f17aca",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/ui/novvin/NotFoundPage.tsx",
       "phase": "web",
       "gitBlobId": "667a32e05f4c009252a47730a03387eec5e43067",
@@ -3551,7 +3707,7 @@
     {
       "file": "NoWing-web/src/ui/novvin/PageMetadata.tsx",
       "phase": "web",
-      "gitBlobId": "7d60581889798f6f1855b3997f6ae696b3dca742",
+      "gitBlobId": "a12f75855a6bb22c3cbe331e235f142305b06256",
       "reviewStatus": "pending"
     },
     {
@@ -3565,7 +3721,7 @@
     {
       "file": "NoWing-web/src/ui/novvin/PublicHome.tsx",
       "phase": "web",
-      "gitBlobId": "64d624fdbcae82a82c3eb97114f2377afd66f1f4",
+      "gitBlobId": "5e89579fc4c7805296703c76c7d3c3cbb792514f",
       "reviewStatus": "pending"
     },
     {
@@ -3577,8 +3733,16 @@
     {
       "file": "NoWing-web/src/ui/novvin/PublicNavigation.tsx",
       "phase": "web",
-      "gitBlobId": "a53b0e31921c44abe4469bca2e5703a6fa61fff7",
+      "gitBlobId": "3bcc9e88d91394428ae5cf6b1f8240a1cb086272",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/ui/novvin/SecondaryNavigation.tsx",
+      "phase": "web",
+      "gitBlobId": "d977fe290c7c805d6799d674c36983b1f4198f96",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/SocialMoments.tsx",
@@ -3613,8 +3777,10 @@
     {
       "file": "NoWing-web/src/ui/novvin/navigation.ts",
       "phase": "web",
-      "gitBlobId": "e8fb4df0a8b7dfd7099a885b760a6db32861b126",
-      "reviewStatus": "pending"
+      "gitBlobId": "5f707f7bc29a36125bc582dc247e9ee7cbfd754f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/profileIdentity.ts",
@@ -3625,7 +3791,7 @@
     {
       "file": "NoWing-web/src/ui/novvin/public-home.css",
       "phase": "web",
-      "gitBlobId": "9b0f94bc512b303cea57e9d12ffa1aa5ab9bb1ec",
+      "gitBlobId": "8760be4357a1c0334c9ac11b2d7f41f00687e44c",
       "reviewStatus": "pending"
     },
     {
@@ -3643,13 +3809,13 @@
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
       "phase": "web",
-      "gitBlobId": "af36d0df1226387e3024c1f3b661e1ff9497c78e",
+      "gitBlobId": "60238841e3658ebf76a41806d1d70751b6c81186",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/ui/novvin/shell.css",
       "phase": "web",
-      "gitBlobId": "cfc12449611b26ec7889f1708d3ce88c45c9f720",
+      "gitBlobId": "aef49c5bd41abccd3a57ae876a685c0a0167acc5",
       "reviewStatus": "pending"
     },
     {
@@ -3661,10 +3827,8 @@
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
       "phase": "web",
-      "gitBlobId": "6083a3a3164b4e73755d5e0d084e8140eb15302c",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "ba176b5a0b715acfe298526f6dbe602c5f65584d",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/workers/spelling.worker.ts",
@@ -3681,10 +3845,8 @@
     {
       "file": "NoWing-web/tests/media-worker.test.mjs",
       "phase": "web",
-      "gitBlobId": "3b9e2559f786f92f16f0aeba66ef2fe3f2699af3",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "27580a904d6db708938c85bb340e514d242d6eae",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/tests/public-home.test.mjs",
@@ -3708,6 +3870,12 @@
       "file": "NoWing-web/tests/seo-release-gate.test.mjs",
       "phase": "web",
       "gitBlobId": "774bee9614583068aaaa7caf2d3797507977c459",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/tests/visual-theme.test.mjs",
+      "phase": "web",
+      "gitBlobId": "9525c2106bd2aa94416079fa9a18ee2f4118a5ab",
       "reviewStatus": "pending"
     },
     {
@@ -3877,7 +4045,7 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "c405eb37196922ef4080124cc9d784530d40c2f1",
+      "gitBlobId": "62a377921681d511e10b4eba56d77f3af9ee3eed",
       "reviewStatus": "pending"
     },
     {
@@ -6443,10 +6611,8 @@
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/UbuntuRealtimeClient.kt",
       "phase": "android",
-      "gitBlobId": "460fbcf9759b7ca6ed21c51f842c79e16c355d48",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "59041477e92fc1e311827076d17d9ace2775a69a",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/UbuntuStorageUrl.kt",
@@ -7227,10 +7393,8 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveRepository.kt",
       "phase": "android",
-      "gitBlobId": "dd58de4c488cd3520a619f881d87af7251a3614a",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "b8adfa70a6375d96a292b33f11b545b6a86b1401",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveSessionLifecycleCoordinator.kt",
@@ -7707,10 +7871,8 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/message/ConversationReadReceiver.kt",
       "phase": "android",
-      "gitBlobId": "a02fcc31b3441bcd88fd5a5426f2d2fcd256d44d",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "1b920aa3c65bdddd2dc674ad742a306636ab5c44",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/message/DirectChatLookupPolicy.kt",
@@ -7803,10 +7965,8 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/message/MessageRealtimeSync.kt",
       "phase": "android",
-      "gitBlobId": "7bc212d8dfbe25498d234ec76c35a020276956a0",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "8e650eaece21d8e2c1e2f82925b65907b47e18f3",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/message/MessageReportStore.kt",
@@ -8427,10 +8587,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/RegisterScreen.kt",
       "phase": "android",
-      "gitBlobId": "b5b75c671613c69735281a945d24db43ef448080",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "276eea617ded75cb312a7b0ef61db6c54f0b68b0",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/SplashScreen.kt",
@@ -9249,10 +9407,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/home/HomeScreen.kt",
       "phase": "android",
-      "gitBlobId": "18eee961c22db4411d65b5a11cd03a49f0313b27",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "c4fb5680b6639ac420b34500f967f24d29b3ddaf",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/home/HomeViewModel.kt",
@@ -10458,7 +10614,9 @@
       "file": "app/src/main/java/conectate/com/presentation/navigation/CallReturnRoute.kt",
       "phase": "android",
       "gitBlobId": "5843482c78bcf12ec3e9440847705db98e2b3f4f",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/IntentRouter.kt",
@@ -10643,10 +10801,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/EditProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "a06c8d66a785fa0497ce3ada38284166f55b8f4b",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "80b8c9e5c0b92bf96a34d106a2be4144ec2cd2b1",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/FollowListScreen.kt",
@@ -10809,10 +10965,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "bbdd56693f93d7347026d75cdaaa8331242a7607",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "0a1e1847ede37b2e03b5120b9fc29e34cd0450c3",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileShareContent.kt",
@@ -10829,12 +10983,16 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/profile/ProfileSocialDraft.kt",
+      "phase": "android",
+      "gitBlobId": "98dad9c479c6fc366f17da94a5feff04506f5096",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileViewModel.kt",
       "phase": "android",
-      "gitBlobId": "561b2790c13c042b607b0ef514b0334939da8236",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "beb2041fd9903118d63348fc571fc99a88e1ec07",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileVisitRecorder.kt",
@@ -11035,10 +11193,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/settings/LanguageSettingsScreen.kt",
       "phase": "android",
-      "gitBlobId": "863ac74092e8073d24d7ffdc08aad780a33fc9b0",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "364e086eff04b925bef074e0b993973540a2c2be",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/settings/ProfileOfflineStorageSection.kt",
@@ -11111,13 +11267,13 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/CreatePostScreen.kt",
       "phase": "android",
-      "gitBlobId": "04333432e9f060ae3f42772be5d11a9ff36c317e",
+      "gitBlobId": "cea4903734480f0953d57ece11687fb26b6632c5",
       "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/social/CreatePostViewModel.kt",
       "phase": "android",
-      "gitBlobId": "fc8441331362731f9eb1fc31c31367debff4485d",
+      "gitBlobId": "669f4e7ac0eadaf63c103b6ed2142d0227d9887b",
       "reviewStatus": "pending"
     },
     {
@@ -11379,10 +11535,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/SocialScreen.kt",
       "phase": "android",
-      "gitBlobId": "e73caa5eb8fd8208aaea474594e07c6fee65a497",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "13202a77d88bfd25b6987a03fa813253e5e6a1e7",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/social/SocialViewModel.kt",
@@ -11955,13 +12109,13 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/CoinsAndPaymentsScreen.kt",
       "phase": "android",
-      "gitBlobId": "52d08a6869ad4c215544c3451340e3ca76308c19",
+      "gitBlobId": "4bc06dc02095e5e0c51c984fe27b4a4317f0b4c0",
       "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/CreatorEarningsScreen.kt",
       "phase": "android",
-      "gitBlobId": "a40600b5e635f1a612640a37afc2cad7843f5b9b",
+      "gitBlobId": "7bddd947ee434004e2a4340b9af415cdf277eeb2",
       "reviewStatus": "pending"
     },
     {
@@ -13133,9 +13287,21 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/res/values-b+zh+Hans/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "72ce659bf741d273ff77a82ae3c168c0becc27a1",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/main/res/values-b+zh+Hans/strings.xml",
       "phase": "android",
       "gitBlobId": "1eb72f3239e6c7e569cb95d4d95cc2a2110f361e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/values-b+zh+Hant/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "9a4fed40580ee11006ea92d742bc87df50cfa3cb",
       "reviewStatus": "pending"
     },
     {
@@ -13145,9 +13311,21 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/res/values-de/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "773e0c3327d499501bf2354a8e56edda32afbccf",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/main/res/values-de/strings.xml",
       "phase": "android",
       "gitBlobId": "45538dae70035617edda20a889ae2d0f5ef4589a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/values-en/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "19547a5badfcd25a005eec8cf0c21a406da3acc8",
       "reviewStatus": "pending"
     },
     {
@@ -13157,9 +13335,21 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/res/values-es/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "b812275f9f551bcc98f7c73b439dcc0671225ad0",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/main/res/values-es/strings.xml",
       "phase": "android",
       "gitBlobId": "01f2ad531725f3a67f710ee4e7cb1b104994516f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/values-fr/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "3748623d3256591fabe5bb9bbfe9134d2f85488a",
       "reviewStatus": "pending"
     },
     {
@@ -13169,9 +13359,21 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/res/values-ja/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "a5a9778921cb028250a925705f655879d3c284e7",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/main/res/values-ja/strings.xml",
       "phase": "android",
       "gitBlobId": "592492c5c87b3a2d2a371f807e2c0b877e6b635d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/values-pt/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "020bd729ac517d584902e78ad32dc2ebd3801506",
       "reviewStatus": "pending"
     },
     {
@@ -13196,6 +13398,12 @@
       "file": "app/src/main/res/values-zh-rTW/strings.xml",
       "phase": "android",
       "gitBlobId": "21b2e526e87092fd4a39bbc913116863e3ebe389",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/values/audit_strings.xml",
+      "phase": "android",
+      "gitBlobId": "b812275f9f551bcc98f7c73b439dcc0671225ad0",
       "reviewStatus": "pending"
     },
     {
@@ -13937,6 +14145,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/localfallback/UbuntuRealtimeAdmissionTest.kt",
+      "phase": "android",
+      "gitBlobId": "caf34b7fde3bddf2709df3828c4ca9aefa1aa7dd",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/localfallback/UbuntuStorageUrlTest.kt",
       "phase": "android",
       "gitBlobId": "8fc0a36cf61b47fb0b58244907626577ea512d81",
@@ -14588,6 +14802,12 @@
       "file": "app/src/test/java/conectate/com/data/repository/message/MessageDeletionQueueTest.kt",
       "phase": "android",
       "gitBlobId": "7b2016fe1f8c38f37c05010e27477c3aee1bcb30",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/message/MessageRealtimeAccountTransactionTest.kt",
+      "phase": "android",
+      "gitBlobId": "5af60f6dc4792c5d1bab94a0e7a5c626b896b5f6",
       "reviewStatus": "pending"
     },
     {
@@ -15708,6 +15928,12 @@
       "file": "app/src/test/java/conectate/com/presentation/profile/ProfileSharedPostsPagerTest.kt",
       "phase": "android",
       "gitBlobId": "b2d802bddf69df7ddd99e3c80ca42198207a5bc4",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/profile/ProfileSocialDraftTest.kt",
+      "phase": "android",
+      "gitBlobId": "658e2e22d69400b1a9fee18a6d6dab20610f0216",
       "reviewStatus": "pending"
     },
     {
@@ -17769,6 +17995,48 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/audits/2026-11-10-android-correcciones.md",
+      "phase": "documentation",
+      "gitBlobId": "222acafbae12066aeb90ab364936f2879fb5a746",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/audits/correcciones-dot-ci-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "3c007a1f61e4666ec7a368c6975b1cee1867a134",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/audits/correcciones-dot-integracion-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "f447ff63426ddf7a934649bc534c5d9f50cf1629",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/audits/moment-draft-navigation-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "0fd14861e7c12b8ce0986187fccc5b942e700081",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/audits/web-corrections-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "e71529030e8c02d86811a20a5d4205c1559927b4",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/audits/web-login-origin-feedback-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "26eed93d35ecaa430f4da6cef819b22e8a48261b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/audits/web-visual-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "9d92877164d40bcf9eaedee3d7048f234a5add81",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/diagnostics/deps.txt",
       "phase": "documentation",
       "gitBlobId": "448a91a7b713c816a609aa51032bb8f32cc2caff",
@@ -19693,6 +19961,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "5252f34a6c2e34d8e2deb4fe4559f30346262732",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/capturas/07e4989/qa-music-audio-only.png",
       "phase": "documentation",
       "gitBlobId": "e1f159b29612e4c840d325bf07e26cb62f7a0156",
@@ -19816,6 +20092,12 @@
       "file": "docs/oficial/capturas/sorteos-moto-g04/ruleta-5.png",
       "phase": "documentation",
       "gitBlobId": "f5e094f43a1f615c9e84e725a54617be4896fd33",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/correcciones-dot-seguridad-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "3df3f9afe90ed3f68b15c1b51a7f3b4452a0bc51",
       "reviewStatus": "pending"
     },
     {
@@ -20008,6 +20290,18 @@
       "file": "docs/storage_policies_groups_communities.sql",
       "phase": "documentation",
       "gitBlobId": "8a2c254ce7b8b73bfbca4d467952b8cdae75ad10",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/superpowers/plans/2026-11-10-web-visual-design.md",
+      "phase": "documentation",
+      "gitBlobId": "750375cf9ceafe7817a3bbfba3e83fea53dd6956",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/superpowers/specs/2026-11-10-web-visual-design.md",
+      "phase": "documentation",
+      "gitBlobId": "c2dcd0bd1ece1ad1fbc8753d18e63aa2ac673752",
       "reviewStatus": "pending"
     },
     {
@@ -20251,13 +20545,13 @@
     {
       "file": "infrastructure/local-fallback/api/package-lock.json",
       "phase": "server",
-      "gitBlobId": "98638f90e0bab488a5c2ce94b4ceb6f11dce74a3",
+      "gitBlobId": "6d77df93859cce963d2c94626599b682aa08ce8f",
       "reviewStatus": "pending"
     },
     {
       "file": "infrastructure/local-fallback/api/package.json",
       "phase": "server",
-      "gitBlobId": "fa4f17b2c9f965d52de7c416cca20584d1096179",
+      "gitBlobId": "c795bfe39a394a84a96c0e5310c417a05cae3aa2",
       "reviewStatus": "pending"
     },
     {
@@ -20991,9 +21285,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "f82bf890ed1709eecb02562c90a17d791549295c",
+      "gitBlobId": "9b248d8ec2641b6925d3d21759cff2e2f693c0cd",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21259,7 +21553,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/moments-routes.js",
       "phase": "server",
-      "gitBlobId": "5dbb737c7465cc1235f71a0bd2c2ce5e4139d2ad",
+      "gitBlobId": "50a321db3678413a6dd3687619315b07c7f2edfb",
       "reviewStatus": "pending"
     },
     {
@@ -21379,10 +21673,8 @@
     {
       "file": "infrastructure/local-fallback/api/src/postgrest-compat-routes.js",
       "phase": "server",
-      "gitBlobId": "bef771adbe805dd9789b33786bea337741680a95",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "6fce4e2ca8a06f1f487c77d472bad7ed2004d633",
+      "reviewStatus": "pending"
     },
     {
       "file": "infrastructure/local-fallback/api/src/profile-merge.js",
@@ -21525,10 +21817,8 @@
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "37d27cf306965840576e6e221e19aebe2bc591e2",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "a8fcf56cbbcc92859e8997e3caeeef9550d20a12",
+      "reviewStatus": "pending"
     },
     {
       "file": "infrastructure/local-fallback/api/src/social-promotions.js",
@@ -21929,6 +22219,12 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/audit-content-privacy.test.js",
+      "phase": "server",
+      "gitBlobId": "a2e3228f818d5ac9531a23b219966d14a356f271",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/auth-public-username.test.js",
       "phase": "server",
       "gitBlobId": "4e48c2c0a02a0e260ba4ec335553b7e6cba33f00",
@@ -22087,6 +22383,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/compat-insert-ownership.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "368c0b1872441335c433e7d5c7443debd1579713",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/compat-profile-json.test.js",
       "phase": "server",
       "gitBlobId": "bb32a4c52e6f4dc275ca4be5194400e3fd5174ff",
@@ -22210,6 +22512,12 @@
       "file": "infrastructure/local-fallback/api/tests/fcm-session-bindings.test.js",
       "phase": "server",
       "gitBlobId": "3d8a6c2a9c05e635d1e0999a3f543b99e3820500",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/firebase-dependency-compat.test.js",
+      "phase": "server",
+      "gitBlobId": "19820a1be560cc396e6e66708db4ee1c3bef2ee6",
       "reviewStatus": "pending"
     },
     {
@@ -22348,6 +22656,12 @@
       "file": "infrastructure/local-fallback/api/tests/livekit-admin.test.js",
       "phase": "server",
       "gitBlobId": "96914e3e0d3d4fe478887d75dd5018cd6cb5ce17",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/login-response-privacy.test.js",
+      "phase": "server",
+      "gitBlobId": "f38c38700d36a854ca8fac52805a3e0accdbd9af",
       "reviewStatus": "pending"
     },
     {
@@ -26255,6 +26569,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "tools/android_kvm_acl.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "84a1751a74238655a43ab923b86843c9064652d8",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "tools/audit/update_review_coverage.py",
       "phase": "tooling-and-other",
       "gitBlobId": "f71dde172017b8b0989924432f4fa9a4b4561e97",
@@ -26327,6 +26647,18 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "tools/prepare_android_ci.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "75dd45ebd0fcd4a5ac4c44919cdab26d8bf23328",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/prepare_android_offline_emulator.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "a7031222886c3dd3146209aafe1051e2ad2b9363",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "tools/quality_gate.ps1",
       "phase": "tooling-and-other",
       "gitBlobId": "e5374ccd6eac83c0c431f670ee81e724ef336d0b",
@@ -26345,6 +26677,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "tools/run_android_account_smoke.sh",
+      "phase": "tooling-and-other",
+      "gitBlobId": "ee7f591cb6ec752e5b6a4e515e7c8164846068ed",
+      "reviewStatus": "pending"
     },
     {
       "file": "tools/runtime_security_audit.py",
@@ -26377,6 +26715,36 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "tools/tests/test_android_audit_contracts.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "26bddef5c89cbc4728e4663b0cd1f4e61939d5c4",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_android_audit_resources.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "057373ad4f79bf158ab7c3d62ae39736c847af08",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_android_fixture_workflows.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "5b956ced2030a57fe83422a1015ad4b0db090d92",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_android_kvm_acl.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "3fb2b929ff5cc6b25318c899b8e824830b72914e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_android_kvm_diagnostics.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "069457d33e443539d71514506755a90de8044654",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "tools/tests/test_android_maintenance_guard.py",
       "phase": "tooling-and-other",
       "gitBlobId": "4046cdb7b4e292d6761be5b68fbd15491ac53785",
@@ -26385,9 +26753,33 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "tools/tests/test_android_offline_readiness.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "bf059c81c1402023d15829213e4ec623ecf53f8b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_android_sdk_path.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "a9e8cdf829a0e439c097bd41d6a258cafdd92e8e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_android_smoke_avd.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "900cc1250c3ecfff1c8a473b242a1ee5c62b3fbb",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "tools/tests/test_backend_discovery_envelope.py",
       "phase": "tooling-and-other",
       "gitBlobId": "a5ec6edf59164e76493ae50b7f51b8f0e6e1d858",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_ci_node_runtime.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "76fc512fcfdcd279a3407349f24718f953c5fd42",
       "reviewStatus": "pending"
     },
     {
@@ -26431,6 +26823,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "tools/tests/test_prepare_android_ci.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "07ade333310365747f19062225f58afd130e65f9",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "tools/tests/test_push_notification_edge_guard.py",
       "phase": "tooling-and-other",
       "gitBlobId": "50130e5b57cc1e3f9bbc70ad6819cebeb70a8dc0",
@@ -26455,6 +26853,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "tools/tests/test_verify_account_smoke_result.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "6825a1572ff97061e13455cb6e0aeefcfa521ffb",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "tools/tests/test_verify_android_page_size.py",
       "phase": "tooling-and-other",
       "gitBlobId": "46da7ac78d60cc30a9da15b5c6d28ec9db06bfb5",
@@ -26463,7 +26867,7 @@
     {
       "file": "tools/tests/test_verify_android_release.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "5fcd9bdc6c89a3c5475d632f094b3e4211726683",
+      "gitBlobId": "82422fee2c75bb1793f02b7536d726af96ea293a",
       "reviewStatus": "pending"
     },
     {
@@ -26479,6 +26883,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "tools/verify_account_smoke_result.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "9309395ffc5ae0df4e858fa24797e6f24a87479c",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "tools/verify_android_page_size.py",
       "phase": "tooling-and-other",
       "gitBlobId": "ce687c8a0eb8f97dcdac78397ffd8aa789b710cf",
@@ -26489,10 +26899,8 @@
     {
       "file": "tools/verify_android_release.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "e91f7b08963a9b1b2266dc223e571ef3ccbb7141",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "988302985d9a1640692b37e2ee06385d0c568240",
+      "reviewStatus": "pending"
     },
     {
       "file": "tools/verify_android_startup.py",
