@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-10T22:24:07.517637+00:00",
-  "baseCommit": "1b2f0a983644e4eb7ebb22e07ddbe835f0b02fd8",
+  "generatedAtUtc": "2026-11-10T22:36:57.133344+00:00",
+  "baseCommit": "85c8d3e099807d42b253724aa4cb550ea11da46c",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,7 +11,7 @@
   },
   "counts": {
     "pending": 3752,
-    "code-read": 463,
+    "code-read": 465,
     "partial": 85
   },
   "countsByPhase": {
@@ -22,12 +22,12 @@
     },
     "documentation": {
       "pending": 569,
-      "code-read": 8,
+      "code-read": 9,
       "partial": 7
     },
     "server": {
       "pending": 866,
-      "code-read": 38,
+      "code-read": 39,
       "partial": 15
     },
     "tooling-and-other": {
@@ -19897,7 +19897,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "0b6ea70f0ce88ce855cc9325c5305c01583f0233",
+      "gitBlobId": "8cfec8092cf70a189c2f877bcc806f3fca1d286b",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -19963,9 +19963,17 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/adenda-benchmark-2026-11-10.md",
+      "phase": "documentation",
+      "gitBlobId": "90178d28edb614ded241f2b3ae01c5735f5b2e02",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "d1c937f54267c02ed74337c37cc4ccd5694988c5",
+      "gitBlobId": "69bedb0998c184d062ab1b4f8934cee347562d3e",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -21291,7 +21299,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "091998d8cfff101ec156ea179380a3a68cb4fb44",
+      "gitBlobId": "7b33ae1d132d0bc500a998e359725223fc0bee6b",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -21679,7 +21687,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/postgrest-compat-routes.js",
       "phase": "server",
-      "gitBlobId": "6fce4e2ca8a06f1f487c77d472bad7ed2004d633",
+      "gitBlobId": "cd7b6a338e44b26c354e23929b86f1593f003155",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -22535,9 +22543,17 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/friend-request-compat.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "4ef5191366b1e2908e0a67989e200113941f748f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/friend-request-transition.postgres.test.js",
       "phase": "server",
-      "gitBlobId": "669c21db7e4f118f1038215f3a28f14349ae8f6a",
+      "gitBlobId": "e1086212b3ec6b7a1a3b62d5bca661a22d0d8f24",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

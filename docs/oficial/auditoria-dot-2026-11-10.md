@@ -42,7 +42,7 @@ Estos son criterios técnicos de auditoría propuestos, no funciones nuevas apro
 
 La web ya dispone de modo claro/oscuro/sistema, acentos y escala de texto (`core/webPreferences.ts`); el siguiente trabajo es verificar sus recorridos y usabilidad, no duplicar esas opciones. La audiencia inicial 18–30 años aún no define un nicho: no se justifica añadir funciones masivas sin demostrar que los recorridos básicos funcionan.
 
-## Límites de entrega
+## Límites de la primera entrega web
 
 No se usaron cuentas reales para enviar invitaciones/mensajes, hacer pagos ni modificar datos. El bloqueo es de esta instancia de pantalla: la idempotencia y las transiciones de estado atómicas del servidor frente a múltiples pestañas/dispositivos siguen pendientes de auditoría. No se cambió el servidor, no se publicó una web y no se generó APK nueva. Publicar commits en esta rama no equivale a desplegar ni aprobar CI. El estado de GitHub Actions debe consultarse para el SHA entregado.
 
@@ -56,4 +56,16 @@ La regresión nueva usa PGlite 0.5.16 como dependencia de desarrollo fijada en e
 
 La suite de API terminó con 1.064 pruebas aprobadas, 16 omitidas y cero fallos; `npm run check` y la validación en seco del lockfile también pasaron. El primer intento tuvo un fallo de preparación en `production-config.test.js`: faltaban las dependencias del proyecto vecino `signaling-server`. Tras instalarlas desde su lockfile, la suite pasó sin alterar esa prueba.
 
-Esta corrección cubre el PATCH nativo. La ruta de compatibilidad PostgREST mantiene un UPSERT separado y Android rechaza mediante DELETE: siguen siendo rutas por auditar, no garantías implícitas de este cambio. No se desplegó el código de API ni se modificaron datos reales.
+Esta primera corrección cubre el PATCH nativo. Las rutas PostgREST y DELETE Android se revisan por separado en la continuación siguiente. No se desplegó el código de API ni se modificaron datos reales.
+
+## Continuación de cancelaciones y compatibilidad PostgREST
+
+El DELETE nativo de solicitud por ID permite borrar únicamente `pending` o `rejected`, tanto al emisor como al receptor. Una aceptación confirmada devuelve 409 y no se elimina mediante una cancelación/rechazo tardío. Se conserva la limpieza de rechazadas usada por clientes existentes; repetir un DELETE exitoso devuelve 404. Eliminar una amistad deliberadamente sigue disponible en la ruta explícita por usuario, sin cambio contractual. Se añadieron pruebas de participantes, actor ajeno, estados, unfriend explícito y la intercalación PATCH/DELETE.
+
+La respuesta de amistad por PostgREST conserva el origen nativo de la lectura en metadatos internos. Si la solicitud era nativa, actualiza únicamente su ID y pareja mientras siga pendiente: una eliminación intercalada no puede recrearla ni responder una solicitud nueva de la misma pareja. Repetir una decisión confirmada no reescribe la fila; la contraria devuelve 409. Para filas importadas, el UPSERT solo puede actualizar una pareja nativa todavía pendiente, y se consulta la decisión nativa antes de acusar éxito sobre un importado resuelto.
+
+Las siete regresiones nuevas de compatibilidad ejecutan el handler real y SQL con PGlite. Incluyen importaciones obsoletas, autorización, reintentos sin cambio de versión y una eliminación inyectada exactamente después de la lectura nativa. Esta última prueba falló antes de separar UPDATE nativo y materialización importada. La batería final de API pasa **1.071 pruebas, con 16 omitidas y cero fallos**; `npm run check` y `git diff --check` también pasan. La revisión independiente del diff final no halló bloqueantes.
+
+**Pendiente P1, cancelación importada:** el DELETE genérico de compatibilidad no deja una marca persistente de eliminación para `supabase_import.friends`. Una fila importada `pending` puede seguir visible y materializarse otra vez después de eliminar su copia nativa. Esta entrega no resuelve esa cancelación ni afirma que todas las rutas de amistad estén cerradas. Se necesita diseñar la marca de eliminación y su relación con nuevas solicitudes, probar permisos y lecturas, y revisar migración/retención antes de desplegar.
+
+Todas estas pruebas locales siguen usando una sola sesión: reproducen intercalaciones, no contención PostgreSQL entre conexiones independientes. No se probó Android en dispositivo/emulador ni se generó APK; tampoco se desplegó API o web ni se tocaron datos reales. Los commits y el estado de CI son evidencias distintas.
