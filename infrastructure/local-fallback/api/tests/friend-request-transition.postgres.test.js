@@ -20,7 +20,7 @@ async function verifyFriendRequestTransitions(db) {
   await db.query(`CREATE TEMP TABLE fallback_friends (
     id text PRIMARY KEY, sender_id text, receiver_id text, status text,
     created_at timestamptz DEFAULT now())`)
-  await db.query("INSERT INTO fallback_users(id, supabase_user_id) VALUES ('receiver-local','receiver'),('stranger','stranger')")
+  await db.query("INSERT INTO fallback_users(id, supabase_user_id) VALUES ('receiver-local','receiver'),('sender-local','sender'),('stranger','stranger')")
   const handlers = new Map()
   const app = Object.fromEntries(['get','post','patch','delete','put','use'].map(method =>
     [method, (path, ...chain) => handlers.set(`${method} ${path}`, chain.at(-1))]))
@@ -29,6 +29,11 @@ async function verifyFriendRequestTransitions(db) {
   const send = async (id, status, actor = 'receiver-local') => {
     const res = { statusCode: 200, status(code) { this.statusCode = code; return this }, json(body) { this.body = body; return this } }
     await handler({ auth: { sub: actor }, params: { requestId: id }, body: { status } }, res, error => { throw error })
+    return res
+  }
+  const removeRequest = async (id, actor = 'receiver-local') => {
+    const res = { statusCode: 200, status(code) { this.statusCode = code; return this }, json(body) { this.body = body; return this } }
+    await handlers.get('delete /v1/data/friends/:requestId')({ auth: { sub: actor }, params: { requestId: id } }, res, error => { throw error })
     return res
   }
   const insert = id => db.query("INSERT INTO fallback_friends(id,sender_id,receiver_id,status) VALUES($1,'sender','receiver','pending')",[id])
@@ -52,6 +57,11 @@ async function verifyFriendRequestTransitions(db) {
     const foreign = await send(id, final, 'stranger')
     assert.equal(foreign.statusCode, 404, 'the retry SELECT must not reveal resolved requests to another account')
     assert.deepEqual(foreign.body, { error: 'REQUEST_NOT_FOUND' })
+    for (const actor of final === 'accepted' ? ['receiver-local','sender-local'] : []) {
+      const cancelled = await removeRequest(id,actor)
+      assert.equal(cancelled.statusCode,409,'a delayed rejection/cancellation cannot remove a resolved relationship')
+      assert.equal(await read(id),final)
+    }
   }
 
   await insert('parallel')
@@ -64,6 +74,30 @@ async function verifyFriendRequestTransitions(db) {
   assert.equal((await send('missing','accepted')).statusCode,404)
   assert.equal((await send('private','pending')).statusCode,400)
   assert.equal(await read('private'),'pending')
+  for (const actor of ['receiver-local','sender-local']) for (const status of ['pending','rejected']) {
+    const id = `cancel-${actor}-${status}`
+    await insert(id)
+    if (status === 'rejected') await send(id,'rejected')
+    assert.equal((await removeRequest(id,'stranger')).statusCode,404)
+    assert.equal((await removeRequest(id,actor)).statusCode,200)
+    assert.equal((await db.query('SELECT id FROM fallback_friends WHERE id=$1',[id])).rows.length,0)
+  }
+  await insert('accept-vs-cancel')
+  const [accept,cancel]=await Promise.all([send('accept-vs-cancel','accepted'),removeRequest('accept-vs-cancel','sender-local')])
+  const remaining=(await db.query("SELECT status FROM fallback_friends WHERE id='accept-vs-cancel'")).rows
+  if (accept.statusCode === 200) {
+    assert.equal(cancel.statusCode,409)
+    assert.equal(remaining[0].status,'accepted')
+  } else {
+    assert.equal(accept.statusCode,404)
+    assert.equal(cancel.statusCode,200)
+    assert.equal(remaining.length,0)
+  }
+  // Removing a confirmed friend is an explicit different action and remains supported.
+  const unfriend={ statusCode:200,status(code){this.statusCode=code;return this},json(body){this.body=body;return this} }
+  await handlers.get('delete /v1/data/friends/users/:targetUserId')({auth:{sub:'receiver-local'},params:{targetUserId:'sender'}},unfriend,error=>{throw error})
+  assert.equal(unfriend.statusCode,200)
+  assert.ok(unfriend.body.deleted>0)
   await db.query('DROP TABLE fallback_friends')
   await db.query('DROP TABLE fallback_users')
 }

@@ -14107,12 +14107,21 @@ function registerDataRoutes(app, {
       const requestId = normalizeId(req.params.requestId)
       const { rows } = await pool.query(
         `DELETE FROM fallback_friends
-         WHERE id::text = $1
+         WHERE id::text = $1 AND status IN ('pending', 'rejected')
            AND (lower(sender_id) = $2 OR lower(receiver_id) = $2)
          RETURNING id::text, sender_id, receiver_id, status, created_at`,
         [requestId, identity.displayUserId],
       )
-      if (!rows[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
+      if (!rows[0]) {
+        const { rows: existing } = await pool.query(
+          `SELECT 1 FROM fallback_friends
+           WHERE id::text = $1
+             AND (lower(sender_id) = $2 OR lower(receiver_id) = $2)`,
+          [requestId, identity.displayUserId],
+        )
+        if (!existing[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
+        return res.status(409).json({ error: 'FRIEND_REQUEST_ALREADY_RESOLVED' })
+      }
       res.json({ request: normalizeImportedRow(rows[0]) })
     } catch (error) {
       next(error)
