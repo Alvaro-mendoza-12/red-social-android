@@ -93,6 +93,26 @@ async function verifyFriendRequestTransitions(db) {
     assert.equal(cancel.statusCode,200)
     assert.equal(remaining.length,0)
   }
+  // Reads accept local and migrated IDs. Mutations must recognize the same
+  // authenticated identity rather than requiring only its preferred alias.
+  for (const final of ['accepted','rejected']) {
+    const id = `local-receiver-${final}`
+    await db.query("INSERT INTO fallback_friends(id,sender_id,receiver_id,status) VALUES($1,'sender-local','receiver-local','pending')",[id])
+    assert.equal((await send(id,final,'stranger')).statusCode,404)
+    assert.equal((await send(id,final,'sender-local')).statusCode,404,'a sender cannot answer its own outgoing request')
+    assert.equal((await send(id,final)).statusCode,200,'local receiver IDs must be actionable')
+    assert.equal((await send(id,final)).statusCode,200,'alias-aware retry must remain idempotent')
+    assert.equal((await send(id,final==='accepted'?'rejected':'accepted')).statusCode,409)
+  }
+  for (const actor of ['receiver-local','sender-local']) {
+    const id = `local-cancel-${actor}`
+    await db.query("INSERT INTO fallback_friends(id,sender_id,receiver_id,status) VALUES($1,'sender-local','receiver-local','pending')",[id])
+    assert.equal((await removeRequest(id,'stranger')).statusCode,404)
+    assert.equal((await removeRequest(id,actor)).statusCode,200,'either participant can cancel using its local ID')
+    assert.equal((await removeRequest(id,actor)).statusCode,404)
+  }
+  assert.equal((await removeRequest('local-receiver-accepted','stranger')).statusCode,404,'resolved alias lookup remains private')
+  assert.equal((await removeRequest('local-receiver-accepted')).statusCode,409,'alias-aware lookup must still protect accepted friendships')
   // Removing a confirmed friend is an explicit different action and remains supported.
   const unfriend={ statusCode:200,status(code){this.statusCode=code;return this},json(body){this.body=body;return this} }
   await handlers.get('delete /v1/data/friends/users/:targetUserId')({auth:{sub:'receiver-local'},params:{targetUserId:'sender'}},unfriend,error=>{throw error})

@@ -14076,9 +14076,9 @@ function registerDataRoutes(app, {
       const { rows } = await pool.query(
         `UPDATE fallback_friends
          SET status = $3
-         WHERE id::text = $1 AND lower(receiver_id) = $2 AND status = 'pending'
+         WHERE id::text = $1 AND lower(receiver_id) = ANY($2::text[]) AND status = 'pending'
          RETURNING id::text, sender_id, receiver_id, status, created_at`,
-        [normalizeId(req.params.requestId), identity.displayUserId, status],
+        [normalizeId(req.params.requestId), identity.values, status],
       )
       if (rows[0]) return res.json({ request: normalizeImportedRow(rows[0]) })
       // The conditional UPDATE is the atomic decision. A retry may read the
@@ -14086,8 +14086,8 @@ function registerDataRoutes(app, {
       const { rows: existing } = await pool.query(
         `SELECT id::text, sender_id, receiver_id, status, created_at
          FROM fallback_friends
-         WHERE id::text = $1 AND lower(receiver_id) = $2`,
-        [normalizeId(req.params.requestId), identity.displayUserId],
+         WHERE id::text = $1 AND lower(receiver_id) = ANY($2::text[])`,
+        [normalizeId(req.params.requestId), identity.values],
       )
       if (!existing[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
       if (existing[0].status !== status) {
@@ -14108,16 +14108,16 @@ function registerDataRoutes(app, {
       const { rows } = await pool.query(
         `DELETE FROM fallback_friends
          WHERE id::text = $1 AND status IN ('pending', 'rejected')
-           AND (lower(sender_id) = $2 OR lower(receiver_id) = $2)
+           AND (lower(sender_id) = ANY($2::text[]) OR lower(receiver_id) = ANY($2::text[]))
          RETURNING id::text, sender_id, receiver_id, status, created_at`,
-        [requestId, identity.displayUserId],
+        [requestId, identity.values],
       )
       if (!rows[0]) {
         const { rows: existing } = await pool.query(
           `SELECT 1 FROM fallback_friends
            WHERE id::text = $1
-             AND (lower(sender_id) = $2 OR lower(receiver_id) = $2)`,
-          [requestId, identity.displayUserId],
+             AND (lower(sender_id) = ANY($2::text[]) OR lower(receiver_id) = ANY($2::text[]))`,
+          [requestId, identity.values],
         )
         if (!existing[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
         return res.status(409).json({ error: 'FRIEND_REQUEST_ALREADY_RESOLVED' })
