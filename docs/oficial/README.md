@@ -24,6 +24,10 @@ La [operación R2 102](102-r2-replica-y-entrega-multimedia.md) registra la répl
 
 La revisión web de compartidos está en la [entrega 100](100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md); el historial de personas y grupos y el envío de documentos se revalidarán después del móvil. La operación 102 registra las correcciones y los ensayos posteriores de multimedia. El proveedor de retiros sigue pendiente; las preferencias de compra están en [91](91-presupuesto-30m-correo-y-opcion-dlocal-2026-10-29.md).
 
+## Auditoría y propuestas de noviembre
+
+La [auditoría del 10 de noviembre](auditoria-dot-2026-11-10.md) registra las correcciones verificadas de la rama `correcciones-dot`, sin despliegue. La [adenda del benchmark](adenda-benchmark-2026-11-10.md) conserva B01–B30 y distingue anuncios competitivos, hipótesis y requisitos propuestos; no declara esas propuestas implementadas.
+
 ## Cómo interpretar el historial
 
 Los informes numerados y fechados registran lo que se comprobó en esa versión. Una mención de «cierre», una cifra de pruebas, un paquete o un despliegue antiguo no constituye el estado actual. Para continuar el trabajo usa el apartado **Estado vigente** de la revisión 101, y después el documento operativo correspondiente. La limpieza local de carpetas de [93](93-limpieza-local-y-git-2026-10-30.md) es evidencia fechada, no una autorización para borrar nuevos respaldos o temporales ignorados.
