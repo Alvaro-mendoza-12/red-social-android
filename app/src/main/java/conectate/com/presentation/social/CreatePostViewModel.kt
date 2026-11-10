@@ -16,6 +16,8 @@ class CreatePostViewModel @Inject constructor(
     private val authService: conectate.com.data.supabase.AuthService,
 ) : ViewModel() {
 
+    val currentAccountId: String? get() = authService.getCurrentUserId()
+
     private val _mentionSuggestions = MutableStateFlow<List<conectate.com.data.model.User>>(emptyList())
     val mentionSuggestions = _mentionSuggestions.asStateFlow()
     private var mentionJob: kotlinx.coroutines.Job? = null
@@ -67,11 +69,11 @@ class CreatePostViewModel @Inject constructor(
                 if (result.isSuccess) {
                     _uploadSuccess.emit(Unit)
                 } else {
-                    _error.value = result.exceptionOrNull()?.message ?: "Error desconocido"
+                    _error.value = "No se pudo publicar. Comprueba la conexión y vuelve a intentarlo; conservamos tu borrador."
                 }
             } catch (error: kotlinx.coroutines.CancellationException) { throw error
             } catch (e: Exception) {
-                _error.value = e.message ?: "No se pudo crear la publicación."
+                _error.value = "No se pudo publicar. Comprueba la conexión y vuelve a intentarlo; conservamos tu borrador."
             } finally {
                 _isCreating.value = false
             }

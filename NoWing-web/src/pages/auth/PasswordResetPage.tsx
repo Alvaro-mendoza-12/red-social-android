@@ -74,12 +74,12 @@ export function PasswordResetPage({
     event.preventDefault()
     if (loading || !resetToken) return
 
-    const nextPassword = newPassword.trim()
+    const nextPassword = newPassword
     if (nextPassword.length < 8) {
       setError('🔒 Mínimo 8 caracteres para tu contraseña')
       return
     }
-    if (nextPassword !== confirmPassword.trim()) {
+    if (nextPassword !== confirmPassword) {
       setError('❌ Las contraseñas no coinciden')
       return
     }

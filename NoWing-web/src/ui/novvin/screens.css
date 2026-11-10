@@ -2248,8 +2248,10 @@
   .reel-stage-navigation {
     position: absolute;
     z-index: 16;
-    right: max(30px, calc((100% - 680px) / 2));
+    left: 16px;
+    right: auto;
     top: 50%;
+    transform: translateY(-50%);
     display: grid;
     gap: 12px;
   }

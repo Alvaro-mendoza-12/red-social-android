@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { StreamingAudio, StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { friendlyError } from '../../core/utils'
@@ -76,9 +76,20 @@ export function MomentComposer({ onClose, onPublished }: { onClose: () => void; 
   const [music, setMusic] = useState<MomentMusicSelection>(), [saving, setSaving] = useState(false), [error, setError] = useState('')
   const [localBusy, setLocalBusy] = useState(false), [overlay, setOverlay] = useState<MomentOverlay>({ text: '', color: '#ffffff', font: 'sans', x: .5, y: .38 })
   const video = file?.type.startsWith('video/') === true, durationMs = momentDuration(video ? 'video' : 'image', videoDuration)
+  const hasDraft = Boolean(file || caption || music || localBusy || overlay.text || durationHours !== 24 || visibility !== 'all' || !replies)
+  const requestClose = useCallback(() => {
+    if (saving) return
+    if (!hasDraft || window.confirm('¿Descartar este momento? Se perderán los cambios que no has publicado.')) onClose()
+  }, [hasDraft, onClose, saving])
+  useEffect(() => {
+    if (!hasDraft && !saving) return
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [hasDraft, saving])
   useEffect(() => { const previous = document.activeElement as HTMLElement | null; dialog.current?.focus(); return () => previous?.focus() }, [])
   useEffect(() => () => audioRead.current?.abort(), [])
-  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === 'Escape' && !saving) onClose() }; window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close) }, [onClose, saving])
+  useEffect(() => { const close = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); requestClose() } }; window.addEventListener('keydown', close); return () => window.removeEventListener('keydown', close) }, [requestClose])
   function chooseTrack(track: MomentTrack) { audioRead.current?.abort(); audioRead.current = null; setLocalBusy(false); setMusic({ track, startMs: 0, volume: 1, originalVolume: 1, fadeInMs: 0, fadeOutMs: 0, duckOriginal: false, presentation: 'card' }); setSearching(false) }
   async function chooseAudio(audio: File | undefined) {
     if (!audio) return
@@ -98,7 +109,7 @@ export function MomentComposer({ onClose, onPublished }: { onClose: () => void; 
   }
   const range = music ? musicRange(music.track.durationMs, durationMs, music.startMs) : null
   function changeMusic(values: Partial<MomentMusicSelection>) { setMusic(current => current ? { ...current, ...values } : undefined) }
-  return <div className="app-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose() }}>
+  return <div className="app-dialog-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) requestClose() }}>
     <article ref={dialog} tabIndex={-1} className="surface-card moment-editor" role="dialog" aria-modal="true" aria-label="Publicar momento" onKeyDown={event => {
       if (event.key !== 'Tab') return
       const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled):not([hidden]),textarea:not(:disabled),select:not(:disabled),summary') || []).filter(element => element.getClientRects().length > 0)
@@ -106,7 +117,7 @@ export function MomentComposer({ onClose, onPublished }: { onClose: () => void; 
       if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last?.focus() }
       else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog.current)) { event.preventDefault(); first?.focus() }
     }}>
-      <div className="row-between"><h3>Crear momento</h3><button className="ghost-btn" type="button" disabled={saving} onClick={onClose}>Cerrar</button></div>
+      <div className="row-between"><h3>Crear momento</h3><button className="ghost-btn" type="button" disabled={saving} onClick={requestClose}>Cerrar</button></div>
       <form onSubmit={event => void submit(event)}><fieldset disabled={saving}>
         <label>Foto o video<input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" onChange={event => { const next = event.target.files?.[0]; event.target.value = ''; if (!next) return; const invalid = momentFileError(next); if (invalid) { setError(invalid); return } setFile(next); setVideoDuration(0); setError('') }} /></label>
         {source ? <div className="moment-editor-preview">{video ? <StreamingVideo key={source} src={source} controls muted playsInline onError={() => { setVideoDuration(0); setError('No se pudo abrir el video. Prueba con otro archivo.') }} onLoadedMetadata={event => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) setVideoDuration(Math.round(value * 1000)); else setError('No se pudo leer la duración del video.') }} onTimeUpdate={event => { if (event.currentTarget.currentTime >= 25) event.currentTarget.currentTime = 0 }} /> : <StreamingImage src={source} alt="Vista previa del momento" />}

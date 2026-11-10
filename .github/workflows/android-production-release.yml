@@ -104,6 +104,11 @@ jobs:
             echo "NOVVIN_UPLOAD_CERT_SHA256=$CERT_SHA256"
           } >> "$GITHUB_ENV"
 
+      - name: Prepare production Firebase and CI debug signing inputs
+        env:
+          ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
+        run: python tools/prepare_android_ci.py --production
+
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 

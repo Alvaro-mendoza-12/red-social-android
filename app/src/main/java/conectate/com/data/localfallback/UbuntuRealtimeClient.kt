@@ -7,8 +7,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -28,6 +28,8 @@ data class UbuntuRealtimeEnvelope(
     val channel: String,
     val event: String,
     val payload: JsonObject,
+    val connectionGeneration: Long = -1L,
+    val subscriptionGeneration: Long = -1L,
 )
 
 @Singleton
@@ -41,7 +43,7 @@ class UbuntuRealtimeClient @Inject constructor() {
     private val client = OkHttpClient.Builder().dns(PublicBackendDns).build()
     private val subscribedChannels = ConcurrentHashMap.newKeySet<String>()
     private val _events = MutableSharedFlow<UbuntuRealtimeEnvelope>(extraBufferCapacity = 256)
-    val events: SharedFlow<UbuntuRealtimeEnvelope> = _events.asSharedFlow()
+    val events: Flow<UbuntuRealtimeEnvelope> = _events.filter(::isCurrent)
 
     @Volatile
     private var socket: WebSocket? = null
@@ -50,12 +52,20 @@ class UbuntuRealtimeClient @Inject constructor() {
     private var accessToken: String = ""
     @Volatile private var socketGeneration = 0L
 
+    @Volatile private var userSubscriptionGeneration = 0L
+
+    // An admitted event belongs to an account visit, not to a particular network connection.
+    // A reconnect/token refresh must not discard messages already received for this visit.
+    fun isCurrent(envelope: UbuntuRealtimeEnvelope): Boolean =
+        envelope.subscriptionGeneration == userSubscriptionGeneration
+
     @Synchronized
     fun updateAccessToken(token: String) {
         val clean = token.trim()
         if (clean == accessToken) return
         accessToken = clean
         if (clean.isBlank()) {
+            userSubscriptionGeneration++
             socketGeneration++
             val previous = socket
             socket = null
@@ -65,7 +75,9 @@ class UbuntuRealtimeClient @Inject constructor() {
         }
     }
 
+    @Synchronized
     fun replaceUserSubscription(userId: String) {
+        userSubscriptionGeneration++
         val channel = "user:${userId.trim().lowercase()}"
         if (channel == "user:") return
         subscribedChannels
@@ -74,10 +86,15 @@ class UbuntuRealtimeClient @Inject constructor() {
                 sendJson("""{"type":"unsubscribe","channel":"$staleChannel"}""")
                 subscribedChannels.remove(staleChannel)
             }
-        subscribe(channel)
+        subscribedChannels.add(channel)
+        // A new account visit must use a new socket, even if its token/UID is reused.
+        // A delayed callback from A cannot acquire the generation of a later visit to A.
+        reconnect()
     }
 
+    @Synchronized
     fun clearUserSubscriptions() {
+        userSubscriptionGeneration++
         subscribedChannels
             .filter { it.startsWith("user:") }
             .forEach { channel ->
@@ -119,6 +136,7 @@ class UbuntuRealtimeClient @Inject constructor() {
         val url = wsUrl() ?: return
         val generation = ++socketGeneration
         val connectionToken = accessToken
+        val connectionSubscriptionGeneration = userSubscriptionGeneration
         val request = Request.Builder()
             .url(url)
             .header("Authorization", "Bearer $connectionToken")
@@ -135,7 +153,7 @@ class UbuntuRealtimeClient @Inject constructor() {
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     if (generation != socketGeneration || connectionToken != accessToken) return
-                    handleMessage(text, generation, connectionToken)
+                    handleMessage(text, generation, connectionSubscriptionGeneration)
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -180,7 +198,12 @@ class UbuntuRealtimeClient @Inject constructor() {
         socket?.send(raw)
     }
 
-    private fun handleMessage(text: String, generation: Long, connectionToken: String) {
+    /** The socket callback has admitted this frame; only ending its account visit can revoke it. */
+    internal suspend fun publishAcceptedEnvelope(envelope: UbuntuRealtimeEnvelope) {
+        if (isCurrent(envelope)) _events.emit(envelope)
+    }
+
+    private fun handleMessage(text: String, generation: Long, subscriptionGeneration: Long) {
         runCatching {
             val root = json.parseToJsonElement(text).jsonObject
             val type = root["type"]?.jsonPrimitive?.contentOrNull
@@ -190,8 +213,8 @@ class UbuntuRealtimeClient @Inject constructor() {
             val event = if (type == "subscribed") "subscription_ready" else payload["event"]?.jsonPrimitive?.contentOrNull.orEmpty()
             if (channel.isBlank()) return
             scope.launch {
-                if (generation != socketGeneration || connectionToken != accessToken) return@launch
-                _events.emit(UbuntuRealtimeEnvelope(channel = channel, event = event, payload = payload))
+                publishAcceptedEnvelope(UbuntuRealtimeEnvelope(channel = channel, event = event, payload = payload,
+                    connectionGeneration = generation, subscriptionGeneration = subscriptionGeneration))
             }
         }.onFailure {
             Log.w(TAG, "invalid realtime payload", it)

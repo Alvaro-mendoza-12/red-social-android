@@ -322,12 +322,12 @@ export function LoginPage() {
     event.preventDefault()
     if (!migratedPasswordReset || activatingMigratedPassword) return
 
-    const nextPassword = migratedNewPassword.trim()
+    const nextPassword = migratedNewPassword
     if (nextPassword.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres.')
       return
     }
-    if (nextPassword !== migratedConfirmPassword.trim()) {
+    if (nextPassword !== migratedConfirmPassword) {
       setError('La confirmación no coincide con la contraseña nueva.')
       return
     }
@@ -403,12 +403,12 @@ export function LoginPage() {
     setInfo(null)
     try {
       if (isFallbackAuthConfigured) {
-        const nextPassword = fallbackResetPassword.trim()
+        const nextPassword = fallbackResetPassword
         if (nextPassword.length < 8) {
           setError('La nueva contraseña debe tener al menos 8 caracteres.')
           return
         }
-        if (nextPassword !== fallbackResetConfirmPassword.trim()) {
+        if (nextPassword !== fallbackResetConfirmPassword) {
           setError('La confirmación no coincide con la contraseña nueva.')
           return
         }
@@ -421,7 +421,7 @@ export function LoginPage() {
     } catch (caught) {
       if (caught instanceof FallbackPasswordChangedNeedsTwoFactorError) {
         setEmail(migrationSetupEmail || email)
-        setPassword(fallbackResetPassword.trim())
+        setPassword(fallbackResetPassword)
         setNeedsTwoFactor(true)
         setSecondFactorCode('')
         setMigrationSetupEmail('')

@@ -1,5 +1,7 @@
 package conectate.com.presentation.wallet
 
+import conectate.com.R
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
@@ -238,7 +240,7 @@ fun CoinsAndPaymentsScreen(
                         Column(Modifier.weight(1f)) {
                             Text("Ganancias del creador", fontWeight = FontWeight.Black)
                             Text(
-                                "Disponible, retenciones, actividad y cuenta de retiro",
+                                stringResource(R.string.audit_earnings_disclosure),
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }

@@ -1,7 +1,7 @@
 # Correcciones de seguridad de la auditoría, 10 de noviembre de 2026
 
 Base: `main` en `455d26999111116f59ae8bd76dae56a5e137aee3`.
-Destino de trabajo: `correcciones-dot`. Este bloque no se ha desplegado y no modifica `main` ni `feature/live-gifts`.
+Destino de trabajo: `correcciones-dot`. No se inició ningún despliegue manual ni se modificaron `main` o `feature/live-gifts`. Al publicar el commit, la integración existente de Vercel inició automáticamente un despliegue y notificó éxito. El propietario confirmó en su panel que ese despliegue corresponde a Preview y que Production usa `main`. Esta confirmación no presupone el destino de despliegues futuros.
 
 ## Cambios
 
@@ -30,8 +30,8 @@ Las pruebas de rutas usan dependencias externas controladas y datos sintéticos.
 
 ## Límites y pendientes
 
-- `npm audit --omit=dev` conserva **seis avisos moderados**, sin corrección automática ofrecida, en la cadena firebase-admin/Firestore/google-gax/glob/rimraf/minimatch. No se forzó un cambio incompatible ni se desactivó la puerta de dependencias.
-- No se ha ejecutado CI remoto de este commit, compilado Android, generado una APK/AAB, usado un dispositivo o desplegado el backend en este bloque. El parser de firma se probó con salidas controladas; falta un AAB real alterado y la decisión de verificación estricta de certificados.
+- La primera ejecución de `npm audit --omit=dev` registró **seis avisos moderados**, sin corrección automática ofrecida, en la cadena firebase-admin/Firestore/google-gax/glob/rimraf/minimatch. Al integrar Android y web, una nueva consulta registró **cuatro moderados y correcciones disponibles**, sin avisos altos o críticos. No hubo cambios en las dependencias backend entre ambas consultas: esa variación no se atribuye a una corrección de código. Falta evaluar y probar las actualizaciones ofrecidas; no se forzó un cambio incompatible ni se desactivó la puerta de dependencias.
+- No hay ejecuciones de GitHub Actions para este commit ni se compiló Android, generó una APK/AAB, usó un dispositivo o desplegó manualmente el backend en este bloque. El estado de Vercel del commit `13593bb315ba8bb5e96c7f45af94d4098d4363f7` indica éxito para el despliegue automático [9xecJXjrFXZSp5Eoaj8qNTF5Q7te](https://vercel.com/alvaro-s-projects1/red-social-android/9xecJXjrFXZSp5Eoaj8qNTF5Q7te); el propietario confirmó su entorno Preview. El parser de firma se probó con salidas controladas; falta un AAB real alterado y la decisión de verificación estricta de certificados.
 - Falta probar concurrencia real entre conexiones y carga sobre PostgreSQL, además de los recorridos móviles/web restantes de la auditoría. Los 16 casos omitidos del conjunto completo siguen requiriendo sus entornos o servicios específicos.
 - La matriz global de revisión no se regenera desde esta materialización parcial: el generador inventaría solamente los archivos presentes y eliminaría entradas no descargadas. No se declara lectura completa de los grandes archivos modificados. Debe actualizarse en un checkout íntegro al integrar el conjunto de correcciones.
 - Las otras correcciones Android/web se trabajan por separado. Este documento no cierra la auditoría completa ni certifica cumplimiento normativo.

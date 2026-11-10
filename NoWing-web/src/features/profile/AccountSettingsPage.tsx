@@ -500,16 +500,16 @@ export function AccountSettingsPage() {
 
   async function updatePassword() {
     if (savingPassword) return
-    const password = newPassword.trim()
+    const password = newPassword
     if (password.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres.')
       return
     }
-    if (password !== confirmPassword.trim()) {
+    if (password !== confirmPassword) {
       setError('La confirmación no coincide con la contraseña nueva.')
       return
     }
-    if (isFallbackSession && !currentPassword.trim()) {
+    if (isFallbackSession && !currentPassword) {
       setError('Escribe tu contraseña actual para confirmar el cambio.')
       return
     }
@@ -519,7 +519,7 @@ export function AccountSettingsPage() {
     setInfo(null)
     try {
       if (isFallbackSession) {
-        await changeFallbackPassword(currentPassword.trim(), password)
+        await changeFallbackPassword(currentPassword, password)
       } else {
         if (!supabase) return
         const { error: passwordError } = await supabase.auth.updateUser({

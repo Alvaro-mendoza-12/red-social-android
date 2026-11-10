@@ -7,7 +7,9 @@ on:
       - master
       - develop
       - feature/live-gifts
+      - correcciones-dot
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: android-quality-${{ github.workflow }}-${{ github.ref }}
@@ -15,6 +17,8 @@ concurrency:
 
 jobs:
   quality-gate:
+    env:
+      NOVVIN_CI_FIXTURE: "true"
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -52,6 +56,9 @@ jobs:
         run: |
           echo "FALLBACK_API_URL=https://api.example.invalid" > secrets.properties
           echo "SIGNALING_URL=https://voice.example.invalid" >> secrets.properties
+
+      - name: Prepare isolated Firebase and debug signing inputs
+        run: python tools/prepare_android_ci.py
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
@@ -92,6 +99,8 @@ jobs:
   release-smoke:
     if: github.event_name == 'push'
     needs: quality-gate
+    env:
+      NOVVIN_CI_FIXTURE: "true"
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -149,6 +158,9 @@ jobs:
             echo "keyAlias=novvin-ci"
             echo "keyPassword=$SMOKE_PASSWORD"
           } > keystore.properties
+
+      - name: Prepare isolated Firebase and debug signing inputs
+        run: python tools/prepare_android_ci.py
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew

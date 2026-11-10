@@ -1,5 +1,7 @@
 package conectate.com.presentation.home
 
+import conectate.com.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.Composable
 
 import androidx.compose.foundation.layout.*
@@ -142,6 +144,13 @@ fun HomeScreen(
                 modifier = Modifier.heightIn(min = 64.dp),
             ) {
                 items.forEach { item ->
+                    val localizedTitle = stringResource(when (item) {
+                        BottomNavItem.Messages -> R.string.audit_nav_messages
+                        BottomNavItem.Videos -> R.string.audit_nav_videos
+                        BottomNavItem.Social -> R.string.audit_nav_social
+                        BottomNavItem.Games -> R.string.audit_nav_games
+                        BottomNavItem.Profile -> R.string.audit_nav_profile
+                    })
                     val hasNews = when (item) {
                         BottomNavItem.Messages -> unreadBadge > 0
                         BottomNavItem.Videos -> newFollowingVideos
@@ -149,9 +158,10 @@ fun HomeScreen(
                         BottomNavItem.Games -> newGames
                         BottomNavItem.Profile -> unreadProfileNotifications > 0
                     }
+                    val newsDescription = stringResource(if (hasNews) R.string.audit_news else R.string.audit_no_news)
                     NavigationBarItem(
                         modifier = Modifier.testTag("main-tab-${item.route}").semantics {
-                            stateDescription = if (hasNews) "Hay novedades" else "Sin novedades"
+                            stateDescription = newsDescription
                         },
                         icon = { 
                             BadgedBox(
@@ -189,11 +199,11 @@ fun HomeScreen(
                                         borderWidth = 1.5.dp
                                     )
                                 } else {
-                                    Icon(item.icon, contentDescription = item.title)
+                                    Icon(item.icon, contentDescription = localizedTitle)
                                 }
                             }
                         },
-                        label = { Text(item.title, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        label = { Text(localizedTitle, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                         selected = currentDestination?.hierarchy?.any { destination ->
                             destination.route == item.route || (
                                 item is BottomNavItem.Games && destination.route?.startsWith("games_") == true

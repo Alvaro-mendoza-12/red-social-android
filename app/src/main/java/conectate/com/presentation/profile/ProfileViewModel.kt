@@ -623,6 +623,7 @@ class ProfileViewModel @Inject constructor(
 
         viewModelScope.launch {
             var uploadedUrl: String? = null
+            var profileMusicSaved = false
             fun deleteTemporaryClip() {
                 if (clip?.uri?.scheme.equals("file", ignoreCase = true)) {
                     clip?.uri?.path?.let { path -> runCatching { java.io.File(path).delete() } }
@@ -655,6 +656,7 @@ class ProfileViewModel @Inject constructor(
                     return@launch
                 }
 
+                profileMusicSaved = true
                 profileMutationClock.markCommitted()
                 val normalizedUrl = nextUrl.takeIf(String::isNotBlank)
                 _profileState.value = ProfileUiState.Success(
@@ -671,16 +673,16 @@ class ProfileViewModel @Inject constructor(
                 uploadedUrl?.let { userRepository.deleteUploadedProfileMusic(it) }
                 onError(error.message ?: "No se pudo guardar la música de entrada.")
             } finally {
-                deleteTemporaryClip()
+                if (profileMusicSaved) deleteTemporaryClip()
             }
         }
     }
 
     fun updateProfile(
-        name: String,
-        bio: String,
-        country: String,
-        city: String,
+        name: String?,
+        bio: String?,
+        country: String?,
+        city: String?,
         gender: String? = null,
         birthDate: String? = null,
         education: String? = null,
@@ -716,7 +718,7 @@ class ProfileViewModel @Inject constructor(
                 val currentUser = (_profileState.value as? ProfileUiState.Success)?.user
                 
                 // Only include name in request if it actually changed to avoid triggering 7-day limit on photo updates
-                val nameChanged = currentUser?.full_name != name && currentUser?.display_name != name
+                val nameChanged = name != null && currentUser?.full_name != name && currentUser?.display_name != name
                 
                 var lastNameChange: String? = null
                 val finalName = if (nameChanged) {
@@ -797,9 +799,9 @@ class ProfileViewModel @Inject constructor(
                     career = career,
                     profile_section_visibility = sectionVisibility,
                     avatar_url = avatarUrl.takeIf { imageUri != null },
-                    avatar_media_type = resolvedAvatarMediaType,
-                    avatar_video_muted = resolvedAvatarVideoMuted,
-                    avatar_duration_ms = resolvedAvatarDurationMs,
+                    avatar_media_type = resolvedAvatarMediaType.takeIf { imageUri != null || avatarMediaType != null },
+                    avatar_video_muted = resolvedAvatarVideoMuted.takeIf { imageUri != null || avatarVideoMuted != null },
+                    avatar_duration_ms = resolvedAvatarDurationMs.takeIf { imageUri != null || avatarDurationMs != null },
                     cover_url = coverUrl.takeIf { coverImageUri != null },
                     remove_avatar = removeAvatar,
                     remove_cover = removeCover,
@@ -818,9 +820,9 @@ class ProfileViewModel @Inject constructor(
                     val optimisticUser = currentUser?.copy(
                         display_name = updateRequest.display_name ?: currentUser.display_name,
                         username = updateRequest.username ?: currentUser.username,
-                        bio = updateRequest.bio,
-                        country = updateRequest.country,
-                        city = updateRequest.city,
+                        bio = updateRequest.bio ?: currentUser.bio,
+                        country = updateRequest.country ?: currentUser.country,
+                        city = updateRequest.city ?: currentUser.city,
                         gender = updateRequest.gender ?: currentUser.gender,
                         birth_date = updateRequest.birth_date ?: currentUser.birth_date,
                         education = updateRequest.education ?: currentUser.education,
