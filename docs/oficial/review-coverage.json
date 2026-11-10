@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-10T22:36:57.133344+00:00",
-  "baseCommit": "85c8d3e099807d42b253724aa4cb550ea11da46c",
+  "generatedAtUtc": "2026-11-10T22:47:10.209977+00:00",
+  "baseCommit": "480e856022e17b895922a66704c7eff573a716e5",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -19973,7 +19973,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "69bedb0998c184d062ab1b4f8934cee347562d3e",
+      "gitBlobId": "ea855488b2e60d97dc82c56b8233e3e18194ab38",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20555,7 +20555,7 @@
     {
       "file": "infrastructure/local-fallback/api/package-lock.json",
       "phase": "server",
-      "gitBlobId": "8905bb4da5e720b77b4394120870c2410bc3feb6",
+      "gitBlobId": "15d1916d05f34594feb113836ee1a7b6f2d3d77b",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20563,7 +20563,7 @@
     {
       "file": "infrastructure/local-fallback/api/package.json",
       "phase": "server",
-      "gitBlobId": "e25b4050af0dda02660be12574d3461dd5b0f482",
+      "gitBlobId": "b75da1b833a09699cb6110bf0cacb553324469b9",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

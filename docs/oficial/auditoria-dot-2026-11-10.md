@@ -69,3 +69,19 @@ Las siete regresiones nuevas de compatibilidad ejecutan el handler real y SQL co
 **Pendiente P1, cancelación importada:** el DELETE genérico de compatibilidad no deja una marca persistente de eliminación para `supabase_import.friends`. Una fila importada `pending` puede seguir visible y materializarse otra vez después de eliminar su copia nativa. Esta entrega no resuelve esa cancelación ni afirma que todas las rutas de amistad estén cerradas. Se necesita diseñar la marca de eliminación y su relación con nuevas solicitudes, probar permisos y lecturas, y revisar migración/retención antes de desplegar.
 
 Todas estas pruebas locales siguen usando una sola sesión: reproducen intercalaciones, no contención PostgreSQL entre conexiones independientes. No se probó Android en dispositivo/emulador ni se generó APK; tampoco se desplegó API o web ni se tocaron datos reales. Los commits y el estado de CI son evidencias distintas.
+
+## Seguimiento de CI y dependencia XML
+
+El job backend-contracts del commit `897fbdf5` terminó en rojo por `npm audit --omit=dev --audit-level=low`, después de pasar los scripts de contratos. El aviso [GHSA-474x-hrwr-fgx4](https://github.com/advisories/GHSA-474x-hrwr-fgx4), revisado el 10 de noviembre, afecta fast-xml-parser hasta 5.11.2 y señala 5.12.0 como corregida. Es una dependencia transitiva de Firebase Admin mediante Google Cloud Storage. La vulnerabilidad descrita requiere la opción no predeterminada stopNodes; no se ha demostrado su explotación en Novvin.
+
+Se actualizó el lockfile a 5.12.0 con sus cuatro dependencias necesarias, conservando el rango del consumidor y los metadatos de plataformas. Instalación limpia aprobada; auditoría de producción: cero vulnerabilidades. Comprobación sintáctica y suite: 1.071 aprobadas, 16 omitidas, cero fallos. No se desactivó la auditoría ni se rebajó su umbral.
+
+La inspección de `android-ci.yml` identificó que su job backend-contracts recorre scripts `test:*`, no `npm test`. `service-ci.yml` ya contempla `npm test` con descubrimiento general. Se añadió `test:friendship` para ejecutar también en backend-contracts las dos pruebas SQL nuevas; su ejecución local pasa ocho casos. También pasó localmente el bucle completo de scripts `test:*` del job. Hasta que se complete el nuevo run no se declara CI verde. El job web/client del run anterior sí pasó; Android seguía ejecutándose al registrar esta evidencia.
+
+## Viabilidad visual y Android
+
+La vista previa local pudo iniciarse, pero el navegador de esta sesión no pudo conectarse a ella (`ERR_CONNECTION_REFUSED`), incluso tras iniciar el servidor fuera del aislamiento. Se detuvieron ambos procesos de vista previa. No hay captura visual comprobada de esta tanda ni se publicó un sitio para resolver el acceso.
+
+El workflow de calidad Android contiene pruebas JVM y lint mediante `qualityGateDebug`, además de ensamblado y auditorías. El workflow instrumentado separa tres pruebas de cuentas en `correcciones-dot`, requiere despacho manual y trata el acceso temporal KVM como autorización independiente. No se modificaron permisos ni se lanzó esa ejecución. La falta de SDK/emulador local sigue impidiendo afirmar validación de dispositivo.
+
+La investigación posterior reprodujo el P1 importado incluso secuencialmente: DELETE de importado pending seguido de PATCH accepted crea una fila nativa nueva. La revisión del diseño detectó lectores adicionales de permisos (`fallback_request_pair_trusted` y friendsOnly) y escritores de consentimiento de chat. Por ello no se publicó una marca parcial que solo ocultara la solicitud. El diseño exige vínculo por origen/ID histórico, supervivencia al borrado nativo, transacciones coordinadas y pruebas con dos conexiones reales, sin bloquear invitaciones nuevas de la misma pareja.
