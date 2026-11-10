@@ -91,7 +91,19 @@ jobs:
           persist-credentials: false
 
       - name: Require existing hardware acceleration
-        run: test -r /dev/kvm && test -w /dev/kvm
+        run: |
+          echo "Runner identity and groups:"
+          id
+          echo "KVM device and access metadata (read-only):"
+          if [[ -e /dev/kvm ]]; then
+            stat -c '%F %A %a %U:%G %n' /dev/kvm
+            if command -v getfacl >/dev/null 2>&1; then
+              getfacl -p /dev/kvm
+            fi
+          else
+            echo "No /dev/kvm device is present on this runner."
+          fi
+          test -r /dev/kvm && test -w /dev/kvm
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
