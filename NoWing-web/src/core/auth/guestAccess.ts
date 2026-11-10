@@ -1,5 +1,5 @@
 import { isolatedBackendRequestCredentials } from '../publicBackendTransport'
-import { getRuntimeBackendUrl } from '../runtimeBackend'
+import { getRuntimeBackendUrl, initializeRuntimeBackend } from '../runtimeBackend'
 import { getStorageReadIdentity, invalidateStorageReadIdentity, onStorageReadInvalidated, requireStorageReadIdentity, updateStorageReadIdentity, type StorageReadIdentity } from '../media/storageReadSession'
 import type { GenericRow } from '../utils'
 
@@ -45,6 +45,10 @@ export async function startGuestBrowsing(): Promise<void> {
   if (!pending) {
     const capturedEpoch = epoch, backend = getRuntimeBackendUrl()
     const operation = (async () => {
+      // Direct entry can render before discovery restores or replaces the trusted origin.
+      await initializeRuntimeBackend()
+      assertNoAccount()
+      if (epoch !== capturedEpoch) throw new Error('GUEST_ACCOUNT_CHANGED')
       const payload = await request('/v1/guest/session', '', undefined, 'POST')
       assertNoAccount()
       if (epoch !== capturedEpoch) throw new Error('GUEST_ACCOUNT_CHANGED')

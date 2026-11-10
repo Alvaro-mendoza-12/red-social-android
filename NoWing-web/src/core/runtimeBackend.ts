@@ -38,6 +38,7 @@ const configuredUrl = canonicalBackendBaseUrl(import.meta.env.VITE_FALLBACK_API_
 const discoveryPublicKey = String(import.meta.env.VITE_BACKEND_DISCOVERY_PUBLIC_KEY || '').trim()
 let currentUrl = configuredUrl
 let currentExpiresAtEpochSeconds: number | null = null
+let initialization: Promise<string> | undefined
 const listeners = new Set<(url: string) => void>()
 
 function nowEpochSeconds(): number {
@@ -278,10 +279,17 @@ async function resolveRuntimeBackend(skippedUrl = ''): Promise<TrustedCandidate 
   return await selectReachableCandidate([dnsCandidate, configCandidate], skippedUrl)
 }
 
-export async function initializeRuntimeBackend(): Promise<string> {
-  const candidate = await resolveRuntimeBackend()
-  if (candidate) updateRuntimeBackend(candidate)
-  return getRuntimeBackendUrl()
+export function initializeRuntimeBackend(): Promise<string> {
+  if (!initialization) {
+    const operation = (async () => {
+      const candidate = await resolveRuntimeBackend()
+      if (candidate) updateRuntimeBackend(candidate)
+      return getRuntimeBackendUrl()
+    })()
+    initialization = operation
+    void operation.finally(() => { if (initialization === operation) initialization = undefined }).catch(() => {})
+  }
+  return initialization
 }
 
 /** Re-resolves a rotated endpoint and returns only a newly trusted URL. */

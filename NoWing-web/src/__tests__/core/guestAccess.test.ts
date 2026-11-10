@@ -3,12 +3,13 @@ import { guestStorageToken, loadGuestContent, startGuestBrowsing, stopGuestBrows
 import { getStorageReadIdentity, invalidateStorageReadBackend, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 
 let mockBackend = 'https://backend.test'
-jest.mock('../../core/runtimeBackend', () => ({ getRuntimeBackendUrl: () => mockBackend }))
+const mockInitialize = jest.fn()
+jest.mock('../../core/runtimeBackend', () => ({ getRuntimeBackendUrl: () => mockBackend, initializeRuntimeBackend: () => mockInitialize() }))
 const id = 'guest_00000000-0000-4000-8000-000000000001', content = '00000000-0000-4000-8000-000000000002'
 const token = 'synthetic.guest.signature', fetcher = jest.fn()
 const session = () => ({ role: 'guest', id, accessToken: token, expiresIn: 3600 })
 const response = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body })
-beforeEach(() => { stopGuestBrowsing(); updateStorageReadIdentity('', ''); mockBackend = 'https://backend.test'; fetcher.mockReset(); global.fetch = fetcher })
+beforeEach(() => { stopGuestBrowsing(); updateStorageReadIdentity('', ''); mockBackend = 'https://backend.test'; fetcher.mockReset(); mockInitialize.mockReset().mockImplementation(async () => mockBackend); global.fetch = fetcher })
 afterEach(() => { stopGuestBrowsing(); updateStorageReadIdentity('', ''); jest.useRealTimers() })
 
 test('obtains a separate guest identity and a read-only feed without cookies', async () => {
@@ -38,6 +39,7 @@ test('late guest bootstrap cannot replace a new authenticated identity', async (
   let finish!: (value: unknown) => void
   fetcher.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
   const operation = startGuestBrowsing()
+  await Promise.resolve()
   updateStorageReadIdentity('owned-account', 'fallback')
   finish(response(session(), 201))
   await expect(operation).rejects.toThrow('GUEST_ACCOUNT_CHANGED')
@@ -108,7 +110,7 @@ test('rejects malformed session responses', async () => {
 test('stopped in-flight bootstrap cannot reactivate guest media', async () => {
   let finish!: (value: unknown) => void
   fetcher.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
-  const operation = startGuestBrowsing(); stopGuestBrowsing(); finish(response(session(), 201))
+  const operation = startGuestBrowsing(); await Promise.resolve(); stopGuestBrowsing(); finish(response(session(), 201))
   await expect(operation).rejects.toThrow('GUEST_ACCOUNT_CHANGED')
   expect(getStorageReadIdentity().accountId).toBe('')
 })
@@ -128,6 +130,7 @@ test('trusted discovery during bootstrap does not leave a guest feed without med
   let finish!: (value: unknown) => void
   fetcher.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
   const operation = startGuestBrowsing()
+  await Promise.resolve()
   mockBackend = 'https://trusted-endpoint.test'; invalidateStorageReadBackend()
   finish(response(session(), 201)); await operation
   expect(guestStorageToken(getStorageReadIdentity())).toBe(token)
@@ -147,4 +150,94 @@ test('protected same-origin previews retain deployment access but still request 
     expect(fetcher.mock.calls[1][1].headers.Authorization).toBe(`Bearer ${token}`)
     expect(fetcher.mock.calls[1][1].redirect).toBe('error')
   } finally { Reflect.deleteProperty(globalThis, 'window') }
+})
+
+
+test('cold direct guest entry waits for trusted discovery before requesting a session', async () => {
+  mockBackend = ''
+  let discovered!: () => void
+  mockInitialize.mockImplementation(() => new Promise<void>(resolve => { discovered = () => { mockBackend = 'https://backend.test'; resolve() } }))
+  fetcher.mockResolvedValueOnce(response(session(), 201)).mockResolvedValueOnce(response({ items: [{ id: content }] }))
+  const operation = loadGuestContent('videos')
+  const result = operation.then(value => ({ value }), error => ({ error }))
+  expect(fetcher).not.toHaveBeenCalled()
+  await Promise.resolve()
+  discovered?.()
+  expect(await result).toEqual({ value: [{ id: content }] })
+  expect(mockInitialize).toHaveBeenCalledTimes(1)
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['https://backend.test/v1/guest/session', 'https://backend.test/v1/guest/videos'])
+})
+
+test('an active guest session does not add another discovery wait', async () => {
+  fetcher.mockResolvedValueOnce(response(session(), 201))
+  await startGuestBrowsing()
+  mockInitialize.mockClear()
+  await startGuestBrowsing()
+  expect(mockInitialize).not.toHaveBeenCalled()
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+test('unavailable discovery stays fail-closed and a later attempt may recover', async () => {
+  mockBackend = ''
+  mockInitialize.mockResolvedValueOnce('')
+  await expect(startGuestBrowsing()).rejects.toThrow('GUEST_UNAVAILABLE')
+  expect(fetcher).not.toHaveBeenCalled()
+  mockInitialize.mockImplementationOnce(async () => { mockBackend = 'https://backend.test' })
+  fetcher.mockResolvedValueOnce(response(session(), 201))
+  await expect(startGuestBrowsing()).resolves.toBeUndefined()
+  expect(getStorageReadIdentity().provider).toBe('guest')
+})
+
+test.each(['account', 'stop'])('discovery cannot resume a guest bootstrap after %s changes', async action => {
+  mockBackend = ''
+  let discovered!: () => void
+  mockInitialize.mockImplementation(() => new Promise<void>(resolve => { discovered = () => { mockBackend = 'https://backend.test'; resolve() } }))
+  const operation = startGuestBrowsing()
+  const result = operation.catch(error => error)
+  await Promise.resolve()
+  if (action === 'account') updateStorageReadIdentity('owned-account', 'fallback')
+  else stopGuestBrowsing()
+  discovered?.()
+  expect((await result).message).toBe('GUEST_ACCOUNT_CHANGED')
+  expect(mockInitialize).toHaveBeenCalledTimes(1)
+  expect(fetcher).not.toHaveBeenCalled()
+  expect(getStorageReadIdentity().accountId).toBe(action === 'account' ? 'owned-account' : '')
+})
+
+
+test('concurrent cold guest loads share discovery and a single session', async () => {
+  mockBackend = ''
+  let discovered!: () => void
+  mockInitialize.mockImplementation(() => new Promise<void>(resolve => { discovered = () => { mockBackend = 'https://backend.test'; resolve() } }))
+  fetcher.mockImplementation(async url => response(url.endsWith('/session') ? session() : { items: [{ id: content }] }))
+  const first = loadGuestContent('videos'), second = loadGuestContent('posts')
+  expect(fetcher).not.toHaveBeenCalled()
+  discovered()
+  await expect(Promise.all([first, second])).resolves.toEqual([[{ id: content }], [{ id: content }]])
+  expect(mockInitialize).toHaveBeenCalledTimes(1)
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['https://backend.test/v1/guest/session', 'https://backend.test/v1/guest/videos', 'https://backend.test/v1/guest/posts'])
+})
+
+test('leaving a page during discovery does not issue its content request', async () => {
+  mockBackend = ''
+  let discovered!: () => void
+  mockInitialize.mockImplementation(() => new Promise<void>(resolve => { discovered = () => { mockBackend = 'https://backend.test'; resolve() } }))
+  fetcher.mockResolvedValue(response(session(), 201))
+  const controller = new AbortController()
+  const operation = loadGuestContent('videos', undefined, controller.signal)
+  controller.abort()
+  discovered()
+  await expect(operation).rejects.toMatchObject({ name: 'AbortError' })
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['https://backend.test/v1/guest/session'])
+})
+
+test('first guest session waits for discovery to replace a stale configured backend', async () => {
+  mockBackend = 'https://previous-endpoint.test'
+  let discovered!: () => void
+  mockInitialize.mockImplementation(() => new Promise<void>(resolve => { discovered = () => { mockBackend = 'https://backend.test'; resolve() } }))
+  fetcher.mockImplementation(async url => response(url.endsWith('/session') ? session() : { items: [{ id: content }] }))
+  const operation = loadGuestContent('videos')
+  discovered?.()
+  await expect(operation).resolves.toEqual([{ id: content }])
+  expect(fetcher.mock.calls.map(([url]) => url)).toEqual(['https://backend.test/v1/guest/session', 'https://backend.test/v1/guest/videos'])
 })
