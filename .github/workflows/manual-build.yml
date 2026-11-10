@@ -15,6 +15,8 @@ on:
 
 jobs:
   build:
+    env:
+      NOVVIN_CI_FIXTURE: "true"
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -41,6 +43,10 @@ jobs:
         run: |
           echo "FALLBACK_API_URL=https://api.example.invalid" > secrets.properties
           echo "SIGNALING_URL=https://voice.example.invalid" >> secrets.properties
+          echo "BACKEND_DISCOVERY_HOST=discovery.example.invalid" >> secrets.properties
+
+      - name: Prepare isolated Firebase and debug signing inputs
+        run: python tools/prepare_android_ci.py
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew

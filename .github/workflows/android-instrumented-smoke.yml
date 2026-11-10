@@ -5,12 +5,17 @@ on:
   schedule:
     - cron: "0 8 * * 1"
 
+permissions:
+  contents: read
+
 concurrency:
   group: android-instrumented-smoke-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   connected-debug-tests:
+    # Keep the full suite available outside the isolated account-retest branch.
+    if: github.ref != 'refs/heads/correcciones-dot'
     runs-on: ubuntu-latest
     timeout-minutes: 90
 
@@ -37,6 +42,7 @@ jobs:
         run: |
           echo "FALLBACK_API_URL=https://api.example.invalid" > secrets.properties
           echo "SIGNALING_URL=https://voice.example.invalid" >> secrets.properties
+          echo "BACKEND_DISCOVERY_HOST=discovery.example.invalid" >> secrets.properties
 
       - name: Prepare isolated Firebase and debug signing inputs
         run: python tools/prepare_android_ci.py
@@ -60,6 +66,70 @@ jobs:
         with:
           name: connected-debug-test-reports
           path: |
+            app/build/reports/androidTests/connected
+            app/build/outputs/androidTest-results/connected
+          if-no-files-found: warn
+
+  saved-account-tests:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/correcciones-dot'
+    name: Saved account / ${{ matrix.test }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      NOVVIN_CI_FIXTURE: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - SavedAccountLogoutLoginFlowTest
+          - SecondarySavedAccountLoginFlowTest
+          - MessagesMultiAccountSwitchingTest
+    steps:
+      - name: Checkout isolated branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Require existing hardware acceleration
+        run: test -r /dev/kvm && test -w /dev/kvm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Prepare synthetic Android inputs
+        shell: bash
+        run: |
+          echo "sdk.dir=${ANDROID_HOME}" > local.properties
+          echo "FALLBACK_API_URL=https://api.example.invalid" > secrets.properties
+          echo "SIGNALING_URL=https://voice.example.invalid" >> secrets.properties
+          echo "BACKEND_DISCOVERY_HOST=discovery.example.invalid" >> secrets.properties
+          python tools/prepare_android_ci.py
+          chmod +x ./gradlew
+
+      - name: Install only stable AOSP SDK packages
+        # Use the hosted runner's accepted licenses. Fail rather than accept
+        # every available agreement via sdkmanager --licenses.
+        run: sdkmanager --install "platforms;android-36" "build-tools;35.0.0" "emulator" "system-images;android-34;default;x86_64" --channel=0 </dev/null
+
+      - name: Build before starting emulator
+        run: ./gradlew --no-daemon --max-workers=2 --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
+
+      - name: Run one account case in a fresh offline emulator
+        run: bash tools/run_android_account_smoke.sh "${{ matrix.test }}"
+
+      - name: Upload case results and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: saved-account-${{ matrix.test }}
+          path: |
+            app/build/reports/account-smoke
             app/build/reports/androidTests/connected
             app/build/outputs/androidTest-results/connected
           if-no-files-found: warn
