@@ -47,3 +47,14 @@ test('login migration keeps the exact password payload', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Crear contraseña y entrar' }))
   await waitFor(() => expect(completeMigratedPasswordReset).toHaveBeenCalledWith('test-migration', exact))
 })
+
+test('legacy recovery shows the same safe official login link for an origin rejection', async () => {
+  ;(confirmFallbackPasswordReset as jest.Mock).mockRejectedValue(new Error('UNTRUSTED_WEB_SESSION_REQUEST'))
+  render(<PasswordResetPage email="test@example.invalid" />)
+  fireEvent.click(screen.getByRole('button', { name: /Continuar/ }))
+  fireEvent.change(await screen.findByLabelText('Nueva Contraseña'), { target: { value: exact } })
+  fireEvent.change(screen.getByLabelText('Confirmar Contraseña'), { target: { value: exact } })
+  fireEvent.click(screen.getByRole('button', { name: /Guardar Contraseña/ }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Esta dirección web no está autorizada')
+  expect(screen.getByRole('link', { name: 'Abrir la web oficial' })).toHaveAttribute('href', 'https://red-social-android.vercel.app/login')
+})

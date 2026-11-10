@@ -37,3 +37,28 @@ test('reopening keeps the email code screen without persisting secrets', () => {
   expect(screen.getByLabelText('Código de seis dígitos')).toHaveValue('')
   expect(screen.queryByLabelText('Nueva contraseña')).not.toBeInTheDocument()
 })
+
+
+test('origin rejection during code verification points to official login without transferring recovery data', async () => {
+  sessionStorage.setItem('novvin:email-recovery-draft:v1', JSON.stringify({ email: 'qa@example.invalid', requested: true, savedAt: Date.now() }))
+  jest.mocked(verifyFallbackPasswordReset).mockRejectedValue(new Error('UNTRUSTED_WEB_SESSION_REQUEST'))
+  render(<ForgotPasswordPage />)
+  fireEvent.change(screen.getByLabelText('Código de seis dígitos'), { target: { value: '001234' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Verificar código' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Esta dirección web no está autorizada')
+  const link = screen.getByRole('link', { name: 'Abrir la web oficial' })
+  expect(link).toHaveAttribute('href', 'https://red-social-android.vercel.app/login')
+  expect(link).toHaveAttribute('rel', 'noreferrer')
+  expect(confirmFallbackPasswordReset).not.toHaveBeenCalled()
+  expect(mockNavigate).not.toHaveBeenCalled()
+})
+
+test('invalid codes keep the existing recovery advice without an origin warning', async () => {
+  sessionStorage.setItem('novvin:email-recovery-draft:v1', JSON.stringify({ email: 'qa@example.invalid', requested: true, savedAt: Date.now() }))
+  jest.mocked(verifyFallbackPasswordReset).mockRejectedValue(new Error('INVALID_OR_EXPIRED_EMAIL_CODE'))
+  render(<ForgotPasswordPage />)
+  fireEvent.change(screen.getByLabelText('Código de seis dígitos'), { target: { value: '001234' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Verificar código' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('El código no es válido o venció')
+  expect(screen.queryByRole('link', { name: 'Abrir la web oficial' })).not.toBeInTheDocument()
+})

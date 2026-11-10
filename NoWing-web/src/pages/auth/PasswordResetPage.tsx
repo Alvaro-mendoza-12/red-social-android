@@ -5,7 +5,8 @@ import {
   isFallbackAuthConfigured,
   requestFallbackPasswordReset,
 } from '../../core/auth/fallbackAuth'
-import { friendlyError } from '../../core/utils'
+import { authErrorMessage } from '../../core/auth/authErrorMessage'
+import { AuthErrorText } from '../../components/AuthErrorText'
 
 interface PasswordResetProps {
   email: string
@@ -64,7 +65,7 @@ export function PasswordResetPage({
           : 'Ubuntu preparó el cambio. Continúa creando tu nueva contraseña.',
       )
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo iniciar la migración'))
+      setError(authErrorMessage(caught, 'No se pudo iniciar la migración'))
     } finally {
       setLoading(false)
     }
@@ -106,7 +107,7 @@ export function PasswordResetPage({
         onSuccess?.()
       }, 2000)
     } catch (caught) {
-      setError(friendlyError(caught, '❌ No se pudo cambiar la contraseña'))
+      setError(authErrorMessage(caught, '❌ No se pudo cambiar la contraseña'))
     } finally {
       setLoading(false)
     }
@@ -134,7 +135,7 @@ export function PasswordResetPage({
           </p>
         </div>
 
-        {error && <div className="status-error status-alert">{error}</div>}
+        {error && <div className="status-error status-alert" role="alert"><AuthErrorText message={error} /></div>}
         {info && <div className="status-info status-alert">{info}</div>}
 
         {step === 'request' ? (
