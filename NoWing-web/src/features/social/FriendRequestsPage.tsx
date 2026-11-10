@@ -44,6 +44,12 @@ export function FriendRequestsPage() {
   const [pendingId, setPendingId] = useState('')
   const [direction, setDirection] = useState<'incoming' | 'outgoing'>('incoming')
   const sequence = useRef(0)
+  // Writes remain locked by account while tabs change. View invalidation only
+  // discards old UI results; it must not permit a contradictory second PATCH.
+  const mutations = useRef(new Map<string, { id: string }>())
+  const activeOwner = useRef(user?.id)
+  activeOwner.current = user?.id
+  const mounted = useRef(false)
 
   const loadRequests = useCallback(async () => {
     const current = ++sequence.current
@@ -96,20 +102,30 @@ export function FriendRequestsPage() {
     }
   }, [direction, useUbuntu, user])
 
+  const latestLoadRequests = useRef(loadRequests)
+  latestLoadRequests.current = loadRequests
+
   useEffect(() => {
+    mounted.current = true
+    setPendingId(mutations.current.get(user?.id ?? '')?.id ?? '')
     setItems([])
     setProfiles(new Map())
     void loadRequests()
-    return () => { sequence.current++ }
-  }, [loadRequests])
+    return () => { sequence.current++; mounted.current = false }
+  }, [loadRequests, user?.id])
 
   async function updateStatus(id: string, status: 'accepted' | 'rejected') {
-    if (!user || pendingId) return
+    if (!user || mutations.current.has(user.id)) return
+    const owner = user.id
+    const view = sequence.current
+    const operation = { id }
+    mutations.current.set(owner, operation)
     setPendingId(id)
     try {
       if (useUbuntu) {
         await updateFallbackFriendRequest(id, status)
-        await loadRequests()
+        if (!mounted.current || activeOwner.current !== owner) return
+        await latestLoadRequests.current()
         return
       }
       if (!supabase) return
@@ -119,10 +135,17 @@ export function FriendRequestsPage() {
         .eq('id', id)
         .eq('receiver_id', user.id)
       if (updateError) throw updateError
-      await loadRequests()
+      if (!mounted.current || activeOwner.current !== owner) return
+      await latestLoadRequests.current()
     } catch (caught) {
+      if (sequence.current !== view) return
       setError(friendlyError(caught, 'No se pudo actualizar la solicitud'))
-    } finally { setPendingId('') }
+    } finally {
+      if (mutations.current.get(owner) === operation) {
+        mutations.current.delete(owner)
+        if (mounted.current && activeOwner.current === owner) setPendingId('')
+      }
+    }
   }
 
   if (!useUbuntu && !supabase && !isFallbackAuthConfigured) {
