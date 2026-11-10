@@ -2,6 +2,12 @@ name: Android Instrumented Smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      allow_temporary_kvm_access:
+        description: 'Approve runner-only KVM access for these three jobs, restored afterward'
+        type: boolean
+        required: false
+        default: false
   schedule:
     - cron: "0 8 * * 1"
 
@@ -77,6 +83,7 @@ jobs:
     timeout-minutes: 90
     env:
       NOVVIN_CI_FIXTURE: "true"
+      NOVVIN_KVM_ACCESS_APPROVED: ${{ inputs.allow_temporary_kvm_access && 'true' || 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -103,7 +110,12 @@ jobs:
           else
             echo "No /dev/kvm device is present on this runner."
           fi
-          test -r /dev/kvm && test -w /dev/kvm
+          # Missing hardware still fails. Approved access is granted only just
+          # before emulator use, then restored by the always-run cleanup step.
+          test -c /dev/kvm
+          if [[ "${NOVVIN_KVM_ACCESS_APPROVED}" != true ]]; then
+            test -r /dev/kvm && test -w /dev/kvm
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -132,8 +144,16 @@ jobs:
       - name: Build before starting emulator
         run: ./gradlew --no-daemon --max-workers=2 --stacktrace :app:assembleDebug :app:assembleDebugAndroidTest
 
+      - name: Grant approved temporary runner-only KVM access
+        if: inputs.allow_temporary_kvm_access
+        run: python tools/android_kvm_acl.py grant
+
       - name: Run one account case in a fresh offline emulator
         run: bash tools/run_android_account_smoke.sh "${{ matrix.test }}"
+
+      - name: Restore and verify original KVM ACL
+        if: always() && inputs.allow_temporary_kvm_access
+        run: python tools/android_kvm_acl.py restore
 
       - name: Upload case results and diagnostics
         if: always()

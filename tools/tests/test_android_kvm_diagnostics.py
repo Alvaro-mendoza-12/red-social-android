@@ -18,7 +18,8 @@ class AndroidKvmDiagnosticsTest(unittest.TestCase):
         self.assertIn('stat -c', script)
         self.assertIn('getfacl -p /dev/kvm', script)
         self.assertIn('No /dev/kvm device is present', script)
-        self.assertTrue(script.strip().endswith('test -r /dev/kvm && test -w /dev/kvm'))
+        self.assertIn('test -c /dev/kvm', script)
+        self.assertIn('if [[ "${NOVVIN_KVM_ACCESS_APPROVED}" != true ]]; then\n  test -r /dev/kvm && test -w /dev/kvm\nfi', script)
         self.assertNotIn('continue-on-error', check)
         for mutation in ('sudo', 'chmod', 'chown', 'setfacl', 'udevadm', 'usermod'):
             self.assertNotIn(mutation, script)
