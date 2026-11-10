@@ -28,7 +28,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf 'no\n' | avdmanager create avd --name saved_account_qa --package 'system-images;android-34;default;x86_64' --device pixel_6 --force
+# Keep command-line tools and emulator on the same disposable AVD registry.
+export ANDROID_USER_HOME="${RUNNER_TEMP:?}/novvin-android-user"
+export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
+export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+mkdir -p "$ANDROID_AVD_HOME"
+printf 'no\n' | avdmanager create avd --name saved_account_qa --package 'system-images;android-34;default;x86_64' --device pixel_6 --force \
+  --path "$ANDROID_AVD_HOME/saved_account_qa.avd"
+test -s "$ANDROID_AVD_HOME/saved_account_qa.ini"
+"$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx saved_account_qa
+
+# Start the validated AVD.
 "$ANDROID_HOME/emulator/emulator" -avd saved_account_qa -port 5554 -accel on -no-window \
   -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -cores 2 -memory 2048 \
   > "$report_dir/emulator.log" 2>&1 &
