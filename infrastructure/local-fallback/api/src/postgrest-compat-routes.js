@@ -1450,12 +1450,13 @@ function sendPostgrestRows(req, res, rows, status = 200, headOnly = false) {
   return res.json(ranged)
 }
 
-async function readTableRows(pool, tableName, query, auth) {
+async function readTableRows(pool, tableName, query, auth, snapshot) {
   const [importedRows, specificRows, compatRows] = await Promise.all([
     readImportedRows(pool, tableName),
     readSpecificRows(pool, tableName, auth),
     readCompatRows(pool, tableName),
   ])
+  if (snapshot) snapshot.nativeIds = new Set(specificRows.map(row => String(row.id)))
   const merged = messageTables.has(tableName) ? mergeMessageRows([...importedRows, ...specificRows, ...compatRows]) : mergeRows([importedRows, specificRows, compatRows], tableName)
   const readable = await filterRowsForRead(pool, tableName, merged, auth)
   const identityForRead = messageTables.has(tableName) ? await getAuthIdentity(pool, auth) : null
@@ -2380,7 +2381,8 @@ async function handlePatch(pool, tableName, auth, query, body) {
   rejectCommentAudio(tableName, patch)
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
-  const currentRows = await readTableRows(pool, tableName, query, auth)
+  const snapshot = {}
+  const currentRows = await readTableRows(pool, tableName, query, auth, snapshot)
   const targets = currentRows.length > 0 ? currentRows : []
 
   const rows = []
@@ -2407,14 +2409,59 @@ async function handlePatch(pool, tableName, auth, query, body) {
           !patchOnlyContains(patch, new Set(['status', 'updated_at']))) {
         throw httpError('FRIEND_REQUEST_RESPONSE_FORBIDDEN', 403)
       }
+      if (snapshot.nativeIds.has(String(current.id))) {
+        // Keep the identity read from native storage. A cancelled request must
+        // not be recreated, nor may a newer request for the pair be answered.
+        const result = await pool.query(
+          `UPDATE fallback_friends SET status = $4
+           WHERE id::text = $1 AND sender_id = $2 AND receiver_id = $3 AND status = 'pending'
+           RETURNING id::text, sender_id, receiver_id, status, created_at`,
+          [String(current.id), current.sender_id, current.receiver_id, status],
+        )
+        const confirmed = result.rows[0] || (await pool.query(
+          `SELECT id::text, sender_id, receiver_id, status, created_at FROM fallback_friends
+           WHERE id::text = $1 AND sender_id = $2 AND receiver_id = $3`,
+          [String(current.id), current.sender_id, current.receiver_id],
+        )).rows[0]
+        if (!confirmed || confirmed.status !== status) throw httpError('FRIEND_REQUEST_ALREADY_RESOLVED', 409)
+        rows.push(confirmed)
+        continue
+      }
+      const currentStatus = normalizeIdentityValue(current.status)
+      if (currentStatus !== 'pending') {
+        const { rows: native } = await pool.query(
+          `SELECT id::text, sender_id, receiver_id, status, created_at
+           FROM fallback_friends WHERE sender_id = $1 AND receiver_id = $2`,
+          [current.sender_id, current.receiver_id],
+        )
+        const confirmed = native[0] || current
+        if (normalizeIdentityValue(confirmed.status) !== status) throw httpError('FRIEND_REQUEST_ALREADY_RESOLVED', 409)
+        rows.push(confirmed)
+        continue
+      }
       const result = await pool.query(
         `INSERT INTO fallback_friends(sender_id, receiver_id, status)
          VALUES ($1, $2, $3)
          ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = EXCLUDED.status
+         WHERE fallback_friends.status = 'pending'
          RETURNING id::text, sender_id, receiver_id, status, created_at`,
         [current.sender_id, current.receiver_id, status],
       )
-      rows.push(result.rows[0])
+      if (result.rows[0]) {
+        rows.push(result.rows[0])
+      } else {
+        // Imported/compat rows can still say pending after the native pair was
+        // resolved. Respect that durable decision instead of reviving the import.
+        const { rows: existing } = await pool.query(
+          `SELECT id::text, sender_id, receiver_id, status, created_at
+           FROM fallback_friends WHERE sender_id = $1 AND receiver_id = $2`,
+          [current.sender_id, current.receiver_id],
+        )
+        if (!existing[0] || existing[0].status !== status) {
+          throw httpError('FRIEND_REQUEST_ALREADY_RESOLVED', 409)
+        }
+        rows.push(existing[0])
+      }
     } else if (tableName === 'groups' || tableName === 'communities') {
       await pool.query(`
         UPDATE fallback_collection_rooms
