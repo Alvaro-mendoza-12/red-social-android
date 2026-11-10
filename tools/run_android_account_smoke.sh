@@ -18,6 +18,7 @@ emulator_pid=''
 logcat_pid=''
 cleanup() {
   status=$?
+  trap - ERR
   set +e
   timeout 15s adb exec-out screencap -p > "$report_dir/final-screen.png"
   timeout 15s adb shell dumpsys activity exit-info conectate.com > "$report_dir/exit-info.txt"
@@ -27,6 +28,14 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
+
+# Record the exact failing runner line without dumping environment or secrets.
+report_runner_failure() {
+  local status=$?
+  printf 'Account runner failed at line %s (exit %s).\n' "${BASH_LINENO[0]}" "$status" | tee -a "$report_dir/runner-error.log" >&2
+  return "$status"
+}
+trap report_runner_failure ERR
 
 # Keep command-line tools and emulator on the same disposable AVD registry.
 export ANDROID_USER_HOME="${RUNNER_TEMP:?}/novvin-android-user"
@@ -53,12 +62,7 @@ done
 
 # Disable emulator networking before Gradle installs or launches the application.
 # This changes only this disposable AVD, not host network/security permissions.
-adb shell svc wifi disable
-adb shell svc data disable
-adb shell cmd connectivity airplane-mode enable
-[[ "$(adb shell settings get global airplane_mode_on | tr -d '\r')" == 1 ]]
-[[ "$(adb shell settings get global wifi_on | tr -d '\r')" == 0 ]]
-[[ "$(adb shell settings get global mobile_data | tr -d '\r')" == 0 ]]
+python tools/prepare_android_offline_emulator.py 2>&1 | tee "$report_dir/radio-readiness.log"
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0
