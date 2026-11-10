@@ -45,3 +45,15 @@ La web ya dispone de modo claro/oscuro/sistema, acentos y escala de texto (`core
 ## Límites de entrega
 
 No se usaron cuentas reales para enviar invitaciones/mensajes, hacer pagos ni modificar datos. El bloqueo es de esta instancia de pantalla: la idempotencia y las transiciones de estado atómicas del servidor frente a múltiples pestañas/dispositivos siguen pendientes de auditoría. No se cambió el servidor, no se publicó una web y no se generó APK nueva. Publicar commits en esta rama no equivale a desplegar ni aprobar CI. El estado de GitHub Actions debe consultarse para el SHA entregado.
+
+## Continuación: decisión de amistad en la API nativa
+
+Se reprodujo contra el handler real y SQL de PostgreSQL embebido que un segundo PATCH contrario recibía 200 y reemplazaba una decisión ya confirmada. El candidato ahora permite `pending → accepted/rejected` mediante un UPDATE condicional atómico. Repetir la misma decisión devuelve 200 con la fila existente **sin reescribirla**; una decisión contradictoria devuelve 409 `FRIEND_REQUEST_ALREADY_RESOLVED`. El receptor ajeno y el ID inexistente siguen recibiendo 404, también después de resolverse la solicitud. Se mantienen el formato de éxito y las rutas, sin migración.
+
+La regresión nueva usa PGlite 0.5.16 como dependencia de desarrollo fijada en el lockfile y se ejecuta por defecto con `npm test`. Prueba decisiones en ambos sentidos, reintentos sin cambio de versión de fila, handlers simultáneos, entrada inválida y autorización del receptor. Puede ejecutarse con PostgreSQL local externo solo en la base aislada `novvin_friend_request_test`, usando `FRIEND_REQUEST_TEST_DATABASE_URL`.
+
+**Límite importante:** PGlite y la modalidad externa de esta prueba usan una sola sesión. Los handlers se intercalan, pero esto no mide contención entre dos conexiones/servidores PostgreSQL ni latencias de producción. Esa comprobación queda pendiente. No había PostgreSQL nativo ni Docker disponible en este entorno.
+
+La suite de API terminó con 1.064 pruebas aprobadas, 16 omitidas y cero fallos; `npm run check` y la validación en seco del lockfile también pasaron. El primer intento tuvo un fallo de preparación en `production-config.test.js`: faltaban las dependencias del proyecto vecino `signaling-server`. Tras instalarlas desde su lockfile, la suite pasó sin alterar esa prueba.
+
+Esta corrección cubre el PATCH nativo. La ruta de compatibilidad PostgREST mantiene un UPSERT separado y Android rechaza mediante DELETE: siguen siendo rutas por auditar, no garantías implícitas de este cambio. No se desplegó el código de API ni se modificaron datos reales.

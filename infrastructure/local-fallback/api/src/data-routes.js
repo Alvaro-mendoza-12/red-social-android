@@ -14076,12 +14076,24 @@ function registerDataRoutes(app, {
       const { rows } = await pool.query(
         `UPDATE fallback_friends
          SET status = $3
-         WHERE id::text = $1 AND lower(receiver_id) = $2
+         WHERE id::text = $1 AND lower(receiver_id) = $2 AND status = 'pending'
          RETURNING id::text, sender_id, receiver_id, status, created_at`,
         [normalizeId(req.params.requestId), identity.displayUserId, status],
       )
-      if (!rows[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
-      res.json({ request: normalizeImportedRow(rows[0]) })
+      if (rows[0]) return res.json({ request: normalizeImportedRow(rows[0]) })
+      // The conditional UPDATE is the atomic decision. A retry may read the
+      // same result, but a delayed opposite action must never overwrite it.
+      const { rows: existing } = await pool.query(
+        `SELECT id::text, sender_id, receiver_id, status, created_at
+         FROM fallback_friends
+         WHERE id::text = $1 AND lower(receiver_id) = $2`,
+        [normalizeId(req.params.requestId), identity.displayUserId],
+      )
+      if (!existing[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
+      if (existing[0].status !== status) {
+        return res.status(409).json({ error: 'FRIEND_REQUEST_ALREADY_RESOLVED' })
+      }
+      res.json({ request: normalizeImportedRow(existing[0]) })
     } catch (error) {
       next(error)
     }
