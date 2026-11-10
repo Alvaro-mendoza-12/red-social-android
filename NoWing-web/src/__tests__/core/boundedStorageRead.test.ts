@@ -226,3 +226,17 @@ describe('bounded authorized streaming', () => {
     if (result.status === 'rejected') expect(String(result.reason)).not.toContain('MEDIA_READ_QUEUE_FULL')
   })
 })
+
+test('same-origin protected gateway media retains deployment access with its isolated bearer', async () => {
+  const origin = 'https://red-social-android-6xn6c21te-alvaro-s-projects1.vercel.app'
+  const target = origin + '/storage/v1/object/public/videos/test.png'
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin } } })
+  fetcher.mockImplementation(async (_url: string, init: RequestInit) => init.credentials === 'same-origin'
+    ? response([new Uint8Array([1, 2])], {}, { url: target })
+    : response([], {}, { ok: false, status: 401, url: target }))
+  try {
+    await expect(readBoundedStorageBlob({ ...options(), url: target, backendBase: origin })).resolves.toHaveProperty('size', 2)
+    expect(fetcher.mock.calls[0][1].headers.get('Authorization')).toBe(`Bearer ${token}`)
+    expect(fetcher.mock.calls[0][1].redirect).toBe('error')
+  } finally { Reflect.deleteProperty(globalThis, 'window') }
+})

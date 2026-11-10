@@ -132,3 +132,19 @@ test('trusted discovery during bootstrap does not leave a guest feed without med
   finish(response(session(), 201)); await operation
   expect(guestStorageToken(getStorageReadIdentity())).toBe(token)
 })
+
+test('protected same-origin previews retain deployment access but still request a separate guest identity', async () => {
+  mockBackend = 'https://red-social-android-6xn6c21te-alvaro-s-projects1.vercel.app'
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin: mockBackend } } })
+  fetcher.mockImplementation(async (target: string, init: RequestInit) => {
+    if (init.credentials !== 'same-origin') return response({}, 401)
+    return response(target.endsWith('/session') ? session() : { items: [{ id: content }] })
+  })
+  try {
+    await expect(loadGuestContent('videos')).resolves.toEqual([{ id: content }])
+    expect(getStorageReadIdentity().provider).toBe('guest')
+    expect(fetcher.mock.calls[0][1].headers).toEqual({ Accept: 'application/json' })
+    expect(fetcher.mock.calls[1][1].headers.Authorization).toBe(`Bearer ${token}`)
+    expect(fetcher.mock.calls[1][1].redirect).toBe('error')
+  } finally { Reflect.deleteProperty(globalThis, 'window') }
+})

@@ -1,4 +1,3 @@
-import { StreamingImage } from '../../components/StreamingMedia'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -456,7 +455,7 @@ export function LoginPage() {
           <div className="section-stack auth-head-copy">
             <div>
               <div className="auth-brand-lockup">
-                <StreamingImage
+                <img
                   src="/novvin-logo.png"
                   alt="Logo de Novvin"
                   className="auth-logo-img"

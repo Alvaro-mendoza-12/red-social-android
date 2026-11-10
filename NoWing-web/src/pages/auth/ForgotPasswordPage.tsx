@@ -1,6 +1,5 @@
 import { isUntrustedWebSessionError, untrustedWebSessionMessage } from '../../core/auth/authErrorMessage'
 import { AuthErrorText } from '../../components/AuthErrorText'
-import { StreamingImage } from '../../components/StreamingMedia'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { authReturnPath, safeAuthDestination } from '../../core/auth/loginReturnPath'
@@ -79,7 +78,7 @@ export function ForgotPasswordPage() {
   }
   return <section className="auth-shell auth-shell-centered">
     <div className="auth-layout-grid auth-layout-single"><article className="auth-card auth-panel-card auth-login-card email-recovery-card">
-      <StreamingImage src="/novvin-logo.png" alt="Novvin" className="auth-logo-img" />
+      <img src="/novvin-logo.png" alt="Novvin" className="auth-logo-img" />
       <h1>Recupera tu cuenta</h1>
       <p>{step === 'email' ? 'Te enviaremos un código para cambiar tu contraseña.' : step === 'code' ? `Escribe el código enviado a ${normalizedEmail}.` : 'Código verificado. Elige tu nueva contraseña.'}</p>
       <p aria-label="Paso actual">Paso {step === 'email' ? 1 : step === 'code' ? 2 : 3} de 3</p>

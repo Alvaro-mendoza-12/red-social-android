@@ -1,5 +1,5 @@
 import { ipAddress, next, rewrite } from '@vercel/functions'
-import { isPublicBackendPath, productionBackendOrigin } from './src/core/publicBackendTransport.js'
+import { isCookieIsolatedBackendPath, isPublicBackendPath, productionBackendOrigin } from './src/core/publicBackendTransport.js'
 
 /** Public HTTPS proxy: the visitor never needs to resolve the tailnet origin. */
 export default function middleware(request: Request): Response {
@@ -22,6 +22,9 @@ export default function middleware(request: Request): Response {
   const visitor = ipAddress(request)
   if (visitor) headers.set('cf-connecting-ip', visitor)
   headers.delete('proxy-authorization')
+  // Browser cookies may authorize Vercel Preview access, but guest/media
+  // endpoints must keep their explicit bearer identity at the backend.
+  if (isCookieIsolatedBackendPath(incoming.pathname)) headers.delete('cookie')
   return rewrite(destination, {
     request: { headers },
     headers: { 'Vercel-CDN-Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive', ...(!incoming.pathname.startsWith('/storage/') ? { 'Cache-Control': 'no-store' } : {}) },

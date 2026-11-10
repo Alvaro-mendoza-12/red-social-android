@@ -1,4 +1,3 @@
-import { StreamingImage } from '../../components/StreamingMedia'
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
@@ -92,7 +91,7 @@ export function RegisterPage() {
           <div className="section-stack auth-head-copy">
             <div>
               <div className="auth-brand-lockup">
-                <StreamingImage src="/novvin-logo.png" alt="Logo de Novvin" className="auth-logo-img" />
+                <img src="/novvin-logo.png" alt="Logo de Novvin" className="auth-logo-img" />
                 <div>
                   <p className="brand-tag auth-panel-tag">Novvin</p>
                   <span>Conecta, comparte y descubre</span>
