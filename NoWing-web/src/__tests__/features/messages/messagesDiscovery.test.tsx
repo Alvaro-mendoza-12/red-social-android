@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { MessagesPage } from '../../../features/messages/MessagesPage'
-import { loadFallbackMessagesInbox, searchFallbackProfiles } from '../../../core/fallbackData'
+import { hideFallbackChat, loadFallbackMessagesInbox, searchFallbackProfiles } from '../../../core/fallbackData'
+import { readCachedValue } from '../../../core/localCache'
 import { getOrCreateDirectChat } from '../../../features/messages/directChat'
 
 const mockUser = { id: 'viewer' }
@@ -9,6 +10,7 @@ jest.mock('../../../core/auth/AuthProvider', () => ({ useAuth: () => ({ user: mo
 jest.mock('../../../core/auth/fallbackAuth', () => ({ isFallbackAuthConfigured: true, fallbackApiJson: jest.fn(async () => []) }))
 jest.mock('../../../core/supabase', () => ({ supabase: null, resolveSupabasePublicUrl: (_b: string, u: string) => u }))
 jest.mock('../../../core/fallbackData', () => ({
+  hideFallbackChat: jest.fn(),
   loadFallbackMessagesInbox: jest.fn(async () => ({ items: [] })),
   searchFallbackProfiles: jest.fn(async () => ({ items: [{ id: 'peer', displayName: 'Persona nueva', username: 'persona' }] })),
 }))
@@ -84,4 +86,50 @@ test('changing the query hides stale people immediately while the next query is 
   fireEvent.change(input, { target: { value: 'otra' } })
   expect(screen.queryByRole('button', { name: /Persona nueva/ })).not.toBeInTheDocument()
   expect(screen.getByText('Buscando…')).toBeInTheDocument()
+})
+
+
+test.each(['other account', 'return to same account', 'another tab'])('a failed hide cannot restore an obsolete inbox after %s', async (change) => {
+  const row = (title: string) => ({ id: 'shared-chat', title, subtitle: '', updatedAt: '', kind: 'chat', avatarUrl: 'avatar.png', profileId: null, unreadCount: 0, isPinned: false, isMuted: false, isArchived: false, isFavorite: false, folders: [], openPath: '' })
+  let rejectHide!: (error: Error) => void
+  jest.mocked(hideFallbackChat).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectHide = reject }))
+  jest.mocked(loadFallbackMessagesInbox).mockResolvedValueOnce({ items: [row('Chat privado de A')] } as never)
+  jest.spyOn(window, 'confirm').mockReturnValue(true)
+  const { rerender } = render(<MemoryRouter><MessagesPage/></MemoryRouter>)
+  await screen.findByText('Chat privado de A')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Eliminar chat' }))
+  expect(screen.queryByText('Chat privado de A')).not.toBeInTheDocument()
+  jest.mocked(loadFallbackMessagesInbox).mockResolvedValueOnce({ items: [row('Chat privado de B')] } as never)
+  if (change === 'another tab') {
+    fireEvent.click(screen.getByRole('button', { name: 'Grupos' }))
+  } else {
+    mockUser.id = 'account-b'
+    rerender(<MemoryRouter><MessagesPage/></MemoryRouter>)
+  }
+  await screen.findByText('Chat privado de B')
+  if (change === 'return to same account') {
+    jest.mocked(loadFallbackMessagesInbox).mockResolvedValueOnce({ items: [row('Chat nuevo de A')] } as never)
+    mockUser.id = 'viewer'
+    rerender(<MemoryRouter><MessagesPage/></MemoryRouter>)
+    await screen.findByText('Chat nuevo de A')
+  }
+  await act(async () => { rejectHide(new Error('No se pudo ocultar el chat A')) })
+  expect(screen.queryByText('Chat privado de A')).not.toBeInTheDocument()
+  expect(screen.getByText(change === 'return to same account' ? 'Chat nuevo de A' : 'Chat privado de B')).toBeInTheDocument()
+  expect(screen.queryByText('No se pudo ocultar el chat A')).not.toBeInTheDocument()
+})
+
+
+test('a hide failure in the current context restores its own cache and reports failure', async () => {
+  const row = { id: 'own-chat', title: 'Conversación actual', subtitle: '', updatedAt: '', kind: 'chat', avatarUrl: 'avatar.png', profileId: null, unreadCount: 0, isPinned: false, isMuted: false, isArchived: false, isFavorite: false, folders: [], openPath: '' }
+  jest.mocked(loadFallbackMessagesInbox).mockResolvedValueOnce({ items: [row] } as never)
+  jest.mocked(hideFallbackChat).mockRejectedValueOnce(new Error('No se pudo ocultar el chat actual'))
+  jest.spyOn(window, 'confirm').mockReturnValue(true)
+  render(<MemoryRouter><MessagesPage/></MemoryRouter>)
+  await screen.findByText('Conversación actual')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Eliminar chat' }))
+  expect(await screen.findByText('No se pudo ocultar el chat actual')).toBeInTheDocument()
+  expect(readCachedValue<Array<{id: string}>>('messages:viewer:chats', 60_000)?.map(item => item.id)).toEqual(['own-chat'])
 })

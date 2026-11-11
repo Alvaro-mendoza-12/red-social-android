@@ -601,6 +601,11 @@ export function MessagesPage() {
   const chatMenuRef = useRef<HTMLDivElement | null>(null)
   const chatMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
   const [hidingChatId, setHidingChatId] = useState<string | null>(null)
+  const hideContext = useRef(0)
+  useEffect(() => {
+    setHidingChatId(null)
+    return () => { hideContext.current += 1 }
+  }, [user?.id, isFallbackSession, activeTab])
   const [selectedConversation, setSelectedConversation] = useState<SelectedConversation | null>(
     null,
   )
@@ -1164,6 +1169,8 @@ export function MessagesPage() {
     )
     if (!confirmed) return
 
+    const context = hideContext.current
+    const isCurrent = () => context === hideContext.current
     const previousItems = items
     const nextItems = items.filter((item) => item.id !== chatId)
     setHidingChatId(chatId)
@@ -1177,14 +1184,15 @@ export function MessagesPage() {
         if (!supabase) throw new Error('El servicio de chat no está disponible.')
         const { error: hideError } = await supabase.rpc('secure_hide_chat', { p_chat_id: chatId })
         if (hideError) throw hideError
-        window.dispatchEvent(new Event('novvin:inbox-changed'))
+        if (isCurrent()) window.dispatchEvent(new Event('novvin:inbox-changed'))
       }
     } catch (caught) {
+      if (!isCurrent()) return
       setItems(previousItems)
       writeCachedValue(inboxCacheKey, previousItems)
       setError(friendlyError(caught, 'No se pudo eliminar el chat de tu lista'))
     } finally {
-      setHidingChatId(null)
+      if (isCurrent()) setHidingChatId(null)
     }
   }
 

@@ -1,4 +1,4 @@
-import type { StorageReadIdentity } from './media/storageReadSession'
+import { getStorageReadIdentity, type StorageReadIdentity } from './media/storageReadSession'
 import type { ImportedSticker } from './webOutbox'
 import { cachedConversation, cacheConversation, cancelPendingWebMessage, editPendingWebMessage, isTransientOutboxError, outboxOwner, pendingConversationMessages, sendDurableWebMessage, stageOfflineChatAttachment } from './webOutbox'
 import { fallbackApiJson } from './auth/fallbackAuth'
@@ -320,11 +320,12 @@ export async function saveFallbackChatPreferences(chatId: string, patch: ChatPre
 }
 
 export async function hideFallbackChat(chatId: string) {
+  const identity = getStorageReadIdentity()
   const result = await fallbackApiJson<{ ok: boolean; chatId: string; hidden: boolean }>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', expectedIdentity: identity, expectedAccountId: identity.accountId },
   )
-  window.dispatchEvent(new Event('novvin:inbox-changed'))
+  if (identity === getStorageReadIdentity()) window.dispatchEvent(new Event('novvin:inbox-changed'))
   return result
 }
 

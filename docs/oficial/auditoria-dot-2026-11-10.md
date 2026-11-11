@@ -167,3 +167,15 @@ El almacenamiento ahora utiliza una clave inequívoca por cuenta/conversación y
 Seis pruebas JVM del store con DAO y preparación de imagen inyectados pasan. La prueba de imagen diferida pausa la preparación, simula la limpieza y entrada de B, guarda el fondo de B y completa A; no permite repoblar los registros. La variante sin comprobación posterior reproduce un fallo. Se cubren claves/nombres, lecturas de otra cuenta, cierre de sesión, trabajos encolados y entrega antes de actualizarse el flujo de sesión. Revisión y ejecución independientes: seis aprobadas, sin bloqueantes del alcance.
 
 Límites: no se ejecutaron Room, decodificación de bytes, Hilt/Gradle completo ni dispositivo para este candidato. La validación por propietario no es una generación de sesión: A→B→A puede admitir una tarea de A al regresar. Dos preparaciones simultáneas de la misma cuenta/conversación y retención de archivos huérfanos siguen pendientes. No se declara cierre integral de multimedia ni se despliega el cambio.
+
+## Bandeja web: ocultación diferida y cambio de identidad
+
+Una prueba de componente reprodujo que ocultar un chat en A, cambiar a B y recibir un fallo tardío sustituía la lista de B y mostraba el error de A. La operación ahora conserva una generación de vista que se invalida al cambiar cuenta, backend o pestaña y al desmontar; una respuesta obsoleta no restaura su snapshot, no libera el indicador de otra vista y no emite el evento legacy. El fallo del contexto vigente sigue restaurando su caché e informando del error.
+
+La revisión encontró también que `hideFallbackChat` no pasaba la identidad esperada a la API autenticada. Se captura su generación antes de esperar el token y se reutilizan las comprobaciones existentes antes del envío, de la renovación/reintento y de entregar la respuesta. Tres regresiones con la API real y transporte simulado fallaron antes del arreglo: cambio durante la espera del token, 401 tardío y respuesta tras cerrar/reabrir la misma cuenta. También se verifica el DELETE actual y su evento de éxito. La prueba de interfaz cubre cambio de cuenta, regreso a A, cambio de pestaña y error vigente.
+
+Este cambio no revierte una petición que el servidor ya aceptó, no certifica los reintentos del cliente legacy y no cubre otras acciones de la bandeja ni el orden de refrescos dentro de la misma vista. No hubo acceso a conversaciones reales, comprobación visual ni despliegue.
+
+Validación de este delta: 17 pruebas enfocadas aprobadas; suite completa web de 185 suites y 1.090 pruebas aprobada. Lint y build de producción con URL CI aislada aprobados. Las pruebas de transporte usan respuestas sintéticas; no representan un ensayo de servidor o navegador real.
+
+Revisión independiente final del delta: sin bloqueantes detectados; 17 pruebas enfocadas repetidas y `git diff --check` limpio.

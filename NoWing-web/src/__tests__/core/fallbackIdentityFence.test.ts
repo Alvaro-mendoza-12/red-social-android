@@ -1,3 +1,4 @@
+import { hideFallbackChat } from '../../core/fallbackData'
 import { clearFallbackSession, fallbackApiJson, persistFallbackSession } from '../../core/auth/fallbackAuth'
 import { getStorageReadIdentity } from '../../core/media/storageReadSession'
 jest.mock('../../core/runtimeBackend', () => ({ getRuntimeBackendUrl: () => 'https://api.example.invalid', refreshRuntimeBackend: jest.fn(), subscribeRuntimeBackend: jest.fn() }))
@@ -35,4 +36,48 @@ test('a late expired-token response cannot refresh or clear a newer session', as
   await expect(pending).rejects.toThrow(/sesión|SESSION/)
   expect(fetch).toHaveBeenCalledTimes(1)
   expect(getStorageReadIdentity()).toBe(newerIdentity)
+})
+
+
+test('hiding a chat cannot send under a different account after token lookup', async () => {
+  const pending = hideFallbackChat('shared-chat')
+  clearFallbackSession(); persistFallbackSession({ ...session, user: { ...session.user, id: 'owner-b' } })
+  await expect(pending).rejects.toThrow(/sesión|SESSION|ACCOUNT_CHANGED/)
+  expect(fetch).not.toHaveBeenCalled()
+})
+
+test('hiding a chat cannot replay a stale 401 after switching accounts', async () => {
+  let finish!: (response: Response) => void
+  ;(fetch as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const pending = hideFallbackChat('shared-chat')
+  await Promise.resolve(); expect(fetch).toHaveBeenCalledTimes(1)
+  clearFallbackSession(); persistFallbackSession({ ...session, user: { ...session.user, id: 'owner-b' } })
+  finish({ ok: false, status: 401, text: async () => JSON.stringify({ error: 'INVALID_TOKEN' }) } as Response)
+  await expect(pending).rejects.toThrow(/sesión|SESSION|ACCOUNT_CHANGED/)
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+test('a hide response from an old login does not notify the new inbox', async () => {
+  let finish!: (response: Response) => void
+  ;(fetch as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const listener = jest.fn()
+  window.addEventListener('novvin:inbox-changed', listener)
+  try {
+    const pending = hideFallbackChat('shared-chat')
+    await Promise.resolve()
+    clearFallbackSession(); persistFallbackSession(session)
+    finish({ ok: true, status: 200, text: async () => '{"ok":true}' } as Response)
+    await expect(pending).rejects.toThrow(/sesión|SESSION/)
+    expect(listener).not.toHaveBeenCalled()
+  } finally { window.removeEventListener('novvin:inbox-changed', listener) }
+})
+
+test('a current hide uses DELETE and notifies its inbox after success', async () => {
+  const listener = jest.fn()
+  window.addEventListener('novvin:inbox-changed', listener)
+  try {
+    await hideFallbackChat('chat/one')
+    expect(fetch).toHaveBeenCalledWith('https://api.example.invalid/v1/data/messages/chats/chat%2Fone', expect.objectContaining({ method: 'DELETE' }))
+    expect(listener).toHaveBeenCalledTimes(1)
+  } finally { window.removeEventListener('novvin:inbox-changed', listener) }
 })
