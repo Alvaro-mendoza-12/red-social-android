@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T13:39:34.729036+00:00",
-  "baseCommit": "853836e7c5d71b4b9d78f5cfa2fb5b4d2b176c8a",
+  "generatedAtUtc": "2026-11-11T13:41:55.733065+00:00",
+  "baseCommit": "abd0aa5d673d923096aa3585d383d917296ffd72",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3734,
+    "pending": 3735,
     "partial": 96,
     "code-read": 487
   },
@@ -21,7 +21,7 @@
       "partial": 52
     },
     "documentation": {
-      "pending": 571,
+      "pending": 572,
       "code-read": 8,
       "partial": 7
     },
@@ -3785,7 +3785,7 @@
     {
       "file": "NoWing-web/src/ui/novvin/auth.css",
       "phase": "web",
-      "gitBlobId": "3d2e53f72674b80d86c1c1de41c54ac685e261fb",
+      "gitBlobId": "9efc4936d545ee7dbe0f408b29c91ad0445079c0",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3857,7 +3857,7 @@
     {
       "file": "NoWing-web/src/ui/novvin/tokens.css",
       "phase": "web",
-      "gitBlobId": "280a3cd8207240858a0d817f2a25bd6e42ac428a",
+      "gitBlobId": "9687ce6bb0ca4a5858e1a9fbcc80bf00483c46d5",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3877,7 +3877,7 @@
     {
       "file": "NoWing-web/tests/control-contrast.test.mjs",
       "phase": "web",
-      "gitBlobId": "f4239a7b177fe4020280a41810d94a68b603fe06",
+      "gitBlobId": "eb84b86e97c7aeb36f9e6bc382922367b584576c",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20095,7 +20095,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "253c4eb8a79f8923829b45539fbe89946a7ebbc8",
+      "gitBlobId": "15ac945308c1d0a988ed17ba6595831854a003c6",
       "reviewStatus": "pending"
     },
     {
@@ -20396,6 +20396,12 @@
       "file": "docs/oficial/evidencias/cierre-11-2026-10-04.json",
       "phase": "documentation",
       "gitBlobId": "0c68e6ca40869f1e26a64dafcb19eb4ba157ad51",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/legibilidad-texto-web-2026-11-11.md",
+      "phase": "documentation",
+      "gitBlobId": "2331730d2b82d54f9fbe920f096b9347db9fd694",
       "reviewStatus": "pending"
     },
     {

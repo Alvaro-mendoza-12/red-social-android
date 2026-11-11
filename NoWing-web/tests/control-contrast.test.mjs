@@ -64,3 +64,43 @@ test('interactive outlines remain visible on tinted surfaces including custom ac
     }
   }
 })
+
+for (const theme of [':root', '.theme-light', '.theme-system']) {
+  test(`small secondary text reaches 4.5:1 on default ${theme} surfaces`, () => {
+    for (const ink of ['--secondary-text', '--muted']) {
+      const color = value('tokens.css', theme, ink)
+      for (const token of ['--background', '--surface', '--surface-raised', '--surface-container']) {
+        const surface = value('tokens.css', theme, token).replace(/^#fff$/, '#ffffff')
+        assert.ok(contrast(color, surface) >= 4.5, `${theme} ${ink} on ${token}: ${contrast(color, surface).toFixed(2)}`)
+      }
+    }
+  })
+}
+
+test('small secondary text stays readable on accent-tinted containers', () => {
+  for (const theme of [':root', '.theme-light']) {
+    const dark = theme === ':root'
+    const accents = ['#000000', '#ffffff', '#767676']
+    sheet('tokens.css').walkDecls(dark ? '--accent-dark' : '--accent-light', decl => {
+      if (/^#[0-9a-f]{6}$/i.test(decl.value)) accents.push(decl.value)
+    })
+    for (const ink of ['--secondary-text', '--muted']) {
+      const color = value('tokens.css', theme, ink)
+      for (const accent of accents) {
+        for (const [base, proportion] of dark ? [['#13161c', .03], ['#19212c', .09], ['#202735', .15]] : [['#ffffff', .03], ['#ffffff', .09], ['#ffffff', .15]]) {
+          const surface = mix(accent, base, proportion)
+          assert.ok(contrast(color, surface) >= 4.5, `${theme} ${ink} on ${surface} with accent ${accent}: ${contrast(color, surface).toFixed(2)}`)
+        }
+      }
+    }
+  }
+})
+
+test('authentication help and muted labels reach normal-text contrast on light panels', () => {
+  for (const ink of ['--secondary-text', '--muted']) {
+    const color = value('auth.css', '.auth-shell', ink)
+    for (const surface of ['#ffffff', '#fafbff', '#eef0fb', '#e9e6ff', '#e5e8ff', '#d9f4f5', '#f1f2fb']) {
+      assert.ok(contrast(color, surface) >= 4.5, `${ink} ${color} on ${surface}: ${contrast(color, surface).toFixed(2)}`)
+    }
+  }
+})
