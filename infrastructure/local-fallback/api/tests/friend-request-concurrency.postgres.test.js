@@ -63,4 +63,25 @@ test('independent PostgreSQL sessions serialize legacy decisions, cancellation a
   results=await contend(db=>removeFriendPair(db,'a','b'),db=>createNativeFriend(db,'a','b'))
   assert.equal(results[1].value.status,'pending')
   assert.equal((await pool.query('SELECT * FROM fallback_friends')).rowCount,1)
+  const admin=await pool.connect()
+  let removal
+  try {
+    await admin.query('BEGIN')
+    await admin.query('LOCK TABLE fallback_friend_legacy_barriers IN SHARE ROW EXCLUSIVE MODE')
+    removal=removeFriendPair(pool,'a','b')
+    const deadline=Date.now()+5000
+    let waiting=false
+    while(Date.now()<deadline) {
+      const {rows}=await pool.query("SELECT EXISTS(SELECT 1 FROM pg_locks WHERE relation='fallback_friend_legacy_barriers'::regclass AND NOT granted) AS waiting")
+      if(rows[0].waiting){waiting=true;break}
+      await new Promise(resolve=>setTimeout(resolve,10))
+    }
+    assert.ok(waiting,'friendship operation must wait for administrative table lock')
+    // This fails if unfriend already acquired friends then waited for barriers:
+    // administrative purge would retain barriers while waiting for friends.
+    await admin.query('LOCK TABLE fallback_friends IN SHARE ROW EXCLUSIVE MODE NOWAIT')
+  } finally {
+    await admin.query('ROLLBACK');admin.release()
+    if(removal) await removal
+  }
 })

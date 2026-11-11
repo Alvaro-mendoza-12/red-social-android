@@ -136,3 +136,17 @@ test('a legacy barrier survives importing a previously unknown target account',a
   assert.deepEqual(await visibleLegacyFriends(db,'imported',[row]),[])
   await assert.rejects(answerLegacyFriend(db,'imported',row,'accepted',['new-local','historical-remote']),{status:409})
 })
+
+test('account purge removes only its historical friendship state and rolls back atomically',async t=>{
+  const {db,row}=await fixture(t)
+  const {purgeFriendRequestIdentity}=require('../src/friend-request-state')
+  await cancelLegacyFriend(db,'imported',row,['a'])
+  await removeFriendPair(db,'a','b')
+  await db.query("INSERT INTO fallback_friend_legacy_barriers VALUES('stranger-local','unrelated',now())")
+  await db.query("INSERT INTO fallback_friend_legacy_requests(source,request_id,sender_id,receiver_id,status) VALUES('compat','keep','stranger-local','unrelated','cancelled')")
+  await assert.rejects(db.transaction(async tx=>{await purgeFriendRequestIdentity(tx,['a-local','a']);throw new Error('rollback')}),/rollback/)
+  assert.equal((await db.query('SELECT * FROM fallback_friend_legacy_requests')).rows.length,2)
+  await db.transaction(tx=>purgeFriendRequestIdentity(tx,['a-local','a']))
+  assert.deepEqual((await db.query('SELECT request_id FROM fallback_friend_legacy_requests')).rows,[{request_id:'keep'}])
+  assert.deepEqual((await db.query('SELECT sender_id FROM fallback_friend_legacy_barriers')).rows,[{sender_id:'stranger-local'}])
+})

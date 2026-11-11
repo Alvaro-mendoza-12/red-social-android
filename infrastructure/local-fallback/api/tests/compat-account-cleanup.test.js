@@ -19,3 +19,14 @@ test('account cleanup expands JSONB once and converts only identity fields', asy
   assert.ok(captured.params[2].includes('participants'))
   assert.ok(!captured.params[1].includes('body'))
 })
+
+test('account transaction purges friendship state after sources and before identity deletion',()=>{
+  const source=require('node:fs').readFileSync(require.resolve('../src/postgrest-compat-routes'),'utf8')
+  const body=source.slice(source.indexOf('async function deleteOwnAccountRpc('))
+  const transaction=body.indexOf('runInTransaction(pool, async (client)')
+  const imported=body.indexOf('await purgeImportedIdentityRows(client, identityValues)')
+  const compat=body.indexOf('await purgeCompatIdentityRows(client, identityValues)')
+  const state=body.indexOf('await purgeFriendRequestIdentity(client, identityValues)')
+  const user=body.indexOf('DELETE FROM fallback_users WHERE id')
+  assert.ok(transaction>=0 && imported>transaction && compat>imported && state>compat && user>state)
+})

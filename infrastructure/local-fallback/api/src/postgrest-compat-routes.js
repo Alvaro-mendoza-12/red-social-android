@@ -1,4 +1,4 @@
-const { visibleLegacyFriends, createNativeFriend, answerNativeFriend, cancelNativeFriend, answerLegacyFriend, cancelLegacyFriend, removeFriendPair } = require('./friend-request-state')
+const { purgeFriendRequestIdentity, visibleLegacyFriends, createNativeFriend, answerNativeFriend, cancelNativeFriend, answerLegacyFriend, cancelLegacyFriend, removeFriendPair } = require('./friend-request-state')
 const { visibleFollowRows, setFollowState, publishFollowChange } = require('./follow-store')
 const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
 const { normalizeCompatProfileJson } = require('./compat-profile-json')
@@ -5889,6 +5889,7 @@ async function deleteOwnAccountRpc(pool, auth) {
     const musicTracksDeleted = await deleteAccountMusic(client, localUserId)
     const importedRowsDeleted = await purgeImportedIdentityRows(client, identityValues)
     const compatRowsDeleted = await purgeCompatIdentityRows(client, identityValues)
+    await purgeFriendRequestIdentity(client, identityValues)
     if (storage.rows.length > 0) {
       await client.query(`DELETE FROM fallback_storage_objects WHERE owner_id = $1::uuid`, [localUserId])
     }

@@ -55,6 +55,9 @@ async function transaction(pool, work) {
 async function withPair(pool, sender, receiver, work) {
   if (!norm(sender) || !norm(receiver)) throw error('FRIEND_PARTICIPANTS_REQUIRED',400)
   return transaction(pool, async db => {
+    // Match administrative purge table order before taking any write locks.
+    // RowExclusive locks are compatible between ordinary friendship requests.
+    await db.query('LOCK TABLE fallback_friend_legacy_barriers, fallback_friend_legacy_requests, fallback_friends IN ROW EXCLUSIVE MODE')
     await db.query('SELECT fallback_lock_friend_pair($1,$2)', [sender, receiver])
     const { rows } = await db.query('SELECT fallback_friend_identity($1) AS sender, fallback_friend_identity($2) AS receiver',[sender,receiver])
     return work(db, rows[0].sender, rows[0].receiver)
@@ -215,5 +218,15 @@ async function findLegacyRequest(db,id,actorIds,receiverOnly=false) {
   if(matches.length>1) throw error('FRIEND_SOURCE_AMBIGUOUS')
   return matches[0] || null
 }
-module.exports={ensureFriendRequestState,visibleLegacyFriends,answerLegacyFriend,cancelLegacyFriend,removeFriendPair,createNativeFriend,
+// Call only inside the account purge transaction, after purging legacy source
+// rows and before deleting fallback_users, while its aliases still resolve.
+async function purgeFriendRequestIdentity(db,ids) {
+  const actors=[...new Set(ids.map(norm).filter(Boolean))]
+  if (!actors.length) return
+  for (const table of ['fallback_friend_legacy_requests','fallback_friend_legacy_barriers']) {
+    await db.query(`DELETE FROM ${table} WHERE lower(sender_id)=ANY($1::text[]) OR lower(receiver_id)=ANY($1::text[])
+      OR fallback_friend_identity(sender_id)=ANY($1::text[]) OR fallback_friend_identity(receiver_id)=ANY($1::text[])`,[actors])
+  }
+}
+module.exports={purgeFriendRequestIdentity,ensureFriendRequestState,visibleLegacyFriends,answerLegacyFriend,cancelLegacyFriend,removeFriendPair,createNativeFriend,
   answerNativeFriend,cancelNativeFriend,findLegacyRequest,withPair,suppressLegacyPair,loadSource,keyOf}

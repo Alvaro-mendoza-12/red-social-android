@@ -117,3 +117,13 @@ Se ejecutó PostgreSQL 17.11 oficial en un directorio temporal aislado, sin inst
 Validación local del candidato: `npm run check` aprobado; suite completa 1.100 casos, 1.083 aprobados, 17 omitidos, cero fallos. El grupo `test:friendship`, con PostgreSQL real configurado, pasa 21/21 sin omisiones. Incluye rollback, actor ajeno, nuevas invitaciones, consistencia JS/SQL de IDs, contrato público de IDs, permisos de chat y handlers reales de cancelación y unfriend. No equivale a ejecutar Android en dispositivo ni a certificar producción.
 
 Revisión independiente incremental: sin bloqueantes en los recorridos ordinarios revisados; repitió 20 casos SQL con PGlite y la prueba multiconexión con PostgreSQL real. Mantiene los límites anteriores y no autoriza ni acredita un despliegue. Auditoría npm de producción: cero vulnerabilidades al verificar este candidato.
+
+## Retención de estado de amistad al borrar una cuenta
+
+La auditoría posterior encontró que las tablas nuevas de solicitudes históricas y barreras no estaban incluidas en las rutas existentes de borrado de cuenta. Se incorpora su limpieza tanto al borrado administrativo como al propio usuario, dentro de la misma transacción, después de eliminar las fuentes legacy y antes de eliminar la cuenta cuyos alias permiten identificar las marcas. Se conservan las marcas de otras personas. No se ejecutó ningún borrado real.
+
+La revisión reprodujo una inversión de locks entre el bloqueo administrativo de tablas y unfriend. Las operaciones ordinarias ahora adquieren ROW EXCLUSIVE sobre barriers, requests y friends en ese orden, antes de su advisory lock y escrituras; son compatibles entre sí. La regresión multiconexión espera un bloqueo real y verifica con NOWAIT que el administrador no queda bloqueado por una operación que ya escribió friends: falló antes y pasa después. La prueba no acredita ausencia global de deadlocks en otros módulos.
+
+Pruebas focalizadas: limpieza y rollback reales con PGlite, orden de llamada del handler administrativo mediante fixture y comprobación estática del orden en autoservicio; grupo SQL completo con PostgreSQL real: 22/22. La coordinación integral de baja/recreación y migraciones simultáneas sigue pendiente. Las pruebas de limpieza no sustituyen un ensayo completo de borrado/restauración en una copia aislada del sistema.
+
+Comprobación sintáctica aprobada. Suite API tras el ajuste de locks: 1.102 casos, 1.085 aprobados, 17 omitidos y cero fallos. El commit anterior `59b1ab15` ya tiene backend y web aprobados en GitHub; el backend ejecutó las 21 pruebas de amistad, incluida PostgreSQL multiconexión, sin omisiones. Android seguía en curso al registrar esta evidencia.
