@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackProfileMe } from '../../core/fallbackData'
 import { formatDateTime, textOf, type GenericRow } from '../../core/utils'
+import { getStorageReadIdentity, subscribeStorageReadIdentity, type StorageReadIdentity } from '../../core/media/storageReadSession'
 import './reports.css'
 
 function readableStatus(value: string): string {
@@ -24,23 +25,41 @@ function reportTitle(row: GenericRow): string {
 }
 
 export function MyReportsPage() {
-  const { isFallbackSession } = useAuth()
+  const { user, isFallbackSession } = useAuth()
+  const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  const owner = isFallbackSession && identity.provider === 'fallback' && identity.accountId === user?.id
+    ? identity : null
+  // A new session must never render the previous session's private reports,
+  // including logout/login to the same account and identity changes before auth updates.
+  return <SessionReports key={owner ? owner.generation : 'signed-out'} identity={owner} />
+}
+
+function SessionReports({ identity }: { identity: StorageReadIdentity | null }) {
+  const isFallbackSession = Boolean(identity)
+  const requestGeneration = useRef(0)
   const [reports, setReports] = useState<GenericRow[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const refresh = useCallback(async () => {
-    if (!isFallbackSession) { setLoading(false); return }
+    if (!identity || identity !== getStorageReadIdentity()) { setLoading(false); return }
+    const generation = ++requestGeneration.current
+    const isCurrent = () => generation === requestGeneration.current && identity === getStorageReadIdentity()
     setLoading(true); setError('')
     try {
-      const data = await loadFallbackProfileMe()
+      const data = await loadFallbackProfileMe(identity)
+      if (!isCurrent()) return
       setReports(data.reports || [])
       setTotal(data.stats.reportsSent || 0)
     } catch {
+      if (!isCurrent()) return
       setError('No se pudieron cargar tus reportes. Revisa la conexión y vuelve a intentar.')
-    } finally { setLoading(false) }
-  }, [isFallbackSession])
-  useEffect(() => { void refresh() }, [refresh])
+    } finally { if (isCurrent()) setLoading(false) }
+  }, [identity])
+  useEffect(() => {
+    void refresh()
+    return () => { requestGeneration.current += 1 }
+  }, [refresh])
 
   return <section className="reports-page">
     <div className="surface-card reports-header"><div><h2>Reportes enviados</h2><p>Solo tú puedes consultar tus reportes. El equipo de moderación revisa cada caso.</p></div><button type="button" className="ghost-btn" disabled={loading} onClick={() => void refresh()}>Actualizar</button></div>

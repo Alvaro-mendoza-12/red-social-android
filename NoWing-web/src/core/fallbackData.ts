@@ -222,8 +222,8 @@ export type FallbackRandomMessage = {
   created_at: string
 }
 
-export async function loadFallbackProfileMe(): Promise<FallbackProfileMeResponse> {
-  return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me')
+export async function loadFallbackProfileMe(expectedIdentity?: StorageReadIdentity): Promise<FallbackProfileMeResponse> {
+  return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me', expectedIdentity ? { expectedIdentity } : undefined)
 }
 
 export async function updateFallbackProfileMe(input: {
