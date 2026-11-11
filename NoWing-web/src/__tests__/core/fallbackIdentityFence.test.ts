@@ -1,4 +1,4 @@
-import { hideFallbackChat, saveFallbackChatPreferences } from '../../core/fallbackData'
+import { hideFallbackChat, saveFallbackChatPreferences, toggleFallbackChatReaction } from '../../core/fallbackData'
 import { clearFallbackSession, fallbackApiJson, persistFallbackSession } from '../../core/auth/fallbackAuth'
 import { getStorageReadIdentity } from '../../core/media/storageReadSession'
 jest.mock('../../core/runtimeBackend', () => ({ getRuntimeBackendUrl: () => 'https://api.example.invalid', refreshRuntimeBackend: jest.fn(), subscribeRuntimeBackend: jest.fn() }))
@@ -114,4 +114,28 @@ test('a late chat preference response does not notify a new session', async () =
     await expect(pending).rejects.toThrow(/sesión|SESSION/)
     expect(listener).not.toHaveBeenCalled()
   } finally { window.removeEventListener('novvin:conversation-preferences-changed', listener) }
+})
+
+
+test('a private chat reaction cannot switch accounts during token lookup', async () => {
+  const pending = toggleFallbackChatReaction('shared-chat', 'message-a', '👍')
+  clearFallbackSession(); persistFallbackSession({ ...session, user: { ...session.user, id: 'owner-b' } })
+  await expect(pending).rejects.toThrow(/sesión|SESSION|ACCOUNT_CHANGED/)
+  expect(fetch).not.toHaveBeenCalled()
+})
+
+test('a private chat reaction cannot replay a 401 under a new login', async () => {
+  let finish!: (response: Response) => void
+  ;(fetch as jest.Mock).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const pending = toggleFallbackChatReaction('shared-chat', 'message-a', '👍')
+  await Promise.resolve(); expect(fetch).toHaveBeenCalledTimes(1)
+  clearFallbackSession(); persistFallbackSession(session)
+  finish({ ok: false, status: 401, text: async () => JSON.stringify({ error: 'INVALID_TOKEN' }) } as Response)
+  await expect(pending).rejects.toThrow(/sesión|SESSION|ACCOUNT_CHANGED/)
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
+test('a current private chat reaction keeps its route and payload', async () => {
+  await toggleFallbackChatReaction('chat/one', 'message/one', '👍')
+  expect(fetch).toHaveBeenCalledWith('https://api.example.invalid/v1/data/messages/chats/chat%2Fone/messages/message%2Fone/reactions', expect.objectContaining({ method: 'POST', body: JSON.stringify({ emoji: '👍' }) }))
 })

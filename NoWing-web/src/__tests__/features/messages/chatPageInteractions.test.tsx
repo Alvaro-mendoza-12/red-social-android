@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ChatDetailPage } from '../../../features/messages/ChatDetailPage'
 import { RoomChatPage } from '../../../features/messages/RoomChatPage'
-import { saveFallbackChatPreferences, loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
+import { toggleFallbackChatReaction, saveFallbackChatPreferences, loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
 import { retainAttachmentOwner } from '../../../core/attachmentJobs'
 import { writeCachedValue } from '../../../core/localCache'
 import { fallbackApiJson } from '../../../core/auth/fallbackAuth'
@@ -17,7 +17,7 @@ jest.mock('../../../core/ubuntuRealtime', () => ({ subscribeUbuntuRealtime: () =
 jest.mock('../../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn(async () => []) }))
 jest.mock('../../../core/backendRpc', () => ({ backendRpc: jest.fn(async () => ({ data: [] })) }))
 jest.mock('../../../core/fallbackData', () => ({
-  saveFallbackChatPreferences: jest.fn(),
+  saveFallbackChatPreferences: jest.fn(), toggleFallbackChatReaction: jest.fn(),
   loadFallbackChat: jest.fn(), loadFallbackRoomChat: jest.fn(),
   loadFallbackHistoryPage: jest.fn(),
   fallbackHistoryAllows: jest.requireActual('../../../core/fallbackData').fallbackHistoryAllows,
@@ -465,4 +465,50 @@ test.each(['renewal', 'account switch'])('identity %s releases the old nickname 
   await act(async () => { pending[1]({}) })
   expect(screen.getByRole('button', { name: 'Ver perfil de Nuevo' })).toBeInTheDocument()
   expect(screen.queryByRole('dialog', { name: 'Apodo privado' })).not.toBeInTheDocument()
+})
+
+
+test.each(['success', 'failure'])('a late private reaction %s cannot enter the next conversation', async outcome => {
+  let finish!: () => void
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [{ ...incoming, reactions: { '👍': ['friend'] } }] } as never)
+  jest.mocked(toggleFallbackChatReaction).mockImplementation(() => new Promise((resolve, reject) => {
+    finish = () => outcome === 'success' ? resolve({ message: { ...incoming, id: 'old-private-message', content: 'Contenido privado A' } }) : reject(new Error('Error privado reacción A'))
+  }))
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: '👍 1' }))
+  await waitFor(() => expect(finish).toBeDefined())
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [{ ...incoming, id: 'message-b', content: 'Conversación B' }] } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByText('Conversación B')
+  await act(async () => { finish() })
+  expect(screen.queryByText('Contenido privado A')).not.toBeInTheDocument()
+  expect(screen.queryByText('Error privado reacción A')).not.toBeInTheDocument()
+  expect(screen.getByText('Conversación B')).toBeInTheDocument()
+})
+
+test.each(['renewal', 'switch'])('an identity %s suppresses an old private reaction response', async transition => {
+  let finish!: (value: { message: typeof incoming }) => void
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [{ ...incoming, reactions: { '👍': ['friend'] } }] } as never)
+  jest.mocked(toggleFallbackChatReaction).mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  open()
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: '👍 1' }))
+  await waitFor(() => expect(finish).toBeDefined())
+  await act(async () => {
+    if (transition === 'switch') { mockUser.id = 'account-b'; updateStorageReadIdentity('account-b', 'fallback') }
+    else invalidateStorageReadBackend()
+    finish({ message: { ...incoming, id: 'private-response', content: 'Respuesta de sesión anterior' } })
+  })
+  expect(screen.queryByText('Respuesta de sesión anterior')).not.toBeInTheDocument()
+})
+
+test('a private reaction cannot start while auth and transport identities disagree', async () => {
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [{ ...incoming, reactions: { '👍': ['friend'] } }] } as never)
+  jest.mocked(toggleFallbackChatReaction).mockResolvedValue({ message: incoming })
+  open()
+  await screen.findByText('Mensaje recibido')
+  act(() => updateStorageReadIdentity('account-b', 'fallback'))
+  fireEvent.click(screen.getByRole('button', { name: '👍 1' }))
+  expect(toggleFallbackChatReaction).not.toHaveBeenCalled()
 })

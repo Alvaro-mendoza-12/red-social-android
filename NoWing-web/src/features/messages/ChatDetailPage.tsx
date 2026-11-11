@@ -551,6 +551,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     scheduleRequestKeyRef.current = null
     return () => { scheduleContext.current += 1 }
   }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
+  const reactionContext = useRef(0)
+  useEffect(() => () => { reactionContext.current += 1 }, [user?.id, useUbuntu, cleanChatId])
   const nicknameContext = useRef(0)
   useEffect(() => {
     setNicknameDialogOpen(false)
@@ -1705,11 +1707,16 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
   async function toggleReaction(messageId: string, emoji: string) {
     if (useUbuntu) {
+      if (!user || !cleanChatId) return
+      const context = reactionContext.current
+      const identity = getStorageReadIdentity()
+      if (identity.provider !== 'fallback' || identity.accountId !== user.id) return
+      const isCurrent = () => context === reactionContext.current && identity === getStorageReadIdentity()
       try {
         const response = await toggleFallbackChatReaction(cleanChatId, messageId, emoji)
-        upsertMessageInState(mapMessage(response.message))
+        if (isCurrent()) upsertMessageInState(mapMessage(response.message))
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo reaccionar'))
+        if (isCurrent()) setError(friendlyError(caught, 'No se pudo reaccionar'))
       }
       return
     }

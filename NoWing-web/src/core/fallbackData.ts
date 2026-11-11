@@ -728,9 +728,10 @@ export async function toggleFallbackChatReaction(
   messageId: string,
   emoji: string,
 ): Promise<{ message: GenericRow }> {
+  const identity = getStorageReadIdentity()
   return fallbackApiJson<{ message: GenericRow }>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/reactions`,
-    { method: 'POST', body: JSON.stringify({ emoji }) },
+    { method: 'POST', body: JSON.stringify({ emoji }), expectedIdentity: identity, expectedAccountId: identity.accountId },
   )
 }
 

@@ -249,3 +249,11 @@ Las seis regresiones finales añaden cambio de cuenta mientras una segunda petic
 ## Verificación integrada de reportes y apodos
 
 Sobre ambos parches juntos pasaron 186 suites / 1.116 pruebas Jest, 118 pruebas Node, lint con cero errores y siete avisos existentes, y build/SEO (19 páginas públicas, JavaScript público cero). El build usó `https://ci.novvin.invalid`; no es una entrega de producción. Un intento Node coincidió con la regeneración de `dist` y registró fallos de las páginas públicas; la repetición después de terminar el build aprobó las 118 pruebas. Se conservan las advertencias React de mocks/act y de tamaño de chunks. No se desplegó ni se ejecutó el ensayo instrumentado pendiente. La revisión integral continúa abierta.
+
+## Web: reacciones privadas Ubuntu ligadas a sesión y conversación
+
+Se reprodujeron cinco fallos antes de las guardas correspondientes: la respuesta de una reacción del chat A insertaba su mensaje completo en el chat B; el error también aparecía en B; el transporte permitía cambiar cuenta durante la espera del token y repetir un 401 tras otro login; y la interfaz de A podía iniciar una reacción cuando la identidad del transporte ya era B.
+
+El helper captura identidad y cuenta para las comprobaciones del transporte. El detalle rechaza de entrada una identidad fallback distinta del usuario visible y descarta respuestas/errores de otro chat, cuenta, backend, generación de sesión o instancia desmontada. Se conservan ruta y payload. No se modificaron reacciones de grupos/comunidades, Supabase heredado ni borrado de mensajes.
+
+Ocho pruebas añadidas cubren los cinco fallos y los caminos de éxito, renovación de identidad y cambio de cuenta. La revisión independiente leyó los registros rojos y repitió 61 pruebas en dos suites, sin bloqueantes. La batería final pasó 186 suites / 1.124 pruebas Jest, 118 Node, lint con cero errores y siete avisos, y build/SEO (19 páginas, JavaScript público cero) con el origen aislado `https://ci.novvin.invalid`. No hubo navegador real, emulador, cuentas reales ni despliegue. La protección de desmontaje resulta de la guardia, pero no hay un caso explícito nuevo para ese escenario ni para un error tras renovar identidad. No se revierte una reacción que el servidor ya haya aceptado.
