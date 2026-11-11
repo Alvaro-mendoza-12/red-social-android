@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T17:36:08.546943+00:00",
-  "baseCommit": "c7ee764202667eb36c756fdb0088f8c5f8aa308a",
+  "generatedAtUtc": "2026-11-11T17:40:44.300222+00:00",
+  "baseCommit": "a57a2fefa54dadbdc01fd47e36842396e9aaf93f",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -1611,7 +1611,7 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "phase": "web",
-      "gitBlobId": "302c4355f935ce265c295b20da7226aadc573312",
+      "gitBlobId": "68d0d98eedfd507d523078c144f37e9e97a8dc92",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3209,7 +3209,7 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "16211025fb03ae092a1cb1d66d6b19da0d3bfc9a",
+      "gitBlobId": "7bd8cee43ed3c85b82f48212f67839cb5ff05686",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3243,7 +3243,7 @@
     {
       "file": "NoWing-web/src/features/messages/RoomChatPage.tsx",
       "phase": "web",
-      "gitBlobId": "94c7c30124f465ff163fddb61bb49173316ec6c8",
+      "gitBlobId": "4ccbb8282ee3c6f5b99ed847e9dd0e3fccad9f01",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20143,7 +20143,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "3d5bfd79c915e63890e3307a3ce6b4139ce1178e",
+      "gitBlobId": "803e6f491177e5b99e493eebb7580a09d140074b",
       "reviewStatus": "pending"
     },
     {

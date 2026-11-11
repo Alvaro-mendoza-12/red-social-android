@@ -6,6 +6,7 @@ import { RoomChatPage } from '../../../features/messages/RoomChatPage'
 import { deleteFallbackChatMessage, deleteFallbackRoomMessage, toggleFallbackChatReaction, saveFallbackChatPreferences, loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
 import { retainAttachmentOwner } from '../../../core/attachmentJobs'
 import { writeCachedValue } from '../../../core/localCache'
+import { backendRpc } from '../../../core/backendRpc'
 import { fallbackApiJson } from '../../../core/auth/fallbackAuth'
 import { getStorageReadIdentity, updateStorageReadIdentity, invalidateStorageReadBackend } from '../../../core/media/storageReadSession'
 
@@ -57,6 +58,7 @@ beforeEach(() => {
   mockUser.id = 'account-a'
   updateStorageReadIdentity('account-a', 'fallback')
   jest.mocked(fallbackApiJson).mockImplementation(async () => [])
+  jest.mocked(backendRpc).mockResolvedValue({ data: [], error: null })
   localStorage.clear()
   retainAttachmentOwner('clear-everything')
   ;(loadFallbackChat as jest.Mock).mockResolvedValue(response)
@@ -620,4 +622,83 @@ test.each(['renewed-login', 'backend-change'])('bulk %s stops the old batch and 
     expect(screen.queryByRole('region', { name: 'Mensajes seleccionados' })).not.toBeInTheDocument()
     expect(deleteFallbackChatMessage).toHaveBeenCalledTimes(3)
   } finally { confirm.mockRestore() }
+})
+
+
+function openPollEditor(scope: 'chat' | 'group' | 'community') {
+  if (scope === 'chat') {
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+    const create = screen.queryByRole('button', { name: 'Nueva encuesta' })
+    if (create) fireEvent.click(create)
+  } else if (!screen.queryByPlaceholderText('Pregunta')) fireEvent.click(screen.getByTitle('Nueva encuesta'))
+}
+
+test.each(deleteScopes.flatMap(scope => ['success', 'failure'].map(outcome => [scope, outcome] as const)))('%s poll creation ignores old %s after changing conversation', async (scope, outcome) => {
+  let finish!: () => void
+  jest.mocked(backendRpc).mockImplementation(async name => {
+    if (!/^secure_create_(chat|group|community)_poll_message$/.test(name)) return { data: [], error: null }
+    return new Promise(resolve => { finish = () => resolve(outcome === 'success' ? { data: {}, error: null } : { data: null, error: new Error('Error encuesta A') }) })
+  })
+  const page = (id: string) => <MemoryRouter>{scope === 'chat' ? <ChatDetailPage chatIdOverride={id}/> : <RoomChatPage scope={scope} roomId={id}/>}</MemoryRouter>
+  const { rerender } = render(page('room-a'))
+  await screen.findByText('Mensaje recibido')
+  openPollEditor(scope)
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'Encuesta A' } })
+  fireEvent.click(screen.getByRole('button', { name: scope === 'chat' ? 'Crear' : 'Crear encuesta', exact: true }))
+  await waitFor(() => expect(finish).toBeDefined())
+  const loader = scope === 'chat' ? loadFallbackChat : loadFallbackRoomChat
+  jest.mocked(loader).mockResolvedValue({ ...response, messages: [{ ...incoming, id: 'b-message', content: 'Conversación B' }] } as never)
+  rerender(page('room-b'))
+  await screen.findByText('Conversación B')
+  openPollEditor(scope)
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'Borrador B' } })
+  const requestsBeforeOldResponse = jest.mocked(loader).mock.calls.length
+  await act(async () => { finish() })
+  expect(screen.getByPlaceholderText('Pregunta')).toHaveValue('Borrador B')
+  expect(screen.queryByText('Error encuesta A')).not.toBeInTheDocument()
+  expect(jest.mocked(loader).mock.calls).toHaveLength(requestsBeforeOldResponse)
+})
+
+test.each(deleteScopes)('%s poll cannot start while auth and transport disagree', async scope => {
+  open(scope)
+  await screen.findByText('Mensaje recibido')
+  openPollEditor(scope)
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'No enviar con B' } })
+  act(() => updateStorageReadIdentity('account-b', 'fallback'))
+  // A context reset may close the form; reopening must still refuse this old auth user.
+  if (!screen.queryByPlaceholderText('Pregunta')) {
+    if (scope === 'chat') fireEvent.click(screen.getByRole('button', { name: 'Nueva encuesta' }))
+    else openPollEditor(scope)
+    fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'No enviar con B' } })
+  }
+  fireEvent.click(screen.getByRole('button', { name: scope === 'chat' ? 'Crear' : 'Crear encuesta', exact: true }))
+  expect(jest.mocked(backendRpc).mock.calls.filter(([name]) => /^secure_create_(chat|group|community)_poll_message$/.test(name))).toHaveLength(0)
+})
+
+test.each(deleteScopes)('%s poll identity renewal resets its lock without releasing a newer creation', async scope => {
+  const pending: (() => void)[] = []
+  jest.mocked(backendRpc).mockImplementation(async name => {
+    if (!/^secure_create_(chat|group|community)_poll_message$/.test(name)) return { data: [], error: null }
+    return new Promise(resolve => pending.push(() => resolve({ data: {}, error: null })))
+  })
+  open(scope)
+  await screen.findByText('Mensaje recibido')
+  openPollEditor(scope)
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'Encuesta antigua' } })
+  fireEvent.click(screen.getByRole('button', { name: scope === 'chat' ? 'Crear' : 'Crear encuesta', exact: true }))
+  await waitFor(() => expect(pending).toHaveLength(1))
+  act(() => invalidateStorageReadBackend())
+  expect(screen.queryByPlaceholderText('Pregunta')).not.toBeInTheDocument()
+  if (scope === 'chat') fireEvent.click(screen.getByRole('button', { name: 'Nueva encuesta' }))
+  else openPollEditor(scope)
+  expect(screen.getByPlaceholderText('Pregunta')).toHaveValue('')
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'Encuesta nueva' } })
+  fireEvent.click(screen.getByRole('button', { name: scope === 'chat' ? 'Crear' : 'Crear encuesta', exact: true }))
+  await waitFor(() => expect(pending).toHaveLength(2))
+  await act(async () => { pending[0]() })
+  expect(screen.getByPlaceholderText('Pregunta')).toHaveValue('Encuesta nueva')
+  expect(screen.getByRole('button', { name: 'Creando...' })).toBeInTheDocument()
+  await act(async () => { pending[1]() })
+  expect(screen.queryByPlaceholderText('Pregunta')).not.toBeInTheDocument()
 })

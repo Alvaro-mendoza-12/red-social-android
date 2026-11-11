@@ -551,6 +551,15 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     scheduleRequestKeyRef.current = null
     return () => { scheduleContext.current += 1 }
   }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
+  const pollContext = useRef(0)
+  useEffect(() => {
+    setPollQuestion('')
+    setPollOptions('Si\nNo')
+    setPollAllowsMultiple(false)
+    setShowPollComposer(false)
+    setCreatingPoll(false)
+    return () => { pollContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
   const deletionContext = useRef(0)
   useEffect(() => {
     setSelectionBusy(false)
@@ -1818,7 +1827,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   async function createChatPoll() {
-    if ((!supabase && !useUbuntu) || !cleanChatId || creatingPoll) return
+    if (!user || (!supabase && !useUbuntu) || !cleanChatId || creatingPoll) return
     const question = pollQuestion.trim()
     const options = pollOptions
       .split('\n')
@@ -1830,6 +1839,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       return
     }
 
+    const context = pollContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return
+    const isCurrent = () => context === pollContext.current && identity === getStorageReadIdentity()
     setCreatingPoll(true)
     setError(null)
     try {
@@ -1840,6 +1853,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         p_options: options,
         p_allows_multiple: pollAllowsMultiple,
       })
+      if (!isCurrent()) return
       if (pollError) throw pollError
       setPollQuestion('')
       setPollOptions('Si\nNo')
@@ -1847,9 +1861,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       setShowPollComposer(false)
       void loadChat({ silent: true })
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo crear encuesta'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo crear encuesta'))
     } finally {
-      setCreatingPoll(false)
+      if (isCurrent()) setCreatingPoll(false)
     }
   }
 
