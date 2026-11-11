@@ -1,3 +1,4 @@
+import { getStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 import { backendRpc } from '../../core/backendRpc'
 import { fallbackApiJson, readFallbackSession } from '../../core/auth/fallbackAuth'
 import { supabase } from '../../core/supabase'
@@ -12,6 +13,7 @@ const api = fallbackApiJson as jest.Mock
 const session = readFallbackSession as jest.Mock
 beforeEach(() => {
   mockPrimary = true
+  updateStorageReadIdentity('owner', 'fallback')
   api.mockReset().mockResolvedValue([{ id: 'poll-state' }])
   session.mockReset().mockReturnValue({ user: { id: 'owner' } })
   ;(supabase!.rpc as jest.Mock).mockReset().mockResolvedValue({ data: [], error: null })
@@ -19,7 +21,7 @@ beforeEach(() => {
 
 test.each(['secure_create_chat_poll_message', 'secure_create_group_poll_message', 'secure_create_community_poll_message', 'secure_get_poll_state', 'secure_vote_poll_option'])('routes %s through the primary authenticated server', async name => {
   const result = await backendRpc(name, { p_poll_id: 'poll' })
-  expect(api).toHaveBeenCalledWith('/rest/v1/rpc/' + name, { method: 'POST', body: '{"p_poll_id":"poll"}', expectedAccountId: 'owner' })
+  expect(api).toHaveBeenCalledWith('/rest/v1/rpc/' + name, { method: 'POST', body: '{"p_poll_id":"poll"}', expectedAccountId: 'owner', expectedIdentity: getStorageReadIdentity() })
   expect(result).toEqual({ data: [{ id: 'poll-state' }], error: null })
   expect(supabase!.rpc).not.toHaveBeenCalled()
 })

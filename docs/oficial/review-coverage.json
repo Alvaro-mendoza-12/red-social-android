@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T16:50:29.534937+00:00",
-  "baseCommit": "8cd53cb59517b04eae8b363b96f37a70a8cd5748",
+  "generatedAtUtc": "2026-11-11T17:36:08.546943+00:00",
+  "baseCommit": "c7ee764202667eb36c756fdb0088f8c5f8aa308a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3729,
+    "pending": 3727,
     "partial": 101,
-    "code-read": 491
+    "code-read": 494
   },
   "countsByPhase": {
     "android": {
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 17,
-      "pending": 566,
-      "code-read": 35
+      "pending": 564,
+      "code-read": 38
     }
   },
   "files": [
@@ -1073,8 +1073,18 @@
     {
       "file": "NoWing-web/src/__tests__/core/backendRpc.test.ts",
       "phase": "web",
-      "gitBlobId": "4812d9c7845ed6324ff7f1b7ddbe2ba51bb5fa82",
-      "reviewStatus": "pending"
+      "gitBlobId": "d4c631b053f654545e2e8902c6d9d806fac40f69",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/backendRpcIdentity.test.ts",
+      "phase": "web",
+      "gitBlobId": "7a693f433db54abc55ec33417b5e9847079dc3bf",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/backendTrust.test.ts",
@@ -2505,8 +2515,10 @@
     {
       "file": "NoWing-web/src/core/backendRpc.ts",
       "phase": "web",
-      "gitBlobId": "3e1b8c60d012d0846d23ac1251e51152be73a8c5",
-      "reviewStatus": "pending"
+      "gitBlobId": "e67c883833c4a451ee061e0bfd86e1525d90eb00",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/backendTrust.ts",
@@ -20131,7 +20143,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "e65b3962d23ec1b29750b07f3e1a1b2fe6334ef8",
+      "gitBlobId": "3d5bfd79c915e63890e3307a3ce6b4139ce1178e",
       "reviewStatus": "pending"
     },
     {
