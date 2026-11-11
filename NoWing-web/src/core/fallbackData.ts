@@ -1,4 +1,4 @@
-import { getStorageReadIdentity, type StorageReadIdentity } from './media/storageReadSession'
+import { getStorageReadIdentity, requireStorageReadIdentity, type StorageReadIdentity } from './media/storageReadSession'
 import type { ImportedSticker } from './webOutbox'
 import { cachedConversation, cacheConversation, cancelPendingWebMessage, editPendingWebMessage, isTransientOutboxError, outboxOwner, pendingConversationMessages, sendDurableWebMessage, stageOfflineChatAttachment } from './webOutbox'
 import { fallbackApiJson } from './auth/fallbackAuth'
@@ -715,11 +715,14 @@ export async function deleteFallbackChatMessage(
   messageId: string,
   forEveryone: boolean,
 ): Promise<{ message: GenericRow }> {
+  const identity = getStorageReadIdentity()
+  requireStorageReadIdentity(identity)
   const cancelled = await cancelPendingWebMessage('chat', chatId, messageId)
+  requireStorageReadIdentity(identity)
   if (cancelled) return { message: cancelled }
   return fallbackApiJson<{ message: GenericRow }>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/delete`,
-    { method: 'POST', body: JSON.stringify({ forEveryone }) },
+    { method: 'POST', body: JSON.stringify({ forEveryone }), expectedIdentity: identity, expectedAccountId: identity.accountId },
   )
 }
 
@@ -775,12 +778,15 @@ export async function deleteFallbackRoomMessage(
   messageId: string,
   forEveryone: boolean,
 ): Promise<{ message: GenericRow }> {
+  const identity = getStorageReadIdentity()
+  requireStorageReadIdentity(identity)
   const cancelled = await cancelPendingWebMessage(scope, roomId, messageId)
+  requireStorageReadIdentity(identity)
   if (cancelled) return { message: cancelled }
   const collection = scope === 'group' ? 'groups' : 'communities'
   return fallbackApiJson<{ message: GenericRow }>(
     `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/delete`,
-    { method: 'POST', body: JSON.stringify({ forEveryone }) },
+    { method: 'POST', body: JSON.stringify({ forEveryone }), expectedIdentity: identity, expectedAccountId: identity.accountId },
   )
 }
 

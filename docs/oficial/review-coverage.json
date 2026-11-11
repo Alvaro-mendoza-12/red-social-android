@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T15:54:48.968334+00:00",
-  "baseCommit": "f2f10d92e6b0ffb9a7d1198db6af2e367fb09d08",
+  "generatedAtUtc": "2026-11-11T16:50:29.534937+00:00",
+  "baseCommit": "8cd53cb59517b04eae8b363b96f37a70a8cd5748",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3731,
-    "partial": 99,
-    "code-read": 489
+    "pending": 3729,
+    "partial": 101,
+    "code-read": 491
   },
   "countsByPhase": {
     "android": {
@@ -36,9 +36,9 @@
       "code-read": 11
     },
     "web": {
-      "partial": 15,
-      "pending": 568,
-      "code-read": 33
+      "partial": 17,
+      "pending": 566,
+      "code-read": 35
     }
   },
   "files": [
@@ -1233,6 +1233,22 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/fallbackDeleteIdentity.test.ts",
+      "phase": "web",
+      "gitBlobId": "ae6574e80ce9817d0b4c939c494d6034c879e833",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/fallbackDeleteOutboxIdentity.test.ts",
+      "phase": "web",
+      "gitBlobId": "9cf058838a195eedf5194fa724a85cbbcae6e18c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/fallbackFriendCancellation.test.ts",
       "phase": "web",
       "gitBlobId": "d3700b2345faa94d0f1e6eef56cd14996ace277b",
@@ -1585,7 +1601,7 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "phase": "web",
-      "gitBlobId": "b47b97c9dbfee0b7ef8b7c4429ec6dfb0c3da3e2",
+      "gitBlobId": "302c4355f935ce265c295b20da7226aadc573312",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -2621,7 +2637,7 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "9fcbe7ea480bf1b2071a2f031596307286ce437b",
+      "gitBlobId": "376c0dc0fe8e418cae3ab1eada8dbca2856389d4",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3021,8 +3037,10 @@
     {
       "file": "NoWing-web/src/core/webOutbox.ts",
       "phase": "web",
-      "gitBlobId": "47e33abffc100273892537aaf87e7be51d0df0d2",
-      "reviewStatus": "pending"
+      "gitBlobId": "6b3e63e38ba9df2a917840b50f47b4fb53164332",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/webPreferences.ts",
@@ -3179,7 +3197,7 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "5207b8a54dccdaed1ed61a1108f0a9f8e8ed94aa",
+      "gitBlobId": "16211025fb03ae092a1cb1d66d6b19da0d3bfc9a",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3213,8 +3231,10 @@
     {
       "file": "NoWing-web/src/features/messages/RoomChatPage.tsx",
       "phase": "web",
-      "gitBlobId": "fadcf5acafff387a3f912fa81d9ba42fb837f069",
-      "reviewStatus": "pending"
+      "gitBlobId": "94c7c30124f465ff163fddb61bb49173316ec6c8",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/messages/conversationInboxSupport.ts",
@@ -20111,7 +20131,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "174f56f27a0aaeee2fb8fccabd5f67d314183d4d",
+      "gitBlobId": "e65b3962d23ec1b29750b07f3e1a1b2fe6334ef8",
       "reviewStatus": "pending"
     },
     {

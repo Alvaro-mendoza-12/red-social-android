@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ChatDetailPage } from '../../../features/messages/ChatDetailPage'
 import { RoomChatPage } from '../../../features/messages/RoomChatPage'
-import { toggleFallbackChatReaction, saveFallbackChatPreferences, loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
+import { deleteFallbackChatMessage, deleteFallbackRoomMessage, toggleFallbackChatReaction, saveFallbackChatPreferences, loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
 import { retainAttachmentOwner } from '../../../core/attachmentJobs'
 import { writeCachedValue } from '../../../core/localCache'
 import { fallbackApiJson } from '../../../core/auth/fallbackAuth'
@@ -17,6 +17,7 @@ jest.mock('../../../core/ubuntuRealtime', () => ({ subscribeUbuntuRealtime: () =
 jest.mock('../../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn(async () => []) }))
 jest.mock('../../../core/backendRpc', () => ({ backendRpc: jest.fn(async () => ({ data: [] })) }))
 jest.mock('../../../core/fallbackData', () => ({
+  deleteFallbackChatMessage: jest.fn(), deleteFallbackRoomMessage: jest.fn(),
   saveFallbackChatPreferences: jest.fn(), toggleFallbackChatReaction: jest.fn(),
   loadFallbackChat: jest.fn(), loadFallbackRoomChat: jest.fn(),
   loadFallbackHistoryPage: jest.fn(),
@@ -511,4 +512,112 @@ test('a private reaction cannot start while auth and transport identities disagr
   act(() => updateStorageReadIdentity('account-b', 'fallback'))
   fireEvent.click(screen.getByRole('button', { name: '👍 1' }))
   expect(toggleFallbackChatReaction).not.toHaveBeenCalled()
+})
+
+
+const deleteScopes = ['chat', 'group', 'community'] as const
+function chooseDelete(scope: typeof deleteScopes[number], forEveryone: boolean) {
+  const article = screen.getByText('Mensaje propio').closest('article')!
+  fireEvent.click(article.querySelector('summary')!)
+  const label = scope === 'chat' ? (forEveryone ? 'Eliminar para todos' : 'Eliminar para mí') : (forEveryone ? 'Borrar todos' : 'Borrar mi vista')
+  fireEvent.click(Array.from(article.querySelectorAll('button')).find(button => button.textContent?.trim() === label)!)
+}
+const deletionCases = deleteScopes.flatMap(scope => [true, false].flatMap(forEveryone => ['success', 'failure'].map(outcome => [scope, forEveryone, outcome] as const)))
+test.each(deletionCases)('%s delete all=%s ignores a stale %s in the next account/conversation', async (scope, forEveryone, outcome) => {
+  let finish!: () => void
+  const deleter = scope === 'chat' ? deleteFallbackChatMessage : deleteFallbackRoomMessage
+  jest.mocked(deleter).mockImplementation(() => new Promise((resolve, reject) => {
+    finish = () => outcome === 'success' ? resolve({ message: { ...outgoing, content: forEveryone ? '' : outgoing.content, deleted_for_all: forEveryone, deleted_by: forEveryone ? [] : ['account-a'] } }) : reject(new Error('Error privado borrado A'))
+  }))
+  const page = (id: string) => <MemoryRouter>{scope === 'chat' ? <ChatDetailPage chatIdOverride={id}/> : <RoomChatPage scope={scope} roomId={id}/>}</MemoryRouter>
+  const { rerender, container } = render(page('room-a'))
+  await screen.findByText('Mensaje propio')
+  chooseDelete(scope, forEveryone)
+  await waitFor(() => expect(finish).toBeDefined())
+  const loader = scope === 'chat' ? loadFallbackChat : loadFallbackRoomChat
+  jest.mocked(loader).mockResolvedValue({ ...response, messages: [{ ...incoming, id: 'new-message', content: 'Cuenta B' }] } as never)
+  await act(async () => { mockUser.id = 'account-b'; updateStorageReadIdentity('account-b', 'fallback') })
+  rerender(page('room-b'))
+  await screen.findByText('Cuenta B')
+  await act(async () => { finish() })
+  expect(container.querySelector('#message-' + outgoing.id)).not.toBeInTheDocument()
+  expect(screen.queryByText('Error privado borrado A')).not.toBeInTheDocument()
+  expect(screen.getByText('Cuenta B')).toBeInTheDocument()
+})
+
+test.each(deleteScopes)('%s delete cannot start with mismatching auth and transport identities', async scope => {
+  const deleter = scope === 'chat' ? deleteFallbackChatMessage : deleteFallbackRoomMessage
+  jest.mocked(deleter).mockResolvedValue({ message: outgoing })
+  open(scope)
+  await screen.findByText('Mensaje propio')
+  act(() => updateStorageReadIdentity('account-b', 'fallback'))
+  chooseDelete(scope, true)
+  expect(deleter).not.toHaveBeenCalled()
+})
+
+test('a stale bulk deletion cannot block or release the next conversation batch', async () => {
+  const pending: (() => void)[] = []
+  jest.mocked(deleteFallbackChatMessage).mockImplementation((_chat, id) => new Promise(resolve => { pending.push(() => resolve({ message: { ...incoming, id, deleted_by: ['account-a'] } })) }))
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true)
+  const { rerender, container } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  const selectAll = () => {
+    const article = screen.getByText('Mensaje propio').closest('article')!
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Seleccionar mensaje')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Seleccionar visibles' }))
+  }
+  const batchButton = () => Array.from(container.querySelector('[aria-label="Mensajes seleccionados"]')!.querySelectorAll('button')).find(button => /Eliminar para mí|Eliminando…/.test(button.textContent || ''))!
+  try {
+    await screen.findByText('Mensaje propio')
+    selectAll(); fireEvent.click(batchButton())
+    await waitFor(() => expect(pending).toHaveLength(1))
+    rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+    await screen.findByText('Mensaje propio')
+    selectAll()
+    expect(batchButton()).toBeEnabled()
+    fireEvent.click(batchButton())
+    await waitFor(() => expect(pending).toHaveLength(2))
+    await act(async () => { pending[0]() })
+    expect(batchButton()).toBeDisabled()
+    expect(batchButton()).toHaveTextContent('Eliminando…')
+    await act(async () => { pending[1]() })
+    await waitFor(() => expect(pending).toHaveLength(3))
+    await act(async () => { pending[2]() })
+    expect(screen.queryByRole('region', { name: 'Mensajes seleccionados' })).not.toBeInTheDocument()
+  } finally { confirm.mockRestore() }
+})
+
+test.each(['renewed-login', 'backend-change'])('bulk %s stops the old batch and preserves the new busy state in the same conversation', async mode => {
+  const pending: (() => void)[] = []
+  jest.mocked(deleteFallbackChatMessage).mockImplementation((_chat, id) => new Promise(resolve => { pending.push(() => resolve({ message: { ...incoming, id, deleted_by: ['account-a'] } })) }))
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true)
+  const { container } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  const selectAll = () => {
+    const article = screen.getByText('Mensaje propio').closest('article')!
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Seleccionar mensaje')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Seleccionar visibles' }))
+  }
+  const batchButton = () => Array.from(container.querySelector('[aria-label="Mensajes seleccionados"]')!.querySelectorAll('button')).find(button => /Eliminar para mí|Eliminando…/.test(button.textContent || ''))!
+  try {
+    await screen.findByText('Mensaje propio')
+    selectAll(); fireEvent.click(batchButton())
+    await waitFor(() => expect(pending).toHaveLength(1))
+    await act(async () => {
+      if(mode === 'renewed-login') { updateStorageReadIdentity('', ''); updateStorageReadIdentity('account-a', 'fallback') }
+      else invalidateStorageReadBackend()
+    })
+    expect(screen.queryByRole('region', { name: 'Mensajes seleccionados' })).not.toBeInTheDocument()
+    selectAll()
+    expect(batchButton()).toBeEnabled()
+    fireEvent.click(batchButton())
+    await waitFor(() => expect(pending).toHaveLength(2))
+    await act(async () => { pending[0]() })
+    expect(pending).toHaveLength(2)
+    expect(batchButton()).toBeDisabled()
+    expect(batchButton()).toHaveTextContent('Eliminando…')
+    await act(async () => { pending[1]() })
+    await waitFor(() => expect(pending).toHaveLength(3))
+    await act(async () => { pending[2]() })
+    expect(screen.queryByRole('region', { name: 'Mensajes seleccionados' })).not.toBeInTheDocument()
+    expect(deleteFallbackChatMessage).toHaveBeenCalledTimes(3)
+  } finally { confirm.mockRestore() }
 })

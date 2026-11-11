@@ -1,3 +1,4 @@
+import { getStorageReadIdentity } from '../../core/media/storageReadSession'
 import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
 import { MessageTimestamp } from '../../components/MessageTimestamp'
 import { ContactMessageCard } from '../../components/ContactMessageCard'
@@ -411,6 +412,8 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
   const audioRecorderRef = useRef<MediaRecorder | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const deletionContext = useRef(0)
+  useEffect(() => () => { deletionContext.current += 1 }, [user?.id, useUbuntu, cleanRoomId, scope])
   const loadSequenceRef = useRef(0)
   useEffect(() => {
     loadSequenceRef.current += 1
@@ -1403,10 +1406,14 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
 
   async function deleteRoomMessage(message: RoomMessage, forEveryone: boolean) {
     if (!user) return
+    const context = deletionContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return
+    const isCurrent = () => context === deletionContext.current && identity === getStorageReadIdentity()
     try {
       if (useUbuntu) {
         const response = await deleteFallbackRoomMessage(scope, cleanRoomId, message.id, forEveryone)
-        upsertMessageInState(mapRoomMessage(response.message))
+        if (isCurrent()) upsertMessageInState(mapRoomMessage(response.message))
         return
       }
       if (!supabase) return
@@ -1418,6 +1425,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           .eq('id', message.id)
           .eq('sender_id', user.id)
         if (deleteError) throw deleteError
+        if (!isCurrent()) return
         setMessages((current) => current.map((entry) => entry.id === message.id
           ? { ...entry, deletedForAll: true, content: '', mediaUrl: '', updatedAt: nowIso }
           : entry))
@@ -1428,12 +1436,13 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           .update({ deleted_by: deletedBy, updated_at: nowIso })
           .eq('id', message.id)
         if (deleteError) throw deleteError
+        if (!isCurrent()) return
         setMessages((current) => current.map((entry) => entry.id === message.id
           ? { ...entry, deletedBy, updatedAt: nowIso }
           : entry))
       }
     } catch (caught) {
-      setError(friendlyError(caught, forEveryone ? 'No se pudo borrar para todos' : 'No se pudo borrar para mi'))
+      if (isCurrent()) setError(friendlyError(caught, forEveryone ? 'No se pudo borrar para todos' : 'No se pudo borrar para mi'))
     }
   }
 

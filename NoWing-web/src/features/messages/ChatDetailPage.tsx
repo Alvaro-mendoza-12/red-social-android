@@ -551,6 +551,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     scheduleRequestKeyRef.current = null
     return () => { scheduleContext.current += 1 }
   }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
+  const deletionContext = useRef(0)
+  useEffect(() => {
+    setSelectionBusy(false)
+    setSelectedMessageIds(new Set())
+    setSelectingMessages(false)
+    return () => { deletionContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
   const reactionContext = useRef(0)
   useEffect(() => () => { reactionContext.current += 1 }, [user?.id, useUbuntu, cleanChatId])
   const nicknameContext = useRef(0)
@@ -1735,12 +1742,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   async function sendForwardedMessage(message: ChatMessage) { setForwardMessages([message]) }
 
   async function deleteMessageForAll(message: ChatMessage) {
+    if (!user) return
+    const context = deletionContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return
+    const isCurrent = () => context === deletionContext.current && identity === getStorageReadIdentity()
     if (useUbuntu) {
       try {
         const response = await deleteFallbackChatMessage(cleanChatId, message.id, true)
-        upsertMessageInState(mapMessage(response.message))
+        if (isCurrent()) upsertMessageInState(mapMessage(response.message))
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo borrar para todos'))
+        if (isCurrent()) setError(friendlyError(caught, 'No se pudo borrar para todos'))
       }
       return
     }
@@ -1753,6 +1765,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         .eq('id', message.id)
         .eq('sender_id', user.id)
       if (deleteError) throw deleteError
+      if (!isCurrent()) return
       setMessages((current) =>
         current.map((entry) =>
           entry.id === message.id
@@ -1761,21 +1774,27 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         ),
       )
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo borrar para todos'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo borrar para todos'))
     }
   }
 
   async function deleteMessageForMe(message: ChatMessage) {
+    if (!user) return false
+    const context = deletionContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return false
+    const isCurrent = () => context === deletionContext.current && identity === getStorageReadIdentity()
     if (useUbuntu && ['pending','failed'].includes(message.status)) {
-      try { await cancelPendingWebMessage('chat', cleanChatId, message.id); setMessages(current => current.filter(item => item.id !== message.id)); return true }
-      catch(caught) { setError(friendlyError(caught, 'No se pudo cancelar el envío')); return false }
+      try { await cancelPendingWebMessage('chat', cleanChatId, message.id); if (!isCurrent()) return false; setMessages(current => current.filter(item => item.id !== message.id)); return true }
+      catch(caught) { if (isCurrent()) setError(friendlyError(caught, 'No se pudo cancelar el envío')); return false }
     }
     if (useUbuntu) {
       try {
         const response = await deleteFallbackChatMessage(cleanChatId, message.id, false)
+        if (!isCurrent()) return false
         upsertMessageInState(mapMessage(response.message)); return true
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
+        if (isCurrent()) setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
       }
     }
     if (!supabase || !user) return false
@@ -1786,6 +1805,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         .update({ deleted_by: nextDeletedBy, updated_at: new Date().toISOString() })
         .eq('id', message.id)
       if (deleteError) throw deleteError
+      if (!isCurrent()) return false
       setMessages((current) =>
         current.map((entry) =>
           entry.id === message.id ? { ...entry, deletedBy: nextDeletedBy } : entry,
@@ -1793,7 +1813,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       )
       return true
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
     }
   }
 
@@ -2427,10 +2447,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         <button type="button" className="mini-action-btn" disabled={!selectedMessageIds.size || selectionBusy} onClick={() => setForwardMessages(messages.filter(item => selectedMessageIds.has(item.id)))}>Reenviar</button>
         <button type="button" className="mini-action-btn danger" disabled={!selectedMessageIds.size || selectionBusy} onClick={async () => {
           if (!window.confirm(`¿Eliminar ${selectedMessageIds.size} mensajes de tu vista?`)) return
+          const context = deletionContext.current
+          const identity = getStorageReadIdentity()
+          const isCurrent = () => context === deletionContext.current && identity === getStorageReadIdentity()
           setSelectionBusy(true)
           const completed = new Set<string>()
-          try { for (const item of messages.filter(item => selectedMessageIds.has(item.id))) { if (!await deleteMessageForMe(item)) break; completed.add(item.id) } }
-          finally { setSelectionBusy(false); setSelectedMessageIds(current => new Set([...current].filter(id => !completed.has(id)))); if(completed.size === selectedMessageIds.size) setSelectingMessages(false) }
+          try { for (const item of messages.filter(item => selectedMessageIds.has(item.id))) { if (!isCurrent() || !await deleteMessageForMe(item)) break; completed.add(item.id) } }
+          finally { if (isCurrent()) { setSelectionBusy(false); setSelectedMessageIds(current => new Set([...current].filter(id => !completed.has(id)))); if(completed.size === selectedMessageIds.size) setSelectingMessages(false) } }
         }}>{selectionBusy ? 'Eliminando…' : 'Eliminar para mí'}</button>
       </div> : null}
       {forwardMessages.length ? <ForwardMessagesDialog messages={forwardMessages} onClose={() => setForwardMessages([])} /> : null}
