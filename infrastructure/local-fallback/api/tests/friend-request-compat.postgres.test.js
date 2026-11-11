@@ -2,7 +2,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { PGlite } = require('@electric-sql/pglite')
-const { _test: { handlePatch } } = require('../src/postgrest-compat-routes')
+const { ensureFriendRequestState } = require('../src/friend-request-state')
+const { _test: { handlePatch, handleDelete } } = require('../src/postgrest-compat-routes')
 
 async function fixture(t) {
   const db = new PGlite()
@@ -14,6 +15,7 @@ async function fixture(t) {
     CREATE TABLE fallback_compat_rows(table_name text, row_id text, row jsonb, updated_at timestamptz DEFAULT now());
     CREATE SCHEMA supabase_import;
     CREATE TABLE supabase_import.friends(id text, sender_id text, receiver_id text, status text, created_at timestamptz DEFAULT now());`)
+  await ensureFriendRequestState(db)
   return { db,
     patch: (id,status,actor='receiver-local') => handlePatch(db,'friends',{sub:actor},{id:`eq.${id}`},{status}),
     insert: (table,id,status='pending') => db.query(`INSERT INTO ${table}(id,sender_id,receiver_id,status) VALUES($1,'sender','receiver',$2)`,[id,status]),
@@ -37,8 +39,8 @@ test('a stale imported pending row cannot overwrite the resolved native relation
   const {db,patch,insert}=await fixture(t)
   await insert('supabase_import.friends','imported')
   await insert('fallback_friends','native','accepted')
-  await assert.rejects(patch('imported','rejected'),{status:409,message:'FRIEND_REQUEST_ALREADY_RESOLVED'})
-  assert.equal((await patch('imported','accepted'))[0].status,'accepted')
+  await assert.rejects(patch('imported','rejected'),{status:409,message:'FRIEND_REQUEST_PROVENANCE_REQUIRED'})
+  await assert.rejects(patch('imported','accepted'),{status:409})
   assert.equal((await db.query('SELECT status FROM fallback_friends')).rows[0].status,'accepted')
 })
 
@@ -62,17 +64,15 @@ test('a resolved imported row cannot acknowledge a decision different from the n
   const {patch,insert}=await fixture(t)
   await insert('supabase_import.friends','imported','accepted')
   await insert('fallback_friends','native','rejected')
-  await assert.rejects(patch('imported','accepted'),{status:409,message:'FRIEND_REQUEST_ALREADY_RESOLVED'})
-  const result=await patch('imported','rejected')
-  assert.equal(result[0].id,'native')
-  assert.equal(result[0].status,'rejected')
+  await assert.rejects(patch('imported','accepted'),{status:409,message:'FRIEND_REQUEST_PROVENANCE_REQUIRED'})
+  await assert.rejects(patch('imported','rejected'),{status:409})
 })
 
 test('a native request deleted after the read is never recreated by its response',async t=>{
   const {db,insert}=await fixture(t)
   await insert('fallback_friends','native')
   let deleted=false
-  const pool={query:async(sql,params)=>{
+  const pool={transaction:work=>db.transaction(work),query:async(sql,params)=>{
     const result=await db.query(sql,params)
     if(!deleted && /FROM fallback_friends\s+ORDER BY/.test(sql)){
       deleted=true
@@ -80,7 +80,27 @@ test('a native request deleted after the read is never recreated by its response
     }
     return result
   }}
-  await assert.rejects(handlePatch(pool,'friends',{sub:'receiver-local'},{id:'eq.native'},{status:'accepted'}),{status:409})
+  await assert.rejects(handlePatch(pool,'friends',{sub:'receiver-local'},{id:'eq.native'},{status:'accepted'}),{status:404})
   assert.equal(deleted,true)
   assert.deepEqual((await db.query('SELECT * FROM fallback_friends')).rows,[])
+})
+
+test('compat cancellation survives rereads and cannot resurrect an imported request',async t=>{
+  const {db,patch,insert}=await fixture(t)
+  await insert('supabase_import.friends','imported')
+  const result=await handleDelete(db,'friends',{sub:'sender-local'},{id:'eq.imported',status:'eq.pending'})
+  assert.equal(result.length,1)
+  assert.deepEqual(await patch('imported','accepted'),[])
+  assert.equal((await db.query('SELECT * FROM fallback_friends')).rowCount,0)
+  assert.equal((await db.query('SELECT status FROM fallback_friend_legacy_requests')).rows[0].status,'cancelled')
+})
+
+test('legacy rejection cannot delete accepted friendship; explicit unfriend can',async t=>{
+  const {db,insert}=await fixture(t)
+  await insert('supabase_import.friends','imported','accepted')
+  const auth={sub:'receiver-local'},pair={sender_id:'eq.sender',receiver_id:'eq.receiver'}
+  assert.deepEqual(await handleDelete(db,'friends',auth,{...pair,status:'eq.pending'}),[])
+  await assert.rejects(handleDelete(db,'friends',auth,pair),{status:409})
+  assert.equal((await handleDelete(db,'friends',auth,{...pair,status:'eq.accepted'})).length,1)
+  assert.deepEqual(await handleDelete(db,'friends',auth,{...pair,status:'eq.accepted'}),[])
 })

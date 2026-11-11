@@ -3,6 +3,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { Pool } = require('pg')
 const { PGlite } = require('@electric-sql/pglite')
+const { ensureFriendRequestState } = require('../src/friend-request-state')
 const { registerDataRoutes } = require('../src/data-routes')
 
 const url = process.env.FRIEND_REQUEST_TEST_DATABASE_URL
@@ -21,6 +22,8 @@ async function verifyFriendRequestTransitions(db) {
     id text PRIMARY KEY, sender_id text, receiver_id text, status text,
     created_at timestamptz DEFAULT now())`)
   await db.query("INSERT INTO fallback_users(id, supabase_user_id) VALUES ('receiver-local','receiver'),('sender-local','sender'),('stranger','stranger')")
+  await db.query('CREATE TEMP TABLE fallback_compat_rows(table_name text,row_id text,row jsonb,updated_at timestamptz)')
+  await ensureFriendRequestState(db)
   const handlers = new Map()
   const app = Object.fromEntries(['get','post','patch','delete','put','use'].map(method =>
     [method, (path, ...chain) => handlers.set(`${method} ${path}`, chain.at(-1))]))
@@ -143,6 +146,9 @@ async function verifyFriendRequestTransitions(db) {
   assert.equal(ambiguous.statusCode,409,'ambiguous persisted alias must fail closed')
   assert.equal(ambiguous.body.error,'FRIEND_TARGET_AMBIGUOUS')
   assert.equal((await db.query("SELECT id FROM fallback_friends WHERE id='ambiguous-target'")).rows.length,1)
+  await db.query('DROP TABLE fallback_compat_rows')
+  await db.query('DROP TABLE fallback_friend_legacy_requests')
+  await db.query('DROP TABLE fallback_friend_legacy_barriers')
   await db.query('DROP TABLE fallback_friends')
   await db.query('DROP TABLE fallback_users')
 }

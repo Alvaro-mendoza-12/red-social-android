@@ -1,3 +1,4 @@
+const { visibleLegacyFriends, createNativeFriend, answerNativeFriend, cancelNativeFriend, answerLegacyFriend, cancelLegacyFriend, findLegacyRequest, removeFriendPair } = require('./friend-request-state')
 const { latestConversationReadAt } = require('./conversation-read-sync')
 const { isMessageLocationUrl } = require('./message-location')
 const { ensureFollowState, visibleFollowRows, setFollowState, publishFollowChange } = require('./follow-store')
@@ -12444,7 +12445,7 @@ function registerDataRoutes(app, {
       const friendOwnerIds = new Set()
       if(friendsOnly){
         const [imported,local]=await Promise.all([
-          importedRowsByFieldValues(pool,'friends',['sender_id','receiver_id'],identity.values,20000),
+          importedRowsByFieldValues(pool,'friends',['sender_id','receiver_id'],identity.values,20000).then(rows=>visibleLegacyFriends(pool,'imported',rows)),
           pool.query(`SELECT sender_id,receiver_id,status FROM fallback_friends WHERE lower(status)='accepted' AND (lower(sender_id)=ANY($1::text[]) OR lower(receiver_id)=ANY($1::text[]))`,[identity.values]).then(result=>result.rows)
         ])
         for(const edge of [...imported,...local])if(String(edge.status).toLowerCase()==='accepted' && rowMatchesAny(edge,['sender_id','receiver_id'],identity.ids)){
@@ -14019,7 +14020,7 @@ function registerDataRoutes(app, {
       const identity = userIdentity(user)
       const tab = String(req.query.tab || 'incoming').trim().toLowerCase()
       const [imported, localRows] = await Promise.all([
-        importedRowsByFieldValues(pool, 'friends', ['sender_id', 'receiver_id'], identity.values, 5000),
+        importedRowsByFieldValues(pool, 'friends', ['sender_id', 'receiver_id'], identity.values, 5000).then(rows=>visibleLegacyFriends(pool,'imported',rows)),
         pool.query(
           `SELECT id::text, sender_id, receiver_id, status, created_at
            FROM fallback_friends
@@ -14051,15 +14052,10 @@ function registerDataRoutes(app, {
       if (!receiverId || receiverId === identity.displayUserId) {
         return res.status(400).json({ error: 'INVALID_RECEIVER' })
       }
-      const { rows } = await pool.query(
-        `INSERT INTO fallback_friends(sender_id, receiver_id, status)
-         VALUES ($1, $2, 'pending')
-         ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = fallback_friends.status
-         RETURNING id::text, sender_id, receiver_id, status, created_at`,
-        [identity.displayUserId, receiverId],
-      )
-      res.status(201).json({ request: normalizeImportedRow(rows[0]) })
+      const request = await createNativeFriend(pool, identity.localUserId, receiverId)
+      res.status(201).json({ request: normalizeImportedRow(request) })
     } catch (error) {
+      if (error.status && /^(FRIEND_|REQUEST_NOT_FOUND|INVALID_)/.test(error.message)) return res.status(error.status).json({error:error.message})
       next(error)
     }
   })
@@ -14073,28 +14069,16 @@ function registerDataRoutes(app, {
       if (!['accepted', 'rejected'].includes(status)) {
         return res.status(400).json({ error: 'INVALID_STATUS' })
       }
-      const { rows } = await pool.query(
-        `UPDATE fallback_friends
-         SET status = $3
-         WHERE id::text = $1 AND lower(receiver_id) = ANY($2::text[]) AND status = 'pending'
-         RETURNING id::text, sender_id, receiver_id, status, created_at`,
-        [normalizeId(req.params.requestId), identity.values, status],
-      )
-      if (rows[0]) return res.json({ request: normalizeImportedRow(rows[0]) })
-      // The conditional UPDATE is the atomic decision. A retry may read the
-      // same result, but a delayed opposite action must never overwrite it.
-      const { rows: existing } = await pool.query(
-        `SELECT id::text, sender_id, receiver_id, status, created_at
-         FROM fallback_friends
-         WHERE id::text = $1 AND lower(receiver_id) = ANY($2::text[])`,
-        [normalizeId(req.params.requestId), identity.values],
-      )
-      if (!existing[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
-      if (existing[0].status !== status) {
-        return res.status(409).json({ error: 'FRIEND_REQUEST_ALREADY_RESOLVED' })
+      const id = normalizeId(req.params.requestId)
+      let request = await answerNativeFriend(pool,id,status,identity.values)
+      if (!request) {
+        const legacy=await findLegacyRequest(pool,id,identity.values,true)
+        if (legacy) request=await answerLegacyFriend(pool,legacy.source,legacy.row,status,identity.values)
       }
-      res.json({ request: normalizeImportedRow(existing[0]) })
+      if (!request) return res.status(404).json({error:'REQUEST_NOT_FOUND'})
+      res.json({request:normalizeImportedRow(request)})
     } catch (error) {
+      if (error.status && /^(FRIEND_|REQUEST_NOT_FOUND|INVALID_)/.test(error.message)) return res.status(error.status).json({error:error.message})
       next(error)
     }
   })
@@ -14105,25 +14089,15 @@ function registerDataRoutes(app, {
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
       const requestId = normalizeId(req.params.requestId)
-      const { rows } = await pool.query(
-        `DELETE FROM fallback_friends
-         WHERE id::text = $1 AND status IN ('pending', 'rejected')
-           AND (lower(sender_id) = ANY($2::text[]) OR lower(receiver_id) = ANY($2::text[]))
-         RETURNING id::text, sender_id, receiver_id, status, created_at`,
-        [requestId, identity.values],
-      )
-      if (!rows[0]) {
-        const { rows: existing } = await pool.query(
-          `SELECT 1 FROM fallback_friends
-           WHERE id::text = $1
-             AND (lower(sender_id) = ANY($2::text[]) OR lower(receiver_id) = ANY($2::text[]))`,
-          [requestId, identity.values],
-        )
-        if (!existing[0]) return res.status(404).json({ error: 'REQUEST_NOT_FOUND' })
-        return res.status(409).json({ error: 'FRIEND_REQUEST_ALREADY_RESOLVED' })
+      let request=await cancelNativeFriend(pool,requestId,identity.values)
+      if (!request) {
+        const legacy=await findLegacyRequest(pool,requestId,identity.values)
+        if (legacy) request=await cancelLegacyFriend(pool,legacy.source,legacy.row,identity.values)
       }
-      res.json({ request: normalizeImportedRow(rows[0]) })
+      if (!request) return res.status(404).json({error:'REQUEST_NOT_FOUND'})
+      res.json({request:normalizeImportedRow(request)})
     } catch (error) {
+      if (error.status && /^(FRIEND_|REQUEST_NOT_FOUND|INVALID_)/.test(error.message)) return res.status(error.status).json({error:error.message})
       next(error)
     }
   })
@@ -14142,18 +14116,10 @@ function registerDataRoutes(app, {
         [targetUserId],
       )
       if (targetUsers.length > 1) return res.status(409).json({ error: 'FRIEND_TARGET_AMBIGUOUS' })
-      const targetIds = targetUsers[0] ? userIdentity(targetUsers[0]).values : [targetUserId]
-      const { rows } = await pool.query(
-        `DELETE FROM fallback_friends
-         WHERE (
-           (lower(sender_id) = ANY($1::text[]) AND lower(receiver_id) = ANY($2::text[]))
-           OR (lower(sender_id) = ANY($2::text[]) AND lower(receiver_id) = ANY($1::text[]))
-         )
-         RETURNING id::text, sender_id, receiver_id, status, created_at`,
-        [identity.values, targetIds],
-      )
-      res.json({ items: rows.map(normalizeImportedRow), deleted: rows.length })
+      const rows=await removeFriendPair(pool,identity.localUserId,targetUsers[0]?.id || targetUserId)
+      res.json({items:rows.map(normalizeImportedRow),deleted:rows.length})
     } catch (error) {
+      if (error.status && /^(FRIEND_|REQUEST_NOT_FOUND|INVALID_)/.test(error.message)) return res.status(error.status).json({error:error.message})
       next(error)
     }
   })

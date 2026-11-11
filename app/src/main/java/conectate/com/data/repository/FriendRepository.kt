@@ -377,6 +377,7 @@ class FriendRepository @Inject constructor(
                 header("Authorization", "Bearer ${authService.getAccessToken()}")
                 parameter("sender_id", "eq.$senderId")
                 parameter("receiver_id", "eq.$currentUserId")
+                parameter("status", "eq.pending")
             }
             
             if (response.status.isSuccess()) {
@@ -410,6 +411,7 @@ class FriendRepository @Inject constructor(
                  header("Authorization", "Bearer ${authService.getAccessToken()}")
                  parameter("sender_id", "eq.$currentUserId")
                  parameter("receiver_id", "eq.$targetUserId")
+                 parameter("status", "eq.accepted")
             }
             
             // AND Delete where (sender=Target, Receiver=Me)
@@ -420,6 +422,7 @@ class FriendRepository @Inject constructor(
                  header("Authorization", "Bearer ${authService.getAccessToken()}")
                  parameter("sender_id", "eq.$targetUserId")
                  parameter("receiver_id", "eq.$currentUserId")
+                 parameter("status", "eq.accepted")
             }
             
             if (response1.status.isSuccess() || response2.status.isSuccess()) {
