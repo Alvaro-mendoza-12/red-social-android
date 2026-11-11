@@ -2294,17 +2294,22 @@ class ChatViewModel @Inject constructor(
     
     fun confirmClearChat() {
         val cid = chatId ?: return
+        val owner = authService.captureAccountLease()
         viewModelScope.launch {
-            val result = messageRepository.clearChat(cid)
-            if (result.isSuccess) {
-                dismissClearChatDialog()
-                Toast.makeText(context, "Chat vaciado", Toast.LENGTH_SHORT).show()
-            } else {
-                conectate.com.presentation.common.AppFeedbackBus.showError("Error al vaciar chat")
+            val result = messageRepository.clearChat(owner, cid)
+            authService.commitForAccountLease(owner) {
+                if (chatId == cid) {
+                    if (result.isSuccess) {
+                        dismissClearChatDialog()
+                        Toast.makeText(context, "Chat vaciado", Toast.LENGTH_SHORT).show()
+                    } else {
+                        conectate.com.presentation.common.AppFeedbackBus.showError("Error al vaciar chat")
+                    }
+                }
             }
         }
     }
-    
+
     // Voice Manager helpers
     fun voiceMessageManagerIsPreviewPlaying(): Boolean {
         return voiceMessageManager.isPreviewPlaying()

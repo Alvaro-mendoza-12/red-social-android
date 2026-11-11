@@ -1895,68 +1895,80 @@ class MessageRepository @Inject constructor(
 
 
 
-    suspend fun clearChat(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
-            val clearSession = captureSessionSnapshot(currentUserId)
-            var cleanId = chatId.trim().lowercase()
-            var now = java.time.Instant.now().toString()
+    suspend fun clearChat(chatId: String): Result<Unit> =
+        clearChat(authService.captureAccountLease(), chatId)
 
-            if (shouldUseUbuntuBackend()) {
-                val token = authService.ensureValidAccessToken()
-                    .getOrElse { return@withContext Result.failure(it) }
-                localFallbackApiClient.clearChat(token, cleanId)
-                    .getOrElse { e ->
-                        return@withContext Result.failure(e)
+    internal suspend fun clearChat(
+        owner: conectate.com.data.supabase.AuthSessionLease,
+        chatId: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val cleanId = chatId.trim().lowercase()
+        if (cleanId.isBlank()) return@withContext Result.failure(IllegalArgumentException("Chat inválido"))
+        owner.requireCurrent()
+        val now = java.time.Instant.now().toString()
+        val ubuntu = shouldUseUbuntuBackend()
+        executeOwnedChatVisibility(
+            owner = owner,
+            token = {
+                authService.getAccessTokenForAccountAwait(requireNotNull(owner.accountId))
+                    ?.takeIf { it.isNotBlank() }
+                    ?: throw IllegalStateException("Tu sesión venció. Inicia sesión de nuevo.")
+            },
+            hide = null,
+            clear = { token -> clearChatRemotely(token, requireNotNull(owner.accountId), cleanId, now, ubuntu) },
+            commit = {
+                authService.withAccountLocalStorage(owner) {
+                    database.withTransaction {
+                        currentCoroutineContext().ensureActive()
+                        owner.requireCurrent()
+                        // A per-user cutoff retains the conversation and persisted messages.
+                        chatDao.updateClearedAt(cleanId, now)
+                        currentCoroutineContext().ensureActive()
+                        owner.requireCurrent()
                     }
-            } else {
-                var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-                var payload = buildJsonObject { put("cleared_at", now) }
-                var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    parameter("chat_id", "eq.$cleanId")
-                    parameter("user_id", "eq.$currentUserId")
-                    setBody(payload)
                 }
-                if (!response.status.isSuccess()) {
-                    return@withContext Result.failure(Exception("Error clearing chat: ${response.status}"))
-                }
-            }
+                if (!authService.commitForAccountLease(owner) {
+                    _activeChatMessages[cleanId]?.value = emptyList()
+                    _userChats.value = _userChats.value.map { entry ->
+                        if (entry.chat.id.trim().lowercase() != cleanId) entry
+                        else entry.copy(
+                            chat = entry.chat.copy(
+                                last_message = "Sin mensajes",
+                                last_message_at = now,
+                                last_message_sender_id = null,
+                                last_message_id = null,
+                                cleared_at = now,
+                            ),
+                            clearedAt = now,
+                            lastMessage = null,
+                            unreadCount = 0,
+                        )
+                    }
+                }) throw CancellationException("La cuenta cambió. Vuelve a abrir el chat.")
+            },
+            operation = ChatVisibilityOperation.CLEAR,
+        )
+    }
 
-            if (!isSessionSnapshotValid(clearSession, "clear-chat-commit")) return@withContext Result.failure(Exception("La cuenta cambió. Vuelve a abrir el chat."))
-            // A per-user cutoff hides old rows without destroying the shared local cache.
-            chatDao.updateClearedAt(cleanId, now)
-
-            // Keep cached rows: another signed-in account may share this conversation.
-
-            // Clear In-Memory Flow
-            _activeChatMessages[cleanId]?.value = emptyList()
-
-            // Update Chat List Metadata
-            var currentChats = _userChats.value.toMutableList()
-            var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
-            if (idx != -1) {
-                currentChats[idx] = currentChats[idx].copy(
-                    chat = currentChats[idx].chat.copy(
-                        last_message = "Sin mensajes",
-                        last_message_at = now,
-                        last_message_sender_id = null,
-                        last_message_id = null,
-                        cleared_at = now
-                    ),
-                    clearedAt = now,
-                    lastMessage = null,
-                    unreadCount = 0
-                )
-                _userChats.value = currentChats
-            }
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
+    /** Remote cutoff only: credentials and participant identity belong to the captured lease. */
+    private suspend fun clearChatRemotely(
+        token: String,
+        accountId: String,
+        chatId: String,
+        clearedAt: String,
+        ubuntu: Boolean,
+    ): Result<Unit> {
+        if (ubuntu) return localFallbackApiClient.clearChat(token, chatId)
+        val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
+            header("Authorization", "Bearer $token")
+            header("apikey", supabaseConfig.supabaseAnonKey)
+            header("Content-Type", "application/json")
+            parameter("chat_id", "eq.$chatId")
+            parameter("user_id", "eq.$accountId")
+            setBody(buildJsonObject { put("cleared_at", clearedAt) })
         }
+        return if (response.status.isSuccess()) Result.success(Unit)
+        else Result.failure(Exception("Error clearing chat: ${response.status}"))
     }
 
     // --- MESSAGES FLOW ---
@@ -4964,7 +4976,7 @@ class MessageRepository @Inject constructor(
         owner.requireCurrent()
         val ubuntu = shouldUseUbuntuBackend()
         val now = java.time.Instant.now().toString()
-        return executeOwnedChatHide(
+        return executeOwnedChatVisibility(
             owner = owner,
             token = {
                 authService.getAccessTokenForAccountAwait(requireNotNull(owner.accountId))
@@ -4973,22 +4985,9 @@ class MessageRepository @Inject constructor(
             },
             hide = { token ->
                 if (ubuntu) localFallbackApiClient.hideChat(token, cleanId)
-                else {
-                    // Preserve the legacy per-user cutoff without invoking clearChat's
-                    // independently captured identity or unguarded local updates.
-                    val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        parameter("chat_id", "eq.$cleanId")
-                        parameter("user_id", "eq.${owner.accountId}")
-                        setBody(buildJsonObject { put("cleared_at", now) })
-                    }
-                    if (response.status.isSuccess()) Result.success(Unit)
-                    else Result.failure(Exception("Error clearing chat: ${response.status}"))
-                }
+                else clearChatRemotely(token, requireNotNull(owner.accountId), cleanId, now, ubuntu = false)
             },
-            fallbackClear = if (ubuntu) ({ token -> localFallbackApiClient.clearChat(token, cleanId) }) else null,
+            clear = if (ubuntu) ({ token -> localFallbackApiClient.clearChat(token, cleanId) }) else null,
             commit = {
                 authService.withAccountLocalStorage(owner) {
                     database.withTransaction {

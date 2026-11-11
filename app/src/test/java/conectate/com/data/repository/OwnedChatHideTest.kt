@@ -15,7 +15,7 @@ class OwnedChatHideTest {
         val token = CompletableDeferred<String>()
         var sends = 0; var commits = 0
         val pending = async(start = CoroutineStart.UNDISPATCHED) {
-            executeOwnedChatHide(lease, { token.await() }, { sends++; Result.success(Unit) }, null, { commits++ })
+            executeOwnedChatVisibility(lease, { token.await() }, { sends++; Result.success(Unit) }, null, { commits++ })
         }
         guard.invalidate { account = "b" }; token.complete("token-b")
         try { pending.await(); fail("stale operation must cancel") } catch (_: CancellationException) { }
@@ -29,7 +29,7 @@ class OwnedChatHideTest {
         val response = CompletableDeferred<Result<Unit>>()
         var commits = 0
         val pending = async(start = CoroutineStart.UNDISPATCHED) {
-            executeOwnedChatHide(lease, { "token-a" }, { response.await() }, null, { commits++ })
+            executeOwnedChatVisibility(lease, { "token-a" }, { response.await() }, null, { commits++ })
         }
         guard.invalidate { account = "b" }; guard.invalidate { account = "a" }
         response.complete(Result.success(Unit))
@@ -44,7 +44,7 @@ class OwnedChatHideTest {
         val response = CompletableDeferred<Result<Unit>>()
         var clears = 0
         val pending = async(start = CoroutineStart.UNDISPATCHED) {
-            executeOwnedChatHide(lease, { "token-a" }, { response.await() }, { clears++; Result.success(Unit) }, {})
+            executeOwnedChatVisibility(lease, { "token-a" }, { response.await() }, { clears++; Result.success(Unit) }, {})
         }
         guard.invalidate { account = "b" }; response.complete(Result.failure(Exception("offline")))
         try { pending.await(); fail("stale operation must cancel") } catch (_: CancellationException) { }
@@ -55,7 +55,7 @@ class OwnedChatHideTest {
         val lease = AuthSessionMutationGuard().captureAccountLease { "a" }
         var clears = 0; var commits = 0
         try {
-            executeOwnedChatHide(lease, { "token" }, { Result.failure(CancellationException("cancel")) },
+            executeOwnedChatVisibility(lease, { "token" }, { Result.failure(CancellationException("cancel")) },
                 { clears++; Result.success(Unit) }, { commits++ })
             fail("cancellation must propagate")
         } catch (_: CancellationException) { }
@@ -65,7 +65,7 @@ class OwnedChatHideTest {
     @Test fun currentFallbackUsesTheSameTokenAndCommitsOnlyAfterSuccess() = runBlocking {
         val lease = AuthSessionMutationGuard().captureAccountLease { "a" }
         val events = mutableListOf<String>()
-        val result = executeOwnedChatHide(lease, { "token-a" },
+        val result = executeOwnedChatVisibility(lease, { "token-a" },
             { events += "hide:$it"; Result.failure(Exception("unsupported")) },
             { events += "clear:$it"; Result.success(Unit) }, { events += "commit" })
         assertTrue(result.isSuccess)
@@ -76,7 +76,7 @@ class OwnedChatHideTest {
         val lease = AuthSessionMutationGuard().captureAccountLease { "a" }
         var commits = 0
         val error = Exception("denied")
-        val result = executeOwnedChatHide(lease, { "token" }, { Result.failure(error) }, null, { commits++ })
+        val result = executeOwnedChatVisibility(lease, { "token" }, { Result.failure(error) }, null, { commits++ })
         assertSame(error, result.exceptionOrNull()); assertEquals(0, commits)
     }
     @Test fun accountChangingWhileWaitingForLocalStorageCannotCommit() = runBlocking {
@@ -88,7 +88,7 @@ class OwnedChatHideTest {
         val reachedCommit = CompletableDeferred<Unit>()
         var writes = 0
         val pending = async(start = CoroutineStart.UNDISPATCHED) {
-            executeOwnedChatHide(lease, { "token" }, { Result.success(Unit) }, null, {
+            executeOwnedChatVisibility(lease, { "token" }, { Result.success(Unit) }, null, {
                 reachedCommit.complete(Unit)
                 gate.withOwner(lease) { writes++ }
             })
@@ -104,7 +104,7 @@ class OwnedChatHideTest {
         val entered = CompletableDeferred<Unit>()
         var clears = 0; var writes = 0
         val pending = async(start = CoroutineStart.UNDISPATCHED) {
-            executeOwnedChatHide(lease, { "token" }, {
+            executeOwnedChatVisibility(lease, { "token" }, {
                 entered.complete(Unit)
                 try { awaitCancellation() } catch (error: CancellationException) { Result.failure(Exception("wrapped", error)) }
             }, { clears++; Result.success(Unit) }, { writes++ })
@@ -160,5 +160,42 @@ class OwnedChatHideTest {
         assertTrue(errors.isEmpty())
         runChatHideWithRollback({ Result.failure(error) }) { errors += it }
         assertEquals(listOf(error), errors)
+    }
+    @Test fun clearCallsOnlyClearOnceThenCommitsWithoutHiding() = runBlocking {
+        val lease = AuthSessionMutationGuard().captureAccountLease { "a" }
+        val events = mutableListOf<String>()
+        val result = executeOwnedChatVisibility(lease, { "token-a" },
+            { events += "hide"; Result.success(Unit) },
+            { events += "clear:$it"; Result.success(Unit) },
+            { events += "commit" }, ChatVisibilityOperation.CLEAR)
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("clear:token-a", "commit"), events)
+    }
+
+    @Test fun clearFailureNeverFallsBackToHideOrCommits() = runBlocking {
+        val lease = AuthSessionMutationGuard().captureAccountLease { "a" }
+        var calls = 0
+        val error = Exception("clear denied")
+        val result = executeOwnedChatVisibility(lease, { "token" },
+            { fail("clear must never hide"); Result.success(Unit) },
+            { calls++; Result.failure(error) }, { fail("failed clear must not commit") },
+            ChatVisibilityOperation.CLEAR)
+        assertSame(error, result.exceptionOrNull()); assertEquals(1, calls)
+    }
+
+    @Test fun delayedClearCannotCommitAfterReturningToSameAccount() = runBlocking {
+        var account = "a"
+        val guard = AuthSessionMutationGuard()
+        val lease = guard.captureAccountLease { account }
+        val response = CompletableDeferred<Result<Unit>>()
+        var commits = 0
+        val pending = async(start = CoroutineStart.UNDISPATCHED) {
+            executeOwnedChatVisibility(lease, { "token" }, null, { response.await() },
+                { commits++ }, ChatVisibilityOperation.CLEAR)
+        }
+        guard.invalidate { account = "b" }; guard.invalidate { account = "a" }
+        response.complete(Result.success(Unit))
+        try { pending.await(); fail("old clear must cancel") } catch (_: CancellationException) { }
+        assertEquals(0, commits)
     }
 }

@@ -201,3 +201,15 @@ El preparador anterior emitía `svc data disable` una sola vez y luego únicamen
 El fixture de orden temprana aceptada pero no aplicada falló antes del cambio y pasa al reintentar. Las 17 pruebas específicas y las 139 pruebas de herramientas pasan. Incluyen ausencia de reintento si datos ya están apagados, valores desconocidos/permanentes, fallo de un reintento, comandos lentos consumiendo el mismo plazo y un exit cero que no acredita estado offline. Revisión independiente: 17 aprobadas, sin bloqueantes del delta.
 
 No se ejecutó adb ni un emulador para verificar este cambio, no se modificó KVM ni se redisparó el workflow. Que la orden inicial llegase antes de estar listo el servicio es una hipótesis compatible con los logs, no una causa AOSP demostrada. El próximo ensayo debe confirmar si el reintento resuelve el bloqueo o aporta un diagnóstico más preciso; no se declara recuperado el ensayo todavía.
+
+## Android: vaciado de chat ligado a su sesión
+
+El método original de `clearChat`, extraído sin modificar su cuerpo con transporte/DAO simulados, reprodujo un envío de clear usando el token de B después de cambiar de A a B durante la espera del token. La comprobación de snapshot posterior rechazaba el resultado, pero llegaba demasiado tarde para impedir esa llamada remota. Además, el DAO suspendible precedía a las actualizaciones de memoria sin una segunda comprobación.
+
+El vaciado captura ahora un lease antes del salto de dispatcher, desde la confirmación de pantalla, y usa el mismo coordinador de sesión que la ocultación. La operación CLEAR llama solo a clear, una vez: no llama a hide ni utiliza su fallback. Mantiene el cutoff por usuario, la fila de conversación y los mensajes persistidos. La fase legacy remota se comparte sin recapturar sesión. Room se actualiza bajo gate de activación y transacción con comprobaciones internas; memoria y feedback de pantalla requieren el lease vigente y, para el feedback, el mismo chat.
+
+Se aprobaron 37 pruebas Kotlin/JVM aisladas (15 del coordinador/rollback y 22 del guard), incluidas tres nuevas de selección CLEAR, fallo sin fallback y respuesta tras A→B→A. Las pruebas de selección remota usan transporte y callback de commit inyectados: no ejecutan preservación de filas/metadatos en Room real ni el ViewModel. La integración fue revisada por separado. Tras reiniciarse el entorno se reconstruyó el diff y se repitió la verificación antes de publicarlo.
+
+Persisten fuera del alcance las carreras entre refrescos/mensajes nuevos del mismo chat y cuenta, y los efectos remotos ya aceptados antes de cambiar sesión. No se ejecutó emulador para este cambio ni se desplegó. La compilación completa Android corresponde al CI del nuevo commit.
+
+Revalidación independiente tras restaurar el entorno: mismos blobs de producción que el diff revisado, 37/37 JVM aprobadas y `git diff --check` limpio. Sin bloqueantes nuevos del alcance.

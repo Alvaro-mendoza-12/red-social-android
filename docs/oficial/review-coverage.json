@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T03:48:21.195963+00:00",
-  "baseCommit": "23898a7ba7202a7baecfb607a5e105f38bb17991",
+  "generatedAtUtc": "2026-11-11T13:39:34.729036+00:00",
+  "baseCommit": "853836e7c5d71b4b9d78f5cfa2fb5b4d2b176c8a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -7491,7 +7491,7 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/MessageRepository.kt",
       "phase": "android",
-      "gitBlobId": "5dbb1c14363532739e52100a103486d4f9b9eed3",
+      "gitBlobId": "7cdf4fd246bd565f7ca23dad60621753c400f0f3",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -7581,7 +7581,7 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/OwnedChatHide.kt",
       "phase": "android",
-      "gitBlobId": "0ac824af9672013dfdb81413d04688f7991c59ed",
+      "gitBlobId": "570a8bc7979e40de2aab433af517840e90f85419",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -9837,7 +9837,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt",
       "phase": "android",
-      "gitBlobId": "c08d3f97eadd8407d53b9259fe6c306413e59435",
+      "gitBlobId": "31b1efbad8a89d2e93fff5bcf52f1f1384065008",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -14665,7 +14665,7 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/OwnedChatHideTest.kt",
       "phase": "android",
-      "gitBlobId": "bad7bde0d4f8f8b61b0fbfb10d6f32077e508e5d",
+      "gitBlobId": "0917c343366650fc05744ad4a015a72df694aa89",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20095,7 +20095,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "7a95f26bb6b64d7ad2ce7b87727aa2e16afeb41f",
+      "gitBlobId": "253c4eb8a79f8923829b45539fbe89946a7ebbc8",
       "reviewStatus": "pending"
     },
     {

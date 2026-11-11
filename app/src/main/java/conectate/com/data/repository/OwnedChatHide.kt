@@ -5,13 +5,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
+internal enum class ChatVisibilityOperation { HIDE, CLEAR }
+
 /** Remote work never holds the local account gate. The caller owns the atomic storage commit. */
-internal suspend fun executeOwnedChatHide(
+internal suspend fun executeOwnedChatVisibility(
     owner: AuthSessionLease,
     token: suspend () -> String,
-    hide: suspend (String) -> Result<Unit>,
-    fallbackClear: (suspend (String) -> Result<Unit>)?,
+    hide: (suspend (String) -> Result<Unit>)?,
+    clear: (suspend (String) -> Result<Unit>)?,
     commit: suspend () -> Unit,
+    operation: ChatVisibilityOperation = ChatVisibilityOperation.HIDE,
 ): Result<Unit> {
     suspend fun requireCurrent() {
         currentCoroutineContext().ensureActive()
@@ -21,11 +24,12 @@ internal suspend fun executeOwnedChatHide(
         requireCurrent()
         val accessToken = token()
         requireCurrent()
-        val hidden = hide(accessToken)
+        val remote = if (operation == ChatVisibilityOperation.CLEAR) requireNotNull(clear) else requireNotNull(hide)
+        val hidden = remote(accessToken)
         requireCurrent()
         (hidden.exceptionOrNull() as? CancellationException)?.let { throw it }
-        if (hidden.isFailure && fallbackClear != null) {
-            fallbackClear(accessToken).getOrThrow()
+        if (operation == ChatVisibilityOperation.HIDE && hidden.isFailure && clear != null) {
+            clear(accessToken).getOrThrow()
             requireCurrent()
         } else hidden.getOrThrow()
         requireCurrent()
