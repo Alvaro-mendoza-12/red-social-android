@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { FriendRequestsPage } from '../../features/social/FriendRequestsPage'
-import { loadFallbackFriends, updateFallbackFriendRequest } from '../../core/fallbackData'
+import { loadFallbackFriends, cancelFallbackFriendRequest, updateFallbackFriendRequest } from '../../core/fallbackData'
 
 let mockUser = { id: 'owner-a' }
 jest.mock('../../core/auth/AuthProvider', () => ({ useAuth: () => ({ user: mockUser, isFallbackSession: true }) }))
 jest.mock('../../core/auth/fallbackAuth', () => ({ isFallbackAuthConfigured: true }))
 jest.mock('../../core/supabase', () => ({ supabase: null, isSupabaseConfigured: false }))
-jest.mock('../../core/fallbackData', () => ({ loadFallbackFriends: jest.fn(), updateFallbackFriendRequest: jest.fn() }))
+jest.mock('../../core/fallbackData', () => ({ loadFallbackFriends: jest.fn(), cancelFallbackFriendRequest: jest.fn(), updateFallbackFriendRequest: jest.fn() }))
 jest.mock('../../core/publicProfileSummaries', () => ({ publicProfileSummaries: async () => new Map() }))
 jest.mock('../../components/SafeAvatar', () => ({ SafeAvatar: () => null }))
 
@@ -137,4 +137,52 @@ test('completion refreshes the current tab before offering actions on an old pen
   await act(async () => update.resolve())
   expect(screen.getByText('Amigos')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Aceptar' })).not.toBeInTheDocument()
+})
+
+test('sent pending requests offer cancellation rather than requiring a profile detour', async () => {
+  render(page())
+  await screen.findByRole('button', { name: 'Aceptar' })
+  fireEvent.click(screen.getByRole('button', { name: 'Enviadas' }))
+  expect(await screen.findByRole('button', { name: 'Cancelar solicitud' })).toBeEnabled()
+})
+
+test('cancellation is locked across tabs and a failure keeps the request retryable', async () => {
+  const cancellation = deferred()
+  jest.mocked(cancelFallbackFriendRequest).mockReturnValue(cancellation.promise as ReturnType<typeof cancelFallbackFriendRequest>)
+  render(page())
+  await screen.findByRole('button', { name: 'Aceptar' })
+  fireEvent.click(screen.getByRole('button', { name: 'Enviadas' }))
+  const cancel = await screen.findByRole('button', { name: 'Cancelar solicitud' })
+  fireEvent.click(cancel); fireEvent.click(cancel)
+  expect(cancelFallbackFriendRequest).toHaveBeenCalledTimes(1)
+  expect(cancelFallbackFriendRequest).toHaveBeenCalledWith('owner-a-outgoing')
+  fireEvent.click(screen.getByRole('button', { name: 'Recibidas' }))
+  expect(await screen.findByRole('button', { name: 'Aceptar' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Enviadas' }))
+  expect(await screen.findByRole('button', { name: 'Cancelar solicitud' })).toBeDisabled()
+  await act(async () => cancellation.reject(new Error('stale-tab-cancel-error')))
+  expect(screen.queryByText('stale-tab-cancel-error')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Cancelar solicitud' })).toBeEnabled()
+})
+
+test('successful cancellation reloads sent requests', async () => {
+  jest.mocked(cancelFallbackFriendRequest).mockImplementation(async () => {
+    jest.mocked(loadFallbackFriends).mockResolvedValue({items:[]})
+    return {request:{id:'owner-a-outgoing'}}
+  })
+  render(page())
+  await screen.findByRole('button', { name: 'Aceptar' })
+  fireEvent.click(screen.getByRole('button', { name: 'Enviadas' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Cancelar solicitud' }))
+  expect(await screen.findByText('Sin solicitudes enviadas')).toBeInTheDocument()
+  expect(screen.queryByRole('button', {name:'Cancelar solicitud'})).not.toBeInTheDocument()
+})
+
+test.each(['accepted','rejected'])('sent %s requests do not offer cancellation', async status => {
+  jest.mocked(loadFallbackFriends).mockResolvedValue({items:[{id:'resolved',sender_id:'owner-a',receiver_id:'recipient',status}]})
+  render(page())
+  await screen.findByRole('link', {name:/Usuario de Novvin/})
+  fireEvent.click(screen.getByRole('button', {name:'Enviadas'}))
+  await screen.findByRole('link', {name:/Usuario de Novvin/})
+  expect(screen.queryByRole('button', {name:'Cancelar solicitud'})).not.toBeInTheDocument()
 })

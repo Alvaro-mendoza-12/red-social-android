@@ -955,6 +955,12 @@ export async function updateFallbackFriendRequest(
   )
 }
 
+export async function cancelFallbackFriendRequest(requestId: string): Promise<{ request: GenericRow }> {
+  return fallbackApiJson<{ request: GenericRow }>(`/v1/data/friends/${encodeURIComponent(requestId)}`, {
+    method: 'DELETE',
+  })
+}
+
 /** Lectura genérica PostgREST contra el servidor Ubuntu (datos importados o compat). */
 export async function loadUbuntuRestTable(table: string, query = ''): Promise<GenericRow[]> {
   const suffix = query ? (query.startsWith('?') ? query : `?${query}`) : ''

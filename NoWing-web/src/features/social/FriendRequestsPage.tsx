@@ -9,6 +9,7 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import {
   loadFallbackFriends,
+  cancelFallbackFriendRequest,
   updateFallbackFriendRequest,
 } from '../../core/fallbackData'
 import { isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
@@ -114,7 +115,7 @@ export function FriendRequestsPage() {
     return () => { sequence.current++; mounted.current = false }
   }, [loadRequests, user?.id])
 
-  async function updateStatus(id: string, status: 'accepted' | 'rejected') {
+  async function updateStatus(id: string, status: 'accepted' | 'rejected' | 'cancelled') {
     if (!user || mutations.current.has(user.id)) return
     const owner = user.id
     const view = sequence.current
@@ -123,18 +124,23 @@ export function FriendRequestsPage() {
     setPendingId(id)
     try {
       if (useUbuntu) {
-        await updateFallbackFriendRequest(id, status)
+        if (status === 'cancelled') await cancelFallbackFriendRequest(id)
+        else await updateFallbackFriendRequest(id, status)
         if (!mounted.current || activeOwner.current !== owner) return
         await latestLoadRequests.current()
         return
       }
       if (!supabase) return
-      const { error: updateError } = await supabase
-        .from('friends')
-        .update({ status })
-        .eq('id', id)
-        .eq('receiver_id', user.id)
-      if (updateError) throw updateError
+      if (status === 'cancelled') {
+        const { data, error: deleteError } = await supabase.from('friends').delete()
+          .eq('id', id).eq('sender_id', owner).eq('status', 'pending').select('id')
+        if (deleteError) throw deleteError
+        if (!data?.length) throw new Error('La solicitud cambió. Actualiza la lista antes de intentarlo de nuevo.')
+      } else {
+        const { error: updateError } = await supabase.from('friends').update({ status })
+          .eq('id', id).eq('receiver_id', owner)
+        if (updateError) throw updateError
+      }
       if (!mounted.current || activeOwner.current !== owner) return
       await latestLoadRequests.current()
     } catch (caught) {
@@ -188,6 +194,10 @@ export function FriendRequestsPage() {
                     Rechazar
                   </button>
                 </div>
+              ) : item.status === 'pending' && direction === 'outgoing' ? (
+                <button type="button" className="ghost-btn" disabled={Boolean(pendingId)} onClick={() => void updateStatus(item.id, 'cancelled')}>
+                  Cancelar solicitud
+                </button>
               ) : (
                 <span className="friend-request-status">{item.status === 'pending' ? 'Pendiente de respuesta' : item.status === 'accepted' ? 'Amigos' : 'Solicitud rechazada'}</span>
               )}

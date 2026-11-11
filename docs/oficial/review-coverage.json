@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T00:26:55.108571+00:00",
-  "baseCommit": "c422698316af309f9f125f8a4b909cba5fabe0c8",
+  "generatedAtUtc": "2026-11-11T00:34:40.200336+00:00",
+  "baseCommit": "5bfa802d4ca4fc4ce17ab93aa2e6e440862b4b28",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3747,
-    "partial": 89,
-    "code-read": 471
+    "pending": 3746,
+    "partial": 90,
+    "code-read": 472
   },
   "countsByPhase": {
     "android": {
@@ -36,9 +36,9 @@
       "code-read": 9
     },
     "web": {
-      "partial": 8,
-      "pending": 582,
-      "code-read": 22
+      "partial": 9,
+      "pending": 581,
+      "code-read": 23
     }
   },
   "files": [
@@ -739,7 +739,7 @@
     {
       "file": "NoWing-web/src/__tests__/components/FriendRequestsLegacy.test.tsx",
       "phase": "web",
-      "gitBlobId": "19b53927eed4e17c24a4feb37f16297c5c3315c5",
+      "gitBlobId": "ea50c73878f703a8553138deef5c2786b6e73352",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -747,7 +747,7 @@
     {
       "file": "NoWing-web/src/__tests__/components/FriendRequestsPage.test.tsx",
       "phase": "web",
-      "gitBlobId": "230f7eb9706aa04d0698de7f5cdec8eb35fe884b",
+      "gitBlobId": "6a95ca91c77789c04b23f5af86252468db6e6fe2",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -1223,6 +1223,14 @@
       "phase": "web",
       "gitBlobId": "447908866f094ec9423053d5b727520adf83329d",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/fallbackFriendCancellation.test.ts",
+      "phase": "web",
+      "gitBlobId": "d3700b2345faa94d0f1e6eef56cd14996ace277b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/fallbackIdentityFence.test.ts",
@@ -2587,8 +2595,10 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "1688c454029aa7d067ef614d4313b7930a7edd38",
-      "reviewStatus": "pending"
+      "gitBlobId": "7abd96b882c2801bccebd14ce6f3e055132119a1",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/fallbackRpc.ts",
@@ -3413,7 +3423,7 @@
     {
       "file": "NoWing-web/src/features/social/FriendRequestsPage.tsx",
       "phase": "web",
-      "gitBlobId": "9c6624e843609e2ff047ce65c4133e431804acc3",
+      "gitBlobId": "f286d71f30b78031134166ee35b931c1d3777d83",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -19991,7 +20001,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "069cf61fdec185304899065c2b6b700ad996702a",
+      "gitBlobId": "57d2c48e87735dfd47e1bf66bf22519de8d23e06",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
