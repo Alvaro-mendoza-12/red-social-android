@@ -7,6 +7,7 @@ import { saveFallbackChatPreferences, loadFallbackChat, loadFallbackRoomChat, lo
 import { retainAttachmentOwner } from '../../../core/attachmentJobs'
 import { writeCachedValue } from '../../../core/localCache'
 import { fallbackApiJson } from '../../../core/auth/fallbackAuth'
+import { getStorageReadIdentity, updateStorageReadIdentity, invalidateStorageReadBackend } from '../../../core/media/storageReadSession'
 
 const mockUser = { id: 'account-a' }
 jest.mock('../../../core/auth/AuthProvider', () => ({ useAuth: () => ({ user: mockUser, isFallbackSession: true }) }))
@@ -52,6 +53,9 @@ beforeAll(() => {
 })
 beforeEach(() => {
   jest.clearAllMocks()
+  mockUser.id = 'account-a'
+  updateStorageReadIdentity('account-a', 'fallback')
+  jest.mocked(fallbackApiJson).mockImplementation(async () => [])
   localStorage.clear()
   retainAttachmentOwner('clear-everything')
   ;(loadFallbackChat as jest.Mock).mockResolvedValue(response)
@@ -253,4 +257,137 @@ test.each(['success', 'failure'])('an old preference %s cannot release the next 
   expect(screen.getByRole('menuitem', { name: 'Fijar chat' })).toBeDisabled()
   await act(async () => { finishNew({ ok: true }) })
   expect(screen.getByRole('menuitem', { name: 'Desfijar chat' })).toBeEnabled()
+})
+
+test('an old scheduled message acknowledgement cannot erase the next conversation draft', async () => {
+  let finish!: (value: unknown) => void
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (path === '/rest/v1/rpc/secure_schedule_message_job') return new Promise(resolve => { finish = resolve })
+    return []
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  const showTools = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  }
+  showTools()
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Mensaje para A' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
+  await waitFor(() => expect(finish).toBeDefined())
+  expect(fallbackApiJson).toHaveBeenCalledWith('/rest/v1/rpc/secure_schedule_message_job', expect.objectContaining({ expectedIdentity: getStorageReadIdentity(), expectedAccountId: 'account-a' }))
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, title: 'Nuevo contacto', chat: { nickname: '' }, otherParticipant: { ...response.otherParticipant, name: 'Nuevo contacto' } } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByText('Nuevo contacto')
+  showTools()
+  if (!screen.queryByPlaceholderText('Mensaje programado...')) fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Borrador privado B' } })
+  await act(async () => { finish({ ok: true }) })
+  expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('Borrador privado B')
+})
+
+
+test.each(['success', 'failure'])('an old schedule %s cannot release a new account schedule', async outcome => {
+  let finishOld!: () => void
+  let finishNew!: (value: unknown) => void
+  let count = 0
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (path !== '/rest/v1/rpc/secure_schedule_message_job') return []
+    count += 1
+    return new Promise((resolve, reject) => {
+      if (count === 1) finishOld = () => outcome === 'success' ? resolve({ ok: true }) : reject(new Error('Fallo privado A'))
+      else finishNew = resolve
+    })
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  const showTools = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  }
+  showTools()
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Mensaje A' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
+  await waitFor(() => expect(finishOld).toBeDefined())
+  mockUser.id = 'account-b'
+  updateStorageReadIdentity('account-b', 'fallback')
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await waitFor(() => expect(screen.queryByPlaceholderText('Mensaje programado...')).not.toBeInTheDocument())
+  showTools()
+  expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('')
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Mensaje B' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
+  await waitFor(() => expect(finishNew).toBeDefined())
+  await act(async () => { finishOld() })
+  expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('Mensaje B')
+  expect(screen.getByRole('button', { name: 'Programando...' })).toBeInTheDocument()
+  expect(screen.queryByText('Fallo privado A')).not.toBeInTheDocument()
+  const calls = jest.mocked(fallbackApiJson).mock.calls.filter(([path]) => path === '/rest/v1/rpc/secure_schedule_message_job')
+  expect(JSON.parse(calls[0][1]!.body as string).p_idempotency_key).not.toBe(JSON.parse(calls[1][1]!.body as string).p_idempotency_key)
+  expect(calls[1][1]).toEqual(expect.objectContaining({ expectedIdentity: getStorageReadIdentity(), expectedAccountId: 'account-b' }))
+  await act(async () => { finishNew({ ok: true }) })
+  expect(screen.queryByPlaceholderText('Mensaje programado...')).not.toBeInTheDocument()
+})
+
+test('a late scheduled list cannot expose the previous conversation jobs', async () => {
+  let finish!: (value: unknown) => void
+  jest.mocked(fallbackApiJson).mockImplementation(async (path, init) => {
+    if (path.endsWith('secure_get_chat_scheduled_jobs') && JSON.parse(init!.body as string).p_target_id === 'room-a') return new Promise(resolve => { finish = resolve })
+    return []
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await act(async () => { finish([{ id: 'old-job', content: 'Privado del chat A', status: 'pending' }]) })
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  expect(screen.queryByText(/Privado del chat A/)).not.toBeInTheDocument()
+  expect(screen.getByText('Sin mensajes programados')).toBeInTheDocument()
+})
+
+test('a late cancellation failure cannot show an error in the next conversation', async () => {
+  let finishList!: (value: unknown) => void
+  let rejectCancel!: (reason: Error) => void
+  jest.mocked(fallbackApiJson).mockImplementation(async (path, init) => {
+    if (path.endsWith('secure_get_chat_scheduled_jobs') && JSON.parse(init!.body as string).p_target_id === 'room-a') return new Promise(resolve => { finishList = resolve })
+    if (path.endsWith('secure_cancel_scheduled_message_job')) return new Promise((_resolve, reject) => { rejectCancel = reject })
+    return []
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  await act(async () => { finishList([{ id: 'old-job', content: 'Programado A', status: 'pending' }]) })
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  const card = screen.getByText(/Programado A/).closest('.surface-subcard')!
+  fireEvent.click(card.querySelector('button')!)
+  await waitFor(() => expect(rejectCancel).toBeDefined())
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await act(async () => { rejectCancel(new Error('Error privado de cancelación A')) })
+  expect(screen.queryByText('Error privado de cancelación A')).not.toBeInTheDocument()
+})
+
+
+test('renewing the same account identity resets the old scheduling lock', async () => {
+  let finish!: (value: unknown) => void
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (path.endsWith('secure_schedule_message_job')) return new Promise(resolve => { finish = resolve })
+    return []
+  })
+  open()
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Sesión anterior' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
+  await waitFor(() => expect(finish).toBeDefined())
+  await act(async () => { invalidateStorageReadBackend(); finish({ ok: true }) })
+  expect(screen.queryByPlaceholderText('Mensaje programado...')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('')
+  expect(screen.getByRole('button', { name: 'Programar', exact: true })).toBeInTheDocument()
 })

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T13:51:56.191565+00:00",
-  "baseCommit": "6e9977205a13dda172c7f40afd81a7f543e64cbe",
+  "generatedAtUtc": "2026-11-11T15:38:10.382789+00:00",
+  "baseCommit": "7ddc858658d86e1558c5e825ac23129e88f0260a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -1585,7 +1585,7 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "phase": "web",
-      "gitBlobId": "33b22e54b1c0fb6256db9d955bed62701f33d8e7",
+      "gitBlobId": "7431575eb05ea8f02aca699822d601ccbbdb1579",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3171,7 +3171,7 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "578f36f0af7eab4d1fe2d9aaa07e528308bcb081",
+      "gitBlobId": "edb4a06c0050159930f91cacd74a81d5d8cc915d",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20101,7 +20101,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "3255fcbf0cc78522d595aead6fcf836e41ff680c",
+      "gitBlobId": "af41316b64b8629f7e84ab78e225c4dafe591eba",
       "reviewStatus": "pending"
     },
     {

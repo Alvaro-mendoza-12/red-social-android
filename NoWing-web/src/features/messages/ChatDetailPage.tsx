@@ -45,6 +45,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type DragEvent,
   type FormEvent,
 } from 'react'
@@ -83,6 +84,7 @@ import {
 } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
+import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../../core/media/storageReadSession'
 import { ViewOnceMediaDialog } from '../../components/ViewOnceMediaDialog'
 import { requestViewOnceMedia } from '../../core/media/viewOnceClient'
 import type { ViewOnceLease } from '../../core/media/viewOnceLease'
@@ -538,6 +540,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
+  const scheduleIdentity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  const scheduleContext = useRef(0)
+  useEffect(() => {
+    setScheduledDraft('')
+    setScheduledAt('')
+    setShowScheduleComposer(false)
+    setScheduling(false)
+    setScheduledJobs([])
+    scheduleRequestKeyRef.current = null
+    return () => { scheduleContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
   const preferenceContext = useRef(0)
   useEffect(() => {
     setSavingSettings(false)
@@ -949,13 +962,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   )
 
   const refreshScheduledJobs = useCallback(async () => {
-    if (!cleanChatId) return
+    if (!user || !cleanChatId) return
+    const context = scheduleContext.current
+    const identity = scheduleIdentity
+    const isCurrent = () => context === scheduleContext.current && identity === getStorageReadIdentity()
     try {
       let rows: GenericRow[] = []
       if (useUbuntu) {
         rows = await fallbackApiJson<GenericRow[]>('/rest/v1/rpc/secure_get_chat_scheduled_jobs', {
           method: 'POST',
           body: JSON.stringify({ p_scope_type: 'dm', p_target_id: cleanChatId }),
+          expectedIdentity: identity, expectedAccountId: user.id,
         })
       } else {
         if (!supabase) return
@@ -966,6 +983,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         if (jobsError) throw jobsError
         rows = (data ?? []) as GenericRow[]
       }
+      if (!isCurrent()) return
       setScheduledJobs(rows.map((row) => ({
         id: textOf(row, ['id'], ''),
         content: textOf(row, ['content'], ''),
@@ -974,9 +992,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         errorMessage: textOf(row, ['error_message', 'errorMessage'], ''),
       })).filter((job) => job.id))
     } catch (caught) {
-      console.error('Error loading scheduled jobs:', caught)
+      if (isCurrent()) console.error('Error loading scheduled jobs:', caught)
     }
-  }, [cleanChatId, useUbuntu])
+  }, [cleanChatId, useUbuntu, user, scheduleIdentity])
 
 
   const markAsDeliveredAndRead = useCallback(async () => {
@@ -1846,7 +1864,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   async function scheduleMessage() {
-    if ((!supabase && !useUbuntu) || !cleanChatId || scheduling) return
+    if (!user || (!supabase && !useUbuntu) || !cleanChatId || scheduling) return
     const content = scheduledDraft.trim()
     if (!content) return
 
@@ -1856,6 +1874,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       return
     }
 
+    const context = scheduleContext.current
+    const identity = getStorageReadIdentity()
+    const isCurrent = () => context === scheduleContext.current && identity === getStorageReadIdentity()
     setScheduling(true)
     setError(null)
     try {
@@ -1874,6 +1895,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         await fallbackApiJson('/rest/v1/rpc/secure_schedule_message_job', {
           method: 'POST',
           body: JSON.stringify(payload),
+          expectedIdentity: identity, expectedAccountId: user.id,
         })
       } else {
         if (!supabase) throw new Error('Servicio de mensajes no disponible')
@@ -1882,15 +1904,16 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         const { error: scheduleError } = await supabase.rpc('secure_schedule_message_job', supabasePayload)
         if (scheduleError) throw scheduleError
       }
+      if (!isCurrent()) return
       scheduleRequestKeyRef.current = null
       setScheduledDraft('')
       setScheduledAt('')
       await refreshScheduledJobs()
-      setShowScheduleComposer(false)
+      if (isCurrent()) setShowScheduleComposer(false)
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo programar mensaje'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo programar mensaje'))
     } finally {
-      setScheduling(false)
+      if (isCurrent()) setScheduling(false)
     }
   }
 
@@ -2123,13 +2146,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   async function cancelScheduledJob(jobId: string) {
-    if (!jobId) return
+    if (!user || !jobId) return
+    const context = scheduleContext.current
+    const identity = getStorageReadIdentity()
+    const isCurrent = () => context === scheduleContext.current && identity === getStorageReadIdentity()
     setError(null)
     try {
       if (useUbuntu) {
         await fallbackApiJson('/rest/v1/rpc/secure_cancel_scheduled_message_job', {
           method: 'POST',
           body: JSON.stringify({ p_job_id: jobId }),
+          expectedIdentity: identity, expectedAccountId: user.id,
         })
       } else {
         if (!supabase) throw new Error('Servicio de mensajes no disponible')
@@ -2138,9 +2165,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         })
         if (cancelError) throw cancelError
       }
-      await refreshScheduledJobs()
+      if (isCurrent()) await refreshScheduledJobs()
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cancelar el mensaje programado'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo cancelar el mensaje programado'))
     }
   }
 
