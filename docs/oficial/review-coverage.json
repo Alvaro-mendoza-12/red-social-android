@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T02:37:59.393379+00:00",
-  "baseCommit": "f3e18aca1cd390de0f0e81d1cc809ed2cb11d73a",
+  "generatedAtUtc": "2026-11-11T02:52:27.108142+00:00",
+  "baseCommit": "bc0f297750757ccd18a5ada6044652fc44910218",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3738,
+    "pending": 3736,
     "partial": 96,
-    "code-read": 481
+    "code-read": 483
   },
   "countsByPhase": {
     "android": {
@@ -31,9 +31,9 @@
       "partial": 18
     },
     "tooling-and-other": {
-      "pending": 172,
+      "pending": 170,
       "partial": 7,
-      "code-read": 9
+      "code-read": 11
     },
     "web": {
       "partial": 12,
@@ -20075,7 +20075,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "31091e5001f87cf8a1b6e2cde8f302ea2bc83c08",
+      "gitBlobId": "7a95f26bb6b64d7ad2ce7b87727aa2e16afeb41f",
       "reviewStatus": "pending"
     },
     {
@@ -26819,8 +26819,10 @@
     {
       "file": "tools/prepare_android_offline_emulator.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "a7031222886c3dd3146209aafe1051e2ad2b9363",
-      "reviewStatus": "pending"
+      "gitBlobId": "a020d3de7c81c02ef3b315bcd77ba3512198cdf7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/quality_gate.ps1",
@@ -26919,8 +26921,10 @@
     {
       "file": "tools/tests/test_android_offline_readiness.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "bf059c81c1402023d15829213e4ec623ecf53f8b",
-      "reviewStatus": "pending"
+      "gitBlobId": "23b061e2d5293e1c5e39de651269f9234a305362",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/tests/test_android_sdk_path.py",

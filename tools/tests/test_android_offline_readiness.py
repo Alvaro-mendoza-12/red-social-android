@@ -73,7 +73,7 @@ class AndroidOfflineReadinessTest(unittest.TestCase):
         self.assertIn('Offline radio state verified', self.output.getvalue())
         self.assertIn('airplane_mode_on=1 wifi_on=0 mobile_data=0', self.output.getvalue())
 
-    def test_waits_for_asynchronous_disable_without_reissuing_commands(self):
+    def test_waits_for_asynchronous_disable(self):
         self.adb([
             {'airplane_mode_on': '0', 'wifi_on': '1', 'mobile_data': '1'},
             {'airplane_mode_on': '1', 'wifi_on': '2', 'mobile_data': '0'},
@@ -84,12 +84,37 @@ class AndroidOfflineReadinessTest(unittest.TestCase):
         self.assertIn('wifi_on=2', self.output.getvalue())
         self.assertIn('Offline radio state verified', self.output.getvalue())
 
+    def test_retries_mobile_disable_if_early_command_was_accepted_but_not_applied(self):
+        requests = []
+        def run(args, **kwargs):
+            command = args[4:]
+            if command == ['svc', 'data', 'disable']:
+                requests.append(self.clock.now)
+            if command[:3] == ['settings', 'get', 'global']:
+                states = {'airplane_mode_on': '1', 'wifi_on': '0',
+                          'mobile_data': '0' if len(requests) >= 2 else '1'}
+                return subprocess.CompletedProcess(args, 0, states[command[3]], '')
+            return subprocess.CompletedProcess(args, 0, '', '')
+        with mock.patch.object(self.module.subprocess, 'run', side_effect=run):
+            self.module.prepare_offline_emulator()
+        self.assertEqual(2, len(requests))
+        self.assertGreaterEqual(requests[1] - requests[0], 2.0)
+        self.assertLess(self.clock.now, 30.0)
+        self.assertIn('Offline radio state verified', self.output.getvalue())
+
+    def test_zero_exit_service_diagnostic_is_not_silently_discarded(self):
+        with mock.patch.object(self.module.subprocess, 'run', return_value=
+                               subprocess.CompletedProcess([], 0, '', 'Could not access telephony service')):
+            self.module.adb_shell(['svc', 'data', 'disable'], 30.0)
+        self.assertIn('Could not access telephony service', self.output.getvalue())
+
     def test_non_ready_state_expires_without_claiming_success(self):
         self.adb([{'airplane_mode_on': '1', 'wifi_on': '1', 'mobile_data': '0'}])
         with self.assertRaisesRegex(RuntimeError, 'deadline'):
             self.module.prepare_offline_emulator()
         self.assertEqual(30.0, self.clock.now)
         self.assertIn('wifi_on=1', self.output.getvalue())
+        self.assertEqual(1, self.calls.count(['svc', 'data', 'disable']))
         self.assertNotIn('Offline radio state verified', self.output.getvalue())
 
     def test_unknown_or_empty_radio_values_fail_closed(self):
@@ -99,6 +124,55 @@ class AndroidOfflineReadinessTest(unittest.TestCase):
                 self.adb([{'airplane_mode_on': '1', 'wifi_on': invalid, 'mobile_data': '0'}])
                 with self.assertRaises(RuntimeError):
                     self.module.prepare_offline_emulator()
+        self.assertNotIn('Offline radio state verified', self.output.getvalue())
+
+    def test_permanent_mobile_data_and_unknown_values_remain_fail_closed(self):
+        for value in ('1', 'null', '', 'unknown', '0\n1'):
+            with self.subTest(value=value):
+                self.clock.now = 0.0
+                self.calls.clear()
+                self.adb([{'airplane_mode_on': '1', 'wifi_on': '0', 'mobile_data': value}])
+                with self.assertRaisesRegex(RuntimeError, 'deadline'):
+                    self.module.prepare_offline_emulator()
+                self.assertEqual(30.0, self.clock.now)
+                self.assertGreater(self.calls.count(['svc', 'data', 'disable']), 1)
+                self.assertLessEqual(self.calls.count(['svc', 'data', 'disable']), 15)
+        self.assertNotIn('Offline radio state verified', self.output.getvalue())
+
+    def test_retry_error_stops_instead_of_accepting_command_success(self):
+        self.adb([{'airplane_mode_on': '1', 'wifi_on': '0', 'mobile_data': '1'}])
+        original = self.module.subprocess.run.side_effect
+        requests = 0
+        def run(args, **kwargs):
+            nonlocal requests
+            if args[4:] == ['svc', 'data', 'disable']:
+                requests += 1
+                if requests == 2:
+                    return subprocess.CompletedProcess(args, 17, '', 'telephony unavailable')
+            return original(args, **kwargs)
+        self.module.subprocess.run.side_effect = run
+        with self.assertRaisesRegex(RuntimeError, 'svc data disable.*17.*telephony unavailable'):
+            self.module.prepare_offline_emulator()
+        self.assertEqual(2, requests)
+        self.assertNotIn('Offline radio state verified', self.output.getvalue())
+
+    def test_slow_successful_retries_share_the_original_budget(self):
+        self.adb([{'airplane_mode_on': '1', 'wifi_on': '0', 'mobile_data': '1'}])
+        original = self.module.subprocess.run.side_effect
+        starts = []
+        def run(args, **kwargs):
+            if args[4:] == ['svc', 'data', 'disable']:
+                starts.append(self.clock.now)
+                self.clock.now += min(4.0, kwargs['timeout'])
+                return subprocess.CompletedProcess(args, 0, 'request accepted', '')
+            return original(args, **kwargs)
+        self.module.subprocess.run.side_effect = run
+        with self.assertRaisesRegex(RuntimeError, 'deadline'):
+            self.module.prepare_offline_emulator()
+        self.assertEqual(30.0, self.clock.now)
+        self.assertTrue(all(start < 30.0 for start in starts))
+        self.assertTrue(all(later - earlier >= 6.0 for earlier, later in zip(starts, starts[1:])))
+        self.assertIn('request accepted', self.output.getvalue())
         self.assertNotIn('Offline radio state verified', self.output.getvalue())
 
     def test_disable_command_error_names_failed_command_and_stops(self):
