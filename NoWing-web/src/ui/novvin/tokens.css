@@ -10,6 +10,9 @@
   --primary: #f2f2f4;
   --on-primary: #202124;
   --outline: #414147;
+  /* Interactive edges need stronger contrast than decorative dividers. */
+  --control-outline: #9696a0;
+  --focus-ring: #26d8d5;
   --divider: #29292e;
   --danger: #ffb4ab;
   --brand-cyan: #26d8d5;
@@ -35,6 +38,8 @@
   --primary: #202124;
   --on-primary: #fff;
   --outline: #aeb5c1;
+  --control-outline: #727884;
+  --focus-ring: #087d91;
   --divider: #e8e8ed;
   --danger: #ba1a1a;
   --brand-cyan: #087d91;
@@ -53,6 +58,8 @@
     --primary: #202124;
     --on-primary: #fff;
     --outline: #aeb5c1;
+    --control-outline: #727884;
+    --focus-ring: #087d91;
     --divider: #e8e8ed;
     --danger: #ba1a1a;
     --brand-cyan: #087d91;
@@ -123,6 +130,7 @@
   --primary: light-dark(var(--accent-light), var(--accent-dark));
   --on-primary: light-dark(#fff, #102237);
   --accent: var(--primary);
+  --focus-ring: var(--primary);
   --brand-cyan: var(--primary);
   --brand-violet: var(--primary);
   --surface: light-dark(color-mix(in srgb, var(--accent-light) 3%, #fff), color-mix(in srgb, var(--accent-dark) 3%, #13161c));

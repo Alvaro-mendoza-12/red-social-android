@@ -76,7 +76,7 @@ small {
   color: var(--secondary-text);
 }
 :focus-visible {
-  outline: 2px solid var(--brand-cyan);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
 button {
@@ -157,7 +157,7 @@ button {
 }
 .ghost-btn,
 .small-btn {
-  border-color: var(--outline);
+  border-color: var(--control-outline);
   background: transparent;
 }
 .danger-btn {
@@ -209,7 +209,7 @@ select,
 textarea {
   width: 100%;
   min-height: 46px;
-  border: 1px solid var(--outline);
+  border: 1px solid var(--control-outline);
   border-radius: 12px;
   padding: 12px 14px;
   background: transparent;

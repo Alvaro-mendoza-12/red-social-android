@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T02:52:27.108142+00:00",
-  "baseCommit": "bc0f297750757ccd18a5ada6044652fc44910218",
+  "generatedAtUtc": "2026-11-11T03:48:21.195963+00:00",
+  "baseCommit": "23898a7ba7202a7baecfb607a5e105f38bb17991",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3736,
+    "pending": 3734,
     "partial": 96,
-    "code-read": 483
+    "code-read": 487
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "partial": 52
     },
     "documentation": {
-      "pending": 570,
+      "pending": 571,
       "code-read": 8,
       "partial": 7
     },
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 12,
-      "pending": 575,
-      "code-read": 27
+      "pending": 572,
+      "code-read": 31
     }
   },
   "files": [
@@ -3785,8 +3785,10 @@
     {
       "file": "NoWing-web/src/ui/novvin/auth.css",
       "phase": "web",
-      "gitBlobId": "23213e35e66390e550531677eb9d64751d6fab89",
-      "reviewStatus": "pending"
+      "gitBlobId": "3d2e53f72674b80d86c1c1de41c54ac685e261fb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/birthday.css",
@@ -3797,8 +3799,10 @@
     {
       "file": "NoWing-web/src/ui/novvin/foundation.css",
       "phase": "web",
-      "gitBlobId": "4df06861ab47d676ff593b5841e0cedf0f413f0a",
-      "reviewStatus": "pending"
+      "gitBlobId": "b46bad5db67c1ae5c95504443771b087db943771",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/media-viewer.css",
@@ -3853,8 +3857,10 @@
     {
       "file": "NoWing-web/src/ui/novvin/tokens.css",
       "phase": "web",
-      "gitBlobId": "019ff0b4aecf751c02c27ed5d46476fc4452081e",
-      "reviewStatus": "pending"
+      "gitBlobId": "280a3cd8207240858a0d817f2a25bd6e42ac428a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
@@ -3867,6 +3873,14 @@
       "phase": "web",
       "gitBlobId": "790f7c3c3718819bff79df2dec69358d123b2066",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/tests/control-contrast.test.mjs",
+      "phase": "web",
+      "gitBlobId": "f4239a7b177fe4020280a41810d94a68b603fe06",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/tests/indexnow-notifier.test.mjs",
@@ -20062,6 +20076,12 @@
       "file": "docs/oficial/VALIDACION_RECHAZO_LLAMADAS_VERDE.json",
       "phase": "documentation",
       "gitBlobId": "ce173cb9cf0970ffd0cbdfb7870dd5406e3043ee",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
+      "phase": "documentation",
+      "gitBlobId": "f7732803a2566c18e8822d7e83dba0dd44fbbbaf",
       "reviewStatus": "pending"
     },
     {
