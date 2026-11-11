@@ -18,6 +18,7 @@ import conectate.com.data.repository.forAccount
 import conectate.com.core.concurrency.deferredRepositoryFlow
 import dagger.Lazy
 import dagger.hilt.android.lifecycle.HiltViewModel
+import conectate.com.data.repository.runChatHideWithRollback
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -326,13 +327,18 @@ class MessagingViewModel @Inject constructor(
     fun deleteChat(chatId: String) {
         val cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return
-        _hiddenChatIds.update { it + cleanId }
+        val owner = authService.captureAccountLease()
+        if (!authService.commitForAccountLease(owner) { _hiddenChatIds.update { it + cleanId } }) return
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { messageRepository.deleteChat(cleanId) }
-            if (result.isFailure) {
-                _hiddenChatIds.update { it - cleanId }
-                _uiMessage.value = result.exceptionOrNull()?.message ?: "No se pudo eliminar el chat."
-            }
+            runChatHideWithRollback(
+                action = { withContext(Dispatchers.IO) { messageRepository.deleteChat(owner, cleanId) } },
+                rollback = { error ->
+                    authService.commitForAccountLease(owner) {
+                        _hiddenChatIds.update { it - cleanId }
+                        if (error != null) _uiMessage.value = error.message ?: "No se pudo eliminar el chat."
+                    }
+                },
+            )
         }
     }
 

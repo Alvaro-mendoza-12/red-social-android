@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T02:01:37.486776+00:00",
-  "baseCommit": "136d0b4ff8c54bec1fc5db641e914c3bc9e83bf3",
+  "generatedAtUtc": "2026-11-11T02:37:59.393379+00:00",
+  "baseCommit": "f3e18aca1cd390de0f0e81d1cc809ed2cb11d73a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3739,
-    "partial": 95,
-    "code-read": 479
+    "pending": 3738,
+    "partial": 96,
+    "code-read": 481
   },
   "countsByPhase": {
     "android": {
-      "pending": 1560,
-      "code-read": 392,
-      "partial": 51
+      "pending": 1559,
+      "code-read": 394,
+      "partial": 52
     },
     "documentation": {
       "pending": 570,
@@ -7477,7 +7477,7 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/MessageRepository.kt",
       "phase": "android",
-      "gitBlobId": "04a20469210f61cb5477ce6d61b0769708b4a913",
+      "gitBlobId": "5dbb1c14363532739e52100a103486d4f9b9eed3",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -7563,6 +7563,14 @@
       "phase": "android",
       "gitBlobId": "365e36fce32e4b0a37d099480776fb58eb3b6fc5",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/repository/OwnedChatHide.kt",
+      "phase": "android",
+      "gitBlobId": "0ac824af9672013dfdb81413d04688f7991c59ed",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/PlayMatchRepository.kt",
@@ -9815,7 +9823,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt",
       "phase": "android",
-      "gitBlobId": "74d104e3a673628d333fc69178fd1d4eb13be971",
+      "gitBlobId": "c08d3f97eadd8407d53b9259fe6c306413e59435",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -10289,8 +10297,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/MessagingViewModel.kt",
       "phase": "android",
-      "gitBlobId": "bceff4572d0aaa7050f531d9cbed7109919925ce",
-      "reviewStatus": "pending"
+      "gitBlobId": "348d3f4da294969c494d90d557fe98bc5bc6ce5b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/MultiAccountDestinationRoute.kt",
@@ -14637,6 +14647,14 @@
       "phase": "android",
       "gitBlobId": "ab7b264fa30ffebc01fa29a2284c65a41dccac17",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/OwnedChatHideTest.kt",
+      "phase": "android",
+      "gitBlobId": "bad7bde0d4f8f8b61b0fbfb10d6f32077e508e5d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/PostShareChangeTest.kt",
@@ -20057,7 +20075,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "b18c44f1ee224c9db453b1a34aa29dcddcee9378",
+      "gitBlobId": "31091e5001f87cf8a1b6e2cde8f302ea2bc83c08",
       "reviewStatus": "pending"
     },
     {

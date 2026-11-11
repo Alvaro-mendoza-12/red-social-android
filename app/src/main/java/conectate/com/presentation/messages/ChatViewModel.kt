@@ -2245,8 +2245,9 @@ class ChatViewModel @Inject constructor(
     }
     fun deleteChat() {
         val cid = chatId ?: return
+        val owner = authService.captureAccountLease()
         viewModelScope.launch {
-            messageRepository.deleteChat(cid)
+            messageRepository.deleteChat(owner, cid)
         }
     }
     fun reportChat(@Suppress("UNUSED_PARAMETER") reason: String) {}

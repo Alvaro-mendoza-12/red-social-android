@@ -179,3 +179,15 @@ Este cambio no revierte una petición que el servidor ya aceptó, no certifica l
 Validación de este delta: 17 pruebas enfocadas aprobadas; suite completa web de 185 suites y 1.090 pruebas aprobada. Lint y build de producción con URL CI aislada aprobados. Las pruebas de transporte usan respuestas sintéticas; no representan un ensayo de servidor o navegador real.
 
 Revisión independiente final del delta: sin bloqueantes detectados; 17 pruebas enfocadas repetidas y `git diff --check` limpio.
+
+## Android: ocultar chats sin escribir sobre una sesión posterior
+
+Se aisló el método original `MessageRepository.deleteChat` sin cambiar su cuerpo, con transporte y DAO simulados. Al completar el hide después de sustituir la caché de cuenta, la prueba detectó una llamada de borrado local y eliminación de la lista nueva. Esto reproduce el orden del método, no una ejecución real de Room ni de dispositivo.
+
+Los dos ViewModels ahora capturan un `AuthSessionLease` antes de encolar trabajo. La operación valida generación y cancelación antes/después del token y de las llamadas remotas. Una cancelación no activa el fallback de clear. La rama legacy conserva el PATCH de cutoff por usuario, pero separa su fase remota de los efectos locales para no recapturar otra identidad dentro de `clearChat`. Se mantiene el fallback Ubuntu existente ante un fallo ordinario, sin ampliar las acciones remotas.
+
+El commit Room comparte exclusión con la activación de cuentas y comprueba la sesión dentro de la transacción, también después del DAO. Solo después publica memoria y retira el override de lectura bajo el commit de sesión. El rollback optimista/error del listado también exige el lease capturado. No se publican flujos ni se hace HTTP dentro del gate de almacenamiento.
+
+Doce pruebas nuevas del coordinador, rollback optimista y gate real con almacenamiento inyectado, más 22 pruebas existentes del guard de sesión, pasan en Kotlin/JVM aislado. La cancelación vigente retira el optimismo sin mensaje de error y se propaga; un lease antiguo no retira el optimismo de una sesión nueva. Incluyen token diferido, éxito/fallo tras cambio, regreso A→B→A, cancelación devuelta o absorbida por transporte, fallback con el mismo token y espera del gate. El mutante sin validación de lease falla tres de las ocho pruebas. No se ejecutaron aquí SQLite/Room real, Hilt, el ViewModel completo ni interfaz; esas capas y el CI completo del commit deben verificarse por separado. El cambio no deshace un hide ya aceptado por el servidor ni corrige `clearChat` como operación independiente, navegación inmediata de la pantalla o duplicados simultáneos de la misma sesión.
+
+Revisión independiente final: 34 pruebas JVM recompiladas y aprobadas, sin bloqueantes detectados del delta acotado y `git diff --check` limpio. La compilación completa de la aplicación queda para el CI del commit.
