@@ -425,7 +425,7 @@ class FriendRepository @Inject constructor(
                  parameter("status", "eq.accepted")
             }
             
-            if (response1.status.isSuccess() || response2.status.isSuccess()) {
+            if (friendshipDeleteCompleted(response1.status.value, response2.status.value)) {
                  Result.success(Unit)
             } else {
                  Result.failure(Exception("Failed to unfriend"))

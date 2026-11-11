@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T00:24:56.524702+00:00",
-  "baseCommit": "59b1ab15ce52ea9cddf52a1926a740f8e7c6b81b",
+  "generatedAtUtc": "2026-11-11T00:26:55.108571+00:00",
+  "baseCommit": "c422698316af309f9f125f8a4b909cba5fabe0c8",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -12,12 +12,12 @@
   "counts": {
     "pending": 3747,
     "partial": 89,
-    "code-read": 469
+    "code-read": 471
   },
   "countsByPhase": {
     "android": {
       "pending": 1562,
-      "code-read": 386,
+      "code-read": 388,
       "partial": 49
     },
     "documentation": {
@@ -7297,9 +7297,17 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/data/repository/FriendMutationPolicy.kt",
+      "phase": "android",
+      "gitBlobId": "e196fc6d1b78654c581b170f51485ebc20cabc9f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/repository/FriendRepository.kt",
       "phase": "android",
-      "gitBlobId": "00915e1e0bbe50f2a282090bd4f5b0f1d4f57dfd",
+      "gitBlobId": "ba4de1f111472ccdbc61851a2912d5948fe622a8",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -14431,6 +14439,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/FriendMutationPolicyTest.kt",
+      "phase": "android",
+      "gitBlobId": "9c0ca58f1a5ac82d998809d8a1c8f66f26d27f82",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/GiftSendCoordinatorTest.kt",
       "phase": "android",
       "gitBlobId": "9c0444ed3523cd456495a55110bd29e3d61f5f16",
@@ -19975,7 +19991,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "daea0d469ecf714f6895072c9a9ba6c4da4d7e09",
+      "gitBlobId": "069cf61fdec185304899065c2b6b700ad996702a",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

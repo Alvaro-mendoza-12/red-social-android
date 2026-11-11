@@ -127,3 +127,9 @@ La revisión reprodujo una inversión de locks entre el bloqueo administrativo d
 Pruebas focalizadas: limpieza y rollback reales con PGlite, orden de llamada del handler administrativo mediante fixture y comprobación estática del orden en autoservicio; grupo SQL completo con PostgreSQL real: 22/22. La coordinación integral de baja/recreación y migraciones simultáneas sigue pendiente. Las pruebas de limpieza no sustituyen un ensayo completo de borrado/restauración en una copia aislada del sistema.
 
 Comprobación sintáctica aprobada. Suite API tras el ajuste de locks: 1.102 casos, 1.085 aprobados, 17 omitidos y cero fallos. El commit anterior `59b1ab15` ya tiene backend y web aprobados en GitHub; el backend ejecutó las 21 pruebas de amistad, incluida PostgreSQL multiconexión, sin omisiones. Android seguía en curso al registrar esta evidencia.
+
+## Android: no confirmar una eliminación de amistad parcial
+
+La ruta legacy de `FriendRepository.unfriendUser` consideraba suficiente que una de sus dos peticiones DELETE fuera exitosa. Una respuesta vacía 204 de una dirección podía ocultar un 403/409/500 de la dirección que todavía contiene la amistad. Ahora ambas respuestas deben ser 2xx; la ruta Ubuntu queda intacta.
+
+Se compiló y ejecutó la prueba JUnit del predicado con Kotlin 2.2.10 y JUnit 4.13.2 oficiales en un directorio temporal, sin SDK Android. La variante con el OR anterior falla; la condición corregida pasa, incluidos fallos en ambas direcciones y redirecciones. Revisión independiente sin bloqueantes. Esta evidencia valida la lógica JVM aislada, no el repositorio HTTP completo ni la UI. Las dos peticiones siguen sin ser atómicas: ante un fallo parcial la interfaz debe permitir refrescar/reintentar, y ese recorrido requiere una prueba posterior de integración/dispositivo.
