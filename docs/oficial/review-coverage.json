@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-11T00:46:15.901597+00:00",
-  "baseCommit": "3fe2c68d5a4bb92a8d1e7f8c0a3fc72cd743dd41",
+  "generatedAtUtc": "2026-11-11T01:11:49.052958+00:00",
+  "baseCommit": "acb6ff0307b84a4e33a546470aa0adef956a9a84",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3745,
-    "partial": 91,
-    "code-read": 474
+    "pending": 3744,
+    "partial": 92,
+    "code-read": 475
   },
   "countsByPhase": {
     "android": {
@@ -36,9 +36,9 @@
       "code-read": 9
     },
     "web": {
-      "partial": 9,
-      "pending": 581,
-      "code-read": 23
+      "partial": 10,
+      "pending": 580,
+      "code-read": 24
     }
   },
   "files": [
@@ -655,6 +655,14 @@
       "phase": "web",
       "gitBlobId": "5b881631ba26b4ab3f5429b613ecac02c443175f",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/AccountSettingsIdentity.test.tsx",
+      "phase": "web",
+      "gitBlobId": "80bc2ba57967d7b9f25cdf36b800d7d497a727bb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/AccountSettingsPassword.test.tsx",
@@ -3321,8 +3329,10 @@
     {
       "file": "NoWing-web/src/features/profile/AccountSettingsPage.tsx",
       "phase": "web",
-      "gitBlobId": "a1d6c7bed1ff8da1ab3ce19326d4aefb0d313185",
-      "reviewStatus": "pending"
+      "gitBlobId": "657ddc2e5b771f466c5d5f1e7012279e0214e8ee",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/profile/MonetizationCenterPage.tsx",
@@ -20019,7 +20029,7 @@
     {
       "file": "docs/oficial/auditoria-dot-2026-11-10.md",
       "phase": "documentation",
-      "gitBlobId": "69b23953c98262c5eaa90c0ae366140df73d340a",
+      "gitBlobId": "e4a6e6143406eaf251bad8a95af216fd71ff92a4",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-dot-2026-11-10.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

@@ -151,3 +151,9 @@ El helper suspend comprueba vigencia antes de iniciar y después de la respuesta
 La revisión de integración añadió dos protecciones: al navegar se retira el Success anterior antes de suspender una lectura de caché, evitando asociarlo al ticket nuevo; al salir sin identidad se invalida explícitamente el ámbito para que volver a la misma cuenta/ruta no reactive tickets antiguos. El refresco de la misma vista no provoca esa invalidación.
 
 Revisión independiente final aprobada para este delta, con recompilación y ejecución de las siete pruebas JVM actuales. `git diff --check` limpio. No se afirma compilación completa Android, ejecución de pantalla ni solución de mutaciones simultáneas de la misma vista.
+
+## Ajustes web: aislamiento de borradores y respuestas por cuenta
+
+Tres regresiones de componente reprodujeron que cambiar de cuenta mantenía campos de contraseña y borradores, y que una carga o guardado tardíos de la cuenta anterior podían sustituir los datos visibles de la nueva. El formulario ahora tiene identidad propia por backend e ID de cuenta y se retira al cerrar sesión. Su desmontaje limpia todos sus estados, incluidos campos sensibles y flags de guardado. La respuesta fallback antigua no modifica los metadatos de una sesión posterior, y el retry legacy no continúa después del desmontaje.
+
+Se verificaron cambio de cuenta, lectura/guardado diferidos, cierre y regreso a la misma cuenta, cambio de backend con el mismo ID y guardado de una sesión anterior. Las seis regresiones nuevas pasan; suite web completa: 185 suites, 1.082 pruebas aprobadas. Lint y build de producción aprobados con URL CI aislada. Revisión independiente inicial sin bloqueantes. No se afirma cancelar escrituras ya enviadas ni resolver orden de respuestas dentro de la misma cuenta. No se usaron contraseñas reales ni se cambió configuración de producción.
