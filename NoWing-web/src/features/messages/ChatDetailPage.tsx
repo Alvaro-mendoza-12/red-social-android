@@ -551,6 +551,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     scheduleRequestKeyRef.current = null
     return () => { scheduleContext.current += 1 }
   }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
+  const nicknameContext = useRef(0)
+  useEffect(() => {
+    setNicknameDialogOpen(false)
+    setNicknameDraft('')
+    setSavingNickname(false)
+    return () => { nicknameContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
   const preferenceContext = useRef(0)
   useEffect(() => {
     setSavingSettings(false)
@@ -2031,6 +2038,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   async function saveChatNickname() {
     if (!user || !otherParticipant || savingNickname) return
     const nickname = nicknameDraft.trim().slice(0, 120)
+    const context = nicknameContext.current
+    const identity = getStorageReadIdentity()
+    const isCurrent = () => context === nicknameContext.current && identity === getStorageReadIdentity()
     setSavingNickname(true)
     setError(null)
     try {
@@ -2038,9 +2048,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         if (nickname) {
           await fallbackApiJson(`/v1/data/messages/nicknames/${encodeURIComponent(otherParticipant.id)}`, {
             method: 'PUT', body: JSON.stringify({ nickname }),
+            expectedIdentity: identity, expectedAccountId: user.id,
           })
         } else {
-          await fallbackApiJson(`/v1/data/messages/nicknames/${encodeURIComponent(otherParticipant.id)}`, { method: 'DELETE' })
+          await fallbackApiJson(`/v1/data/messages/nicknames/${encodeURIComponent(otherParticipant.id)}`, { method: 'DELETE', expectedIdentity: identity, expectedAccountId: user.id })
         }
       } else {
         if (!supabase) return
@@ -2049,6 +2060,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           : await supabase.from('nicknames').delete().eq('user_id', user.id).eq('target_user_id', otherParticipant.id)
         if (result.error) throw result.error
       }
+      if (!isCurrent()) return
       const nextName = nickname || otherParticipant.publicName || otherParticipant.name
       setOtherParticipant(current => current?.id === otherParticipant.id
         ? { ...current, name: nextName, nickname: nickname || undefined }
@@ -2057,9 +2069,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       setNicknameDialogOpen(false)
       window.dispatchEvent(new Event('novvin:conversation-preferences-changed'))
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo guardar el apodo privado'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo guardar el apodo privado'))
     } finally {
-      setSavingNickname(false)
+      if (isCurrent()) setSavingNickname(false)
     }
   }
 

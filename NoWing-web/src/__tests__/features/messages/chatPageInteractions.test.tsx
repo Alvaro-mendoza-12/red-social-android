@@ -211,7 +211,7 @@ test('a private nickname is saved with the existing account-scoped endpoint and 
     fireEvent.click(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Mi apodo' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
-    await waitFor(() => expect(fallbackApiJson).toHaveBeenCalledWith('/v1/data/messages/nicknames/friend', { method: 'PUT', body: JSON.stringify({ nickname: 'Mi apodo' }) }))
+    await waitFor(() => expect(fallbackApiJson).toHaveBeenCalledWith('/v1/data/messages/nicknames/friend', { method: 'PUT', body: JSON.stringify({ nickname: 'Mi apodo' }), expectedAccountId: 'account-a', expectedIdentity: getStorageReadIdentity() }))
     expect(await screen.findByRole('button', { name: 'Ver perfil de Mi apodo' })).toBeInTheDocument()
     expect(refresh).toHaveBeenCalledTimes(1)
   } finally { window.removeEventListener('novvin:conversation-preferences-changed', refresh) }
@@ -390,4 +390,79 @@ test('renewing the same account identity resets the old scheduling lock', async 
   fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
   expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('')
   expect(screen.getByRole('button', { name: 'Programar', exact: true })).toBeInTheDocument()
+})
+
+function openNicknameEditor() {
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' }))
+}
+
+test.each(['success', 'failure'])('a late nickname %s cannot change the next conversation', async outcome => {
+  let finish!: () => void
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (!path.includes('/nicknames/')) return []
+    return new Promise((resolve, reject) => { finish = () => outcome === 'success' ? resolve({}) : reject(new Error('Apodo privado de A falló')) })
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  openNicknameEditor()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Privado A' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
+  await waitFor(() => expect(finish).toBeDefined())
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, chat: {}, title: 'Contacto B', otherParticipant: { ...response.otherParticipant, id: 'friend-b', name: 'Contacto B' } } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByRole('button', { name: 'Ver perfil de Contacto B' })
+  openNicknameEditor()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Borrador B' } })
+  const changed = jest.fn()
+  window.addEventListener('novvin:conversation-preferences-changed', changed)
+  try {
+    await act(async () => { finish() })
+    expect(screen.getByRole('dialog', { name: 'Apodo privado' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Apodo' })).toHaveValue('Borrador B')
+    expect(screen.getByRole('button', { name: 'Ver perfil de Contacto B' })).toBeInTheDocument()
+    expect(screen.queryByText('Privado A')).not.toBeInTheDocument()
+    expect(screen.queryByText('Apodo privado de A falló')).not.toBeInTheDocument()
+    expect(changed).not.toHaveBeenCalled()
+  } finally { window.removeEventListener('novvin:conversation-preferences-changed', changed) }
+})
+
+test.each(['PUT', 'DELETE'])('nickname %s is bound to its originating account and identity', async method => {
+  open()
+  await screen.findByText('Mensaje recibido')
+  openNicknameEditor()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: method === 'PUT' ? 'Mi apodo' : '' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
+  await waitFor(() => expect(fallbackApiJson).toHaveBeenCalledWith('/v1/data/messages/nicknames/friend', expect.objectContaining({ method, expectedIdentity: getStorageReadIdentity(), expectedAccountId: 'account-a' })))
+  expect(screen.queryByRole('dialog', { name: 'Apodo privado' })).not.toBeInTheDocument()
+})
+
+test.each(['renewal', 'account switch'])('identity %s releases the old nickname lock without releasing a newer save', async transition => {
+  const pending: ((value: unknown) => void)[] = []
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (!path.includes('/nicknames/')) return []
+    return new Promise(resolve => pending.push(resolve))
+  })
+  open()
+  await screen.findByText('Mensaje recibido')
+  openNicknameEditor()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Anterior' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
+  await waitFor(() => expect(pending).toHaveLength(1))
+  await act(async () => {
+    if (transition === 'account switch') { mockUser.id = 'account-b'; updateStorageReadIdentity('account-b', 'fallback') }
+    else invalidateStorageReadBackend()
+  })
+  expect(screen.queryByRole('dialog', { name: 'Apodo privado' })).not.toBeInTheDocument()
+  openNicknameEditor()
+  expect(screen.getByRole('textbox', { name: 'Apodo' })).toHaveValue('Apodo privado')
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Nuevo' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
+  await waitFor(() => expect(pending).toHaveLength(2))
+  await act(async () => { pending[0]({}) })
+  expect(screen.getByRole('textbox', { name: 'Apodo' })).toHaveValue('Nuevo')
+  expect(screen.getByRole('button', { name: 'Guardando…' })).toBeDisabled()
+  await act(async () => { pending[1]({}) })
+  expect(screen.getByRole('button', { name: 'Ver perfil de Nuevo' })).toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: 'Apodo privado' })).not.toBeInTheDocument()
 })
