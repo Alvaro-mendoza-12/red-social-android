@@ -137,6 +137,7 @@ class ProfileViewModel @Inject constructor(
     private var realtimeJob: kotlinx.coroutines.Job? = null
     private val profileMutationClock = ProfileMutationClock()
     private val profileReadScope = ProfileReadScope(authService::getCurrentUserId)
+    private val friendActionScope = ProfileFriendActionScope(authService::getCurrentUserId)
     private val contentSubscriptions = ProfileContentSubscriptions(viewModelScope, profileReadScope)
     private var contentOwner: Pair<String?, String>? = null
     private val postSharesInFlight = mutableSetOf<String>()
@@ -228,9 +229,13 @@ class ProfileViewModel @Inject constructor(
         val idToLoad = (userId ?: authService.getCurrentUserId())?.trim()?.lowercase()
             ?.takeIf { it.isNotBlank() }
         if (idToLoad == null) {
+            friendActionScope.invalidate()
             _profileState.value = ProfileUiState.Error("No user logged in")
             return
         }
+        val friendViewChanged = friendActionScope.enter(idToLoad)
+        // Never expose the previous Success with a new action context while a cache read suspends.
+        if (friendViewChanged) _profileState.value = ProfileUiState.Loading
         val owner = authService.getCurrentUserId() to idToLoad
         contentSubscriptions.cancelAll()
         sharedPostsPager.clear()
@@ -251,7 +256,7 @@ class ProfileViewModel @Inject constructor(
 
         // Friendship changes when a first message creates a request, even if
         // the profile itself is already cached when returning from the chat.
-        if (friendStatusTargetId != idToLoad) {
+        if (friendViewChanged || friendStatusTargetId != idToLoad) {
             friendStatusTargetId = idToLoad
             _friendStatus.value = FriendStatus.NONE
             lockFriendStateUntil = 0L
@@ -483,69 +488,50 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    fun sendFriendRequest() {
-        val state = _profileState.value
-        if (state !is ProfileUiState.Success) return
-        val targetId = state.user.id
-        
+    private fun performFriendAction(
+        optimistic: FriendStatus,
+        previous: FriendStatus,
+        action: suspend () -> Result<Unit>
+    ) {
+        val ticket = friendActionScope.snapshot() ?: return
         viewModelScope.launch {
-            // Optimistic update
-            _friendStatus.value = FriendStatus.PENDING_SENT
-            lockFriendStateUntil = System.currentTimeMillis() + 10000 // 10s guard
-            
-            val result = friendRepository.sendFriendRequest(targetId)
-            if (result.isFailure) {
-                // Revert
-                _friendStatus.value = FriendStatus.NONE
-                lockFriendStateUntil = 0L // Release guard
-                android.util.Log.e("ProfileViewModel", "Failed to send friend request", result.exceptionOrNull())
-            } else {
-                 // Success: keep guard and update timestamp to postpone next check
-                 lockFriendStateUntil = System.currentTimeMillis() + 10000
-            }
+            friendActionScope.runCurrentAction(ticket,
+                onStart = {
+                    _friendStatus.value = optimistic
+                    lockFriendStateUntil = System.currentTimeMillis() + 10000
+                },
+                action = action,
+                onResult = { result ->
+                    if (result.isFailure) {
+                        _friendStatus.value = previous
+                        lockFriendStateUntil = 0L
+                        android.util.Log.e("ProfileViewModel", "Friendship action failed", result.exceptionOrNull())
+                    } else {
+                        lockFriendStateUntil = System.currentTimeMillis() + 10000
+                    }
+                }
+            )
+        }
+    }
+
+    fun sendFriendRequest() {
+        val targetId = (_profileState.value as? ProfileUiState.Success)?.user?.id ?: return
+        performFriendAction(FriendStatus.PENDING_SENT, FriendStatus.NONE) {
+            friendRepository.sendFriendRequest(targetId)
         }
     }
 
     fun cancelFriendRequest() {
-        val state = _profileState.value
-        if (state !is ProfileUiState.Success) return
-        val targetId = state.user.id
-        
-        viewModelScope.launch {
-            // Optimistic update
-            _friendStatus.value = FriendStatus.NONE
-            // Remove lock/guard or set it? If we cancel, we want NONE to stay.
-            lockFriendStateUntil = System.currentTimeMillis() + 10000 
-            
-            val result = friendRepository.cancelFriendRequest(targetId)
-            if (result.isFailure) {
-                // Revert
-                _friendStatus.value = FriendStatus.PENDING_SENT
-                lockFriendStateUntil = 0L
-                android.util.Log.e("ProfileViewModel", "Failed to cancel friend request", result.exceptionOrNull())
-            }
+        val targetId = (_profileState.value as? ProfileUiState.Success)?.user?.id ?: return
+        performFriendAction(FriendStatus.NONE, FriendStatus.PENDING_SENT) {
+            friendRepository.cancelFriendRequest(targetId)
         }
     }
 
     fun unfriendUser() {
-        val state = _profileState.value
-        if (state !is ProfileUiState.Success) return
-        val targetId = state.user.id
-        
-        viewModelScope.launch {
-            // Optimistic update
-            _friendStatus.value = FriendStatus.NONE
-            lockFriendStateUntil = System.currentTimeMillis() + 10000 
-            
-            val result = friendRepository.unfriendUser(targetId)
-            if (result.isFailure) {
-                // Revert
-                _friendStatus.value = FriendStatus.FRIENDS
-                lockFriendStateUntil = 0L
-                android.util.Log.e("ProfileViewModel", "Failed to unfriend", result.exceptionOrNull())
-            } else {
-                 // Update follower counts if friends implies following (optional but good practice)
-            }
+        val targetId = (_profileState.value as? ProfileUiState.Success)?.user?.id ?: return
+        performFriendAction(FriendStatus.NONE, FriendStatus.FRIENDS) {
+            friendRepository.unfriendUser(targetId)
         }
     }
 
