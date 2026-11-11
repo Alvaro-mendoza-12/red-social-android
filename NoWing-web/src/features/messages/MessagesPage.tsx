@@ -601,10 +601,10 @@ export function MessagesPage() {
   const chatMenuRef = useRef<HTMLDivElement | null>(null)
   const chatMenuTriggerRef = useRef<HTMLButtonElement | null>(null)
   const [hidingChatId, setHidingChatId] = useState<string | null>(null)
-  const hideContext = useRef(0)
+  const inboxActionContext = useRef(0)
   useEffect(() => {
     setHidingChatId(null)
-    return () => { hideContext.current += 1 }
+    return () => { inboxActionContext.current += 1 }
   }, [user?.id, isFallbackSession, activeTab])
   const [selectedConversation, setSelectedConversation] = useState<SelectedConversation | null>(
     null,
@@ -1084,6 +1084,8 @@ export function MessagesPage() {
     patch: Partial<Pick<ConversationItem, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>,
   ) => {
     if (!user) return
+    const context = inboxActionContext.current
+    const isCurrent = () => context === inboxActionContext.current
     const current = items.find((item) => item.id === chatId)
     const nextMuted = patch.isMuted ?? current?.isMuted ?? false
     const nextPinned = patch.isPinned ?? current?.isPinned ?? false
@@ -1092,8 +1094,10 @@ export function MessagesPage() {
     if (isFallbackSession) {
       try {
         await saveFallbackChatPreferences(chatId, patch)
+        if (!isCurrent()) return
         setItems(currentItems => sortByUpdatedAt(currentItems.map(item => item.id === chatId ? { ...item, ...patch } : item)))
       } catch (caught) {
+        if (!isCurrent()) return
         setError(friendlyError(caught, 'No se pudieron guardar los cambios del chat'))
       }
       return
@@ -1107,6 +1111,7 @@ export function MessagesPage() {
         p_is_archived: nextArchived,
         p_is_favorite: nextFavorite,
       })
+      if (!isCurrent()) return
       if (rpcError && !isMissingFunctionError(rpcError)) throw rpcError
       if (rpcError && isMissingFunctionError(rpcError)) {
         const basePayload = {
@@ -1121,6 +1126,7 @@ export function MessagesPage() {
         const fullFallback = await supabase
           .from('chat_participants')
           .upsert(basePayload, { onConflict: 'chat_id,user_id' })
+        if (!isCurrent()) return
         if (fullFallback.error && !isMissingColumnError(fullFallback.error))
           throw fullFallback.error
         if (fullFallback.error && isMissingColumnError(fullFallback.error)) {
@@ -1135,6 +1141,7 @@ export function MessagesPage() {
             },
             { onConflict: 'chat_id,user_id' },
           )
+          if (!isCurrent()) return
           if (archiveFallback.error && !isMissingColumnError(archiveFallback.error)) {
             throw archiveFallback.error
           }
@@ -1152,11 +1159,13 @@ export function MessagesPage() {
             },
             { onConflict: 'chat_id,user_id' },
           )
+          if (!isCurrent()) return
           if (legacyFallbackError) throw legacyFallbackError
         }
       }
       void loadCurrentTab({ silent: true })
     } catch (caught) {
+      if (!isCurrent()) return
       reportSupabaseServiceRestrictionIfPresent('messages-preferences', caught)
       setError(friendlyError(caught, 'No se pudieron actualizar preferencias'))
     }
@@ -1169,8 +1178,8 @@ export function MessagesPage() {
     )
     if (!confirmed) return
 
-    const context = hideContext.current
-    const isCurrent = () => context === hideContext.current
+    const context = inboxActionContext.current
+    const isCurrent = () => context === inboxActionContext.current
     const previousItems = items
     const nextItems = items.filter((item) => item.id !== chatId)
     setHidingChatId(chatId)

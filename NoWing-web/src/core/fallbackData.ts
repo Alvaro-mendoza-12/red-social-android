@@ -312,10 +312,11 @@ export async function loadFallbackNotifications(limit = 200): Promise<FallbackNo
 export type ChatPreferencePatch = Partial<Record<'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite', boolean>>
 
 export async function saveFallbackChatPreferences(chatId: string, patch: ChatPreferencePatch) {
+  const identity = getStorageReadIdentity()
   const result = await fallbackApiJson<{ ok: boolean }>(`/v1/data/messages/chats/${encodeURIComponent(chatId)}/preferences`, {
-    method: 'PATCH', body: JSON.stringify(patch),
+    method: 'PATCH', body: JSON.stringify(patch), expectedIdentity: identity, expectedAccountId: identity.accountId,
   })
-  window.dispatchEvent(new CustomEvent('novvin:conversation-preferences-changed', { detail: { chatId } }))
+  if (identity === getStorageReadIdentity()) window.dispatchEvent(new CustomEvent('novvin:conversation-preferences-changed', { detail: { chatId } }))
   return result
 }
 

@@ -213,3 +213,13 @@ Se aprobaron 37 pruebas Kotlin/JVM aisladas (15 del coordinador/rollback y 22 de
 Persisten fuera del alcance las carreras entre refrescos/mensajes nuevos del mismo chat y cuenta, y los efectos remotos ya aceptados antes de cambiar sesión. No se ejecutó emulador para este cambio ni se desplegó. La compilación completa Android corresponde al CI del nuevo commit.
 
 Revalidación independiente tras restaurar el entorno: mismos blobs de producción que el diff revisado, 37/37 JVM aprobadas y `git diff --check` limpio. Sin bloqueantes nuevos del alcance.
+
+## Web: preferencias de chat y respuestas de otra sesión/vista
+
+Tres pruebas con la API autenticada real y transporte simulado reprodujeron que fijar, silenciar o archivar un chat podía atravesar un cambio de cuenta durante la espera del token, reintentar un 401 tras otro login o emitir una notificación al regresar una respuesta antigua. El helper ahora captura la identidad completa de sesión y la pasa a las guardas existentes, también para el evento posterior.
+
+La bandeja y el detalle invalidan las respuestas de preferencias al cambiar cuenta, backend, pestaña/conversación o desmontarse. Se comprueban ACK, errores y continuaciones legacy antes de otro fallback. El detalle libera el bloqueo para el contexto nuevo, pero un finally antiguo no libera un guardado nuevo. Se reprodujeron en rojo y luego verde éxito/error de A sobre bandeja B y pin de un chat sobre el siguiente. Dos regresiones adicionales mantienen B guardando mientras termina A con éxito o fallo, hasta que responde B.
+
+Límites: no se revierten PATCH ya aceptados, no se certifica el token interno del SDK legacy ni todas las mutaciones/refrescos simultáneos de la misma vista. La identidad de la API Ubuntu cubre reautenticación del mismo ID; el contexto React requiere observar la transición de cuenta/backend/vista, por lo que no se afirma aislamiento completo del feedback si un logout/login idéntico queda agrupado sin transición visible. No hubo llamadas a conversaciones reales, emulador ni despliegue para esta tanda.
+
+Validación final: 185 suites / 1.098 pruebas Jest aprobadas; 118 pruebas Node, lint (cero errores, siete avisos existentes) y build/SEO aprobados. Revisión independiente del delta sin bloqueantes; repitió las cuatro suites enfocadas antes de los dos casos adicionales (54 pruebas) y después el detalle completo con esos casos (30 pruebas). No se afirma validación visual.

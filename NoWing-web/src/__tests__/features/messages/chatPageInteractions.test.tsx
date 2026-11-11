@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ChatDetailPage } from '../../../features/messages/ChatDetailPage'
 import { RoomChatPage } from '../../../features/messages/RoomChatPage'
-import { loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
+import { saveFallbackChatPreferences, loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
 import { retainAttachmentOwner } from '../../../core/attachmentJobs'
 import { writeCachedValue } from '../../../core/localCache'
 import { fallbackApiJson } from '../../../core/auth/fallbackAuth'
@@ -16,6 +16,7 @@ jest.mock('../../../core/ubuntuRealtime', () => ({ subscribeUbuntuRealtime: () =
 jest.mock('../../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn(async () => []) }))
 jest.mock('../../../core/backendRpc', () => ({ backendRpc: jest.fn(async () => ({ data: [] })) }))
 jest.mock('../../../core/fallbackData', () => ({
+  saveFallbackChatPreferences: jest.fn(),
   loadFallbackChat: jest.fn(), loadFallbackRoomChat: jest.fn(),
   loadFallbackHistoryPage: jest.fn(),
   fallbackHistoryAllows: jest.requireActual('../../../core/fallbackData').fallbackHistoryAllows,
@@ -210,4 +211,46 @@ test('a private nickname is saved with the existing account-scoped endpoint and 
     expect(await screen.findByRole('button', { name: 'Ver perfil de Mi apodo' })).toBeInTheDocument()
     expect(refresh).toHaveBeenCalledTimes(1)
   } finally { window.removeEventListener('novvin:conversation-preferences-changed', refresh) }
+})
+
+
+test('a late pin response cannot change preferences of the next conversation', async () => {
+  let finish!: (value: {ok: boolean}) => void
+  jest.mocked(saveFallbackChatPreferences).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: /Fijar/ }))
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, title: 'Nuevo contacto', chat: { nickname: '' }, otherParticipant: { ...response.otherParticipant, name: 'Nuevo contacto' } } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByText('Nuevo contacto')
+  await act(async () => { finish({ ok: true }) })
+  if (!screen.queryByRole('menu', { name: 'Opciones del chat' })) fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  expect(screen.getByRole('menuitem', { name: /^Fijar/ })).toBeEnabled()
+})
+
+test.each(['success', 'failure'])('an old preference %s cannot release the next conversations pending save', async outcome => {
+  let finishOld!: () => void
+  let finishNew!: (value: {ok: boolean}) => void
+  jest.mocked(saveFallbackChatPreferences)
+    .mockImplementationOnce(() => new Promise((resolve, reject) => {
+      finishOld = () => outcome === 'success' ? resolve({ ok: true }) : reject(new Error('Error del chat anterior'))
+    }))
+    .mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve }))
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Fijar chat' }))
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, title: 'Nuevo contacto', chat: { nickname: '' }, otherParticipant: { ...response.otherParticipant, name: 'Nuevo contacto' } } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByText('Nuevo contacto')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  expect(screen.getByRole('menuitem', { name: 'Fijar chat' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Fijar chat' }))
+  await act(async () => { finishOld() })
+  expect(screen.queryByText('Error del chat anterior')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  expect(screen.getByRole('menuitem', { name: 'Fijar chat' })).toBeDisabled()
+  await act(async () => { finishNew({ ok: true }) })
+  expect(screen.getByRole('menuitem', { name: 'Desfijar chat' })).toBeEnabled()
 })

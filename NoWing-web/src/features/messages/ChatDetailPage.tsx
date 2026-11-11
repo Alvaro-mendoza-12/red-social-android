@@ -538,6 +538,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
+  const preferenceContext = useRef(0)
+  useEffect(() => {
+    setSavingSettings(false)
+    return () => { preferenceContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId])
   useChatEntryFocus(composerInputRef, user?.id ? `${user.id}/chat/${cleanChatId}` : '', !loading || Boolean(otherParticipant), focusRequest)
   useEffect(() => { otherParticipantRef.current = otherParticipant }, [otherParticipant])
   useEffect(() => {
@@ -1892,15 +1897,20 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
 
   async function saveChatPreferences(patch: Partial<Pick<ChatSettings, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>) {
+    if (!user || !cleanChatId) return
+    const context = preferenceContext.current
+    const isCurrent = () => context === preferenceContext.current
     if (useUbuntu) {
       if (savingSettings) return
       setSavingSettings(true)
       try {
         await saveFallbackChatPreferences(cleanChatId, patch)
+        if (!isCurrent()) return
         setSettings(current => ({ ...current, ...patch }))
       } catch (caught) {
+        if (!isCurrent()) return
         setError(friendlyError(caught, 'No se pudieron guardar los cambios del chat'))
-      } finally { setSavingSettings(false) }
+      } finally { if (isCurrent()) setSavingSettings(false) }
       return
     }
     if (!supabase || !user || !cleanChatId || savingSettings) return
@@ -1918,6 +1928,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         p_is_archived: nextArchived,
         p_is_favorite: nextFavorite,
       })
+      if (!isCurrent()) return
       if (prefError && !isMissingFunctionError(prefError)) throw prefError
       if (prefError && isMissingFunctionError(prefError)) {
         const nowIso = new Date().toISOString()
@@ -1934,6 +1945,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           },
           { onConflict: 'chat_id,user_id' },
         )
+        if (!isCurrent()) return
         if (fullFallback.error && !isMissingColumnError(fullFallback.error)) throw fullFallback.error
         if (fullFallback.error && isMissingColumnError(fullFallback.error)) {
           const archiveFallback = await supabase.from('chat_participants').upsert(
@@ -1948,6 +1960,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             },
             { onConflict: 'chat_id,user_id' },
           )
+          if (!isCurrent()) return
           if (archiveFallback.error && !isMissingColumnError(archiveFallback.error)) {
             throw archiveFallback.error
           }
@@ -1972,6 +1985,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             },
             { onConflict: 'chat_id,user_id' },
           )
+          if (!isCurrent()) return
           if (legacyFallbackError) throw legacyFallbackError
         }
       }
@@ -1983,10 +1997,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         isFavorite: nextFavorite,
       }))
     } catch (caught) {
+      if (!isCurrent()) return
       reportSupabaseServiceRestrictionIfPresent('chat-preferences', caught)
       setError(friendlyError(caught, 'No se pudieron guardar preferencias'))
     } finally {
-      setSavingSettings(false)
+      if (isCurrent()) setSavingSettings(false)
     }
   }
 
