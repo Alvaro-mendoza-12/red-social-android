@@ -233,3 +233,19 @@ Seis regresiones nuevas cubren borradores entre conversaciones, éxito/fallo de 
 No se revierten operaciones ya aceptadas por el servidor. No se certifican ordenación de refrescos simultáneos dentro de una misma sesión/conversación, token interno del SDK legacy, interfaz visual, emulador ni despliegue. La prueba usa transporte simulado para las operaciones programadas; comprueba las guardas enviadas, no un envío real al servidor.
 
 El Quality Gate Android del commit anterior terminó correctamente en [43039675663](https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/43039675663). El segundo ensayo instrumentado sigue pendiente: no hay sesión de GitHub CLI en este entorno y el conector disponible no expone despacho de workflows. No se cambió KVM ni se ejecutó otro ensayo instrumentado.
+
+## Web: reportes privados separados por identidad
+
+La página de reportes ahora mantiene un árbol de estado distinto por generación de sesión. Un cambio de cuenta, invalidación o regreso al mismo ID retira los reportes anteriores; las respuestas y errores tardíos no restauran datos ni liberan la carga de la sesión nueva. `loadFallbackProfileMe` acepta una identidad esperada opcional y esta página la transmite a las guardas existentes del transporte. Se mantiene compatible el resto de consumidores del helper.
+
+Seis pruebas de página cubren datos ya cargados al cambiar cuenta, respuesta antigua después de la nueva, invalidación antes de actualizar Auth, regreso al mismo ID, error antiguo durante carga nueva y reintento de un error vigente. La revisión independiente del parche no encontró bloqueantes. Son pruebas locales con transporte simulado, no una validación del servidor ni una auditoría de todas las pantallas privadas.
+
+## Web: apodos privados y respuestas de otro contexto
+
+Se reprodujeron cinco regresiones antes del cambio: éxito antiguo cerraba el editor del siguiente chat, error antiguo aparecía allí, PUT/DELETE carecían de guardas de identidad y renovar sesión conservaba el bloqueo anterior. El guardado captura identidad y contexto de chat/cuenta/backend; solo su contexto vigente actualiza título, participante, editor, error, evento de preferencias y bloqueo. El editor y borrador se reinician al cambiar contexto. Las llamadas Ubuntu para guardar o retirar un apodo pasan identidad y cuenta esperadas.
+
+Las seis regresiones finales añaden cambio de cuenta mientras una segunda petición queda pendiente. La revisión independiente aprobó 74 pruebas en cinco suites de interacción, identidad, carreras de sesión, cuentas migradas y reintentos, sin bloqueantes del delta. No repitió la fase roja. No hubo llamadas a cuentas reales, navegador ni emulador. No se revierten escrituras aceptadas por el servidor y la ruta Supabase heredada no está ejercitada por estas regresiones. Cerrar y reabrir el editor durante un guardado dentro del mismo chat/sesión no queda certificado por este alcance.
+
+## Verificación integrada de reportes y apodos
+
+Sobre ambos parches juntos pasaron 186 suites / 1.116 pruebas Jest, 118 pruebas Node, lint con cero errores y siete avisos existentes, y build/SEO (19 páginas públicas, JavaScript público cero). El build usó `https://ci.novvin.invalid`; no es una entrega de producción. Un intento Node coincidió con la regeneración de `dist` y registró fallos de las páginas públicas; la repetición después de terminar el build aprobó las 118 pruebas. Se conservan las advertencias React de mocks/act y de tamaño de chunks. No se desplegó ni se ejecutó el ensayo instrumentado pendiente. La revisión integral continúa abierta.
