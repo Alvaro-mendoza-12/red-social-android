@@ -371,13 +371,15 @@ class CommunityChatViewModel @Inject constructor(
     }
 
     fun setChatBackground(type: String, uri: String? = null) {
+        val owner = authService.getCurrentUserId() ?: return
         val id = communityId.takeIf { it.isNotBlank() } ?: return
-        viewModelScope.launch { chatSettingsRepository.setChatBackground(backgroundKey(id), type, uri) }
+        viewModelScope.launch { chatSettingsRepository.setChatBackground(backgroundKey(id), type, uri, expectedOwner = owner) }
     }
 
     fun clearChatBackground() {
+        val owner = authService.getCurrentUserId() ?: return
         val id = communityId.takeIf { it.isNotBlank() } ?: return
-        viewModelScope.launch { chatSettingsRepository.clearChatBackground(backgroundKey(id)) }
+        viewModelScope.launch { chatSettingsRepository.clearChatBackground(backgroundKey(id), expectedOwner = owner) }
     }
 
     fun onScreenVisibilityChanged(isVisible: Boolean) {

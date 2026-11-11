@@ -754,16 +754,18 @@ class ChatViewModel @Inject constructor(
     }
 
     fun setChatBackground(backgroundType: String, backgroundUri: String? = null) {
+        val owner = authService.getCurrentUserId() ?: return
         val cleanId = chatId?.trim()?.lowercase() ?: return
         viewModelScope.launch {
-            chatSettingsRepository.setChatBackground(cleanId, backgroundType, backgroundUri)
+            chatSettingsRepository.setChatBackground(cleanId, backgroundType, backgroundUri, expectedOwner = owner)
         }
     }
 
     fun clearChatBackground() {
+        val owner = authService.getCurrentUserId() ?: return
         val cleanId = chatId?.trim()?.lowercase() ?: return
         viewModelScope.launch {
-            chatSettingsRepository.clearChatBackground(cleanId)
+            chatSettingsRepository.clearChatBackground(cleanId, expectedOwner = owner)
         }
     }
 

@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import conectate.com.data.local.dao.ChatSettingsDao
 import conectate.com.data.local.entity.ChatSettingsEntity
+import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileOutputStream
@@ -17,60 +18,35 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class ChatBackgroundSettings(
-    val backgroundType: String = "default",
-    val backgroundUri: String? = null
-)
-
 @Singleton
 class ChatSettingsRepository @Inject constructor(
     @param:ApplicationContext private val context: Context,
-    private val chatSettingsDao: ChatSettingsDao
+    private val chatSettingsDao: ChatSettingsDao,
+    private val authService: AuthService
 ) {
-    fun observeChatBackground(chatId: String): Flow<ChatBackgroundSettings> {
-        var cleanId = chatId.trim().lowercase()
-        return chatSettingsDao.observeByChatId(cleanId).map { entity ->
-            if (entity == null) {
-                ChatBackgroundSettings()
-            } else {
-                ChatBackgroundSettings(
-                    backgroundType = entity.backgroundType.ifBlank { "default" },
-                    backgroundUri = entity.backgroundUri
-                )
-            }
-        }
+    private val store = AccountChatBackgroundStore(
+        currentOwner = authService::getCurrentUserId,
+        owners = authService.observeSession().map { authService.getCurrentUserId() },
+        read = { key -> chatSettingsDao.observeByChatId(key).map { entity ->
+            entity?.let { ChatBackgroundSettings(it.backgroundType.ifBlank { "default" }, it.backgroundUri) }
+                ?: ChatBackgroundSettings()
+        } },
+        write = { key, settings -> chatSettingsDao.upsert(ChatSettingsEntity(
+            chatId = key, backgroundType = settings.backgroundType, backgroundUri = settings.backgroundUri,
+            updatedAt = java.time.Instant.now().toString()
+        )) },
+        clear = chatSettingsDao::clearByChatId,
+        prepare = ::optimizeAndCacheBackground
+    )
+
+    fun observeChatBackground(chatId: String): Flow<ChatBackgroundSettings> = store.observe(chatId)
+
+    suspend fun setChatBackground(chatId: String, backgroundType: String, sourceUri: String? = null, expectedOwner: String) {
+        store.set(expectedOwner, chatId, backgroundType, sourceUri)
     }
 
-    suspend fun upsertChatBackground(chatId: String, backgroundType: String, backgroundUri: String?) {
-        var cleanId = chatId.trim().lowercase()
-        if (cleanId.isBlank()) return
-        val normalizedType = backgroundType.trim().lowercase().ifBlank { "default" }
-        chatSettingsDao.upsert(
-            ChatSettingsEntity(
-                chatId = cleanId,
-                backgroundType = normalizedType,
-                backgroundUri = backgroundUri?.trim()?.ifBlank { null },
-                updatedAt = java.time.Instant.now().toString()
-            )
-        )
-    }
-
-    suspend fun clearChatBackground(chatId: String) {
-        var cleanId = chatId.trim().lowercase()
-        if (cleanId.isBlank()) return
-        chatSettingsDao.clearByChatId(cleanId)
-    }
-
-    suspend fun setChatBackground(chatId: String, backgroundType: String, sourceUri: String? = null) {
-        val cleanId = chatId.trim().lowercase()
-        if (cleanId.isBlank()) return
-        val normalizedType = backgroundType.trim().lowercase().ifBlank { "default" }
-        val resolvedUri = if (normalizedType == "custom" && !sourceUri.isNullOrBlank()) {
-            optimizeAndCacheBackground(cleanId, sourceUri) ?: return
-        } else {
-            sourceUri
-        }
-        upsertChatBackground(cleanId, normalizedType, resolvedUri)
+    suspend fun clearChatBackground(chatId: String, expectedOwner: String) {
+        store.remove(expectedOwner, chatId)
     }
 
     private suspend fun optimizeAndCacheBackground(chatId: String, sourceUri: String): String? = withContext(Dispatchers.IO) {
@@ -103,8 +79,7 @@ class ChatSettingsRepository @Inject constructor(
                 bitmap
             }
             val directory = File(context.filesDir, "chat_backgrounds").apply { mkdirs() }
-            val safeName = chatId.replace(Regex("[^a-zA-Z0-9._-]"), "_")
-            val target = File(directory, "bg_$safeName.jpg")
+            val target = File(directory, chatBackgroundFileName(chatId))
             var quality = 84
             var encoded: ByteArray
             do {
