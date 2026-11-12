@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-12T06:50:21.601407+00:00",
-  "baseCommit": "4a62184a34361ba6b22a6d607d13ae6f689fe5a1",
+  "generatedAtUtc": "2026-11-12T12:08:41.929078+00:00",
+  "baseCommit": "9744f3b182416b9cc79c72a1a8452720f1107408",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,35 +10,35 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3669,
-    "code-read": 463,
-    "partial": 145
+    "pending": 3664,
+    "code-read": 474,
+    "partial": 152
   },
   "countsByPhase": {
     "android": {
       "pending": 1537,
-      "partial": 73,
-      "code-read": 393
+      "partial": 74,
+      "code-read": 396
     },
     "documentation": {
       "pending": 560,
       "code-read": 8,
-      "partial": 7
+      "partial": 8
     },
     "server": {
-      "pending": 864,
-      "code-read": 37,
-      "partial": 16
+      "pending": 860,
+      "code-read": 42,
+      "partial": 21
     },
     "tooling-and-other": {
       "pending": 155,
-      "code-read": 10,
-      "partial": 7
+      "code-read": 11,
+      "partial": 6
     },
     "web": {
-      "partial": 42,
-      "pending": 553,
-      "code-read": 15
+      "partial": 43,
+      "pending": 552,
+      "code-read": 17
     }
   },
   "files": [
@@ -739,10 +739,20 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/components/FriendRequestsLegacy.test.tsx",
+      "phase": "web",
+      "gitBlobId": "ea50c73878f703a8553138deef5c2786b6e73352",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/components/FriendRequestsPage.test.tsx",
       "phase": "web",
-      "gitBlobId": "230f7eb9706aa04d0698de7f5cdec8eb35fe884b",
-      "reviewStatus": "pending"
+      "gitBlobId": "d7edd1ae11dfc8a90c9f75a33869b74642b7e4b4",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/GameCatalog.test.tsx",
@@ -1213,6 +1223,14 @@
       "phase": "web",
       "gitBlobId": "9cf058838a195eedf5194fa724a85cbbcae6e18c",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/fallbackFriendCancellation.test.ts",
+      "phase": "web",
+      "gitBlobId": "80363ef332fd5a9d77ee1c203d8655edfad48143",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/fallbackIdentityFence.test.ts",
@@ -2595,9 +2613,9 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "5f2f4f1dfa51b56a18470953cdd51deb0e739b9d",
+      "gitBlobId": "e1878b2556b492d9a96fee5d7b2a006d44ec54ad",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3451,9 +3469,9 @@
     {
       "file": "NoWing-web/src/features/social/FriendRequestsPage.tsx",
       "phase": "web",
-      "gitBlobId": "9c6624e843609e2ff047ce65c4133e431804acc3",
+      "gitBlobId": "a7dcd169272fc2cbdb4da928f679d6c40119aa14",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6657,9 +6675,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/UbuntuRealtimeClient.kt",
       "phase": "android",
-      "gitBlobId": "460fbcf9759b7ca6ed21c51f842c79e16c355d48",
+      "gitBlobId": "3ea93215260dfdd3da86c366b18ce434327b4b30",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7461,9 +7479,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveRepository.kt",
       "phase": "android",
-      "gitBlobId": "dd58de4c488cd3520a619f881d87af7251a3614a",
+      "gitBlobId": "b8adfa70a6375d96a292b33f11b545b6a86b1401",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7495,9 +7513,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/MessageRepository.kt",
       "phase": "android",
-      "gitBlobId": "7cdf4fd246bd565f7ca23dad60621753c400f0f3",
+      "gitBlobId": "dd54164f905144c671d0dd3f829dd273d18b82a9",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7949,9 +7967,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/message/ConversationReadReceiver.kt",
       "phase": "android",
-      "gitBlobId": "a02fcc31b3441bcd88fd5a5426f2d2fcd256d44d",
+      "gitBlobId": "1b920aa3c65bdddd2dc674ad742a306636ab5c44",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8045,9 +8063,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/message/MessageRealtimeSync.kt",
       "phase": "android",
-      "gitBlobId": "7bc212d8dfbe25498d234ec76c35a020276956a0",
+      "gitBlobId": "70247a28ef1adfce87fc3466128baf2f5fb844b8",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8281,9 +8299,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/supabase/AuthSessionMutationGuard.kt",
       "phase": "android",
-      "gitBlobId": "4ec51b4c1c58d7c46a1d46b67a22d15bba52399b",
+      "gitBlobId": "4f4ad3a0f090172ebf4a44a43590d1d5451ee6ee",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -14259,6 +14277,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/localfallback/RecordingRealtimeSocket.kt",
+      "phase": "android",
+      "gitBlobId": "13f0272ac600255786aa9e75e776d6ab01fd4e74",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/localfallback/StorageUploadPolicyTest.kt",
       "phase": "android",
       "gitBlobId": "30f665fd155d9739a99d95502e4ba0d06dfd2043",
@@ -14275,6 +14301,14 @@
       "phase": "android",
       "gitBlobId": "ff986ed6a6485afd411fe3cb3868c2b13f1b260a",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/localfallback/UbuntuRealtimeAdmissionTest.kt",
+      "phase": "android",
+      "gitBlobId": "8f93e5ffeeac2f27489dd5464d7fada7b4946854",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/localfallback/UbuntuStorageUrlTest.kt",
@@ -14949,6 +14983,22 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/message/MessageRealtimeAccountTransactionTest.kt",
+      "phase": "android",
+      "gitBlobId": "5af60f6dc4792c5d1bab94a0e7a5c626b896b5f6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/message/MessageRealtimeLifecycleTest.kt",
+      "phase": "android",
+      "gitBlobId": "e9314a6f744fcf156987d7155e6b7ad601073064",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/message/MessageSendCoordinatorTest.kt",
       "phase": "android",
       "gitBlobId": "72d77e6f990538e308b7fdb2372f6c07023a7065",
@@ -15067,9 +15117,9 @@
     {
       "file": "app/src/test/java/conectate/com/data/supabase/AuthSessionMutationGuardTest.kt",
       "phase": "android",
-      "gitBlobId": "c66f9c8bb8ae813c4577636a7ecb52ef0b405b21",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "ce09d4659a2544b0508ecd11b4320a1e706a5b01",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19473,9 +19523,17 @@
     {
       "file": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
       "phase": "documentation",
-      "gitBlobId": "d5496e52d34cd8525e405a299ccd87ac38c3c687",
+      "gitBlobId": "ca934fa8988264205a731fb8585c3028b0171600",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "phase": "documentation",
+      "gitBlobId": "0d410ca6c337816b671483ca3cc12f6b648016c7",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20005,9 +20063,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "fa1e5b19336b76b3d64f8341bb7833e14578fa0d",
+      "gitBlobId": "2a9441e12566d9dccd77d265dddd4d9721a12695",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20635,15 +20693,17 @@
     {
       "file": "infrastructure/local-fallback/api/package-lock.json",
       "phase": "server",
-      "gitBlobId": "98638f90e0bab488a5c2ce94b4ceb6f11dce74a3",
-      "reviewStatus": "pending"
+      "gitBlobId": "57f7697be50ffa8cced030eac2a9ad0becfa1f9f",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/package.json",
       "phase": "server",
-      "gitBlobId": "ad15a7ccc69ec2fa103f8acefb6c8974ca8e2952",
+      "gitBlobId": "3c0ff56c1b9845dcbff02f95012b0348585e54e7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21169,8 +21229,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
       "phase": "server",
-      "gitBlobId": "2a8968593ae8401e5f1c82afdbf44193d37d9034",
-      "reviewStatus": "pending"
+      "gitBlobId": "4bad268b27ab4e08f1d8111ce17b2a4271ee8ee6",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/ai-routes.js",
@@ -21377,9 +21439,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "d2c47dcaf47d5b6811b9fdb76865c70b2807f3cb",
+      "gitBlobId": "5232dc68a33291ae314a4419df1f105727f919ef",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21399,8 +21461,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/direct-message-request-policy.js",
       "phase": "server",
-      "gitBlobId": "67c8312d1259000220be37c662e347aa5a1b4e4f",
-      "reviewStatus": "pending"
+      "gitBlobId": "63ce0243e601673ac6744829c7491f49c1d456c0",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/display-name-policy.js",
@@ -21431,6 +21495,14 @@
       "phase": "server",
       "gitBlobId": "8d41073d1adb74b29d2e91d6c1e4072935dcd203",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/friend-request-state.js",
+      "phase": "server",
+      "gitBlobId": "4d45fefd9987f1dd50c2b5014d5c6bbb9056bd5c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/game-catalog-providers.js",
@@ -21767,9 +21839,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/postgrest-compat-routes.js",
       "phase": "server",
-      "gitBlobId": "f85fcf75d5e85311257462329584a8d6b2541ef5",
+      "gitBlobId": "59a910f3cce84fe500b9dce92a5000204d0b1ef2",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22231,8 +22303,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/admin-moderation-routes.test.js",
       "phase": "server",
-      "gitBlobId": "8b00714265727974bb4fbe576bf82801f431a832",
-      "reviewStatus": "pending"
+      "gitBlobId": "038c254a641d797a1f67606f74c8fb6004575043",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/ai-routes.test.js",
@@ -22617,6 +22691,46 @@
       "phase": "server",
       "gitBlobId": "413302b2376c5664905c97a2c31e8f946f57f336",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/friend-cancellation-http.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "46a5826e0f6cdfcc63fec4a25d365a150353787f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/friend-request-compat.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "d5bc59e46a043131d7af7874b8c6baf5fefdab58",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/friend-request-concurrency.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "8fd489a22e16bdc99c1d93e2913db9620475d037",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/friend-request-state.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "bea74c95562eb108c7af1f829eea6b5f1d1af12f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/friend-request-transition.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "0585c5937cb1cc0cf364c2d9ac897b2ea60b8f3a",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/gift-limits.test.js",
@@ -26663,9 +26777,9 @@
     {
       "file": "tools/audit/update_review_coverage.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "f71dde172017b8b0989924432f4fa9a4b4561e97",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "920add6d8a49fb162cfbeb1369882038072a5748",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

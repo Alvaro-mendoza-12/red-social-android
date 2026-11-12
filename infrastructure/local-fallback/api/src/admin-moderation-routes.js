@@ -1,3 +1,4 @@
+const { purgeFriendRequestIdentity } = require('./friend-request-state')
 const crypto = require('crypto')
 const { purgeImportedRows } = require('./imported-mutation-capabilities')
 const fs = require('fs')
@@ -37,6 +38,8 @@ const HARD_DELETE_LOCK_TABLES = [
   'fallback_compat_rows',
   'fallback_fcm_tokens',
   'fallback_follows',
+  'fallback_friend_legacy_barriers',
+  'fallback_friend_legacy_requests',
   'fallback_friends',
   'fallback_live_comments',
   'fallback_live_streams',
@@ -1258,6 +1261,7 @@ async function executeAdminHardDelete(options) {
     ]))
     const importedRowsDeleted = await purgeImportedUserData(client, relatedValues)
     const compatRowsDeleted = await purgeCompatUserData(client, relatedValues)
+    await purgeFriendRequestIdentity(client, targetIdentityValues)
     const authTable = await client.query(`SELECT to_regclass('auth.users') AS oid`)
     let authUsersDeleted = 0
     let externalAuthUserDeleted = false

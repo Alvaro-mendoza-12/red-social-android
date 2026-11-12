@@ -3,8 +3,12 @@ package conectate.com.data.supabase
 internal class AuthSessionLease internal constructor(
     val accountId: String?,
     private val ownerGuard: AuthSessionMutationGuard? = null,
+    private val generation: Long? = null,
     private val matches: () -> Boolean,
 ) {
+    internal fun sameVisit(other: AuthSessionLease): Boolean = this === other ||
+        (ownerGuard != null && ownerGuard === other.ownerGuard && generation != null &&
+            generation == other.generation && accountId == other.accountId)
     internal fun isOwnedBy(guard: AuthSessionMutationGuard): Boolean = ownerGuard === guard
     fun isCurrent(): Boolean = accountId != null && matches()
     fun requireCurrent() {
@@ -20,7 +24,7 @@ internal class AuthSessionMutationGuard {
     fun captureAccountLease(currentAccount: () -> String?): AuthSessionLease = synchronized(lock) {
         val expected = generation
         val account = currentAccount()?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf(String::isNotBlank)
-        AuthSessionLease(account, this) {
+        AuthSessionLease(account, this, expected) {
             commitIfCurrent(expected, eligible = { account != null && account.equals(currentAccount()?.trim(), ignoreCase = true) }) {}
         }
     }

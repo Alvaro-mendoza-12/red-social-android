@@ -937,6 +937,7 @@ export async function setFallbackVideoFavorite(videoId: string, favorite: boolea
 }
 
 export type FallbackFriendsResponse = {
+  capabilities?: { cancelOutgoingRequests?: boolean }
   items: GenericRow[]
 }
 
@@ -962,6 +963,14 @@ export async function updateFallbackFriendRequest(
       body: JSON.stringify({ status }),
     },
   )
+}
+
+/** Cancellation has its own action; never fall back to the historical DELETE. */
+export async function cancelFallbackFriendRequest(requestId: string): Promise<{ request: GenericRow }> {
+  const identity = getStorageReadIdentity()
+  return fallbackApiJson<{ request: GenericRow }>(`/v1/data/friends/${encodeURIComponent(requestId)}/cancel`, {
+    method: 'POST', expectedIdentity: identity, expectedAccountId: identity.accountId,
+  })
 }
 
 /** Lectura genérica PostgREST contra el servidor Ubuntu (datos importados o compat). */

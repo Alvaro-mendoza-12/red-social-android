@@ -1,3 +1,4 @@
+const { purgeFriendRequestIdentity, visibleLegacyFriends, createNativeFriend, answerNativeFriend, cancelNativeFriend, answerLegacyFriend, cancelLegacyFriend, removeFriendPair } = require('./friend-request-state')
 const { visibleFollowRows, setFollowState, publishFollowChange } = require('./follow-store')
 const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
 const { normalizeCompatProfileJson } = require('./compat-profile-json')
@@ -1450,12 +1451,20 @@ function sendPostgrestRows(req, res, rows, status = 200, headOnly = false) {
   return res.json(ranged)
 }
 
-async function readTableRows(pool, tableName, query, auth) {
-  const [importedRows, specificRows, compatRows] = await Promise.all([
+async function readTableRows(pool, tableName, query, auth, snapshot) {
+  let [importedRows, specificRows, compatRows] = await Promise.all([
     readImportedRows(pool, tableName),
     readSpecificRows(pool, tableName, auth),
     readCompatRows(pool, tableName),
   ])
+  if (tableName==='friends') {
+    importedRows=await visibleLegacyFriends(pool,'imported',importedRows,{includeMaterialized:Boolean(snapshot)})
+    compatRows=await visibleLegacyFriends(pool,'compat',compatRows,{includeMaterialized:Boolean(snapshot)})
+  }
+  if (snapshot) {
+    snapshot.nativeIds = new Set(specificRows.map(row => String(row.id)))
+    snapshot.sources = new Map([...importedRows.map(row=>[rowId(row,tableName),'imported']),...compatRows.map(row=>[rowId(row,tableName),'compat'])])
+  }
   const merged = messageTables.has(tableName) ? mergeMessageRows([...importedRows, ...specificRows, ...compatRows]) : mergeRows([importedRows, specificRows, compatRows], tableName)
   const readable = await filterRowsForRead(pool, tableName, merged, auth)
   const identityForRead = messageTables.has(tableName) ? await getAuthIdentity(pool, auth) : null
@@ -2235,14 +2244,7 @@ async function insertFriendRow(pool, auth, row) {
   if (!receiverId || normalizeIdentityValue(senderId) === normalizeIdentityValue(receiverId)) {
     throw httpError('FRIEND_REQUEST_TARGET_INVALID', 400)
   }
-  const { rows } = await pool.query(
-    `INSERT INTO fallback_friends(sender_id, receiver_id, status)
-     VALUES ($1, $2, 'pending')
-     ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = fallback_friends.status
-     RETURNING id::text, sender_id, receiver_id, status, created_at`,
-    [senderId, receiverId],
-  )
-  return rows[0]
+  return createNativeFriend(pool,senderId,receiverId)
 }
 
 async function writeCompatFollow(pool, identity, targetId, following) {
@@ -2380,7 +2382,8 @@ async function handlePatch(pool, tableName, auth, query, body) {
   rejectCommentAudio(tableName, patch)
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
-  const currentRows = await readTableRows(pool, tableName, query, auth)
+  const snapshot = {}
+  const currentRows = await readTableRows(pool, tableName, query, auth, snapshot)
   const targets = currentRows.length > 0 ? currentRows : []
 
   const rows = []
@@ -2407,14 +2410,14 @@ async function handlePatch(pool, tableName, auth, query, body) {
           !patchOnlyContains(patch, new Set(['status', 'updated_at']))) {
         throw httpError('FRIEND_REQUEST_RESPONSE_FORBIDDEN', 403)
       }
-      const result = await pool.query(
-        `INSERT INTO fallback_friends(sender_id, receiver_id, status)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (sender_id, receiver_id) DO UPDATE SET status = EXCLUDED.status
-         RETURNING id::text, sender_id, receiver_id, status, created_at`,
-        [current.sender_id, current.receiver_id, status],
-      )
-      rows.push(result.rows[0])
+      const actors=[...identity.ids]
+      if (snapshot.nativeIds.has(String(current.id))) {
+        const result=await answerNativeFriend(pool,String(current.id),status,actors)
+        if (!result) throw httpError('REQUEST_NOT_FOUND',404)
+        rows.push(result)
+      } else {
+        rows.push(await answerLegacyFriend(pool,snapshot.sources.get(rowId(current,tableName)),current,status,actors))
+      }
     } else if (tableName === 'groups' || tableName === 'communities') {
       await pool.query(`
         UPDATE fallback_collection_rooms
@@ -2446,6 +2449,7 @@ async function handleDelete(pool, tableName, auth, query) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   // Deleting history must still work after opting out, including outgoing views.
+  const snapshot={}
   const rows = tableName === 'profile_views'
     ? applyFilters(mergeRows(await Promise.all([
         readImportedRows(pool,tableName),readCompatRows(pool,tableName),
@@ -2457,10 +2461,21 @@ async function handleDelete(pool, tableName, auth, query) {
         }
         return {original:row,comparison}
       }).filter(entry=>applyFilters([entry.comparison],query).length).map(entry=>entry.original),{})
-    : await readTableRows(pool, tableName, query, auth)
+    : await readTableRows(pool, tableName, query, auth, snapshot)
   for (const row of rows) {
     if (!(await authorizeMutation(pool, tableName, identity, row, {}, 'delete'))) {
       throw httpError('ROW_MUTATION_FORBIDDEN')
+    }
+    if (tableName === 'friends') {
+      const actors=[...identity.ids]
+      const filter=parseFilterValue(query?.status)
+      if (filter.op==='eq' && filter.value==='accepted') {
+        await removeFriendPair(pool,row.sender_id,row.receiver_id)
+      } else if (snapshot.nativeIds.has(String(row.id))) {
+        const removed=await cancelNativeFriend(pool,String(row.id),actors)
+        if (!removed) throw httpError('REQUEST_NOT_FOUND',404)
+      } else await cancelLegacyFriend(pool,snapshot.sources.get(rowId(row,tableName)),row,actors)
+      continue
     }
     if (tableName === 'follows') {
       await writeCompatFollow(pool, identity, row.following_id || row.target_user_id, false)
@@ -5874,6 +5889,7 @@ async function deleteOwnAccountRpc(pool, auth) {
     const musicTracksDeleted = await deleteAccountMusic(client, localUserId)
     const importedRowsDeleted = await purgeImportedIdentityRows(client, identityValues)
     const compatRowsDeleted = await purgeCompatIdentityRows(client, identityValues)
+    await purgeFriendRequestIdentity(client, identityValues)
     if (storage.rows.length > 0) {
       await client.query(`DELETE FROM fallback_storage_objects WHERE owner_id = $1::uuid`, [localUserId])
     }
@@ -6378,6 +6394,7 @@ module.exports = {
     parsePollOptions,
     prepareInsertRow,
     handlePatch,
+    handleDelete,
     rejectCommentAudioPatch,
     canonicalDirectChatParticipants,
     purgeImportedIdentityRows,

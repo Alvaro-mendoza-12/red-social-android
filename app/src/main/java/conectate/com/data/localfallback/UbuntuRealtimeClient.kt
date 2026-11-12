@@ -2,13 +2,17 @@ package conectate.com.data.localfallback
 
 import android.util.Log
 import conectate.com.core.network.PublicBackendDns
+import conectate.com.data.supabase.AuthService
+import conectate.com.data.supabase.AuthSessionLease
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -28,159 +32,194 @@ data class UbuntuRealtimeEnvelope(
     val channel: String,
     val event: String,
     val payload: JsonObject,
+    val connectionGeneration: Long = -1L,
+    val subscriptionGeneration: Long = -1L,
 )
 
 @Singleton
-class UbuntuRealtimeClient @Inject constructor() {
-    companion object {
-        private const val TAG = "UbuntuRealtime"
-    }
+class UbuntuRealtimeClient internal constructor(
+    private val captureOwner: () -> AuthSessionLease,
+    private val currentAccessToken: () -> String?,
+    private val commitOwner: (AuthSessionLease, () -> Unit) -> Boolean,
+    private val openSocket: (Request, WebSocketListener) -> WebSocket,
+) {
+    @Inject constructor(auth: AuthService) : this(
+        auth::captureAccountLease, auth::getAccessToken, auth::commitForAccountLease,
+        OkHttpClient.Builder().dns(PublicBackendDns).build()::newWebSocket,
+    )
 
+    companion object { private const val TAG = "UbuntuRealtime" }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
-    private val client = OkHttpClient.Builder().dns(PublicBackendDns).build()
     private val subscribedChannels = ConcurrentHashMap.newKeySet<String>()
     private val _events = MutableSharedFlow<UbuntuRealtimeEnvelope>(extraBufferCapacity = 256)
-    val events: SharedFlow<UbuntuRealtimeEnvelope> = _events.asSharedFlow()
+    val events: Flow<UbuntuRealtimeEnvelope> = _events.filter(::isCurrent)
 
-    @Volatile
-    private var socket: WebSocket? = null
+    fun eventsOnSubscription(action: suspend FlowCollector<UbuntuRealtimeEnvelope>.() -> Unit): Flow<UbuntuRealtimeEnvelope> =
+        _events.onSubscription(action).filter(::isCurrent)
 
-    @Volatile
-    private var accessToken: String = ""
+    @Volatile private var socket: WebSocket? = null
+    private var socketReady = false
+    @Volatile private var accessToken = ""
     @Volatile private var socketGeneration = 0L
+    @Volatile private var userSubscriptionGeneration = 0L
+    @Volatile private var accountOwner: AuthSessionLease? = null
 
-    @Synchronized
+    // A token rotation or another consumer is the same visit. The authentication
+    // lease rejects A -> B -> A even before an asynchronous observer runs.
+    fun isCurrent(envelope: UbuntuRealtimeEnvelope): Boolean {
+        val owner = accountOwner ?: return false
+        return owner.isCurrent() && accountOwner === owner &&
+            envelope.subscriptionGeneration == userSubscriptionGeneration
+    }
+
+    // Lock order is auth gate -> transport. Never call auth while holding the
+    // transport monitor: message storage and publication use that same gate.
+    private fun forOwner(owner: AuthSessionLease, action: () -> Unit) {
+        commitOwner(owner) { synchronized(this) { action() } }
+    }
+
+    private fun closeSocketLocked(reason: String) {
+        socketGeneration++
+        val previous = socket
+        socket = null
+        socketReady = false
+        previous?.close(1000, reason)
+    }
+
+    private fun bindOwnerLocked(owner: AuthSessionLease) {
+        if (accountOwner?.sameVisit(owner) == true) return
+        userSubscriptionGeneration++
+        subscribedChannels.clear()
+        accessToken = ""
+        closeSocketLocked("account-changed")
+        accountOwner = owner
+    }
+
     fun updateAccessToken(token: String) {
+        val owner = captureOwner()
         val clean = token.trim()
-        if (clean == accessToken) return
-        accessToken = clean
-        if (clean.isBlank()) {
-            socketGeneration++
-            val previous = socket
-            socket = null
-            previous?.close(1000, "session-ended")
-        } else {
-            reconnect()
+        if (owner.accountId == null) { clearUserSubscriptions(); return }
+        commitOwner(owner) {
+            if (clean == currentAccessToken()?.trim().orEmpty()) synchronized(this) {
+                bindOwnerLocked(owner)
+                if (clean != accessToken) {
+                    accessToken = clean
+                    closeSocketLocked("token-refresh")
+                    ensureConnectedLocked(owner)
+                }
+            }
         }
     }
 
     fun replaceUserSubscription(userId: String) {
-        val channel = "user:${userId.trim().lowercase()}"
-        if (channel == "user:") return
-        subscribedChannels
-            .filter { it.startsWith("user:") && it != channel }
-            .forEach { staleChannel ->
-                sendJson("""{"type":"unsubscribe","channel":"$staleChannel"}""")
-                subscribedChannels.remove(staleChannel)
-            }
-        subscribe(channel)
+        val owner = captureOwner()
+        val clean = userId.trim().lowercase(java.util.Locale.ROOT)
+        if (clean.isBlank() || clean != owner.accountId) return
+        forOwner(owner) {
+            bindOwnerLocked(owner)
+            // Repeated consumers neither reconnect nor revoke accepted frames.
+            subscribeLocked("user:$clean", owner)
+        }
     }
 
+    /** Old cleanup cannot erase a newer account or a same-visit token refresh. */
     fun clearUserSubscriptions() {
-        subscribedChannels
-            .filter { it.startsWith("user:") }
-            .forEach { channel ->
-                sendJson("""{"type":"unsubscribe","channel":"$channel"}""")
-                subscribedChannels.remove(channel)
-            }
+        val previous = accountOwner ?: return
+        if (previous.isCurrent()) return
+        synchronized(this) {
+            if (accountOwner !== previous) return
+            userSubscriptionGeneration++
+            subscribedChannels.clear()
+            accessToken = ""
+            accountOwner = null
+            closeSocketLocked("session-ended")
+        }
     }
 
     fun subscribe(channel: String) {
+        val owner = captureOwner()
         val clean = channel.trim()
-        if (clean.isEmpty()) return
-        subscribedChannels.add(clean)
-        ensureConnected()
-        sendJson(
-            """{"type":"subscribe","channel":"$clean"}""",
-        )
+        if (clean.isBlank() || (clean.startsWith("user:") && clean != "user:${owner.accountId}")) return
+        forOwner(owner) { bindOwnerLocked(owner); subscribeLocked(clean, owner) }
+    }
+
+    private fun subscribeLocked(channel: String, owner: AuthSessionLease) {
+        val added = subscribedChannels.add(channel)
+        ensureConnectedLocked(owner)
+        if (added && socketReady) socket?.send("""{"type":"subscribe","channel":"$channel"}""")
     }
 
     fun unsubscribe(channel: String) {
+        val owner = captureOwner()
         val clean = channel.trim()
-        if (clean.isEmpty()) return
-        subscribedChannels.remove(clean)
-        sendJson(
-            """{"type":"unsubscribe","channel":"$clean"}""",
-        )
+        if (clean.isBlank()) return
+        forOwner(owner) {
+            if (accountOwner?.sameVisit(owner) == true && subscribedChannels.remove(clean)) {
+                socket?.send("""{"type":"unsubscribe","channel":"$clean"}""")
+            }
+        }
     }
 
-    private fun wsUrl(): String? {
+    private fun wsUrlLocked(): String? {
         val base = RuntimeBackendEndpoint.baseUrl.trim().removeSuffix("/")
-        if (!base.startsWith("http")) return null
-        val wsBase = base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://")
-        if (accessToken.isBlank()) return null
-        return "$wsBase/realtime/"
+        if (!base.startsWith("http") || accessToken.isBlank()) return null
+        return base.replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "/realtime/"
     }
 
-    @Synchronized
-    private fun ensureConnected() {
+    private fun ensureConnectedLocked(owner: AuthSessionLease) {
         if (socket != null) return
-        val url = wsUrl() ?: return
+        val url = wsUrlLocked() ?: return
         val generation = ++socketGeneration
         val connectionToken = accessToken
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $connectionToken")
-            .build()
-        socket = client.newWebSocket(
-            request,
-            object : WebSocketListener() {
-                override fun onOpen(webSocket: WebSocket, response: Response) {
-                    if (generation != socketGeneration || connectionToken != accessToken) return
-                    subscribedChannels.forEach { channel ->
-                        webSocket.send("""{"type":"subscribe","channel":"$channel"}""")
+        val subscription = userSubscriptionGeneration
+        val request = Request.Builder().url(url).header("Authorization", "Bearer $connectionToken").build()
+        socket = openSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                forOwner(owner) {
+                    if (generation == socketGeneration && connectionToken == accessToken) {
+                        socketReady = true
+                        subscribedChannels.forEach { webSocket.send("""{"type":"subscribe","channel":"$it"}""") }
                     }
                 }
+            }
 
-                override fun onMessage(webSocket: WebSocket, text: String) {
-                    if (generation != socketGeneration || connectionToken != accessToken) return
-                    handleMessage(text, generation, connectionToken)
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                forOwner(owner) {
+                    if (generation == socketGeneration && connectionToken == accessToken) handleMessage(text, generation, subscription)
                 }
+            }
 
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                    Log.w(TAG, "socket failure", t)
-                    if (!detachCurrentSocket(webSocket, generation, connectionToken)) return
-                    scope.launch {
-                        RuntimeBackendEndpoint.refreshAfterEndpointFailure()
-                        delay(900)
-                        ensureConnected()
-                    }
-                }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.w(TAG, "socket failure", t)
+                if (!detachCurrentSocket(webSocket, generation, connectionToken)) return
+                scope.launch { RuntimeBackendEndpoint.refreshAfterEndpointFailure(); delay(900); reconnectIfCurrent(owner) }
+            }
 
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                    if (!detachCurrentSocket(webSocket, generation, connectionToken)) return
-                    scope.launch {
-                        delay(900)
-                        ensureConnected()
-                    }
-                }
-            },
-        )
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (!detachCurrentSocket(webSocket, generation, connectionToken)) return
+                scope.launch { delay(900); reconnectIfCurrent(owner) }
+            }
+        })
     }
 
-    @Synchronized
-    private fun detachCurrentSocket(webSocket: WebSocket, generation: Long, connectionToken: String): Boolean {
-        if (socket !== webSocket || socketGeneration != generation || accessToken != connectionToken) return false
+    private fun reconnectIfCurrent(owner: AuthSessionLease) = forOwner(owner) {
+        if (accountOwner?.sameVisit(owner) == true) ensureConnectedLocked(owner)
+    }
+
+    @Synchronized private fun detachCurrentSocket(webSocket: WebSocket, generation: Long, token: String): Boolean {
+        if (socket !== webSocket || socketGeneration != generation || accessToken != token) return false
         socketGeneration++
         socket = null
+        socketReady = false
         return true
     }
 
-    @Synchronized
-    private fun reconnect() {
-        socketGeneration++
-        val previous = socket
-        socket = null
-        previous?.close(1000, "token-refresh")
-        ensureConnected()
+    internal suspend fun publishAcceptedEnvelope(envelope: UbuntuRealtimeEnvelope) {
+        if (isCurrent(envelope)) _events.emit(envelope)
     }
 
-    private fun sendJson(raw: String) {
-        socket?.send(raw)
-    }
-
-    private fun handleMessage(text: String, generation: Long, connectionToken: String) {
+    private fun handleMessage(text: String, generation: Long, subscription: Long) {
         runCatching {
             val root = json.parseToJsonElement(text).jsonObject
             val type = root["type"]?.jsonPrimitive?.contentOrNull
@@ -189,12 +228,8 @@ class UbuntuRealtimeClient @Inject constructor() {
             val payload = root["payload"]?.jsonObject ?: JsonObject(emptyMap())
             val event = if (type == "subscribed") "subscription_ready" else payload["event"]?.jsonPrimitive?.contentOrNull.orEmpty()
             if (channel.isBlank()) return
-            scope.launch {
-                if (generation != socketGeneration || connectionToken != accessToken) return@launch
-                _events.emit(UbuntuRealtimeEnvelope(channel = channel, event = event, payload = payload))
-            }
-        }.onFailure {
-            Log.w(TAG, "invalid realtime payload", it)
-        }
+            val admitted = UbuntuRealtimeEnvelope(channel, event, payload, generation, subscription)
+            scope.launch { publishAcceptedEnvelope(admitted) }
+        }.onFailure { Log.w(TAG, "invalid realtime payload", it) }
     }
 }

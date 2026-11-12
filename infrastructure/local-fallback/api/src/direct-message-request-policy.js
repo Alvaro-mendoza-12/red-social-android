@@ -1,9 +1,11 @@
 'use strict'
+const { ensureFriendRequestState } = require('./friend-request-state')
 
 const INTRO_ERRORS = new Set(['FRIEND_REQUEST_PENDING', 'FRIEND_REQUEST_REJECTED',
   'MESSAGE_REQUEST_PENDING', 'MESSAGE_REQUEST_REJECTED', 'CHAT_BLOCKED_BY_RECIPIENT', 'CHAT_PARTICIPANT_REQUIRED'])
 
 async function ensureDirectMessageRequestPolicy(pool) {
+  await ensureFriendRequestState(pool)
   // Existing conversations with replies remain usable. Unanswered strangers
   // get one introduction, enforced for every INSERT transport and legacy chat.
   await pool.query(`ALTER TABLE fallback_chats ADD COLUMN IF NOT EXISTS intro_policy_started_at TIMESTAMPTZ`)
@@ -30,11 +32,11 @@ async function ensureDirectMessageRequestPolicy(pool) {
       IF EXISTS (SELECT 1 FROM fallback_friends WHERE status='accepted' AND
           ((fallback_request_identity(sender_id)=a AND fallback_request_identity(receiver_id)=b)
           OR (fallback_request_identity(sender_id)=b AND fallback_request_identity(receiver_id)=a)))
-        OR EXISTS (SELECT 1 FROM fallback_compat_rows WHERE table_name='friends' AND lower(row->>'status')='accepted' AND
+        OR EXISTS (SELECT 1 FROM fallback_compat_rows WHERE table_name='friends' AND fallback_friend_legacy_status('compat',row)='accepted' AND
           ((fallback_request_identity(row->>'sender_id')=a AND fallback_request_identity(row->>'receiver_id')=b)
           OR (fallback_request_identity(row->>'sender_id')=b AND fallback_request_identity(row->>'receiver_id')=a))) THEN RETURN TRUE; END IF;
       IF to_regclass('supabase_import.friends') IS NOT NULL THEN
-        EXECUTE 'SELECT EXISTS(SELECT 1 FROM supabase_import.friends t WHERE lower(to_jsonb(t)->>''status'')=''accepted'' AND
+        EXECUTE 'SELECT EXISTS(SELECT 1 FROM supabase_import.friends t WHERE fallback_friend_legacy_status(''imported'',to_jsonb(t))=''accepted'' AND
           ((fallback_request_identity(to_jsonb(t)->>''sender_id'')=$1 AND fallback_request_identity(to_jsonb(t)->>''receiver_id'')=$2)
           OR (fallback_request_identity(to_jsonb(t)->>''sender_id'')=$2 AND fallback_request_identity(to_jsonb(t)->>''receiver_id'')=$1)))'
           INTO trusted USING a,b;
@@ -118,6 +120,9 @@ async function ensureDirectMessageRequestPolicy(pool) {
       -- Both senders and all transports share the same transaction lock.
       PERFORM pg_advisory_xact_lock(hashtextextended(lower(NEW.chat_id::text),0));
       actor:=fallback_request_identity(NEW.sender_id);
+      SELECT fallback_request_identity(p) INTO other FROM fallback_chats,unnest(participants) p
+        WHERE id::text=lower(NEW.chat_id::text) AND fallback_request_identity(p)<>actor LIMIT 1;
+      IF other IS NOT NULL THEN PERFORM fallback_lock_friend_pair(actor,other); END IF;
       state:=fallback_direct_message_request_state(NEW.chat_id::text,actor);
       IF state->>'status'='blocked' THEN RAISE EXCEPTION 'CHAT_BLOCKED_BY_RECIPIENT'; END IF;
       IF state->>'status'='unavailable' THEN RAISE EXCEPTION 'CHAT_PARTICIPANT_REQUIRED'; END IF;
@@ -220,6 +225,8 @@ function registerDirectMessageRequestRoutes(app, { pool, authRequired, getCurren
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[chatId])
       const access=await privateChatAccessContext(client,chatId,identity)
       if(!access.chat||!access.hasAccess){await client.query('ROLLBACK');return res.status(404).json({error:'CHAT_NOT_FOUND'})}
+      await client.query(`SELECT fallback_lock_friend_pair($2,p) FROM fallback_chats,unnest(participants) p
+        WHERE id::text=$1 AND fallback_friend_identity(p)<>fallback_friend_identity($2) LIMIT 1`,[chatId,identity.localUserId])
       const {rows}=await client.query('SELECT fallback_direct_message_request_state($1,$2) AS state',[chatId,identity.displayUserId])
       const state=rows[0].state
       const {rows:who}=await client.query('SELECT fallback_request_identity($1) AS actor',[identity.displayUserId])

@@ -2,6 +2,8 @@
 
 Fecha: 12 de noviembre de 2026. Se comparó la rama solicitada y se seleccionaron correcciones de Android, web y contratos de API. **La revisión integral del proyecto continúa abierta.** Esta selección responde a la petición expresa del propietario de comparar e incorporar mejoras de ambas aplicaciones; no cierra las fases pendientes de la revisión 101 ni incorpora el plan experimental 105.
 
+Continuación posterior: la [revisión 115](115-tiempo-real-y-cancelacion-amistades-2026-11-12.md) registra la corrección y validación de los dos bloques de tiempo real y cancelación de amistades diferidos aquí. Las decisiones y resultados siguientes conservan el alcance de la primera selección.
+
 ## Referencias y alcance real
 
 - Proyecto de trabajo: `D:/red social - live-gifts`, rama `feature/live-gifts`.
