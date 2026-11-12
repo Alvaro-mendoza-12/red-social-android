@@ -25,6 +25,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +56,7 @@ fun PrivateChatsTab(
     val folders by viewModel.chatFolders.collectAsState()
     val selectedFolderId by viewModel.selectedFolderId.collectAsState()
     val selectedListFilter by viewModel.selectedListFilter.collectAsState()
+    val filterCounts by viewModel.inboxFilterCounts.collectAsStateWithLifecycle()
     val uiMessage by viewModel.uiMessage.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
@@ -107,11 +110,21 @@ fun PrivateChatsTab(
                 selected = selectedFolderId == null && selectedListFilter == ChatListFilter.ALL,
                 onClick = { viewModel.selectListFilter(ChatListFilter.ALL) },
                 label = "Todas",
+                unreadCount = filterCounts.all,
+            )
+            InboxFilterPill(
+                selected = selectedListFilter == ChatListFilter.UNREAD,
+                onClick = { viewModel.selectListFilter(ChatListFilter.UNREAD) },
+                label = "No leídos",
+                icon = Icons.Default.MarkEmailUnread,
+                unreadCount = filterCounts.unread,
+                outlined = selectedListFilter != ChatListFilter.UNREAD,
             )
             InboxFilterPill(
                 selected = selectedListFilter == ChatListFilter.FAVORITES,
                 onClick = { viewModel.selectListFilter(ChatListFilter.FAVORITES) },
                 label = "Favoritos",
+                unreadCount = filterCounts.favorites,
                 icon = Icons.Default.Star,
                 outlined = selectedListFilter != ChatListFilter.FAVORITES,
             )
@@ -119,6 +132,7 @@ fun PrivateChatsTab(
                 selected = selectedListFilter == ChatListFilter.ARCHIVED,
                 onClick = { viewModel.selectListFilter(ChatListFilter.ARCHIVED) },
                 label = "Archivados",
+                unreadCount = filterCounts.archived,
                 icon = Icons.Default.Archive,
                 outlined = selectedListFilter != ChatListFilter.ARCHIVED,
             )
@@ -133,6 +147,7 @@ fun PrivateChatsTab(
                     selected = selectedFolderId == folder.id,
                     onClick = { viewModel.selectFolder(folder.id) },
                     label = folder.name,
+                    unreadCount = filterCounts.folders[folder.id] ?: 0,
                     icon = Icons.Default.Folder,
                     outlined = selectedFolderId != folder.id,
                 )
@@ -141,7 +156,7 @@ fun PrivateChatsTab(
                 InboxFilterPill(
                     onClick = { showManageFoldersDialog = true },
                     label = "Gestionar",
-                    icon = Icons.Default.Delete,
+                    icon = Icons.Default.FolderOpen,
                     outlined = true,
                 )
             }
@@ -183,6 +198,8 @@ fun PrivateChatsTab(
                                         "Esta carpeta está vacía. Agrega chats desde \"Todas\"."
                                     selectedListFilter == ChatListFilter.FAVORITES && searchQuery.isEmpty() ->
                                         "No tienes chats favoritos"
+                                    selectedListFilter == ChatListFilter.UNREAD && searchQuery.isEmpty() ->
+                                        "No tienes conversaciones sin leer"
                                     selectedListFilter == ChatListFilter.ARCHIVED && searchQuery.isEmpty() ->
                                         "No tienes chats archivados"
                                     searchQuery.isEmpty() ->
@@ -513,13 +530,14 @@ private fun InboxSearchActions(
 }
 
 @Composable
-private fun InboxFilterPill(
+internal fun InboxFilterPill(
     selected: Boolean = false,
     onClick: () -> Unit,
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
     outlined: Boolean = false,
     height: Dp = 32.dp,
+    unreadCount: Int = 0,
 ) {
     val colorSchemePill = MaterialTheme.colorScheme
     val pillAccent = colorSchemePill.primary
@@ -556,6 +574,9 @@ private fun InboxFilterPill(
                 fontSize = 12.sp,
                 maxLines = 1,
             )
+            InboxUnreadBadge(unreadCount, Modifier.semantics {
+                contentDescription = "$unreadCount conversaciones sin leer en $label"
+            })
         }
     }
 }

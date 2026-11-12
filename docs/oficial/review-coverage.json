@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-12T22:39:10.168723+00:00",
-  "baseCommit": "9221650d33b985af6db58ea1889f55f655e240ee",
+  "generatedAtUtc": "2026-11-12T23:05:20.127785+00:00",
+  "baseCommit": "cb49e3f2dbd2a09014d0fc86521164fd91199cce",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,20 +10,20 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3626,
-    "code-read": 496,
-    "partial": 195
+    "pending": 3623,
+    "code-read": 502,
+    "partial": 196
   },
   "countsByPhase": {
     "android": {
-      "pending": 1529,
-      "partial": 84,
-      "code-read": 400
+      "pending": 1528,
+      "partial": 85,
+      "code-read": 402
     },
     "documentation": {
       "pending": 559,
-      "code-read": 15,
-      "partial": 10
+      "code-read": 16,
+      "partial": 11
     },
     "server": {
       "pending": 860,
@@ -36,9 +36,9 @@
       "partial": 7
     },
     "web": {
-      "partial": 73,
-      "pending": 524,
-      "code-read": 27
+      "partial": 72,
+      "pending": 522,
+      "code-read": 30
     }
   },
   "files": [
@@ -260,8 +260,8 @@
       "file": "NoWing-web/middleware.ts",
       "phase": "web",
       "gitBlobId": "0f9154a0d40bc4e6b8cc09abd2838d73ac705b26",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -1675,8 +1675,10 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/conversationInboxSupport.test.ts",
       "phase": "web",
-      "gitBlobId": "b7d50d4af4b11b7afd76168ce4e0daf49ecc70d3",
-      "reviewStatus": "pending"
+      "gitBlobId": "c61d37866e53c88593111f34b89716ad1731a47b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/features/messages/directChatReadState.test.ts",
@@ -1687,9 +1689,9 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/messagesDiscovery.test.tsx",
       "phase": "web",
-      "gitBlobId": "409b40be0e3c0bd30f9eca1af48bc66dc9840bce",
+      "gitBlobId": "08555af1a0757c37effc895db081573425fe6ec4",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3331,9 +3333,9 @@
     {
       "file": "NoWing-web/src/features/messages/MessagesPage.tsx",
       "phase": "web",
-      "gitBlobId": "de2fbc8ac2e4d5553a132a365d58db8d93578c2d",
+      "gitBlobId": "07b7968de5af951dc091fac7d56ed820e336c340",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3347,8 +3349,10 @@
     {
       "file": "NoWing-web/src/features/messages/conversationInboxSupport.ts",
       "phase": "web",
-      "gitBlobId": "d85845f71085ae03a5b22497a60c94d8d708a36b",
-      "reviewStatus": "pending"
+      "gitBlobId": "c9d26938912aa25a4876d03311106410c0ab96db",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/messages/directChat.ts",
@@ -4005,9 +4009,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
       "phase": "web",
-      "gitBlobId": "c206b2db5319d42c1a0409ffd1d6ee476f96fc8c",
+      "gitBlobId": "7be1b58594c2f03659764c1b79b72ed89131445b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10217,7 +10221,7 @@
       "phase": "android",
       "gitBlobId": "baaeee4a7d35afa57143108197a76b3b3c1bdee1",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10391,6 +10395,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/messages/InboxFilterCounts.kt",
+      "phase": "android",
+      "gitBlobId": "63b7cfbf204c3be356622d933ab6277e1e3122b4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/messages/InboxMessagePreview.kt",
       "phase": "android",
       "gitBlobId": "7b07f8364de8b020bb64da79dfca55c5308229e5",
@@ -10529,9 +10541,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/MessagingViewModel.kt",
       "phase": "android",
-      "gitBlobId": "49bc21ab21751a21b9d4d4135c36615d4bdd948d",
+      "gitBlobId": "327c490843d802cff8521ce0d8a1c2c678458207",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10587,8 +10599,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/PrivateChatsTab.kt",
       "phase": "android",
-      "gitBlobId": "5fdb67b9740de596d1df7249dfeb2bf89cc9c6b0",
-      "reviewStatus": "pending"
+      "gitBlobId": "a68ee495ae947ab0a6f18527e7efda075a59ee40",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/QuestionAnswerSheet.kt",
@@ -15879,6 +15893,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/messages/InboxFilterCountsTest.kt",
+      "phase": "android",
+      "gitBlobId": "ef2c84fb3cefc082b18ff9e34865b547f419b37a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/messages/InboxMessagePreviewTest.kt",
       "phase": "android",
       "gitBlobId": "c99ef8fc3971058cdb462fe485eeaa3b139817d6",
@@ -19681,9 +19703,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "6f757f0cf3f71a3e8ce3fb1629521409158f8389",
+      "gitBlobId": "90bbc308b58a638559f0d423d31b9e2ab47b617b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19781,9 +19803,9 @@
     {
       "file": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
       "phase": "documentation",
-      "gitBlobId": "1d066402783a54e24c13110077478d10e492a90f",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "gitBlobId": "09e9c2d0975d0514501c07f2e6b8ccb8fc40d2db",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19791,6 +19813,14 @@
       "phase": "documentation",
       "gitBlobId": "28e52eb3f100fee07fff29bb0d540db733aea507",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "phase": "documentation",
+      "gitBlobId": "8ce6d122c1efedc20e5876af849fd1287e87ce60",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/13-musica-comunitaria-y-batallas-cross-live.md",
@@ -20313,9 +20343,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "41683d2de463a12e1f157d01e036d0a0ff7352f2",
+      "gitBlobId": "ad6877bb9ebcf3dcb9028fd69b11417f0159687b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20687,9 +20717,17 @@
     {
       "file": "docs/oficial/evidencias/119-dominio-y-bandeja.json",
       "phase": "documentation",
-      "gitBlobId": "c5fbdd9d8a5b032d2969bfef6e6e6c311df98be8",
+      "gitBlobId": "a6bdf52def225824456a0401727f9c1fb39de868",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/evidencias/120-contadores-bandeja-e-iconos.json",
+      "phase": "documentation",
+      "gitBlobId": "166872d2b08b48982b59195112f808c4c616eca2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

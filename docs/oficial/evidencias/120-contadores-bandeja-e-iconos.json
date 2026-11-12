@@ -1,0 +1,72 @@
+{
+  "verifiedAtUtc": "2026-11-12T23:05:14.521039+00:00",
+  "android": {
+    "tests": 25,
+    "suites": [
+      {
+        "name": "conectate.com.data.repository.LocalInboxSnapshotTest",
+        "tests": "5",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.data.repository.message.IncomingInboxRecoveryTest",
+        "tests": "6",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.data.repository.MultiAccountInboxRepositoryTest",
+        "tests": "4",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.messages.InboxFilterCountsTest",
+        "tests": "5",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.messages.IncomingConversationVisibilityTest",
+        "tests": "1",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.messages.MessagingInboxFocusFilterTest",
+        "tests": "4",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    ]
+  },
+  "web": {
+    "jestTests": 1190,
+    "jestSuites": 186,
+    "failures": 0,
+    "targetedTests": 39,
+    "targetedSuites": 3,
+    "buildPassed": true,
+    "publicPages": 21,
+    "eslintErrors": 0,
+    "eslintWarnings": 7
+  },
+  "deviceValidation": false,
+  "newApkDelivered": false,
+  "authenticatedProductionTest": false,
+  "integralReviewClosed": false,
+  "domainProductionEvidence": "docs/oficial/evidencias/119-dominio-y-bandeja.json",
+  "pending": [
+    "Corporate SMTP rejected the supplied credential; previous recovery sender restored with verified TLS authentication.",
+    "Owner reports profile photo applied; Chrome was inaccessible while Windows was locked/minimized. Signature and recipient avatars unverified.",
+    "No new installed APK or physical-device verification of this block.",
+    "Remaining modules and additional icons are outside this verified block."
+  ]
+}

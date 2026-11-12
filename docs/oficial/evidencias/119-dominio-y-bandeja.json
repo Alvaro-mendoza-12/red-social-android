@@ -1,5 +1,5 @@
 {
-  "verifiedAtUtc": "2026-11-12T22:38:59.329212+00:00",
+  "verifiedAtUtc": "2026-11-12T23:02:50.156757+00:00",
   "android": {
     "tests": 76,
     "classes": 10,
@@ -188,8 +188,12 @@
     "requiredWwwCname": "44a7b6d2fbbf11a0.vercel-dns-017.com",
     "tlsVerified": true,
     "searchConsoleDomainVerified": true,
-    "sitemapSubmitted": false,
-    "githubHomepage": "https://novvinapp.com"
+    "sitemapSubmitted": true,
+    "githubHomepage": "https://novvinapp.com",
+    "sitemapProcessed": true,
+    "googleDiscoveredPages": 21,
+    "homepageIndexingRequested": true,
+    "indexingConfirmed": false
   },
   "androidAssociation": {
     "file": "NoWing-web/public/.well-known/assetlinks.json",
@@ -205,15 +209,23 @@
     "address": "administracion@novvinapp.com",
     "smtpHost": "smtpout.secureserver.net",
     "smtpPort": 465,
-    "latestSuppliedCredentialConfigured": true,
+    "latestSuppliedCredentialConfigured": false,
     "latestCredentialAuthenticationVerified": false,
     "latestProbeError": {
-      "code": "ETIMEDOUT",
-      "command": "CONN"
+      "code": "EAUTH",
+      "command": "AUTH PLAIN"
     },
     "mailSentByThisTask": false,
     "profilePhotoApplied": false,
-    "providerPasswordChangedByAgent": false
+    "providerPasswordChangedByAgent": false,
+    "latestSuppliedCredentialPreservedPrivately": true,
+    "matchesSuppliedCredentialVerified": true,
+    "recoverySenderRestored": true,
+    "recoverySenderSmtpAuthenticationVerified": true,
+    "recoverySenderTlsVerified": true,
+    "fallbackBackup": "/home/alvaro/novvin-candidates/review119-mail-safe-fallback-20261112",
+    "profilePhotoReportedByOwner": true,
+    "profilePhotoVerifiedByAgent": false
   },
   "androidDomainActivation": {
     "tests": 16,
@@ -257,5 +269,500 @@
         "skipped": "0"
       }
     ]
+  },
+  "publication": {
+    "mainCommit": "7372135d6931a73750bee90f92a215da4b3ba5ac",
+    "featureCommit": "cb49e3f2dbd2a09014d0fc86521164fd91199cce",
+    "sameTree": "d07f269a8c9132a996e7359beb641db58e85937b",
+    "productionDeployment": "dpl_PPvmcG5b1ATmgcKnZXQU4S8gwXDU",
+    "productionReady": true
+  },
+  "productionHttp": {
+    "atUtc": "2026-11-12T22:47:08.956Z",
+    "passed": true,
+    "publicUrl": "https://novvinapp.com",
+    "probeOrigin": "https://novvinapp.com",
+    "checks": [
+      {
+        "name": "HTTP redirects to HTTPS",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /privacidad",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /cookies",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /que-es-novvin",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /ayuda/preguntas-frecuentes",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /novvin-web",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /mensajes",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /videos",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /salas-de-voz",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /ayuda/vincular-web",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /descargar",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /ayuda/encontrar-novvin",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /social",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /momentos",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /comunidades",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /juegos",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /asistente",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /ayuda",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /funciones",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /ayuda/stickers-animados",
+        "passed": true
+      },
+      {
+        "name": "Public HTML, canonical, schema and security: /ayuda/privacidad-y-seguridad",
+        "passed": true
+      },
+      {
+        "name": "Robots and canonical sitemap",
+        "passed": true
+      },
+      {
+        "name": "Visible product entities match the real Android and browser access",
+        "passed": true
+      },
+      {
+        "name": "Public guide HTTP access with user agent: Googlebot",
+        "passed": true
+      },
+      {
+        "name": "Public guide HTTP access with user agent: bingbot",
+        "passed": true
+      },
+      {
+        "name": "Public guide HTTP access with user agent: OAI-SearchBot",
+        "passed": true
+      },
+      {
+        "name": "Public guide HTTP access with user agent: ChatGPT-User",
+        "passed": true
+      },
+      {
+        "name": "Unknown URL returns 404: /no-existe-produccion-9038",
+        "passed": true
+      },
+      {
+        "name": "Unknown URL returns 404: /js/no-existe-9038.js",
+        "passed": true
+      },
+      {
+        "name": "Unknown URL returns 404: /icons/no-existe-9038.png",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /index.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /privacidad",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /privacidad.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /cookies",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /cookies.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /que-es-novvin",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /que-es-novvin.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /ayuda/preguntas-frecuentes",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /preguntas-frecuentes.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /novvin-web",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /novvin-web.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /mensajes",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /mensajes.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /videos",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /videos.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /salas-de-voz",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /salas-de-voz.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /ayuda/vincular-web",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /vincular-web.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /descargar",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /descargar.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /ayuda/encontrar-novvin",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /encontrar-novvin.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /social",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /social.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /momentos",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /momentos.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /comunidades",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /comunidades.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /juegos",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /juegos.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /asistente",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /asistente.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /ayuda",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /ayuda.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /funciones",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /funciones.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /ayuda/stickers-animados",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /stickers-animados.html",
+        "passed": true
+      },
+      {
+        "name": "Trailing-slash canonical redirect: /ayuda/privacidad-y-seguridad",
+        "passed": true
+      },
+      {
+        "name": "Canonical redirect: /privacidad-y-seguridad.html",
+        "passed": true
+      },
+      {
+        "name": "Private or interactive shell is noindex: /login",
+        "passed": true
+      },
+      {
+        "name": "Private or interactive shell is noindex: /register",
+        "passed": true
+      },
+      {
+        "name": "Private or interactive shell is noindex: /forgot-password",
+        "passed": true
+      },
+      {
+        "name": "Private or interactive shell is noindex: /app/messages",
+        "passed": true
+      },
+      {
+        "name": "Private or interactive shell is noindex: /app/videos",
+        "passed": true
+      },
+      {
+        "name": "Private or interactive shell is noindex: /explore/videos",
+        "passed": true
+      },
+      {
+        "name": "Private or interactive shell is noindex: /u/example",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /novvin-share.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /novvin-logo.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /icons/novvin-48.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /icons/novvin-96.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /icons/novvin-180.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /icons/novvin-192.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /icons/novvin-512.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-chats.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-grupos.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-comunidades.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-videos.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-social.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-momentos.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-chat-android-demo.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-perfil-android-demo.png",
+        "passed": true
+      },
+      {
+        "name": "Public brand image: /images/novvin-chat-web-demo.png",
+        "passed": true
+      },
+      {
+        "name": "Favicon and truthful install manifest",
+        "passed": true
+      },
+      {
+        "name": "Google and Bing verification with IndexNow public key",
+        "passed": true
+      }
+    ],
+    "indexingOrRankingGuaranteed": false,
+    "scope": "Current deployed HTTP, public metadata, CSP, assets and private-shell exclusion. Not authenticated functionality, field Core Web Vitals, device calls or search-engine acceptance."
+  },
+  "domainMigration": {
+    "atUtc": "2026-11-12T22:53:55.610Z",
+    "passed": true,
+    "checks": [
+      {
+        "label": "Legacy permanent redirect /",
+        "passed": true
+      },
+      {
+        "label": "Legacy permanent redirect /novvin-web",
+        "passed": true
+      },
+      {
+        "label": "Legacy permanent redirect /mensajes",
+        "passed": true
+      },
+      {
+        "label": "Legacy permanent redirect /videos",
+        "passed": true
+      },
+      {
+        "label": "Legacy permanent redirect /sitemap.xml",
+        "passed": true
+      },
+      {
+        "label": "Legacy permanent redirect /robots.txt",
+        "passed": true
+      },
+      {
+        "label": "API retains access control https://red-social-android.vercel.app",
+        "passed": true
+      },
+      {
+        "label": "Installed interactive links stay supported https://red-social-android.vercel.app",
+        "passed": true
+      },
+      {
+        "label": "API retains access control https://novvinapp.com",
+        "passed": true
+      },
+      {
+        "label": "Installed interactive links stay supported https://novvinapp.com",
+        "passed": true
+      },
+      {
+        "label": "WWW preserves full route and query",
+        "passed": true
+      },
+      {
+        "label": "Android app association JSON",
+        "passed": true
+      },
+      {
+        "label": "Own Ubuntu API ready via branded proxy",
+        "passed": true
+      }
+    ]
+  },
+  "indexNow": {
+    "submitted": true,
+    "dryRun": false,
+    "deleted": false,
+    "routes": [
+      "/",
+      "/privacidad",
+      "/cookies",
+      "/que-es-novvin",
+      "/ayuda/preguntas-frecuentes",
+      "/novvin-web",
+      "/mensajes",
+      "/videos",
+      "/salas-de-voz",
+      "/ayuda/vincular-web",
+      "/descargar",
+      "/ayuda/encontrar-novvin",
+      "/social",
+      "/momentos",
+      "/comunidades",
+      "/juegos",
+      "/asistente",
+      "/ayuda",
+      "/funciones",
+      "/ayuda/stickers-animados",
+      "/ayuda/privacidad-y-seguridad"
+    ],
+    "skipped": [],
+    "note": "Receipts do not prove crawling, indexing or ranking.",
+    "status": 202,
+    "validationPending": true
   }
 }
