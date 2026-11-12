@@ -7,6 +7,8 @@ export const guideGroups = [
 ] as const
 
 export function publicPageLabel(path: string) {
+  if (path === '/privacidad') return 'Privacidad'
+  if (path === '/cookies') return 'Cookies'
   for (const group of guideGroups) {
     const link = group.links.find(([href]) => href === path)
     if (link) return link[1]

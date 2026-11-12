@@ -25,9 +25,10 @@ export function PublicGuideNavigation({ path = '/' }: { path?: string }) {
   </section>
 }
 
-export function PublicFooter() {
+export function PublicFooter({ path = '/' }: { path?: string }) {
   return <footer className="public-home-footer">
     <div><a className="public-home-brand" href="/">Novvin</a><p>Conversa. Comparte. Descubre.</p></div>
     <nav className="public-footer-links" aria-label="Accesos a Novvin"><a href="/descargar">App para Android</a><a href={androidStoreUrl}>Google Play</a><a href="/ayuda/encontrar-novvin">Encontrar la web</a><a href="/login">Entrar a mi cuenta</a></nav>
+    <div><nav className="public-footer-links" aria-label="Privacidad y cookies"><a href="/privacidad" aria-current={path === '/privacidad' ? 'page' : undefined}>Política de privacidad</a><a href="/cookies" aria-current={path === '/cookies' ? 'page' : undefined}>Cookies y almacenamiento</a></nav><p className="public-footer-note">Usamos cookies de sesión y guardamos preferencias y caché en tu navegador.</p></div>
   </footer>
 }

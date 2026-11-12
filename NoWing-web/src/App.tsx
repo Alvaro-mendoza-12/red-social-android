@@ -194,6 +194,8 @@ function AppRouter() {
         <Route path="/group/:roomId" element={<RequireAuth><RouteSuspense><CollectionInvitePage kind="group" /></RouteSuspense></RequireAuth>} />
         <Route path="/community/:roomId" element={<RequireAuth><RouteSuspense><CollectionInvitePage kind="community" /></RouteSuspense></RequireAuth>} />
         <Route path="/que-es-novvin" element={<PublicInfo path="/que-es-novvin" />} />
+        <Route path="/privacidad" element={<PublicInfo path="/privacidad" />} />
+        <Route path="/cookies" element={<PublicInfo path="/cookies" />} />
         <Route path="/ayuda/preguntas-frecuentes" element={<PublicInfo path="/ayuda/preguntas-frecuentes" />} />
       <Route path="/novvin-web" element={<PublicInfo path="/novvin-web" />} />
       <Route path="/descargar" element={<PublicInfo path="/descargar" />} />

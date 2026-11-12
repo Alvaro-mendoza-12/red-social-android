@@ -17,6 +17,11 @@ async function check(name, run) {
 function assert(value, message) { if (!value) throw new Error(message) }
 const metas = (html, name) => new RegExp('<meta (?:name|property)="' + name + '" content="([^"]*)"').exec(html)?.[1]
 const titles = new Set(), descriptions = new Set(), headings = new Set()
+await check('HTTP redirects to HTTPS', async () => {
+  const response = await fetch(probeOrigin.replace(/^https:/, 'http:') + '/', { redirect: 'manual', signal: AbortSignal.timeout(20000) })
+  assert([301, 302, 307, 308].includes(response.status), 'HTTP did not redirect')
+  assert(new URL(response.headers.get('location'), probeOrigin).href === probeOrigin + '/', 'HTTP redirect did not preserve the secure origin')
+})
 for (const [route, , label] of publicRoutes) {
   await check('Public HTML, canonical, schema and security: ' + route, async () => {
     const response = await request(route), html = await response.text(), canonical = site + route
@@ -32,6 +37,8 @@ for (const [route, , label] of publicRoutes) {
     headings.add(heading)
     assert(!/<script[^>]*(?:type="module"|src=)|rel="modulepreload"/.test(html), 'Public page loads application JavaScript')
     assert(html.includes('href="/login"') && html.includes('href="/mensajes"'), 'Missing useful internal links')
+    assert(html.includes('href="/privacidad"') && html.includes('href="/cookies"'), 'Missing privacy or cookie information')
+    assert((html.match(/class="primary-btn"/g) || []).length === 1, 'Expected one primary action')
     const title = /<title>(.*?)<\/title>/.exec(html)?.[1], description = metas(html, 'description')
     assert(title && description && !titles.has(title) && !descriptions.has(description), 'Missing or duplicate metadata')
     titles.add(title); descriptions.add(description)
@@ -105,6 +112,12 @@ for (const [path, width, height] of [['/novvin-share.png', 1200, 630], ['/novvin
     assert(response.status === 200 && response.headers.get('content-type')?.includes('image/png'), 'Brand image unavailable')
     assert(!/noindex|none/i.test(response.headers.get('x-robots-tag') || ''), 'Public image is noindex')
     assert(data.toString('hex', 0, 8) === '89504e470d0a1a0a' && data.readUInt32BE(16) === width && data.readUInt32BE(20) === height, 'Brand image dimensions mismatch')
+    if (path.startsWith('/images/')) {
+      const optimized = await request(path.replace(/\.png$/, '.webp'))
+      const bytes = Buffer.from(await optimized.arrayBuffer())
+      assert(optimized.status === 200 && optimized.headers.get('content-type')?.includes('image/webp'), 'Optimized image unavailable')
+      assert(bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP' && bytes.length < data.length, 'Optimized image invalid or larger than PNG')
+    }
   })
 }
 await check('Favicon and truthful install manifest', async () => {
