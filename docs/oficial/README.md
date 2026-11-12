@@ -1,8 +1,10 @@
 # Novvin — Documentación oficial del proyecto
 
-Estado documental: 3 de noviembre de 2026. Esta es la entrada para desarrollo, operación y traspaso técnico.
+Estado documental: 12 de noviembre de 2026. Esta es la entrada para desarrollo, operación y traspaso técnico.
 
 ## Estado vigente
+
+La [operación 116](116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md) instala en Ubuntu las correcciones de tiempo real y amistades con respaldo y restauración comprobados, conserva las funciones ya activas y corrige iconos y controles de la web. Separa las pruebas con datos ficticios del despliegue productivo y mantiene abierta la revisión integral.
 
 La [continuación 115](115-tiempo-real-y-cancelacion-amistades-2026-11-12.md) corrige los bloques de tiempo real y cancelación de amistades diferidos por 114, con pruebas de recepción y concurrencia PostgreSQL. Distingue el código publicado del servidor Ubuntu activo y mantiene abierta la revisión integral.
 

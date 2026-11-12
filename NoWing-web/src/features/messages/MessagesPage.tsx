@@ -5,7 +5,7 @@ import { readConversationDraft, useDraftRevision } from '../../core/conversation
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Search, MessageSquarePlus, Phone, Plus, Trash2, Users, Compass } from 'lucide-react'
+import { Bot, Search, MessageSquarePlus, Phone, Plus, Trash2, Users, Compass } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
@@ -1388,7 +1388,7 @@ export function MessagesPage() {
   const renderConversationRow = (item: ConversationItem, isSelected = false) => (
     <div
       key={item.id}
-      className={
+      className={`conversation-with-actions ${
         openChatMenuId === item.id
           ? isSelected
             ? 'conversation-row selected menu-open'
@@ -1396,18 +1396,14 @@ export function MessagesPage() {
           : isSelected
             ? 'conversation-row selected'
             : 'conversation-row'
-      }
-      role="button"
-      tabIndex={0}
-      aria-label={`Abrir conversación con ${item.title}`}
-      onKeyDown={(event) => {
-        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
-          event.preventDefault()
-          void openConversation(item)
-        }
-      }}
-      onClick={() => void openConversation(item)}
+      }`}
     >
+      <button
+        type="button"
+        className="conversation-open-button"
+        aria-label={`Abrir conversación con ${item.title}`}
+        onClick={() => void openConversation(item)}
+      >
       <FallbackAvatar
         url={item.avatarUrl}
         mediaType={item.avatarMediaType}
@@ -1441,9 +1437,12 @@ export function MessagesPage() {
             🗄
           </span>
         )}
+      </div>
+      </button>
         {item.kind === 'chat' ? (
           <>
             <button
+              type="button"
               className="icon-btn-sm more-btn"
               onClick={(e) => {
                 e.stopPropagation()
@@ -1467,8 +1466,9 @@ export function MessagesPage() {
                 setOpenChatMenuPosition({ top, left, width })
                 setOpenChatMenuId(item.id)
               }}
-              aria-label="Opciones"
-              title="Opciones"
+              aria-label={`Opciones de ${item.title}`}
+              title={`Opciones de ${item.title}`}
+              aria-haspopup="menu"
               aria-expanded={openChatMenuId === item.id}
               aria-controls="conversation-chat-menu"
             >
@@ -1566,7 +1566,6 @@ export function MessagesPage() {
             ) : null}
           </>
         ) : null}
-      </div>
     </div>
   )
 
@@ -1596,7 +1595,7 @@ export function MessagesPage() {
     <>
       <header className="messages-inbox-head">
         <h1>Novvin</h1>
-        <div className="row-actions messages-head-actions"><Link className="icon-btn" to="/app/assistant" aria-label="Asistente de Novvin" title="Asistente de Novvin">✦</Link>
+        <div className="row-actions messages-head-actions"><Link className="icon-btn" to="/app/assistant" aria-label="Asistente de Novvin" title="Asistente de Novvin"><Bot size={21} aria-hidden="true"/></Link>
           <Link className="icon-btn" to="/app/search" aria-label="Buscar personas" title="Buscar personas"><Search size={21}/></Link>
           <Link className="icon-btn" to="/app/calls" aria-label="Llamadas" title="Llamadas">
             <Phone size={21} />

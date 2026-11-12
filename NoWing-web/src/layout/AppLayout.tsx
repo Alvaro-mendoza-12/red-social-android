@@ -12,18 +12,26 @@ import {
   ArrowLeft,
   BarChart3,
   Bell,
+  Bot,
+  CircleHelp,
+  CirclePlus,
   Eye,
+  Flag,
   Gamepad2,
   Globe,
   LogOut,
   MessageSquareText,
   MoreVertical,
+  MapPin,
+  Phone,
   Plus,
+  Radio,
   Search,
   Settings,
   Users,
+  UserRoundPlus,
+  Trophy,
   Video,
-  VideoIcon,
   Mic,
 } from 'lucide-react'
 import { SafeAvatar } from '../components/SafeAvatar'
@@ -72,10 +80,16 @@ type NavIconName =
   | 'monetization'
   | 'settings'
   | 'games'
+  | 'assistant'
+  | 'create'
+  | 'live'
+  | 'nearby'
+  | 'reports'
+  | 'help'
 
 const primaryNavItems = NOVVIN_TABS
 const secondaryNavItems = [
-  { to: '/app/assistant', label: 'Asistente de Novvin', icon: 'messages' as NavIconName },
+  { to: '/app/assistant', label: 'Asistente de Novvin', icon: 'assistant' as NavIconName },
   { to: '/app/search', label: 'Buscar', icon: 'search' as NavIconName },
   {
     to: '/app/notifications',
@@ -87,21 +101,21 @@ const secondaryNavItems = [
   {
     to: '/app/create-space',
     label: 'Crear espacio',
-    icon: 'voice' as NavIconName,
+    icon: 'create' as NavIconName,
   },
-  { to: '/app/live', label: 'En vivo', icon: 'videos' as NavIconName },
+  { to: '/app/live', label: 'En vivo', icon: 'live' as NavIconName },
   {
     to: '/app/proximity',
     label: 'Personas cerca',
-    icon: 'social' as NavIconName,
+    icon: 'nearby' as NavIconName,
   },
   { to: '/app/settings', label: 'Ajustes', icon: 'settings' as NavIconName },
   {
     to: '/app/reports',
     label: 'Mis reportes',
-    icon: 'notifications' as NavIconName,
+    icon: 'reports' as NavIconName,
   },
-  { to: '/app/help', label: 'Ayuda', icon: 'settings' as NavIconName },
+  { to: '/app/help', label: 'Ayuda', icon: 'help' as NavIconName },
 ]
 
 const localReadStorageKey = 'conectate-web-chat-last-read'
@@ -193,7 +207,7 @@ function ShellIcon({ name }: { name: NavIconName }) {
     social: Globe,
     videos: Video,
     messages: MessageSquareText,
-    calls: VideoIcon,
+    calls: Phone,
     profile: Users,
     voice: Mic,
     search: Search,
@@ -201,6 +215,12 @@ function ShellIcon({ name }: { name: NavIconName }) {
     monetization: BarChart3,
     settings: Settings,
     games: Gamepad2,
+    assistant: Bot,
+    create: CirclePlus,
+    live: Radio,
+    nearby: MapPin,
+    reports: Flag,
+    help: CircleHelp,
   }
   const Icon = icons[name]
   return <Icon aria-hidden="true" />
@@ -1031,14 +1051,14 @@ export function AppLayout() {
               {isSocialRoute ? (
                 <>
                   <Link className="icon-btn" to="/app/ranking" aria-label="Ranking">
-                    <BarChart3 />
+                    <Trophy aria-hidden="true" />
                   </Link>
                   <Link
                     className="icon-btn"
                     to="/app/friend-requests"
                     aria-label="Solicitudes de amistad"
                   >
-                    <Users />
+                    <UserRoundPlus aria-hidden="true" />
                   </Link>
                   <Link className="icon-btn" to="/app/notifications" aria-label="Notificaciones">
                     <Bell />

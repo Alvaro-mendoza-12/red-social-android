@@ -104,6 +104,29 @@
 .conversation-row.selected {
   background: var(--surface-raised);
 }
+.conversation-row.conversation-with-actions {
+  padding: 0;
+  gap: 0;
+  cursor: default;
+}
+.conversation-open-button {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  flex: 1;
+  min-width: 0;
+  min-height: inherit;
+  padding: 12px 18px;
+  text-align: left;
+  border-radius: 0;
+  background: transparent;
+}
+.conversation-with-actions > .more-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
 .conversation-avatar {
   width: 50px !important;
   height: 50px !important;
@@ -1718,6 +1741,9 @@
   .conversation-row {
     padding: 13px 16px;
   }
+  .conversation-open-button {
+    padding: 13px 16px;
+  }
   .reels-compact-toolbar {
     padding: 12px 14px;
     gap: 10px;
@@ -2416,6 +2442,10 @@
 .compact-inbox-enabled .conversation-avatar {
   width: 42px !important;
   height: 42px !important;
+}
+.compact-inbox-enabled .conversation-open-button {
+  padding-top: 9px;
+  padding-bottom: 9px;
 }
 
 .chat-attachment-menu {
