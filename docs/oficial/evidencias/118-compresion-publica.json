@@ -1,0 +1,65 @@
+[
+  {
+    "file": "novvin-chat-android-demo.png",
+    "originalBytes": 240898,
+    "webpBytes": 73918,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "873c71e4dc66b2bbae827828b937e31bb84b44e335db4ef3010a99cac5cdaea1"
+  },
+  {
+    "file": "novvin-chat-web-demo.png",
+    "originalBytes": 77686,
+    "webpBytes": 25660,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "f00bbde5efb7fd249b079de8470513c74fc17f12ff9ee2052c492e0a5c09c6dd"
+  },
+  {
+    "file": "novvin-chats.png",
+    "originalBytes": 72145,
+    "webpBytes": 36034,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "49684290f1b37ef766ae63ac50d51e44687661846c42b553894eaa77d778a6e6"
+  },
+  {
+    "file": "novvin-comunidades.png",
+    "originalBytes": 83350,
+    "webpBytes": 42634,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "3c33226b6fe033d256a595e3cfdca643ec119eb0b2fd7bfa2da834b41b32d8d5"
+  },
+  {
+    "file": "novvin-grupos.png",
+    "originalBytes": 72218,
+    "webpBytes": 35886,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "c537e404b8d08c1c57a00987d6f1e3d3c7f755a411a59f55624dbdb0604431cc"
+  },
+  {
+    "file": "novvin-momentos.png",
+    "originalBytes": 45519,
+    "webpBytes": 22530,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "5c3db6ac9bace66ff1b58e7af9f7833008ac3368a219c912850ec8289a0b13ab"
+  },
+  {
+    "file": "novvin-perfil-android-demo.png",
+    "originalBytes": 309518,
+    "webpBytes": 176400,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "6dfa286de451d45c794f946b20d2c6f2a61146135a4e97bcae465e713fa7e619"
+  },
+  {
+    "file": "novvin-social.png",
+    "originalBytes": 70587,
+    "webpBytes": 38284,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "1ac11753077c0a7004972d7b4b2cde843afae5925d1be71e3994df415c2f90f3"
+  },
+  {
+    "file": "novvin-videos.png",
+    "originalBytes": 51465,
+    "webpBytes": 25232,
+    "identicalDecodedPixels": true,
+    "pixelSha256": "adf667b908df600790e3ff46c414d6fb8bfb625c70cf467e8a2a20c572275d7d"
+  }
+]

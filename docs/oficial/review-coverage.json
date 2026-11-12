@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-12T16:00:53.193220+00:00",
-  "baseCommit": "a30a3624a74fa3fcfb9b6e111d3dcbe822884364",
+  "generatedAtUtc": "2026-11-12T16:21:40.233702+00:00",
+  "baseCommit": "41e46fd091350f8e9023d1f1f63fce90f98f6fde",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3659,
-    "code-read": 481,
-    "partial": 155
+    "pending": 3657,
+    "code-read": 486,
+    "partial": 164
   },
   "countsByPhase": {
     "android": {
@@ -22,7 +22,7 @@
     },
     "documentation": {
       "pending": 559,
-      "code-read": 11,
+      "code-read": 14,
       "partial": 9
     },
     "server": {
@@ -31,14 +31,14 @@
       "partial": 21
     },
     "tooling-and-other": {
-      "pending": 155,
+      "pending": 154,
       "code-read": 12,
-      "partial": 6
+      "partial": 7
     },
     "web": {
-      "partial": 45,
-      "pending": 549,
-      "code-read": 18
+      "partial": 53,
+      "pending": 548,
+      "code-read": 20
     }
   },
   "files": [
@@ -375,9 +375,21 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/public/images/novvin-chat-android-demo.webp",
+      "phase": "web",
+      "gitBlobId": "5cec9bbe2020a0674b228d057b9d6e1034230509",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/public/images/novvin-chat-web-demo.png",
       "phase": "web",
       "gitBlobId": "bd7db75b986eea5a09e264e91a0bb01177de7e0b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/images/novvin-chat-web-demo.webp",
+      "phase": "web",
+      "gitBlobId": "164e89faae0a7966baa298475b1cbfae240fdb2f",
       "reviewStatus": "pending"
     },
     {
@@ -393,6 +405,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/public/images/novvin-chats.webp",
+      "phase": "web",
+      "gitBlobId": "7477e48ef7475b65cf98cbf4ab3ddb3e7a32d4b8",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/public/images/novvin-comunidades.png",
       "phase": "web",
       "gitBlobId": "9622ddfc053780c7585fa52c0106e78c63850989",
@@ -402,6 +420,12 @@
       "file": "NoWing-web/public/images/novvin-comunidades.svg",
       "phase": "web",
       "gitBlobId": "444141bd7d731747b76f097dc11dff93d9411918",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/images/novvin-comunidades.webp",
+      "phase": "web",
+      "gitBlobId": "65765849d159250ce10e8d4362d0cee181938183",
       "reviewStatus": "pending"
     },
     {
@@ -417,6 +441,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/public/images/novvin-grupos.webp",
+      "phase": "web",
+      "gitBlobId": "351aff7d782e84804e2b3bdf2d02d580ac7676e3",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/public/images/novvin-momentos.png",
       "phase": "web",
       "gitBlobId": "3994bcf59c2fea53ba58a1b072438c127fe2b085",
@@ -429,9 +459,21 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/public/images/novvin-momentos.webp",
+      "phase": "web",
+      "gitBlobId": "042580783221e2d530992575b2a82ae73de2b205",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/public/images/novvin-perfil-android-demo.png",
       "phase": "web",
       "gitBlobId": "fa96cd910a9fd7021c82c3fb81500201806d08a6",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/images/novvin-perfil-android-demo.webp",
+      "phase": "web",
+      "gitBlobId": "73d54e1cf85eae408589dd58617eaf9477d32653",
       "reviewStatus": "pending"
     },
     {
@@ -447,6 +489,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/public/images/novvin-social.webp",
+      "phase": "web",
+      "gitBlobId": "2f64b5cebd9d23cbaebdc46574890959daa17011",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/public/images/novvin-videos.png",
       "phase": "web",
       "gitBlobId": "d4d326085447504666983dbe3aee6cc3b4e4460d",
@@ -456,6 +504,12 @@
       "file": "NoWing-web/public/images/novvin-videos.svg",
       "phase": "web",
       "gitBlobId": "05adf40d2a8653a355608c149e994601e0a14e25",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/images/novvin-videos.webp",
+      "phase": "web",
+      "gitBlobId": "acccfd90438a7f1941651538e34ddd9f4e7276bd",
       "reviewStatus": "pending"
     },
     {
@@ -517,7 +571,7 @@
     {
       "file": "NoWing-web/public/sitemap.xml",
       "phase": "web",
-      "gitBlobId": "e954d00faa9aabd9fce646ce25d70c4c62a8ce39",
+      "gitBlobId": "f4a7e38dd026d703270080c0cfd54fe6e05578f5",
       "reviewStatus": "pending"
     },
     {
@@ -559,8 +613,10 @@
     {
       "file": "NoWing-web/scripts/check-production-seo.mjs",
       "phase": "web",
-      "gitBlobId": "d62424ce41cd7cc659da7b94cdbf471767119033",
-      "reviewStatus": "pending"
+      "gitBlobId": "2889a6266ead53e0b6f6dcdc53189e7e25263aa1",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/scripts/ensure-web-build-env.mjs",
@@ -607,14 +663,16 @@
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "12bf41c42c715263da49955cc13a12a1b06dec02",
+      "gitBlobId": "909b5f5daf5e3efc8e9017a40c80f957b85e5f95",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/scripts/public-seo.mjs",
       "phase": "web",
-      "gitBlobId": "e88b16da51589791f8058b55080f600c216b5bc0",
-      "reviewStatus": "pending"
+      "gitBlobId": "6bd0a82d93b9dc7f8d7b4c18687a476d76ee3403",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/scripts/public-sitemap.mjs",
@@ -649,9 +707,9 @@
     {
       "file": "NoWing-web/src/App.tsx",
       "phase": "web",
-      "gitBlobId": "c6d8af3780ac56a8907a5fdebbb125a2478716d5",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "gitBlobId": "837f2179616bdaafd202a2bd47d97ab5a215421b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3683,9 +3741,9 @@
     {
       "file": "NoWing-web/src/pages/auth/RegisterPage.tsx",
       "phase": "web",
-      "gitBlobId": "c9412ffb290af15cb84392f5faed965140f7a8bc",
+      "gitBlobId": "538c227ef314a7a09405aa842236eb5e975a36d8",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3787,20 +3845,26 @@
     {
       "file": "NoWing-web/src/ui/novvin/PublicHome.tsx",
       "phase": "web",
-      "gitBlobId": "64d624fdbcae82a82c3eb97114f2377afd66f1f4",
-      "reviewStatus": "pending"
+      "gitBlobId": "cd758ee58a5e59750d2079a5fc9daf51b7ab8c8b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/PublicInfo.tsx",
       "phase": "web",
-      "gitBlobId": "f8f87af1effcbeb749d5cc25821549374c6ebcb4",
-      "reviewStatus": "pending"
+      "gitBlobId": "5134aae51cbf7a5ea685d76cc93c71ec3193c753",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/PublicNavigation.tsx",
       "phase": "web",
-      "gitBlobId": "a53b0e31921c44abe4469bca2e5703a6fa61fff7",
-      "reviewStatus": "pending"
+      "gitBlobId": "775e42e0b73a3b3b00fe3ce9349a5939a94e4508",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/SocialMoments.tsx",
@@ -3853,20 +3917,26 @@
     {
       "file": "NoWing-web/src/ui/novvin/public-home.css",
       "phase": "web",
-      "gitBlobId": "9b0f94bc512b303cea57e9d12ffa1aa5ab9bb1ec",
-      "reviewStatus": "pending"
+      "gitBlobId": "6a513823d1ebf052e81cdf717d16807f5b4969cd",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/publicInfoPages.ts",
       "phase": "web",
-      "gitBlobId": "0949bc8c3a4f9eda5266a471835345162f09499f",
-      "reviewStatus": "pending"
+      "gitBlobId": "fcbe084a94032251739f86e579041f15c8b4a3fe",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/publicNavigationData.ts",
       "phase": "web",
-      "gitBlobId": "448bb450bfaf22de0f7e5f22de69442950143761",
-      "reviewStatus": "pending"
+      "gitBlobId": "fe645d1f1dcccfb7dbf8ea56e546f930579efc7b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
@@ -3925,8 +3995,10 @@
     {
       "file": "NoWing-web/tests/public-home.test.mjs",
       "phase": "web",
-      "gitBlobId": "aaae59a6ad5d60e572fdaed6b59655337351173c",
-      "reviewStatus": "pending"
+      "gitBlobId": "b0f883402cc7acbbba19cccfb989d84b8db52cac",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/tests/public-http.test.mjs",
@@ -3979,8 +4051,10 @@
     {
       "file": "NoWing-web/vercel.json",
       "phase": "web",
-      "gitBlobId": "e959de9186cbbaa55458f57b1cf8f2c5ebe51d6f",
-      "reviewStatus": "pending"
+      "gitBlobId": "a6bc63afae2e93852d5fa4be5ca3b326a4a016e1",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/vite.config.ts",
@@ -19481,9 +19555,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "72e87d6b2bfa71fd14d3dd4316b3b710557fc0c0",
+      "gitBlobId": "89d723fb1b74c4f80afc266e159cdae459cf5f41",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/117-cambio-de-cuenta-y-web-publica-2026-11-12.md",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19568,6 +19642,14 @@
       "gitBlobId": "f44b5c60425639611e27aa96b051c8bf7371411c",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/117-cambio-de-cuenta-y-web-publica-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "phase": "documentation",
+      "gitBlobId": "dde207f8c92f739100ad56026a4a8d6000457925",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20097,9 +20179,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "ff8da1af7d2af9d60be39ef30c58870be6811300",
+      "gitBlobId": "d3764a0696f2c21dc4401b1fa8fcc3d1d834636e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/117-cambio-de-cuenta-y-web-publica-2026-11-12.md",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20450,6 +20532,22 @@
       "gitBlobId": "555c75b9f5b8b2cca14fd58aa1d5606da30d7445",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/evidencias/118-compresion-publica.json",
+      "phase": "documentation",
+      "gitBlobId": "ad755027e415527d21d6d8e92179187061b1d807",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/evidencias/118-web-publica.json",
+      "phase": "documentation",
+      "gitBlobId": "9f3f55b4a4cf6e64511b844b66b94b99b76c0b63",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27081,8 +27179,10 @@
     {
       "file": "vercel.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "133db55164b9ee19a264749b10a884dc4d0e12a4",
-      "reviewStatus": "pending"
+      "gitBlobId": "95800c24eb1eedc33a8030d864756bcb02a985b6",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     }
   ]
 }

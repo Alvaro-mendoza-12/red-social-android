@@ -4,6 +4,8 @@ Estado documental: 12 de noviembre de 2026. Esta es la entrada para desarrollo, 
 
 ## Estado vigente
 
+La [matriz 118](118-veinte-criterios-web-y-android-2026-11-12.md) contrasta los veinte criterios solicitados con web y Android, añade privacidad y cookies públicas, reduce sin pérdida las imágenes de las guías y mantiene una acción principal por página. Separa los datos legales y la analítica aún no configurados de las comprobaciones técnicas aprobadas.
+
 La [continuación 117](117-cambio-de-cuenta-y-web-publica-2026-11-12.md) corrige el seguimiento de ActivityScenario del ensayo de cambio de cuenta, refuerza A → B → A y verifica el alojamiento público web con 90 controles HTTP y navegador. Distingue el fallo del ensayo de la lógica de cuentas de producción.
 
 La [operación 116](116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md) instala en Ubuntu las correcciones de tiempo real y amistades con respaldo y restauración comprobados, conserva las funciones ya activas y corrige iconos y controles de la web. Separa las pruebas con datos ficticios del despliegue productivo y mantiene abierta la revisión integral.
