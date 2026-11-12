@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-12T23:05:20.127785+00:00",
-  "baseCommit": "cb49e3f2dbd2a09014d0fc86521164fd91199cce",
+  "generatedAtUtc": "2026-11-12T23:35:04.637239+00:00",
+  "baseCommit": "0343c625b8bafd9c07dcb693d9d721c97ecbd5da",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3623,
-    "code-read": 502,
-    "partial": 196
+    "pending": 3618,
+    "code-read": 509,
+    "partial": 200
   },
   "countsByPhase": {
     "android": {
-      "pending": 1528,
-      "partial": 85,
-      "code-read": 402
+      "pending": 1524,
+      "partial": 89,
+      "code-read": 404
     },
     "documentation": {
       "pending": 559,
-      "code-read": 16,
+      "code-read": 19,
       "partial": 11
     },
     "server": {
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 72,
-      "pending": 522,
-      "code-read": 30
+      "pending": 521,
+      "code-read": 32
     }
   },
   "files": [
@@ -1413,6 +1413,14 @@
       "phase": "web",
       "gitBlobId": "48d062c870119f38a0656466a40e7a5dac578f4b",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/liveShareLinks.test.ts",
+      "phase": "web",
+      "gitBlobId": "754278af4dbec0b231a280c335244415d54e2f52",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/loginReturnPath.test.ts",
@@ -3045,9 +3053,9 @@
     {
       "file": "NoWing-web/src/core/socialLinks.ts",
       "phase": "web",
-      "gitBlobId": "913b8a3df67ecd39f99a50236928516870898d2d",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "gitBlobId": "3474ba34def81fc8086ad84fc86c3c424bd9c1b8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3283,8 +3291,10 @@
     {
       "file": "NoWing-web/src/features/live/LiveSessionPage.tsx",
       "phase": "web",
-      "gitBlobId": "b58ed59a7a1e9c2cef77c3e420017b94ba68d089",
-      "reviewStatus": "pending"
+      "gitBlobId": "c4cfa36e4a675416c65932108386a8fd8753891e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/live/LiveStrip.tsx",
@@ -5505,9 +5515,9 @@
     {
       "file": "app/src/main/AndroidManifest.xml",
       "phase": "android",
-      "gitBlobId": "fa65e09526180357616b858bd062fbbe972c13ae",
+      "gitBlobId": "fd1bb18b62412d038493defe17b526f4dab82f8f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6031,8 +6041,10 @@
     {
       "file": "app/src/main/java/conectate/com/core/moderation/ContentModerationService.kt",
       "phase": "android",
-      "gitBlobId": "675141d5d4faf1a32925603e51edd3cd88856e21",
-      "reviewStatus": "pending"
+      "gitBlobId": "5b7d071781ecfda7a27e416c876afb3438e43179",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/core/network/AutomaticRetryPolicy.kt",
@@ -9741,14 +9753,18 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/FigmaLiveSetupScreen.kt",
       "phase": "android",
-      "gitBlobId": "03055d09c3d16c6549e3f76f958339ce61767c80",
-      "reviewStatus": "pending"
+      "gitBlobId": "b5d325d66bad7c8a45f15888b1e2f831dc6730a6",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/FigmaLiveViewerScreen.kt",
       "phase": "android",
-      "gitBlobId": "418ed8817d201bf5a018c6096b67d0bfaf16ba21",
-      "reviewStatus": "pending"
+      "gitBlobId": "1a2e04fcde7284f6e92a1d86030813b8efb367ca",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsDialog.kt",
@@ -10927,9 +10943,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/IntentRouter.kt",
       "phase": "android",
-      "gitBlobId": "911ea015a85c55dc2b65b336a7d0b934b02598aa",
+      "gitBlobId": "185917120e0feae6a34b2b5f3d3aedbd853614c1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/navigation/LiveShareLinks.kt",
+      "phase": "android",
+      "gitBlobId": "6df09b5c602f249f7559519140f671447de415a0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -14129,8 +14153,10 @@
     {
       "file": "app/src/test/java/conectate/com/core/moderation/ContentModerationServiceTest.kt",
       "phase": "android",
-      "gitBlobId": "9901e279e0fcf0e2987313099e71410e39fbeb79",
-      "reviewStatus": "pending"
+      "gitBlobId": "d109ed08689f11a26dd3f2b01bd8cd11d0ba8c59",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/core/network/AutomaticRetryPolicyTest.kt",
@@ -16155,6 +16181,14 @@
       "phase": "android",
       "gitBlobId": "514a7fbd9f76a2bfccab9e3e9e7142b9f1d07559",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/navigation/LiveShareLinksTest.kt",
+      "phase": "android",
+      "gitBlobId": "6232420f56c61c1b36270f7ca40295510083e6a4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/navigation/LiveStartedRouteTest.kt",
@@ -19703,9 +19737,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "90bbc308b58a638559f0d423d31b9e2ab47b617b",
+      "gitBlobId": "726f5850754ac989aae43702322cf0d284979c24",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19820,6 +19854,14 @@
       "gitBlobId": "8ce6d122c1efedc20e5876af849fd1287e87ce60",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "phase": "documentation",
+      "gitBlobId": "25f92710f7d79843418165d600b5ff7b101f9c60",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20341,11 +20383,19 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/PROMPT-AUDITORIA-GEMINI-MAIN-LIVE-GIFTS.md",
+      "phase": "documentation",
+      "gitBlobId": "f8f0844a7483434c110ba6e27adb44a82b58baa9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "ad6877bb9ebcf3dcb9028fd69b11417f0159687b",
+      "gitBlobId": "c9aae9f56d74b5bce7ce25d45c8255ee682494c4",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20728,6 +20778,14 @@
       "gitBlobId": "166872d2b08b48982b59195112f808c4c616eca2",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/evidencias/121-dominio-live-y-auditoria.json",
+      "phase": "documentation",
+      "gitBlobId": "1a5ced937249ac38cca72dd6fcb4d7f7136f0a9b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

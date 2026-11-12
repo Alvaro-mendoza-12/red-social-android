@@ -415,6 +415,11 @@ object IntentRouter {
             clearIntent()
             return true
         }
+        liveRouteFromShareLink(uri.toString())?.let { route ->
+            navController.navigate(route) { launchSingleTop = true }
+            clearIntent()
+            return true
+        }
         sharedContentDestination(uri.toString())?.let { destination ->
             navController.navigate(destination.route) { launchSingleTop = true }
             clearIntent()

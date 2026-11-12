@@ -253,7 +253,7 @@ fun LiveSetupScreen(
 
     fun shareUpcomingLive() {
         val host = displayName.ifBlank { "un creador" }
-        val message = "Acompáñame en el próximo LIVE de $host en Novvin."
+        val message = "Acompáñame en el próximo LIVE de $host en Novvin.\n${conectate.com.data.model.PublicWebDomain.activeOrigin}/app/live"
         runCatching {
             context.startActivity(
                 Intent.createChooser(

@@ -211,9 +211,11 @@ class SimpleContentModerationService @Inject constructor(
         )
     }
 
+    private val appLinkHosts = (conectate.com.data.model.PublicWebDomain.httpsHosts +
+        setOf("conectate.com", "www.conectate.com")).joinToString("|") { Regex.escape(it) }
     private val appLinkRegex = Regex(
-        "(?i:https://(?:red-social-android\\.vercel\\.app|(?:www\\.)?conectate\\.com))/" +
-            "(?:post|u|profile|video|room|voice|app/feed/post|app/profile)/" +
+        "(?i:https://(?:$appLinkHosts))/" +
+            "(?:post|u|profile|video|room|voice|app/feed/post|app/profile|app/reels|app/live|group|community)/" +
             "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}" +
             "(?=$|[\\s.,!?;:()\\[\\]{}<>?#])"
     )

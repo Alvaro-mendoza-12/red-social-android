@@ -109,6 +109,7 @@
                 <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/profile/" />
                 <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/u/" />
                 <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/reels/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/live/" />
                 <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/group/" />
                 <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/community/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/voice/" />
@@ -117,6 +118,7 @@
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/app/profile/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/u/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/app/reels/" />
+                <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/app/live/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/group/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/community/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/voice/" />
@@ -125,6 +127,7 @@
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/app/profile/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/u/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/app/reels/" />
+                <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/app/live/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/group/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/community/" />
             </intent-filter>

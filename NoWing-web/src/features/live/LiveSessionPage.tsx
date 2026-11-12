@@ -1,3 +1,4 @@
+import { buildLiveShareUrl } from '../../core/socialLinks'
 import { ReactionCloud } from '../../components/ReactionCloud'
 import { REACTION_FLIGHT_MS } from '../../components/useReactionBursts'
 import { useLiveSfu } from './useLiveSfu'
@@ -743,7 +744,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
   closeRef.current = leaveOrEnd
 
   async function shareLive() {
-    const url = window.location.href.replace(/([?&])host=1(&|$)/, '$1').replace(/[?&]$/, '')
+    const url = buildLiveShareUrl(cleanLiveId)
     try {
       if (navigator.share) await navigator.share({ title: stream ? textOf(stream, ['title'], 'Directo') : 'Directo', url })
       else await navigator.clipboard.writeText(url)
