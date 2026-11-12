@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-12T23:35:04.637239+00:00",
-  "baseCommit": "0343c625b8bafd9c07dcb693d9d721c97ecbd5da",
+  "generatedAtUtc": "2026-11-12T23:36:37.253535+00:00",
+  "baseCommit": "ee81e0da805670d326f946c241d9fdb502fae130",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -19859,7 +19859,7 @@
     {
       "file": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "phase": "documentation",
-      "gitBlobId": "25f92710f7d79843418165d600b5ff7b101f9c60",
+      "gitBlobId": "454c28af85c65ec2eefc04954c633d75156a706f",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20783,7 +20783,7 @@
     {
       "file": "docs/oficial/evidencias/121-dominio-live-y-auditoria.json",
       "phase": "documentation",
-      "gitBlobId": "1a5ced937249ac38cca72dd6fcb4d7f7136f0a9b",
+      "gitBlobId": "5fbedbbbf6425cd70cea422efbd5074970ff3257",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

@@ -29,6 +29,6 @@ Distingue código publicado, APK/AAB, servidor activo, pruebas automatizadas, di
 
 ## Comprobaciones
 
-La evidencia adjunta registra la ejecución actual. La web aprobó 1.191 pruebas en 187 suites, diez pruebas dirigidas de LIVE, TypeScript/Vite y el chequeo de 21 páginas públicas. ESLint conserva cero errores y siete avisos. Android aprobó 21 pruebas JVM en 5 clases, sin fallos, errores ni omisiones: enlaces LIVE, dominio registrado, destinos compartidos y moderación. La compilación perdió el daemon de Kotlin y completó con éxito la estrategia alternativa en 14 minutos; ese fallo de preparación no se atribuye al producto.
+La evidencia adjunta registra la ejecución actual. La web aprobó 1.191 pruebas en 187 suites, diez pruebas dirigidas de LIVE, TypeScript/Vite y el chequeo de 21 páginas públicas. ESLint conserva cero errores y siete avisos. Android aprobó 21 pruebas JVM en cuatro clases con casos ejecutados, sin fallos, errores ni omisiones (el runner emitió además un informe de suite con cero casos, que no se cuenta como clase ensayada): enlaces LIVE, dominio registrado, destinos compartidos y moderación. La compilación perdió el daemon de Kotlin y completó con éxito la estrategia alternativa en 14 minutos; ese fallo de preparación no se atribuye al producto.
 
 No se generó una APK nueva, no se ejecutó un directo real ni se afirmó ensayo de dispositivo físico de este bloque. La revisión integral permanece abierta.

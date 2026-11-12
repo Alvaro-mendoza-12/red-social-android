@@ -5,7 +5,7 @@
     "failures": 0,
     "errors": 0,
     "skipped": 0,
-    "classes": 5,
+    "classes": 4,
     "suites": [
       {
         "name": "conectate.com.core.moderation.ContentModerationServiceTest",
@@ -45,7 +45,8 @@
     ],
     "buildPassed": true,
     "kotlinDaemonCrashed": true,
-    "fallbackCompilationSucceeded": true
+    "fallbackCompilationSucceeded": true,
+    "emptySuiteReports": 1
   },
   "web": {
     "jestTests": 1191,
