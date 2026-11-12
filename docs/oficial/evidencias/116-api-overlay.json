@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "stableCommit": "5eab22a081631110e136316a49b248d38a34de87",
+  "baseImage": "sha256:4b39ad0ca02627aaa1189e9743ea046d51887f80f317f824a6fa70fc120c4100",
+  "runtimeSourceCommitAfterLineEndingNormalization": "4c4350e0e371b02dfd211232133b35ba180febdf",
+  "files": {
+    "src/admin-moderation-routes.js": "9f626d8e5ba28db8d65cb1e7998d046dfb7dac234e3410360a901c2e00968c14",
+    "src/data-routes.js": "e34d882092518216b0c4b3b8590e175002aaadb8444c62e95420af1b45cb6603",
+    "src/direct-message-request-policy.js": "c226f3f5efe6e143a711b8ae4a46104161ca57c4170a5c4c93d4de24e13571a8",
+    "src/friend-request-state.js": "d3131b6530df958624c7c993892f6980a06c018abf7606d97b2314c164b8a686",
+    "src/moments-routes.js": "d181eb3b8d759d9997a2dbed472049dae99529571aad5f6cccdfe1f4a8bb2fdf",
+    "src/postgrest-compat-routes.js": "c1a5e049156bfe1482fa1a91e02504b8d57b4fedacb0704c2bbb4c4b9c3234b3",
+    "src/server.js": "bfd049c06451969b23d076b844bd24ace14d7c54fa43d771043c559e2460f486"
+  },
+  "method": "three-way file merge of stable corrections over the exact running sources; experimental contracts retained; no runtime configuration copied locally"
+}

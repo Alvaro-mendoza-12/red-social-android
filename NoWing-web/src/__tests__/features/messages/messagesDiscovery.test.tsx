@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { MessagesPage } from '../../../features/messages/MessagesPage'
@@ -98,7 +99,7 @@ test.each(['other account', 'return to same account', 'another tab'])('a failed 
   jest.spyOn(window, 'confirm').mockReturnValue(true)
   const { rerender } = render(<MemoryRouter><MessagesPage/></MemoryRouter>)
   await screen.findByText('Chat privado de A')
-  fireEvent.click(screen.getByRole('button', { name: 'Opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Opciones de / }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Eliminar chat' }))
   expect(screen.queryByText('Chat privado de A')).not.toBeInTheDocument()
   jest.mocked(loadFallbackMessagesInbox).mockResolvedValueOnce({ items: [row('Chat privado de B')] } as never)
@@ -129,7 +130,7 @@ test('a hide failure in the current context restores its own cache and reports f
   jest.spyOn(window, 'confirm').mockReturnValue(true)
   render(<MemoryRouter><MessagesPage/></MemoryRouter>)
   await screen.findByText('Conversación actual')
-  fireEvent.click(screen.getByRole('button', { name: 'Opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Opciones de / }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Eliminar chat' }))
   expect(await screen.findByText('No se pudo ocultar el chat actual')).toBeInTheDocument()
   expect(readCachedValue<Array<{id: string}>>('messages:viewer:chats', 60_000)?.map(item => item.id)).toEqual(['own-chat'])
@@ -145,7 +146,7 @@ test.each(['success', 'failure'])('old preference %s cannot change the new accou
   jest.mocked(loadFallbackMessagesInbox).mockResolvedValueOnce({ items: [row('Chat A')] } as never)
   const { rerender } = render(<MemoryRouter><MessagesPage/></MemoryRouter>)
   await screen.findByText('Chat A')
-  fireEvent.click(screen.getByRole('button', { name: 'Opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Opciones de / }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fijar chat' }))
   jest.mocked(loadFallbackMessagesInbox).mockResolvedValueOnce({ items: [row('Chat B')] } as never)
   mockUser.id = 'account-b'
@@ -153,6 +154,27 @@ test.each(['success', 'failure'])('old preference %s cannot change the new accou
   await screen.findByText('Chat B')
   await act(async () => { finish() })
   expect(screen.queryByText('Error de la cuenta anterior')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: /^Opciones de / }))
   expect(screen.getByRole('menuitem', { name: 'Fijar chat' })).toBeInTheDocument()
+})
+
+
+test('inbox options stay separate from opening the chat and restore keyboard focus', async () => {
+  const user = userEvent.setup()
+  const row = { id: 'separate-actions', title: 'Contacto de prueba', subtitle: 'Hola', updatedAt: '', kind: 'chat', avatarUrl: '', profileId: null, unreadCount: 0, isPinned: false, isMuted: false, isArchived: false, isFavorite: false, folders: [], openPath: '' }
+  jest.mocked(loadFallbackMessagesInbox).mockResolvedValue({ items: [row] } as never)
+  render(<MemoryRouter><MessagesPage/></MemoryRouter>)
+  const open = await screen.findByRole('button', { name: /^Abrir .* Contacto de prueba$/ })
+  const options = screen.getByRole('button', { name: 'Opciones de Contacto de prueba' })
+  expect(open.contains(options)).toBe(false)
+  options.focus()
+  await act(async () => { await user.keyboard('{Enter}') })
+  expect(await screen.findByRole('menu', { name: 'Opciones del chat con Contacto de prueba' })).toBeVisible()
+  expect(screen.queryByTestId('opened-chat')).not.toBeInTheDocument()
+  await act(async () => { await user.keyboard('{Escape}') })
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+  expect(options).toHaveFocus()
+  open.focus()
+  await act(async () => { await user.keyboard('{Enter}') })
+  expect(await screen.findByTestId('opened-chat')).toHaveTextContent('separate-actions')
 })

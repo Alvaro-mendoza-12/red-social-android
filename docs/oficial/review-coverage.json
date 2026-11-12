@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-12T12:08:41.929078+00:00",
-  "baseCommit": "9744f3b182416b9cc79c72a1a8452720f1107408",
+  "generatedAtUtc": "2026-11-12T14:14:34.724511+00:00",
+  "baseCommit": "5eab22a081631110e136316a49b248d38a34de87",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,20 +10,20 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3664,
-    "code-read": 474,
-    "partial": 152
+    "pending": 3660,
+    "code-read": 479,
+    "partial": 155
   },
   "countsByPhase": {
     "android": {
       "pending": 1537,
       "partial": 74,
-      "code-read": 396
+      "code-read": 397
     },
     "documentation": {
-      "pending": 560,
-      "code-read": 8,
-      "partial": 8
+      "pending": 559,
+      "code-read": 10,
+      "partial": 9
     },
     "server": {
       "pending": 860,
@@ -32,13 +32,13 @@
     },
     "tooling-and-other": {
       "pending": 155,
-      "code-read": 11,
+      "code-read": 12,
       "partial": 6
     },
     "web": {
-      "partial": 43,
-      "pending": 552,
-      "code-read": 17
+      "partial": 45,
+      "pending": 549,
+      "code-read": 18
     }
   },
   "files": [
@@ -1591,8 +1591,10 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/messagesDiscovery.test.tsx",
       "phase": "web",
-      "gitBlobId": "ccde7293fa1cdaae82ec19ad315d0e4ccaf1573a",
-      "reviewStatus": "pending"
+      "gitBlobId": "409b40be0e3c0bd30f9eca1af48bc66dc9840bce",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/features/messages/useConversationRecovery.test.tsx",
@@ -1851,8 +1853,10 @@
     {
       "file": "NoWing-web/src/components/ChatOptionsMenu.tsx",
       "phase": "web",
-      "gitBlobId": "62daf2db281610492abda13bdbe5366d9cdf0f13",
-      "reviewStatus": "pending"
+      "gitBlobId": "188b6d0cfcbefe311a64a3d55088d429b8604267",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/ChatProfilePanel.tsx",
@@ -3205,9 +3209,9 @@
     {
       "file": "NoWing-web/src/features/messages/MessagesPage.tsx",
       "phase": "web",
-      "gitBlobId": "b16cdcc005985f621791cb1c95a548260ed14581",
+      "gitBlobId": "3861705ddd95acabfc63eb8a948dc797a7f65326",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3615,8 +3619,10 @@
     {
       "file": "NoWing-web/src/layout/AppLayout.tsx",
       "phase": "web",
-      "gitBlobId": "c93f2d82614a4f2cf8f6cc25300cde188e321f04",
-      "reviewStatus": "pending"
+      "gitBlobId": "42ff6cd3496a875c242f088dce9cdd2e9a0f1517",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/main.tsx",
@@ -3865,9 +3871,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
       "phase": "web",
-      "gitBlobId": "60238841e3658ebf76a41806d1d70751b6c81186",
+      "gitBlobId": "c206b2db5319d42c1a0409ffd1d6ee476f96fc8c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4319,6 +4325,14 @@
       "phase": "android",
       "gitBlobId": "e6596fda8afea2ccbe76a2fb6887f1d24c06a280",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/data/localfallback/Ubuntu116WireContractTest.kt",
+      "phase": "android",
+      "gitBlobId": "8e392621ad0b01fb75176f60d9d22c8e804bb83d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/data/music/CommunityMusicCoverTest.kt",
@@ -19465,8 +19479,10 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "1b94fa274c996b294c08f7d109e7c0dd1a7f404c",
-      "reviewStatus": "pending"
+      "gitBlobId": "27eddae3627913291a7a72d6519eb2e8bb641adb",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
@@ -19534,6 +19550,14 @@
       "gitBlobId": "0d410ca6c337816b671483ca3cc12f6b648016c7",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "phase": "documentation",
+      "gitBlobId": "6e44d7c094c596143446cd0256c726a7a49203d7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20063,9 +20087,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "2a9441e12566d9dccd77d265dddd4d9721a12695",
+      "gitBlobId": "ab023202b1b40b9a1a4e00c1852cf6a1520a49fb",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20409,6 +20433,14 @@
       "phase": "documentation",
       "gitBlobId": "0740f09fa1b7af4dd83a111ae31fbaca381f8c21",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/116-api-overlay.json",
+      "phase": "documentation",
+      "gitBlobId": "555c75b9f5b8b2cca14fd58aa1d5606da30d7445",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/evidencias/auditoria-movil-antigravity-2026-10-30.json",
@@ -26773,6 +26805,14 @@
       "phase": "tooling-and-other",
       "gitBlobId": "5ac803c30a286fde98f2ac415c5c934802fb3a4e",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/audit/fixtures/review116-stage-controller.js",
+      "phase": "tooling-and-other",
+      "gitBlobId": "ab228db2479846791697c852a15718909a955cf8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/audit/update_review_coverage.py",

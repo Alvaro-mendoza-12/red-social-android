@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ComponentType } from 'react'
-import { Archive, Bell, BellOff, Heart, Info, LogOut, Pencil, Pin, Search, Settings2, SquareCheck } from 'lucide-react'
+import { Archive, ArchiveRestore, Bell, BellOff, Heart, HeartOff, Info, Pencil, Pin, PinOff, Search, Settings2, SquareCheck, X } from 'lucide-react'
 
 type Item = { label: string; icon: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>; action: () => void; disabled?: boolean }
 
@@ -21,11 +21,11 @@ export function ChatOptionsMenu({ pinned, muted, favorite, archived, busy, onPre
     { label: 'Buscar mensajes', icon: Search, action: onSearch },
     { label: 'Seleccionar mensajes', icon: SquareCheck, action: onSelect },
     { label: muted ? 'Activar notificaciones' : 'Silenciar notificaciones', icon: muted ? Bell : BellOff, action: () => onPreference({ isMuted: !muted }), disabled: busy },
-    { label: pinned ? 'Desfijar chat' : 'Fijar chat', icon: Pin, action: () => onPreference({ isPinned: !pinned }), disabled: busy },
-    { label: favorite ? 'Quitar de favoritos' : 'Añadir a favoritos', icon: Heart, action: () => onPreference({ isFavorite: !favorite }), disabled: busy },
-    { label: archived ? 'Desarchivar chat' : 'Archivar chat', icon: Archive, action: () => onPreference({ isArchived: !archived }), disabled: busy },
+    { label: pinned ? 'Desfijar chat' : 'Fijar chat', icon: pinned ? PinOff : Pin, action: () => onPreference({ isPinned: !pinned }), disabled: busy },
+    { label: favorite ? 'Quitar de favoritos' : 'Añadir a favoritos', icon: favorite ? HeartOff : Heart, action: () => onPreference({ isFavorite: !favorite }), disabled: busy },
+    { label: archived ? 'Desarchivar chat' : 'Archivar chat', icon: archived ? ArchiveRestore : Archive, action: () => onPreference({ isArchived: !archived }), disabled: busy },
     { label: 'Más opciones', icon: Settings2, action: onAdvanced },
-    { label: 'Cerrar chat', icon: LogOut, action: onLeave },
+    { label: 'Cerrar chat', icon: X, action: onLeave },
   ]
   return <div ref={root} id="chat-options-menu" className="chat-options-menu" role="menu" aria-label="Opciones del chat" onKeyDown={event => {
     if (event.key === 'Escape') { onClose(); document.querySelector<HTMLButtonElement>('[aria-controls="chat-options-menu"]')?.focus() }
