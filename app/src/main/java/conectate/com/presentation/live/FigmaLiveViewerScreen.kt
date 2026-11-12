@@ -161,6 +161,7 @@ fun LiveViewerScreen(
             append("Mira este directo en Novvin")
             val hostName = stream?.hostName.orEmpty()
             if (hostName.isNotBlank()) append(": " + hostName)
+            append("\n" + conectate.com.presentation.navigation.liveShareLink(liveId))
         }
         val shareIntent = Intent(Intent.ACTION_SEND)
             .setType("text/plain")

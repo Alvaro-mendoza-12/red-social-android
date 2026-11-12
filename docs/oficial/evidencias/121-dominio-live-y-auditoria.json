@@ -1,0 +1,78 @@
+{
+  "verifiedAtUtc": "2026-11-12T23:34:55.613782+00:00",
+  "android": {
+    "tests": 21,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "classes": 5,
+    "suites": [
+      {
+        "name": "conectate.com.core.moderation.ContentModerationServiceTest",
+        "tests": "12",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.LiveShareLinksTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.RegisteredDomainLinksTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.SharedContentDestinationTest",
+        "tests": "5",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.util.StorageReadHttpDataSourceTest",
+        "tests": "0",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    ],
+    "buildPassed": true,
+    "kotlinDaemonCrashed": true,
+    "fallbackCompilationSucceeded": true
+  },
+  "web": {
+    "jestTests": 1191,
+    "jestSuites": 187,
+    "failures": 0,
+    "liveTargetedTests": 10,
+    "buildPassed": true,
+    "publicPages": 21,
+    "eslintErrors": 0,
+    "eslintWarnings": 7
+  },
+  "newApkDelivered": false,
+  "deviceTested": false,
+  "actualLiveBroadcastTested": false,
+  "integralReviewClosed": false,
+  "searchEngineResultReplacementGuaranteed": false,
+  "prompt": "docs/oficial/PROMPT-AUDITORIA-GEMINI-MAIN-LIVE-GIFTS.md",
+  "publicLiveRoutes": {
+    "/app/live": 200,
+    "/app/live/<synthetic-uuid>": 200,
+    "privateNoindex": true
+  },
+  "pending": [
+    "New Android package and installed-device validation",
+    "Play App Signing certificate verification",
+    "Corporate SMTP authentication, email signature and recipient-avatar verification",
+    "Search engines recrawl independently; indexing and ranking are not guaranteed",
+    "Remaining modules require independent audit coverage"
+  ]
+}

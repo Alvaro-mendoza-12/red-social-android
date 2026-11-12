@@ -4,6 +4,8 @@ Estado documental: 12 de noviembre de 2026. Esta es la entrada para desarrollo, 
 
 ## Estado vigente
 
+La [continuación 121](121-dominio-live-y-prompt-auditoria-2026-11-12.md) añade enlaces LIVE del dominio oficial y su lectura Android, corrige el compartido web del directo minimizado y conserva los enlaces propios en moderación. Incluye el encargo detallado de auditoría independiente para Gemini. Separa el código de una nueva APK y de la actualización de índices de buscadores.
+
 La [continuación 120](120-contadores-bandeja-e-iconos-2026-11-12.md) conecta los contadores de los filtros privados en Android y web y corrige iconos de la bandeja. Distingue pruebas automatizadas, publicación y entrega instalada; no representa una APK nueva ni el cierre integral.
 
 La [continuación 119](119-dominio-y-recuperacion-bandeja-2026-11-12.md) corrige la recuperación de conversaciones entrantes y su ocultación después de mensajes nuevos. Vincula `novvinapp.com` a Vercel, prepara Android y autoriza sus orígenes en Ubuntu con respaldo. DNS y HTTPS están activos; la migración de enlaces y la indexación se documentan con sus comprobaciones. El SMTP corporativo está pendiente por rechazo del proveedor; se restauró el remitente anterior con autenticación TLS verificada. No representa una APK nueva ni el cierre de la revisión integral.

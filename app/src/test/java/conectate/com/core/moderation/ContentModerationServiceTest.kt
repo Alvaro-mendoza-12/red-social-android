@@ -13,6 +13,16 @@ class ContentModerationServiceTest {
     private val service = SimpleContentModerationService(NoOpMetrics(), ModerationNoticeCenter())
     private val shared = "https://red-social-android.vercel.app/post/04253203-9341-4557-9ece-c54da1be335a"
 
+    @Test fun `registered domain links survive moderation without exposing adjacent contact details`() {
+        for (host in listOf("novvinapp.com", "www.novvinapp.com")) for (path in listOf("post", "app/reels", "app/live", "group", "community")) {
+            val link = "https://$host/$path/04253203-9341-4557-9ece-c54da1be335a"
+            val result = service.moderate("$link me@test.com +1 555 123 4567", ModerationContext.POST_CONTENT)
+            org.junit.Assert.assertTrue(result.sanitizedText.contains(link))
+            assertFalse(result.sanitizedText.contains("me@test.com"))
+            assertFalse(result.sanitizedText.contains("555 123 4567"))
+        }
+    }
+
     @Test fun `internal publication identifiers are never mistaken for telephone numbers`() {
         for (context in listOf(ModerationContext.COMMUNITY_MESSAGE, ModerationContext.POST_CONTENT, ModerationContext.COMMENT_CONTENT)) {
             val result = service.moderate(shared, context)

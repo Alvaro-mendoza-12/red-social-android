@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 12 de noviembre de 2026
 
+La [continuación 121](121-dominio-live-y-prompt-auditoria-2026-11-12.md) añade enlaces LIVE del dominio oficial y su lectura Android, corrige el compartido web del directo minimizado y conserva los enlaces propios en moderación. Incluye el encargo detallado de auditoría independiente para Gemini. Separa el código de una nueva APK y de la actualización de índices de buscadores.
+
 La [continuación 120](120-contadores-bandeja-e-iconos-2026-11-12.md) conecta los contadores de los filtros privados en Android y web y corrige iconos de la bandeja. Distingue pruebas automatizadas, publicación y entrega instalada; no representa una APK nueva ni el cierre integral.
 
 La [continuación 119](119-dominio-y-recuperacion-bandeja-2026-11-12.md) corrige conversaciones entrantes sin pertenencia local y la exclusión persistente de chats ocultados cuando llegan mensajes posteriores. Aprobó 76 pruebas JVM en diez clases y prepara enlaces del dominio adquirido; el dominio y HTTPS están activos, y continúa pendiente la verificación de una nueva entrega instalada. Las APK históricas no contienen automáticamente estas correcciones.
