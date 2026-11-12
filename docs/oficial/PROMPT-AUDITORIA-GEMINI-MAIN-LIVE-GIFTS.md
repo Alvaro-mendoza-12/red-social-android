@@ -40,6 +40,8 @@ Contrasta los mismos recorridos disponibles en web con Android y el contrato de 
 
 Examina iconos y acciones según su significado: etiqueta, tooltip, estado activo/inactivo, operación inversa y efecto real. Detecta botones sin acción o promesas de funciones inexistentes. Evalúa foco, teclado, nombres accesibles, contraste, lectores de pantalla, ampliación de texto, móvil/escritorio, temas claro/oscuro, desbordamientos, áreas táctiles y jerarquía de acciones. No rediseñes por gusto ni conviertas preferencias estéticas en defectos confirmados. Si falta un diseño de referencia, dilo. Diferencia errores funcionales, de accesibilidad y oportunidades de mejora.
 
+Contrasta también los veinte criterios del propietario documentados en la revisión 118: avisos legales, privacidad, cookies/consentimiento, HTTPS, títulos/descripciones, datos estructurados, sitemap/robots, ficha de Google solo si procede, favicons, texto alternativo, compresión de imágenes, velocidad, contraste, adaptación móvil, 404, enlaces rotos, antispam, WhatsApp únicamente si existe un contacto autorizado, analítica con su consentimiento/configuración y una acción principal clara por pantalla pública. Distingue implementación, configuración pendiente del propietario, inaplicabilidad y cumplimiento no comprobado; no inventes razón social, domicilio, testimonios, métricas ni certificaciones legales.
+
 Mide rendimiento cuando corresponda: arranque útil, consultas, renderizado, listas, suscripciones, caché, multimedia, memoria y carga de bundles. Da método, entorno y límites; no prometas 60 FPS ni Core Web Vitals de campo a partir de una compilación o un ensayo aislado.
 
 ## 6. Dominio, enlaces, SEO, seguridad e infraestructura
