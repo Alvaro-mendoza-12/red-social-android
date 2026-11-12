@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 12 de noviembre de 2026
 
+La [continuación 117](117-cambio-de-cuenta-y-web-publica-2026-11-12.md) resuelve el cierre de ActivityScenario del caso de cambio de cuenta y comprueba A → B → A con invalidación de visitas anteriores. También verifica la web pública; los demás recorridos de esta revisión siguen abiertos.
+
 La [operación 116](116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md) continúa 115 con el despliegue dirigido de API en Ubuntu, respaldo restaurado en aislamiento y comprobaciones web y nativas. Documenta por separado la imagen instalada, los ensayos con cuentas ficticias y las correcciones de iconos y opciones de la web. No cierra los demás recorridos de esta revisión.
 
 La fase Android sigue abierta. La [matriz versionada](review-coverage.json) amplía el inventario anterior de 1.135 archivos de código principal móvil al conjunto de archivos versionados del repositorio: incluye pruebas, recursos, documentación, servidor y web. Sus estados corresponden a la huella concreta de cada archivo; una modificación posterior invalida la lectura anterior. Inventariar, buscar texto o compilar no marca un archivo como leído. Una lectura completa tampoco equivale a cerrar todos los recorridos de su módulo. La cifra de 1.038 pendientes corresponde al inventario anterior; el avance vigente se consulta por huella en la matriz, sin sumar lecturas o pruebas antiguas como si cerraran recorridos nuevos.
