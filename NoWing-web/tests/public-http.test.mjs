@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
+import { request } from 'node:http'
 import { createSeoCandidateServer } from '../scripts/serve-seo-candidate.mjs'
 import { publicRoutes, site } from '../scripts/public-seo.mjs'
 
@@ -32,5 +33,16 @@ test('all built public routes and canonical redirects work over isolated HTTP', 
     assert.match(await shell.text(), /type="module"/)
     const robots = await fetch(base + '/robots.txt')
     assert.match(await robots.text(), /Sitemap:/)
+    const legacy = path => new Promise((resolve, reject) => {
+      const req = request(base + path, { headers: { Host: 'red-social-android.vercel.app' } }, res => {
+        res.resume(); resolve({ status: res.statusCode, location: res.headers.location })
+      }); req.on('error', reject); req.end()
+    })
+    const migrated = await legacy('/mensajes?utm_source=qa')
+    assert.equal(migrated.status, 308)
+    assert.equal(migrated.location, site + '/mensajes?utm_source=qa')
+    const legacyApi = await legacy('/v1/data/profile/me')
+    assert.equal(legacyApi.status, 401)
+    assert.equal(legacyApi.location, undefined)
   } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)) }
 })

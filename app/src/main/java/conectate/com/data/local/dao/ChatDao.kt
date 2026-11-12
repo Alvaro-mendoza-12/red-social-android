@@ -112,6 +112,12 @@ interface ChatDao {
     @Query("UPDATE chats SET unread_count = unread_count + 1 WHERE id = :chatId")
     suspend fun incrementUnreadCount(chatId: String)
 
+    @Query("UPDATE chats SET unread_count = MAX(unread_count, :count) WHERE id = :chatId")
+    suspend fun ensureUnreadCount(chatId: String, count: Int)
+
+    @Query("UPDATE chats SET is_deleted = 0 WHERE id = :chatId")
+    suspend fun restoreChatVisibility(chatId: String)
+
     @Query("SELECT * FROM chats WHERE is_group = 0 AND LOWER(TRIM(other_user_id)) = :otherUserId AND is_deleted = 0 ORDER BY last_message_at DESC, id ASC")
     suspend fun getChatsByOtherUserId(otherUserId: String): List<ChatEntity>
 

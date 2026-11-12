@@ -1,5 +1,11 @@
 import { sharedVideoReference } from '../../core/sharedVideoReference'
 const id='18ac0a9c-079e-45ba-87bf-bbbe64073777'
+
+test.each(['novvinapp.com','www.novvinapp.com'])('registered domain video references work only over HTTPS on %s',host=>{
+  expect(sharedVideoReference(`https://${host}/app/reels/${id}`)?.videoId).toBe(id)
+  expect(sharedVideoReference(`http://${host}/app/reels/${id}`)).toBeNull()
+  expect(sharedVideoReference(`https://${host}.evil.test/app/reels/${id}`)).toBeNull()
+})
 test('mobile video shares become one concise web card',()=>{
   expect(sharedVideoReference(`¡Mira este video!\nhttps://red-social-android.vercel.app/app/reels/${id}\n\nPrueba`)).toEqual({videoId:id,caption:'Prueba'})
 })

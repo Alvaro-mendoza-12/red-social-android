@@ -47,7 +47,7 @@ test('origin rejection during code verification points to official login without
   fireEvent.click(screen.getByRole('button', { name: 'Verificar código' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Esta dirección web no está autorizada')
   const link = screen.getByRole('link', { name: 'Abrir la web oficial' })
-  expect(link).toHaveAttribute('href', 'https://red-social-android.vercel.app/login')
+  expect(link).toHaveAttribute('href', 'https://novvinapp.com/login')
   expect(link).toHaveAttribute('rel', 'noreferrer')
   expect(confirmFallbackPasswordReset).not.toHaveBeenCalled()
   expect(mockNavigate).not.toHaveBeenCalled()

@@ -273,16 +273,17 @@ class MessageRepository @Inject constructor(
                 }
             }
         sessionListeners = SessionListenerBinding(scope, userIdFlow, messageRealtimeSync::stopIfAccountChanged) { userId ->
-                    val session = captureSessionSnapshot(userId)
+                    val session = sessionWriteGuard.capture(authService.captureAccountLease(), operationJob = null)
                     android.util.Log.d(
                         "MessageRepository",
                         "[RECEIVE-FIX] Session active ($userId): Starting MessageRealtimeSync",
                     )
-                    messageRealtimeSync.start(userId)
-
-                    launch {
+                    launch(start = CoroutineStart.UNDISPATCHED) {
                         messageRealtimeSync.messageEvents.collect { msg ->
-                            if (isSessionSnapshotValid(session, "session-message-event")) messageEvents.emit(msg)
+                            if (isSessionSnapshotValid(session, "session-message-event")) {
+                                launch { recoverIncomingInbox(msg, session) }
+                                messageEvents.emit(msg)
+                            }
                         }
                     }
 
@@ -293,6 +294,7 @@ class MessageRepository @Inject constructor(
                             }
                         }
                     }
+                    messageRealtimeSync.start(userId)
         }
     }
 
@@ -330,6 +332,30 @@ class MessageRepository @Inject constructor(
     // Los métodos de realtime se manejan ahora en MessageRealtimeSync
     // Esta clase actúa como facade/orquestador
 
+    private suspend fun recoverIncomingInbox(msg: Message, session: SessionWriteGuard.Snapshot) {
+        val owner = session.accountLease ?: authService.captureAccountLease()
+        if (owner.accountId != session.accountId) return
+        try {
+            conectate.com.data.repository.message.recoverIncomingInbox(
+                database, msg, session.accountId ?: return,
+                requireCurrent = { sessionWriteGuard.requireValid(session); owner.requireCurrent() },
+                loadChat = { id ->
+                    if (shouldUseUbuntuBackend()) runReadWithDeadline(InteractiveReadDeadlines.InboxMillis) {
+                        val token = authService.getAccessTokenForAccountAwait(requireNotNull(owner.accountId))
+                            ?: throw IllegalStateException("La sesión venció")
+                        owner.requireCurrent()
+                        localFallbackApiClient.loadChatMetadata(token, id).getOrThrow()
+                    }.getOrNull()
+                    else getChatById(id).getOrNull()
+                },
+                commit = { write -> authService.withAccountLocalStorage(owner) { write() } },
+            )
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) {
+            android.util.Log.w("MessageRepository", "Could not recover incoming conversation; inbox refresh can retry", error)
+        }
+    }
+
     private suspend fun handleGlobalMessageInsert(
         msg: Message,
         lease: conectate.com.data.supabase.AuthSessionLease,
@@ -341,6 +367,9 @@ class MessageRepository @Inject constructor(
         if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-start:$cleanId")) return
         android.util.Log.d("MessageRepository", "Incoming message received for the active account")
         
+        val needsInboxRecovery = chatDao.getChatById(cleanId)?.let {
+            it.is_deleted || !it.toDomain().isAccessibleTo(sessionSnapshot.accountId)
+        } != false
         var currentUserId = sessionSnapshot.accountId
         var wasAlreadyStored = false
         var mediaMessageToPrefetch: Message? = null
@@ -429,6 +458,10 @@ class MessageRepository @Inject constructor(
         }
         mediaMessageToPrefetch?.let { prefetchRecentChatMedia(listOf(it)) }
 
+        // Even a duplicate push must repair membership omitted by an earlier realtime frame.
+        // This runs in the repository scope, outside FCM's short callback deadline.
+        scope.launch { recoverIncomingInbox(normalizedMsg, sessionSnapshot) }
+
         // Un FCM parcial seguido por el evento completo solo debe enriquecer la
         // fila; no debe volver a sumar no leídos, reproducir sonido ni notificar.
         if (wasAlreadyStored) return
@@ -448,88 +481,20 @@ class MessageRepository @Inject constructor(
             }
         }
         
-        // 4. CHAT LIST UPDATE
-        if (currentUserId != null) {
+        // Existing conversations retain the normal preview path. New/hidden rows are
+        // recovered above, even when this push duplicates a realtime delivery.
+        if (currentUserId != null && !needsInboxRecovery) {
             scope.launch {
-                if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-chat-list:$cleanId")) return@launch
-                var currentChats = _userChats.value.toMutableList()
-                var cleanCurrentUserId = currentUserId.trim().lowercase()
-                var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
-
-                if (idx != -1) {
-                    if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-chat-update:$cleanId")) return@launch
-                    updateChatInList(currentChats, idx, normalizedMsg, cleanCurrentUserId)
-                } else {
-                    android.util.Log.d("MessageRepository", "New chat $cleanId discovered. Verifying with server...")
-                    val chatRes = getChatById(cleanId)
-                    var chat = chatRes.getOrNull()
-                    if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-after-chat-fetch:$cleanId")) return@launch
-                    
-                    if (chat != null) {
-                        // CRITICAL PRIVACY FIX: Only add chat if the current user is a participant.
-                        // This prevents "Ghost Chats" from other users leaking into the UI.
-                        var participants = chat.participants.map { it.trim().lowercase() }
-                        if (!participants.contains(cleanCurrentUserId)) {
-                             android.util.Log.e("MessageRepository", "BLOCKED LEAK: Message for chat ${chat.id} received but user is not a participant.")
-                             return@launch
+                val owner = sessionSnapshot.accountLease ?: return@launch
+                authService.withAccountLocalStorage(owner) {
+                    conectate.com.data.repository.message.withRealtimeAccountTransaction(database, {
+                        sessionWriteGuard.requireValid(sessionSnapshot)
+                    }) {
+                        val currentChats = _userChats.value.toMutableList()
+                        val index = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
+                        if (index != -1) updateChatInList(currentChats, index, normalizedMsg, currentUserId) {
+                            sessionWriteGuard.requireValid(sessionSnapshot)
                         }
-
-                        // RELAXED: Encouraging discovery of chats even if participant count is unexpected
-                        if (!chat.is_group && participants.size < 2) {
-                            android.util.Log.w("MessageRepository", "Discovering DM with <2 participants: ${chat.id}")
-                        }
-                        
-                        var otherId = chat.participants.firstOrNull { it.trim().lowercase() != cleanCurrentUserId }
-                        android.util.Log.d("MessageRepository", "[DISCOVERY-TRACE] Other participant for DM: $otherId")
-                        if (normalizedMsg.sender_id.trim().lowercase() != cleanCurrentUserId) {
-                            sessionStateStore.clearLocalReadOverride(cleanId)
-                        }
-                        
-                        var cachedUser = otherId?.let { userDao.getUser(it) }
-                        var resolvedName = cachedUser?.full_name?.ifBlank { cachedUser.username } ?: "Usuario"
-                        var resolvedImage = cachedUser?.avatar_url
-                        
-                        val placeholder = ChatWithLastMessage(
-                            chat = chat.copy(
-                                group_name = if (chat.is_group) chat.group_name else resolvedName,
-                                group_image = if (chat.is_group) chat.group_image else resolvedImage,
-                                last_message = buildPreviewForContentType(normalizedMsg.content_type, normalizedMsg.content),
-                                last_message_at = normalizedMsg.created_at ?: "", // NO injection here
-                                participants = chat.participants // Ensure participants preserved
-                            ),
-                            lastMessage = normalizedMsg,
-                            unreadCount = 1,
-                            otherUserName = resolvedName,
-                            otherUserImage = resolvedImage,
-                            otherUserId = otherId,
-                            otherUserVerified = cachedUser?.is_verified ?: false,
-                            otherUserIsAdmin = cachedUser?.is_admin ?: false
-                        )
-                        
-                        android.util.Log.d("MessageRepository", "[DISCOVERY-TRACE] Resolving chat ${chat.id} as $resolvedName")
-                        
-                        // Add to in-memory list and notify UI
-                        val newList = (currentChats + placeholder).sortedByDescending { 
-                            it.chat.safeLastMessageAt 
-                        }
-                        if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-list-emit:$cleanId")) return@launch
-                        _userChats.value = newList
-                        
-                        // Persist to Room
-                        if (!isSessionSnapshotValid(sessionSnapshot, "dm-insert-before-chat-cache:$cleanId")) return@launch
-                        chatDao.insertChat(conectate.com.data.local.entity.ChatEntity.fromDomain(
-                            chat = chat,
-                            displayName = resolvedName,
-                            displayImage = resolvedImage,
-                            unreadCount = 1,
-                            lastMsg = normalizedMsg.content,
-                            lastTime = normalizedMsg.created_at,
-                            otherUserId = otherId,
-                            lastMsgId = normalizedMsg.id,
-                            lastSenderId = normalizedMsg.sender_id,
-                            nickname = null,
-                            clearedAt = null
-                        ))
                     }
                 }
             }

@@ -316,7 +316,7 @@ class GroupDetailViewModel @Inject constructor(
         val id = groupId ?: return
         actions.run("invite:$id", "No se pudo crear el enlace. Comprueba tus permisos y reintenta.", { groupId == id },
             { groupRepository.createGroupInvite(id) }, { token ->
-                onReady("https://red-social-android.vercel.app/group/$id?invite=${android.net.Uri.encode(token)}")
+                onReady("https://novvinapp.com/group/$id?invite=${android.net.Uri.encode(token)}")
             })
     }
 

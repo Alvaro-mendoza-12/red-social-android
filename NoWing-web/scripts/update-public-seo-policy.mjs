@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { publicRoutes } from './public-seo.mjs'
+import { publicRoutes, site } from './public-seo.mjs'
 import { loadPublicPageModel } from './public-page-model.mjs'
 import { publicPageFingerprint, refreshSitemapState, renderPublicSitemap } from './public-sitemap.mjs'
 const root = path.resolve(import.meta.dirname, '..')
@@ -30,6 +30,12 @@ for (const file of [path.join(root, 'vercel.json'), path.join(root, '../vercel.j
     // Require the final slash explicitly; do not normalize API/socket paths globally.
     if (route !== '/' && !config.redirects.some(rule => rule.source === route + '(/)')) config.redirects.push({source:route+'(/)',destination:route,permanent:true})
   }
+  // Migrate public search results only. Installed clients retain the legacy API and app origin.
+  const migrationSources = [...publicRoutes.map(([route]) => route), '/robots.txt', '/sitemap.xml']
+  config.redirects = config.redirects.filter(rule => !rule.has?.some(condition => condition.type === 'host' && condition.value === 'red-social-android.vercel.app'))
+  config.redirects.unshift(...migrationSources.map(source => ({ source,
+    has: [{ type: 'host', value: 'red-social-android.vercel.app' }], destination: site + source, permanent: true,
+  })))
   fs.writeFileSync(file, JSON.stringify(config,null,2) + '\n')
 }
 fs.writeFileSync(statePath, JSON.stringify(state, null, 2) + '\n')

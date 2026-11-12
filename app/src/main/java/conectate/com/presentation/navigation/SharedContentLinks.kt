@@ -4,7 +4,7 @@ import java.net.URI
 import androidx.lifecycle.SavedStateHandle
 import androidx.navigation.NavController
 
-internal const val CONTENT_SHARE_ORIGIN = "https://red-social-android.vercel.app"
+internal const val CONTENT_SHARE_ORIGIN = conectate.com.data.model.PublicWebDomain.activeOrigin
 internal data class SharedContentDestination(val kind: String, val id: String) {
     val route: String get() = when (kind) {
         "post" -> Screen.PostDetail.createRoute(id)
@@ -27,8 +27,8 @@ internal fun sharedContentDestination(url: String): SharedContentDestination? {
     val host = uri.host?.lowercase()
     val path = uri.rawPath.orEmpty().trim('/').split('/')
     val values = when {
-        scheme in setOf("https", "http") && host in setOf("conectate.com", "www.conectate.com", "red-social-android.vercel.app") -> {
-            if (host == "red-social-android.vercel.app" && scheme != "https") return null
+        scheme in setOf("https", "http") && host in (setOf("conectate.com", "www.conectate.com") + conectate.com.data.model.PublicWebDomain.httpsHosts) -> {
+            if (host in conectate.com.data.model.PublicWebDomain.httpsHosts && scheme != "https") return null
             when {
                 path.size == 2 && path[0] in setOf("post", "profile", "u") -> path
                 path.size == 4 && path.take(3) == listOf("app", "feed", "post") -> listOf("post", path[3])

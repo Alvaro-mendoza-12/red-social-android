@@ -3,10 +3,10 @@ import { authReturnPath, safeAuthDestination } from '../../core/auth/loginReturn
 
 test('one shared link resolves to the same room in web and package-bound Android fallback', () => {
   const id = 'fb172201-69ec-4f2b-b7f4-fb05c9394e4f'
-  expect(voiceRoomShareUrl(id)).toBe(`https://red-social-android.vercel.app/voice/${id}`)
+  expect(voiceRoomShareUrl(id)).toBe(`https://novvinapp.com/voice/${id}`)
   expect(voiceRoomWebPath(id)).toBe(`/app/voice/${id}?join=1`)
   expect(voiceRoomAndroidIntent(id)).toContain('package=conectate.com;')
-  expect(voiceRoomAndroidIntent(id)).toContain(`S.browser_fallback_url=${encodeURIComponent('https://red-social-android.vercel.app' + voiceRoomWebPath(id))};end`)
+  expect(voiceRoomAndroidIntent(id)).toContain(`S.browser_fallback_url=${encodeURIComponent('https://novvinapp.com' + voiceRoomWebPath(id))};end`)
 })
 
 test.each(['', '../other', '//evil.test', 'room?a=1', 'room#Intent', 'a/b', 'a'.repeat(101)])('rejects untrusted room route %s', value => {

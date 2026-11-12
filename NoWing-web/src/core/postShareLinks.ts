@@ -1,4 +1,4 @@
-const origin = 'https://red-social-android.vercel.app'
+const origin = 'https://novvinapp.com'
 export function sharedPostId(value: string | undefined): string | null {
   return value && /^[A-Za-z0-9_-]{8,100}$/.test(value) ? value : null
 }

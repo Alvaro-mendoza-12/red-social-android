@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { prepareIndexNow, retryDelay } from '../scripts/indexnow-notifier.mjs'
-const origin = 'https://red-social-android.vercel.app'
+const origin = 'https://novvinapp.com'
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'novvin-indexnow-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))

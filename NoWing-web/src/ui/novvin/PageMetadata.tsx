@@ -12,7 +12,7 @@ const appTitles: Record<string, string> = {
   'create-space': 'Crear espacio', reports: 'Mis reportes', help: 'Ayuda', admin: 'Administración',
   moments: 'Momentos', ranking: 'Ranking', challenges: 'Rondas', monetization: 'Monetización',
 }
-const base = 'https://red-social-android.vercel.app'
+const base = 'https://novvinapp.com'
 export function PageMetadata() {
   const { pathname } = useLocation()
   const { user } = useAuth()

@@ -1,5 +1,14 @@
 import { isolatedBackendRequestCredentials, isPublicBackendPath, productionBackendOrigin, publicBackendTransportUrl } from '../../core/publicBackendTransport'
 
+test.each(['https://novvinapp.com', 'https://www.novvinapp.com'])('the registered domain uses its own API gateway and isolated media cookies: %s', page => {
+  expect(publicBackendTransportUrl(productionBackendOrigin + '/v1/auth/session', page)).toBe(page + '/v1/auth/session')
+  expect(isolatedBackendRequestCredentials(page + '/v1/guest/session', page)).toBe('same-origin')
+})
+
+test.each(['http://novvinapp.com', 'https://novvinapp.com.evil.test', 'https://novvinapp.com:444', 'https://u:p@novvinapp.com'])('registered domain trust rejects %s', page => {
+  expect(publicBackendTransportUrl(productionBackendOrigin, page)).toBe(productionBackendOrigin)
+})
+
 test('web API, signed media and signaling use public same-origin HTTPS', () => {
   const page = 'https://red-social-android.vercel.app'
   expect(publicBackendTransportUrl(productionBackendOrigin, page)).toBe(page)

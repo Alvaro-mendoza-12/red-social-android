@@ -1,0 +1,261 @@
+{
+  "verifiedAtUtc": "2026-11-12T22:38:59.329212+00:00",
+  "android": {
+    "tests": 76,
+    "classes": 10,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "runner": "testAuditUnitTest",
+    "physicalDevice": false,
+    "suites": [
+      {
+        "name": "conectate.com.data.model.VideoClipPolicyTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.data.repository.message.InboxPreviewReaderTest",
+        "tests": "35",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.data.repository.message.IncomingInboxRecoveryTest",
+        "tests": "6",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.data.repository.message.MessageRealtimeLifecycleTest",
+        "tests": "3",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.data.repository.OwnedChatHideTest",
+        "tests": "15",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.messages.CollectionQrParserTest",
+        "tests": "4",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.messages.IncomingConversationVisibilityTest",
+        "tests": "1",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.RegisteredDomainLinksTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.SharedContentDestinationTest",
+        "tests": "5",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.VoiceRoomLinksTest",
+        "tests": "3",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    ]
+  },
+  "web": {
+    "jest": {
+      "tests": 1188,
+      "suites": 186,
+      "failures": 0
+    },
+    "node": {
+      "tests": 121,
+      "failures": 0
+    },
+    "build": true,
+    "publicPages": 21,
+    "eslintErrors": 0,
+    "eslintWarnings": 7,
+    "browserUsedForValidation": false,
+    "canonicalOrigin": "https://novvinapp.com",
+    "browserUsedForConfiguration": true
+  },
+  "ubuntu": {
+    "configurationBackup": "/home/alvaro/novvin-candidates/review119-domain-20261112-9221650d/backup",
+    "sourceChanged": false,
+    "servicesRecreated": [
+      "api",
+      "signaling"
+    ],
+    "originsAdded": [
+      "https://novvinapp.com",
+      "https://www.novvinapp.com"
+    ],
+    "sameImages": true,
+    "databaseMigrationRequested": false,
+    "sameImageIds": true
+  },
+  "originChecks": {
+    "checks": [
+      {
+        "path": "/v1/auth/web-session",
+        "origin": "https://red-social-android.vercel.app",
+        "status": 204,
+        "allowedOrigin": "https://red-social-android.vercel.app"
+      },
+      {
+        "path": "/v1/auth/web-session",
+        "origin": "https://novvinapp.com",
+        "status": 204,
+        "allowedOrigin": "https://novvinapp.com"
+      },
+      {
+        "path": "/v1/auth/web-session",
+        "origin": "https://www.novvinapp.com",
+        "status": 204,
+        "allowedOrigin": "https://www.novvinapp.com"
+      },
+      {
+        "path": "/v1/auth/web-session",
+        "origin": "https://novvinapp.com.evil.test",
+        "status": 204,
+        "allowedOrigin": null
+      },
+      {
+        "path": "/socket.io/?EIO=4&transport=polling",
+        "origin": "https://red-social-android.vercel.app",
+        "status": 204,
+        "allowedOrigin": "https://red-social-android.vercel.app"
+      },
+      {
+        "path": "/socket.io/?EIO=4&transport=polling",
+        "origin": "https://novvinapp.com",
+        "status": 204,
+        "allowedOrigin": "https://novvinapp.com"
+      },
+      {
+        "path": "/socket.io/?EIO=4&transport=polling",
+        "origin": "https://www.novvinapp.com",
+        "status": 204,
+        "allowedOrigin": "https://www.novvinapp.com"
+      },
+      {
+        "path": "/socket.io/?EIO=4&transport=polling",
+        "origin": "https://novvinapp.com.evil.test",
+        "status": 400,
+        "allowedOrigin": null
+      }
+    ],
+    "unchangedSourceDigest": "68fd14dde110aa8323513dcc8bc8f2df732b2722d7ebf6ef8699265ffaa02aab",
+    "release": "novvin-review116-realtime-friends-20261112"
+  },
+  "domain": {
+    "apex": "novvinapp.com",
+    "wwwRedirect": {
+      "target": "novvinapp.com",
+      "status": 308
+    },
+    "vercelLinked": true,
+    "dnsActive": true,
+    "dnsChangesApplied": true,
+    "currentA": [
+      "216.198.79.1",
+      "64.29.17.1"
+    ],
+    "requiredA": [
+      "216.198.79.1",
+      "64.29.17.1"
+    ],
+    "requiredWwwCname": "44a7b6d2fbbf11a0.vercel-dns-017.com",
+    "tlsVerified": true,
+    "searchConsoleDomainVerified": true,
+    "sitemapSubmitted": false,
+    "githubHomepage": "https://novvinapp.com"
+  },
+  "androidAssociation": {
+    "file": "NoWing-web/public/.well-known/assetlinks.json",
+    "certificateSha256": "62:3C:DB:12:BA:D0:8F:CC:A8:A4:A2:F6:2E:B6:B5:C9:15:83:D2:CD:14:CE:D4:AE:63:86:40:66:E0:36:D8:4D",
+    "sourceArtifact": "artifacts/releases/9.1.40-180/Novvin-9.1.40-180.aab",
+    "sourceArtifactSha256": "11727a40b0c1d9b545f50a71f2f0e40b5567550c554de79a662ef4462c0ba252",
+    "playSigningCertificateVerified": false
+  },
+  "newApkDelivered": false,
+  "physicalDeviceTested": false,
+  "integralReviewClosed": false,
+  "mail": {
+    "address": "administracion@novvinapp.com",
+    "smtpHost": "smtpout.secureserver.net",
+    "smtpPort": 465,
+    "latestSuppliedCredentialConfigured": true,
+    "latestCredentialAuthenticationVerified": false,
+    "latestProbeError": {
+      "code": "ETIMEDOUT",
+      "command": "CONN"
+    },
+    "mailSentByThisTask": false,
+    "profilePhotoApplied": false,
+    "providerPasswordChangedByAgent": false
+  },
+  "androidDomainActivation": {
+    "tests": 16,
+    "classes": 5,
+    "failures": 0,
+    "errors": 0,
+    "suites": [
+      {
+        "name": "conectate.com.data.model.VideoClipPolicyTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.messages.CollectionQrParserTest",
+        "tests": "4",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.RegisteredDomainLinksTest",
+        "tests": "2",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.SharedContentDestinationTest",
+        "tests": "5",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      },
+      {
+        "name": "conectate.com.presentation.navigation.VoiceRoomLinksTest",
+        "tests": "3",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0"
+      }
+    ]
+  }
+}

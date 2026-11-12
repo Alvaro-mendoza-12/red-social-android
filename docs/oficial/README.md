@@ -4,6 +4,8 @@ Estado documental: 12 de noviembre de 2026. Esta es la entrada para desarrollo, 
 
 ## Estado vigente
 
+La [continuación 119](119-dominio-y-recuperacion-bandeja-2026-11-12.md) corrige la recuperación de conversaciones entrantes y su ocultación después de mensajes nuevos. Vincula `novvinapp.com` a Vercel, prepara Android y autoriza sus orígenes en Ubuntu con respaldo. DNS y HTTPS están activos; la migración de enlaces y la indexación se documentan con sus comprobaciones. El correo profesional está configurado con envío pendiente de validación final del proveedor. No representa una APK nueva ni el cierre de la revisión integral.
+
 La [matriz 118](118-veinte-criterios-web-y-android-2026-11-12.md) contrasta los veinte criterios solicitados con web y Android, añade privacidad y cookies públicas, reduce sin pérdida las imágenes de las guías y mantiene una acción principal por página. Separa los datos legales y la analítica aún no configurados de las comprobaciones técnicas aprobadas.
 
 La [continuación 117](117-cambio-de-cuenta-y-web-publica-2026-11-12.md) corrige el seguimiento de ActivityScenario del ensayo de cambio de cuenta, refuerza A → B → A y verifica el alojamiento público web con 90 controles HTTP y navegador. Distingue el fallo del ensayo de la lógica de cuentas de producción.

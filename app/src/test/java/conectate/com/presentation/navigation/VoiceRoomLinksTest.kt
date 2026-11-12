@@ -21,7 +21,7 @@ class VoiceRoomLinksTest {
     @Test fun webAndAppResolveTheSameRoomWithoutPasswordsOrTokens() {
         val id = "f8ad8bb2-a53b-4d9e-bf6e-bccca8ec157a"
         val web = voiceRoomShareLink(id)!!
-        assertEquals("https://red-social-android.vercel.app/voice/$id", web)
+        assertEquals("https://novvinapp.com/voice/$id", web)
         assertEquals(id, voiceRoomFromLink(Uri.parse(web)))
         assertEquals(id, voiceRoomFromLink(Uri.parse("conectate://voice/$id")))
         assertTrue(isTrustedExternalDeepLinkOrigin("conectate", "voice"))

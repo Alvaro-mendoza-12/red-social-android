@@ -31,7 +31,7 @@ test('an untrusted web session explains the rejected address and links only to o
   expect(alert).toHaveTextContent('Esta dirección web no está autorizada')
   expect(alert).not.toHaveTextContent('UNTRUSTED_WEB_SESSION_REQUEST')
   const link = screen.getByRole('link', { name: 'Abrir la web oficial' })
-  expect(link).toHaveAttribute('href', 'https://red-social-android.vercel.app/login')
+  expect(link).toHaveAttribute('href', 'https://novvinapp.com/login')
   expect(link).toHaveAttribute('rel', 'noreferrer')
   expect(screen.queryByText('Actualiza tu contraseña')).not.toBeInTheDocument()
   expect(signInWithResolvedEmail).toHaveBeenCalledTimes(1)

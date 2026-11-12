@@ -4,7 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.navigation.NavController
 
-internal const val VOICE_ROOM_SHARE_ORIGIN = "https://red-social-android.vercel.app"
+internal const val VOICE_ROOM_SHARE_ORIGIN = conectate.com.data.model.PublicWebDomain.activeOrigin
 
 internal fun voiceRoomShareLink(roomId: String): String? = roomId.trim()
     .takeIf { it.matches(Regex("[A-Za-z0-9_-]{1,100}")) }
@@ -15,7 +15,7 @@ internal fun voiceRoomFromLink(uri: Uri): String? {
     val segments = uri.pathSegments
     val value = when {
         uri.scheme == "conectate" && uri.host == "voice" && segments.size == 1 -> segments[0]
-        uri.scheme == "https" && uri.host in setOf("red-social-android.vercel.app", "conectate.com", "www.conectate.com") &&
+        uri.scheme == "https" && uri.host in (conectate.com.data.model.PublicWebDomain.httpsHosts + setOf("conectate.com", "www.conectate.com")) &&
             segments.size == 2 && segments[0] == "voice" -> segments[1]
         else -> null
     }

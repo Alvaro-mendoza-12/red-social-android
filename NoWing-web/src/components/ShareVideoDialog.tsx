@@ -6,7 +6,7 @@ import { PublicationDialog } from './PublicationDialog'
 import { dedupeInboxConversations } from '../features/messages/conversationInboxSupport'
 export function ShareVideoDialog({videoId,title,onClose}:{videoId:string;title:string;onClose:()=>void}){
   const [items,setItems]=useState<FallbackInboxItem[]>([]),[selected,setSelected]=useState<Set<string>>(new Set()),[query,setQuery]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[info,setInfo]=useState('')
-  const url=`https://red-social-android.vercel.app/app/reels/${encodeURIComponent(videoId)}`
+  const url=`https://novvinapp.com/app/reels/${encodeURIComponent(videoId)}`
   const key=(item:FallbackInboxItem)=>`${item.kind}/${item.id}`
   useEffect(()=>{let active=true;void Promise.all(['chats','groups','communities'].map(tab=>loadFallbackMessagesInbox(tab))).then(values=>{if(active)setItems(dedupeInboxConversations(values.flatMap(value=>value.items).filter(item=>['chat','group','community'].includes(item.kind)&&item.isMember!==false)))}).catch(e=>{if(active)setError(friendlyError(e,'No se pudieron cargar tus conversaciones.'))}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[])
   async function send(){

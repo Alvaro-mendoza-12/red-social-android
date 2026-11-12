@@ -18,7 +18,7 @@ test('an accidental global HTTP noindex fails before deployment', () => {
 })
 test('HTML noindex, wrong canonical, blocked crawling and missing routes are detected', () => {
   assert.throws(() => audit((file, content) => file === 'index.html' ? content.replace('index, follow, max-image', 'noindex, follow, max-image') : content), /HTML is noindex/)
-  assert.throws(() => audit((file, content) => file === 'index.html' ? content.replace('rel="canonical" href="https://red-social-android.vercel.app/', 'rel="canonical" href="https://wrong.invalid/') : content), /Canonical mismatch/)
+  assert.throws(() => audit((file, content) => file === 'index.html' ? content.replace('rel="canonical" href="https://novvinapp.com/', 'rel="canonical" href="https://wrong.invalid/') : content), /Canonical mismatch/)
   assert.throws(() => audit((file, content) => file === 'robots.txt' ? 'User-agent: *\nDisallow: /\n' + content.replace('Allow: /', '') : content), /Robots blocks/)
   const config = configs(); config[0].rewrites = config[0].rewrites.filter(rule => rule.source !== '/mensajes')
   assert.throws(() => audit(undefined, config), /rewrite missing/)
@@ -35,7 +35,7 @@ test('robots rules honour specific crawlers, longest rules and Allow ties', () =
   assert.equal(robotsAllows(text, '/images/a.png', 'bingbot'), true)
   assert.equal(robotsAllows('User-agent: *\nDisallow: /\nAllow: /', '/', 'bingbot'), true)
 })
-const page = { route: '/', file: 'index.html', url: 'https://red-social-android.vercel.app/', images: [], contentHash: 'first' }
+const page = { route: '/', file: 'index.html', url: 'https://novvinapp.com/', images: [], contentHash: 'first' }
 test('lastmod stays stable on rebuilds and changes only with meaningful content', () => {
   const initial = refreshSitemapState([page], null, { date: '2026-10-26' })
   const unchanged = refreshSitemapState([page], initial, { date: '2026-10-27' })
