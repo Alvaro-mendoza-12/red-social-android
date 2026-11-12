@@ -5,6 +5,19 @@ import {applyInboxUnreadSnapshot,confirmInboxConversationRead,markInboxConversat
 let mockMetadataUserId='title-owner'
 jest.mock('../../core/auth/AuthProvider',()=>({useAuth:()=>({user:mockMetadataUserId?{id:mockMetadataUserId}:null})}))
 beforeEach(()=>{mockMetadataUserId='title-owner'})
+test.each([
+ ['/app/games', 'Juegos · Novvin'],
+ ['/app/settings', 'Ajustes · Novvin'],
+ ['/app/notifications', 'Notificaciones · Novvin'],
+ ['/app/voice/room', 'Salas de voz · Novvin'],
+ ['/app/monetization', 'Monetización · Novvin'],
+ ['/explore/videos', 'Explorar videos · Novvin'],
+ ['/explore/social', 'Explorar Social · Novvin'],
+ ['/forgot-password', 'Recuperar contraseña · Novvin'],
+])('uses a contextual title at %s', (path, title) => {
+ render(<MemoryRouter initialEntries={[path]}><PageMetadata /></MemoryRouter>)
+ expect(document.title).toBe(title)
+})
 test('tab title follows the shared unread count and clears on confirmed read',()=>{
  render(<MemoryRouter initialEntries={['/app/messages']}><PageMetadata/></MemoryRouter>)
  expect(document.title).toBe('Mensajes · Novvin')

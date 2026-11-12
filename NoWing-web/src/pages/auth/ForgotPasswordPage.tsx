@@ -1,4 +1,5 @@
-import { StreamingImage } from '../../components/StreamingMedia'
+import { isUntrustedWebSessionError, untrustedWebSessionMessage } from '../../core/auth/authErrorMessage'
+import { AuthErrorText } from '../../components/AuthErrorText'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { authReturnPath, safeAuthDestination } from '../../core/auth/loginReturnPath'
@@ -20,6 +21,7 @@ function saveDraft(email: string) {
   try { sessionStorage.setItem(draftKey, JSON.stringify({ email, requested: true, savedAt: Date.now() })) } catch { /* Optional recovery of the screen. */ }
 }
 function resetError(error: unknown): string {
+  if (isUntrustedWebSessionError(error)) return untrustedWebSessionMessage
   const code = error instanceof Error ? error.message : ''
   if (/INVALID_OR_EXPIRED_EMAIL_CODE/.test(code)) return 'El código no es válido o venció. Revisa los seis dígitos o solicita otro.'
   if (/RATE_LIMIT|TOO_MANY|429/.test(code)) return 'Has hecho varios intentos. Espera unos minutos y vuelve a intentar.'
@@ -76,7 +78,7 @@ export function ForgotPasswordPage() {
   }
   return <section className="auth-shell auth-shell-centered">
     <div className="auth-layout-grid auth-layout-single"><article className="auth-card auth-panel-card auth-login-card email-recovery-card">
-      <StreamingImage src="/novvin-logo.png" alt="Novvin" className="auth-logo-img" />
+      <img src="/novvin-logo.png" alt="Novvin" className="auth-logo-img" />
       <h1>Recupera tu cuenta</h1>
       <p>{step === 'email' ? 'Te enviaremos un código para cambiar tu contraseña.' : step === 'code' ? `Escribe el código enviado a ${normalizedEmail}.` : 'Código verificado. Elige tu nueva contraseña.'}</p>
       <p aria-label="Paso actual">Paso {step === 'email' ? 1 : step === 'code' ? 2 : 3} de 3</p>
@@ -85,7 +87,7 @@ export function ForgotPasswordPage() {
         {step === 'code' && <label>Código de seis dígitos<input autoFocus inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required value={code} onChange={event => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} disabled={busy} /></label>}
         {step === 'password' && <><label>Nueva contraseña<input autoFocus type="password" autoComplete="new-password" minLength={8} required value={password} onChange={event => setPassword(event.target.value)} disabled={busy} /></label>
           <label>Repite la nueva contraseña<input type="password" autoComplete="new-password" required value={confirmation} onChange={event => setConfirmation(event.target.value)} disabled={busy} /></label></>}
-        {error && <p role="alert" className="error-text">{error}</p>}
+        {error && <p role="alert" className="error-text"><AuthErrorText message={error} /></p>}
         {info && <p role="status">{info}</p>}
         <button className="primary-btn" type="submit" disabled={busy || (step === 'code' && code.length !== 6)}>{busy ? 'Procesando…' : step === 'email' ? 'Enviar código' : step === 'code' ? 'Verificar código' : 'Guardar contraseña y entrar'}</button>
       </form>

@@ -95,6 +95,18 @@ self.addEventListener('message', event => {
   for (const done of [...(pending.get(`${client}/${data.id}`) || [])]) done()
   event.ports[0]?.postMessage({ ok: true })
 })
+// Classic workers cannot import the TypeScript gateway policy. Keep this narrow
+// allowlist in sync with publicBackendTransport.ts; cross-origin edges omit cookies.
+function gatewayMediaCredentials(value) {
+  try {
+    const target = new URL(value), page = new URL(self.location.origin)
+    const official = ['red-social-android.vercel.app', 'red-social-android-alvaro-s-projects1.vercel.app', 'red-social-android-git-main-alvaro-s-projects1.vercel.app', 'red-social-android-git-correcciones-dot-alvaro-s-projects1.vercel.app'].includes(page.hostname)
+      || /^red-social-android-[a-z0-9]+-alvaro-s-projects1\.vercel\.app$/.test(page.hostname)
+    return official && page.protocol === 'https:' && !page.port && !page.username && !page.password &&
+      target.origin === page.origin && !target.username && !target.password &&
+      /^\/storage\/v1\/(object|render\/image)\//.test(target.pathname) ? 'same-origin' : 'omit'
+  } catch { return 'omit' }
+}
 async function stream(event, id) {
   const key = `${event.clientId}/${id}`
   if (!records.has(key)) {
@@ -121,12 +133,12 @@ async function stream(event, id) {
     const read = async () => {
       if (record.edge) {
         let accelerated
-        try { accelerated = await fetch(record.edge, init) } catch (error) { if (init.signal.aborted) throw error }
+        try { accelerated = await fetch(record.edge, { ...init, credentials: gatewayMediaCredentials(record.edge) }) } catch (error) { if (init.signal.aborted) throw error }
         if (accelerated && ![429, 500, 502, 503, 504].includes(accelerated.status)) return accelerated
         void accelerated?.body?.cancel().catch(() => {})
       }
       if (tokens.get(event.clientId) !== auth || records.get(key) !== record) return new Response('', { status: 403 })
-      return fetch(record.source, init)
+      return fetch(record.source, { ...init, credentials: gatewayMediaCredentials(record.source) })
     }
     const oldToken = auth.token
     let response = await read()

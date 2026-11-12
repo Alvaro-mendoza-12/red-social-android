@@ -808,7 +808,7 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
               {item.likeCount || ''}
             </Link>
             <Link to={`/app/feed/post/${item.id}#comments`}>
-              {item.commentCount ? `${item.commentCount} comentarios` : ''}
+              {item.commentCount === 1 ? '1 comentario' : `${item.commentCount} comentarios`}
             </Link>
           </div>
           <div className="feed-card-actions">

@@ -5,6 +5,11 @@ import conectate.com.core.media.useSingleProfilePlayback
 import androidx.compose.runtime.Composable
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.ui.res.stringResource
+import conectate.com.R
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -69,47 +74,49 @@ fun EditProfileScreen(
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val profileState by viewModel.profileState.collectAsState()
+    val draftAccountId = viewModel.currentUserId
+    key(draftAccountId) {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // State for fields
-    var name by remember { mutableStateOf("") }
-    var username by remember { mutableStateOf("") }
-    var bio by remember { mutableStateOf("") }
-    var country by remember { mutableStateOf("") }
-    var city by remember { mutableStateOf("") }
-    var gender by remember { mutableStateOf("unspecified") }
-    var birthDate by remember { mutableStateOf("") }
-    var education by remember { mutableStateOf("") }
-    var workplace by remember { mutableStateOf("") }
-    var career by remember { mutableStateOf("") }
-    var birthdayVisible by remember { mutableStateOf(true) }
+    var name by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var username by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var bio by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var country by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var city by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var gender by rememberSaveable(draftAccountId) { mutableStateOf("unspecified") }
+    var birthDate by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var education by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var workplace by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var career by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var birthdayVisible by rememberSaveable(draftAccountId) { mutableStateOf(true) }
     var showGenderDropdown by remember { mutableStateOf(false) }
     var showBirthDatePicker by remember { mutableStateOf(false) }
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
-    var avatarMediaType by remember { mutableStateOf<String?>(null) }
-    var avatarDurationMs by remember { mutableStateOf<Long?>(null) }
-    var avatarVideoMuted by remember { mutableStateOf(true) }
-    var coverImageUri by remember { mutableStateOf<Uri?>(null) }
+    var imageUri by rememberSaveable(draftAccountId) { mutableStateOf<Uri?>(null) }
+    var avatarMediaType by rememberSaveable(draftAccountId) { mutableStateOf<String?>(null) }
+    var avatarDurationMs by rememberSaveable(draftAccountId) { mutableStateOf<Long?>(null) }
+    var avatarVideoMuted by rememberSaveable(draftAccountId) { mutableStateOf(true) }
+    var coverImageUri by rememberSaveable(draftAccountId) { mutableStateOf<Uri?>(null) }
     var trimCandidateUri by remember { mutableStateOf<Uri?>(null) }
     var trimCandidateDurationMs by remember { mutableStateOf(0L) }
     var pendingImageCrop by remember { mutableStateOf<Pair<Uri, ProfileImageTarget>?>(null) }
-    var initialized by remember { mutableStateOf(false) }
-    var instagram by remember { mutableStateOf("") }
-    var tiktok by remember { mutableStateOf("") }
-    var facebook by remember { mutableStateOf("") }
-    var xProfile by remember { mutableStateOf("") }
-    var whatsapp by remember { mutableStateOf("") }
-    var interestsText by remember { mutableStateOf("") }
-    var hobbiesText by remember { mutableStateOf("") }
-    var linkedGamesText by remember { mutableStateOf("") }
-    var favoriteMusicUrl by remember { mutableStateOf("") }
-    var pendingProfileMusic by remember { mutableStateOf<PreparedAudioClip?>(null) }
-    var profileMusicMarkedForRemoval by remember { mutableStateOf(false) }
+    var initialized by rememberSaveable(draftAccountId) { mutableStateOf(false) }
+    var instagram by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var tiktok by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var facebook by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var xProfile by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var whatsapp by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var interestsText by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var hobbiesText by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var linkedGamesText by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var favoriteMusicUrl by rememberSaveable(draftAccountId) { mutableStateOf("") }
+    var pendingProfileMusic by rememberSaveable(draftAccountId, stateSaver = ProfileMusicDraftSaver) { mutableStateOf<PreparedAudioClip?>(null) }
+    var profileMusicMarkedForRemoval by rememberSaveable(draftAccountId) { mutableStateOf(false) }
     var showProfileMusicPicker by remember { mutableStateOf(false) }
     var profileMusicPickerInitialUri by remember { mutableStateOf<Uri?>(null) }
-    var selectedSection by remember { mutableStateOf<ProfileEditSection?>(null) }
+    var selectedSection by rememberSaveable(draftAccountId) { mutableStateOf<ProfileEditSection?>(null) }
 
     var isTrimmingAvatar by remember { mutableStateOf(false) }
 
@@ -122,9 +129,12 @@ fun EditProfileScreen(
         }
     }
 
+    var showDiscardDialog by rememberSaveable(draftAccountId) { mutableStateOf(false) }
+
     LaunchedEffect(profileState) {
         if (!initialized && profileState is ProfileUiState.Success) {
             val user = (profileState as ProfileUiState.Success).user
+            if (!user.id.equals(draftAccountId, ignoreCase = true)) return@LaunchedEffect
             name = user.displayName
             username = user.username.orEmpty()
             bio = user.bio ?: ""
@@ -169,12 +179,17 @@ fun EditProfileScreen(
                 ?.atStartOfDay(ZoneOffset.UTC)
                 ?.toInstant()
                 ?.toEpochMilli(),
+            selectableDates = object : SelectableDates {
+                override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                    !Instant.ofEpochMilli(utcTimeMillis).atZone(ZoneOffset.UTC).toLocalDate().isAfter(LocalDate.now())
+                override fun isSelectableYear(year: Int): Boolean = year <= LocalDate.now().year
+            },
         )
         DatePickerDialog(
             onDismissRequest = { showBirthDatePicker = false },
             confirmButton = {
                 TextButton(
-                    enabled = datePickerState.selectedDateMillis != null,
+                    enabled = datePickerState.selectedDateMillis?.let { datePickerState.selectableDates.isSelectableDate(it) } == true,
                     onClick = {
                         datePickerState.selectedDateMillis?.let { millis ->
                             val selected = Instant.ofEpochMilli(millis)
@@ -192,7 +207,10 @@ fun EditProfileScreen(
                 TextButton(onClick = { showBirthDatePicker = false }) { Text("Cancelar") }
             },
         ) {
-            DatePicker(state = datePickerState)
+            Column {
+                Text(stringResource(R.string.audit_birthdate_hint), modifier = Modifier.padding(horizontal = 24.dp))
+                DatePicker(state = datePickerState)
+            }
         }
     }
 
@@ -263,6 +281,41 @@ fun EditProfileScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
 
+    val savedUser = (profileState as? ProfileUiState.Success)?.user?.takeIf { it.id.equals(draftAccountId, ignoreCase = true) }
+    val hasUnsavedChanges = initialized && savedUser != null && (
+        name != savedUser.displayName || username != savedUser.username.orEmpty() ||
+        bio != savedUser.bio.orEmpty() || country != savedUser.country.orEmpty() || city != savedUser.city.orEmpty() ||
+        gender != savedUser.gender || birthDate != savedUser.birth_date.orEmpty() ||
+        education != savedUser.education.orEmpty() || workplace != savedUser.workplace.orEmpty() || career != savedUser.career.orEmpty() ||
+        birthdayVisible != (savedUser.profile_section_visibility["birthday"] != "only_me") ||
+        imageUri != null || coverImageUri != null || avatarVideoMuted != savedUser.avatar_video_muted ||
+        parseProfileList(interestsText) != savedUser.interests || parseProfileList(hobbiesText) != savedUser.hobbies ||
+        parseProfileList(linkedGamesText) != savedUser.linked_games ||
+        profileSocialDraftHasChanges(
+            draft = mapOf("instagram" to instagram, "tiktok" to tiktok, "facebook" to facebook, "x" to xProfile, "whatsapp" to whatsapp),
+            saved = savedUser.social_links,
+        ) || pendingProfileMusic != null || profileMusicMarkedForRemoval
+    )
+    val onBack: () -> Unit = {
+        if (!isLoading && !isTrimmingAvatar) {
+            if (selectedSection != null) selectedSection = null
+            else if (hasUnsavedChanges) showDiscardDialog = true
+            else navController.popBackStack()
+        }
+    }
+    BackHandler(onBack = onBack)
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text(stringResource(R.string.audit_discard_title)) },
+            text = { Text(stringResource(R.string.audit_discard_profile_message)) },
+            confirmButton = { TextButton(onClick = { showDiscardDialog = false; navController.popBackStack() }) {
+                Text(stringResource(R.string.audit_discard))
+            } },
+            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.audit_keep_editing)) } },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -274,10 +327,7 @@ fun EditProfileScreen(
                 },
                 navigationIcon = {
                     IconButton(
-                        onClick = {
-                            if (selectedSection == null) navController.popBackStack()
-                            else selectedSection = null
-                        }
+                        onClick = onBack
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Atrás")
                     }
@@ -288,6 +338,9 @@ fun EditProfileScreen(
         Box(modifier = Modifier.padding(padding)) {
              when (val state = profileState) {
                 is ProfileUiState.Success -> {
+                    if (!state.user.id.equals(draftAccountId, ignoreCase = true)) {
+                        CircularProgressIndicator()
+                    } else {
                     val currentSection = selectedSection
                     ProfileEditSections(
                         section = currentSection,
@@ -393,11 +446,11 @@ fun EditProfileScreen(
                                         },
                                     )
                                 }
-                                trimmedName != state.user.displayName.trim() && !conectate.com.data.model.DisplayNamePolicy.valid(trimmedName) ->
+                                currentSection == ProfileEditSection.BASIC && trimmedName != state.user.displayName.trim() && !conectate.com.data.model.DisplayNamePolicy.valid(trimmedName) ->
                                     errorMessage = "El nombre debe tener entre 2 y 20 caracteres"
-                                usernameChanged && !Regex("[A-Za-z0-9_.-]{3,24}").matches(trimmedUsername) ->
+                                currentSection == ProfileEditSection.BASIC && usernameChanged && !Regex("[A-Za-z0-9_.-]{3,24}").matches(trimmedUsername) ->
                                     errorMessage = "El usuario debe tener 3–24 letras, números, _, . o -."
-                                !birthDateIsValid ->
+                                currentSection == ProfileEditSection.BASIC && !birthDateIsValid ->
                                     errorMessage = "Selecciona una fecha de nacimiento válida"
                                 currentSection == ProfileEditSection.SOCIAL &&
                                     !socialLinksAreValid(instagram, tiktok, facebook, xProfile, whatsapp) ->
@@ -406,13 +459,13 @@ fun EditProfileScreen(
                                     isLoading = true
                                     errorMessage = null
                                     viewModel.updateProfile(
-                                        name = trimmedName,
-                                        username = trimmedUsername.takeIf { usernameChanged },
-                                        bio = trimmedBio,
-                                        country = country.trim(),
-                                        city = city.trim(),
-                                        gender = gender,
-                                        birthDate = birthDate.takeIf(String::isNotBlank),
+                                        name = trimmedName.takeIf { currentSection == ProfileEditSection.BASIC },
+                                        username = trimmedUsername.takeIf { currentSection == ProfileEditSection.BASIC && usernameChanged },
+                                        bio = trimmedBio.takeIf { currentSection == ProfileEditSection.BASIC },
+                                        country = country.trim().takeIf { currentSection == ProfileEditSection.BASIC },
+                                        city = city.trim().takeIf { currentSection == ProfileEditSection.BASIC },
+                                        gender = gender.takeIf { currentSection == ProfileEditSection.BASIC },
+                                        birthDate = birthDate.takeIf { currentSection == ProfileEditSection.BASIC && it.isNotBlank() },
                                         education = education.takeIf { currentSection == ProfileEditSection.BASIC },
                                         workplace = workplace.takeIf { currentSection == ProfileEditSection.BASIC },
                                         career = career.takeIf { currentSection == ProfileEditSection.BASIC },
@@ -420,9 +473,9 @@ fun EditProfileScreen(
                                         imageUri = imageUri.takeIf {
                                             currentSection == ProfileEditSection.APPEARANCE
                                         },
-                                        avatarMediaType = avatarMediaType,
-                                        avatarVideoMuted = avatarVideoMuted,
-                                        avatarDurationMs = avatarDurationMs,
+                                        avatarMediaType = avatarMediaType.takeIf { currentSection == ProfileEditSection.APPEARANCE },
+                                        avatarVideoMuted = avatarVideoMuted.takeIf { currentSection == ProfileEditSection.APPEARANCE },
+                                        avatarDurationMs = avatarDurationMs.takeIf { currentSection == ProfileEditSection.APPEARANCE },
                                         coverImageUri = coverImageUri.takeIf {
                                             currentSection == ProfileEditSection.APPEARANCE
                                         },
@@ -446,8 +499,17 @@ fun EditProfileScreen(
                                         },
                                         onSuccess = {
                                             isLoading = false
-                                            imageUri = null
-                                            coverImageUri = null
+                                            if (currentSection == ProfileEditSection.APPEARANCE) {
+                                                imageUri = null
+                                                coverImageUri = null
+                                            }
+                                            if (currentSection == ProfileEditSection.BASIC) {
+                                                name = trimmedName
+                                                username = trimmedUsername
+                                                bio = trimmedBio
+                                                country = country.trim()
+                                                city = city.trim()
+                                            }
                                             selectedSection = null
                                             android.widget.Toast.makeText(
                                                 context,
@@ -464,6 +526,7 @@ fun EditProfileScreen(
                             }
                         },
                     )
+                    }
                 }
                 is ProfileUiState.Error -> {
                      Column(
@@ -567,6 +630,7 @@ fun EditProfileScreen(
         )
     }
     }
+    } // Account-scoped draft state.
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -802,3 +866,18 @@ enum class ProfileImageTarget {
     AVATAR,
     COVER
 }
+
+
+// Store metadata only; files remain in the existing private draft/cache storage.
+private val ProfileMusicDraftSaver = listSaver<PreparedAudioClip?, Any>(
+    save = { clip -> if (clip == null) emptyList() else listOf(
+        clip.uri.toString(), clip.displayName, clip.mimeType, clip.title, clip.artist, clip.album,
+        clip.durationMs, clip.artworkUri?.toString().orEmpty(), clip.sourceUri?.toString().orEmpty(), clip.sourceStartMs,
+    ) },
+    restore = { values -> if (values.isEmpty()) null else PreparedAudioClip(
+        uri = Uri.parse(values[0] as String), displayName = values[1] as String, mimeType = values[2] as String,
+        title = values[3] as String, artist = values[4] as String, album = values[5] as String,
+        durationMs = values[6] as Long, artworkUri = (values[7] as String).takeIf(String::isNotBlank)?.let(Uri::parse),
+        sourceUri = (values[8] as String).takeIf(String::isNotBlank)?.let(Uri::parse), sourceStartMs = values[9] as Long,
+    ) },
+)

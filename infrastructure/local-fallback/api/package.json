@@ -19,6 +19,7 @@
     "verify:message-markers:local": "node scripts/verify-message-markers-local.js",
     "verify:message-inserts:local": "node scripts/verify-message-insert-local.js && node scripts/verify-message-send-routes-local.js",
     "test": "node --test tests/*.test.js",
+    "test:audit-security": "node --test tests/audit-content-privacy.test.js tests/login-response-privacy.test.js tests/compat-insert-ownership.postgres.test.js",
     "pretest:data-routes": "node tests/community-event-worker.test.js",
     "pretest:security": "node tests/distributed-rate-limit.test.js",
     "start": "node src/server.js",

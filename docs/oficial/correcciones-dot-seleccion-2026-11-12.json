@@ -1,0 +1,1186 @@
+{
+  "date": "2026-11-12",
+  "baseMain": "455d26999111116f59ae8bd76dae56a5e137aee3",
+  "baseFeature": "4a62184a34361ba6b22a6d607d13ae6f689fe5a1",
+  "candidateRef": "origin/correcciones-dot",
+  "candidateCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+  "commitsAheadOfMain": 51,
+  "comparisonFiles": 195,
+  "decisions": {
+    "deferred": 72,
+    "selected": 123
+  },
+  "scope": "Inventario de decisiones. selected no significa lectura completa, despliegue ni cierre de recorrido. Las huellas y lecturas parciales se registran por separado en review-coverage.json.",
+  "files": [
+    {
+      "path": ".github/workflows/android-ci.yml",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": ".github/workflows/android-instrumented-smoke.yml",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": ".github/workflows/android-production-release.yml",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": ".github/workflows/manual-build.yml",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "NoWing-web/middleware.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/package-lock.json",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Metadatos/dependencias generados o test de nueva cancelación; no necesarios para las correcciones seleccionadas."
+    },
+    {
+      "path": "NoWing-web/public/novvin-media-worker.js",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/public/sitemap.xml",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Metadatos/dependencias generados o test de nueva cancelación; no necesarios para las correcciones seleccionadas."
+    },
+    {
+      "path": "NoWing-web/scripts/public-seo-state.json",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Metadatos/dependencias generados o test de nueva cancelación; no necesarios para las correcciones seleccionadas."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/AccountSettingsIdentity.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/AccountSettingsPassword.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/AppNavigation.test.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/FriendRequestsLegacy.test.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/FriendRequestsPage.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "11902007b225cb7b0f1b024e966680136fc63b87",
+      "reason": "Protección de respuestas atrasadas y acciones de la vista; sin nueva cancelación de solicitudes enviadas."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/GameCatalog.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/MomentComposer.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/MomentDraftNavigation.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/MonetizationUnavailable.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/PageMetadata.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/PublicHomeDesign.test.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/SecondaryNavigation.test.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/ShareDialogs.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/SocialPageNavigation.test.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/authErrorMessage.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/backendRpc.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/backendRpcIdentity.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/backendTrust.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/boundedStorageRead.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/fallbackDeleteIdentity.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/fallbackDeleteOutboxIdentity.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/fallbackFriendCancellation.test.ts",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Metadatos/dependencias generados o test de nueva cancelación; no necesarios para las correcciones seleccionadas."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/fallbackIdentityFence.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/fallbackPreferences.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/gatewayCookieIsolation.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/guestAccess.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/momentUploadScope.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/publicBackendTransport.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/runtimeBackendInitialization.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/features/messages/messagesDiscovery.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/features/reports/MyReportsPage.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/pages/AuthLogoPersistence.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/pages/FeedCommentLinks.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/pages/ForgotPasswordPage.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/pages/LoginOriginError.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/pages/PasswordWhitespace.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/pages/RegisterRoomReturn.test.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/__tests__/ui/novvinNavigation.test.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/components/AuthErrorText.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/components/ForwardMessagesDialog.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/components/ShareVideoDialog.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/auth/authErrorMessage.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/auth/fallbackAuth.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/auth/guestAccess.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/backendRpc.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/fallbackData.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo. Se retira el helper nuevo de cancelación de amistades, cuya integración de servidor queda pendiente."
+    },
+    {
+      "path": "NoWing-web/src/core/media/boundedStorageRead.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/momentsUbuntu.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/publicBackendTransport.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/runtimeBackend.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/core/webOutbox.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/games/GameCatalog.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/games/GamesPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/messages/MessagesPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/messages/RoomChatPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/moments/MomentComposer.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/moments/MomentsPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/moments/momentDraft.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/moments/momentsData.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/profile/AccountSettingsPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/profile/MonetizationCenterPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/reports/MyReportsPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/features/social/FriendRequestsPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "11902007b225cb7b0f1b024e966680136fc63b87",
+      "reason": "Protección de respuestas atrasadas y acciones de la vista; sin nueva cancelación de solicitudes enviadas."
+    },
+    {
+      "path": "NoWing-web/src/features/social/SocialPage.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/layout/AppLayout.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/pages/auth/ForgotPasswordPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/pages/auth/LoginPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/pages/auth/PasswordResetPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/pages/auth/RegisterPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/pages/explore.css",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/pages/feed/FeedPage.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/AppNavigation.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/PageMetadata.tsx",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/PublicHome.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/PublicNavigation.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/SecondaryNavigation.tsx",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/auth.css",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/foundation.css",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/navigation.ts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/public-home.css",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/screens.css",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/shell.css",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/tokens.css",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/webParity.css",
+      "decision": "selected",
+      "sourceCommit": "3a4dc8efdd1fd1e52b41c27a1ca89389bf4d0967",
+      "reason": "Solo posición de flechas; no se incorpora el rediseño posterior de Social."
+    },
+    {
+      "path": "NoWing-web/tests/control-contrast.test.mjs",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo. Adaptación local LF/CRLF del texto leído; aserciones conservadas."
+    },
+    {
+      "path": "NoWing-web/tests/media-worker.test.mjs",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "NoWing-web/tests/visual-theme.test.mjs",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Rediseño de portada/navegación/Social o pruebas de ese diseño fuera de esta selección de correcciones."
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/localfallback/UbuntuRealtimeClient.kt",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Bloque realtime descartado: reincrementa generación y reconecta al repetir suscripción de la misma cuenta; riesgo de invalidar eventos admitidos."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/AccountChatBackgroundStore.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/ChatSettingsRepository.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/FriendMutationPolicy.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/FriendRepository.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/LiveRepository.kt",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Bloque realtime descartado: reincrementa generación y reconecta al repetir suscripción de la misma cuenta; riesgo de invalidar eventos admitidos."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/MessageRepository.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/OwnedChatHide.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/message/ConversationReadReceiver.kt",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Bloque realtime descartado: reincrementa generación y reconecta al repetir suscripción de la misma cuenta; riesgo de invalidar eventos admitidos."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/message/MessageRealtimeSync.kt",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Bloque realtime descartado: reincrementa generación y reconecta al repetir suscripción de la misma cuenta; riesgo de invalidar eventos admitidos."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/RegisterScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/home/HomeScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/messages/ChatViewModel.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/messages/CommunityChatViewModel.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/messages/GroupChatViewModel.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/messages/MessagingViewModel.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/profile/EditProfileScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/profile/ProfileScopedAction.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/profile/ProfileSocialDraft.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/profile/ProfileViewModel.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/settings/LanguageSettingsScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/social/CreatePostScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/social/CreatePostViewModel.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/social/SocialScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/wallet/CoinsAndPaymentsScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/wallet/CreatorEarningsScreen.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values-b+zh+Hans/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values-b+zh+Hant/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values-de/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values-en/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values-es/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values-fr/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values-ja/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values-pt/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/main/res/values/audit_strings.xml",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/test/java/conectate/com/data/localfallback/UbuntuRealtimeAdmissionTest.kt",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Bloque realtime descartado: reincrementa generación y reconecta al repetir suscripción de la misma cuenta; riesgo de invalidar eventos admitidos."
+    },
+    {
+      "path": "app/src/test/java/conectate/com/data/repository/AccountChatBackgroundStoreTest.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/test/java/conectate/com/data/repository/FriendMutationPolicyTest.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/test/java/conectate/com/data/repository/OwnedChatHideTest.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/test/java/conectate/com/data/repository/message/MessageRealtimeAccountTransactionTest.kt",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Bloque realtime descartado: reincrementa generación y reconecta al repetir suscripción de la misma cuenta; riesgo de invalidar eventos admitidos."
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/profile/ProfileScopedActionTest.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/profile/ProfileSocialDraftTest.kt",
+      "decision": "selected",
+      "sourceCommit": "a9b67814e1fd123ea66b86cc57264eb235e5ff5d",
+      "reason": "Corrección funcional seleccionada; revisión de sus cambios, no certificación integral del archivo."
+    },
+    {
+      "path": "docs/audits/2026-11-10-android-correcciones.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/audits/correcciones-dot-ci-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/audits/correcciones-dot-integracion-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/audits/moment-draft-navigation-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/audits/web-corrections-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/audits/web-login-origin-feedback-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/audits/web-visual-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/oficial/README.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/oficial/accesibilidad-controles-web-2026-11-11.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/oficial/adenda-benchmark-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/oficial/auditoria-dot-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/oficial/correcciones-dot-seguridad-2026-11-10.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/oficial/legibilidad-texto-web-2026-11-11.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/oficial/review-coverage.json",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-10-web-visual-design.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-10-web-visual-design.md",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Informes y cobertura de otra rama no se usan como evidencia de esta integración; se genera informe propio."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/package-lock.json",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/package.json",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/data-routes.js",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/direct-message-request-policy.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/friend-request-state.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/moments-routes.js",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/postgrest-compat-routes.js",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/server.js",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/admin-moderation-routes.test.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/audit-content-privacy.test.js",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/compat-account-cleanup.test.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/compat-insert-ownership.postgres.test.js",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/firebase-dependency-compat.test.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/friend-request-compat.postgres.test.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/friend-request-concurrency.postgres.test.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/friend-request-state.postgres.test.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/friend-request-transition.postgres.test.js",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Estado de amistades, migraciones y cambios de dependencias requieren validación operativa separada; no se incorpora el bloque posterior."
+    },
+    {
+      "path": "infrastructure/local-fallback/api/tests/login-response-privacy.test.js",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "tools/android_kvm_acl.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/prepare_android_ci.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/prepare_android_offline_emulator.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/run_android_account_smoke.sh",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_android_audit_contracts.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_android_audit_resources.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_android_fixture_workflows.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_android_kvm_acl.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_android_kvm_diagnostics.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_android_offline_readiness.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_android_sdk_path.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_android_smoke_avd.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_ci_node_runtime.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_prepare_android_ci.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_verify_account_smoke_result.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/tests/test_verify_android_release.py",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    },
+    {
+      "path": "tools/verify_account_smoke_result.py",
+      "decision": "deferred",
+      "sourceCommit": null,
+      "reason": "Preparación CI, KVM y emulador fuera de esta selección; no ejecutada aquí en su plataforma objetivo."
+    },
+    {
+      "path": "tools/verify_android_release.py",
+      "decision": "selected",
+      "sourceCommit": "13593bb315ba8bb5e96c7f45af94d4098d4363f7",
+      "reason": "Solo bloque de seguridad 13593bb3; no incluye migración posterior de amistades ni cambios de dependencias."
+    }
+  ]
+}

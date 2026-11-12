@@ -1,3 +1,4 @@
+import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../../core/media/storageReadSession'
 import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
 import { MessageTimestamp } from '../../components/MessageTimestamp'
 import { ContactMessageCard } from '../../components/ContactMessageCard'
@@ -41,7 +42,7 @@ import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { useConversationRecovery } from './useConversationRecovery'
 import { useChatEntryFocus } from './useChatEntryFocus'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type DragEvent, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { conversationAvatarSource } from '../../core/profileMediaFields'
@@ -411,6 +412,18 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
   const audioRecorderRef = useRef<MediaRecorder | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const pollIdentity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  const pollContext = useRef(0)
+  useEffect(() => {
+    setPollQuestion('')
+    setPollOptions('Si\nNo')
+    setPollAllowsMultiple(false)
+    setShowPollComposer(false)
+    setCreatingPoll(false)
+    return () => { pollContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanRoomId, scope, pollIdentity])
+  const deletionContext = useRef(0)
+  useEffect(() => () => { deletionContext.current += 1 }, [user?.id, useUbuntu, cleanRoomId, scope])
   const loadSequenceRef = useRef(0)
   useEffect(() => {
     loadSequenceRef.current += 1
@@ -1314,7 +1327,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
   }
 
   async function createPoll() {
-    if ((!supabase && !useUbuntu) || !cleanRoomId || creatingPoll) return
+    if (!user || (!supabase && !useUbuntu) || !cleanRoomId || creatingPoll) return
     const question = pollQuestion.trim()
     const options = pollOptions
       .split('\n')
@@ -1324,6 +1337,10 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
       setError('La encuesta necesita pregunta y al menos 2 opciones')
       return
     }
+    const context = pollContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return
+    const isCurrent = () => context === pollContext.current && identity === getStorageReadIdentity()
     setCreatingPoll(true)
     setError(null)
     try {
@@ -1335,6 +1352,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
         p_allows_multiple: pollAllowsMultiple,
       }
       const { error: pollError } = await backendRpc(config.pollCreateRpc, payload)
+      if (!isCurrent()) return
       if (pollError) throw pollError
       setPollQuestion('')
       setPollOptions('Si\nNo')
@@ -1342,9 +1360,9 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
       setShowPollComposer(false)
       void loadRoom({ silent: true })
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo crear encuesta'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo crear encuesta'))
     } finally {
-      setCreatingPoll(false)
+      if (isCurrent()) setCreatingPoll(false)
     }
   }
 
@@ -1403,10 +1421,14 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
 
   async function deleteRoomMessage(message: RoomMessage, forEveryone: boolean) {
     if (!user) return
+    const context = deletionContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return
+    const isCurrent = () => context === deletionContext.current && identity === getStorageReadIdentity()
     try {
       if (useUbuntu) {
         const response = await deleteFallbackRoomMessage(scope, cleanRoomId, message.id, forEveryone)
-        upsertMessageInState(mapRoomMessage(response.message))
+        if (isCurrent()) upsertMessageInState(mapRoomMessage(response.message))
         return
       }
       if (!supabase) return
@@ -1418,6 +1440,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           .eq('id', message.id)
           .eq('sender_id', user.id)
         if (deleteError) throw deleteError
+        if (!isCurrent()) return
         setMessages((current) => current.map((entry) => entry.id === message.id
           ? { ...entry, deletedForAll: true, content: '', mediaUrl: '', updatedAt: nowIso }
           : entry))
@@ -1428,12 +1451,13 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           .update({ deleted_by: deletedBy, updated_at: nowIso })
           .eq('id', message.id)
         if (deleteError) throw deleteError
+        if (!isCurrent()) return
         setMessages((current) => current.map((entry) => entry.id === message.id
           ? { ...entry, deletedBy, updatedAt: nowIso }
           : entry))
       }
     } catch (caught) {
-      setError(friendlyError(caught, forEveryone ? 'No se pudo borrar para todos' : 'No se pudo borrar para mi'))
+      if (isCurrent()) setError(friendlyError(caught, forEveryone ? 'No se pudo borrar para todos' : 'No se pudo borrar para mi'))
     }
   }
 

@@ -4,6 +4,14 @@ import { publicInfoPage } from './publicInfoPages'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { useInboxUnreadMessageTotal } from '../../core/inboxActivity'
 
+const appTitles: Record<string, string> = {
+  messages: 'Mensajes', videos: 'Videos', reels: 'Videos', social: 'Social', feed: 'Publicación',
+  profile: 'Perfil', games: 'Juegos', settings: 'Ajustes', notifications: 'Notificaciones',
+  voice: 'Salas de voz', calls: 'Llamadas', live: 'En vivo', proximity: 'Personas cerca',
+  search: 'Buscar', assistant: 'Asistente', follows: 'Amigos', 'friend-requests': 'Solicitudes',
+  'create-space': 'Crear espacio', reports: 'Mis reportes', help: 'Ayuda', admin: 'Administración',
+  moments: 'Momentos', ranking: 'Ranking', challenges: 'Rondas', monetization: 'Monetización',
+}
 const base = 'https://red-social-android.vercel.app'
 export function PageMetadata() {
   const { pathname } = useLocation()
@@ -11,22 +19,15 @@ export function PageMetadata() {
   const unread = useInboxUnreadMessageTotal(user?.id || '')
   useEffect(() => {
     const info = publicInfoPage(pathname)
-    const title =
-      info ? info.title : pathname === '/'
-        ? 'Novvin Web — mensajes, videos y comunidades'
-        : pathname === '/login'
-          ? 'Iniciar sesión en Novvin Web'
-          : pathname === '/register'
-            ? 'Crear una cuenta en Novvin'
-            : pathname.startsWith('/app/messages')
-              ? 'Mensajes · Novvin'
-              : /^\/app\/(videos|reels)/.test(pathname)
-                ? 'Videos · Novvin'
-                : pathname.startsWith('/app/social')
-                  ? 'Social · Novvin'
-                  : pathname.startsWith('/app/profile')
-                    ? 'Perfil · Novvin'
-                    : 'Novvin Web'
+    const section = pathname.startsWith('/app/') ? appTitles[pathname.split('/')[2]] : undefined
+    const title = info?.title || (section ? `${section} · Novvin`
+      : pathname === '/' ? 'Novvin Web — mensajes, videos y comunidades'
+      : pathname === '/login' ? 'Iniciar sesión en Novvin Web'
+      : pathname === '/register' ? 'Crear una cuenta en Novvin'
+      : pathname === '/forgot-password' ? 'Recuperar contraseña · Novvin'
+      : pathname.startsWith('/explore/videos') ? 'Explorar videos · Novvin'
+      : pathname.startsWith('/explore') ? 'Explorar Social · Novvin'
+      : 'Novvin Web')
     document.title = `${user && pathname.startsWith('/app') && unread > 0 ? `(${unread > 999 ? '999+' : unread}) ` : ''}${title}`
     let robots = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]')
     if (!robots) {

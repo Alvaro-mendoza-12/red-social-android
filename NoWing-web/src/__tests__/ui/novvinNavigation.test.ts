@@ -23,6 +23,8 @@ describe('APK navigation on the web', () => {
     ['/app/games', '/app/games'],
     ['/app/settings', ''],
     ['/app/reels-other', ''],
+    ['/app/messages-other', ''],
+    ['/app/messagesarchive', ''],
   ])('selects the correct main section for %s', (path, expected) => {
     expect(primarySection(path)).toBe(expected)
   })

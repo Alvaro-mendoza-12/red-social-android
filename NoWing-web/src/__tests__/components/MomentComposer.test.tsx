@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 import { MomentComposer } from '../../features/moments/MomentComposer'
 import { publishMoment } from '../../features/moments/momentsData'
 import { searchMomentMusic } from '../../features/moments/momentMusic'
@@ -10,11 +11,43 @@ jest.mock('../../features/moments/momentMusic', () => ({ ...jest.requireActual('
 jest.mock('../../components/StreamingMedia', () => { const React = jest.requireActual('react'); return { StreamingAudio: React.forwardRef((p: object, ref: unknown) => React.createElement('audio', { ...p, ref })), StreamingVideo: React.forwardRef((p: object, ref: unknown) => React.createElement('video', { ...p, ref })), StreamingImage: (p: object) => React.createElement('img', p) } })
 const publish = publishMoment as jest.Mock, search = searchMomentMusic as jest.Mock
 beforeEach(() => {
+  invalidateStorageReadIdentity(); updateStorageReadIdentity('owner-a', 'fallback')
   publish.mockReset(); publish.mockResolvedValue(undefined); search.mockReset(); search.mockResolvedValue({ tracks: [], nextCursor: '' })
   Object.assign(URL, { createObjectURL: jest.fn(() => 'blob:local-photo'), revokeObjectURL: jest.fn() })
   jest.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {})
 })
-afterEach(() => jest.restoreAllMocks())
+afterEach(() => { act(() => invalidateStorageReadIdentity()); jest.restoreAllMocks() })
+
+test.each(['button', 'escape', 'backdrop'])('warns before discarding a draft through %s', async method => {
+  const close = jest.fn(), confirm = jest.spyOn(window, 'confirm').mockReturnValue(false)
+  const { container } = render(<MomentComposer onClose={close} onPublished={() => {}} />)
+  fireEvent.change(screen.getByLabelText('Descripción'), { target: { value: 'Conservar borrador' } })
+  const dismiss = () => {
+    if (method === 'button') fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+    else if (method === 'escape') fireEvent.keyDown(window, { key: 'Escape' })
+    else fireEvent.mouseDown(container.querySelector('.app-dialog-backdrop')!)
+  }
+  dismiss()
+  expect(confirm).toHaveBeenCalledTimes(1)
+  expect(close).not.toHaveBeenCalled()
+  expect(screen.getByLabelText('Descripción')).toHaveValue('Conservar borrador')
+  confirm.mockReturnValue(true); dismiss(); expect(close).toHaveBeenCalledTimes(1)
+})
+
+test('an untouched moment closes without a discard prompt', () => {
+  const close = jest.fn(), confirm = jest.spyOn(window, 'confirm').mockReturnValue(false)
+  render(<MomentComposer onClose={close} onPublished={() => {}} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }))
+  expect(close).toHaveBeenCalledTimes(1); expect(confirm).not.toHaveBeenCalled()
+})
+
+test('a selected photo protects the draft against page refresh', () => {
+  render(<MomentComposer onClose={() => {}} onPublished={() => {}} />)
+  pickPhoto()
+  const event = new Event('beforeunload', { cancelable: true })
+  window.dispatchEvent(event)
+  expect(event.defaultPrevented).toBe(true)
+})
 const pickPhoto = () => fireEvent.change(screen.getByLabelText('Foto o video'), { target: { files: [new File(['image'], 'foto.png', { type: 'image/png' })] } })
 test('choosing a file only previews it; explicit publication is required', async () => {
   const done = jest.fn(); render(<MomentComposer onClose={() => {}} onPublished={done} />)

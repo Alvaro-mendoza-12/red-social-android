@@ -40,7 +40,13 @@ fun String.isStableHttpsBackendOrigin(): Boolean = runCatching {
         host != "localhost" &&
         !host.endsWith(".local") &&
         !host.matches(Regex("[0-9.]+")) &&
-        uri.userInfo == null &&
+        !host.endsWith('.') &&
+        host.matches(Regex("^[a-z0-9.-]+$")) &&
+        uri.rawUserInfo == null &&
+        uri.rawQuery == null &&
+        uri.rawFragment == null &&
+        (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") &&
+        (uri.port in intArrayOf(-1, 443) || (uri.port == 8443 && host.endsWith(".ts.net"))) &&
         !isEphemeralBackendOrigin()
 }.getOrDefault(false)
 fun String.isDnsDiscoveryHost(): Boolean = matches(
@@ -364,8 +370,8 @@ extra["novvinConfiguredReleaseSigning"] = hasReleaseSigning
 apply(from = rootProject.file("gradle/release-signing-validation.gradle.kts"))
 
 tasks.matching { it.name.startsWith("uploadCrashlyticsMappingFile") }.configureEach {
-    onlyIf("Crashlytics mapping uploads are disabled for explicit audit builds") {
-        !isAuditBuild
+    onlyIf("No external Crashlytics uploads from isolated audit or CI fixture builds") {
+        !isAuditBuild && providers.environmentVariable("NOVVIN_CI_FIXTURE").orNull != "true"
     }
 }
 

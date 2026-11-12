@@ -754,16 +754,18 @@ class ChatViewModel @Inject constructor(
     }
 
     fun setChatBackground(backgroundType: String, backgroundUri: String? = null) {
+        val owner = authService.getCurrentUserId() ?: return
         val cleanId = chatId?.trim()?.lowercase() ?: return
         viewModelScope.launch {
-            chatSettingsRepository.setChatBackground(cleanId, backgroundType, backgroundUri)
+            chatSettingsRepository.setChatBackground(cleanId, backgroundType, backgroundUri, expectedOwner = owner)
         }
     }
 
     fun clearChatBackground() {
+        val owner = authService.getCurrentUserId() ?: return
         val cleanId = chatId?.trim()?.lowercase() ?: return
         viewModelScope.launch {
-            chatSettingsRepository.clearChatBackground(cleanId)
+            chatSettingsRepository.clearChatBackground(cleanId, expectedOwner = owner)
         }
     }
 
@@ -2243,8 +2245,9 @@ class ChatViewModel @Inject constructor(
     }
     fun deleteChat() {
         val cid = chatId ?: return
+        val owner = authService.captureAccountLease()
         viewModelScope.launch {
-            messageRepository.deleteChat(cid)
+            messageRepository.deleteChat(owner, cid)
         }
     }
     fun reportChat(@Suppress("UNUSED_PARAMETER") reason: String) {}
@@ -2291,17 +2294,22 @@ class ChatViewModel @Inject constructor(
     
     fun confirmClearChat() {
         val cid = chatId ?: return
+        val owner = authService.captureAccountLease()
         viewModelScope.launch {
-            val result = messageRepository.clearChat(cid)
-            if (result.isSuccess) {
-                dismissClearChatDialog()
-                Toast.makeText(context, "Chat vaciado", Toast.LENGTH_SHORT).show()
-            } else {
-                conectate.com.presentation.common.AppFeedbackBus.showError("Error al vaciar chat")
+            val result = messageRepository.clearChat(owner, cid)
+            authService.commitForAccountLease(owner) {
+                if (chatId == cid) {
+                    if (result.isSuccess) {
+                        dismissClearChatDialog()
+                        Toast.makeText(context, "Chat vaciado", Toast.LENGTH_SHORT).show()
+                    } else {
+                        conectate.com.presentation.common.AppFeedbackBus.showError("Error al vaciar chat")
+                    }
+                }
             }
         }
     }
-    
+
     // Voice Manager helpers
     fun voiceMessageManagerIsPreviewPlaying(): Boolean {
         return voiceMessageManager.isPreviewPlaying()

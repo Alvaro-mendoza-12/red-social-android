@@ -1,5 +1,7 @@
 package conectate.com.presentation.wallet
 
+import conectate.com.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -174,9 +176,8 @@ fun CreatorEarningsScreen(
                         OutlinedButton(
                             onClick = { showWithdrawalInfo = true },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = false,
                         ) {
-                            Text("Retiros próximamente")
+                            Text(stringResource(R.string.audit_withdrawal_status))
                         }
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -348,7 +349,7 @@ fun CreatorEarningsScreen(
                 Text(
                     when {
                         payoutSummary?.configured != true ->
-                            "PayPal Sandbox aún no tiene todas las credenciales, el webhook firmado y la tasa comercial configurados en el servidor. No se enviará dinero con una configuración incompleta."
+                            stringResource(R.string.audit_withdrawals_unavailable)
                         payoutSummary?.creatorVerified != true ->
                             "Solo los creadores verificados pueden retirar ganancias originadas en regalos comprados con dinero real."
                         payoutSummary?.account == null ->
@@ -356,9 +357,9 @@ fun CreatorEarningsScreen(
                         !payoutVerified ->
                             "La cuenta ${payoutSummary?.account?.emailMasked.orEmpty()} espera verificación manual del administrador."
                         payoutSummary?.enabled != true ->
-                            "La arquitectura Sandbox está preparada, pero los retiros permanecen desactivados hasta completar las pruebas externas de PayPal."
+                            stringResource(R.string.audit_withdrawals_unavailable)
                         else ->
-                            "Tu cuenta está lista. Cada solicitud requiere aprobación manual y se concilia con PayPal antes de marcarse como pagada."
+                            stringResource(R.string.audit_withdrawals_unavailable)
                     }
                 )
             },

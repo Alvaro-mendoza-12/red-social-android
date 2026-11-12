@@ -1,4 +1,3 @@
-import { StreamingImage } from '../../components/StreamingMedia'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
@@ -22,7 +21,8 @@ import {
   type WebLoginPairing,
 } from '../../core/auth/webLoginPairing'
 import { supabase } from '../../core/supabase'
-import { friendlyError } from '../../core/utils'
+import { authErrorMessage } from '../../core/auth/authErrorMessage'
+import { AuthErrorText } from '../../components/AuthErrorText'
 import { useWebPreferences } from '../../core/webPreferences'
 import { authReturnPath, safeAuthDestination } from '../../core/auth/loginReturnPath'
 
@@ -312,7 +312,7 @@ export function LoginPage() {
           return
         }
       }
-      setError(friendlyError(caught, 'No se pudo iniciar sesión'))
+      setError(authErrorMessage(caught, 'No se pudo iniciar sesión'))
     } finally {
       setLoading(false)
     }
@@ -322,12 +322,12 @@ export function LoginPage() {
     event.preventDefault()
     if (!migratedPasswordReset || activatingMigratedPassword) return
 
-    const nextPassword = migratedNewPassword.trim()
+    const nextPassword = migratedNewPassword
     if (nextPassword.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres.')
       return
     }
-    if (nextPassword !== migratedConfirmPassword.trim()) {
+    if (nextPassword !== migratedConfirmPassword) {
       setError('La confirmación no coincide con la contraseña nueva.')
       return
     }
@@ -351,7 +351,7 @@ export function LoginPage() {
         setInfo(caught.message)
         return
       }
-      setError(friendlyError(caught, 'No se pudo activar la contraseña local'))
+      setError(authErrorMessage(caught, 'No se pudo activar la contraseña local'))
     } finally {
       setActivatingMigratedPassword(false)
     }
@@ -403,12 +403,12 @@ export function LoginPage() {
     setInfo(null)
     try {
       if (isFallbackAuthConfigured) {
-        const nextPassword = fallbackResetPassword.trim()
+        const nextPassword = fallbackResetPassword
         if (nextPassword.length < 8) {
           setError('La nueva contraseña debe tener al menos 8 caracteres.')
           return
         }
-        if (nextPassword !== fallbackResetConfirmPassword.trim()) {
+        if (nextPassword !== fallbackResetConfirmPassword) {
           setError('La confirmación no coincide con la contraseña nueva.')
           return
         }
@@ -421,14 +421,14 @@ export function LoginPage() {
     } catch (caught) {
       if (caught instanceof FallbackPasswordChangedNeedsTwoFactorError) {
         setEmail(migrationSetupEmail || email)
-        setPassword(fallbackResetPassword.trim())
+        setPassword(fallbackResetPassword)
         setNeedsTwoFactor(true)
         setSecondFactorCode('')
         setMigrationSetupEmail('')
         setInfo(caught.message)
         return
       }
-      setError(friendlyError(caught, 'No se pudo cambiar la contraseña en Ubuntu'))
+      setError(authErrorMessage(caught, 'No se pudo cambiar la contraseña en Ubuntu'))
     } finally {
       setConfirmingMigrationReset(false)
     }
@@ -455,7 +455,7 @@ export function LoginPage() {
           <div className="section-stack auth-head-copy">
             <div>
               <div className="auth-brand-lockup">
-                <StreamingImage
+                <img
                   src="/novvin-logo.png"
                   alt="Logo de Novvin"
                   className="auth-logo-img"
@@ -675,7 +675,7 @@ export function LoginPage() {
                 ) : (
                   <StatusView
                     title="QR no disponible"
-                    description={error ? <span role="alert">{error}</span> : 'No pudimos conectar con Novvin. Puedes volver a intentarlo en unos momentos.'}
+                    description={error ? <span role="alert"><AuthErrorText message={error} /></span> : 'No pudimos conectar con Novvin. Puedes volver a intentarlo en unos momentos.'}
                     action={<>
                       <button className="primary-btn" type="button" disabled={creatingQr || consumingQr} onClick={() => {
                         setQrPairing(null); setQrRefreshKey(current => current + 1)
@@ -718,7 +718,7 @@ export function LoginPage() {
             </div>
           ) : null}
 
-          {error && (mode !== 'qr' || qrPairing?.qrUrl) ? <p className="error-text" role="alert">{error}</p> : null}
+          {error && (mode !== 'qr' || qrPairing?.qrUrl) ? <p className="error-text" role="alert"><AuthErrorText message={error} /></p> : null}
           {info ? <p>{info}</p> : null}
 
           <p className="auth-foot">
