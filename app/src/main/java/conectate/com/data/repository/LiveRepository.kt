@@ -101,7 +101,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.flow.combine
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -716,7 +715,7 @@ class LiveRepository @Inject constructor(
         val userId = authService.getCurrentUserId()?.trim().orEmpty()
         val token = localAccessToken()
         if (userId.isBlank() || token.isBlank()) return
-        ubuntuRealtimeClient.events.onSubscription {
+        ubuntuRealtimeClient.eventsOnSubscription {
             currentCoroutineContext().ensureActive()
             if (!userId.equals(authService.getCurrentUserId()?.trim(), ignoreCase = true)) {
                 throw CancellationException("The active account changed before LIVE subscription")
@@ -3967,7 +3966,7 @@ class LiveRepository @Inject constructor(
             commentsJob = scope.launch {
                 val refresh = kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
                 val notifications = launch {
-                    ubuntuRealtimeClient.events.onSubscription {
+                    ubuntuRealtimeClient.eventsOnSubscription {
                         val token = localAccessToken()
                         if (token.isNotBlank() && owner == authService.getCurrentUserId()) {
                             ubuntuRealtimeClient.updateAccessToken(token)

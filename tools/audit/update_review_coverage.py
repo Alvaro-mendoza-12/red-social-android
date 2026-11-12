@@ -98,7 +98,7 @@ def main() -> None:
             raise ValueError(f"Unknown review state: {path}: {status}")
         entry = {"file": path, "phase": phase(path), "gitBlobId": current_hash, "reviewStatus": status}
         if status != "pending":
-            entry["evidence"] = old.get("evidence", args.evidence)
+            entry["evidence"] = args.evidence if path in reviewed or path in partial else old.get("evidence", args.evidence)
             entry["note"] = "Code read is not complete flow validation or a production-readiness certificate."
         entries.append(entry)
     by_phase: dict[str, Counter] = defaultdict(Counter)

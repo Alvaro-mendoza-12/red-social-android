@@ -28,7 +28,11 @@ class ConversationReadReceiver @Inject constructor(@param:ApplicationContext pri
 
     suspend fun apply(event: ConversationReadEvent) {
         // Capture before waiting for another receipt; returning to the same UID is another visit.
-        val owner = auth.captureAccountLease()
+        delivery.apply(event, auth.captureAccountLease())
+    }
+
+    internal suspend fun apply(event: ConversationReadEvent, owner: conectate.com.data.supabase.AuthSessionLease) {
+        owner.requireCurrent()
         delivery.apply(event, owner)
     }
 }

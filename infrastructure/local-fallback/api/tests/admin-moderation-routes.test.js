@@ -418,6 +418,12 @@ async function testFakeAccountHardDelete() {
     assert.strictEqual(fixture.statements.includes('COMMIT'), true)
     assert.strictEqual(fixture.statements.includes('ROLLBACK'), false)
     assert.strictEqual(fixture.wasReleased(), true)
+    for (const table of ['fallback_friend_legacy_requests','fallback_friend_legacy_barriers']) {
+      const state = fixture.statements.findIndex(sql=>sql.startsWith(`DELETE FROM ${table}`))
+      const user = fixture.statements.findIndex(sql=>sql.startsWith('DELETE FROM fallback_users'))
+      assert.ok(state >= 0 && state < user, `${table} must be purged before aliases disappear`)
+    }
+
 
     const protectedFixture = hardDeletePool({ isTestAccount: false })
     await assert.rejects(

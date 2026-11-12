@@ -4,6 +4,8 @@ Estado documental: 3 de noviembre de 2026. Esta es la entrada para desarrollo, o
 
 ## Estado vigente
 
+La [continuación 115](115-tiempo-real-y-cancelacion-amistades-2026-11-12.md) corrige los bloques de tiempo real y cancelación de amistades diferidos por 114, con pruebas de recepción y concurrencia PostgreSQL. Distingue el código publicado del servidor Ubuntu activo y mantiene abierta la revisión integral.
+
 La [selección de correcciones 114](114-comparacion-correcciones-dot-2026-11-12.md) compara `correcciones-dot` con las dos ramas estables e identifica las mejoras incorporadas, sus pruebas y los bloques diferidos. No cierra la revisión integral ni representa una APK nueva o un despliegue del servidor.
 
 La [revisión de arranque de Videos 113](113-arranque-y-desplazamiento-de-videos.md) separa la medición de rangos de R2/Ubuntu de la experiencia en pantalla y registra los ajustes de reproducción y precarga de Android.

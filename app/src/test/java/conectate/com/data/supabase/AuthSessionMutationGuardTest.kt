@@ -7,6 +7,18 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 class AuthSessionMutationGuardTest {
+    @Test fun capturesShareOneVisitUntilAuthenticationAdvancesItsGeneration() {
+        val guard = AuthSessionMutationGuard()
+        val first = guard.captureAccountLease { "a" }
+        assertTrue(first.sameVisit(guard.captureAccountLease { " A " }))
+        guard.commitIfCurrent(guard.snapshot()) { /* ordinary token renewal */ }
+        assertTrue(first.sameVisit(guard.captureAccountLease { "a" }))
+        guard.invalidate { }
+        assertFalse(first.sameVisit(guard.captureAccountLease { "a" }))
+        assertFalse(first.sameVisit(AuthSessionMutationGuard().captureAccountLease { "a" }))
+        assertFalse(first.sameVisit(AuthSessionLease("a") { true }))
+    }
+
     @Test fun leaseMutationRejectsAnOldVisitEvenAfterReturningToTheSameAccount() {
         val guard = AuthSessionMutationGuard()
         var account = "a"

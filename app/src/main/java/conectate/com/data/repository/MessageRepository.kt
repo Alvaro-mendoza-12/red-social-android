@@ -272,7 +272,7 @@ class MessageRepository @Inject constructor(
                     }
                 }
             }
-        sessionListeners = SessionListenerBinding(scope, userIdFlow, messageRealtimeSync::clearAll) { userId ->
+        sessionListeners = SessionListenerBinding(scope, userIdFlow, messageRealtimeSync::stopIfAccountChanged) { userId ->
                     val session = captureSessionSnapshot(userId)
                     android.util.Log.d(
                         "MessageRepository",
@@ -311,6 +311,7 @@ class MessageRepository @Inject constructor(
         sessionStateStore.clearAll()
         // Nuevos stores
         messageCacheManager.clearAll()
+        messageRealtimeSync.clearAll()
         sessionListeners.stopActive()
     }
 
