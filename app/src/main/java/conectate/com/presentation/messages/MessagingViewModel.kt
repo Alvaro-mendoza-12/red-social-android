@@ -41,6 +41,7 @@ sealed class ConversationsUiState {
 
 enum class ChatListFilter {
     ALL,
+    UNREAD,
     FAVORITES,
     ARCHIVED
 }
@@ -73,7 +74,6 @@ class MessagingViewModel @Inject constructor(
     private val _snapshots = combine(localInboxRepository.snapshots, authService.currentSession) { snapshot, session ->
         snapshot.forAccount(session?.user?.id)
     }
-    private val _conversations = _snapshots.map { it.conversations }
     
     // UI SEARCH STATE
     private val _searchQuery = MutableStateFlow("")
@@ -123,7 +123,7 @@ class MessagingViewModel @Inject constructor(
 
     fun selectListFilter(filter: ChatListFilter) {
         _selectedListFilter.value = filter
-        // Los chips "Todas/Favoritos/Archivados" son filtros globales.
+        // Los chips de bandeja son filtros globales.
         // Si una carpeta queda seleccionada, el usuario toca "Todas" y parece
         // que no pasa nada porque la carpeta sigue filtrando por debajo.
         _selectedFolderId.value = null
@@ -170,6 +170,7 @@ class MessagingViewModel @Inject constructor(
             val folderChatIds = folders.firstOrNull { it.id == selectedFolderId }?.chat_ids?.toSet().orEmpty()
             val byFilter = when (selectedListFilter) {
                 ChatListFilter.ALL -> distinctList.filter { !it.chat.is_archived }
+                ChatListFilter.UNREAD -> distinctList.filter { it.unreadCount > 0 && !it.chat.is_archived }
                 ChatListFilter.FAVORITES -> distinctList.filter { it.chat.is_favorite && !it.chat.is_archived }
                 ChatListFilter.ARCHIVED -> distinctList.filter { it.chat.is_archived }
             }
@@ -201,11 +202,15 @@ class MessagingViewModel @Inject constructor(
 
     // --- UNREAD COUNTS (FOR BADGES) ---
     
-    val unreadDmsCount: StateFlow<Int> = combine(_conversations, _hiddenChatIds) { chats, hiddenChatIds ->
-        normalizedVisibleConversations(chats, hiddenSince = hiddenChatIds)
-            .count { it.unreadCount > 0 && !it.chat.is_group && !it.chat.is_archived }
-    }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    val inboxFilterCounts: StateFlow<InboxFilterCounts> = combine(_snapshots, _hiddenChatIds, chatFolders) { snapshot, hidden, folders ->
+        val owner = authService.getCurrentUserId()?.trim()?.lowercase()
+        if (owner == null || snapshot.accountId != owner) InboxFilterCounts()
+        else calculateInboxFilterCounts(snapshot.conversations, folders, hidden)
+    }.flowOn(Dispatchers.Default)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000, replayExpirationMillis = 0), InboxFilterCounts())
+
+    val unreadDmsCount: StateFlow<Int> = inboxFilterCounts.map { it.all }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000, replayExpirationMillis = 0), 0)
 
     val unreadGroupsCount: StateFlow<Int> = deferredRepositoryFlow(groupRepositoryProvider) { it.getGroupsFlow() }
         .map { groups -> groups.count { it.unreadCount > 0 } }

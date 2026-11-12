@@ -71,6 +71,9 @@
   scrollbar-width: none;
 }
 .inbox-filter-row .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
   font-weight: 500;
   padding: 7px 12px;
@@ -208,6 +211,9 @@
   box-shadow: 0 8px 28px #0005;
 }
 .conversation-row-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   padding: 12px;
   text-align: left;
 }

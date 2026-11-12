@@ -46,3 +46,11 @@ export function dedupeInboxConversations<T extends InboxConversationLike>(items:
 
   return Array.from(byConversation.values())
 }
+
+/** Badges count unread conversations before search and filter selection. */
+export function inboxFilterCounts(items: InboxConversationLike[]) {
+  const unread = dedupeInboxConversations(items).filter(item => item.kind === 'chat' && item.unreadCount > 0)
+  const active = unread.filter(item => !item.isArchived)
+  return { all: active.length, unread: active.length, favorites: active.filter(item => item.isFavorite).length,
+    archived: unread.filter(item => item.isArchived).length }
+}

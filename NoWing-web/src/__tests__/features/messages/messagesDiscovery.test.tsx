@@ -5,6 +5,7 @@ import { MessagesPage } from '../../../features/messages/MessagesPage'
 import { hideFallbackChat, saveFallbackChatPreferences, loadFallbackMessagesInbox, searchFallbackProfiles } from '../../../core/fallbackData'
 import { readCachedValue } from '../../../core/localCache'
 import { getOrCreateDirectChat } from '../../../features/messages/directChat'
+import { markInboxConversationRead, notifyInboxMessage } from '../../../core/inboxActivity'
 
 const mockUser = { id: 'viewer' }
 jest.mock('../../../core/auth/AuthProvider', () => ({ useAuth: () => ({ user: mockUser, isFallbackSession: true }) }))
@@ -28,6 +29,27 @@ beforeEach(() => {
   jest.clearAllMocks()
   mockUser.id = 'viewer'
   Object.defineProperty(window, 'matchMedia', { configurable: true, value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) })
+})
+
+test('incoming activity updates favorite and archive badges despite search and reading clears them', async () => {
+  mockUser.id = 'filter-counter-owner'
+  const row = (id: string, archived: boolean) => ({id, title:id, subtitle:'Ejemplo ficticio', updatedAt:'2026-11-12T10:00:00Z', kind:'chat', avatarUrl:'', profileId:id, unreadCount:0, isPinned:false, isMuted:false, isArchived:archived, isFavorite:true, folders:[]})
+  jest.mocked(loadFallbackMessagesInbox).mockResolvedValue({items:[row('favorite-counter',false), row('archive-counter',true)]} as never)
+  render(<MemoryRouter><MessagesPage/></MemoryRouter>)
+  await screen.findByText('favorite-counter')
+  act(() => {
+    for (const id of ['favorite-counter','archive-counter']) notifyInboxMessage(mockUser.id,'chat',id,{id:'message-'+id,sender_id:'peer',created_at:'2026-11-12T10:01:00Z',content:'Mensaje ficticio',status:'sent'},true)
+  })
+  expect(screen.getByLabelText('1 conversaciones sin leer en Favoritos')).toBeInTheDocument()
+  expect(screen.getByLabelText('1 conversaciones sin leer en Archivados')).toBeInTheDocument()
+  fireEvent.change(screen.getByPlaceholderText(/Buscar/),{target:{value:'sin coincidencias'}})
+  expect(screen.getByLabelText('1 conversaciones sin leer en Favoritos')).toBeInTheDocument()
+  act(() => {
+    markInboxConversationRead(mockUser.id,'chat','favorite-counter','2026-11-12T10:01:00Z')
+    markInboxConversationRead(mockUser.id,'chat','archive-counter','2026-11-12T10:01:00Z')
+  })
+  expect(screen.queryByLabelText('1 conversaciones sin leer en Favoritos')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('1 conversaciones sin leer en Archivados')).not.toBeInTheDocument()
 })
 
 test('a direct conversation opens in compact mode and restores the inbox beside it on expansion',async()=>{

@@ -6,7 +6,7 @@ import { readConversationDraft, useDraftRevision } from '../../core/conversation
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Bot, Search, MessageSquarePlus, Phone, Plus, Trash2, Users, Compass } from 'lucide-react'
+import { Bot, Search, MessageSquarePlus, Phone, Plus, Trash2, Users, Compass, Archive, ArchiveRestore, Bell, BellOff, MailCheck, Mail, MessageSquare, Pin, PinOff, Star, StarOff } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
@@ -49,7 +49,7 @@ import {
 import { useAuth } from '../../core/auth/AuthProvider'
 import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { ChatDetailPage } from './ChatDetailPage'
-import { dedupeInboxConversations } from './conversationInboxSupport'
+import { dedupeInboxConversations, inboxFilterCounts } from './conversationInboxSupport'
 import { getOrCreateDirectChat } from './directChat'
 import { RoomChatPage } from './RoomChatPage'
 
@@ -633,6 +633,8 @@ export function MessagesPage() {
   const knownChatProfileIds = useMemo(() => new Set(knownChatProfileKey.split(',').filter(Boolean)), [knownChatProfileKey])
 
   const projectedItems = withInboxActivity(user?.id || '', items)
+  const filterCounts = inboxFilterCounts(projectedItems)
+  const filterBadge = (count: number, label: string) => count > 0 ? <span className="inbox-tab-count" aria-label={`${count} conversaciones sin leer en ${label}`}>{count > 99 ? '99+' : count}</span> : null
   const filteredItems = useMemo(() => {
     const base = normalizedSearch
       ? projectedItems.filter((item) => {
@@ -1380,8 +1382,8 @@ export function MessagesPage() {
   if (!supabase && !isFallbackSession) {
     return (
       <StatusView
-        title="Supabase no configurado"
-        description="Debes configurar el .env para usar mensajes."
+        title="Mensajes no disponibles"
+        description="No se pudo conectar con Novvin. Vuelve a intentarlo en unos momentos."
       />
     )
   }
@@ -1423,20 +1425,14 @@ export function MessagesPage() {
           <span className="unread-pill">{item.unreadCount > 99 ? '99+' : item.unreadCount}</span>
         )}
         {item.isFavorite && (
-          <span className="icon-tiny" title="Favorito">
-            ★
-          </span>
+          <span className="icon-tiny" role="img" aria-label="Favorito" title="Favorito"><Star size={14} aria-hidden="true" /></span>
         )}
-        {item.isPinned && <span className="icon-tiny">📌</span>}
+        {item.isPinned && <span className="icon-tiny" role="img" aria-label="Fijado" title="Fijado"><Pin size={14} aria-hidden="true" /></span>}
         {item.isMuted && (
-          <span className="icon-tiny" title="Silenciado">
-            🔕
-          </span>
+          <span className="icon-tiny" role="img" aria-label="Silenciado" title="Silenciado"><BellOff size={14} aria-hidden="true" /></span>
         )}
         {item.isArchived && (
-          <span className="icon-tiny" title="Archivado">
-            🗄
-          </span>
+          <span className="icon-tiny" role="img" aria-label="Archivado" title="Archivado"><Archive size={14} aria-hidden="true" /></span>
         )}
       </div>
       </button>
@@ -1500,6 +1496,7 @@ export function MessagesPage() {
                     setOpenChatMenuPosition(null)
                   }}
                 >
+                  {item.isPinned ? <PinOff size={16} aria-hidden="true" /> : <Pin size={16} aria-hidden="true" />}
                   {item.isPinned ? 'Desfijar chat' : 'Fijar chat'}
                 </button>
                 <button
@@ -1513,6 +1510,7 @@ export function MessagesPage() {
                     setOpenChatMenuPosition(null)
                   }}
                 >
+                  {item.isMuted ? <Bell size={16} aria-hidden="true" /> : <BellOff size={16} aria-hidden="true" />}
                   {item.isMuted ? 'Activar notificaciones' : 'Silenciar chat'}
                 </button>
                 <button
@@ -1526,6 +1524,7 @@ export function MessagesPage() {
                     setOpenChatMenuPosition(null)
                   }}
                 >
+                  {item.isFavorite ? <StarOff size={16} aria-hidden="true" /> : <Star size={16} aria-hidden="true" />}
                   {item.isFavorite ? 'Quitar favorito' : 'Marcar favorito'}
                 </button>
                 <button
@@ -1539,6 +1538,7 @@ export function MessagesPage() {
                     setOpenChatMenuPosition(null)
                   }}
                 >
+                  {item.isArchived ? <ArchiveRestore size={16} aria-hidden="true" /> : <Archive size={16} aria-hidden="true" />}
                   {item.isArchived ? 'Sacar de archivados' : 'Archivar chat'}
                 </button>
                 <button
@@ -1550,7 +1550,7 @@ export function MessagesPage() {
                     setOpenChatMenuPosition(null)
                   }}
                 >
-                  Marcar como leído
+                  <MailCheck size={16} aria-hidden="true" /> Marcar como leído
                 </button>
                 <button
                   role="menuitem"
@@ -1605,7 +1605,7 @@ export function MessagesPage() {
             className="icon-btn"
             type="button"
             aria-label={activeTab === 'chats' ? 'Nuevo mensaje' : 'Crear espacio'}
-            title="Nuevo mensaje"
+            title={activeTab === 'chats' ? 'Nuevo mensaje' : activeTab === 'groups' ? 'Crear grupo' : activeTab === 'communities' ? 'Crear comunidad' : 'Crear sala de voz'}
             onClick={() => {
               if (activeTab !== 'chats') {
                 navigate(
@@ -1668,7 +1668,7 @@ export function MessagesPage() {
                 setShowArchived(false)
               }}
             >
-              Todos
+              <MessageSquare size={15} aria-hidden="true" /> Todos{filterBadge(filterCounts.all, 'Todos')}
             </button>
             <button
               type="button"
@@ -1676,7 +1676,7 @@ export function MessagesPage() {
               aria-pressed={showUnreadOnly}
               onClick={() => { setShowUnreadOnly(current => !current); setShowFavoritesOnly(false); setShowArchived(false) }}
             >
-              No leídos
+              <Mail size={15} aria-hidden="true" /> No leídos{filterBadge(filterCounts.unread, 'No leídos')}
             </button>
             <button
               type="button"
@@ -1684,7 +1684,7 @@ export function MessagesPage() {
               aria-pressed={showFavoritesOnly}
               onClick={() => { setShowFavoritesOnly(current => !current); setShowUnreadOnly(false); setShowArchived(false) }}
             >
-              Favoritos
+              <Star size={15} aria-hidden="true" /> Favoritos{filterBadge(filterCounts.favorites, 'Favoritos')}
             </button>
             <button
               type="button"
@@ -1692,7 +1692,7 @@ export function MessagesPage() {
               aria-pressed={showArchived}
               onClick={() => { setShowArchived(current => !current); setShowUnreadOnly(false); setShowFavoritesOnly(false) }}
             >
-              Archivados{inboxCounts.archivedChats > 0 ? <span className="inbox-tab-count" aria-label={`${inboxCounts.archivedChats} conversaciones archivadas sin leer`}>{inboxCounts.archivedChats > 99 ? '99+' : inboxCounts.archivedChats}</span> : null}
+              <Archive size={15} aria-hidden="true" /> Archivados{filterBadge(filterCounts.archived, 'Archivados')}
             </button>
           </div>
         </div>
