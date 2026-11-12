@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-12T23:36:37.253535+00:00",
-  "baseCommit": "ee81e0da805670d326f946c241d9fdb502fae130",
+  "generatedAtUtc": "2026-11-12T23:39:27.151683+00:00",
+  "baseCommit": "a756719f8b3b57c00ffd7f013a90139f77542159",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -20385,7 +20385,7 @@
     {
       "file": "docs/oficial/PROMPT-AUDITORIA-GEMINI-MAIN-LIVE-GIFTS.md",
       "phase": "documentation",
-      "gitBlobId": "f8f0844a7483434c110ba6e27adb44a82b58baa9",
+      "gitBlobId": "96d4104bf113b0ed0481df40c40abf0112548ca0",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
