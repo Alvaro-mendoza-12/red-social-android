@@ -649,7 +649,7 @@ internal fun isTrustedExternalDeepLinkOrigin(scheme: String?, host: String?): Bo
     val normalizedHost = host?.trim()?.lowercase().orEmpty()
     if (normalizedScheme == "https" || normalizedScheme == "http") {
         return normalizedHost == "conectate.com" || normalizedHost == "www.conectate.com" ||
-            (normalizedScheme == "https" && normalizedHost == "red-social-android.vercel.app")
+            (normalizedScheme == "https" && normalizedHost in conectate.com.data.model.PublicWebDomain.httpsHosts)
     }
     if (normalizedScheme != "conectate") return false
     return normalizedHost in setOf(

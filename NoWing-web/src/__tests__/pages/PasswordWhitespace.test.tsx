@@ -56,5 +56,5 @@ test('legacy recovery shows the same safe official login link for an origin reje
   fireEvent.change(screen.getByLabelText('Confirmar Contraseña'), { target: { value: exact } })
   fireEvent.click(screen.getByRole('button', { name: /Guardar Contraseña/ }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Esta dirección web no está autorizada')
-  expect(screen.getByRole('link', { name: 'Abrir la web oficial' })).toHaveAttribute('href', 'https://red-social-android.vercel.app/login')
+  expect(screen.getByRole('link', { name: 'Abrir la web oficial' })).toHaveAttribute('href', 'https://novvinapp.com/login')
 })

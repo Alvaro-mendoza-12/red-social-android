@@ -44,7 +44,7 @@ class CommunityDetailViewModel @Inject constructor(
         viewModelScope.launch {
             communityRepository.createCommunityInvite(id).fold(
                 onSuccess = { token -> if (communityId == id && authService.getCurrentUserId() == account)
-                    onReady("https://red-social-android.vercel.app/community/$id?invite=${android.net.Uri.encode(token)}") },
+                    onReady("https://novvinapp.com/community/$id?invite=${android.net.Uri.encode(token)}") },
                 onFailure = { _actionMessage.value = "No se pudo crear la invitación. Comprueba los permisos de la comunidad." }
             )
         }

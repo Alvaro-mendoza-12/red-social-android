@@ -122,7 +122,7 @@ test('sitemap advertises only the canonical public pages',()=>{
  assert.deepEqual(urls,publicRoutes.map(([route])=>site+(route==='/'?'/':route)))
  assert.doesNotMatch(sitemap,/\/app\/|\/login|\/profile/)
  assert.match(read('robots.txt'),/Allow: \//)
- assert.match(read('robots.txt'),/Sitemap: https:\/\/red-social-android\.vercel\.app\/sitemap.xml/)
+ assert.ok(read('robots.txt').includes('Sitemap: '+site+'/sitemap.xml'))
 })
 for(const [route,file,label] of publicRoutes){
  test(route+' has its own canonical, metadata and one heading',()=>{
@@ -178,7 +178,7 @@ test('site name signals consistently prefer Novvin and offer the site hostname a
  const html=read('index.html'),web=graph(html).find(item=>item['@type']==='WebSite')
  assert.equal(web.name,'Novvin')
  assert.match(html,/<meta property="og:site_name" content="Novvin"/)
- assert.deepEqual(web.alternateName,['Novvin Web','red-social-android.vercel.app'])
+ assert.deepEqual(web.alternateName,['Novvin Web','novvinapp.com'])
  assert.ok(!web.alternateName.includes('Vercel'))
  assert.ok(!web.alternateName.includes('Novvyn'))
 })

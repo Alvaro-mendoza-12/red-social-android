@@ -11,11 +11,14 @@ import conectate.com.data.model.ChatWithLastMessage
  */
 internal fun normalizedVisibleConversations(
     list: List<ChatWithLastMessage>,
-    hiddenChatIds: Set<String> = emptySet()
+    hiddenChatIds: Set<String> = emptySet(),
+    hiddenSince: Map<String, String> = emptyMap(),
 ): List<ChatWithLastMessage> {
     val validChats = list.filter {
         val cleanId = it.chat.id.trim().lowercase()
-        val isVisible = cleanId !in hiddenChatIds
+        val cutoff = hiddenSince[cleanId]
+        val isVisible = cleanId !in hiddenChatIds && (cutoff == null ||
+            conectate.com.data.repository.message.isAfterInboxClear(it.chat.last_message_at ?: it.lastMessage?.created_at, cutoff))
         val hasContent = !it.chat.last_message.isNullOrBlank() || !it.lastMessage?.content.isNullOrBlank()
         val hasTimestamp = !it.chat.last_message_at.isNullOrBlank() || !it.lastMessage?.created_at.isNullOrBlank()
         isVisible && (hasContent || hasTimestamp)

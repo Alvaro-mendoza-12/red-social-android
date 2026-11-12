@@ -4,11 +4,12 @@ data class VideoClipRange(val startMs: Long, val endMs: Long) {
     val durationMs: Long get() = endMs - startMs
 }
 
-private const val PUBLIC_VIDEO_WEB_BASE = "https://red-social-android.vercel.app/app/reels"
+private const val PUBLIC_VIDEO_WEB_BASE = "${PublicWebDomain.activeOrigin}/app/reels"
 
 /** Resolve only Novvin-owned links before opening a video inside the app. */
 fun videoIdFromSharedLink(raw: String): String? {
     val uri = runCatching { java.net.URI(raw.trim()) }.getOrNull() ?: return null
+    if (uri.userInfo != null || uri.port != -1 || uri.fragment != null) return null
     val scheme = uri.scheme?.lowercase() ?: return null
     val host = uri.host?.lowercase() ?: return null
     val segments = uri.path.orEmpty().trim('/').split('/').filter(String::isNotBlank)
@@ -16,7 +17,7 @@ fun videoIdFromSharedLink(raw: String): String? {
         scheme == "conectate" && host == "video" && segments.size == 1 -> segments[0]
         scheme in setOf("http", "https") && host in setOf("conectate.com", "www.conectate.com") &&
             segments.size == 2 && segments[0] == "video" -> segments[1]
-        scheme in setOf("http", "https") && host == "red-social-android.vercel.app" &&
+        scheme == "https" && host in PublicWebDomain.httpsHosts &&
             segments.size == 3 && segments[0] == "app" && segments[1] == "reels" -> segments[2]
         else -> return null
     }

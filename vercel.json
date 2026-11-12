@@ -55,7 +55,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'sha256-Zu2nRamFplXFbdwpFUwWH8/o6y7/Q+OvI4Fo16pqWeU=' 'sha256-RmPB4paA3ne254+RjnhysRvXZ8jVQP0TX1xL0o5mSZk=' 'sha256-YBxYlqWFlk0IbwYX2hALseAwUqVsoEr/TMzJJpq+VTg=' 'sha256-TGJmF1gcQyO9IW8GWRwtkwUFsl7XxeJ/jz+HFBduFrk=' 'sha256-4EUzlmM5WJuP+/dqHu9vcRat/BDwLWInPEraN+NuosY=' 'sha256-yk2eKyuDigp6/RXJzw9Orcnl+sXV/BZzNa8lzdRmYhs=' 'sha256-Nb4d/jEi/NOGGin6d93ixy+IliR9GbZqHSFFNgErR3s=' 'sha256-8URUX8Jpwk7u3OILNyVvbPHZTxqHzrC/IDRW1CSWYEY=' 'sha256-4I13pTZ17ICdlLawFNcXoVOw7UD34DUFxX7PV2Njp3w=' 'sha256-3q2egFrJ4DHTNx8yD+b0+Z70THV/GeUQkFejsSx0RHo=' 'sha256-p+V+JfMzDLX97wp+s8e8lg34okwHectmgCVAorULSqw=' 'sha256-XAcfmwvcDwwcz8C2AzohKb7m5Fjt5+da0CSFu/t1b4A=' 'sha256-sOXSdN6QLAFtKMIpDoO9ou8bSS/ey7HAyffnjHOAb7s=' 'sha256-zV7/t2Ix9UvNStE0Mea/b/ESYnm1LH4ZJe/Prug7SgM=' 'sha256-5DsVqnjcr6NxMf8OBuvRACq9JYH+TEW9mV/kWtiOs1Q=' 'sha256-74BDx7OOHaNpn6CZ5Geh/ymWph+UDcE00g/eOtAKE30=' 'sha256-KmvhSTriuLrw3gKxbFNGola2ZWl4PeJE3tWLGUxtfcw=' 'sha256-7rKunVQq4VCCsqyV58TyFgOAPNcprldPwmTA5Pg8HWk=' 'sha256-vgSitjB6TY5qOQxzg8IXcanTxu1BEMwLIJ9ACegC0QA=' 'sha256-Ga5n3yKwauxmDL6HikKdWhlDQYsv1/aICTwi+e00CXI=' 'sha256-Ifp9Z+dnZVJAtOV7NibyT+zCu0g4l2bHWccsNlzpG1c='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' blob:;"
+          "value": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'sha256-nKwDJHYmzAZNXJHWKeQPV8M9crvj2Dsax6KH+h2vRB0=' 'sha256-EpawKi870zkxNPxJBOQen8o7A+xtD+HJiqDYgARfZ6U=' 'sha256-0UoYcfuDURQQ5pwD9u7gxcNGOebdKa9YORNzoDQ12Uo=' 'sha256-+gp+ZeAj+dp0iKpgZj6w8sqoF1LI7ncueQ/1yKGW+QI=' 'sha256-p2po8lj7DkMHVw6J02mHhESwSD18IsANZuR1Dknl9KY=' 'sha256-XPmnRdprMETU8L99raGiaMJVDe/0TZkGnURhn+HO1BY=' 'sha256-Ze7TR2v2QYXhgrbpDrBJxmcXcgjYwKlFt1hUVP0iCQ0=' 'sha256-5XedbQdWI/gCh6x2GfbripQ9NSyn8mUk6tT87EveJWQ=' 'sha256-ZDGXZRnN3c8wI4C3J/5Xvovpyu0nz4Vtlq57ehcih3M=' 'sha256-LO6UrL/RX2H+xVgtcbM8B09TSBYAIQEP0um7yhMuF84=' 'sha256-kDw6HuFdSTQaywTWF5ParsZnnVhnHPj4g8A4YOrlYJI=' 'sha256-GYF8DBzcC1jnF0fMs8n8KGWpmzxQP6TjRuClWwFPvkE=' 'sha256-jyFqBwmxes7DB06tgjMqpOtOuPCs6DnuTmq98oglq4U=' 'sha256-k/JKU0vIM00EVEK+BN+Z4OUAR/4R01ta60D+xm6UCcM=' 'sha256-atcpnHxSNslS8MGNnB820YTw87OwlC61ZMCMzvRlnt4=' 'sha256-YgR/OwsmwrvhdpdywktvHrcF6HXJzcWC/Rih40MdgNc=' 'sha256-/ptUlUFWwD/En09DNiWOsC6uFRl+TRs328RG4cF7y2g=' 'sha256-nsexBEYUSoahSxqPlEiJYJQSFWRkpMS6NeOz3qnnK6s=' 'sha256-Biy075PVlYWKRKMNBXqeI32P2OxzyDElW9Fvo0SKWRI=' 'sha256-PdRNmhEQZoW6YCdjX2rPM/K+Bl8JXIp5MXJdH+EU+tU=' 'sha256-X/WUPKPk0IIpRZJkATJePmPhRA2+5k1YY7aploxbsxQ='; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' blob:;"
         }
       ]
     },
@@ -321,6 +321,259 @@
     }
   ],
   "redirects": [
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/",
+      "permanent": true
+    },
+    {
+      "source": "/privacidad",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/privacidad",
+      "permanent": true
+    },
+    {
+      "source": "/cookies",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/cookies",
+      "permanent": true
+    },
+    {
+      "source": "/que-es-novvin",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/que-es-novvin",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/preguntas-frecuentes",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/ayuda/preguntas-frecuentes",
+      "permanent": true
+    },
+    {
+      "source": "/novvin-web",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/novvin-web",
+      "permanent": true
+    },
+    {
+      "source": "/mensajes",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/mensajes",
+      "permanent": true
+    },
+    {
+      "source": "/videos",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/videos",
+      "permanent": true
+    },
+    {
+      "source": "/salas-de-voz",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/salas-de-voz",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/vincular-web",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/ayuda/vincular-web",
+      "permanent": true
+    },
+    {
+      "source": "/descargar",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/descargar",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/encontrar-novvin",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/ayuda/encontrar-novvin",
+      "permanent": true
+    },
+    {
+      "source": "/social",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/social",
+      "permanent": true
+    },
+    {
+      "source": "/momentos",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/momentos",
+      "permanent": true
+    },
+    {
+      "source": "/comunidades",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/comunidades",
+      "permanent": true
+    },
+    {
+      "source": "/juegos",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/juegos",
+      "permanent": true
+    },
+    {
+      "source": "/asistente",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/asistente",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/ayuda",
+      "permanent": true
+    },
+    {
+      "source": "/funciones",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/funciones",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/stickers-animados",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/ayuda/stickers-animados",
+      "permanent": true
+    },
+    {
+      "source": "/ayuda/privacidad-y-seguridad",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/ayuda/privacidad-y-seguridad",
+      "permanent": true
+    },
+    {
+      "source": "/robots.txt",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/robots.txt",
+      "permanent": true
+    },
+    {
+      "source": "/sitemap.xml",
+      "has": [
+        {
+          "type": "host",
+          "value": "red-social-android.vercel.app"
+        }
+      ],
+      "destination": "https://novvinapp.com/sitemap.xml",
+      "permanent": true
+    },
     {
       "source": "/index.html",
       "destination": "/",

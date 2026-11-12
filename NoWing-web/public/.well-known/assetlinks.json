@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "conectate.com",
+      "sha256_cert_fingerprints": ["62:3C:DB:12:BA:D0:8F:CC:A8:A4:A2:F6:2E:B6:B5:C9:15:83:D2:CD:14:CE:D4:AE:63:86:40:66:E0:36:D8:4D"]
+    }
+  }
+]

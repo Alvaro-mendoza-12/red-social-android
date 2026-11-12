@@ -1,4 +1,4 @@
-export const site = 'https://red-social-android.vercel.app'
+export const site = 'https://novvinapp.com'
 export const homeMetadata = { title: 'Novvin | Red social, mensajes y videos', description: 'Novvin es una red social para conectar con tu gente. Envía mensajes, comparte fotos y videos y únete a grupos y comunidades desde Android o la web.' }
 export const publicRoutes = [
   ['/', 'index.html', 'Inicio'],
@@ -28,7 +28,7 @@ export const publicRoutes = [
 // keyword lists, unsupported search actions, or promised search-result features.
 export function structuredData(route, title, description, label, images = []) {
   const home = site + '/', url = route === '/' ? home : site + route
-  const organization = { '@type': 'Organization', '@id': home + '#organization', name: 'Novvin', alternateName: 'Novvin Web', url: home, logo: { '@type': 'ImageObject', url: site + '/novvin-logo.png', width: 512, height: 512 } }
+  const organization = { '@type': 'Organization', '@id': home + '#organization', name: 'Novvin', alternateName: 'Novvin Web', url: home, email: 'administracion@novvinapp.com', logo: { '@type': 'ImageObject', url: site + '/novvin-logo.png', width: 512, height: 512 } }
   const website = { '@type': 'WebSite', '@id': home + '#website', name: 'Novvin', alternateName: ['Novvin Web', new URL(site).hostname], url: home, inLanguage: 'es', publisher: { '@id': organization['@id'] } }
   const page = { '@type': 'WebPage', '@id': url + '#webpage', url, name: title, description, inLanguage: 'es', isPartOf: { '@id': website['@id'] }, publisher: { '@id': organization['@id'] }, primaryImageOfPage: { '@type': 'ImageObject', url: site + '/novvin-share.png', width: 1200, height: 630 } }
   const graph = [organization, website, page]

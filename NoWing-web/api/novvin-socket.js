@@ -9,7 +9,7 @@ function trustedOrigin(value) {
   try {
     const url = new URL(value)
     return url.origin === value && url.protocol === 'https:' && !url.port && (
-      ['red-social-android.vercel.app', 'red-social-android-alvaro-s-projects1.vercel.app', 'red-social-android-git-main-alvaro-s-projects1.vercel.app'].includes(url.hostname)
+      ['novvinapp.com', 'www.novvinapp.com', 'red-social-android.vercel.app', 'red-social-android-alvaro-s-projects1.vercel.app', 'red-social-android-git-main-alvaro-s-projects1.vercel.app'].includes(url.hostname)
       || /^red-social-android-[a-z0-9]+-alvaro-s-projects1\.vercel\.app$/.test(url.hostname))
   } catch { return false }
 }

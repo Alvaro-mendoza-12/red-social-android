@@ -1,6 +1,7 @@
 import { directConversationHasActivity } from '../../core/directConversationActivity'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,currentInboxUnreadCount,hasUnrepresentedInboxUnread,inboxActivityEvent,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
+import { inboxRefreshScheduler } from '../../core/inboxRefreshScheduler'
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -1039,15 +1040,15 @@ export function MessagesPage() {
   }, [activeTab, inboxCounts, items, loading, loadCurrentTab, user])
 
   useEffect(()=>{
-    let timer:ReturnType<typeof setTimeout>|undefined
+    const scheduler=inboxRefreshScheduler(()=>loadCurrentTab({silent:true}),()=>console.warn('No se pudo actualizar la bandeja.'))
     const refresh=(event:Event)=>{
       const detail=(event as CustomEvent<InboxActivity>).detail
       if(detail?.accountId&&detail.accountId!==user?.id)return
       setItems(current=>withInboxActivity(user?.id||'',current))
-      clearTimeout(timer);timer=setTimeout(()=>void loadCurrentTab({silent:true}),120)
+      scheduler.request()
     }
     window.addEventListener(inboxActivityEvent,refresh);window.addEventListener('novvin:inbox-changed',refresh);window.addEventListener('novvin:realtime-ready',refresh)
-    return()=>{clearTimeout(timer);window.removeEventListener(inboxActivityEvent,refresh);window.removeEventListener('novvin:inbox-changed',refresh);window.removeEventListener('novvin:realtime-ready',refresh)}
+    return()=>{scheduler.stop();window.removeEventListener(inboxActivityEvent,refresh);window.removeEventListener('novvin:inbox-changed',refresh);window.removeEventListener('novvin:realtime-ready',refresh)}
   },[loadCurrentTab,user?.id])
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-export const voiceShareOrigin = 'https://red-social-android.vercel.app'
+export const voiceShareOrigin = 'https://novvinapp.com'
 
 export function voiceRoomId(value: string | undefined | null): string | null {
   const clean = value?.trim() || ''

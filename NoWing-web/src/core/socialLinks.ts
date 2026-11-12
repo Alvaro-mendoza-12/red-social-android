@@ -1,9 +1,8 @@
-const DEFAULT_PUBLIC_ORIGIN = 'https://red-social-android.vercel.app'
+const DEFAULT_PUBLIC_ORIGIN = 'https://novvinapp.com'
 
 function cleanOrigin(value: string | undefined): string {
   const trimmed = value?.trim().replace(/\/+$/, '')
   if (trimmed) return trimmed
-  if (typeof window !== 'undefined' && window.location.origin) return window.location.origin
   return DEFAULT_PUBLIC_ORIGIN
 }
 

@@ -10,4 +10,4 @@ Disallow: /live/socket.io/
 Disallow: /api/novvin-socket
 Disallow: /storage/v1/object/private/
 
-Sitemap: https://red-social-android.vercel.app/sitemap.xml
+Sitemap: https://novvinapp.com/sitemap.xml

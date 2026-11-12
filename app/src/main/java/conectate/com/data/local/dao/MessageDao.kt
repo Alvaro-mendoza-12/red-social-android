@@ -155,6 +155,9 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE chat_id = :chatId AND sender_id != :currentUserId AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received')")
     suspend fun countUnreadIncoming(chatId: String, currentUserId: String): Int
 
+    @Query("SELECT COUNT(*) FROM messages WHERE chat_id = :chatId AND LOWER(sender_id) != LOWER(:account) AND LOWER(COALESCE(status, '')) IN ('sent','delivered','received') AND deleted_for_all = 0 AND (:clearedAt IS NULL OR julianday(created_at) > julianday(:clearedAt))")
+    suspend fun countUnreadInboxIncoming(chatId: String, account: String, clearedAt: String?): Int
+
     @Query("UPDATE messages SET status='read',read_at=COALESCE(read_at,:through) WHERE chat_id=:chatId AND LOWER(sender_id)!=LOWER(:account) AND julianday(created_at)<=julianday(:through) AND LOWER(COALESCE(status,'')) IN ('sent','delivered','received')")
     suspend fun markReadThrough(chatId: String, account: String, through: String)
 

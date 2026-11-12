@@ -12,7 +12,7 @@ import org.robolectric.annotation.Config
 class SharedContentDestinationTest {
     @Test fun copyAndExternalShareResolveToTheSamePost() {
         val link = postShareLink("post-123")
-        assertEquals("https://red-social-android.vercel.app/post/post-123", link)
+        assertEquals("https://novvinapp.com/post/post-123", link)
         assertEquals(Screen.PostDetail.createRoute("post-123"), sharedContentDestination(link)?.route)
         assertEquals("post-123", sharedContentDestination("conectate://post/post-123")?.id)
     }
@@ -37,7 +37,7 @@ class SharedContentDestinationTest {
     }
     @Test fun malformedAndForeignLinksCannotBecomeApplicationDestinations() {
         for (url in listOf("https://evil.test/post/id", "https://conectate.com.evil.test/post/id",
-            "https://red-social-android.vercel.app/post/a%2Fb", "https://conectate.com/post/../profile",
+            "https://novvinapp.com/post/a%2Fb", "https://conectate.com/post/../profile",
             "https://u:pass@conectate.com/post/id", "javascript://post/id")) assertNull(url, sharedContentDestination(url))
     }
 }

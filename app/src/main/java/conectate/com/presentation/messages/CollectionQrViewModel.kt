@@ -35,8 +35,7 @@ internal object CollectionQrParser {
     private val allowedWebHosts = setOf(
         "conectate.com",
         "www.conectate.com",
-        "red-social-android.vercel.app"
-    )
+    ) + conectate.com.data.model.PublicWebDomain.httpsHosts
 
     fun parse(rawValue: String): Result<CollectionQrTarget> = runCatching {
         val raw = rawValue.trim()
@@ -55,6 +54,9 @@ internal object CollectionQrParser {
             "https", "http" -> {
                 require(uri.host?.lowercase() in allowedWebHosts) {
                     "Este QR no pertenece a Novvin."
+                }
+                require(uri.host?.lowercase() !in conectate.com.data.model.PublicWebDomain.httpsHosts || scheme == "https") {
+                    "La invitación debe usar HTTPS."
                 }
                 require(pathSegments.size == 2) {
                     "El enlace del QR está incompleto."

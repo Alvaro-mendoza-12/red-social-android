@@ -19,7 +19,7 @@ test('Android gets an explicit app action with a fallback to the same original',
     </Routes></MemoryRouter>)
     expect(screen.getByRole('link', { name: 'Abrir en la app' })).toHaveAttribute('href', sharedPostAndroidIntent('original-123'))
     expect(screen.getByRole('link', { name: 'Continuar en la web' })).toHaveAttribute('href', '/app/feed/post/original-123')
-    expect(decodeURIComponent(sharedPostAndroidIntent('original-123'))).toContain('S.browser_fallback_url=https://red-social-android.vercel.app/app/feed/post/original-123;end')
+    expect(decodeURIComponent(sharedPostAndroidIntent('original-123'))).toContain('S.browser_fallback_url=https://novvinapp.com/app/feed/post/original-123;end')
   } finally { agent.mockRestore() }
 })
 

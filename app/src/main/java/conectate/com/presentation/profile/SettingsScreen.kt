@@ -59,7 +59,7 @@ import conectate.com.data.repository.WebLoginManagedSession
 import conectate.com.presentation.auth.AuthViewModel
 import conectate.com.presentation.navigation.Screen
 
-private const val NOVVIN_WEB_URL = "https://red-social-android.vercel.app"
+private const val NOVVIN_WEB_URL = "https://novvinapp.com"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

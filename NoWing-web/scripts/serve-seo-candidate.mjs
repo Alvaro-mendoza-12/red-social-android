@@ -16,7 +16,10 @@ export function createSeoCandidateServer(directory = path.join(root, 'dist')) {
     if (/[\\\0]/.test(route) || route.split('/').includes('..')) { response.writeHead(400); response.end(); return }
     // Never connect an isolated UI audit to live API/data or credentials.
     if (/^\/(v1|auth|rest|storage|api|realtime|socket\.io)(\/|$)/.test(route)) { response.writeHead(401, { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }); response.end(); return }
-    const redirect = config.redirects.find(rule => rule.source.endsWith('(/)') ? new RegExp('^' + rule.source + '$').test(route) : rule.source === route)
+    const hostname = String(request.headers.host || '').split(':')[0]
+    const redirect = config.redirects.find(rule =>
+      (rule.has || []).every(condition => condition.type === 'host' && condition.value === hostname) &&
+      (rule.source.endsWith('(/)') ? new RegExp('^' + rule.source + '$').test(route) : rule.source === route))
     if (redirect) {
       response.writeHead(308, { Location: redirect.destination + url.search }); response.end(); return
     }

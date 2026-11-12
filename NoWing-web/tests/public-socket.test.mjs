@@ -4,7 +4,7 @@ import { once } from 'node:events'
 import { WebSocket, WebSocketServer } from 'ws'
 import { createPublicSocketServer } from '../api/novvin-socket.js'
 
-test('public socket forwards authentication frames without placing credentials in its URL', async () => {
+for (const origin of ['https://red-social-android.vercel.app', 'https://novvinapp.com', 'https://www.novvinapp.com']) test(`public socket forwards authentication frames without URL credentials from ${origin}`, async () => {
   const upstream = new WebSocketServer({ port: 0, host: '127.0.0.1' })
   await once(upstream, 'listening')
   let destination
@@ -14,7 +14,7 @@ test('public socket forwards authentication frames without placing credentials i
   })
   upstream.on('connection', socket => socket.on('message', data => socket.send(data)))
   server.listen(0, '127.0.0.1'); await once(server, 'listening')
-  const client = new WebSocket(`ws://127.0.0.1:${server.address().port}/api/novvin-socket?channel=realtime`, { headers: { Origin: 'https://red-social-android.vercel.app' } })
+  const client = new WebSocket(`ws://127.0.0.1:${server.address().port}/api/novvin-socket?channel=realtime`, { headers: { Origin: origin } })
   try {
     await once(client, 'open')
     const received = once(client, 'message')
@@ -34,7 +34,7 @@ test('untrusted origins and arbitrary upstream channels cannot open a relay', as
   const server = createPublicSocketServer(() => { calls++; throw Error('Unexpected upstream') })
   server.listen(0, '127.0.0.1'); await once(server, 'listening')
   try {
-    for (const [origin, channel] of [['https://attacker.test', 'realtime'], ['https://red-social-android.vercel.app', 'https://attacker.test']]) {
+    for (const [origin, channel] of [['https://attacker.test', 'realtime'], ['http://novvinapp.com', 'realtime'], ['https://novvinapp.com.evil.test', 'realtime'], ['https://novvinapp.com:444', 'realtime'], ['https://red-social-android.vercel.app', 'https://attacker.test']]) {
       const client = new WebSocket(`ws://127.0.0.1:${server.address().port}/api/novvin-socket?channel=${encodeURIComponent(channel)}`, { headers: { Origin: origin } })
       const [error] = await once(client, 'error')
       assert.match(error.message, /403/)

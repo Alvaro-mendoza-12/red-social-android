@@ -90,7 +90,7 @@ class MessagingViewModel @Inject constructor(
 
     // Oculta inmediatamente un chat deslizado mientras Room y la sincronizacion
     // remota terminan la eliminacion. Evita dejar una franja roja en la lista.
-    private val _hiddenChatIds = MutableStateFlow<Set<String>>(emptySet())
+    private val _hiddenChatIds = MutableStateFlow<Map<String, String>>(emptyMap())
 
     val chatFolders: StateFlow<List<ChatFolder>> = deferredRepositoryFlow(advancedMessagingRepositoryProvider) { it.folders }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), emptyList())
@@ -103,7 +103,7 @@ class MessagingViewModel @Inject constructor(
                 _selectedFolderId.value = null
                 _searchQuery.value = ""
                 _selectedListFilter.value = ChatListFilter.ALL
-                _hiddenChatIds.value = emptySet()
+                _hiddenChatIds.value = emptyMap()
                 _uiMessage.value = null
             }
         }
@@ -165,7 +165,7 @@ class MessagingViewModel @Inject constructor(
                 else -> ConversationsUiState.Success(emptyList(), syncState.isRefreshing, !syncState.hasCompletedInitialSync)
             }
         } else {
-            val distinctList = normalizedVisibleConversations(list, hiddenChatIds)
+            val distinctList = normalizedVisibleConversations(list, hiddenSince = hiddenChatIds)
 
             val folderChatIds = folders.firstOrNull { it.id == selectedFolderId }?.chat_ids?.toSet().orEmpty()
             val byFilter = when (selectedListFilter) {
@@ -202,7 +202,7 @@ class MessagingViewModel @Inject constructor(
     // --- UNREAD COUNTS (FOR BADGES) ---
     
     val unreadDmsCount: StateFlow<Int> = combine(_conversations, _hiddenChatIds) { chats, hiddenChatIds ->
-        normalizedVisibleConversations(chats, hiddenChatIds)
+        normalizedVisibleConversations(chats, hiddenSince = hiddenChatIds)
             .count { it.unreadCount > 0 && !it.chat.is_group && !it.chat.is_archived }
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
@@ -328,7 +328,8 @@ class MessagingViewModel @Inject constructor(
         val cleanId = chatId.trim().lowercase()
         if (cleanId.isBlank()) return
         val owner = authService.captureAccountLease()
-        if (!authService.commitForAccountLease(owner) { _hiddenChatIds.update { it + cleanId } }) return
+        val hiddenAt = java.time.Instant.now().toString()
+        if (!authService.commitForAccountLease(owner) { _hiddenChatIds.update { it + (cleanId to hiddenAt) } }) return
         viewModelScope.launch {
             runChatHideWithRollback(
                 action = { withContext(Dispatchers.IO) { messageRepository.deleteChat(owner, cleanId) } },
