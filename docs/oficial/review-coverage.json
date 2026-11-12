@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-12T14:14:34.724511+00:00",
-  "baseCommit": "5eab22a081631110e136316a49b248d38a34de87",
+  "generatedAtUtc": "2026-11-12T16:00:53.193220+00:00",
+  "baseCommit": "a30a3624a74fa3fcfb9b6e111d3dcbe822884364",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3660,
-    "code-read": 479,
+    "pending": 3659,
+    "code-read": 481,
     "partial": 155
   },
   "countsByPhase": {
     "android": {
-      "pending": 1537,
+      "pending": 1536,
       "partial": 74,
-      "code-read": 397
+      "code-read": 398
     },
     "documentation": {
       "pending": 559,
-      "code-read": 10,
+      "code-read": 11,
       "partial": 9
     },
     "server": {
@@ -4885,8 +4885,10 @@
     {
       "file": "app/src/androidTest/java/conectate/com/ui/MessagesMultiAccountSwitchingTest.kt",
       "phase": "android",
-      "gitBlobId": "8832d45c92398b8f7320297947cbf02a60f039bd",
-      "reviewStatus": "pending"
+      "gitBlobId": "5764916512c5a85debfdc7ba845801675310f702",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/117-cambio-de-cuenta-y-web-publica-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/ui/NotificationAccountBridgeDeviceTest.kt",
@@ -19479,9 +19481,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "27eddae3627913291a7a72d6519eb2e8bb641adb",
+      "gitBlobId": "72e87d6b2bfa71fd14d3dd4316b3b710557fc0c0",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "evidence": "docs/oficial/117-cambio-de-cuenta-y-web-publica-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19558,6 +19560,14 @@
       "gitBlobId": "6e44d7c094c596143446cd0256c726a7a49203d7",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/117-cambio-de-cuenta-y-web-publica-2026-11-12.md",
+      "phase": "documentation",
+      "gitBlobId": "f44b5c60425639611e27aa96b051c8bf7371411c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/117-cambio-de-cuenta-y-web-publica-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20087,9 +20097,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "ab023202b1b40b9a1a4e00c1852cf6a1520a49fb",
+      "gitBlobId": "ff8da1af7d2af9d60be39ef30c58870be6811300",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "evidence": "docs/oficial/117-cambio-de-cuenta-y-web-publica-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

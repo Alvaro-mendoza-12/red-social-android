@@ -4,6 +4,8 @@ Estado documental: 12 de noviembre de 2026. Esta es la entrada para desarrollo, 
 
 ## Estado vigente
 
+La [continuación 117](117-cambio-de-cuenta-y-web-publica-2026-11-12.md) corrige el seguimiento de ActivityScenario del ensayo de cambio de cuenta, refuerza A → B → A y verifica el alojamiento público web con 90 controles HTTP y navegador. Distingue el fallo del ensayo de la lógica de cuentas de producción.
+
 La [operación 116](116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md) instala en Ubuntu las correcciones de tiempo real y amistades con respaldo y restauración comprobados, conserva las funciones ya activas y corrige iconos y controles de la web. Separa las pruebas con datos ficticios del despliegue productivo y mantiene abierta la revisión integral.
 
 La [continuación 115](115-tiempo-real-y-cancelacion-amistades-2026-11-12.md) corrige los bloques de tiempo real y cancelación de amistades diferidos por 114, con pruebas de recepción y concurrencia PostgreSQL. Distingue el código publicado del servidor Ubuntu activo y mantiene abierta la revisión integral.
