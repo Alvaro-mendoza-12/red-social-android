@@ -146,6 +146,9 @@ export function RegisterPage() {
           </div>
 
           <p className="auth-foot">
+            Consulta la <a href="/privacidad">política de privacidad</a> y la información sobre <a href="/cookies">cookies y almacenamiento</a> antes de crear tu cuenta.
+          </p>
+          <p className="auth-foot">
             ¿Ya tienes cuenta? <Link to={authReturnPath('/login', nextPath)}>Inicia sesión</Link>
           </p>
         </form>

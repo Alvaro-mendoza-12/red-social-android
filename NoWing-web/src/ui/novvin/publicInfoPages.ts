@@ -1,4 +1,29 @@
 export const publicInfoPages = {
+  '/privacidad': {
+    title: 'Política de privacidad de Novvin: datos y controles',
+    description: 'Consulta qué datos trata Novvin para cuentas, mensajes, contenido, seguridad y recomendaciones, y cómo gestionar permisos y eliminar tu cuenta.',
+    heading: 'Tu privacidad en Novvin.',
+    sections: [
+      { heading: 'Cuenta, perfil y contenido', body: 'Novvin trata el correo, las credenciales protegidas y los datos de perfil que facilitas, como nombre, fecha de nacimiento, avatar, biografía e intereses. También procesa mensajes, publicaciones, fotos, videos, audios, documentos, comentarios y reacciones para entregar y sincronizar las funciones que utilizas. Revisa la audiencia antes de publicar o compartir contenido.' },
+      { heading: 'Permisos que controlas', body: 'La cámara, el micrófono, los archivos, los contactos y la ubicación se utilizan cuando eliges funciones que los necesitan. El navegador y Android solicitan los permisos correspondientes y permiten retirarlos desde sus ajustes. Compartir pantalla requiere la confirmación del sistema.' },
+      { heading: 'Recomendaciones y seguridad', body: 'Los intereses, las interacciones, el contenido visto y las preferencias ayudan a ordenar las recomendaciones. Novvin registra sesiones, eventos técnicos y señales de abuso para prevenir fraude, resolver fallos y moderar contenido. Puedes ajustar las notificaciones, bloquear cuentas y reportar contenido desde la aplicación.' },
+      { heading: 'Infraestructura y proveedores', body: 'La operación principal utiliza servidores propios, incluida infraestructura Ubuntu para API, base de datos y multimedia. Se utilizan también proveedores necesarios para notificaciones, conectividad, almacenamiento o seguridad. La política de Novvin establece que no se vende tu información personal.' },
+      { heading: 'Conservación y eliminación', body: 'Los datos se conservan mientras la cuenta está activa o durante el tiempo necesario para seguridad, obligaciones legales y resolución de disputas. Puedes actualizar tu perfil y solicitar la eliminación de la cuenta y sus datos desde la aplicación. Solo se conserva lo necesario por obligaciones aplicables, seguridad o prevención de fraude.' },
+      { heading: 'Edad y normas de la comunidad', body: 'La edad mínima indicada por Novvin es de 13 años. Debes declarar tu fecha real y cumplir cualquier requisito superior o autorización adicional que corresponda en tu país. No se permite explotación, amenazas, acoso grave, suplantación, fraude, contenido sexual no consentido ni vulneraciones de derechos. Las medidas de moderación pueden incluir retirada de contenido o suspensión de cuentas.' },
+      { heading: 'Información y controles adicionales', body: 'Puedes consultar las políticas y normas desde la app, gestionar los permisos en tu dispositivo y revisar las sesiones y los ajustes de privacidad. En una computadora compartida, cierra la sesión al terminar. Las solicitudes de privacidad y soporte se realizan por los canales oficiales indicados dentro de la aplicación.' },
+    ],
+  },
+  '/cookies': {
+    title: 'Cookies y almacenamiento de Novvin Web',
+    description: 'Información sobre la cookie de sesión, las preferencias y la caché de Novvin Web, y cómo gestionarlas desde tu navegador.',
+    heading: 'Cookies y datos en tu navegador.',
+    sections: [
+      { heading: 'Mantener tu sesión', body: 'Al iniciar sesión, Novvin Web utiliza una cookie protegida para conservar el acceso y renovar la sesión. Se transmite mediante HTTPS y no está disponible para el JavaScript de la página. Su finalidad es autenticar las funciones que solicitas, no mostrar publicidad.' },
+      { heading: 'Preferencias y caché', body: 'El navegador puede guardar preferencias de apariencia, borradores y archivos multimedia en caché para facilitar la conversación y evitar descargas repetidas. Estos datos permanecen en el dispositivo y pueden ocupar espacio aunque cierres la pestaña.' },
+      { heading: 'Cómo gestionar estos datos', body: 'Cierra la sesión cuando termines en un dispositivo compartido. Desde los ajustes del navegador puedes bloquear o eliminar cookies y datos del sitio; al hacerlo puedes perder preferencias, borradores o archivos guardados para uso sin conexión y tener que iniciar sesión de nuevo.' },
+      { heading: 'Medición y publicidad', body: 'Esta versión de la web no incorpora un rastreador publicitario ni una herramienta opcional de analítica de audiencia. Los registros técnicos del servidor se utilizan para operar el servicio y detectar fallos o abuso. Puedes consultar el tratamiento de datos y los controles disponibles en la política de privacidad.' },
+    ],
+  },
   '/que-es-novvin': {
     title: 'Qué es Novvin: red social para Android y navegador',
     description: 'Novvin es una red social con mensajes, videos, publicaciones, grupos, comunidades y salas de voz. Conoce su app para Android y el acceso con Novvin Web.',

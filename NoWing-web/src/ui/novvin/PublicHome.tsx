@@ -38,7 +38,7 @@ export function PublicHome() {
         </section>
         <section className="public-home-features" aria-label="Qué puedes hacer en Novvin">
           <article>
-            <img className="public-feature-preview" src="/images/novvin-chats.png" alt="Vista ilustrativa de los chats de Novvin con mensajes y fotos de ejemplo" width="1200" height="800" loading="lazy" decoding="async" />
+            <picture><source srcSet="/images/novvin-chats.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-chats.png" alt="Vista ilustrativa de los chats de Novvin con mensajes y fotos de ejemplo" width="1200" height="800" loading="lazy" decoding="async" /></picture>
             <span>01</span>
             <h2>La conversación sigue.</h2>
             <p>
@@ -48,14 +48,14 @@ export function PublicHome() {
             <a href="/login?next=%2Fapp%2Fmessages">Abrir mis mensajes →</a>
           </article>
           <article>
-            <img className="public-feature-preview" src="/images/novvin-videos.png" alt="Vista ilustrativa de la sección de videos de Novvin" width="1200" height="800" loading="lazy" decoding="async" />
+            <picture><source srcSet="/images/novvin-videos.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-videos.png" alt="Vista ilustrativa de la sección de videos de Novvin" width="1200" height="800" loading="lazy" decoding="async" /></picture>
             <span>02</span>
             <h2>Algo nuevo por descubrir.</h2>
             <p>Explora videos y publicaciones, sigue a tus creadores y comparte lo que te gusta.</p>
             <a href="/explore/posts">Descubrir Social →</a>
           </article>
           <article>
-            <img className="public-feature-preview" src="/images/novvin-momentos.png" alt="Vista ilustrativa de fotos y videos en Momentos de Novvin" width="1200" height="800" loading="lazy" decoding="async" />
+            <picture><source srcSet="/images/novvin-momentos.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-momentos.png" alt="Vista ilustrativa de fotos y videos en Momentos de Novvin" width="1200" height="800" loading="lazy" decoding="async" /></picture>
             <span>03</span>
             <h2>Momentos que conectan.</h2>
             <p>

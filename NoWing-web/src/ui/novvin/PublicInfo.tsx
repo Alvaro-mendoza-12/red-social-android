@@ -12,15 +12,15 @@ export function PublicInfo({ path }: { path: string }) {
       <nav className="public-breadcrumb" aria-label="Ruta de esta página"><ol><li><a href="/">Novvin</a></li><li aria-current="page">{publicPageLabel(path)}</li></ol></nav>
       <h1>{page.heading}</h1>
       <p className="public-info-intro">{page.description}</p>
-      {publicIllustrations[path]?.length ? <section className="public-feature-gallery" aria-label="Imágenes de las funciones de Novvin">{publicIllustrations[path].map(image=><figure key={image.src}><img className={image.height > image.width ? 'public-feature-portrait' : undefined} src={image.src} alt={image.alt} width={image.width} height={image.height} loading="lazy" decoding="async"/><figcaption>{image.caption}</figcaption></figure>)}</section> : null}
-      <div className="public-home-actions"><a className="primary-btn" href="/login">Entrar a Novvin</a><a className="ghost-btn" href="/explore/videos">Explorar videos</a></div>
+      {publicIllustrations[path]?.length ? <section className="public-feature-gallery" aria-label="Imágenes de las funciones de Novvin">{publicIllustrations[path].map(image=><figure key={image.src}><picture><source srcSet={image.src.replace(/\.png$/, '.webp')} type="image/webp"/><img className={image.height > image.width ? 'public-feature-portrait' : undefined} src={image.src} alt={image.alt} width={image.width} height={image.height} loading="lazy" decoding="async"/></picture><figcaption>{image.caption}</figcaption></figure>)}</section> : null}
+      <div className="public-home-actions"><a className={path === '/descargar' ? 'ghost-btn' : 'primary-btn'} href="/login">Entrar a Novvin</a><a className="ghost-btn" href="/explore/videos">Explorar videos</a></div>
       {(path === '/descargar' || path === '/que-es-novvin') && <aside className="public-download-card" aria-label="Descarga oficial de Novvin">
         <img src="/novvin-logo.png" width="72" height="72" alt="" />
-        <div><h2>Novvin para Android</h2><p>Abre la ficha de la aplicación para consultar su disponibilidad y descargarla.</p><a className="primary-btn" href={androidStoreUrl}>Ver Novvin en Google Play</a></div>
+        <div><h2>Novvin para Android</h2><p>Abre la ficha de la aplicación para consultar su disponibilidad y descargarla.</p><a className={path === '/descargar' ? 'primary-btn' : 'ghost-btn'} href={androidStoreUrl}>Ver Novvin en Google Play</a></div>
       </aside>}
       {page.sections.map(section => <section key={section.heading}><h2>{section.heading}</h2><p>{section.body}</p></section>)}
       <PublicGuideNavigation path={path} />
     </main>
-    <PublicFooter />
+    <PublicFooter path={path} />
   </div>
 }

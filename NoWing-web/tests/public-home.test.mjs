@@ -9,6 +9,30 @@ const read=file=>fs.readFileSync(path.join(root,'dist',file),'utf8')
 const graph=html=>JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/.exec(html)[1])['@graph']
 const config=JSON.parse(fs.readFileSync(path.join(root,'vercel.json'),'utf8'))
 
+test('public privacy information is linked and every guide has one primary action',()=>{
+ for(const [route,file] of publicRoutes){
+  const html=read(file)
+  assert.match(html,/href="\/privacidad"/)
+  assert.match(html,/href="\/cookies"/)
+  assert.equal([...html.matchAll(/class="primary-btn"/g)].length,1,route)
+ }
+ assert.match(read('privacidad.html'),/Conservación y eliminación/)
+ assert.match(read('cookies.html'),/Mantener tu sesión/)
+ assert.match(read('cookies.html'),/no incorpora un rastreador publicitario/)
+})
+
+test('public image alternatives use smaller WebP files and preserve original discovery URLs',()=>{
+ const html=read('funciones.html')
+ for(const source of [...html.matchAll(/<source srcSet="([^"]+\.webp)" type="image\/webp"/gi)]){
+  const webp=fs.readFileSync(path.join(root,'dist',source[1]))
+  const png=fs.readFileSync(path.join(root,'dist',source[1].replace(/\.webp$/,'.png')))
+  assert.equal(webp.toString('ascii',0,4),'RIFF')
+  assert.equal(webp.toString('ascii',8,12),'WEBP')
+  assert.ok(webp.length<png.length)
+ }
+ assert.equal([...html.matchAll(/<source /g)].length,9)
+})
+
 test('feature illustrations have visible alternatives and discoverable public image URLs',()=>{
  const html=read('funciones.html'),page=graph(html).find(item=>item['@type']==='WebPage')
  const images=[...['chats','grupos','comunidades','videos','social','momentos'],...['chat-android-demo','chat-web-demo','perfil-android-demo']].map(name=>'/images/novvin-'+name+'.png')
