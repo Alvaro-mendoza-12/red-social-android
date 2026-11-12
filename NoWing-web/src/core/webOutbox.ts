@@ -1,5 +1,5 @@
 import { normalizeDocumentBlob } from './documentMime'
-import {getStorageReadIdentity} from './media/storageReadSession'
+import {getStorageReadIdentity, requireStorageReadIdentity, type StorageReadIdentity} from './media/storageReadSession'
 import {registerOutboxPreview,clearOutboxPreviewRegistry} from './media/outboxPreviewRegistry'
 import {notifyInboxMessage} from './inboxActivity'
 import { fallbackApiJson, fallbackSessionToUser, readFallbackSession } from './auth/fallbackAuth'
@@ -48,8 +48,9 @@ function database() {
   })
   return opening
 }
-async function operation<T>(store: string, write: boolean, fn: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function operation<T>(store: string, write: boolean, fn: (store: IDBObjectStore) => IDBRequest<T>, guard?: () => void): Promise<T> {
   const db = await database()
+  guard?.()
   return new Promise<T>((resolve, reject) => {
     const transaction = db.transaction(store, write ? 'readwrite' : 'readonly')
     const request = fn(transaction.objectStore(store)); let value: T
@@ -59,8 +60,8 @@ async function operation<T>(store: string, write: boolean, fn: (store: IDBObject
   })
 }
 const all = <T,>(store: string) => operation<T[]>(store, false, s => s.getAll())
-const put = (store: string, value: object) => operation(store, true, s => s.put(value))
-const remove = (store: string, id: string) => operation(store, true, s => s.delete(id))
+const put = (store: string, value: object, guard?: () => void) => operation(store, true, s => s.put(value), guard)
+const remove = (store: string, id: string, guard?: () => void) => operation(store, true, s => s.delete(id), guard)
 function changed(owner: string) { window.dispatchEvent(new CustomEvent('novvin:outbox-changed', { detail: { owner } })) }
 export function isTransientOutboxError(error: unknown) {
   const code = String((error as { code?: string; message?: string })?.code || (error as Error)?.message || '')
@@ -109,32 +110,42 @@ export async function retryPendingWebMessage(id: string) {
   await flushWebOutbox()
 }
 export async function cancelPendingWebMessage(scope: Scope, room: string, id: string): Promise<GenericRow | null> {
-  const owner = outboxOwner(); requireOwner(owner)
-  const previous = await operation<Pending | undefined>('messages', false, s => s.get(id))
-  requireOwner(owner)
+  const identity = getStorageReadIdentity()
+  const owner = outboxOwner()
+  const requireCurrent = () => { requireOwner(owner); requireStorageReadIdentity(identity) }
+  requireCurrent()
+  const previous = await operation<Pending | undefined>('messages', false, s => s.get(id), requireCurrent)
+  requireCurrent()
   if(!previous||previous.owner!==owner||previous.scope!==scope||previous.room!==room)return null
   const cancel = async () => {
-    const item = await operation<Pending | undefined>('messages', false, s => s.get(id))
-    requireOwner(owner)
+    const item = await operation<Pending | undefined>('messages', false, s => s.get(id), requireCurrent)
+    requireCurrent()
     if (!item || item.owner !== owner || item.scope !== scope || item.room !== room) return null
     // Without Web Locks an outstanding send must finish before deciding if it is local.
     const key=roomKey(owner,scope,room)+'/'+outboxDeliveryLane(item)
     if (!navigator.locks && (sendQueue.has(key)||fileQueue.has(key))) throw new Error('Espera a que termine el envío para borrar este mensaje.')
-    await remove('messages', id)
+    await remove('messages', id, requireCurrent)
+    requireCurrent()
     const media = String(item.payload.mediaUrl || '')
-    if (media.startsWith(pendingPrefix)) await remove('files', media.slice(pendingPrefix.length))
+    if (media.startsWith(pendingPrefix)) await remove('files', media.slice(pendingPrefix.length), requireCurrent)
+    requireCurrent()
     const message = { ...item.payload, id, sender_id: item.senderId, content: '', content_type: 'text', media_url: null, deleted_for_all: true, created_at: item.createdAt, status: 'cancelled' }
     const cached = await cachedConversation(scope, room, owner)
-    if (cached) await cacheConversation(scope, room, { ...cached, messages: ((cached.messages || []) as GenericRow[]).filter(row => row.id !== id) }, owner)
+    requireCurrent()
+    if (cached) await cacheConversation(scope, room, { ...cached, messages: ((cached.messages || []) as GenericRow[]).filter(row => row.id !== id) }, owner, identity)
+    requireCurrent()
     changed(owner); return message
   }
   const cancelled=await withConversationLock(owner, scope, room+'/'+outboxDeliveryLane(previous), true, cancel)
+  requireCurrent()
   if(cancelled===undefined)throw new Error('Espera a que termine el envío para borrar este mensaje.')
   return cancelled
 }
-export async function cacheConversation(scope: Scope, room: string, value: Record<string, unknown>, owner: string) {
-  requireOwner(owner)
-  await put('conversations', { key: `${owner}/${scope}/${room}`, owner, value } satisfies Cached)
+export async function cacheConversation(scope: Scope, room: string, value: Record<string, unknown>, owner: string, identity?: StorageReadIdentity) {
+  const guard = () => { requireOwner(owner); if (identity) requireStorageReadIdentity(identity) }
+  guard()
+  await put('conversations', { key: `${owner}/${scope}/${room}`, owner, value } satisfies Cached, guard)
+  guard()
 }
 export async function editPendingWebMessage(scope: Scope, room: string, id: string, content: string): Promise<GenericRow | null> {
   const owner = outboxOwner(); requireOwner(owner)

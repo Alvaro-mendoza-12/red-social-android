@@ -1,3 +1,4 @@
+import { getStorageReadIdentity, requireStorageReadIdentity, type StorageReadIdentity } from './media/storageReadSession'
 import type { ImportedSticker } from './webOutbox'
 import { cachedConversation, cacheConversation, cancelPendingWebMessage, editPendingWebMessage, isTransientOutboxError, outboxOwner, pendingConversationMessages, sendDurableWebMessage, stageOfflineChatAttachment } from './webOutbox'
 import { fallbackApiJson } from './auth/fallbackAuth'
@@ -221,8 +222,8 @@ export type FallbackRandomMessage = {
   created_at: string
 }
 
-export async function loadFallbackProfileMe(): Promise<FallbackProfileMeResponse> {
-  return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me')
+export async function loadFallbackProfileMe(expectedIdentity?: StorageReadIdentity): Promise<FallbackProfileMeResponse> {
+  return fallbackApiJson<FallbackProfileMeResponse>('/v1/data/profile/me', expectedIdentity ? { expectedIdentity } : undefined)
 }
 
 export async function updateFallbackProfileMe(input: {
@@ -311,19 +312,21 @@ export async function loadFallbackNotifications(limit = 200): Promise<FallbackNo
 export type ChatPreferencePatch = Partial<Record<'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite', boolean>>
 
 export async function saveFallbackChatPreferences(chatId: string, patch: ChatPreferencePatch) {
+  const identity = getStorageReadIdentity()
   const result = await fallbackApiJson<{ ok: boolean }>(`/v1/data/messages/chats/${encodeURIComponent(chatId)}/preferences`, {
-    method: 'PATCH', body: JSON.stringify(patch),
+    method: 'PATCH', body: JSON.stringify(patch), expectedIdentity: identity, expectedAccountId: identity.accountId,
   })
-  window.dispatchEvent(new CustomEvent('novvin:conversation-preferences-changed', { detail: { chatId } }))
+  if (identity === getStorageReadIdentity()) window.dispatchEvent(new CustomEvent('novvin:conversation-preferences-changed', { detail: { chatId } }))
   return result
 }
 
 export async function hideFallbackChat(chatId: string) {
+  const identity = getStorageReadIdentity()
   const result = await fallbackApiJson<{ ok: boolean; chatId: string; hidden: boolean }>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', expectedIdentity: identity, expectedAccountId: identity.accountId },
   )
-  window.dispatchEvent(new Event('novvin:inbox-changed'))
+  if (identity === getStorageReadIdentity()) window.dispatchEvent(new Event('novvin:inbox-changed'))
   return result
 }
 
@@ -712,11 +715,14 @@ export async function deleteFallbackChatMessage(
   messageId: string,
   forEveryone: boolean,
 ): Promise<{ message: GenericRow }> {
+  const identity = getStorageReadIdentity()
+  requireStorageReadIdentity(identity)
   const cancelled = await cancelPendingWebMessage('chat', chatId, messageId)
+  requireStorageReadIdentity(identity)
   if (cancelled) return { message: cancelled }
   return fallbackApiJson<{ message: GenericRow }>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/delete`,
-    { method: 'POST', body: JSON.stringify({ forEveryone }) },
+    { method: 'POST', body: JSON.stringify({ forEveryone }), expectedIdentity: identity, expectedAccountId: identity.accountId },
   )
 }
 
@@ -725,9 +731,10 @@ export async function toggleFallbackChatReaction(
   messageId: string,
   emoji: string,
 ): Promise<{ message: GenericRow }> {
+  const identity = getStorageReadIdentity()
   return fallbackApiJson<{ message: GenericRow }>(
     `/v1/data/messages/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}/reactions`,
-    { method: 'POST', body: JSON.stringify({ emoji }) },
+    { method: 'POST', body: JSON.stringify({ emoji }), expectedIdentity: identity, expectedAccountId: identity.accountId },
   )
 }
 
@@ -771,12 +778,15 @@ export async function deleteFallbackRoomMessage(
   messageId: string,
   forEveryone: boolean,
 ): Promise<{ message: GenericRow }> {
+  const identity = getStorageReadIdentity()
+  requireStorageReadIdentity(identity)
   const cancelled = await cancelPendingWebMessage(scope, roomId, messageId)
+  requireStorageReadIdentity(identity)
   if (cancelled) return { message: cancelled }
   const collection = scope === 'group' ? 'groups' : 'communities'
   return fallbackApiJson<{ message: GenericRow }>(
     `/v1/data/messages/${collection}/${encodeURIComponent(roomId)}/messages/${encodeURIComponent(messageId)}/delete`,
-    { method: 'POST', body: JSON.stringify({ forEveryone }) },
+    { method: 'POST', body: JSON.stringify({ forEveryone }), expectedIdentity: identity, expectedAccountId: identity.accountId },
   )
 }
 
@@ -786,6 +796,7 @@ export async function uploadFallbackFile(
   path?: string,
   expectedAccountId?: string,
   favoriteSticker?: ImportedSticker,
+  expectedIdentity?: StorageReadIdentity,
 ): Promise<FallbackStorageObject> {
   if (['chat-media', 'group-media', 'community-media'].includes(bucket)) {
     return stageOfflineChatAttachment(bucket, file, path, favoriteSticker)
@@ -799,6 +810,7 @@ export async function uploadFallbackFile(
     method: 'POST',
     body: formData,
     signal: AbortSignal.timeout(300000),
+    ...(expectedIdentity ? { expectedIdentity } : {}),
     ...(expectedAccountId ? { expectedAccountId } : {}),
   })
   return payload.object

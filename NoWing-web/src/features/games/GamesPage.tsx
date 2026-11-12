@@ -7,6 +7,7 @@ import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { uploadFallbackFile } from '../../core/fallbackData'
 import './games.css'
+import { GameCatalog } from './GameCatalog'
 
 type Game = { id: string; name: string; imageUrl?: string; iconUrl?: string; coverUrl?: string; platforms: string[]; ranks: string[]; roles: string[]; rankSchemas?: { ranks: { key: string; displayName: string }[] }[]; roleDefinitions?: { key: string; displayName: string }[] }
 type UserGame = { id: string; gameId: string; gameName: string; platform: string; rank: string; role: string }
@@ -242,7 +243,11 @@ export function GamesPage() {
       {([['catalog', 'Juegos'], ['discover', 'Descubrir'], ['profile', 'Mi perfil'], ['connections', 'Conexiones'], ['matches', 'Partidas']] as const).map(([id, label]) => <button key={id} type="button" className={tab === id ? 'games-tab active' : 'games-tab'} aria-pressed={tab === id} onClick={() => { setTab(id); setError(''); setNotice('') }}>{label}</button>)}
     </nav>
     {error && <p className="games-alert error" role="alert">{error}</p>}{notice && <p className="games-alert" role="status">{notice}</p>}
-    {tab === 'catalog' && <section className="games-catalog-section"><div className="row-between"><h3>Encuentra tu juego</h3><small>{catalog.length} juegos</small></div><input className="text-input" type="search" aria-label="Buscar juego en catálogo" placeholder="Buscar juego…" value={catalogQuery} onChange={event => setCatalogQuery(event.target.value)} /><div className="games-catalog-grid">{catalog.filter(game => game.name.toLowerCase().includes(catalogQuery.trim().toLowerCase())).map(game => <button className="games-catalog-card" type="button" key={game.id} onClick={() => { setGameFilter(game.id); setTab('discover'); void loadPlayers(query, game.id, availableNow) }}>{game.imageUrl || game.coverUrl || game.iconUrl ? <StreamingImage src={game.imageUrl || game.coverUrl || game.iconUrl} alt="" /> : <span className="games-catalog-initials" aria-hidden="true">{game.name.slice(0,2)}</span>}<strong>{game.name}</strong><small>{game.platforms?.join(' · ')}</small><span>Buscar jugadores →</span></button>)}</div>{!catalog.length ? <p>No hay juegos disponibles por ahora.</p> : null}</section>}
+    {tab === 'catalog' && <GameCatalog disabled={busy} onSelect={game => {
+      setCatalog(current => current.some(item => item.id === game.id) ? current : [...current, game])
+      setGameFilter(game.id); setTab('discover')
+      void act(() => loadPlayers(query, game.id, availableNow), '')
+    }} />}
     {tab === 'discover' && <section className="games-section">
       <form className="games-filters surface-card" onSubmit={submitSearch}>
         <label>Buscar jugador<input className="text-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre o juego" /></label>

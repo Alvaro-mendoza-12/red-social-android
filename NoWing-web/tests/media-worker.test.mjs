@@ -7,14 +7,14 @@ const code = fs.readFileSync(new URL('../public/novvin-media-worker.js', import.
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const token = 'synthetic-media-token-never-production'
 const source = 'https://api.example.invalid/storage/v1/object/public/videos/clip.mp4'
-function fixture(fetcher = async () => new Response('ab', { status: 206, headers: { 'Content-Range': 'bytes 0-1/6', 'Content-Type': 'video/mp4' } })) {
+function fixture(fetcher = async () => new Response('ab', { status: 206, headers: { 'Content-Range': 'bytes 0-1/6', 'Content-Type': 'video/mp4' } }), origin = 'https://web.example.invalid') {
   const handlers = {}, requests = [], tasks = []
-  const self = { location: { origin: 'https://web.example.invalid' }, addEventListener: (name, callback) => { handlers[name] = callback }, clients: { get: async () => null, claim: async () => {} }, skipWaiting() {} }
+  const self = { location: { origin }, addEventListener: (name, callback) => { handlers[name] = callback }, clients: { get: async () => null, claim: async () => {} }, skipWaiting() {} }
   vm.runInNewContext(code, { self, URL, Headers, Response, Request, Map, setTimeout, clearTimeout, fetch: async (...args) => { requests.push(args); return fetcher(...args) } })
   const register = (client = 'a', extra = {}) => handlers.message({ source: { id: client }, ports: [], data: { type: 'NOVVIN_MEDIA_REGISTER', id, source, base: 'https://api.example.invalid', token, generation: 1, ...extra } })
   const read = async (client = 'a', range = 'bytes=0-1') => {
     let response
-    handlers.fetch({ clientId: client, request: new Request(`https://web.example.invalid/__novvin_media/${id}`, { headers: range ? { Range: range } : {} }), respondWith: value => { response = value }, waitUntil: task => tasks.push(task) })
+    handlers.fetch({ clientId: client, request: new Request(`${origin}/__novvin_media/${id}`, { headers: range ? { Range: range } : {} }), respondWith: value => { response = value }, waitUntil: task => tasks.push(task) })
     return await response
   }
   return { handlers, requests, register, read, self, settle: () => Promise.all(tasks) }
@@ -153,4 +153,42 @@ test('videos, documents, oversized images and Range requests never enter the ima
     f.register(); await f.read('a', null); await f.settle(); await f.read('a', null)
     assert.equal(f.requests.length, 2)
   }
+})
+
+
+test('protected gateway streams send same-origin deployment cookies without changing the bearer or Range', async () => {
+  const origin = 'https://red-social-android-6xn6c21te-alvaro-s-projects1.vercel.app'
+  const target = origin + '/storage/v1/object/public/videos/test.mp4'
+  const f = fixture(async (_url, options) => new Response('', { status: options.credentials === 'same-origin' ? 206 : 401 }), origin)
+  f.register('a', { source: target, base: origin })
+  assert.equal((await f.read()).status, 206)
+  assert.equal(f.requests[0][1].headers.get('Authorization'), `Bearer ${token}`)
+  assert.equal(f.requests[0][1].headers.get('Range'), 'bytes=0-1')
+  assert.equal(f.requests[0][1].redirect, 'error')
+})
+
+test('cross-origin accelerated reads omit cookies even when the fallback is a protected gateway', async () => {
+  const origin = 'https://red-social-android-git-correcciones-dot-alvaro-s-projects1.vercel.app'
+  const target = origin + '/storage/v1/object/public/videos/test.mp4'
+  const edge = 'https://media.example.invalid/storage/v1/object/public/videos/test.mp4'
+  const f = fixture(async url => new Response('', { status: url === edge ? 503 : 206 }), origin)
+  f.register('a', { source: target, base: origin, edge })
+  assert.equal((await f.read()).status, 206)
+  assert.deepEqual(f.requests.map(([url, init]) => [url, init.credentials]), [[edge, 'omit'], [target, 'same-origin']])
+  assert(f.requests.every(([, init]) => init.headers.get('Authorization') === `Bearer ${token}` && init.redirect === 'error'))
+})
+
+test('non-gateway origins and different gateway destinations never gain cookie transport', async () => {
+  for (const origin of ['https://conectate.tail9b267c.ts.net', 'https://web.example.invalid', 'https://red-social-android.vercel.app.evil.test', 'http://red-social-android.vercel.app', 'https://red-social-android.vercel.app:444', 'https://red-social-android-git-unreviewed-alvaro-s-projects1.vercel.app']) {
+    const target = origin + '/storage/v1/object/public/videos/test.mp4'
+    const f = fixture(undefined, origin)
+    f.register('a', { source: target, base: origin })
+    await f.read()
+    assert.equal(f.requests[0][1].credentials, 'omit', origin)
+  }
+  const f = fixture(undefined, 'https://red-social-android.vercel.app')
+  const target = 'https://red-social-android-6xn6c21te-alvaro-s-projects1.vercel.app/storage/v1/object/public/videos/test.mp4'
+  f.register('a', { source: target, base: new URL(target).origin })
+  await f.read()
+  assert.equal(f.requests[0][1].credentials, 'omit')
 })

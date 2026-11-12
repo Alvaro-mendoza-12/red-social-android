@@ -1,5 +1,10 @@
 package conectate.com.presentation.profile
 
+import androidx.compose.ui.res.stringResource
+import conectate.com.R
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.selectable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.Composable
 import android.content.Intent
@@ -1157,20 +1162,21 @@ fun ProfileScreen(
                                 color = MaterialTheme.colorScheme.surface,
                                 shadowElevation = 1.dp
                             ) {
-                                Row(modifier = Modifier.fillMaxWidth()) {
+                                Row(modifier = Modifier.fillMaxWidth().selectableGroup()) {
                                     val showFavorites = userId == null ||
                                         userId == viewModel.currentUserId ||
                                         user.favorites_public
                                     val tabs = if (showFavorites) {
-                                        listOf("Videos", "Publicaciones", "Compartidos", "Favoritos")
+                                        listOf(stringResource(R.string.audit_nav_videos), stringResource(R.string.audit_profile_posts), stringResource(R.string.audit_profile_shared), stringResource(R.string.audit_profile_favorites))
                                     } else {
-                                        listOf("Videos", "Publicaciones", "Compartidos")
+                                        listOf(stringResource(R.string.audit_nav_videos), stringResource(R.string.audit_profile_posts), stringResource(R.string.audit_profile_shared))
                                     }
                                     tabs.forEachIndexed { index, title ->
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .clickable { viewModel.selectTab(index) }
+                                                .selectable(selected = selectedTab == index, role = Role.Tab, onClick = { viewModel.selectTab(index) })
+                                                .heightIn(min = 48.dp)
                                                 .padding(vertical = 12.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -1178,14 +1184,14 @@ fun ProfileScreen(
                                                 if (index == 3) {
                                                     Icon(
                                                         imageVector = if (selectedTab == index) Icons.Default.Star else Icons.Default.StarBorder,
-                                                        contentDescription = "Favoritos",
-                                                        tint = if (selectedTab == index) MaterialTheme.colorScheme.primary else Color.Gray
+                                                        contentDescription = stringResource(R.string.audit_profile_favorites),
+                                                        tint = if (selectedTab == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                                     )
                                                 } else {
                                                     Text(
                                                         text = title,
                                                         style = MaterialTheme.typography.labelLarge,
-                                                        color = if (selectedTab == index) MaterialTheme.colorScheme.primary else Color.Gray,
+                                                        color = if (selectedTab == index) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                                         fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal
                                                     )
                                                 }

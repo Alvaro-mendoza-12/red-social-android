@@ -11,6 +11,24 @@ jest.mock('../../core/auth/fallbackAuth', () => ({ isFallbackAuthConfigured: tru
   fallbackApiJson: jest.fn(async (path: string) => ({ username: new URL(path, 'https://example.invalid').searchParams.get('username'), available: true, suggestions: [] })),
 }))
 
+test('keeps registration copy inside the form instead of stray beside it', () => {
+  const { container } = render(<MemoryRouter initialEntries={['/register?next=%2Fapp%2Fmessages']}>
+    <RegisterPage />
+  </MemoryRouter>)
+  const form = screen.getByLabelText('Nombre visible').closest('form')
+  expect(form).toContainElement(screen.getByRole('heading', { name: 'Crear cuenta' }))
+  expect(form).toContainElement(screen.getByLabelText(/Identificador único/))
+  expect(form).toContainElement(screen.getByLabelText('Correo'))
+  expect(form).toContainElement(screen.getByLabelText('Contraseña'))
+  expect(form).toContainElement(screen.getByRole('img', { name: 'Logo de Novvin' }))
+  expect(screen.getByRole('link', { name: 'Inicia sesión' })).toHaveAttribute('href', '/login?next=%2Fapp%2Fmessages')
+
+  // Unstyled decorative siblings used to leak text beside the centered form.
+  const outsideForm = container.cloneNode(true) as HTMLElement
+  outsideForm.querySelector('form')?.remove()
+  expect(outsideForm).toHaveTextContent(/^\s*$/)
+})
+
 test('confirmed registration returns to the invited room instead of the inbox', async () => {
   render(<MemoryRouter initialEntries={['/register?next=%2Fapp%2Fvoice%2Froom-123%3Fjoin%3D1']}><Routes>
     <Route path="/register" element={<RegisterPage/>}/>

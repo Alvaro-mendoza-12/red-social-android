@@ -3,6 +3,7 @@ import { loadFallbackMessagesInbox, sendFallbackChatMessage, sendFallbackRoomMes
 import { dedupeInboxConversations } from '../features/messages/conversationInboxSupport'
 import { friendlyError } from '../core/utils'
 import { SafeAvatar } from './SafeAvatar'
+import { PublicationDialog } from './PublicationDialog'
 
 export type ForwardableMessage = { id: string; senderId: string; content: string; contentType: string; mediaUrl: string | null; deletedForAll: boolean; status?: string }
 export function ForwardMessagesDialog({ messages, onClose, mode = 'forward' }: { messages: ForwardableMessage[]; onClose: () => void; mode?: 'forward' | 'share' }) {
@@ -40,9 +41,7 @@ export function ForwardMessagesDialog({ messages, onClose, mode = 'forward' }: {
     } catch (caught) { setError(friendlyError(caught, 'No se completaron todos los envíos. Al reintentar se enviarán los restantes.')) }
     finally { setBusy(false) }
   }
-  return <div className="app-dialog-backdrop" onMouseDown={() => { if (!busy) onClose() }}>
-    <section className="surface-card collection-info" role="dialog" aria-modal="true" aria-label="Reenviar mensajes" onMouseDown={event => event.stopPropagation()}>
-      <header className="row-between"><h2>{mode === 'share' ? 'Enviar invitación' : `Reenviar ${eligible.length} mensaje${eligible.length === 1 ? '' : 's'}`}</h2><button type="button" className="icon-btn" aria-label="Cerrar reenvío" disabled={busy} onClick={onClose}>×</button></header>
+  return <PublicationDialog title={mode === 'share' ? 'Enviar invitación' : `Reenviar ${eligible.length} mensaje${eligible.length === 1 ? '' : 's'}`} busy={busy} onClose={onClose}>
       {eligible.length < messages.length ? <p className="muted-line">Los contenidos de una sola vista, eliminados, pendientes y tarjetas interactivas conservan sus restricciones y no se reenvían.</p> : null}
       <input className="text-input" aria-label="Buscar destinatarios" placeholder="Buscar chats, grupos o comunidades" value={query} disabled={busy} onChange={event => setQuery(event.target.value)} />
       {loading ? <p role="status">Cargando conversaciones…</p> : null}{error ? <p role="alert">{error}</p> : null}
@@ -51,6 +50,5 @@ export function ForwardMessagesDialog({ messages, onClose, mode = 'forward' }: {
       })}><SafeAvatar url={item.avatarUrl} name={item.title} /><span><strong>{item.title}</strong><small>{item.kind === 'chat' ? 'Chat' : item.kind === 'group' ? 'Grupo' : 'Comunidad'}</small></span><b aria-hidden="true">{selected.has(key(item)) ? '✓' : ''}</b></button>)}</div>
       {!loading && !items.length ? <p>No hay conversaciones disponibles.</p> : null}
       <button type="button" className="primary-btn" disabled={busy || !selected.size || !eligible.length} onClick={() => void send()}>{busy ? 'Preparando envíos…' : `${mode === 'share' ? 'Enviar' : 'Reenviar'} a ${selected.size}`}</button>
-    </section>
-  </div>
+  </PublicationDialog>
 }

@@ -1,3 +1,6 @@
+/** @jest-environment node */
+// Exercise real Node WebCrypto with Node-realm buffers. Node 20 rejects the
+// cross-realm ArrayBuffers created by JSDOM before it can verify the signature.
 import { createSign, generateKeyPairSync, webcrypto } from 'node:crypto'
 import {
   canonicalBackendBaseUrl,

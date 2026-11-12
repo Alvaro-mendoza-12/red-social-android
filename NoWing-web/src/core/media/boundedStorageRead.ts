@@ -2,7 +2,7 @@ import {
   onStorageReadInvalidated, requireStorageReadIdentity,
   type StorageReadIdentity,
 } from './storageReadSession'
-import { publicBackendTransportUrl } from '../publicBackendTransport'
+import { isolatedBackendRequestCredentials, publicBackendTransportUrl } from '../publicBackendTransport'
 
 export const STORAGE_PREVIEW_MAX_BYTES = 16 * 1024 * 1024
 export const STORAGE_SHORT_MEDIA_MAX_BYTES = 32 * 1024 * 1024
@@ -143,7 +143,7 @@ export async function readBoundedStorageBlob(options: BoundedStorageReadOptions)
     const edge = options.identity.provider !== 'supabase' ? storageReadEdgeUrl(options.url, options.backendBase) : undefined
     let response: Response | undefined
     if (edge) {
-      try { response = await untilAbort(fetcher(edge, init), controller.signal) } catch (error) {
+      try { response = await untilAbort(fetcher(edge, { ...init, credentials: isolatedBackendRequestCredentials(edge) }), controller.signal) } catch (error) {
         if (controller.signal.aborted) throw error
       }
       if (response && [429, 500, 502, 503, 504].includes(response.status)) {
@@ -154,7 +154,7 @@ export async function readBoundedStorageBlob(options: BoundedStorageReadOptions)
     const fromEdge = response !== undefined
     if (!response) {
       requireStorageReadIdentity(options.identity)
-      response = await untilAbort(fetcher(options.url, init), controller.signal)
+      response = await untilAbort(fetcher(options.url, { ...init, credentials: isolatedBackendRequestCredentials(options.url) }), controller.signal)
     }
     requireStorageReadIdentity(options.identity)
     if (!response.ok || response.status !== 200 || response.redirected || response.type === 'opaque') {

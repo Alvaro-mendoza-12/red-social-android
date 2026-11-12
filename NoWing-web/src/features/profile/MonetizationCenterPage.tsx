@@ -217,12 +217,13 @@ export function MonetizationCenterPage() {
   if (!supabase && isFallbackAuthConfigured) {
     return (
       <StatusView
-        title="Monetización en Ubuntu"
-        description="Este módulo usa tablas legacy. Importa CSV en la VM o espera la siguiente actualización del API Ubuntu."
+        title="Monetización no disponible"
+        description="Todavía no puedes consultar ganancias ni solicitar retiros desde la web. Puedes seguir usando tu perfil y consultar la ayuda de Novvin."
+        action={<div className="row-actions"><Link className="primary-btn" to="/app/profile">Volver a mi perfil</Link><Link className="ghost-btn" to="/app/help">Consultar ayuda</Link></div>}
       />
     )
   }
-  if (!supabase) return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL." />
+  if (!supabase) return <StatusView title="Monetización no disponible" description="No pudimos conectar con este servicio. Inténtalo más tarde." action={<Link className="ghost-btn" to="/app/profile">Volver a mi perfil</Link>} />
   if (loading) return <StatusView title="Cargando monetización" description="Sincronizando programa de creadores, gifts y premium." />
 
   return (

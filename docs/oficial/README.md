@@ -4,6 +4,8 @@ Estado documental: 3 de noviembre de 2026. Esta es la entrada para desarrollo, o
 
 ## Estado vigente
 
+La [selección de correcciones 114](114-comparacion-correcciones-dot-2026-11-12.md) compara `correcciones-dot` con las dos ramas estables e identifica las mejoras incorporadas, sus pruebas y los bloques diferidos. No cierra la revisión integral ni representa una APK nueva o un despliegue del servidor.
+
 La [revisión de arranque de Videos 113](113-arranque-y-desplazamiento-de-videos.md) separa la medición de rangos de R2/Ubuntu de la experiencia en pantalla y registra los ajustes de reproducción y precarga de Android.
 
 La [revisión móvil 101](101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md) mantiene el estado actual, las correcciones comprobadas y sus límites. **La revisión integral de Android sigue abierta.** Primero se completa el móvil y después se revisa la web. Una batería de pruebas aprobada no certifica todos los recorridos ni sustituye la cobertura de código pendiente.

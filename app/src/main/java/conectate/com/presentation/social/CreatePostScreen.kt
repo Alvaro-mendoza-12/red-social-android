@@ -1,5 +1,12 @@
 package conectate.com.presentation.social
 
+import conectate.com.R
+import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 
 import android.net.Uri
@@ -34,7 +41,9 @@ fun CreatePostScreen(
     navController: NavController,
     viewModel: CreatePostViewModel = hiltViewModel()
 ) {
-    var captionDraft by androidx.compose.runtime.saveable.rememberSaveable(stateSaver = androidx.compose.ui.text.input.TextFieldValue.Saver) {
+    val draftAccountId = viewModel.currentAccountId
+    key(draftAccountId) {
+    var captionDraft by androidx.compose.runtime.saveable.rememberSaveable(draftAccountId, stateSaver = androidx.compose.ui.text.input.TextFieldValue.Saver) {
         mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(""))
     }
     val caption = captionDraft.text
@@ -42,19 +51,40 @@ fun CreatePostScreen(
     LaunchedEffect(captionDraft) {
         viewModel.updateMentionQuery(captionDraft.text, captionDraft.selection.end)
     }
-    var remixAllowed by remember { mutableStateOf(false) }
-    var remixAudience by remember { mutableStateOf("public") }
-    var isSensitive by remember { mutableStateOf(false) }
-    val selectedMediaUris = remember { mutableStateListOf<Uri>() }
+    var remixAllowed by rememberSaveable(draftAccountId) { mutableStateOf(false) }
+    var remixAudience by rememberSaveable(draftAccountId) { mutableStateOf("public") }
+    var isSensitive by rememberSaveable(draftAccountId) { mutableStateOf(false) }
+    val selectedMediaUris = rememberSaveable(draftAccountId, saver = listSaver(
+        save = { uris: androidx.compose.runtime.snapshots.SnapshotStateList<Uri> -> uris.map(Uri::toString) },
+        restore = { saved -> mutableStateListOf<Uri>().apply { addAll(saved.map(Uri::parse)) } },
+    )) { mutableStateListOf<Uri>() }
     var showMediaComposer by remember { mutableStateOf(false) }
     val isCreating by viewModel.isCreating.collectAsState()
     val error by viewModel.error.collectAsState()
 
+    var showDiscardDialog by rememberSaveable(draftAccountId) { mutableStateOf(false) }
+    val onBack: () -> Unit = {
+        if (!isCreating) {
+            if (caption.isNotBlank() || selectedMediaUris.isNotEmpty() || remixAllowed || isSensitive) showDiscardDialog = true
+            else navController.popBackStack()
+        }
+    }
+    BackHandler(onBack = onBack)
+    if (showDiscardDialog) {
+        AlertDialog(
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text(stringResource(R.string.audit_discard_title)) },
+            text = { Text(stringResource(R.string.audit_discard_post_message)) },
+            confirmButton = { TextButton(onClick = { navController.popBackStack() }) { Text(stringResource(R.string.audit_discard)) } },
+            dismissButton = { TextButton(onClick = { showDiscardDialog = false }) { Text(stringResource(R.string.audit_keep_editing)) } },
+        )
+    }
+
     if (showMediaComposer) {
         MessageMediaComposer(
             maxItems = (7 - selectedMediaUris.size).coerceAtLeast(1),
-            title = "Preparar publicación",
-            confirmContentDescription = "Añadir a la publicación",
+            title = stringResource(R.string.audit_prepare_post),
+            confirmContentDescription = stringResource(R.string.audit_add_to_post),
             isSending = false,
             onDismiss = { showMediaComposer = false },
             onSend = { media, preparedCaption ->
@@ -79,10 +109,10 @@ fun CreatePostScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Nueva Publicación") },
+                title = { Text(stringResource(R.string.audit_new_post)) },
                 navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver")
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.audit_back))
                     }
                 },
                 actions = {
@@ -104,7 +134,7 @@ fun CreatePostScreen(
                                 strokeWidth = 2.dp
                             )
                         } else {
-                            Text("Publicar", fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.audit_publish), fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -115,11 +145,13 @@ fun CreatePostScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
             if (error != null) {
                 Text(
-                    text = error!!,
+                    text = stringResource(R.string.audit_post_failed),
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
@@ -130,10 +162,10 @@ fun CreatePostScreen(
                 onValueChange = { captionDraft = it },
                 visualTransformation = conectate.com.presentation.components.mentionInputTransformation,
                 enabled = !isCreating,
-                placeholder = { Text("¿Qué estás pensando?") },
+                placeholder = { Text(stringResource(R.string.audit_post_prompt)) },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .heightIn(min = 160.dp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
@@ -164,7 +196,7 @@ fun CreatePostScreen(
                     }
                 }
             } else if (caption.isBlank()) {
-                Text("Escribe @ y un nombre para mencionar a alguien", style = MaterialTheme.typography.bodySmall)
+                Text(stringResource(R.string.audit_mention_hint), style = MaterialTheme.typography.bodySmall)
             }
 
             if (selectedMediaUris.isNotEmpty()) {
@@ -195,7 +227,7 @@ fun CreatePostScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "Quitar",
+                                    contentDescription = stringResource(R.string.audit_remove_attachment),
                                     tint = Color.White,
                                     modifier = Modifier.size(16.dp)
                                 )
@@ -217,9 +249,9 @@ fun CreatePostScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Permitir remixes", fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.audit_allow_remixes), fontWeight = FontWeight.SemiBold)
                             Text(
-                                "Siempre se mostrará la publicación y el autor originales.",
+                                stringResource(R.string.audit_remix_credit),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -237,12 +269,12 @@ fun CreatePostScreen(
                             FilterChip(
                                 selected = remixAudience == "public",
                                 onClick = { remixAudience = "public" },
-                                label = { Text("Todos") }
+                                label = { Text(stringResource(R.string.audit_everyone)) }
                             )
                             FilterChip(
                                 selected = remixAudience == "followers",
                                 onClick = { remixAudience = "followers" },
-                                label = { Text("Solo seguidores") }
+                                label = { Text(stringResource(R.string.audit_followers_only)) }
                             )
                         }
                     }
@@ -255,9 +287,9 @@ fun CreatePostScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Contenido sensible (+18)", fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.audit_sensitive_content), fontWeight = FontWeight.SemiBold)
                     Text(
-                        "Añade una cubierta según las preferencias de cada persona.",
+                        stringResource(R.string.audit_sensitive_explanation),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -277,10 +309,11 @@ fun CreatePostScreen(
                         showMediaComposer = true
                     }
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Agregar Multimedia")
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.audit_add_media))
                 }
-                Text("Agregar fotos o videos", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.audit_add_media), style = MaterialTheme.typography.bodyMedium)
             }
         }
+    }
     }
 }

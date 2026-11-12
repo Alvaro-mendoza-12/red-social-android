@@ -45,6 +45,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type DragEvent,
   type FormEvent,
 } from 'react'
@@ -83,6 +84,7 @@ import {
 } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
+import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../../core/media/storageReadSession'
 import { ViewOnceMediaDialog } from '../../components/ViewOnceMediaDialog'
 import { requestViewOnceMedia } from '../../core/media/viewOnceClient'
 import type { ViewOnceLease } from '../../core/media/viewOnceLease'
@@ -538,6 +540,47 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   const loadSequenceRef = useRef(0)
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
+  const scheduleIdentity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  const scheduleContext = useRef(0)
+  useEffect(() => {
+    setScheduledDraft('')
+    setScheduledAt('')
+    setShowScheduleComposer(false)
+    setScheduling(false)
+    setScheduledJobs([])
+    scheduleRequestKeyRef.current = null
+    return () => { scheduleContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
+  const pollContext = useRef(0)
+  useEffect(() => {
+    setPollQuestion('')
+    setPollOptions('Si\nNo')
+    setPollAllowsMultiple(false)
+    setShowPollComposer(false)
+    setCreatingPoll(false)
+    return () => { pollContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
+  const deletionContext = useRef(0)
+  useEffect(() => {
+    setSelectionBusy(false)
+    setSelectedMessageIds(new Set())
+    setSelectingMessages(false)
+    return () => { deletionContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
+  const reactionContext = useRef(0)
+  useEffect(() => () => { reactionContext.current += 1 }, [user?.id, useUbuntu, cleanChatId])
+  const nicknameContext = useRef(0)
+  useEffect(() => {
+    setNicknameDialogOpen(false)
+    setNicknameDraft('')
+    setSavingNickname(false)
+    return () => { nicknameContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId, scheduleIdentity])
+  const preferenceContext = useRef(0)
+  useEffect(() => {
+    setSavingSettings(false)
+    return () => { preferenceContext.current += 1 }
+  }, [user?.id, useUbuntu, cleanChatId])
   useChatEntryFocus(composerInputRef, user?.id ? `${user.id}/chat/${cleanChatId}` : '', !loading || Boolean(otherParticipant), focusRequest)
   useEffect(() => { otherParticipantRef.current = otherParticipant }, [otherParticipant])
   useEffect(() => {
@@ -944,13 +987,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   )
 
   const refreshScheduledJobs = useCallback(async () => {
-    if (!cleanChatId) return
+    if (!user || !cleanChatId) return
+    const context = scheduleContext.current
+    const identity = scheduleIdentity
+    const isCurrent = () => context === scheduleContext.current && identity === getStorageReadIdentity()
     try {
       let rows: GenericRow[] = []
       if (useUbuntu) {
         rows = await fallbackApiJson<GenericRow[]>('/rest/v1/rpc/secure_get_chat_scheduled_jobs', {
           method: 'POST',
           body: JSON.stringify({ p_scope_type: 'dm', p_target_id: cleanChatId }),
+          expectedIdentity: identity, expectedAccountId: user.id,
         })
       } else {
         if (!supabase) return
@@ -961,6 +1008,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         if (jobsError) throw jobsError
         rows = (data ?? []) as GenericRow[]
       }
+      if (!isCurrent()) return
       setScheduledJobs(rows.map((row) => ({
         id: textOf(row, ['id'], ''),
         content: textOf(row, ['content'], ''),
@@ -969,9 +1017,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         errorMessage: textOf(row, ['error_message', 'errorMessage'], ''),
       })).filter((job) => job.id))
     } catch (caught) {
-      console.error('Error loading scheduled jobs:', caught)
+      if (isCurrent()) console.error('Error loading scheduled jobs:', caught)
     }
-  }, [cleanChatId, useUbuntu])
+  }, [cleanChatId, useUbuntu, user, scheduleIdentity])
 
 
   const markAsDeliveredAndRead = useCallback(async () => {
@@ -1675,11 +1723,16 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
   async function toggleReaction(messageId: string, emoji: string) {
     if (useUbuntu) {
+      if (!user || !cleanChatId) return
+      const context = reactionContext.current
+      const identity = getStorageReadIdentity()
+      if (identity.provider !== 'fallback' || identity.accountId !== user.id) return
+      const isCurrent = () => context === reactionContext.current && identity === getStorageReadIdentity()
       try {
         const response = await toggleFallbackChatReaction(cleanChatId, messageId, emoji)
-        upsertMessageInState(mapMessage(response.message))
+        if (isCurrent()) upsertMessageInState(mapMessage(response.message))
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo reaccionar'))
+        if (isCurrent()) setError(friendlyError(caught, 'No se pudo reaccionar'))
       }
       return
     }
@@ -1698,12 +1751,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   async function sendForwardedMessage(message: ChatMessage) { setForwardMessages([message]) }
 
   async function deleteMessageForAll(message: ChatMessage) {
+    if (!user) return
+    const context = deletionContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return
+    const isCurrent = () => context === deletionContext.current && identity === getStorageReadIdentity()
     if (useUbuntu) {
       try {
         const response = await deleteFallbackChatMessage(cleanChatId, message.id, true)
-        upsertMessageInState(mapMessage(response.message))
+        if (isCurrent()) upsertMessageInState(mapMessage(response.message))
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo borrar para todos'))
+        if (isCurrent()) setError(friendlyError(caught, 'No se pudo borrar para todos'))
       }
       return
     }
@@ -1716,6 +1774,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         .eq('id', message.id)
         .eq('sender_id', user.id)
       if (deleteError) throw deleteError
+      if (!isCurrent()) return
       setMessages((current) =>
         current.map((entry) =>
           entry.id === message.id
@@ -1724,21 +1783,27 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         ),
       )
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo borrar para todos'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo borrar para todos'))
     }
   }
 
   async function deleteMessageForMe(message: ChatMessage) {
+    if (!user) return false
+    const context = deletionContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return false
+    const isCurrent = () => context === deletionContext.current && identity === getStorageReadIdentity()
     if (useUbuntu && ['pending','failed'].includes(message.status)) {
-      try { await cancelPendingWebMessage('chat', cleanChatId, message.id); setMessages(current => current.filter(item => item.id !== message.id)); return true }
-      catch(caught) { setError(friendlyError(caught, 'No se pudo cancelar el envío')); return false }
+      try { await cancelPendingWebMessage('chat', cleanChatId, message.id); if (!isCurrent()) return false; setMessages(current => current.filter(item => item.id !== message.id)); return true }
+      catch(caught) { if (isCurrent()) setError(friendlyError(caught, 'No se pudo cancelar el envío')); return false }
     }
     if (useUbuntu) {
       try {
         const response = await deleteFallbackChatMessage(cleanChatId, message.id, false)
+        if (!isCurrent()) return false
         upsertMessageInState(mapMessage(response.message)); return true
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
+        if (isCurrent()) setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
       }
     }
     if (!supabase || !user) return false
@@ -1749,6 +1814,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         .update({ deleted_by: nextDeletedBy, updated_at: new Date().toISOString() })
         .eq('id', message.id)
       if (deleteError) throw deleteError
+      if (!isCurrent()) return false
       setMessages((current) =>
         current.map((entry) =>
           entry.id === message.id ? { ...entry, deletedBy: nextDeletedBy } : entry,
@@ -1756,12 +1822,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       )
       return true
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo borrar para mi')); return false
     }
   }
 
   async function createChatPoll() {
-    if ((!supabase && !useUbuntu) || !cleanChatId || creatingPoll) return
+    if (!user || (!supabase && !useUbuntu) || !cleanChatId || creatingPoll) return
     const question = pollQuestion.trim()
     const options = pollOptions
       .split('\n')
@@ -1773,6 +1839,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       return
     }
 
+    const context = pollContext.current
+    const identity = getStorageReadIdentity()
+    if (useUbuntu && (identity.provider !== 'fallback' || identity.accountId !== user.id)) return
+    const isCurrent = () => context === pollContext.current && identity === getStorageReadIdentity()
     setCreatingPoll(true)
     setError(null)
     try {
@@ -1783,6 +1853,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         p_options: options,
         p_allows_multiple: pollAllowsMultiple,
       })
+      if (!isCurrent()) return
       if (pollError) throw pollError
       setPollQuestion('')
       setPollOptions('Si\nNo')
@@ -1790,9 +1861,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       setShowPollComposer(false)
       void loadChat({ silent: true })
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo crear encuesta'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo crear encuesta'))
     } finally {
-      setCreatingPoll(false)
+      if (isCurrent()) setCreatingPoll(false)
     }
   }
 
@@ -1841,7 +1912,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   async function scheduleMessage() {
-    if ((!supabase && !useUbuntu) || !cleanChatId || scheduling) return
+    if (!user || (!supabase && !useUbuntu) || !cleanChatId || scheduling) return
     const content = scheduledDraft.trim()
     if (!content) return
 
@@ -1851,6 +1922,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       return
     }
 
+    const context = scheduleContext.current
+    const identity = getStorageReadIdentity()
+    const isCurrent = () => context === scheduleContext.current && identity === getStorageReadIdentity()
     setScheduling(true)
     setError(null)
     try {
@@ -1869,6 +1943,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         await fallbackApiJson('/rest/v1/rpc/secure_schedule_message_job', {
           method: 'POST',
           body: JSON.stringify(payload),
+          expectedIdentity: identity, expectedAccountId: user.id,
         })
       } else {
         if (!supabase) throw new Error('Servicio de mensajes no disponible')
@@ -1877,30 +1952,36 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         const { error: scheduleError } = await supabase.rpc('secure_schedule_message_job', supabasePayload)
         if (scheduleError) throw scheduleError
       }
+      if (!isCurrent()) return
       scheduleRequestKeyRef.current = null
       setScheduledDraft('')
       setScheduledAt('')
       await refreshScheduledJobs()
-      setShowScheduleComposer(false)
+      if (isCurrent()) setShowScheduleComposer(false)
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo programar mensaje'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo programar mensaje'))
     } finally {
-      setScheduling(false)
+      if (isCurrent()) setScheduling(false)
     }
   }
 
 
 
   async function saveChatPreferences(patch: Partial<Pick<ChatSettings, 'isMuted' | 'isPinned' | 'isArchived' | 'isFavorite'>>) {
+    if (!user || !cleanChatId) return
+    const context = preferenceContext.current
+    const isCurrent = () => context === preferenceContext.current
     if (useUbuntu) {
       if (savingSettings) return
       setSavingSettings(true)
       try {
         await saveFallbackChatPreferences(cleanChatId, patch)
+        if (!isCurrent()) return
         setSettings(current => ({ ...current, ...patch }))
       } catch (caught) {
+        if (!isCurrent()) return
         setError(friendlyError(caught, 'No se pudieron guardar los cambios del chat'))
-      } finally { setSavingSettings(false) }
+      } finally { if (isCurrent()) setSavingSettings(false) }
       return
     }
     if (!supabase || !user || !cleanChatId || savingSettings) return
@@ -1918,6 +1999,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         p_is_archived: nextArchived,
         p_is_favorite: nextFavorite,
       })
+      if (!isCurrent()) return
       if (prefError && !isMissingFunctionError(prefError)) throw prefError
       if (prefError && isMissingFunctionError(prefError)) {
         const nowIso = new Date().toISOString()
@@ -1934,6 +2016,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           },
           { onConflict: 'chat_id,user_id' },
         )
+        if (!isCurrent()) return
         if (fullFallback.error && !isMissingColumnError(fullFallback.error)) throw fullFallback.error
         if (fullFallback.error && isMissingColumnError(fullFallback.error)) {
           const archiveFallback = await supabase.from('chat_participants').upsert(
@@ -1948,6 +2031,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             },
             { onConflict: 'chat_id,user_id' },
           )
+          if (!isCurrent()) return
           if (archiveFallback.error && !isMissingColumnError(archiveFallback.error)) {
             throw archiveFallback.error
           }
@@ -1972,6 +2056,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             },
             { onConflict: 'chat_id,user_id' },
           )
+          if (!isCurrent()) return
           if (legacyFallbackError) throw legacyFallbackError
         }
       }
@@ -1983,16 +2068,20 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         isFavorite: nextFavorite,
       }))
     } catch (caught) {
+      if (!isCurrent()) return
       reportSupabaseServiceRestrictionIfPresent('chat-preferences', caught)
       setError(friendlyError(caught, 'No se pudieron guardar preferencias'))
     } finally {
-      setSavingSettings(false)
+      if (isCurrent()) setSavingSettings(false)
     }
   }
 
   async function saveChatNickname() {
     if (!user || !otherParticipant || savingNickname) return
     const nickname = nicknameDraft.trim().slice(0, 120)
+    const context = nicknameContext.current
+    const identity = getStorageReadIdentity()
+    const isCurrent = () => context === nicknameContext.current && identity === getStorageReadIdentity()
     setSavingNickname(true)
     setError(null)
     try {
@@ -2000,9 +2089,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         if (nickname) {
           await fallbackApiJson(`/v1/data/messages/nicknames/${encodeURIComponent(otherParticipant.id)}`, {
             method: 'PUT', body: JSON.stringify({ nickname }),
+            expectedIdentity: identity, expectedAccountId: user.id,
           })
         } else {
-          await fallbackApiJson(`/v1/data/messages/nicknames/${encodeURIComponent(otherParticipant.id)}`, { method: 'DELETE' })
+          await fallbackApiJson(`/v1/data/messages/nicknames/${encodeURIComponent(otherParticipant.id)}`, { method: 'DELETE', expectedIdentity: identity, expectedAccountId: user.id })
         }
       } else {
         if (!supabase) return
@@ -2011,6 +2101,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           : await supabase.from('nicknames').delete().eq('user_id', user.id).eq('target_user_id', otherParticipant.id)
         if (result.error) throw result.error
       }
+      if (!isCurrent()) return
       const nextName = nickname || otherParticipant.publicName || otherParticipant.name
       setOtherParticipant(current => current?.id === otherParticipant.id
         ? { ...current, name: nextName, nickname: nickname || undefined }
@@ -2019,9 +2110,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       setNicknameDialogOpen(false)
       window.dispatchEvent(new Event('novvin:conversation-preferences-changed'))
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo guardar el apodo privado'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo guardar el apodo privado'))
     } finally {
-      setSavingNickname(false)
+      if (isCurrent()) setSavingNickname(false)
     }
   }
 
@@ -2108,13 +2199,17 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   async function cancelScheduledJob(jobId: string) {
-    if (!jobId) return
+    if (!user || !jobId) return
+    const context = scheduleContext.current
+    const identity = getStorageReadIdentity()
+    const isCurrent = () => context === scheduleContext.current && identity === getStorageReadIdentity()
     setError(null)
     try {
       if (useUbuntu) {
         await fallbackApiJson('/rest/v1/rpc/secure_cancel_scheduled_message_job', {
           method: 'POST',
           body: JSON.stringify({ p_job_id: jobId }),
+          expectedIdentity: identity, expectedAccountId: user.id,
         })
       } else {
         if (!supabase) throw new Error('Servicio de mensajes no disponible')
@@ -2123,9 +2218,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         })
         if (cancelError) throw cancelError
       }
-      await refreshScheduledJobs()
+      if (isCurrent()) await refreshScheduledJobs()
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cancelar el mensaje programado'))
+      if (isCurrent()) setError(friendlyError(caught, 'No se pudo cancelar el mensaje programado'))
     }
   }
 
@@ -2366,10 +2461,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         <button type="button" className="mini-action-btn" disabled={!selectedMessageIds.size || selectionBusy} onClick={() => setForwardMessages(messages.filter(item => selectedMessageIds.has(item.id)))}>Reenviar</button>
         <button type="button" className="mini-action-btn danger" disabled={!selectedMessageIds.size || selectionBusy} onClick={async () => {
           if (!window.confirm(`¿Eliminar ${selectedMessageIds.size} mensajes de tu vista?`)) return
+          const context = deletionContext.current
+          const identity = getStorageReadIdentity()
+          const isCurrent = () => context === deletionContext.current && identity === getStorageReadIdentity()
           setSelectionBusy(true)
           const completed = new Set<string>()
-          try { for (const item of messages.filter(item => selectedMessageIds.has(item.id))) { if (!await deleteMessageForMe(item)) break; completed.add(item.id) } }
-          finally { setSelectionBusy(false); setSelectedMessageIds(current => new Set([...current].filter(id => !completed.has(id)))); if(completed.size === selectedMessageIds.size) setSelectingMessages(false) }
+          try { for (const item of messages.filter(item => selectedMessageIds.has(item.id))) { if (!isCurrent() || !await deleteMessageForMe(item)) break; completed.add(item.id) } }
+          finally { if (isCurrent()) { setSelectionBusy(false); setSelectedMessageIds(current => new Set([...current].filter(id => !completed.has(id)))); if(completed.size === selectedMessageIds.size) setSelectingMessages(false) } }
         }}>{selectionBusy ? 'Eliminando…' : 'Eliminar para mí'}</button>
       </div> : null}
       {forwardMessages.length ? <ForwardMessagesDialog messages={forwardMessages} onClose={() => setForwardMessages([])} /> : null}

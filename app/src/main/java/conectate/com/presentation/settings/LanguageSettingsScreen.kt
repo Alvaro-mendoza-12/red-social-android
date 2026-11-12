@@ -69,7 +69,7 @@ fun LanguageSettingsScreen(navController: NavController) {
         ) {
             item {
                 Text(
-                    stringResource(R.string.language_settings_description),
+                    stringResource(R.string.audit_language_coverage),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)

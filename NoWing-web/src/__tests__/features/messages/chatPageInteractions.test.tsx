@@ -3,10 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ChatDetailPage } from '../../../features/messages/ChatDetailPage'
 import { RoomChatPage } from '../../../features/messages/RoomChatPage'
-import { loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
+import { deleteFallbackChatMessage, deleteFallbackRoomMessage, toggleFallbackChatReaction, saveFallbackChatPreferences, loadFallbackChat, loadFallbackRoomChat, loadFallbackHistoryPage, sendFallbackChatMessage, sendFallbackRoomMessage } from '../../../core/fallbackData'
 import { retainAttachmentOwner } from '../../../core/attachmentJobs'
 import { writeCachedValue } from '../../../core/localCache'
+import { backendRpc } from '../../../core/backendRpc'
 import { fallbackApiJson } from '../../../core/auth/fallbackAuth'
+import { getStorageReadIdentity, updateStorageReadIdentity, invalidateStorageReadBackend } from '../../../core/media/storageReadSession'
 
 const mockUser = { id: 'account-a' }
 jest.mock('../../../core/auth/AuthProvider', () => ({ useAuth: () => ({ user: mockUser, isFallbackSession: true }) }))
@@ -16,6 +18,8 @@ jest.mock('../../../core/ubuntuRealtime', () => ({ subscribeUbuntuRealtime: () =
 jest.mock('../../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn(async () => []) }))
 jest.mock('../../../core/backendRpc', () => ({ backendRpc: jest.fn(async () => ({ data: [] })) }))
 jest.mock('../../../core/fallbackData', () => ({
+  deleteFallbackChatMessage: jest.fn(), deleteFallbackRoomMessage: jest.fn(),
+  saveFallbackChatPreferences: jest.fn(), toggleFallbackChatReaction: jest.fn(),
   loadFallbackChat: jest.fn(), loadFallbackRoomChat: jest.fn(),
   loadFallbackHistoryPage: jest.fn(),
   fallbackHistoryAllows: jest.requireActual('../../../core/fallbackData').fallbackHistoryAllows,
@@ -51,6 +55,10 @@ beforeAll(() => {
 })
 beforeEach(() => {
   jest.clearAllMocks()
+  mockUser.id = 'account-a'
+  updateStorageReadIdentity('account-a', 'fallback')
+  jest.mocked(fallbackApiJson).mockImplementation(async () => [])
+  jest.mocked(backendRpc).mockResolvedValue({ data: [], error: null })
   localStorage.clear()
   retainAttachmentOwner('clear-everything')
   ;(loadFallbackChat as jest.Mock).mockResolvedValue(response)
@@ -206,8 +214,491 @@ test('a private nickname is saved with the existing account-scoped endpoint and 
     fireEvent.click(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Mi apodo' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
-    await waitFor(() => expect(fallbackApiJson).toHaveBeenCalledWith('/v1/data/messages/nicknames/friend', { method: 'PUT', body: JSON.stringify({ nickname: 'Mi apodo' }) }))
+    await waitFor(() => expect(fallbackApiJson).toHaveBeenCalledWith('/v1/data/messages/nicknames/friend', { method: 'PUT', body: JSON.stringify({ nickname: 'Mi apodo' }), expectedAccountId: 'account-a', expectedIdentity: getStorageReadIdentity() }))
     expect(await screen.findByRole('button', { name: 'Ver perfil de Mi apodo' })).toBeInTheDocument()
     expect(refresh).toHaveBeenCalledTimes(1)
   } finally { window.removeEventListener('novvin:conversation-preferences-changed', refresh) }
+})
+
+
+test('a late pin response cannot change preferences of the next conversation', async () => {
+  let finish!: (value: {ok: boolean}) => void
+  jest.mocked(saveFallbackChatPreferences).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: /Fijar/ }))
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, title: 'Nuevo contacto', chat: { nickname: '' }, otherParticipant: { ...response.otherParticipant, name: 'Nuevo contacto' } } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByText('Nuevo contacto')
+  await act(async () => { finish({ ok: true }) })
+  if (!screen.queryByRole('menu', { name: 'Opciones del chat' })) fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  expect(screen.getByRole('menuitem', { name: /^Fijar/ })).toBeEnabled()
+})
+
+test.each(['success', 'failure'])('an old preference %s cannot release the next conversations pending save', async outcome => {
+  let finishOld!: () => void
+  let finishNew!: (value: {ok: boolean}) => void
+  jest.mocked(saveFallbackChatPreferences)
+    .mockImplementationOnce(() => new Promise((resolve, reject) => {
+      finishOld = () => outcome === 'success' ? resolve({ ok: true }) : reject(new Error('Error del chat anterior'))
+    }))
+    .mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve }))
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Fijar chat' }))
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, title: 'Nuevo contacto', chat: { nickname: '' }, otherParticipant: { ...response.otherParticipant, name: 'Nuevo contacto' } } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByText('Nuevo contacto')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  expect(screen.getByRole('menuitem', { name: 'Fijar chat' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Fijar chat' }))
+  await act(async () => { finishOld() })
+  expect(screen.queryByText('Error del chat anterior')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  expect(screen.getByRole('menuitem', { name: 'Fijar chat' })).toBeDisabled()
+  await act(async () => { finishNew({ ok: true }) })
+  expect(screen.getByRole('menuitem', { name: 'Desfijar chat' })).toBeEnabled()
+})
+
+test('an old scheduled message acknowledgement cannot erase the next conversation draft', async () => {
+  let finish!: (value: unknown) => void
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (path === '/rest/v1/rpc/secure_schedule_message_job') return new Promise(resolve => { finish = resolve })
+    return []
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  const showTools = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  }
+  showTools()
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Mensaje para A' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
+  await waitFor(() => expect(finish).toBeDefined())
+  expect(fallbackApiJson).toHaveBeenCalledWith('/rest/v1/rpc/secure_schedule_message_job', expect.objectContaining({ expectedIdentity: getStorageReadIdentity(), expectedAccountId: 'account-a' }))
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, title: 'Nuevo contacto', chat: { nickname: '' }, otherParticipant: { ...response.otherParticipant, name: 'Nuevo contacto' } } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByText('Nuevo contacto')
+  showTools()
+  if (!screen.queryByPlaceholderText('Mensaje programado...')) fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Borrador privado B' } })
+  await act(async () => { finish({ ok: true }) })
+  expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('Borrador privado B')
+})
+
+
+test.each(['success', 'failure'])('an old schedule %s cannot release a new account schedule', async outcome => {
+  let finishOld!: () => void
+  let finishNew!: (value: unknown) => void
+  let count = 0
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (path !== '/rest/v1/rpc/secure_schedule_message_job') return []
+    count += 1
+    return new Promise((resolve, reject) => {
+      if (count === 1) finishOld = () => outcome === 'success' ? resolve({ ok: true }) : reject(new Error('Fallo privado A'))
+      else finishNew = resolve
+    })
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  const showTools = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  }
+  showTools()
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Mensaje A' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
+  await waitFor(() => expect(finishOld).toBeDefined())
+  mockUser.id = 'account-b'
+  updateStorageReadIdentity('account-b', 'fallback')
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await waitFor(() => expect(screen.queryByPlaceholderText('Mensaje programado...')).not.toBeInTheDocument())
+  showTools()
+  expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('')
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Mensaje B' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
+  await waitFor(() => expect(finishNew).toBeDefined())
+  await act(async () => { finishOld() })
+  expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('Mensaje B')
+  expect(screen.getByRole('button', { name: 'Programando...' })).toBeInTheDocument()
+  expect(screen.queryByText('Fallo privado A')).not.toBeInTheDocument()
+  const calls = jest.mocked(fallbackApiJson).mock.calls.filter(([path]) => path === '/rest/v1/rpc/secure_schedule_message_job')
+  expect(JSON.parse(calls[0][1]!.body as string).p_idempotency_key).not.toBe(JSON.parse(calls[1][1]!.body as string).p_idempotency_key)
+  expect(calls[1][1]).toEqual(expect.objectContaining({ expectedIdentity: getStorageReadIdentity(), expectedAccountId: 'account-b' }))
+  await act(async () => { finishNew({ ok: true }) })
+  expect(screen.queryByPlaceholderText('Mensaje programado...')).not.toBeInTheDocument()
+})
+
+test('a late scheduled list cannot expose the previous conversation jobs', async () => {
+  let finish!: (value: unknown) => void
+  jest.mocked(fallbackApiJson).mockImplementation(async (path, init) => {
+    if (path.endsWith('secure_get_chat_scheduled_jobs') && JSON.parse(init!.body as string).p_target_id === 'room-a') return new Promise(resolve => { finish = resolve })
+    return []
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await act(async () => { finish([{ id: 'old-job', content: 'Privado del chat A', status: 'pending' }]) })
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  expect(screen.queryByText(/Privado del chat A/)).not.toBeInTheDocument()
+  expect(screen.getByText('Sin mensajes programados')).toBeInTheDocument()
+})
+
+test('a late cancellation failure cannot show an error in the next conversation', async () => {
+  let finishList!: (value: unknown) => void
+  let rejectCancel!: (reason: Error) => void
+  jest.mocked(fallbackApiJson).mockImplementation(async (path, init) => {
+    if (path.endsWith('secure_get_chat_scheduled_jobs') && JSON.parse(init!.body as string).p_target_id === 'room-a') return new Promise(resolve => { finishList = resolve })
+    if (path.endsWith('secure_cancel_scheduled_message_job')) return new Promise((_resolve, reject) => { rejectCancel = reject })
+    return []
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  await act(async () => { finishList([{ id: 'old-job', content: 'Programado A', status: 'pending' }]) })
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  const card = screen.getByText(/Programado A/).closest('.surface-subcard')!
+  fireEvent.click(card.querySelector('button')!)
+  await waitFor(() => expect(rejectCancel).toBeDefined())
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await act(async () => { rejectCancel(new Error('Error privado de cancelación A')) })
+  expect(screen.queryByText('Error privado de cancelación A')).not.toBeInTheDocument()
+})
+
+
+test('renewing the same account identity resets the old scheduling lock', async () => {
+  let finish!: (value: unknown) => void
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (path.endsWith('secure_schedule_message_job')) return new Promise(resolve => { finish = resolve })
+    return []
+  })
+  open()
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Sesión anterior' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
+  await waitFor(() => expect(finish).toBeDefined())
+  await act(async () => { invalidateStorageReadBackend(); finish({ ok: true }) })
+  expect(screen.queryByPlaceholderText('Mensaje programado...')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
+  expect(screen.getByPlaceholderText('Mensaje programado...')).toHaveValue('')
+  expect(screen.getByRole('button', { name: 'Programar', exact: true })).toBeInTheDocument()
+})
+
+function openNicknameEditor() {
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' }))
+}
+
+test.each(['success', 'failure'])('a late nickname %s cannot change the next conversation', async outcome => {
+  let finish!: () => void
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (!path.includes('/nicknames/')) return []
+    return new Promise((resolve, reject) => { finish = () => outcome === 'success' ? resolve({}) : reject(new Error('Apodo privado de A falló')) })
+  })
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  openNicknameEditor()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Privado A' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
+  await waitFor(() => expect(finish).toBeDefined())
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, chat: {}, title: 'Contacto B', otherParticipant: { ...response.otherParticipant, id: 'friend-b', name: 'Contacto B' } } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByRole('button', { name: 'Ver perfil de Contacto B' })
+  openNicknameEditor()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Borrador B' } })
+  const changed = jest.fn()
+  window.addEventListener('novvin:conversation-preferences-changed', changed)
+  try {
+    await act(async () => { finish() })
+    expect(screen.getByRole('dialog', { name: 'Apodo privado' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Apodo' })).toHaveValue('Borrador B')
+    expect(screen.getByRole('button', { name: 'Ver perfil de Contacto B' })).toBeInTheDocument()
+    expect(screen.queryByText('Privado A')).not.toBeInTheDocument()
+    expect(screen.queryByText('Apodo privado de A falló')).not.toBeInTheDocument()
+    expect(changed).not.toHaveBeenCalled()
+  } finally { window.removeEventListener('novvin:conversation-preferences-changed', changed) }
+})
+
+test.each(['PUT', 'DELETE'])('nickname %s is bound to its originating account and identity', async method => {
+  open()
+  await screen.findByText('Mensaje recibido')
+  openNicknameEditor()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: method === 'PUT' ? 'Mi apodo' : '' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
+  await waitFor(() => expect(fallbackApiJson).toHaveBeenCalledWith('/v1/data/messages/nicknames/friend', expect.objectContaining({ method, expectedIdentity: getStorageReadIdentity(), expectedAccountId: 'account-a' })))
+  expect(screen.queryByRole('dialog', { name: 'Apodo privado' })).not.toBeInTheDocument()
+})
+
+test.each(['renewal', 'account switch'])('identity %s releases the old nickname lock without releasing a newer save', async transition => {
+  const pending: ((value: unknown) => void)[] = []
+  jest.mocked(fallbackApiJson).mockImplementation(async path => {
+    if (!path.includes('/nicknames/')) return []
+    return new Promise(resolve => pending.push(resolve))
+  })
+  open()
+  await screen.findByText('Mensaje recibido')
+  openNicknameEditor()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Anterior' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
+  await waitFor(() => expect(pending).toHaveLength(1))
+  await act(async () => {
+    if (transition === 'account switch') { mockUser.id = 'account-b'; updateStorageReadIdentity('account-b', 'fallback') }
+    else invalidateStorageReadBackend()
+  })
+  expect(screen.queryByRole('dialog', { name: 'Apodo privado' })).not.toBeInTheDocument()
+  openNicknameEditor()
+  expect(screen.getByRole('textbox', { name: 'Apodo' })).toHaveValue('Apodo privado')
+  fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Nuevo' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
+  await waitFor(() => expect(pending).toHaveLength(2))
+  await act(async () => { pending[0]({}) })
+  expect(screen.getByRole('textbox', { name: 'Apodo' })).toHaveValue('Nuevo')
+  expect(screen.getByRole('button', { name: 'Guardando…' })).toBeDisabled()
+  await act(async () => { pending[1]({}) })
+  expect(screen.getByRole('button', { name: 'Ver perfil de Nuevo' })).toBeInTheDocument()
+  expect(screen.queryByRole('dialog', { name: 'Apodo privado' })).not.toBeInTheDocument()
+})
+
+
+test.each(['success', 'failure'])('a late private reaction %s cannot enter the next conversation', async outcome => {
+  let finish!: () => void
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [{ ...incoming, reactions: { '👍': ['friend'] } }] } as never)
+  jest.mocked(toggleFallbackChatReaction).mockImplementation(() => new Promise((resolve, reject) => {
+    finish = () => outcome === 'success' ? resolve({ message: { ...incoming, id: 'old-private-message', content: 'Contenido privado A' } }) : reject(new Error('Error privado reacción A'))
+  }))
+  const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: '👍 1' }))
+  await waitFor(() => expect(finish).toBeDefined())
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [{ ...incoming, id: 'message-b', content: 'Conversación B' }] } as never)
+  rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+  await screen.findByText('Conversación B')
+  await act(async () => { finish() })
+  expect(screen.queryByText('Contenido privado A')).not.toBeInTheDocument()
+  expect(screen.queryByText('Error privado reacción A')).not.toBeInTheDocument()
+  expect(screen.getByText('Conversación B')).toBeInTheDocument()
+})
+
+test.each(['renewal', 'switch'])('an identity %s suppresses an old private reaction response', async transition => {
+  let finish!: (value: { message: typeof incoming }) => void
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [{ ...incoming, reactions: { '👍': ['friend'] } }] } as never)
+  jest.mocked(toggleFallbackChatReaction).mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  open()
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: '👍 1' }))
+  await waitFor(() => expect(finish).toBeDefined())
+  await act(async () => {
+    if (transition === 'switch') { mockUser.id = 'account-b'; updateStorageReadIdentity('account-b', 'fallback') }
+    else invalidateStorageReadBackend()
+    finish({ message: { ...incoming, id: 'private-response', content: 'Respuesta de sesión anterior' } })
+  })
+  expect(screen.queryByText('Respuesta de sesión anterior')).not.toBeInTheDocument()
+})
+
+test('a private reaction cannot start while auth and transport identities disagree', async () => {
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [{ ...incoming, reactions: { '👍': ['friend'] } }] } as never)
+  jest.mocked(toggleFallbackChatReaction).mockResolvedValue({ message: incoming })
+  open()
+  await screen.findByText('Mensaje recibido')
+  act(() => updateStorageReadIdentity('account-b', 'fallback'))
+  fireEvent.click(screen.getByRole('button', { name: '👍 1' }))
+  expect(toggleFallbackChatReaction).not.toHaveBeenCalled()
+})
+
+
+const deleteScopes = ['chat', 'group', 'community'] as const
+function chooseDelete(scope: typeof deleteScopes[number], forEveryone: boolean) {
+  const article = screen.getByText('Mensaje propio').closest('article')!
+  fireEvent.click(article.querySelector('summary')!)
+  const label = scope === 'chat' ? (forEveryone ? 'Eliminar para todos' : 'Eliminar para mí') : (forEveryone ? 'Borrar todos' : 'Borrar mi vista')
+  fireEvent.click(Array.from(article.querySelectorAll('button')).find(button => button.textContent?.trim() === label)!)
+}
+const deletionCases = deleteScopes.flatMap(scope => [true, false].flatMap(forEveryone => ['success', 'failure'].map(outcome => [scope, forEveryone, outcome] as const)))
+test.each(deletionCases)('%s delete all=%s ignores a stale %s in the next account/conversation', async (scope, forEveryone, outcome) => {
+  let finish!: () => void
+  const deleter = scope === 'chat' ? deleteFallbackChatMessage : deleteFallbackRoomMessage
+  jest.mocked(deleter).mockImplementation(() => new Promise((resolve, reject) => {
+    finish = () => outcome === 'success' ? resolve({ message: { ...outgoing, content: forEveryone ? '' : outgoing.content, deleted_for_all: forEveryone, deleted_by: forEveryone ? [] : ['account-a'] } }) : reject(new Error('Error privado borrado A'))
+  }))
+  const page = (id: string) => <MemoryRouter>{scope === 'chat' ? <ChatDetailPage chatIdOverride={id}/> : <RoomChatPage scope={scope} roomId={id}/>}</MemoryRouter>
+  const { rerender, container } = render(page('room-a'))
+  await screen.findByText('Mensaje propio')
+  chooseDelete(scope, forEveryone)
+  await waitFor(() => expect(finish).toBeDefined())
+  const loader = scope === 'chat' ? loadFallbackChat : loadFallbackRoomChat
+  jest.mocked(loader).mockResolvedValue({ ...response, messages: [{ ...incoming, id: 'new-message', content: 'Cuenta B' }] } as never)
+  await act(async () => { mockUser.id = 'account-b'; updateStorageReadIdentity('account-b', 'fallback') })
+  rerender(page('room-b'))
+  await screen.findByText('Cuenta B')
+  await act(async () => { finish() })
+  expect(container.querySelector('#message-' + outgoing.id)).not.toBeInTheDocument()
+  expect(screen.queryByText('Error privado borrado A')).not.toBeInTheDocument()
+  expect(screen.getByText('Cuenta B')).toBeInTheDocument()
+})
+
+test.each(deleteScopes)('%s delete cannot start with mismatching auth and transport identities', async scope => {
+  const deleter = scope === 'chat' ? deleteFallbackChatMessage : deleteFallbackRoomMessage
+  jest.mocked(deleter).mockResolvedValue({ message: outgoing })
+  open(scope)
+  await screen.findByText('Mensaje propio')
+  act(() => updateStorageReadIdentity('account-b', 'fallback'))
+  chooseDelete(scope, true)
+  expect(deleter).not.toHaveBeenCalled()
+})
+
+test('a stale bulk deletion cannot block or release the next conversation batch', async () => {
+  const pending: (() => void)[] = []
+  jest.mocked(deleteFallbackChatMessage).mockImplementation((_chat, id) => new Promise(resolve => { pending.push(() => resolve({ message: { ...incoming, id, deleted_by: ['account-a'] } })) }))
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true)
+  const { rerender, container } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  const selectAll = () => {
+    const article = screen.getByText('Mensaje propio').closest('article')!
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Seleccionar mensaje')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Seleccionar visibles' }))
+  }
+  const batchButton = () => Array.from(container.querySelector('[aria-label="Mensajes seleccionados"]')!.querySelectorAll('button')).find(button => /Eliminar para mí|Eliminando…/.test(button.textContent || ''))!
+  try {
+    await screen.findByText('Mensaje propio')
+    selectAll(); fireEvent.click(batchButton())
+    await waitFor(() => expect(pending).toHaveLength(1))
+    rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
+    await screen.findByText('Mensaje propio')
+    selectAll()
+    expect(batchButton()).toBeEnabled()
+    fireEvent.click(batchButton())
+    await waitFor(() => expect(pending).toHaveLength(2))
+    await act(async () => { pending[0]() })
+    expect(batchButton()).toBeDisabled()
+    expect(batchButton()).toHaveTextContent('Eliminando…')
+    await act(async () => { pending[1]() })
+    await waitFor(() => expect(pending).toHaveLength(3))
+    await act(async () => { pending[2]() })
+    expect(screen.queryByRole('region', { name: 'Mensajes seleccionados' })).not.toBeInTheDocument()
+  } finally { confirm.mockRestore() }
+})
+
+test.each(['renewed-login', 'backend-change'])('bulk %s stops the old batch and preserves the new busy state in the same conversation', async mode => {
+  const pending: (() => void)[] = []
+  jest.mocked(deleteFallbackChatMessage).mockImplementation((_chat, id) => new Promise(resolve => { pending.push(() => resolve({ message: { ...incoming, id, deleted_by: ['account-a'] } })) }))
+  const confirm = jest.spyOn(window, 'confirm').mockReturnValue(true)
+  const { container } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
+  const selectAll = () => {
+    const article = screen.getByText('Mensaje propio').closest('article')!
+    fireEvent.click(Array.from(article.querySelectorAll('button')).find(button => button.textContent?.trim() === 'Seleccionar mensaje')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Seleccionar visibles' }))
+  }
+  const batchButton = () => Array.from(container.querySelector('[aria-label="Mensajes seleccionados"]')!.querySelectorAll('button')).find(button => /Eliminar para mí|Eliminando…/.test(button.textContent || ''))!
+  try {
+    await screen.findByText('Mensaje propio')
+    selectAll(); fireEvent.click(batchButton())
+    await waitFor(() => expect(pending).toHaveLength(1))
+    await act(async () => {
+      if(mode === 'renewed-login') { updateStorageReadIdentity('', ''); updateStorageReadIdentity('account-a', 'fallback') }
+      else invalidateStorageReadBackend()
+    })
+    expect(screen.queryByRole('region', { name: 'Mensajes seleccionados' })).not.toBeInTheDocument()
+    selectAll()
+    expect(batchButton()).toBeEnabled()
+    fireEvent.click(batchButton())
+    await waitFor(() => expect(pending).toHaveLength(2))
+    await act(async () => { pending[0]() })
+    expect(pending).toHaveLength(2)
+    expect(batchButton()).toBeDisabled()
+    expect(batchButton()).toHaveTextContent('Eliminando…')
+    await act(async () => { pending[1]() })
+    await waitFor(() => expect(pending).toHaveLength(3))
+    await act(async () => { pending[2]() })
+    expect(screen.queryByRole('region', { name: 'Mensajes seleccionados' })).not.toBeInTheDocument()
+    expect(deleteFallbackChatMessage).toHaveBeenCalledTimes(3)
+  } finally { confirm.mockRestore() }
+})
+
+
+function openPollEditor(scope: 'chat' | 'group' | 'community') {
+  if (scope === 'chat') {
+    fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+    const create = screen.queryByRole('button', { name: 'Nueva encuesta' })
+    if (create) fireEvent.click(create)
+  } else if (!screen.queryByPlaceholderText('Pregunta')) fireEvent.click(screen.getByTitle('Nueva encuesta'))
+}
+
+test.each(deleteScopes.flatMap(scope => ['success', 'failure'].map(outcome => [scope, outcome] as const)))('%s poll creation ignores old %s after changing conversation', async (scope, outcome) => {
+  let finish!: () => void
+  jest.mocked(backendRpc).mockImplementation(async name => {
+    if (!/^secure_create_(chat|group|community)_poll_message$/.test(name)) return { data: [], error: null }
+    return new Promise(resolve => { finish = () => resolve(outcome === 'success' ? { data: {}, error: null } : { data: null, error: new Error('Error encuesta A') }) })
+  })
+  const page = (id: string) => <MemoryRouter>{scope === 'chat' ? <ChatDetailPage chatIdOverride={id}/> : <RoomChatPage scope={scope} roomId={id}/>}</MemoryRouter>
+  const { rerender } = render(page('room-a'))
+  await screen.findByText('Mensaje recibido')
+  openPollEditor(scope)
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'Encuesta A' } })
+  fireEvent.click(screen.getByRole('button', { name: scope === 'chat' ? 'Crear' : 'Crear encuesta', exact: true }))
+  await waitFor(() => expect(finish).toBeDefined())
+  const loader = scope === 'chat' ? loadFallbackChat : loadFallbackRoomChat
+  jest.mocked(loader).mockResolvedValue({ ...response, messages: [{ ...incoming, id: 'b-message', content: 'Conversación B' }] } as never)
+  rerender(page('room-b'))
+  await screen.findByText('Conversación B')
+  openPollEditor(scope)
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'Borrador B' } })
+  const requestsBeforeOldResponse = jest.mocked(loader).mock.calls.length
+  await act(async () => { finish() })
+  expect(screen.getByPlaceholderText('Pregunta')).toHaveValue('Borrador B')
+  expect(screen.queryByText('Error encuesta A')).not.toBeInTheDocument()
+  expect(jest.mocked(loader).mock.calls).toHaveLength(requestsBeforeOldResponse)
+})
+
+test.each(deleteScopes)('%s poll cannot start while auth and transport disagree', async scope => {
+  open(scope)
+  await screen.findByText('Mensaje recibido')
+  openPollEditor(scope)
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'No enviar con B' } })
+  act(() => updateStorageReadIdentity('account-b', 'fallback'))
+  // A context reset may close the form; reopening must still refuse this old auth user.
+  if (!screen.queryByPlaceholderText('Pregunta')) {
+    if (scope === 'chat') fireEvent.click(screen.getByRole('button', { name: 'Nueva encuesta' }))
+    else openPollEditor(scope)
+    fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'No enviar con B' } })
+  }
+  fireEvent.click(screen.getByRole('button', { name: scope === 'chat' ? 'Crear' : 'Crear encuesta', exact: true }))
+  expect(jest.mocked(backendRpc).mock.calls.filter(([name]) => /^secure_create_(chat|group|community)_poll_message$/.test(name))).toHaveLength(0)
+})
+
+test.each(deleteScopes)('%s poll identity renewal resets its lock without releasing a newer creation', async scope => {
+  const pending: (() => void)[] = []
+  jest.mocked(backendRpc).mockImplementation(async name => {
+    if (!/^secure_create_(chat|group|community)_poll_message$/.test(name)) return { data: [], error: null }
+    return new Promise(resolve => pending.push(() => resolve({ data: {}, error: null })))
+  })
+  open(scope)
+  await screen.findByText('Mensaje recibido')
+  openPollEditor(scope)
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'Encuesta antigua' } })
+  fireEvent.click(screen.getByRole('button', { name: scope === 'chat' ? 'Crear' : 'Crear encuesta', exact: true }))
+  await waitFor(() => expect(pending).toHaveLength(1))
+  act(() => invalidateStorageReadBackend())
+  expect(screen.queryByPlaceholderText('Pregunta')).not.toBeInTheDocument()
+  if (scope === 'chat') fireEvent.click(screen.getByRole('button', { name: 'Nueva encuesta' }))
+  else openPollEditor(scope)
+  expect(screen.getByPlaceholderText('Pregunta')).toHaveValue('')
+  fireEvent.change(screen.getByPlaceholderText('Pregunta'), { target: { value: 'Encuesta nueva' } })
+  fireEvent.click(screen.getByRole('button', { name: scope === 'chat' ? 'Crear' : 'Crear encuesta', exact: true }))
+  await waitFor(() => expect(pending).toHaveLength(2))
+  await act(async () => { pending[0]() })
+  expect(screen.getByPlaceholderText('Pregunta')).toHaveValue('Encuesta nueva')
+  expect(screen.getByRole('button', { name: 'Creando...' })).toBeInTheDocument()
+  await act(async () => { pending[1]() })
+  expect(screen.queryByPlaceholderText('Pregunta')).not.toBeInTheDocument()
 })

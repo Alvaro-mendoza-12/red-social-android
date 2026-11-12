@@ -512,7 +512,7 @@ fun RegisterScreen(
             trailingIcon = {
                 var image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(imageVector = image, contentDescription = null)
+                    Icon(imageVector = image, contentDescription = stringResource(if (passwordVisible) R.string.audit_hide_password else R.string.audit_show_password))
                 }
             },
             supportingText = {
@@ -529,7 +529,7 @@ fun RegisterScreen(
                 confirmPassword = it
                 if (authState is AuthState.Error) viewModel.resetAuthState()
             },
-            label = { Text("Confirmar contraseña") },
+            label = { Text(stringResource(R.string.audit_confirm_password)) },
             visualTransformation = if (confirmPasswordVisible) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             modifier = Modifier.fillMaxWidth(),
@@ -541,7 +541,7 @@ fun RegisterScreen(
             trailingIcon = {
                 var image = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                 IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
-                    Icon(imageVector = image, contentDescription = null)
+                    Icon(imageVector = image, contentDescription = stringResource(if (confirmPasswordVisible) R.string.audit_hide_confirmation else R.string.audit_show_confirmation))
                 }
             },
             isError = confirmPassword.isNotEmpty() && password != confirmPassword,

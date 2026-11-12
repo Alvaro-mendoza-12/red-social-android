@@ -2,7 +2,7 @@ import { updateFallbackSessionProfile } from '../../core/auth/fallbackAuth'
 import './accountSettings.css'
 import { StreamingImage } from '../../components/StreamingMedia'
 import { SafeAvatar } from '../../components/SafeAvatar'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { ProfileCoverEffect } from '../../components/ProfileCoverEffect'
 import { ProfileAppearanceControls } from '../../components/ProfileAppearanceControls'
@@ -153,9 +153,19 @@ function isMissingColumnError(error: unknown): boolean {
 }
 
 export function AccountSettingsPage() {
+  const { user, isFallbackSession } = useAuth()
+  if (!user) return <StatusView title="Inicia sesión para ver tus ajustes" description="Selecciona tu cuenta para continuar." />
+  return <AccountSettingsForm key={`${isFallbackSession ? 'ubuntu' : 'legacy'}:${user.id}`} user={user} isFallbackSession={isFallbackSession} />
+}
+
+function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof useAuth>, 'user' | 'isFallbackSession'>) {
   const location = useLocation()
   const [activeSection, setActiveSection] = useState('perfil')
-  const { user, isFallbackSession } = useAuth()
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
+  }, [])
   const [webPreferences, updateWebPreferences] = useWebPreferences()
   const [model, setModel] = useState<SettingsModel>({
     displayName: '',
@@ -209,6 +219,7 @@ export function AccountSettingsPage() {
       setError(null)
       try {
         const response = await loadFallbackProfileMe()
+        if (!mounted.current) return
         const profile = response.profile ?? {}
         const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>
         setModel((current) => ({
@@ -366,6 +377,7 @@ export function AccountSettingsPage() {
           lastSeenVisibility: model.lastSeenVisibility,
           onlineStatusVisibility: model.onlineStatusVisibility,
         })
+        if (!mounted.current) return
         const profile = response.profile ?? {}
         setModel((current) => ({
           ...current,
@@ -428,6 +440,7 @@ export function AccountSettingsPage() {
         .update(payload)
         .eq('id', user.id)
       if (updateError && !isMissingColumnError(updateError)) throw updateError
+      if (!mounted.current) return
       if (updateError && isMissingColumnError(updateError)) {
         const legacyPayload = {
           display_name: payload.display_name,
@@ -500,16 +513,16 @@ export function AccountSettingsPage() {
 
   async function updatePassword() {
     if (savingPassword) return
-    const password = newPassword.trim()
+    const password = newPassword
     if (password.length < 8) {
       setError('La nueva contraseña debe tener al menos 8 caracteres.')
       return
     }
-    if (password !== confirmPassword.trim()) {
+    if (password !== confirmPassword) {
       setError('La confirmación no coincide con la contraseña nueva.')
       return
     }
-    if (isFallbackSession && !currentPassword.trim()) {
+    if (isFallbackSession && !currentPassword) {
       setError('Escribe tu contraseña actual para confirmar el cambio.')
       return
     }
@@ -519,7 +532,7 @@ export function AccountSettingsPage() {
     setInfo(null)
     try {
       if (isFallbackSession) {
-        await changeFallbackPassword(currentPassword.trim(), password)
+        await changeFallbackPassword(currentPassword, password)
       } else {
         if (!supabase) return
         const { error: passwordError } = await supabase.auth.updateUser({

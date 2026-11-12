@@ -1,4 +1,5 @@
-import { getRuntimeBackendUrl } from '../runtimeBackend'
+import { isolatedBackendRequestCredentials } from '../publicBackendTransport'
+import { getRuntimeBackendUrl, initializeRuntimeBackend } from '../runtimeBackend'
 import { getStorageReadIdentity, invalidateStorageReadIdentity, onStorageReadInvalidated, requireStorageReadIdentity, updateStorageReadIdentity, type StorageReadIdentity } from '../media/storageReadSession'
 import type { GenericRow } from '../utils'
 
@@ -23,7 +24,7 @@ async function request(path: string, token: string, signal?: AbortSignal, method
   const timer = setTimeout(abort, 15_000)
   try {
     const response = await fetch(`${base}${path}`, {
-      method, credentials: 'omit', redirect: 'error', cache: 'no-store',
+      method, credentials: isolatedBackendRequestCredentials(`${base}${path}`), redirect: 'error', cache: 'no-store',
       headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       signal: controller.signal,
     })
@@ -44,6 +45,10 @@ export async function startGuestBrowsing(): Promise<void> {
   if (!pending) {
     const capturedEpoch = epoch, backend = getRuntimeBackendUrl()
     const operation = (async () => {
+      // Direct entry can render before discovery restores or replaces the trusted origin.
+      await initializeRuntimeBackend()
+      assertNoAccount()
+      if (epoch !== capturedEpoch) throw new Error('GUEST_ACCOUNT_CHANGED')
       const payload = await request('/v1/guest/session', '', undefined, 'POST')
       assertNoAccount()
       if (epoch !== capturedEpoch) throw new Error('GUEST_ACCOUNT_CHANGED')

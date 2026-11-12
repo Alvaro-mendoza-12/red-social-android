@@ -1,5 +1,7 @@
 package conectate.com.presentation.social
 
+import conectate.com.R
+import androidx.compose.ui.res.stringResource
 import conectate.com.core.media.ShareableMediaFileStore
 
 import androidx.compose.runtime.Composable
@@ -3418,7 +3420,7 @@ fun SubmissionCard(
                                     onClick = { showFullScreen = false },
                                     modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
                                 ) {
-                                    Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(32.dp))
+                                    Icon(Icons.Filled.Close, stringResource(R.string.audit_close), tint = Color.White, modifier = Modifier.size(32.dp))
                                 }
                             }
                         }
@@ -3915,7 +3917,7 @@ fun AudioSubmissionDialog(
                             },
                             modifier = Modifier.size(80.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                         ) {
-                            Icon(Icons.Filled.Mic, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Filled.Mic, stringResource(R.string.audit_record), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp))
                         }
                         Text("Toca para empezar", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
                     }
@@ -3927,7 +3929,7 @@ fun AudioSubmissionDialog(
                                 onClick = { voiceManager.pauseRecording() },
                                 modifier = Modifier.size(56.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
                             ) {
-                                Icon(Icons.Filled.Pause, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Icon(Icons.Filled.Pause, stringResource(R.string.audit_pause_recording), tint = MaterialTheme.colorScheme.onSecondaryContainer)
                             }
                             
                             // Stop button
@@ -3936,7 +3938,7 @@ fun AudioSubmissionDialog(
                                 onClick = { voiceManager.stopRecordingForReview() },
                                 modifier = Modifier.size(80.dp).background(Color.Red, CircleShape)
                             ) {
-                                Icon(Icons.Filled.Stop, null, tint = Color.White, modifier = Modifier.size(40.dp))
+                                Icon(Icons.Filled.Stop, stringResource(R.string.audit_stop_recording), tint = Color.White, modifier = Modifier.size(40.dp))
                             }
                         }
                         Text("Grabando...", color = Color.Red, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
@@ -3949,7 +3951,7 @@ fun AudioSubmissionDialog(
                                 onClick = { voiceManager.resumeRecording() },
                                 modifier = Modifier.size(80.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                             ) {
-                                Icon(Icons.Filled.Mic, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp))
+                                Icon(Icons.Filled.Mic, stringResource(R.string.audit_resume_recording), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(40.dp))
                             }
                             
                             // Stop button (Finish)
@@ -3958,7 +3960,7 @@ fun AudioSubmissionDialog(
                                 onClick = { voiceManager.stopRecordingForReview() },
                                 modifier = Modifier.size(56.dp).background(Color.Red.copy(alpha = 0.7f), CircleShape)
                             ) {
-                                Icon(Icons.Filled.Stop, null, tint = Color.White)
+                                Icon(Icons.Filled.Stop, stringResource(R.string.audit_stop_recording), tint = Color.White)
                             }
                         }
                         Text("Pausado", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))
@@ -3985,7 +3987,7 @@ fun AudioSubmissionDialog(
                                     onClick = { voiceManager.reset() },
                                     modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.errorContainer, CircleShape)
                                 ) {
-                                    Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                                    Icon(Icons.Filled.Delete, stringResource(R.string.audit_delete_recording), tint = MaterialTheme.colorScheme.onErrorContainer)
                                 }
                                 
                                 // Play/Pause Preview
@@ -3996,7 +3998,7 @@ fun AudioSubmissionDialog(
                                     },
                                     modifier = Modifier.size(64.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
                                 ) {
-                                    Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(32.dp))
+                                    Icon(if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow, stringResource(if (isPlaying) R.string.audit_pause_preview else R.string.audit_play_preview), tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(32.dp))
                                 }
                                 
                                 // Resume recording from review (Continue singing)
@@ -4005,7 +4007,7 @@ fun AudioSubmissionDialog(
                                     onClick = { voiceManager.resumeRecordingFromReview() },
                                     modifier = Modifier.size(48.dp).background(MaterialTheme.colorScheme.secondaryContainer, CircleShape)
                                 ) {
-                                    Icon(Icons.Filled.RestartAlt, null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Icon(Icons.Filled.RestartAlt, stringResource(R.string.audit_resume_recording), tint = MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
                             }
                             Text("Revisa tu grabación", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 12.dp))

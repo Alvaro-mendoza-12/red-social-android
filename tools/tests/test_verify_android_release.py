@@ -31,6 +31,16 @@ class VerifyAndroidReleaseTest(unittest.TestCase):
         self.assertTrue(is_verified_jarsigner_output("jar verified."))
         self.assertFalse(is_verified_jarsigner_output("jar is unsigned."))
 
+    def test_rejects_verified_bundle_with_unsigned_entries(self) -> None:
+        self.assertFalse(is_verified_jarsigner_output(
+            "jar verified.\nWarning:\nThis jar contains unsigned entries which have not been integrity-checked."
+        ))
+
+    def test_allows_normal_self_signed_upload_certificate_warning(self) -> None:
+        self.assertTrue(is_verified_jarsigner_output(
+            "jar verified.\nWarning:\nThe signer's certificate is self-signed."
+        ))
+
     def test_extracts_keytool_sha256(self) -> None:
         expected = "CD" * 32
         output = f"SHA1: 00:11\nSHA256: {':'.join(['CD'] * 32)}\n"

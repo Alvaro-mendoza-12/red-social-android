@@ -13,6 +13,7 @@ import { friendlyError } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { fetchMomentsFeed, removeMoment, type MomentItem } from './momentsData'
 import { MomentComposer } from './MomentComposer'
+import { discardMomentDraft, hasMomentDraft, useMomentDraft } from './momentDraft'
 import { isUbuntuPrimary } from '../../core/ubuntuBackend'
 import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 
@@ -33,6 +34,7 @@ function expiresInLabel(expiresAt: string): string {
 
 export function MomentsPage() {
   const { user } = useAuth()
+  const { draft, identity, available } = useMomentDraft(user?.id)
   const [items, setItems] = useState<MomentItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -66,6 +68,8 @@ export function MomentsPage() {
       setError(friendlyError(caught, 'No se pudieron cargar los momentos'))
     } finally { if (request.current === sequence) setLoading(false) }
   }, [user?.id])
+
+  useEffect(() => { if (draft.status === 'published') void loadMoments(true) }, [draft.status, loadMoments])
 
   useEffect(() => {
     setItems([])
@@ -117,10 +121,12 @@ export function MomentsPage() {
     <section className="section-stack moments-page">
       <header className="section-header row-between moments-header">
         <p>Comparte un momento con tu gente</p>
-        <button className="primary-btn moments-create-button" type="button" onClick={() => setShowComposer(true)}><Plus aria-hidden="true" />Crear</button>
+        <button className="primary-btn moments-create-button" type="button" disabled={!available} onClick={() => { if (draft.status === 'published') discardMomentDraft(identity); setShowComposer(true) }}><Plus aria-hidden="true" />{draft.status === 'publishing' ? 'Ver publicación en curso' : hasMomentDraft(draft) ? 'Continuar borrador' : 'Crear'}</button>
       </header>
 
-      {showComposer && user ? <MomentComposer key={user.id} onClose={() => setShowComposer(false)} onPublished={() => { setShowComposer(false); void loadMoments(true) }} /> : null}
+      {!showComposer && hasMomentDraft(draft) ? <p role="status">{draft.status === 'publishing' ? 'Tu momento se está publicando. No vuelvas a enviarlo.' : 'Tienes un borrador sin publicar en esta pestaña.'}</p> : null}
+
+      {showComposer && user ? <MomentComposer key={user.id} onClose={() => setShowComposer(false)} onPublished={() => setShowComposer(false)} /> : null}
 
       {loading ? (
         <StatusView title="Cargando momentos" description="Espera un momento..." />

@@ -137,6 +137,7 @@ class ProfileViewModel @Inject constructor(
     private var realtimeJob: kotlinx.coroutines.Job? = null
     private val profileMutationClock = ProfileMutationClock()
     private val profileReadScope = ProfileReadScope(authService::getCurrentUserId)
+    private val friendActionScope = ProfileFriendActionScope(authService::getCurrentUserId)
     private val contentSubscriptions = ProfileContentSubscriptions(viewModelScope, profileReadScope)
     private var contentOwner: Pair<String?, String>? = null
     private val postSharesInFlight = mutableSetOf<String>()
@@ -228,9 +229,13 @@ class ProfileViewModel @Inject constructor(
         val idToLoad = (userId ?: authService.getCurrentUserId())?.trim()?.lowercase()
             ?.takeIf { it.isNotBlank() }
         if (idToLoad == null) {
+            friendActionScope.invalidate()
             _profileState.value = ProfileUiState.Error("No user logged in")
             return
         }
+        val friendViewChanged = friendActionScope.enter(idToLoad)
+        // Never expose the previous Success with a new action context while a cache read suspends.
+        if (friendViewChanged) _profileState.value = ProfileUiState.Loading
         val owner = authService.getCurrentUserId() to idToLoad
         contentSubscriptions.cancelAll()
         sharedPostsPager.clear()
@@ -251,7 +256,7 @@ class ProfileViewModel @Inject constructor(
 
         // Friendship changes when a first message creates a request, even if
         // the profile itself is already cached when returning from the chat.
-        if (friendStatusTargetId != idToLoad) {
+        if (friendViewChanged || friendStatusTargetId != idToLoad) {
             friendStatusTargetId = idToLoad
             _friendStatus.value = FriendStatus.NONE
             lockFriendStateUntil = 0L
@@ -483,69 +488,50 @@ class ProfileViewModel @Inject constructor(
         }
     }
 
-    fun sendFriendRequest() {
-        val state = _profileState.value
-        if (state !is ProfileUiState.Success) return
-        val targetId = state.user.id
-        
+    private fun performFriendAction(
+        optimistic: FriendStatus,
+        previous: FriendStatus,
+        action: suspend () -> Result<Unit>
+    ) {
+        val ticket = friendActionScope.snapshot() ?: return
         viewModelScope.launch {
-            // Optimistic update
-            _friendStatus.value = FriendStatus.PENDING_SENT
-            lockFriendStateUntil = System.currentTimeMillis() + 10000 // 10s guard
-            
-            val result = friendRepository.sendFriendRequest(targetId)
-            if (result.isFailure) {
-                // Revert
-                _friendStatus.value = FriendStatus.NONE
-                lockFriendStateUntil = 0L // Release guard
-                android.util.Log.e("ProfileViewModel", "Failed to send friend request", result.exceptionOrNull())
-            } else {
-                 // Success: keep guard and update timestamp to postpone next check
-                 lockFriendStateUntil = System.currentTimeMillis() + 10000
-            }
+            friendActionScope.runCurrentAction(ticket,
+                onStart = {
+                    _friendStatus.value = optimistic
+                    lockFriendStateUntil = System.currentTimeMillis() + 10000
+                },
+                action = action,
+                onResult = { result ->
+                    if (result.isFailure) {
+                        _friendStatus.value = previous
+                        lockFriendStateUntil = 0L
+                        android.util.Log.e("ProfileViewModel", "Friendship action failed", result.exceptionOrNull())
+                    } else {
+                        lockFriendStateUntil = System.currentTimeMillis() + 10000
+                    }
+                }
+            )
+        }
+    }
+
+    fun sendFriendRequest() {
+        val targetId = (_profileState.value as? ProfileUiState.Success)?.user?.id ?: return
+        performFriendAction(FriendStatus.PENDING_SENT, FriendStatus.NONE) {
+            friendRepository.sendFriendRequest(targetId)
         }
     }
 
     fun cancelFriendRequest() {
-        val state = _profileState.value
-        if (state !is ProfileUiState.Success) return
-        val targetId = state.user.id
-        
-        viewModelScope.launch {
-            // Optimistic update
-            _friendStatus.value = FriendStatus.NONE
-            // Remove lock/guard or set it? If we cancel, we want NONE to stay.
-            lockFriendStateUntil = System.currentTimeMillis() + 10000 
-            
-            val result = friendRepository.cancelFriendRequest(targetId)
-            if (result.isFailure) {
-                // Revert
-                _friendStatus.value = FriendStatus.PENDING_SENT
-                lockFriendStateUntil = 0L
-                android.util.Log.e("ProfileViewModel", "Failed to cancel friend request", result.exceptionOrNull())
-            }
+        val targetId = (_profileState.value as? ProfileUiState.Success)?.user?.id ?: return
+        performFriendAction(FriendStatus.NONE, FriendStatus.PENDING_SENT) {
+            friendRepository.cancelFriendRequest(targetId)
         }
     }
 
     fun unfriendUser() {
-        val state = _profileState.value
-        if (state !is ProfileUiState.Success) return
-        val targetId = state.user.id
-        
-        viewModelScope.launch {
-            // Optimistic update
-            _friendStatus.value = FriendStatus.NONE
-            lockFriendStateUntil = System.currentTimeMillis() + 10000 
-            
-            val result = friendRepository.unfriendUser(targetId)
-            if (result.isFailure) {
-                // Revert
-                _friendStatus.value = FriendStatus.FRIENDS
-                lockFriendStateUntil = 0L
-                android.util.Log.e("ProfileViewModel", "Failed to unfriend", result.exceptionOrNull())
-            } else {
-                 // Update follower counts if friends implies following (optional but good practice)
-            }
+        val targetId = (_profileState.value as? ProfileUiState.Success)?.user?.id ?: return
+        performFriendAction(FriendStatus.NONE, FriendStatus.FRIENDS) {
+            friendRepository.unfriendUser(targetId)
         }
     }
 
@@ -623,6 +609,7 @@ class ProfileViewModel @Inject constructor(
 
         viewModelScope.launch {
             var uploadedUrl: String? = null
+            var profileMusicSaved = false
             fun deleteTemporaryClip() {
                 if (clip?.uri?.scheme.equals("file", ignoreCase = true)) {
                     clip?.uri?.path?.let { path -> runCatching { java.io.File(path).delete() } }
@@ -655,6 +642,7 @@ class ProfileViewModel @Inject constructor(
                     return@launch
                 }
 
+                profileMusicSaved = true
                 profileMutationClock.markCommitted()
                 val normalizedUrl = nextUrl.takeIf(String::isNotBlank)
                 _profileState.value = ProfileUiState.Success(
@@ -671,16 +659,16 @@ class ProfileViewModel @Inject constructor(
                 uploadedUrl?.let { userRepository.deleteUploadedProfileMusic(it) }
                 onError(error.message ?: "No se pudo guardar la música de entrada.")
             } finally {
-                deleteTemporaryClip()
+                if (profileMusicSaved) deleteTemporaryClip()
             }
         }
     }
 
     fun updateProfile(
-        name: String,
-        bio: String,
-        country: String,
-        city: String,
+        name: String?,
+        bio: String?,
+        country: String?,
+        city: String?,
         gender: String? = null,
         birthDate: String? = null,
         education: String? = null,
@@ -716,7 +704,7 @@ class ProfileViewModel @Inject constructor(
                 val currentUser = (_profileState.value as? ProfileUiState.Success)?.user
                 
                 // Only include name in request if it actually changed to avoid triggering 7-day limit on photo updates
-                val nameChanged = currentUser?.full_name != name && currentUser?.display_name != name
+                val nameChanged = name != null && currentUser?.full_name != name && currentUser?.display_name != name
                 
                 var lastNameChange: String? = null
                 val finalName = if (nameChanged) {
@@ -797,9 +785,9 @@ class ProfileViewModel @Inject constructor(
                     career = career,
                     profile_section_visibility = sectionVisibility,
                     avatar_url = avatarUrl.takeIf { imageUri != null },
-                    avatar_media_type = resolvedAvatarMediaType,
-                    avatar_video_muted = resolvedAvatarVideoMuted,
-                    avatar_duration_ms = resolvedAvatarDurationMs,
+                    avatar_media_type = resolvedAvatarMediaType.takeIf { imageUri != null || avatarMediaType != null },
+                    avatar_video_muted = resolvedAvatarVideoMuted.takeIf { imageUri != null || avatarVideoMuted != null },
+                    avatar_duration_ms = resolvedAvatarDurationMs.takeIf { imageUri != null || avatarDurationMs != null },
                     cover_url = coverUrl.takeIf { coverImageUri != null },
                     remove_avatar = removeAvatar,
                     remove_cover = removeCover,
@@ -818,9 +806,9 @@ class ProfileViewModel @Inject constructor(
                     val optimisticUser = currentUser?.copy(
                         display_name = updateRequest.display_name ?: currentUser.display_name,
                         username = updateRequest.username ?: currentUser.username,
-                        bio = updateRequest.bio,
-                        country = updateRequest.country,
-                        city = updateRequest.city,
+                        bio = updateRequest.bio ?: currentUser.bio,
+                        country = updateRequest.country ?: currentUser.country,
+                        city = updateRequest.city ?: currentUser.city,
                         gender = updateRequest.gender ?: currentUser.gender,
                         birth_date = updateRequest.birth_date ?: currentUser.birth_date,
                         education = updateRequest.education ?: currentUser.education,

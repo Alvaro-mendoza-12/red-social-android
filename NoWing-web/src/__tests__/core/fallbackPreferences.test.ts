@@ -1,16 +1,17 @@
+import { getStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { saveFallbackChatPreferences, markFallbackNotificationRead, updateFallbackLiveState } from '../../core/fallbackData'
 
 jest.mock('../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn(), readFallbackSession: () => ({ user: { id: 'owner' } }) }))
 const api = fallbackApiJson as jest.Mock
-beforeEach(() => api.mockReset().mockResolvedValue({ ok: true }))
+beforeEach(() => { api.mockReset().mockResolvedValue({ ok: true }); updateStorageReadIdentity('owner', 'fallback') })
 
 test('persists only requested chat preferences and announces the successful change', async () => {
   const listener = jest.fn()
   window.addEventListener('novvin:conversation-preferences-changed', listener)
   try {
     await saveFallbackChatPreferences('owned-chat', { isPinned: true })
-    expect(api).toHaveBeenCalledWith('/v1/data/messages/chats/owned-chat/preferences', { method: 'PATCH', body: '{"isPinned":true}' })
+    expect(api).toHaveBeenCalledWith('/v1/data/messages/chats/owned-chat/preferences', { method: 'PATCH', body: '{"isPinned":true}', expectedIdentity: getStorageReadIdentity(), expectedAccountId: 'owner' })
     expect(listener).toHaveBeenCalledTimes(1)
   } finally { window.removeEventListener('novvin:conversation-preferences-changed', listener) }
 })

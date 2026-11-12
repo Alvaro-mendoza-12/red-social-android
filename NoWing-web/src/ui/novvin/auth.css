@@ -4,11 +4,13 @@
   --surface-raised: #eef0fb;
   --surface-container: #e9e6ff;
   --foreground: #18223d;
-  --secondary-text: #66708a;
-  --muted: #727b94;
+  --secondary-text: #59637a;
+  --muted: #5e687f;
   --primary: #5146c9;
   --on-primary: #fff;
   --outline: #d9ddea;
+  --control-outline: #777e91;
+  --focus-ring: #5146c9;
   --divider: #e4e7f1;
   --danger: #b3261e;
   color-scheme: light;
@@ -96,7 +98,7 @@
   gap: 18px;
 }
 .auth-shell form input:not([type='checkbox']) {
-  border: 1px solid var(--outline);
+  border: 1px solid var(--control-outline);
   border-radius: 14px;
   background: #fafbff;
   min-height: 52px;

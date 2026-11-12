@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js'
 import { uploadWithProgress, type UploadProgress } from '../uploadProgress'
-import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../media/storageReadSession'
+import { getStorageReadIdentity, invalidateStorageReadIdentity, updateStorageReadIdentity, type StorageReadIdentity } from '../media/storageReadSession'
 import {
   getRuntimeBackendUrl,
   refreshRuntimeBackend,
@@ -128,13 +128,14 @@ async function parseFallbackResponse(response: Response) {
 
 export async function fallbackApiJson<T>(
   path: string,
-  init?: RequestInit & { auth?: boolean; webSession?: boolean; expectedAccountId?: string; onUploadProgress?: (value:UploadProgress)=>void },
+  init?: RequestInit & { auth?: boolean; webSession?: boolean; expectedAccountId?: string; expectedIdentity?: StorageReadIdentity; onUploadProgress?: (value:UploadProgress)=>void },
 ): Promise<T> {
   if (!isFallbackAuthConfigured) {
     throw new Error('El servidor Ubuntu no está configurado para esta web.')
   }
 
   const guardAccount = () => {
+    if (init?.expectedIdentity && (!init.expectedIdentity.accountId || init.expectedIdentity !== getStorageReadIdentity())) throw new Error('Tu sesión cambió. Abre de nuevo el editor para publicar.')
     if (!init?.expectedAccountId) return
     const sessionUser = readFallbackSession()?.user
     // Migrated accounts retain their local ID and their canonical profile ID.
@@ -162,10 +163,11 @@ export async function fallbackApiJson<T>(
     headers.set(webSessionHeader, webSessionHeaderValue)
   }
 
-  const requestInit: RequestInit & { auth?: boolean; webSession?: boolean; expectedAccountId?: string } = { ...(init ?? {}) }
+  const requestInit: RequestInit & { auth?: boolean; webSession?: boolean; expectedAccountId?: string; expectedIdentity?: StorageReadIdentity } = { ...(init ?? {}) }
   delete requestInit.auth
   delete requestInit.webSession
   delete requestInit.expectedAccountId
+  delete requestInit.expectedIdentity
   const onUploadProgress=init?.onUploadProgress
   delete (requestInit as {onUploadProgress?:unknown}).onUploadProgress
 
@@ -177,6 +179,7 @@ export async function fallbackApiJson<T>(
   let payload = await parseFallbackResponse(response)
   let code = String(payload.error || payload.message || '').trim()
   if (requiresAuth && response.status === 401 && code === 'INVALID_TOKEN') {
+    guardAccount()
     const restored = await restoreFallbackSession()
     const refreshedToken = restored?.accessToken?.trim() || ''
     const replayableBody = !(

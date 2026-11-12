@@ -1,4 +1,5 @@
 import { fallbackApiJson, isFallbackAuthConfigured, readFallbackSession } from './auth/fallbackAuth'
+import { getStorageReadIdentity } from './media/storageReadSession'
 import { supabase } from './supabase'
 
 /** Use the same authenticated compatibility routes as Android, without a second auth session. */
@@ -8,7 +9,8 @@ export async function backendRpc<T = unknown>(name: string, body: Record<string,
     if (isFallbackAuthConfigured) {
       const owner = readFallbackSession()?.user.id
       if (!owner) throw new Error('Inicia sesión para continuar')
-      const data = await fallbackApiJson<T>(`/rest/v1/rpc/${name}`, { method: 'POST', body: JSON.stringify(body), expectedAccountId: owner })
+      const identity = getStorageReadIdentity()
+      const data = await fallbackApiJson<T>(`/rest/v1/rpc/${name}`, { method: 'POST', body: JSON.stringify(body), expectedAccountId: owner, expectedIdentity: identity })
       return { data, error: null }
     }
     if (!supabase) throw new Error('Servicio no disponible')

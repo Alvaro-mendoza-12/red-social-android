@@ -2,6 +2,7 @@ package conectate.com.data.repository
 
 import conectate.com.core.media.readMediaBytesWithLimit
 
+import androidx.room.withTransaction
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
@@ -1894,68 +1895,80 @@ class MessageRepository @Inject constructor(
 
 
 
-    suspend fun clearChat(chatId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        try {
-            var currentUserId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user"))
-            val clearSession = captureSessionSnapshot(currentUserId)
-            var cleanId = chatId.trim().lowercase()
-            var now = java.time.Instant.now().toString()
+    suspend fun clearChat(chatId: String): Result<Unit> =
+        clearChat(authService.captureAccountLease(), chatId)
 
-            if (shouldUseUbuntuBackend()) {
-                val token = authService.ensureValidAccessToken()
-                    .getOrElse { return@withContext Result.failure(it) }
-                localFallbackApiClient.clearChat(token, cleanId)
-                    .getOrElse { e ->
-                        return@withContext Result.failure(e)
+    internal suspend fun clearChat(
+        owner: conectate.com.data.supabase.AuthSessionLease,
+        chatId: String,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val cleanId = chatId.trim().lowercase()
+        if (cleanId.isBlank()) return@withContext Result.failure(IllegalArgumentException("Chat inválido"))
+        owner.requireCurrent()
+        val now = java.time.Instant.now().toString()
+        val ubuntu = shouldUseUbuntuBackend()
+        executeOwnedChatVisibility(
+            owner = owner,
+            token = {
+                authService.getAccessTokenForAccountAwait(requireNotNull(owner.accountId))
+                    ?.takeIf { it.isNotBlank() }
+                    ?: throw IllegalStateException("Tu sesión venció. Inicia sesión de nuevo.")
+            },
+            hide = null,
+            clear = { token -> clearChatRemotely(token, requireNotNull(owner.accountId), cleanId, now, ubuntu) },
+            commit = {
+                authService.withAccountLocalStorage(owner) {
+                    database.withTransaction {
+                        currentCoroutineContext().ensureActive()
+                        owner.requireCurrent()
+                        // A per-user cutoff retains the conversation and persisted messages.
+                        chatDao.updateClearedAt(cleanId, now)
+                        currentCoroutineContext().ensureActive()
+                        owner.requireCurrent()
                     }
-            } else {
-                var token = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
-                var payload = buildJsonObject { put("cleared_at", now) }
-                var response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
-                    header("Authorization", "Bearer $token")
-                    header("apikey", supabaseConfig.supabaseAnonKey)
-                    header("Content-Type", "application/json")
-                    parameter("chat_id", "eq.$cleanId")
-                    parameter("user_id", "eq.$currentUserId")
-                    setBody(payload)
                 }
-                if (!response.status.isSuccess()) {
-                    return@withContext Result.failure(Exception("Error clearing chat: ${response.status}"))
-                }
-            }
+                if (!authService.commitForAccountLease(owner) {
+                    _activeChatMessages[cleanId]?.value = emptyList()
+                    _userChats.value = _userChats.value.map { entry ->
+                        if (entry.chat.id.trim().lowercase() != cleanId) entry
+                        else entry.copy(
+                            chat = entry.chat.copy(
+                                last_message = "Sin mensajes",
+                                last_message_at = now,
+                                last_message_sender_id = null,
+                                last_message_id = null,
+                                cleared_at = now,
+                            ),
+                            clearedAt = now,
+                            lastMessage = null,
+                            unreadCount = 0,
+                        )
+                    }
+                }) throw CancellationException("La cuenta cambió. Vuelve a abrir el chat.")
+            },
+            operation = ChatVisibilityOperation.CLEAR,
+        )
+    }
 
-            if (!isSessionSnapshotValid(clearSession, "clear-chat-commit")) return@withContext Result.failure(Exception("La cuenta cambió. Vuelve a abrir el chat."))
-            // A per-user cutoff hides old rows without destroying the shared local cache.
-            chatDao.updateClearedAt(cleanId, now)
-
-            // Keep cached rows: another signed-in account may share this conversation.
-
-            // Clear In-Memory Flow
-            _activeChatMessages[cleanId]?.value = emptyList()
-
-            // Update Chat List Metadata
-            var currentChats = _userChats.value.toMutableList()
-            var idx = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
-            if (idx != -1) {
-                currentChats[idx] = currentChats[idx].copy(
-                    chat = currentChats[idx].chat.copy(
-                        last_message = "Sin mensajes",
-                        last_message_at = now,
-                        last_message_sender_id = null,
-                        last_message_id = null,
-                        cleared_at = now
-                    ),
-                    clearedAt = now,
-                    lastMessage = null,
-                    unreadCount = 0
-                )
-                _userChats.value = currentChats
-            }
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
+    /** Remote cutoff only: credentials and participant identity belong to the captured lease. */
+    private suspend fun clearChatRemotely(
+        token: String,
+        accountId: String,
+        chatId: String,
+        clearedAt: String,
+        ubuntu: Boolean,
+    ): Result<Unit> {
+        if (ubuntu) return localFallbackApiClient.clearChat(token, chatId)
+        val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
+            header("Authorization", "Bearer $token")
+            header("apikey", supabaseConfig.supabaseAnonKey)
+            header("Content-Type", "application/json")
+            parameter("chat_id", "eq.$chatId")
+            parameter("user_id", "eq.$accountId")
+            setBody(buildJsonObject { put("cleared_at", clearedAt) })
         }
+        return if (response.status.isSuccess()) Result.success(Unit)
+        else Result.failure(Exception("Error clearing chat: ${response.status}"))
     }
 
     // --- MESSAGES FLOW ---
@@ -4951,50 +4964,50 @@ class MessageRepository @Inject constructor(
         }.getOrDefault(false)
     }
     
-    suspend fun deleteChat(chatId: String): Result<Unit> {
-        return try {
-            var cleanId = chatId.trim().lowercase()
-            var now = java.time.Instant.now().toString()
-            sessionStateStore.clearLocalReadOverride(cleanId)
+    suspend fun deleteChat(chatId: String): Result<Unit> =
+        deleteChat(authService.captureAccountLease(), chatId)
 
-            if (shouldUseUbuntuBackend()) {
-                val token = authService.ensureValidAccessToken()
-                    .getOrElse { return Result.failure(it) }
-                localFallbackApiClient.hideChat(token, cleanId)
-                    .onFailure { firstError ->
-                        android.util.Log.w(
-                            "MessageRepository",
-                            "hideChat ubuntu failed, trying clearChat before local hide",
-                            firstError
-                        )
-                        localFallbackApiClient.clearChat(token, cleanId)
-                            .getOrElse { secondError ->
-                                return Result.failure(
-                                    Exception("No se pudo eliminar el chat en el servidor: ${secondError.message}", secondError)
-                                )
-                            }
+    internal suspend fun deleteChat(
+        owner: conectate.com.data.supabase.AuthSessionLease,
+        chatId: String,
+    ): Result<Unit> {
+        val cleanId = chatId.trim().lowercase()
+        if (cleanId.isBlank()) return Result.failure(IllegalArgumentException("Chat inválido"))
+        owner.requireCurrent()
+        val ubuntu = shouldUseUbuntuBackend()
+        val now = java.time.Instant.now().toString()
+        return executeOwnedChatVisibility(
+            owner = owner,
+            token = {
+                authService.getAccessTokenForAccountAwait(requireNotNull(owner.accountId))
+                    ?.takeIf { it.isNotBlank() }
+                    ?: throw IllegalStateException("Tu sesión venció. Inicia sesión de nuevo.")
+            },
+            hide = { token ->
+                if (ubuntu) localFallbackApiClient.hideChat(token, cleanId)
+                else clearChatRemotely(token, requireNotNull(owner.accountId), cleanId, now, ubuntu = false)
+            },
+            clear = if (ubuntu) ({ token -> localFallbackApiClient.clearChat(token, cleanId) }) else null,
+            commit = {
+                authService.withAccountLocalStorage(owner) {
+                    database.withTransaction {
+                        currentCoroutineContext().ensureActive()
+                        owner.requireCurrent()
+                        if (!ubuntu) chatDao.updateClearedAt(cleanId, now)
+                        chatDao.deleteChat(cleanId, now)
+                        currentCoroutineContext().ensureActive()
+                        owner.requireCurrent() // A stale write rolls back inside Room.
                     }
-            } else {
-                clearChat(cleanId).getOrElse { return Result.failure(it) }
-            }
-
-            // Soft delete from Room (marks as deleted, hidden from UI)
-            chatDao.deleteChat(cleanId, now)
-            // Visibility is per user; retain message rows for other linked accounts.
-            
-            // Remove from in-memory cache
-            var currentChats = _userChats.value.toMutableList()
-            currentChats.removeAll { it.chat.id.trim().lowercase() == cleanId }
-            _userChats.value = currentChats
-            
-            android.util.Log.d("MessageRepository", "Chat deleted successfully: $chatId")
-            Result.success(Unit)
-        } catch (e: Exception) {
-            android.util.Log.e("MessageRepository", "Error deleting chat", e)
-            Result.failure(e)
-        }
+                }
+                if (!authService.commitForAccountLease(owner) {
+                    sessionStateStore.clearLocalReadOverride(cleanId)
+                    if (!ubuntu) _activeChatMessages[cleanId]?.value = emptyList()
+                    _userChats.value = _userChats.value.filterNot { it.chat.id.trim().lowercase() == cleanId }
+                }) throw CancellationException("La cuenta cambió. Vuelve a abrir el chat.")
+            },
+        )
     }
-    
+
     suspend fun reportContent(chatId: String, reason: String): Result<Unit> {
         var cleanChatId = chatId.trim().lowercase()
         if (cleanChatId.isBlank()) return Result.failure(Exception("Chat inválido"))

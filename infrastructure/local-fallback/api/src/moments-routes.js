@@ -428,8 +428,8 @@ function momentAudienceAllows({ row, identityIds, followRows = [], chatRows = []
     case 'only_me':
     case 'private': return false
     case 'all':
-    case 'public':
-    default: return true
+    case 'public': return true
+    default: return false
   }
 }
 

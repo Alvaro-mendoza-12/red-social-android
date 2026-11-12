@@ -11,7 +11,7 @@ export function primarySection(path: string) {
   if (/^\/app\/(social|moments|feed|challenges|ranking|friend-requests)(\/|$)/.test(path)) return '/app/social'
   if (/^\/app\/games(\/|$)/.test(path)) return '/app/games'
   if (/^\/app\/profile(\/|$)/.test(path)) return '/app/profile'
-  return path.startsWith('/app/messages') ? '/app/messages' : ''
+  return /^\/app\/messages(\/|$)/.test(path) ? '/app/messages' : ''
 }
 
 export function openNovvinMenu() {
