@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 12 de noviembre de 2026
 
+La [matriz 118](118-veinte-criterios-web-y-android-2026-11-12.md) documenta qué criterios web aplican a Android y qué comprobaciones permanecen parciales. No atribuye a la APK las optimizaciones de imágenes de la portada web ni una entrega nueva.
+
 La [continuación 117](117-cambio-de-cuenta-y-web-publica-2026-11-12.md) resuelve el cierre de ActivityScenario del caso de cambio de cuenta y comprueba A → B → A con invalidación de visitas anteriores. También verifica la web pública; los demás recorridos de esta revisión siguen abiertos.
 
 La [operación 116](116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md) continúa 115 con el despliegue dirigido de API en Ubuntu, respaldo restaurado en aislamiento y comprobaciones web y nativas. Documenta por separado la imagen instalada, los ensayos con cuentas ficticias y las correcciones de iconos y opciones de la web. No cierra los demás recorridos de esta revisión.

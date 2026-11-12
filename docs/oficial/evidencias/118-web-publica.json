@@ -1,0 +1,37 @@
+{
+  "checkedAtUtc": "2026-11-12T16:19:47.561Z",
+  "publicUrl": "https://red-social-android.vercel.app",
+  "productionDeployment": "dpl_9aMY1eUSWwZ8R4BLxMX1zraRHicx",
+  "productMainCommit": "ff74342a",
+  "productFeatureCommit": "41e46fd0",
+  "http": {
+    "passed": true,
+    "checks": 97,
+    "failures": []
+  },
+  "links": {
+    "checked": 28,
+    "passed": true
+  },
+  "browser": {
+    "views": 12,
+    "widths": [
+      375,
+      768,
+      1440
+    ],
+    "pages": [
+      "/",
+      "/privacidad",
+      "/cookies",
+      "/descargar"
+    ],
+    "horizontalOverflow": false,
+    "axeViolations": [],
+    "axeIncomplete": [
+      "color-contrast"
+    ],
+    "webpSelected": true
+  },
+  "scope": "Read-only public pages. Not an authenticated production mutation, physical Android acceptance, field Core Web Vitals measurement or full accessibility/legal certification."
+}
