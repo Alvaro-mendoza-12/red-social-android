@@ -1,5 +1,6 @@
 import { SafeAvatar } from '../../components/SafeAvatar'
-import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Maximize, Minimize2, Settings, Volume2, VolumeX } from 'lucide-react'
+import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Maximize, Minimize2, Settings, Volume2, VolumeX, UserRoundPlus } from 'lucide-react'
+import { CallInviteDialog } from './CallInviteDialog'
 import './calls.css'
 import { LiveStreamVideo } from '../../components/LiveStreamMedia'
 import { useLiveVideoAvailable } from '../../core/media/useLiveVideoAvailable'
@@ -35,6 +36,15 @@ function callFailureMessage(cause: unknown) {
   return cause instanceof Error && !/^[A-Z_]+$/.test(cause.message) ? cause.message : 'No se pudo conectar la llamada. Revisa tu conexión e inténtalo de nuevo.'
 }
 
+function RemoteParticipantTile({ participant, deafened, outputDevice }: { participant: CallParticipant; deafened: boolean; outputDevice: string }) {
+  const hasVideo = useLiveVideoAvailable(participant.stream ?? null) && participant.isVideoEnabled
+  return <div className="video-wrapper remote-video" data-participant-id={participant.id}>
+    <LiveStreamVideo stream={participant.stream ?? null} label={participant.name} muted={deafened} outputDeviceId={outputDevice} className="remote-video-element"/>
+    {!hasVideo ? <div className="call-participant-placeholder"><SafeAvatar size="lg" url={participant.avatarUrl} name={participant.name}/><strong>{participant.name}</strong><small>{participant.stream ? 'Llamada de voz' : 'Esperando respuesta…'}</small></div> : null}
+    <div className="participant-overlay"><div className="participant-info"><SafeAvatar url={participant.avatarUrl} name={participant.name} className="participant-avatar"/><span className="participant-name">{participant.name}</span></div><div className="participant-status">{!participant.isAudioEnabled ? <MicOff size={18} aria-label="Micrófono silenciado"/> : null}{!hasVideo ? <VideoOff size={18} aria-label="Cámara apagada"/> : null}</div></div>
+  </div>
+}
+
 export function CallInterface({
   initialContextId = '',
   initialCallId = '',
@@ -54,10 +64,10 @@ export function CallInterface({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const remoteHasVideo = useLiveVideoAvailable(remoteStream)
   const localHasVideo = useLiveVideoAvailable(localStream)
   const remoteParticipant = callState?.remoteParticipant || participantInfo
-  const remoteVideoReady = remoteHasVideo && remoteParticipant?.isVideoEnabled !== false
+  const participants = callState?.participants?.length ? callState.participants : remoteParticipant ? [remoteParticipant] : []
+  const [showInvites, setShowInvites] = useState(false)
   const [isDeafened, setIsDeafened] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
@@ -128,8 +138,8 @@ export function CallInterface({
 
       manager.onCallEnd((reason, event) => {
         void event.persisted.then(async (persisted) => {
-          if (persisted && event.notifyRemote && event.remoteUserId) {
-            await sendCallResponse(supabase, event.remoteUserId, { callId: event.callId, action: event.action, fromUserId: user.id }, accessToken)
+          if (persisted && event.notifyRemote) {
+            await Promise.allSettled(event.remoteUserIds.map(target => sendCallResponse(supabase, target, { callId: event.callId, action: event.action, fromUserId: user.id }, accessToken)))
           }
         }).catch(() => undefined)
         if (reason === 'cleanup' || !active) return
@@ -249,8 +259,7 @@ export function CallInterface({
     const currentCallId = callState.currentCallId
     const receive = (payload: { callId?: string; action?: string }) => {
       if (payload.callId !== currentCallId) return
-      if (payload.action === 'accept') callManager?.markAccepted()
-      else if (['decline', 'cancel', 'end', 'busy', 'missed', 'collision'].includes(payload.action ?? '')) callManager?.endCall(payload.action ?? 'end')
+      void callManager?.receiveResponse(currentCallId, payload.action ?? '')
     }
     const stopUbuntu = subscribeUbuntuRealtime({ channel: `user:${user.id}`, onEvent: (event) => {
       if (event.payload?.event === 'call_response' || event.payload?.event === 'call_cancel') receive(event.payload)
@@ -347,7 +356,7 @@ export function CallInterface({
       <header className="call-header">
         <div className="call-info">
           <h2>
-            {remoteParticipant?.name || initialRemoteName || (callState.isIncomingCall ? 'Llamada entrante' : 'Llamada')}
+            {participants.length > 1 ? `Llamada grupal · ${participants.length + 1} personas` : remoteParticipant?.name || initialRemoteName || (callState.isIncomingCall ? 'Llamada entrante' : 'Llamada')}
           </h2>
           <p>
             {callState.isIncomingCall ? 'Llamada entrante' : callState.connectionLabel || (remoteStream ? 'En llamada' : 'Conectando')} •{' '}
@@ -366,21 +375,8 @@ export function CallInterface({
       </header>
 
       <main className="call-main">
-        <div className={`videos-container ${remoteVideoReady ? 'has-remote-video' : 'audio-only'}`}>
-          {/* Remote video */}
-          <div className="video-wrapper remote-video">
-            <LiveStreamVideo stream={remoteStream} label={remoteParticipant?.name || initialRemoteName || 'Participante'} muted={isDeafened} outputDeviceId={outputDevice} className="remote-video-element" />
-            {!remoteVideoReady ? <div className="call-participant-placeholder"><SafeAvatar size="lg" url={remoteParticipant?.avatarUrl} name={remoteParticipant?.name || initialRemoteName || 'Usuario'} /><strong>{remoteParticipant?.name || initialRemoteName || 'Usuario'}</strong><small>{remoteStream ? 'Llamada de voz' : callState.isIncomingCall ? 'Te está llamando' : 'Esperando respuesta…'}</small></div> : null}
-            <div className="participant-overlay">
-              <div className="participant-info">
-                <SafeAvatar url={remoteParticipant?.avatarUrl} name={remoteParticipant?.name || 'Usuario'} className="participant-avatar" />
-                <span className="participant-name">{remoteParticipant?.name || 'Usuario'}</span>
-              </div>
-              <div className="participant-status">
-                {!remoteVideoReady && <span className="video-off-indicator" aria-label="Cámara apagada"><VideoOff/></span>}
-              </div>
-            </div>
-          </div>
+        <div className={`videos-container${participants.length > 1 ? ' group-call-grid' : ''}`}>
+          {participants.map(participant => <RemoteParticipantTile key={participant.id} participant={participant} deafened={isDeafened} outputDevice={outputDevice}/>)}
 
           {/* Local video */}
           <div className="video-wrapper local-video" hidden={!localHasVideo || (!callState.isVideoEnabled && !callState.isScreenSharing)}>
@@ -394,6 +390,13 @@ export function CallInterface({
 
         {error ? <p className="call-media-error" role="status">{error}</p> : null}
         {showSettings ? <MediaDeviceDialog title="Sonido" label="Ajustes de sonido de la llamada" onClose={() => setShowSettings(false)}><AudioOutputSelect devices={devices} value={outputDevice} onChange={setOutputDevice} /></MediaDeviceDialog> : null}
+        {showInvites && callState.isOwner ? <CallInviteDialog excludedIds={[user.id, ...participants.map(participant => participant.id)]} onClose={() => setShowInvites(false)} onInvite={async contact => {
+          if (!callManager || !callState.currentCallId) throw new Error('La llamada terminó.')
+          const invitation = await callManager.inviteParticipant(contact.id)
+          if (invitation.state === 'accepted') throw new Error('Esta persona ya está en la llamada.')
+          await sendCallInvite(supabase, invitation.inviteeId, { callId: callState.currentCallId, title: displayName, callerUserId: user.id, callerName: displayName, callerAvatarUrl: avatarUrl, contextType: 'dm', contextId: '', isVideo: callState.isVideoEnabled }, accessToken)
+          return invitation.expiresAt
+        }}/> : null}
         <div className="call-controls">
           {callState.isIncomingCall ? (
             <div className="incoming-controls">
@@ -414,6 +417,7 @@ export function CallInterface({
             </div>
           ) : (
             <div className="active-controls">
+              {callState.isOwner ? <button type="button" className="control-btn" aria-label="Invitar personas a la llamada" disabled={callState.isOutgoingCall} onClick={() => setShowInvites(true)}><UserRoundPlus aria-hidden="true"/><span>Invitar</span></button> : null}
               {typeof document.documentElement.requestFullscreen === 'function' ? <button type="button" className="control-btn" aria-label="Ampliar llamada" onClick={() => void (document.fullscreenElement ? document.exitFullscreen() : container.current?.requestFullscreen())?.catch(() => {})}><Maximize/><span>Ampliar</span></button> : null}
               <button
                 className={`control-btn ${callState.isMuted ? 'muted' : ''}`}

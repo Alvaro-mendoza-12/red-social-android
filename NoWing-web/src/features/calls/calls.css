@@ -102,3 +102,18 @@
 .call-contact-search input { flex: 1; min-width: 0; min-height: 42px; background: transparent; border: 0; color: var(--foreground); }
 .call-directory-rooms { justify-self: start; display: inline-flex; gap: 8px; align-items: center; min-height: 40px; }
 .call-preparing { padding: 20px; align-items: center; gap: 12px; }
+.active-call .group-call-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(180px, 1fr); gap: 8px; overflow: auto; }
+.active-call .group-call-grid .remote-video { height: 100%; min-height: 180px; aspect-ratio: auto; }
+.group-call-grid .call-participant-placeholder { gap: 8px; }
+.group-call-grid .call-participant-placeholder .safe-avatar { width: 64px; height: 64px; }
+.group-call-grid .call-participant-placeholder strong { font-size: 1rem; }
+.group-call-grid .call-participant-placeholder { padding: 12px 8px 64px; }
+.group-call-grid .call-participant-placeholder :is(strong, small) { display: none; }
+.call-invite-dialog { width: min(460px, calc(100vw - 24px)); max-height: min(640px, calc(100dvh - 32px)); margin: auto; padding: 20px; border: 1px solid var(--outline); border-radius: 20px; background: var(--surface); color: var(--foreground); overflow: auto; box-shadow: 0 20px 70px #0008; }
+.call-invite-dialog::backdrop { background: #0009; }
+.call-invite-dialog header { display: flex; justify-content: space-between; align-items: start; gap: 10px; margin-bottom: 16px; }
+.call-invite-dialog h2 { font-size: 1.2rem; }
+.call-invite-dialog header p, .call-invite-hint { color: var(--secondary-text); font-size: .8rem; margin-block: 8px; }
+.call-invite-dialog .call-contact-list strong { min-width: 0; overflow-wrap: anywhere; }
+.call-invite-dialog .ghost-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; }
+.call-invite-status { font-size: .85rem; line-height: 1.5; margin-top: 12px; }

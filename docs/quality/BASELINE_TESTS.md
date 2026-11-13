@@ -1,4 +1,6 @@
-# Línea base y continuación 127
+# Línea base y continuaciones 127–129
+
+La [continuación web 129](../oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md) comprueba el menú plegable y la incorporación de una tercera persona a una llamada. Sus ensayos HTTP/PostgreSQL, navegador y pruebas automatizadas figuran en [129-resultados.json](evidence/129-resultados.json). Conserva independientes los resultados de Android 127, el trabajo móvil 128 todavía local y las pruebas físicas o el despliegue pendientes.
 
 La [continuación 127](../oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md) supera la suite completa de 2 783 pruebas JVM en 524 suites, cinco pruebas de componente en emulador API 35 y ochenta de herramientas. Compilan los dos paquetes de depuración y Lint K1 termina con cero errores/fatales y 342 avisos. Conserva los fallos previos reproducidos y el alcance de los ensayos. La matriz tiene 357 entradas después de incorporar sesenta líneas omitidas. Las huellas y límites se identifican en [127-resultados.json](evidence/127-resultados.json); la integración física sigue pendiente.
 

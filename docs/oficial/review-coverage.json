@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-13T15:37:22.004568+00:00",
-  "baseCommit": "dcae01e48e11ebfced56a02dcc0d83c318eadd2a",
+  "generatedAtUtc": "2026-11-13T16:57:04.324521+00:00",
+  "baseCommit": "4fd4ed64138179229e8c09f7b5a1bff1ee6f6cea",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3609,
-    "partial": 224,
-    "code-read": 564
+    "pending": 3610,
+    "partial": 227,
+    "code-read": 571
   },
   "countsByPhase": {
     "android": {
@@ -21,14 +21,14 @@
       "code-read": 425
     },
     "documentation": {
-      "pending": 577,
+      "pending": 583,
       "code-read": 37,
       "partial": 15
     },
     "server": {
-      "pending": 859,
-      "code-read": 47,
-      "partial": 26
+      "pending": 857,
+      "code-read": 49,
+      "partial": 27
     },
     "tooling-and-other": {
       "pending": 152,
@@ -36,9 +36,9 @@
       "code-read": 15
     },
     "web": {
-      "partial": 79,
-      "pending": 512,
-      "code-read": 40
+      "partial": 81,
+      "pending": 509,
+      "code-read": 45
     }
   },
   "files": [
@@ -737,6 +737,14 @@
       "phase": "web",
       "gitBlobId": "546b62fd4e448051b3a19cf27818b79a34e1f079",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/scripts/verify-call-invites-local.cjs",
+      "phase": "web",
+      "gitBlobId": "80b0223e4bbc5b7dcbfe3535d262a29e1487d74b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/App.css",
@@ -1671,10 +1679,26 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/features/calls/CallInviteDialog.test.tsx",
+      "phase": "web",
+      "gitBlobId": "410c932ac99c4d27d62b91d9289c41877d54fdf6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/features/calls/WebCallMedia.test.ts",
       "phase": "web",
       "gitBlobId": "810390088119e3797a3f7d9aa3185e364016b22e",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/features/calls/WebCallParticipants.test.ts",
+      "phase": "web",
+      "gitBlobId": "efb133c9513dec28ffce294390597ea179c132e9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/features/calls/WebRtcPeerSession.test.ts",
@@ -3227,9 +3251,17 @@
     {
       "file": "NoWing-web/src/features/calls/CallInterface.tsx",
       "phase": "web",
-      "gitBlobId": "b5fa8abf14dc9ef21c7a44f3dac33de88f40ca91",
+      "gitBlobId": "74399e7bbe2ff6e8e6ed8eaaffccb2a2a391e3e2",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/calls/CallInviteDialog.tsx",
+      "phase": "web",
+      "gitBlobId": "5b276d732052e4b1893e6d789992c4a72837a377",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3243,9 +3275,9 @@
     {
       "file": "NoWing-web/src/features/calls/WebCallManager.ts",
       "phase": "web",
-      "gitBlobId": "ad191aa632d91fde7db5655a853532a40ef93278",
+      "gitBlobId": "4cb9d0280f5e32ee23340876f965fcf785c4a5e3",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3257,8 +3289,10 @@
     {
       "file": "NoWing-web/src/features/calls/callControl.ts",
       "phase": "web",
-      "gitBlobId": "98581a77b546614115f67df3a45333c7361b26e9",
-      "reviewStatus": "pending"
+      "gitBlobId": "643aabfd983d567f56f78c213ba2c6730ac46770",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/calls/callRealtime.ts",
@@ -3269,9 +3303,9 @@
     {
       "file": "NoWing-web/src/features/calls/calls.css",
       "phase": "web",
-      "gitBlobId": "ba39249cf3a3a5fb6a3c6dddd95167dd5006d628",
+      "gitBlobId": "7ba990048d7d0db87464749e433d9b1b4f1abb98",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3412,7 +3446,9 @@
       "file": "NoWing-web/src/features/messages/MessagesPage.tsx",
       "phase": "web",
       "gitBlobId": "3994e7fd543ffb5b69b7ce5f8ad7697f56279886",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/messages/RoomChatPage.tsx",
@@ -3829,8 +3865,10 @@
     {
       "file": "NoWing-web/src/layout/AppLayout.tsx",
       "phase": "web",
-      "gitBlobId": "f4eb6eb35e82d9f8943268fe37b36bbd833e34cf",
-      "reviewStatus": "pending"
+      "gitBlobId": "dfa6bc52d55ae76e7c15096cd2f67c9d06da1607",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/main.tsx",
@@ -4095,9 +4133,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/shell.css",
       "phase": "web",
-      "gitBlobId": "a2e16027373647e752ad995ba966731e51d89a68",
+      "gitBlobId": "743cbf243df5ecd154aebf38206868900d289a75",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4111,9 +4149,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
       "phase": "web",
-      "gitBlobId": "12a3af44efa9465489b76bf69383cedf4c86ab12",
+      "gitBlobId": "025cd04667efcad7c9ea8ea670c30fc4b20d211e",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20015,9 +20053,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "b7ec131838a5dc71dd45b70ebca4fc0248d7b95f",
+      "gitBlobId": "a58348685a718e5f44bf6d40639d41fb186088ad",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20172,6 +20210,14 @@
       "gitBlobId": "95880b3be8a2cd67d979bb40f33933e6c2ab65b5",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "a55c8cc49cc40f97be77fcffe545b0eb881e109b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20703,9 +20749,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "1ccc9479c96e3d623544b05db8cac4879367d05a",
+      "gitBlobId": "7fed0ad51079e4737d23ac631b8d9ab6f8846c74",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21133,10 +21179,8 @@
     {
       "file": "docs/product/ECOSYSTEM_IMPLEMENTATION_PLAN.md",
       "phase": "documentation",
-      "gitBlobId": "d9143190ae377f21640f528fe163d1b8a27d4c01",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "dbb7905599cc2319f4378aab6bc93108fab79b8a",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/product/FEATURE_STATUS_MATRIX.csv",
@@ -21167,10 +21211,8 @@
     {
       "file": "docs/product/PRODUCT_INVENTORY.md",
       "phase": "documentation",
-      "gitBlobId": "28f88d4a718df9620871e68e9624583d86843843",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "49a67f802fb47d56ed18f8a596178586e3d0d63d",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/product/PRODUCT_STRATEGY.md",
@@ -21181,8 +21223,16 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "abe0e40b4df7b6fb41433ede9211b76ab1271a96",
+      "gitBlobId": "38553d125909f84c2e3d56ed5bf59086389b6a8a",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/product/WEB_NAVIGATION_CALL_REQUIREMENTS_2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "4506bfc869cef65690bc81273838068b833343c1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/production-readiness-report.md",
@@ -21201,7 +21251,7 @@
     {
       "file": "docs/quality/BASELINE_TESTS.md",
       "phase": "documentation",
-      "gitBlobId": "9c4d4ef201f1e9a1d003c4a99b249d7fd9b03ecf",
+      "gitBlobId": "48c318dfeefe343dfc1cd22b3979a6b0b221f388",
       "reviewStatus": "pending"
     },
     {
@@ -21269,6 +21319,30 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/129-llamada-grupal.png",
+      "phase": "documentation",
+      "gitBlobId": "8617c50c4ae5b35c5ee067744a6abc93471f1645",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/129-llamada-movil-web.png",
+      "phase": "documentation",
+      "gitBlobId": "39df8cb8402229e6243dbae07b27d6291acd6a43",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/129-menu-plegado.png",
+      "phase": "documentation",
+      "gitBlobId": "f2a7e964db16c55630d4c0a5b29976756ace1e71",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/129-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "9043364f4b9838cea95f4878119838d324d5b4eb",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/research/COMPETITIVE_BENCHMARK.md",
@@ -21723,6 +21797,14 @@
       "phase": "server",
       "gitBlobId": "fe953a22e200034b441324bef867563d65f9fa6e",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/scripts/verify-call-expansion-local.js",
+      "phase": "server",
+      "gitBlobId": "23f404289a79fbfbbff8a80f224fc6702c83ff18",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-challenge-http-isolated.js",
@@ -22201,9 +22283,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/call-access-store.js",
       "phase": "server",
-      "gitBlobId": "0dbe23f30df7ebe7d128b62483fbf91bd0d996fb",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "d3eef0d39b8bfbdad5397426c1bd86f1848674b3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23289,8 +23371,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/audit-content-privacy.test.js",
       "phase": "server",
-      "gitBlobId": "a2e3228f818d5ac9531a23b219966d14a356f271",
-      "reviewStatus": "pending"
+      "gitBlobId": "fc3c5548bff356fd18c0531af76de452a9aa0b9d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/auth-public-username.test.js",
@@ -23345,8 +23429,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/call-access-store.test.js",
       "phase": "server",
-      "gitBlobId": "153d25838b1ae7df6f330479cd7555922c97f623",
-      "reviewStatus": "pending"
+      "gitBlobId": "ec99ddf5f54a5994a9a964bcabb7b3240744dced",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/challenge-mutations.test.js",

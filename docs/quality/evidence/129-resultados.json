@@ -1,0 +1,157 @@
+{
+  "block": 129,
+  "date": "2026-11-13",
+  "recordedAtUtc": "2026-11-13T16:56:53.502743+00:00",
+  "timezone": "America/Bogota",
+  "base": {
+    "featureLiveGifts": "4fd4ed64138179229e8c09f7b5a1bff1ee6f6cea",
+    "main": "90c7784be31e3b0ef34ed6faf1a0204184a548e9"
+  },
+  "scope": "Requested web navigation and call expansion; no mobile 128 changes, no production deployment or new APK.",
+  "automated": {
+    "webGeneral": {
+      "passedTests": 1201,
+      "suites": 188,
+      "failed": 0,
+      "scope": "General run before the final five additional tests and targeted media/invitation corrections."
+    },
+    "webCallsFinal": {
+      "passedTests": 20,
+      "suites": 4,
+      "failed": 0,
+      "scope": "Final call sources; overlaps the general run. Four dialog tests and one new renegotiation case were added afterward."
+    },
+    "apiGeneral": {
+      "passed": 1090,
+      "skipped": 24,
+      "failed": 0,
+      "runtime": "Node 22.23.4",
+      "scope": "Before the final expiry changes; skips include PostgreSQL configuration, media tools and Linux container capabilities."
+    },
+    "apiTargetFinal": {
+      "passed": 41,
+      "skipped": 0,
+      "failed": 0,
+      "internalCallAssertions": 67,
+      "scope": "Final access store, notification envelope and profile privacy fixtures. SQL mocked in call-access-store assertions."
+    },
+    "webBuild": {
+      "passed": true,
+      "publicPages": 21,
+      "typeScript": true,
+      "prerender": true,
+      "warnings": [
+        "Existing application chunks exceed the configured 1000 kB warning threshold."
+      ]
+    },
+    "lintChangedProduction": {
+      "files": 5,
+      "errors": 0,
+      "warnings": 0
+    },
+    "traceability": {
+      "entries": 359,
+      "sourceAuditPassed": true,
+      "wholeImplementationComplete": false
+    }
+  },
+  "localIntegration": {
+    "checks": [
+      "unaccepted outsider and accepted non-owner cannot invite",
+      "block against any current participant rejects the invitation",
+      "concurrent invitation retries create exactly one authorization",
+      "the invitee gains no permission to the original private chat",
+      "an expired invitation cannot be accepted and can be renewed without duplicates",
+      "a block introduced after invitation prevents acceptance",
+      "one participant leaving preserves both original permissions",
+      "a declined extra invitation does not terminate the original call",
+      "ending by the owner revokes every participant"
+    ],
+    "database": "PostgreSQL loopback",
+    "syntheticAccounts": true,
+    "productionRequests": false
+  },
+  "browser": {
+    "pass": [
+      "desktop collapse, accessible names, persisted layout and restored width",
+      "responsive layout and independent scroll 1355",
+      "responsive layout and independent scroll 1153",
+      "responsive layout and independent scroll 768",
+      "responsive layout and independent scroll 375",
+      "invitation and third participant without replacing existing tracks",
+      "camera renegotiation preserves all remote audio streams",
+      "one member leaving preserves the other two",
+      "host ending releases all remaining participants"
+    ],
+    "errors": [],
+    "viewports": [
+      1440,
+      1355,
+      1153,
+      768,
+      375
+    ],
+    "independentContexts": 3,
+    "media": "Synthetic Chrome microphone and camera; decoded remote video and live remote audio tracks, not physical audibility.",
+    "services": "Local HTTPS proxy to loopback API, gateway, signaling and PostgreSQL 16; all other DNS blocked."
+  },
+  "reproduction": {
+    "api": "infrastructure/local-fallback/api/scripts/verify-call-expansion-local.js",
+    "browser": "NoWing-web/scripts/verify-call-invites-local.cjs",
+    "privateInputs": "QA_ACCOUNT_FILE must point to a local synthetic fixture with a/b/c and chat. Credentials are never committed.",
+    "browserEnvironment": [
+      "QA_ACCOUNT_FILE",
+      "QA_OUTPUT_DIR",
+      "QA_HTTPS_PORT",
+      "QA_CHROME (optional)",
+      "NODE_PATH or installed playwright"
+    ],
+    "apiEnvironment": [
+      "QA_ACCOUNT_FILE",
+      "QA_DATABASE_URL (loopback only)",
+      "QA_API_URL (loopback only)",
+      "QA_RESULT_FILE (optional)"
+    ]
+  },
+  "schema": {
+    "additiveColumn": "fallback_call_sessions.expanded BOOLEAN NOT NULL DEFAULT FALSE",
+    "applied": "Local PostgreSQL only",
+    "rollback": "Revert code; retain the added column and call data."
+  },
+  "pending": [
+    "Android–web group media and revocation",
+    "Physical devices and different networks/TURN",
+    "Eight-person media capacity and concurrent room load",
+    "Production API/web deployment",
+    "Unpublished mobile 128 account-lifetime work",
+    "Whole requirement package and final identified APK"
+  ],
+  "sourceSha256": {
+    "NoWing-web/scripts/verify-call-invites-local.cjs": "bdb0de3a2edc8a5054ba73b2d8899048403d4df72557df1880df69cd9a24fb93",
+    "NoWing-web/src/__tests__/features/calls/CallInviteDialog.test.tsx": "3e6cfb5008440dc6fec57b3d0d1da9449589adde6f34e819691eb92d8da523da",
+    "NoWing-web/src/__tests__/features/calls/WebCallParticipants.test.ts": "a0132c8d2e76a2a45a23f39dc07bf2dc1dfdecfc31a83957a78261a47a217a1c",
+    "NoWing-web/src/features/calls/CallInviteDialog.tsx": "d4567e77361220328d546c9572c897055fb4988ad0cecfe6b5f1494c1ef44247",
+    "NoWing-web/src/features/calls/CallInterface.tsx": "020820bbf0af1e6e93ead48635ad89539472449a4cbfdb3f9cdbf637fceb86d2",
+    "NoWing-web/src/features/calls/WebCallManager.ts": "339d9ba32d8e59ecac59ca62df2c6abf2edaed019d4a61eab054ecd4f8cad5bd",
+    "NoWing-web/src/features/calls/callControl.ts": "98fc25bfc09ca6471bb67ca47eb5ce1fc918fdc730850f8a0ce7a945e114c7c5",
+    "NoWing-web/src/features/calls/calls.css": "1d00f11006c30c856c2b6037fd45fba546535096e0ec899126cd539f58968d74",
+    "NoWing-web/src/layout/AppLayout.tsx": "1c0713acb1d124cdc6d9000994d9f39aee57a4903d538bdada2b9b25e09b1220",
+    "NoWing-web/src/ui/novvin/shell.css": "f8cba2f40c1b4f5d6939b1b042b5285758036c4c41572d33031c4368488f12d7",
+    "NoWing-web/src/ui/novvin/webParity.css": "a7e64c17a7613641689cc011da6b07739bfdef1e497bf40a25c53a71f2d2137b",
+    "infrastructure/local-fallback/api/src/call-access-store.js": "fa29ed6f7c9c2f75748aa0abef787fdcc3294e83a920a7c18699f5ce21d346e8",
+    "infrastructure/local-fallback/api/tests/call-access-store.test.js": "61a6cf11c1818b4ac48e646bf3ee8b9838979494a1cccf3931f9fd22cc7b4b8a",
+    "infrastructure/local-fallback/api/tests/audit-content-privacy.test.js": "f811d7d8f26f3ab03cb7d9d7eac71152bd624cbaecd6a73685a8d1654ad67b46",
+    "infrastructure/local-fallback/api/scripts/verify-call-expansion-local.js": "9f4ce2946d67c89a6b845e60724f3e45abb550acdc3fc672468427cc620b0308",
+    "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md": "8d86e870b25903b87d7bc1cef5e9565c58007d28c4ebc7ba435779d76caefe6e",
+    "docs/oficial/README.md": "622d15fa56f2911a6c2a0051e493ecb607faec7a537449941972f0d687421865",
+    "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md": "0ca961149ab760bc6fd07a1601f6bebbcfb27cfb86f70bafbd9c53eee52c8c99",
+    "docs/product/WEB_NAVIGATION_CALL_REQUIREMENTS_2026-11-13.md": "3fbadb8485f7629c3f46fd9122a6ce417745e545f17b11979f0d3beb5570b4e7",
+    "docs/product/PRODUCT_INVENTORY.md": "e4a04dd10f6d1f287fda80c7090156d1bada1e6210ffc959e716aa0600050408",
+    "docs/product/ECOSYSTEM_IMPLEMENTATION_PLAN.md": "8d1650d936331de96647ebab194ad4dbd49e39f9ba1ee99c8e5c3ca30abf3893",
+    "docs/product/REQUIREMENT_TRACEABILITY.csv": "3e6e13847ff580254200e83bbbbf2d58f6944da68c2af03664e53e8c8293892e",
+    "docs/quality/BASELINE_TESTS.md": "792b4a44433da3ce1e6afd19530211cef368ebc1fe219edf59f369ed1ba1e1be",
+    "docs/quality/evidence/129-menu-plegado.png": "20207ca90bd8c75dc5dbbf4beb1a1d9cc38893d50b5757c97938849fcbc0966b",
+    "docs/quality/evidence/129-llamada-grupal.png": "2465d2632ebd5cccf3748a9b8023e874ef0ed22309e3429a8a6923018bd89d78",
+    "docs/quality/evidence/129-llamada-movil-web.png": "bb56003bbd99e0522bda9d267deb9c9b43bb9ebf539febb7b6b115216db57989"
+  }
+}

@@ -35,6 +35,7 @@ async function ensureCallAccessTables(pool) {
     ON fallback_call_sessions(owner_user_id,expires_at) WHERE state IN ('ringing','active')`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_fallback_call_invitees_user
     ON fallback_call_invitees(user_id,call_id) WHERE state='accepted'`);
+  await pool.query(`ALTER TABLE fallback_call_sessions ADD COLUMN IF NOT EXISTS expanded BOOLEAN NOT NULL DEFAULT FALSE`);
 }
 
 async function canonicalIdentity(pool, raw) {
@@ -63,20 +64,27 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
   }
   async function currentMembership(db, session, user) {
     const current = await canonicalIdentity(db, user.id);
-    const members = await contextFor(db, user, session.context_type, session.context_id);
-    if (!current.aliases.some(alias => members.has(alias))) throw denied();
     const owner = await canonicalIdentity(db, session.owner_user_id);
+    // Expanding a direct call grants access only to this call. It never adds
+    // the invitee to the original private conversation or exposes its ID.
+    const expanded = session.context_type === 'dm' && session.expanded;
+    const members = await contextFor(db, expanded ? { id: owner.aliases[0], supabase_user_id: owner.userId } : user, session.context_type, session.context_id);
+    if (expanded) {
+      const invite = await db.query(`SELECT state FROM fallback_call_invitees WHERE call_id=$1::uuid AND user_id=$2`, [session.id, current.userId]);
+      if (!['invited', 'accepted'].includes(invite.rows[0]?.state)) throw denied();
+    } else if (!current.aliases.some(alias => members.has(alias))) throw denied();
     if (!owner.aliases.some(alias => members.has(alias))) throw denied();
     if (current.userId !== owner.userId && await pairBlocked(db, current, owner)) throw denied();
-    if (current.userId === owner.userId && session.context_type === 'dm') {
+    if (expanded || (current.userId === owner.userId && session.context_type === 'dm')) {
       // A direct call needs both sides to remain eligible. Owners are not exempt
       // when the recipient blocks them; shared group/community calls stay scoped
       // to the requesting participant's relationship with the owner.
       const peers = await db.query(`SELECT user_id FROM fallback_call_invitees
-        WHERE call_id=$1::uuid AND user_id<>$2 AND state IN ('invited','accepted')`, [session.id, owner.userId]);
+      WHERE call_id=$1::uuid AND user_id<>$2 AND state IN ('invited','accepted')
+        AND ($3::boolean=FALSE OR state='accepted')`, [session.id, expanded ? current.userId : owner.userId, Boolean(expanded)]);
       for (const peer of peers.rows) {
         const target = await canonicalIdentity(db, peer.user_id);
-        if (!target.aliases.some(alias => members.has(alias)) || await pairBlocked(db, owner, target)) throw denied();
+        if ((!expanded && !target.aliases.some(alias => members.has(alias))) || await pairBlocked(db, current, target)) throw denied();
       }
     }
     return current;
@@ -90,7 +98,7 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
   }
   async function lockedSession(db, callId) {
     if (!UUID.test(id(callId))) throw denied();
-    const { rows } = await db.query(`SELECT id::text,owner_user_id,context_type,context_id,request_hash,state,expires_at
+    const { rows } = await db.query(`SELECT id::text,owner_user_id,context_type,context_id,request_hash,state,expires_at,expanded
       FROM fallback_call_sessions WHERE id=$1::uuid FOR UPDATE`, [id(callId)]);
     const session = rows[0];
     if (!session || !['ringing', 'active'].includes(session.state) || new Date(session.expires_at).getTime() <= now()) throw denied();
@@ -104,6 +112,36 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
     if (rows.length) throw denied('CALL_ACCOUNT_BUSY', 409);
   }
   return {
+    async invite(user, callId, input) {
+      if (!Array.isArray(input?.inviteeIds) || input.inviteeIds.length !== 1) throw denied('CALL_REQUEST_INVALID', 400);
+      return transaction(async db => {
+        const session = await lockedSession(db, callId);
+        const actor = await currentMembership(db, session, user);
+        if (session.owner_user_id !== actor.userId || session.state !== 'active') throw denied();
+        const actorInvite = await db.query(`SELECT state FROM fallback_call_invitees WHERE call_id=$1::uuid AND user_id=$2`, [session.id, actor.userId]);
+        if (actorInvite.rows[0]?.state !== 'accepted') throw denied();
+        const target = await canonicalIdentity(db, input.inviteeIds[0]);
+        if (target.userId === actor.userId) throw denied('CALL_REQUEST_INVALID', 400);
+        if (session.context_type !== 'dm') {
+          const members = await contextFor(db, user, session.context_type, session.context_id);
+          if (!target.aliases.some(alias => members.has(alias))) throw denied();
+        }
+        const peers = await db.query(`SELECT user_id FROM fallback_call_invitees
+          WHERE call_id=$1::uuid AND user_id<>$2 AND state IN ('invited','accepted')
+            AND (state='accepted' OR updated_at>NOW()-($3::int*INTERVAL '1 second'))`, [session.id, target.userId, INVITE_TTL_SECONDS]);
+        for (const peer of peers.rows) if (await pairBlocked(db, target, await canonicalIdentity(db, peer.user_id))) throw denied();
+        const existing = await db.query(`SELECT state,updated_at FROM fallback_call_invitees WHERE call_id=$1::uuid AND user_id=$2`, [session.id, target.userId]);
+        const activeInvite = existing.rows[0]?.state === 'accepted' || (existing.rows[0]?.state === 'invited' && new Date(existing.rows[0].updated_at).getTime() > now() - INVITE_TTL_SECONDS * 1000);
+        if (!activeInvite) {
+          if (peers.rows.length >= MAX_ACTIVE_PARTICIPANTS) throw denied('CALL_PARTICIPANT_LIMIT_REACHED', 409);
+          await db.query(`INSERT INTO fallback_call_invitees(call_id,user_id,role,state) VALUES($1::uuid,$2,'member','invited')
+            ON CONFLICT(call_id,user_id) DO UPDATE SET state='invited',updated_at=NOW()`, [session.id, target.userId]);
+        }
+        await db.query(`UPDATE fallback_call_sessions SET expanded=TRUE,updated_at=NOW() WHERE id=$1::uuid`, [session.id]);
+        return { callId: session.id, inviteeId: target.userId, state: existing.rows[0]?.state === 'accepted' ? 'accepted' : 'invited', participantLimit: MAX_ACTIVE_PARTICIPANTS,
+          expiresAt: new Date(activeInvite ? new Date(existing.rows[0].updated_at).getTime() + INVITE_TTL_SECONDS * 1000 : now() + INVITE_TTL_SECONDS * 1000).toISOString() };
+      });
+    },
     async prepare(user, input) {
       const callId = id(input?.callId), contextType = id(input?.contextType), contextId = id(input?.contextId);
       if (!UUID.test(callId) || !['dm', 'group', 'community'].includes(contextType) || !contextId || contextId.length > 160 ||
@@ -144,8 +182,9 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
         await quota(db, joining.userId, id(callId));
         const session = await lockedSession(db, callId);
         const current = await currentMembership(db, session, user);
-        const { rows } = await db.query(`SELECT state FROM fallback_call_invitees WHERE call_id=$1::uuid AND user_id=$2`, [session.id, current.userId]);
+        const { rows } = await db.query(`SELECT state,updated_at FROM fallback_call_invitees WHERE call_id=$1::uuid AND user_id=$2`, [session.id, current.userId]);
         const invite = rows[0];
+        if (session.context_type === 'dm' && invite?.state === 'invited' && new Date(invite.updated_at).getTime() <= now() - INVITE_TTL_SECONDS * 1000) throw denied('CALL_INVITE_EXPIRED');
         // Group/community members may join a persisted call_start from their room.
         // A public community preview is never sufficient: currentMembership requires actual membership.
         if (session.context_type === 'dm' && (!invite || !['invited', 'accepted'].includes(invite.state))) throw denied();
@@ -157,7 +196,7 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
           SET state='accepted',accepted_at=COALESCE(fallback_call_invitees.accepted_at,NOW()),updated_at=NOW()`, [session.id, current.userId]);
         const updated = await db.query(`UPDATE fallback_call_sessions SET state='active',expires_at=NOW()+($2::int*INTERVAL '1 second'),updated_at=NOW()
           WHERE id=$1::uuid RETURNING expires_at`, [session.id, ACTIVE_LEASE_SECONDS]);
-        return { callId: session.id, state: 'active', expiresAt: updated.rows[0]?.expires_at };
+        return { callId: session.id, state: 'active', expiresAt: updated.rows[0]?.expires_at, ownerUserId: session.owner_user_id };
       });
     },
     async access(user, callId) {
@@ -180,15 +219,15 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
       return transaction(async db => {
         // Terminal state is idempotent; do not use lockedSession, which excludes ended calls.
         if (!UUID.test(id(callId))) throw denied();
-        const { rows } = await db.query(`SELECT id::text,owner_user_id,context_type,state FROM fallback_call_sessions WHERE id=$1::uuid FOR UPDATE`, [id(callId)]);
+        const { rows } = await db.query(`SELECT id::text,owner_user_id,context_type,state,expanded FROM fallback_call_sessions WHERE id=$1::uuid FOR UPDATE`, [id(callId)]);
         const session = rows[0]; if (!session) throw denied();
         const current = await canonicalIdentity(db, user.id);
         const member = await db.query(`SELECT state FROM fallback_call_invitees WHERE call_id=$1::uuid AND user_id=$2`, [session.id, current.userId]);
         if (!member.rows.length) throw denied();
         const state = ['decline', 'busy', 'missed', 'collision'].includes(id(action)) ? 'declined' : 'left';
         await db.query(`UPDATE fallback_call_invitees SET state=$3,updated_at=NOW() WHERE call_id=$1::uuid AND user_id=$2`, [session.id, current.userId, state]);
-        if (current.userId === session.owner_user_id || session.context_type === 'dm' ||
-            (id(action) === 'end' && member.rows[0]?.state === 'accepted')) {
+        if (current.userId === session.owner_user_id || (!session.expanded && (session.context_type === 'dm' ||
+            (id(action) === 'end' && member.rows[0]?.state === 'accepted')))) {
           await db.query(`UPDATE fallback_call_sessions SET state='ended',ended_at=COALESCE(ended_at,NOW()),expires_at=NOW(),updated_at=NOW() WHERE id=$1::uuid`, [session.id]);
         }
         return { callId: session.id, left: true };
@@ -201,13 +240,14 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
       if (!UUID.test(callId)) throw denied();
       const actor = await canonicalIdentity(pool, user.id);
       const recipient = await canonicalIdentity(pool, input?.recipientId || input?.recipient_id);
-      const { rows } = await pool.query(`SELECT c.id::text,c.owner_user_id,c.context_type,c.context_id,c.state,c.expires_at,
-        a.state AS actor_state,r.state AS recipient_state FROM fallback_call_sessions c
+      const { rows } = await pool.query(`SELECT c.id::text,c.owner_user_id,c.context_type,c.context_id,c.state,c.expires_at,c.expanded,
+        a.state AS actor_state,r.state AS recipient_state,r.updated_at AS recipient_updated_at FROM fallback_call_sessions c
         JOIN fallback_call_invitees a ON a.call_id=c.id AND a.user_id=$2
         JOIN fallback_call_invitees r ON r.call_id=c.id AND r.user_id=$3 WHERE c.id=$1::uuid`, [callId, actor.userId, recipient.userId]);
       const call = rows[0]; if (!call) throw denied();
       if (type === 'call_invite' && (call.owner_user_id !== actor.userId || !['ringing', 'active'].includes(call.state) ||
-          new Date(call.expires_at).getTime() <= now() || !['invited', 'accepted'].includes(call.recipient_state))) throw denied();
+          new Date(call.expires_at).getTime() <= now() || !['invited', 'accepted'].includes(call.recipient_state) ||
+          (call.recipient_state === 'invited' && new Date(call.recipient_updated_at).getTime() <= now() - INVITE_TTL_SECONDS * 1000))) throw denied();
       // Every event's actor is bound to authenticated identity; extras cannot impersonate another caller.
       const extra = input.extraData || input.extra_data || {};
       const action = id(extra.call_action || extra.callAction || (type === 'call_cancel' ? 'cancel' : ''));
@@ -219,7 +259,7 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
         const ownerCancel = actor.userId === call.owner_user_id && call.state === 'ended';
         const recipientDecline = actor.userId !== call.owner_user_id && recipient.userId === call.owner_user_id &&
           call.actor_state === 'declined' && ['decline', 'busy', 'collision', 'missed'].includes(action);
-        const participantEnd = action === 'end' && call.actor_state === 'left' && call.state === 'ended';
+        const participantEnd = action === 'end' && call.actor_state === 'left' && (call.state === 'ended' || (call.expanded && recipient.userId === call.owner_user_id));
         if (!ownerCancel && !recipientDecline && !participantEnd) throw denied();
       }
       if (type === 'call_invite') {
@@ -232,7 +272,7 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
         if (await pairBlocked(pool, actor, recipient)) throw denied();
       }
       return { ...input, targetId: callId, recipientId: recipient.userId, extraData: { ...extra,
-        call_id: callId, from_user_id: actor.userId, call_context_type: call.context_type, call_context_id: call.context_id } };
+        call_id: callId, from_user_id: actor.userId, call_context_type: call.context_type, call_context_id: call.expanded && call.context_type === 'dm' ? '' : call.context_id } };
     },
   };
 }
@@ -253,6 +293,7 @@ function registerCallAccessRoutes(app, dependencies) {
     };
   }
   app.post('/v1/data/calls/prepare', authRequired, route((store, user, req) => store.prepare(user, req.body)));
+  app.post('/v1/data/calls/:callId/invite', authRequired, route((store, user, req) => store.invite(user, req.params.callId, req.body)));
   app.post('/v1/data/calls/:callId/accept', authRequired, route((store, user, req) => store.accept(user, req.params.callId)));
   app.post('/v1/data/calls/:callId/access', authRequired, route((store, user, req) => store.access(user, req.params.callId)));
   app.post('/v1/data/calls/:callId/leave', authRequired, route((store, user, req) => store.leave(user, req.params.callId, req.body?.action)));

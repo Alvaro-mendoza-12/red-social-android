@@ -4,6 +4,8 @@ Estado documental al 13 de noviembre de 2026. Esta es la entrada para desarrollo
 
 ## Estado vigente
 
+La [continuación 129](129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md) incorpora el menú lateral web plegable y la invitación autorizada de una tercera persona durante una llamada, sin reiniciar los medios existentes. La prioridad web concreta fue indicada por el propietario; el bloque móvil 128 sigue local, sin publicar ni validar. Identifica los ensayos locales y mantiene pendientes la integración física, el despliegue de API y la revisión integral.
+
 La [continuación 127](127-android-participacion-pausa-y-trazabilidad-2026-11-13.md) corrige la pausa y los borradores de participación LIVE en Android. Añade sesenta líneas omitidas a la trazabilidad, que conserva 357 entradas, y un control de correspondencia de fuentes en CI. Identifica sus pruebas y límites; la revisión móvil integral, los recorridos físicos y la APK final siguen pendientes.
 
 La [continuación 125](125-live-participacion-y-recuperacion-2026-11-13.md) incorpora encuestas y preguntas de LIVE en Android, web y API, corrige el acceso de invitados privados y la recuperación de suscripciones Android y confirma inicio/salida en la web. Supera 2 777 pruebas JVM y doce controles de emulador. Son cambios y ensayos locales, con integración física y despliegue pendientes. La [trazabilidad de requisitos](../product/REQUIREMENT_TRACEABILITY.csv) conserva también las fases todavía abiertas.

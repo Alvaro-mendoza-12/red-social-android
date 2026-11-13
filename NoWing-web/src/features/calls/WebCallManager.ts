@@ -1,7 +1,7 @@
 import { io, type Socket } from 'socket.io-client'
 import { buildSignalingAffinity } from '../../core/signalingAffinity'
 import { WebRtcPeerSession } from './WebRtcPeerSession'
-import { CallControlClient, type CallLeaveAction } from './callControl'
+import { CallControlClient, CallControlError, type CallLeaveAction } from './callControl'
 import { replacePeerTracks } from '../../core/replacePeerTracks'
 
 export interface CallParticipant {
@@ -20,6 +20,8 @@ export interface CallState {
   isOutgoingCall: boolean
   currentCallId: string | null
   remoteParticipant: CallParticipant | null
+  participants?: CallParticipant[]
+  isOwner?: boolean
   duration: number
   isMuted: boolean
   isVideoEnabled: boolean
@@ -30,6 +32,7 @@ export interface CallState {
 export type CallEndEvent = {
   callId: string
   remoteUserId: string
+  remoteUserIds: string[]
   action: CallLeaveAction
   notifyRemote: boolean
   persisted: Promise<boolean>
@@ -129,6 +132,7 @@ export class WebCallManager {
   private pendingJoinCancel: (() => void) | null = null
   private disposed = false
   private wasAccepted = false
+  private invitees = new Set<string>()
   private socket: CallSocket | null = null
   private ownSocketId = ''
   private localStream: MediaStream | null = null
@@ -198,10 +202,12 @@ export class WebCallManager {
       isIncomingCall: false,
       currentCallId: callId,
       remoteParticipant: participant,
+      isOwner: true,
       isVideoEnabled: participantInfo.videoEnabled,
       connectionLabel: 'Llamando...',
     }
     this.notifyCallStateChange()
+    this.invitees.add(remoteUserId)
 
     try {
       await this.pendingLeave
@@ -255,8 +261,9 @@ export class WebCallManager {
       this.ensureCallStillCurrent(callId)
       const accepting = this.callControl.accept(callId)
       this.controlRequest = accepting
-      await accepting
+      const permission = await accepting
       this.ensureCallStillCurrent(callId)
+      this.callState = { ...this.callState, isOwner: permission.ownerUserId === this.userId }
       this.wasAccepted = true
       await this.initializeLocalMedia(true, participantInfo.videoEnabled, callId)
       this.ensureCallStillCurrent(callId)
@@ -280,6 +287,27 @@ export class WebCallManager {
     this.notifyCallStateChange()
   }
 
+  async inviteParticipant(userId: string): Promise<{ inviteeId: string; state: 'accepted' | 'invited'; participantLimit: number; expiresAt: string }> {
+    const callId = this.callState.currentCallId
+    if (!callId || !this.callState.isOwner || !this.wasAccepted) throw new Error('Espera a que conecte la llamada para invitar.')
+    const result = await this.callControl.invite(callId, userId)
+    this.ensureCallStillCurrent(callId)
+    this.invitees.add(result.inviteeId)
+    return result
+  }
+
+  async receiveResponse(callId: string, action: string): Promise<void> {
+    if (this.callState.currentCallId !== callId || this.ended) return
+    if (action === 'accept') { this.markAccepted(); return }
+    if (!['decline', 'cancel', 'end', 'busy', 'missed', 'collision'].includes(action)) return
+    // A declined extra invitation or one member leaving must not end the room.
+    // Verify persisted access instead of trusting a legacy broadcast's action.
+    try { await this.callControl.access(callId) }
+    catch (error) {
+      if (error instanceof CallControlError && error.status === 404 && this.callState.currentCallId === callId) this.endCall(action)
+    }
+  }
+
   rejectCall(): void {
     this.endCall('rejected')
   }
@@ -289,6 +317,7 @@ export class WebCallManager {
     this.ended = true
     const callId = this.callState.currentCallId ?? ''
     const remoteUserId = this.callState.remoteParticipant?.id ?? ''
+    const remoteUserIds = [...new Set([remoteUserId, ...this.invitees, ...[...this.participants.values()].map(value => value.id)])].filter(Boolean)
     const action: CallLeaveAction = reason === 'timeout' ? 'missed'
       : reason === 'rejected' ? 'decline'
       : this.callState.isOutgoingCall && !this.wasAccepted ? 'cancel' : 'end'
@@ -316,6 +345,7 @@ export class WebCallManager {
     this.peerSessions.clear()
     this.pendingCandidates.clear()
     this.participants.clear()
+    this.invitees.clear()
 
     this.socket?.disconnect()
     this.socket = null
@@ -339,7 +369,7 @@ export class WebCallManager {
     }
     this.callStartTime = null
 
-    this.onCallEndCallbacks.forEach((callback) => callback(reason, { callId, remoteUserId, action, notifyRemote, persisted }))
+    this.onCallEndCallbacks.forEach((callback) => callback(reason, { callId, remoteUserId, remoteUserIds, action, notifyRemote, persisted }))
     this.notifyCallStateChange()
   }
 
@@ -574,10 +604,11 @@ export class WebCallManager {
       this.peerSessions.delete(socketId)
       this.peerConnections.get(socketId)?.close()
       this.peerConnections.delete(socketId)
+      if (this.callState.remoteParticipant?.socketId === socketId) this.callState = { ...this.callState, remoteParticipant: [...this.participants.values()][0] ?? null }
       if (this.participants.size === 0 && this.callState.currentCallId === callId) {
         this.callState = { ...this.callState, connectionLabel: 'Esperando reconexión...' }
-        this.notifyCallStateChange()
       }
+      this.notifyCallStateChange()
     })
 
     socket.on('offer', (payload) => {
@@ -631,16 +662,19 @@ export class WebCallManager {
     const userId = signalParticipant.userId?.trim()
     if (!socketId || !userId || socketId === this.ownSocketId || userId === this.userId) return
 
+    const existing = this.participants.get(socketId)
     const participant: CallParticipant = {
       id: userId,
-      name: signalParticipant.name?.trim() || this.callState.remoteParticipant?.name || 'Usuario',
-      avatarUrl: signalParticipant.avatarUrl?.trim() || this.callState.remoteParticipant?.avatarUrl || '',
-      isAudioEnabled: true,
-      isVideoEnabled: signalParticipant.videoEnabled !== false,
+      name: signalParticipant.name?.trim() || existing?.name || (this.callState.remoteParticipant?.id === userId ? this.callState.remoteParticipant.name : 'Usuario'),
+      avatarUrl: signalParticipant.avatarUrl?.trim() || existing?.avatarUrl || (this.callState.remoteParticipant?.id === userId ? this.callState.remoteParticipant.avatarUrl : ''),
+      isAudioEnabled: existing?.isAudioEnabled ?? true,
+      isVideoEnabled: signalParticipant.videoEnabled ?? existing?.isVideoEnabled ?? true,
       isSpeaking: false,
       socketId,
+      stream: existing?.stream,
     }
     this.participants.set(socketId, participant)
+    this.markAccepted()
     if (!this.callState.remoteParticipant || this.callState.remoteParticipant.id === userId) {
       this.callState = {
         ...this.callState,
@@ -874,7 +908,7 @@ export class WebCallManager {
 
   private notifyCallStateChange(): void {
     this.onCallStateCallbacks.forEach((callback) => {
-      callback({ ...this.callState })
+      callback({ ...this.callState, participants: [...this.participants.values()] })
     })
   }
 }
