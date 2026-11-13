@@ -3,6 +3,7 @@ POSTGRES_PASSWORD=change-this-local-postgres-password
 # No usar POSTGRES_PASSWORD ni el superusuario de bootstrap como credencial de API.
 FALLBACK_API_DATABASE_URL=
 FALLBACK_API_PORT=3001
+# Para ejecutar Node directamente en la laptop, API_LISTEN_HOST=127.0.0.1.
 FALLBACK_EDGE_PORT=3080
 FALLBACK_REALTIME_PORT=3002
 FALLBACK_DB_PORT=5433
