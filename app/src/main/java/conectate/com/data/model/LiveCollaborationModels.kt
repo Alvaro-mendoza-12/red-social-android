@@ -9,6 +9,7 @@ data class LiveCollaborationCapabilities(
     @SerialName("sfuAvailable") val sfuAvailable: Boolean = false,
     @SerialName("channelPointsEnabled") val channelPointsEnabled: Boolean = false,
     @SerialName("drawGuessEnabled") val drawGuessEnabled: Boolean = false,
+    @SerialName("audienceToolsEnabled") val audienceToolsEnabled: Boolean = false,
     @SerialName("maxGuests") val maxGuests: Int = 0,
     @SerialName("scoringSources") val scoringSources: List<String> = emptyList()
 )

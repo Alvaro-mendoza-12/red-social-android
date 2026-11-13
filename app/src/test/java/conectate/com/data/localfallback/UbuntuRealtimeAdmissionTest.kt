@@ -83,6 +83,7 @@ class UbuntuRealtimeAdmissionTest {
         val socket = f.sockets.single()
         f.listeners.single().onOpen(socket, Response.Builder().request(socket.request())
             .protocol(Protocol.HTTP_1_1).code(101).message("Switching Protocols").build())
+        f.listeners.single().onMessage(socket, """{"type":"connected","userId":"a"}""")
         repeat(8) { f.client.replaceUserSubscription("a") }
         assertEquals(listOf("""{"type":"subscribe","channel":"user:a"}"""), socket.sent)
     }

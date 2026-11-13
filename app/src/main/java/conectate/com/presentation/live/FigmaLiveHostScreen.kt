@@ -733,6 +733,7 @@ fun LiveHostScreen(
         onModeration = { showModerationDialog = true },
         onDrawGuess = extraTools.drawGuess,
         onChannelPoints = extraTools.channelPoints,
+        onAudience = extraTools.audience,
         onCommentOptions = extraTools.commentOptions,
         onMoment = { showMomentDialog = true },
         onSwitchCamera = { viewModel.switchCamera() },

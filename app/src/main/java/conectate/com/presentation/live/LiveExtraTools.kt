@@ -10,6 +10,7 @@ internal data class LiveExtraToolActions(
     val drawGuess: (() -> Unit)?,
     val channelPoints: (() -> Unit)?,
     val commentOptions: ((LiveComment) -> Unit)?,
+    val audience: (() -> Unit)?,
 )
 
 /** Active screens reuse the existing server-backed tools and their capability gates. */
@@ -25,6 +26,7 @@ internal fun liveExtraTools(
     val points by viewModel.channelPoints.collectAsStateWithLifecycle()
     val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
     val joined = session?.stream?.id == liveId
+    val audience = liveAudienceTool(liveId, viewModel.getCurrentUserId().orEmpty(), joined && capabilities.audienceToolsEnabled)
     var showGame by remember(liveId) { mutableStateOf(false) }
     var showPoints by remember(liveId) { mutableStateOf(false) }
     var selectedComment by remember(liveId) { mutableStateOf<LiveComment?>(null) }
@@ -72,6 +74,7 @@ internal fun liveExtraTools(
             })
     }
     return LiveExtraToolActions(
+        audience = audience,
         drawGuess = if (joined && capabilities.drawGuessEnabled) ({ showGame = true }) else null,
         channelPoints = if (joined && points.available != false) ({
             viewModel.refreshChannelPoints(liveId, includeRedemptions = isHost); showPoints = true

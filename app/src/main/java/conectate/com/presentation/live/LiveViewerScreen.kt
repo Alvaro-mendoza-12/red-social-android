@@ -79,6 +79,7 @@ fun LegacyLiveViewerScreen(
     val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
     val liveViewers by viewModel.liveViewers.collectAsStateWithLifecycle()
     val collaborationCapabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
+    val openAudience = liveAudienceTool(liveId, viewModel.getCurrentUserId().orEmpty(), session?.stream?.id == liveId && collaborationCapabilities.audienceToolsEnabled)
     val guestInvitations by viewModel.guestInvitations.collectAsStateWithLifecycle()
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
     val liveKitState by viewModel.liveKitState.collectAsStateWithLifecycle()
@@ -427,6 +428,7 @@ fun LegacyLiveViewerScreen(
                         )
                     )
                 }
+                openAudience?.let { action -> add(LiveSecondaryAction("audience", "Encuestas y preguntas", "Participa con el público del directo.", onClick = action)) }
                 if (collaborationCapabilities.drawGuessEnabled) {
                     add(LiveSecondaryAction("game", "Jugar", "Abrir dibujo y adivinanza dentro del live.") { showDrawGuessDialog = true })
                 }

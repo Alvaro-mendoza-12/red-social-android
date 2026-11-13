@@ -16,15 +16,16 @@ import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,10 +49,20 @@ class UbuntuRealtimeClient internal constructor(
         OkHttpClient.Builder().dns(PublicBackendDns).build()::newWebSocket,
     )
 
-    companion object { private const val TAG = "UbuntuRealtime" }
+    companion object {
+        private const val TAG = "UbuntuRealtime"
+        // The gateway accepts four concurrent authorization checks. Leave a slot
+        // for the completion of an acknowledgement already travelling to us.
+        private const val MAX_PENDING_SUBSCRIPTIONS = 3
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val json = Json { ignoreUnknownKeys = true }
-    private val subscribedChannels = ConcurrentHashMap.newKeySet<String>()
+    // Desired rooms survive a token refresh. The remaining sets belong only to
+    // the current connection and are accessed under the transport monitor.
+    private val subscribedChannels = linkedSetOf<String>()
+    private val awaitingSubscriptions = mutableSetOf<String>()
+    private val activeSubscriptions = mutableSetOf<String>()
+    private val deniedSubscriptions = mutableSetOf<String>()
     private val _events = MutableSharedFlow<UbuntuRealtimeEnvelope>(extraBufferCapacity = 256)
     val events: Flow<UbuntuRealtimeEnvelope> = _events.filter(::isCurrent)
 
@@ -84,7 +95,14 @@ class UbuntuRealtimeClient internal constructor(
         val previous = socket
         socket = null
         socketReady = false
+        clearConnectionSubscriptionsLocked()
         previous?.close(1000, reason)
+    }
+
+    private fun clearConnectionSubscriptionsLocked() {
+        awaitingSubscriptions.clear()
+        activeSubscriptions.clear()
+        deniedSubscriptions.clear()
     }
 
     private fun bindOwnerLocked(owner: AuthSessionLease) {
@@ -140,14 +158,33 @@ class UbuntuRealtimeClient internal constructor(
     fun subscribe(channel: String) {
         val owner = captureOwner()
         val clean = channel.trim()
-        if (clean.isBlank() || (clean.startsWith("user:") && clean != "user:${owner.accountId}")) return
+        if (clean.isBlank() || clean.length > 256 || (clean.startsWith("user:") && clean != "user:${owner.accountId}")) return
         forOwner(owner) { bindOwnerLocked(owner); subscribeLocked(clean, owner) }
     }
 
     private fun subscribeLocked(channel: String, owner: AuthSessionLease) {
-        val added = subscribedChannels.add(channel)
+        subscribedChannels.add(channel)
         ensureConnectedLocked(owner)
-        if (added && socketReady) socket?.send("""{"type":"subscribe","channel":"$channel"}""")
+        drainSubscriptionsLocked()
+    }
+
+    private fun command(type: String, channel: String) = buildJsonObject {
+        put("type", type)
+        put("channel", channel)
+    }.toString()
+
+    private fun drainSubscriptionsLocked() {
+        if (!socketReady) return
+        val transport = socket ?: return
+        for (channel in subscribedChannels) {
+            if (awaitingSubscriptions.size >= MAX_PENDING_SUBSCRIPTIONS) break
+            if (channel in awaitingSubscriptions || channel in activeSubscriptions || channel in deniedSubscriptions) continue
+            awaitingSubscriptions.add(channel)
+            if (!transport.send(command("subscribe", channel))) {
+                awaitingSubscriptions.remove(channel)
+                break // OkHttp's closing/failure callback owns reconnection.
+            }
+        }
     }
 
     fun unsubscribe(channel: String) {
@@ -156,7 +193,11 @@ class UbuntuRealtimeClient internal constructor(
         if (clean.isBlank()) return
         forOwner(owner) {
             if (accountOwner?.sameVisit(owner) == true && subscribedChannels.remove(clean)) {
-                socket?.send("""{"type":"unsubscribe","channel":"$clean"}""")
+                activeSubscriptions.remove(clean)
+                deniedSubscriptions.remove(clean)
+                // An outstanding authorization still occupies a gateway slot.
+                // Release it on its reply and undo any late successful join.
+                if (socketReady) socket?.send(command("unsubscribe", clean))
             }
         }
     }
@@ -175,15 +216,6 @@ class UbuntuRealtimeClient internal constructor(
         val subscription = userSubscriptionGeneration
         val request = Request.Builder().url(url).header("Authorization", "Bearer $connectionToken").build()
         socket = openSocket(request, object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                forOwner(owner) {
-                    if (generation == socketGeneration && connectionToken == accessToken) {
-                        socketReady = true
-                        subscribedChannels.forEach { webSocket.send("""{"type":"subscribe","channel":"$it"}""") }
-                    }
-                }
-            }
-
             override fun onMessage(webSocket: WebSocket, text: String) {
                 forOwner(owner) {
                     if (generation == socketGeneration && connectionToken == accessToken) handleMessage(text, generation, subscription)
@@ -212,6 +244,7 @@ class UbuntuRealtimeClient internal constructor(
         socketGeneration++
         socket = null
         socketReady = false
+        clearConnectionSubscriptionsLocked()
         return true
     }
 
@@ -223,11 +256,33 @@ class UbuntuRealtimeClient internal constructor(
         runCatching {
             val root = json.parseToJsonElement(text).jsonObject
             val type = root["type"]?.jsonPrimitive?.contentOrNull
-            if (type != "event" && type != "subscribed") return
+            if (type == "connected") {
+                socketReady = true
+                drainSubscriptionsLocked()
+                return
+            }
             val channel = root["channel"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            if (type == "error" && channel.isNotBlank()) {
+                awaitingSubscriptions.remove(channel)
+                activeSubscriptions.remove(channel)
+                if (channel in subscribedChannels) deniedSubscriptions.add(channel)
+                drainSubscriptionsLocked()
+                return
+            }
+            if (type != "event" && type != "subscribed") return
+            if (channel.isBlank()) return
+            if (type == "subscribed") {
+                if (!awaitingSubscriptions.remove(channel)) return
+                if (channel !in subscribedChannels) {
+                    socket?.send(command("unsubscribe", channel))
+                    drainSubscriptionsLocked()
+                    return
+                }
+                activeSubscriptions.add(channel)
+                drainSubscriptionsLocked()
+            }
             val payload = root["payload"]?.jsonObject ?: JsonObject(emptyMap())
             val event = if (type == "subscribed") "subscription_ready" else payload["event"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            if (channel.isBlank()) return
             val admitted = UbuntuRealtimeEnvelope(channel, event, payload, generation, subscription)
             scope.launch { publishAcceptedEnvelope(admitted) }
         }.onFailure { Log.w(TAG, "invalid realtime payload", it) }

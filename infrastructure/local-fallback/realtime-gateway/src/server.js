@@ -106,6 +106,7 @@ function subscriptionAuthorizationUrl(channel) {
     ['post-comments:', (id) => `/v1/data/feed/posts/${encodeURIComponent(id)}`],
     ['video-comments:', (id) => `/v1/data/videos/${encodeURIComponent(id)}`],
     ['live-comments:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
+    ['live-audience:', (id) => `/v1/data/live/${encodeURIComponent(id)}/audience`],
     ['live-collaboration:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
     ['live-game:', (id) => `/v1/data/live/${encodeURIComponent(id)}/games/draw-guess/access`],
     ['live-moderation:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
