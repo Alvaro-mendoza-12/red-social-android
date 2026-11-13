@@ -13,6 +13,7 @@ import conectate.com.data.model.WalletTransaction
 import conectate.com.data.model.mergeGiftCatalog
 import conectate.com.data.model.withoutVisualDuplicates
 import conectate.com.data.supabase.AuthService
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.SupabaseConfig
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -25,6 +26,9 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -76,29 +80,42 @@ class WalletRepository @Inject constructor(
     private val _transactionsHasMore = MutableStateFlow(false)
     val transactionsHasMore: StateFlow<Boolean> = _transactionsHasMore.asStateFlow()
 
+    private var walletOwner: AuthSessionLease? = null
+
+    @Synchronized
+    private fun walletSession(): AuthSessionLease {
+        val session = authService.captureAccountLease()
+        if (walletOwner?.sameVisit(session) != true) {
+            walletOwner = session
+            _coinBalance.value = 0
+            _coinDebt.value = 0
+            _transactions.value = emptyList()
+            _transactionsHasMore.value = false
+        }
+        return session
+    }
+
+    init {
+        CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+            authService.currentSession.collect { walletSession() }
+        }
+    }
+
     suspend fun fetchBalance() = withContext(Dispatchers.IO) {
         runCatching {
-            if (!supabaseConfig.isConfigured) {
-                _coinBalance.value = 0
-                _coinDebt.value = 0
-                return@runCatching
-            }
-
-            val userId = authService.getCurrentUserId()?.trim().orEmpty()
-            if (userId.isBlank()) {
-                _coinBalance.value = 0
-                _coinDebt.value = 0
-                return@runCatching
-            }
-
-            val token = authService.getAccessToken()
+            val session = walletSession()
+            val userId = session.accountId ?: return@runCatching
+            if (!supabaseConfig.isConfigured) return@runCatching
+            val token = authService.getAccessTokenForAccountAwait(userId)
                 ?: throw IllegalStateException("No hay token de acceso")
             val balance = fetchWalletViaRpc(token)
                 ?: fetchWalletByRest(token, userId)
                 ?: WalletBalance(userId = userId)
 
-            _coinBalance.value = balance.balanceDiamonds.coerceAtLeast(0)
-            _coinDebt.value = balance.balanceDebtDiamonds.coerceAtLeast(0)
+            authService.commitForAccountLease(session) {
+                _coinBalance.value = balance.balanceDiamonds.coerceAtLeast(0)
+                _coinDebt.value = balance.balanceDebtDiamonds.coerceAtLeast(0)
+            }
         }.onFailure { error ->
             Log.e(TAG, "Unable to fetch wallet balance", error)
             // A temporary network failure must never make a real wallet look
@@ -138,21 +155,15 @@ class WalletRepository @Inject constructor(
 
     suspend fun fetchTransactionHistory(reset: Boolean = true) = withContext(Dispatchers.IO) {
         runCatching {
-            if (!supabaseConfig.isConfigured) {
-                _transactions.value = emptyList()
-                _transactionsHasMore.value = false
-                return@runCatching
-            }
-            val userId = authService.getCurrentUserId()?.trim().orEmpty()
-            if (userId.isBlank()) {
-                _transactions.value = emptyList()
-                _transactionsHasMore.value = false
-                return@runCatching
-            }
+            val session = walletSession()
+            val userId = session.accountId ?: return@runCatching
+            if (!supabaseConfig.isConfigured) return@runCatching
+            val token = authService.getAccessTokenForAccountAwait(userId)
+                ?: throw IllegalStateException("No hay token de acceso")
             val pageSize = 50
             val offset = if (reset) 0 else _transactions.value.size
             val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/wallet_transactions") {
-                restHeaders(authService.getAccessToken())
+                restHeaders(token)
                 parameter("user_id", "eq.$userId")
                 parameter("select", "*")
                 parameter("order", "created_at.desc")
@@ -163,7 +174,6 @@ class WalletRepository @Inject constructor(
                 throw IllegalStateException("No se pudo cargar el historial: ${response.status}")
             }
             val decoded = decodeObjects(response.bodyAsText())
-            _transactionsHasMore.value = decoded.size > pageSize
             val page = decoded.take(pageSize).mapNotNull { value ->
                 val id = value.string("id").orEmpty()
                 if (id.isBlank()) return@mapNotNull null
@@ -182,15 +192,12 @@ class WalletRepository @Inject constructor(
                         ?: value.string("provider_order_id")
                 )
             }
-            _transactions.value = if (reset) {
-                page
-            } else {
-                (_transactions.value + page).distinctBy { it.id }
+            authService.commitForAccountLease(session) {
+                _transactions.value = if (reset) page else (_transactions.value + page).distinctBy { it.id }
+                _transactionsHasMore.value = decoded.size > pageSize
             }
         }.onFailure { error ->
             Log.w(TAG, "Unable to fetch wallet transaction history", error)
-            if (reset) _transactions.value = emptyList()
-            _transactionsHasMore.value = false
         }
     }
 
@@ -216,9 +223,10 @@ class WalletRepository @Inject constructor(
             val cleanReceiverId = receiverId.trim()
             val cleanGiftId = giftId.trim()
             val cleanLiveStreamId = liveStreamId?.trim().orEmpty()
-            val senderId = authService.getCurrentUserId()?.trim()
+            val session = walletSession()
+            val senderId = session.accountId
                 ?: throw IllegalStateException("No hay una sesion activa")
-            val token = authService.getAccessToken()
+            val token = authService.getAccessTokenForAccountAwait(senderId)
                 ?: throw IllegalStateException("No hay token de acceso")
 
             if (cleanReceiverId.isBlank()) {
@@ -269,7 +277,7 @@ class WalletRepository @Inject constructor(
                 ?: throw IllegalStateException("El comprobante del regalo no es válido")
             val newBalance = receipt["sender_balance_diamonds"]?.jsonPrimitive?.intOrNull
                 ?: throw IllegalStateException("El comprobante no contiene el saldo confirmado")
-            if (currentAccountId() == senderId) _coinBalance.value = newBalance.coerceAtLeast(0)
+            authService.commitForAccountLease(session) { _coinBalance.value = newBalance.coerceAtLeast(0) }
             GiftReceipt(
                 transactionId = transactionId,
                 liveStreamId = receipt.string("live_stream_id") ?: cleanLiveStreamId.takeIf { it.isNotBlank() },
@@ -329,13 +337,21 @@ class WalletRepository @Inject constructor(
         }
     }
 
-    suspend fun verifyGooglePlayPurchase(
+    internal fun purchaseSession() = walletSession()
+
+    internal fun publishPurchaseResult(session: AuthSessionLease, publish: () -> Unit) =
+        authService.commitForAccountLease(session, publish)
+
+    internal suspend fun verifyGooglePlayPurchase(
         productId: String,
-        purchaseToken: String
+        purchaseToken: String,
+        session: AuthSessionLease
     ): Result<CoinPurchaseVerification> = withContext(Dispatchers.IO) {
         runCatching {
-            val token = authService.getAccessToken()
+            session.requireCurrent()
+            val token = authService.getAccessTokenForAccountAwait(requireNotNull(session.accountId))
                 ?: throw IllegalStateException("No hay token de acceso")
+            session.requireCurrent()
             val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/verify_google_play_purchase") {
                 restHeaders(token)
                 contentType(ContentType.Application.Json)
@@ -357,7 +373,7 @@ class WalletRepository @Inject constructor(
                 balanceDiamonds = value.int("balance_diamonds")
             )
             if (verified.status == "credited") {
-                _coinBalance.value = verified.balanceDiamonds.coerceAtLeast(0)
+                publishPurchaseResult(session) { _coinBalance.value = verified.balanceDiamonds.coerceAtLeast(0) }
             }
             verified
         }

@@ -61,7 +61,7 @@ fun GooglePlayRechargeDialog(
                 catalogResolved = true
             },
             onCatalogIssues = { catalogIssues = it },
-            onPurchased = viewModel::verifyGooglePlayPurchase,
+            onPurchased = { product, token -> viewModel.verifyGooglePlayPurchase(accountId, product, token) },
             onPending = {
                 viewModel.showBillingMessage(
                     "Pago pendiente. No se acreditarán monedas hasta que Google Play confirme el cobro."
