@@ -4,6 +4,7 @@ import './ui/novvin/webParity.css'
 import { NotFoundPage } from './ui/novvin/NotFoundPage'
 import { PublicHome } from './ui/novvin/PublicHome'
 import { PublicInfo } from './ui/novvin/PublicInfo'
+import { publicInfoPages } from './ui/novvin/publicInfoPages'
 import { WebOutboxHost } from './components/WebOutboxHost'
 import { lazy, Suspense, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
@@ -193,23 +194,7 @@ function AppRouter() {
         <Route path="/post/:postId" element={<PostInvitePage />} />
         <Route path="/group/:roomId" element={<RequireAuth><RouteSuspense><CollectionInvitePage kind="group" /></RouteSuspense></RequireAuth>} />
         <Route path="/community/:roomId" element={<RequireAuth><RouteSuspense><CollectionInvitePage kind="community" /></RouteSuspense></RequireAuth>} />
-        <Route path="/que-es-novvin" element={<PublicInfo path="/que-es-novvin" />} />
-        <Route path="/privacidad" element={<PublicInfo path="/privacidad" />} />
-        <Route path="/cookies" element={<PublicInfo path="/cookies" />} />
-        <Route path="/ayuda/preguntas-frecuentes" element={<PublicInfo path="/ayuda/preguntas-frecuentes" />} />
-      <Route path="/novvin-web" element={<PublicInfo path="/novvin-web" />} />
-      <Route path="/descargar" element={<PublicInfo path="/descargar" />} />
-      <Route path="/ayuda/encontrar-novvin" element={<PublicInfo path="/ayuda/encontrar-novvin" />} />
-      <Route path="/mensajes" element={<PublicInfo path="/mensajes" />} />
-      <Route path="/videos" element={<PublicInfo path="/videos" />} />
-      <Route path="/salas-de-voz" element={<PublicInfo path="/salas-de-voz" />} />
-        <Route path="/ayuda/vincular-web" element={<PublicInfo path="/ayuda/vincular-web" />} />
-        <Route path="/social" element={<PublicInfo path="/social" />} />
-        <Route path="/momentos" element={<PublicInfo path="/momentos" />} />
-        <Route path="/comunidades" element={<PublicInfo path="/comunidades" />} />
-        <Route path="/juegos" element={<PublicInfo path="/juegos" />} />
-        <Route path="/asistente" element={<PublicInfo path="/asistente" />} />
-        <Route path="/ayuda" element={<PublicInfo path="/ayuda" />} />
+        {Object.keys(publicInfoPages).map(path => <Route key={path} path={path} element={<PublicInfo path={path} />} />)}
         <Route
           path="/explore/:kind?/:id?"
           element={
