@@ -52,7 +52,9 @@ import coil.compose.AsyncImage
 import coil.imageLoader
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
-import conectate.com.data.localfallback.RuntimeBackendEndpoint
+import conectate.com.data.model.PublicWebDomain
+import conectate.com.presentation.navigation.profileShareLink
+import conectate.com.presentation.navigation.sharedContentDestination
 import conectate.com.data.model.Post
 import conectate.com.data.model.Badge
 import conectate.com.data.model.User
@@ -79,30 +81,16 @@ import kotlinx.coroutines.launch
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 
-private fun profileShareLink(userId: String): String =
-    "conectate://profile/${Uri.encode(userId.trim())}"
-
 private fun publicProfileShareLink(user: User): String {
-    val base = RuntimeBackendEndpoint.baseUrlFlow.value.trimEnd('/')
-    if (Uri.parse(base).scheme != "https") return profileShareLink(user.id)
     val handle = profilePublicHandle(user)
     val identifier = user.username?.trim()?.removePrefix("@")
         ?.takeIf { user.username_origin in setOf("chosen", "migrated_name") &&
             it.equals(handle, ignoreCase = true) } ?: user.id
-    return "$base/p/${Uri.encode(identifier)}?preview=4"
+    return "${PublicWebDomain.activeOrigin}/p/${Uri.encode(identifier)}?preview=4"
 }
 
-internal fun profileUserIdFromQr(raw: String?): String? {
-    val uri = runCatching { Uri.parse(raw?.trim().orEmpty()) }.getOrNull() ?: return null
-    val validWebHost = uri.scheme in setOf("https", "http") &&
-        uri.host in setOf("conectate.com", "www.conectate.com") &&
-        uri.pathSegments.firstOrNull() == "profile"
-    val validAppHost = uri.scheme == "conectate" && uri.host == "profile"
-    if (!validWebHost && !validAppHost) return null
-    return uri.pathSegments.getOrNull(if (validWebHost) 1 else 0)
-        ?.trim()
-        ?.takeIf { it.isNotBlank() && it.length <= 128 }
-}
+internal fun profileUserIdFromQr(raw: String?): String? =
+    sharedContentDestination(raw?.trim().orEmpty())?.takeIf { it.kind == "profile" }?.id
 
 internal fun profileVisitLabel(raw: String): String {
     val instant = runCatching { java.time.Instant.parse(raw) }.getOrNull() ?: return "Recientemente"

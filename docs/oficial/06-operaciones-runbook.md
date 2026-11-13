@@ -257,7 +257,7 @@ Valores recomendados:
 WEB_JWT_EXPIRES_IN=15m
 WEB_SESSION_TTL_DAYS=30
 WEB_SESSION_RATE_LIMIT_PER_15_MINUTES=120
-CORS_ORIGIN=https://red-social-android.vercel.app
+CORS_ORIGIN=https://novvinapp.com,https://www.novvinapp.com,https://red-social-android.vercel.app
 ```
 
 Un `403 UNTRUSTED_WEB_SESSION_REQUEST` indica header u origen inválido. Un

@@ -20,13 +20,18 @@ export function publicBackendTransportUrl(value: string, pageOrigin = typeof win
 }
 
 export function isPublicBackendPath(path: string): boolean {
+  if (isPublicProfilePreview(path)) return true
   return ['/v1/', '/auth/v1/', '/rest/v1/', '/storage/v1/', '/realtime/', '/socket.io/', '/call/socket.io/', '/live/socket.io/'].some(prefix => path.startsWith(prefix))
     || ['/health', '/ready', '/turn-credentials', '/live-active-ids'].includes(path)
 }
 
+function isPublicProfilePreview(path: string): boolean {
+  return /^\/p\/[a-z0-9_.-]{3,36}(?:\/card\.jpg)?$/i.test(path)
+}
+
 /** These routes authorize with a guest/media bearer, never ambient account cookies. */
 export function isCookieIsolatedBackendPath(path: string): boolean {
-  return ['/v1/guest/', '/storage/v1/object/', '/storage/v1/render/image/'].some(prefix => path.startsWith(prefix))
+  return isPublicProfilePreview(path) || ['/v1/guest/', '/storage/v1/object/', '/storage/v1/render/image/'].some(prefix => path.startsWith(prefix))
 }
 
 /** Keep Vercel deployment access at the gateway; middleware removes cookies upstream. */

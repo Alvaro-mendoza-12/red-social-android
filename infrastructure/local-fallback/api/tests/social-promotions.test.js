@@ -22,6 +22,8 @@ test('promotion creation, update, pause, deletion and authorization validate eve
  const call=(method,path='',body,actor='owner')=>fetch(`http://127.0.0.1:${server.address().port}/v1/data/social/promotions${path}`,{method,headers:{'Content-Type':'application/json','x-actor':actor},body:body?JSON.stringify(body):undefined})
  const card={title:'Card',description:'Brief',destination:'https://shop.example/product',cta:'Comprar',imageUrl:'owned1'},body={title:'Carousel',cards:[card,{...card,imageUrl:'owned2'}]}
  try{
+   const welcome=(await(await call('GET','',undefined,'member')).json()).items[0]
+   assert.deepEqual(welcome.cards.map(card=>new URL(card.imageUrl).origin), Array(3).fill('https://novvinapp.com'))
    assert.equal((await call('POST','',body,'member')).status,403)
    assert.equal((await call('POST','',{...body,cards:[card,{...card,imageUrl:'foreign'}]})).status,403);assert.equal(rows.length,0)
    const created=await call('POST','',body);assert.equal(created.status,201);const{id}=await created.json();assert.ok(checked.includes('owned2'))

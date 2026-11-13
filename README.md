@@ -1,10 +1,10 @@
 # Novvin — Red social móvil
 
-Estado documental: 2 de noviembre de 2026. La revisión integral sigue en curso.
+Estado documental: 12 de noviembre de 2026. La revisión integral sigue en curso.
 
 Empieza por [la documentación oficial](docs/oficial/README.md) y el [estado vigente de la revisión móvil](docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md). Ese estado distingue cambios de código, verificaciones automatizadas, despliegues y pruebas pendientes. No se ha declarado cerrada toda la aplicación.
 
-La última entrega Android firmada es **9.1.35 / 175**, registrada en la [revisión 100](docs/oficial/100-compartidos-completos-documentos-y-candidato-175-2026-10-31.md); los commits posteriores todavía no constituyen otra APK. Primero se completa la revisión móvil y después se continúa con la web. Las correcciones se publican en `main` y `feature/live-gifts` con árboles iguales. `correciones` está reservada al otro chat.
+El último AAB firmado documentado es **9.1.40 / 180**. La [revisión 110](docs/oficial/110-contadores-social-y-avatares.md) identifica su código y la [revisión 122](docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md) registra cambios posteriores y el despliegue web. Las correcciones se publican en `main` y `feature/live-gifts` con árboles iguales. `correciones` está reservada al otro chat.
 
 Novvin usa **Kotlin y Jetpack Compose** en Android y un **servidor propio Ubuntu** para autenticación, PostgreSQL, almacenamiento, tiempo real y señalización. Los adaptadores de importación que todavía existen no implican que se utilice un servicio externo como backend activo. Consulta los contratos y el runbook actuales antes de cambiarlos.
 
@@ -13,7 +13,7 @@ Los informes fechados conservan evidencia histórica de sus versiones; sus cifra
 ## Probar Novvin
 
 - **Android (Google Play):** <https://play.google.com/store/apps/details?id=conectate.com>
-- **Web:** <https://red-social-android.vercel.app>
+- **Web:** <https://novvinapp.com>
 
 Novvin está en beta pública. Las pruebas y comentarios honestos de usuarios reales ayudan a priorizar mejoras; no se solicitan pagos para empezar.
 
@@ -57,12 +57,10 @@ Clona el repositorio y abre su carpeta en Android Studio. Los worktrees locales 
 5. En Android configura `secrets.properties`:
 
 ```properties
-FALLBACK_API_URL=https://tu-url-ngrok-o-dominio
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
+FALLBACK_API_URL=https://tu-servidor-ubuntu.example
 ```
 
-Guia oficial: `docs/CONECTATE_UBUNTU_OFFICIAL_RUNBOOK_2026.md`.
+Consulta el [runbook del servidor Ubuntu](docs/oficial/06-operaciones-runbook.md).
 
 ### Paso 3: Configurar la señalización de voz
 
@@ -265,7 +263,7 @@ El tema utiliza colores rojos como color primario:
 
 ## 📧 Contacto
 
-Para preguntas o soporte técnico, contacta al equipo de desarrollo.
+Para consultas de soporte o administración, escribe a [administracion@novvinapp.com](mailto:administracion@novvinapp.com).
 
 ## 📄 Licencia
 

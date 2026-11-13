@@ -2,7 +2,7 @@ param(
   [string]$HostName = "192.168.18.22",
   [string]$User = "alvaro",
   [string]$KeyPath = "$env:USERPROFILE\.ssh\conectate_mini_ed25519",
-  [string]$TrustedWebOrigin = "https://red-social-android.vercel.app",
+  [string]$TrustedWebOrigin = "https://novvinapp.com",
   [string]$StablePublicBaseUrl = "",
   [switch]$AllowEphemeralPublicOrigin,
   [switch]$SkipBackup,

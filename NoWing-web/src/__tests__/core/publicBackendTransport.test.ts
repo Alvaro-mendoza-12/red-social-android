@@ -9,6 +9,15 @@ test.each(['http://novvinapp.com', 'https://novvinapp.com.evil.test', 'https://n
   expect(publicBackendTransportUrl(productionBackendOrigin, page)).toBe(productionBackendOrigin)
 })
 
+test('both public profile previews are served through the branded gateway', () => {
+  const page = 'https://novvinapp.com'
+  for (const path of ['/p/test_profile', '/p/test_profile/card.jpg']) {
+    expect(isPublicBackendPath(path)).toBe(true)
+    expect(isolatedBackendRequestCredentials(page + path, page)).toBe('same-origin')
+  }
+  expect(isPublicBackendPath('/p/test_profile/other')).toBe(false)
+})
+
 test('web API, signed media and signaling use public same-origin HTTPS', () => {
   const page = 'https://red-social-android.vercel.app'
   expect(publicBackendTransportUrl(productionBackendOrigin, page)).toBe(page)

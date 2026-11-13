@@ -239,15 +239,15 @@ wait_http "realtime" "http://127.0.0.1:3002/health"
 
 echo "==> Verificando CORS/OPTIONS por el edge, igual que navegador y Vercel"
 curl -fsS -X OPTIONS "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/v1/auth/login" \
-  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Origin: https://novvinapp.com" \
   -H "Access-Control-Request-Method: POST" >/dev/null \
   || fail_with_logs "edge no responde OPTIONS /v1/auth/login"
 curl -fsS -X OPTIONS "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/v1/auth/web-login-pairing" \
-  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Origin: https://novvinapp.com" \
   -H "Access-Control-Request-Method: POST" >/dev/null \
   || fail_with_logs "edge no responde OPTIONS /v1/auth/web-login-pairing"
 curl -fsS -X OPTIONS "http://127.0.0.1:${FALLBACK_EDGE_PORT_INPUT}/functions/v1/web-login-pairing" \
-  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Origin: https://novvinapp.com" \
   -H "Access-Control-Request-Method: POST" >/dev/null \
   || fail_with_logs "edge no responde OPTIONS /functions/v1/web-login-pairing"
 
