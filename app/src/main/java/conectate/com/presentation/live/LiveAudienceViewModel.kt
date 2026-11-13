@@ -18,7 +18,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
@@ -57,10 +59,13 @@ class LiveAudienceViewModel internal constructor(
     private val _createdVersion = MutableStateFlow(0)
     val createdVersion = _createdVersion.asStateFlow()
     private val requests = Mutex()
+    private val sessionLock = Any()
     private var sessionJob: Job? = null
     private var actionJob: Job? = null
+    private var retryJob: Job? = null
     @Volatile private var liveId: String? = null
     @Volatile private var accountOwner: AuthSessionLease? = null
+    @Volatile private var activeOwner: AuthSessionLease? = null
     private var actionVersion = 0L
     private val pendingCreates = mutableMapOf<String, Pair<String, String>>()
 
@@ -74,16 +79,19 @@ class LiveAudienceViewModel internal constructor(
         stop()
         if (!sameSession) {
             _state.value = null
+            _error.value = null
             pendingCreates.clear()
         }
         liveId = normalized
         accountOwner = owner
+        activeOwner = owner
         sessionJob = viewModelScope.launch(ioDispatcher) {
             previous?.join()
             val token = ensureToken().getOrElse {
                 commitSession(owner, normalized) { _error.value = "Vuelve a iniciar sesión para participar." }
                 return@launch
             }
+            currentCoroutineContext().ensureActive()
             val channel = "live-audience:$normalized"
             if (!commitSession(owner, normalized) {
                 realtime.updateAccessToken(token)
@@ -92,10 +100,10 @@ class LiveAudienceViewModel internal constructor(
             try {
                 coroutineScope {
                     launch {
-                        realtime.events.filter { it.channel == channel }.conflate().collect { refresh() }
+                        realtime.events.filter { it.channel == channel }.conflate().collect { refresh(owner, normalized) }
                     }
                     while (isActive) {
-                        refresh()
+                        refresh(owner, normalized)
                         delay(5_000)
                     }
                 }
@@ -104,35 +112,50 @@ class LiveAudienceViewModel internal constructor(
     }
 
     fun stop() {
-        actionVersion++
+        synchronized(sessionLock) {
+            activeOwner = null
+            actionVersion++
+            _busy.value = false
+        }
         sessionJob?.cancel()
         actionJob?.cancel()
-        sessionJob = null
-        _busy.value = false
+        retryJob?.cancel()
+        actionJob = null
+        retryJob = null
+        // Keep the canceled session job so a resume waits for its unsubscribe.
+        // Its account lease and nonces still belong to this same account visit.
     }
 
-    fun retry() { viewModelScope.launch(ioDispatcher) { refresh() } }
+    fun retry() {
+        val owner = activeOwner ?: return
+        val id = liveId ?: return
+        if (retryJob?.isActive == true) return
+        retryJob = viewModelScope.launch(ioDispatcher) { refresh(owner, id) }
+    }
 
     private fun commitSession(owner: AuthSessionLease, id: String, action: () -> Unit): Boolean {
-        if (accountOwner !== owner || liveId != id) return false
+        if (activeOwner !== owner || liveId != id) return false
         var applied = false
         commitOwner(owner) {
-            if (accountOwner === owner && liveId == id) { action(); applied = true }
+            synchronized(sessionLock) {
+                if (activeOwner === owner && liveId == id) { action(); applied = true }
+            }
         }
         return applied
     }
 
-    private suspend fun refresh() = requests.withLock {
-        val id = liveId ?: return@withLock
-        val owner = accountOwner ?: return@withLock
-        if (!owner.isCurrent()) return@withLock
+    private suspend fun refresh(owner: AuthSessionLease, id: String) = requests.withLock {
+        currentCoroutineContext().ensureActive()
+        if (!owner.isCurrent() || activeOwner !== owner || liveId != id) return@withLock
         val token = ensureToken().getOrElse {
             commitSession(owner, id) { _error.value = "Vuelve a iniciar sesión para participar." }
             return@withLock
         }
+        currentCoroutineContext().ensureActive()
         owner.requireCurrent()
-        if (accountOwner !== owner || liveId != id) return@withLock
+        if (activeOwner !== owner || liveId != id) return@withLock
         val result = requestApi(token, id, "", HttpMethod.Get, null)
+        currentCoroutineContext().ensureActive()
         commitSession(owner, id) {
             result.onSuccess { _state.value = it; _error.value = null }.onFailure { _error.value = message(it) }
         }
@@ -147,6 +170,7 @@ class LiveAudienceViewModel internal constructor(
     fun ask(content: String) = create("questions", buildJsonObject { put("content", content.trim()) })
 
     private fun create(kind: String, body: JsonObject) {
+        if (_busy.value || activeOwner == null) return
         val payload = body.toString()
         val nonce = pendingCreates[kind]?.takeIf { it.first == payload }?.second ?: UUID.randomUUID().toString()
         pendingCreates[kind] = payload to nonce
@@ -169,7 +193,7 @@ class LiveAudienceViewModel internal constructor(
     private fun mutate(path: String, method: HttpMethod, body: JsonObject, success: () -> Unit = {}) {
         if (_busy.value) return
         val id = liveId ?: return
-        val owner = accountOwner ?: return
+        val owner = activeOwner ?: return
         if (!owner.isCurrent()) return
         _busy.value = true
         val version = ++actionVersion
@@ -177,11 +201,15 @@ class LiveAudienceViewModel internal constructor(
         actionJob = viewModelScope.launch {
             try {
                 requests.withLock {
+                    currentCoroutineContext().ensureActive()
                     owner.requireCurrent()
-                    if (id != liveId || accountOwner !== owner) return@withLock
+                    if (id != liveId || activeOwner !== owner) return@withLock
                     val token = ensureToken().getOrThrow()
+                    currentCoroutineContext().ensureActive()
                     owner.requireCurrent()
+                    if (id != liveId || activeOwner !== owner) return@withLock
                     val result = requestApi(token, id, path, method, body).getOrThrow()
+                    currentCoroutineContext().ensureActive()
                     commitSession(owner, id) {
                         _state.value = result
                         success()
@@ -191,7 +219,9 @@ class LiveAudienceViewModel internal constructor(
                 throw cancelled
             } catch (error: Exception) {
                 commitSession(owner, id) { _error.value = message(error) }
-            } finally { if (version == actionVersion) _busy.value = false }
+            } finally {
+                synchronized(sessionLock) { if (version == actionVersion) _busy.value = false }
+            }
         }
     }
 

@@ -1,4 +1,6 @@
-# Línea base y continuación 125
+# Línea base y continuación 127
+
+La [continuación 127](../oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md) supera la suite completa de 2 783 pruebas JVM en 524 suites, cinco pruebas de componente en emulador API 35 y ochenta de herramientas. Compilan los dos paquetes de depuración y Lint K1 termina con cero errores/fatales y 342 avisos. Conserva los fallos previos reproducidos y el alcance de los ensayos. La matriz tiene 357 entradas después de incorporar sesenta líneas omitidas. Las huellas y límites se identifican en [127-resultados.json](evidence/127-resultados.json); la integración física sigue pendiente.
 
 La [continuación 125](../oficial/125-live-participacion-y-recuperacion-2026-11-13.md) supera 2 777 pruebas JVM en 524 suites y doce controles de emulador API 35. Sus veinte pruebas Node de API/SQL/R2 y la comprobación del gateway se ejecutaron con Node 22.23.4, además de siete recorridos web con cuentas sintéticas. Se separan los componentes Android del recorrido autenticado Android–web aún pendiente. [Evidencia 125](evidence/125-resultados.json).
 

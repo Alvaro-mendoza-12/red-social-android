@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -52,7 +53,7 @@ fun LiveAudienceDialog(
 
 @Composable
 internal fun liveAudienceTool(liveId: String, accountId: String, enabled: Boolean): (() -> Unit)? {
-    var show by remember(liveId, accountId) { mutableStateOf(false) }
+    var show by key(liveId, accountId) { rememberSaveable { mutableStateOf(false) } }
     if (show && enabled) LiveAudienceDialog(liveId, accountId, onDismiss = { show = false })
     return if (enabled) ({ show = true }) else null
 }
@@ -71,9 +72,9 @@ internal fun LiveAudienceContent(
     onVote: (String, Int) -> Unit,
     onUpdate: (String, String?, String?, Boolean?) -> Unit,
 ) {
-    var tab by remember { mutableStateOf("poll") }
-    var create by remember { mutableStateOf(false) }
-    var question by remember { mutableStateOf("") }
+    var tab by rememberSaveable { mutableStateOf("poll") }
+    var create by rememberSaveable { mutableStateOf(false) }
+    var question by rememberSaveable { mutableStateOf("") }
     var submissionVersion by remember { mutableIntStateOf(createdVersion) }
     LaunchedEffect(createdVersion) {
         if (createdVersion != submissionVersion) {
@@ -137,9 +138,9 @@ internal fun LiveAudienceContent(
 
 @Composable
 private fun PollComposer(busy: Boolean, onCreate: (String, List<String>, Int) -> Unit) {
-    var content by remember { mutableStateOf("") }
-    var options by remember { mutableStateOf(listOf("", "")) }
-    var seconds by remember { mutableIntStateOf(300) }
+    var content by rememberSaveable { mutableStateOf("") }
+    var options by rememberSaveable { mutableStateOf(listOf("", "")) }
+    var seconds by rememberSaveable { mutableIntStateOf(300) }
     OutlinedTextField(content, { if (it.length <= 300) content = it }, enabled = !busy,
         label = { Text("Pregunta de la encuesta") }, modifier = Modifier.fillMaxWidth())
     options.forEachIndexed { index, option ->
@@ -190,8 +191,8 @@ private fun PollCard(item: LiveAudienceItem, canModerate: Boolean, busy: Boolean
 @Composable
 private fun QuestionCard(item: LiveAudienceItem, canModerate: Boolean, own: Boolean, busy: Boolean,
     onVote: () -> Unit, onUpdate: (String?, String?, Boolean?) -> Unit) {
-    var replying by remember { mutableStateOf(false) }
-    var answer by remember { mutableStateOf("") }
+    var replying by rememberSaveable { mutableStateOf(false) }
+    var answer by rememberSaveable { mutableStateOf("") }
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (item.highlighted) Text("Pregunta destacada", color = MaterialTheme.colorScheme.primary,

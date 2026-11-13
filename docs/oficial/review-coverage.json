@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-13T06:54:13.770291+00:00",
-  "baseCommit": "09aa3e76ca96f485e4357935a8209ca8c698345c",
+  "generatedAtUtc": "2026-11-13T15:37:22.004568+00:00",
+  "baseCommit": "dcae01e48e11ebfced56a02dcc0d83c318eadd2a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,34 +10,34 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3615,
-    "code-read": 548,
-    "partial": 225
+    "pending": 3609,
+    "partial": 224,
+    "code-read": 564
   },
   "countsByPhase": {
     "android": {
-      "pending": 1516,
-      "partial": 94,
-      "code-read": 419
+      "pending": 1509,
+      "partial": 95,
+      "code-read": 425
     },
     "documentation": {
-      "pending": 581,
-      "code-read": 29,
-      "partial": 16
+      "pending": 577,
+      "code-read": 37,
+      "partial": 15
     },
     "server": {
-      "pending": 853,
-      "code-read": 48,
-      "partial": 27
+      "pending": 859,
+      "code-read": 47,
+      "partial": 26
     },
     "tooling-and-other": {
-      "pending": 155,
-      "code-read": 12,
-      "partial": 7
+      "pending": 152,
+      "partial": 9,
+      "code-read": 15
     },
     "web": {
-      "partial": 81,
-      "pending": 510,
+      "partial": 79,
+      "pending": 512,
       "code-read": 40
     }
   },
@@ -63,8 +63,10 @@
     {
       "file": ".github/workflows/android-ci.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "df2e3c5d48df7bfb13737092f3b65df916b33580",
-      "reviewStatus": "pending"
+      "gitBlobId": "94070e868390dc5aaee00b1974d7e2b02469fe9a",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": ".github/workflows/android-instrumented-smoke.yml",
@@ -75,9 +77,9 @@
     {
       "file": ".github/workflows/android-production-release.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "618668405b356bd61bbf467e45c1f69d3f83eccc",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "ada6d18fea8110a1eb9bfe193caf5d86b100a50e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -733,10 +735,8 @@
     {
       "file": "NoWing-web/scripts/update-public-seo-policy.mjs",
       "phase": "web",
-      "gitBlobId": "e27933c86b90418093c40dbb271996eb61923786",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "546b62fd4e448051b3a19cf27818b79a34e1f079",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/App.css",
@@ -4155,10 +4155,8 @@
     {
       "file": "NoWing-web/tests/public-http.test.mjs",
       "phase": "web",
-      "gitBlobId": "da16bcb8ef6c2457094988b6642138661f4e8676",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "6abceb8f3d524e59c7c7ff6c919c5fd2dfdefd90",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/tests/public-socket.test.mjs",
@@ -4209,7 +4207,7 @@
     {
       "file": "NoWing-web/vercel.json",
       "phase": "web",
-      "gitBlobId": "8d51469293cbdcbd249491ec1a244a98dc2417ae",
+      "gitBlobId": "e67eca9fcc173b746f1b4d1cb2183a6ab86ae4ac",
       "reviewStatus": "pending"
     },
     {
@@ -4228,51 +4226,65 @@
       "file": "Novvin_Auditoria_Ecosistema/FUENTES_Y_REFERENCIAS.md",
       "phase": "documentation",
       "gitBlobId": "e19f6f05e02453c79498f96e92f1f8658f753825",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "phase": "documentation",
       "gitBlobId": "42d8c16c57b23adb9c04d577c289741523dd9bc0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "Novvin_Auditoria_Ecosistema/INVESTIGACION_MERCADO_BENCHMARK.md",
       "phase": "documentation",
       "gitBlobId": "7335b10a2ee70d1c5a2a534a726e18cd378c1542",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "Novvin_Auditoria_Ecosistema/MATRIZ_ACEPTACION_QA.md",
       "phase": "documentation",
       "gitBlobId": "f457dce5cdbdf7a9ced67a6f3c347d794196901d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "Novvin_Auditoria_Ecosistema/PRD_NOVVIN_LIVE_LIVE_PLAY.md",
       "phase": "documentation",
       "gitBlobId": "9b9dcdfa2ec761a0390ad546a999075279c2bf3f",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "Novvin_Auditoria_Ecosistema/PROMPT_MAESTRO_NOVVIN.docx",
       "phase": "tooling-and-other",
       "gitBlobId": "37dd9e951ef15a857a2d6415afdfc01afa7f0d81",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "Novvin_Auditoria_Ecosistema/PROMPT_MAESTRO_NOVVIN.md",
       "phase": "documentation",
       "gitBlobId": "34687c0d013e845cae7b2bccee31faf4f7b1bfce",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "Novvin_Auditoria_Ecosistema/README.md",
       "phase": "documentation",
       "gitBlobId": "7ad480450c52e2af44dc1c302135d7f82b73b5fe",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "PLAN_IMPLEMENTACION.md",
@@ -4793,9 +4805,9 @@
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/live/LiveAudienceInteractionDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "55e02808831ad2474361a008b8fd2bb275347f5f",
+      "gitBlobId": "0f138be1c9a99700263285d633963f7fe811836f",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6941,7 +6953,7 @@
       "phase": "android",
       "gitBlobId": "58148348fecadb69e2d2dcfe8ec1cc7f06efcd7d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7197,7 +7209,7 @@
       "phase": "android",
       "gitBlobId": "63c13fd6b89c9bd0a9fc112addb20f1cbb12a027",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7217,7 +7229,7 @@
       "phase": "android",
       "gitBlobId": "afe06af315ecbb8716a9ce9c8a37cfae44430673",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7794,13 +7806,17 @@
       "file": "app/src/main/java/conectate/com/data/repository/LiveChannelPointsRepository.kt",
       "phase": "android",
       "gitBlobId": "d4bacf6699cda72cccb4d8092af0788b751656e9",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveDrawGuessRepository.kt",
       "phase": "android",
       "gitBlobId": "a153a1b777729fce146404c185274c1f6f55d236",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveGiftEventStore.kt",
@@ -7830,14 +7846,16 @@
       "file": "app/src/main/java/conectate/com/data/repository/LiveInvitationUpdates.kt",
       "phase": "android",
       "gitBlobId": "b2dc3aa63a2fc4bc50bb8f1310cbac7a659cc72c",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveRepository.kt",
       "phase": "android",
       "gitBlobId": "b8adfa70a6375d96a292b33f11b545b6a86b1401",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8669,7 +8687,7 @@
       "phase": "android",
       "gitBlobId": "4f4ad3a0f090172ebf4a44a43590d1d5451ee6ee",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9943,17 +9961,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveAudienceDialog.kt",
       "phase": "android",
-      "gitBlobId": "71a354d0880b9df0102f7a7bd0b61cac32241caf",
+      "gitBlobId": "503fd26e01a3b37b43253027691fac0a7f6cd8ab",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveAudienceViewModel.kt",
       "phase": "android",
-      "gitBlobId": "c514ceebbb669d2fc0f7a10a3b501ccc6288f9f6",
+      "gitBlobId": "65b31e71f406430df5b7fe0290389e57b9609da2",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10002,7 +10020,9 @@
       "file": "app/src/main/java/conectate/com/presentation/live/LiveDrawGuessViewModel.kt",
       "phase": "android",
       "gitBlobId": "5f351e4c351a6bb9cff6841934e4a6cbee206927",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveExperienceScaffold.kt",
@@ -10104,7 +10124,9 @@
       "file": "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt",
       "phase": "android",
       "gitBlobId": "5af27eb1e2939e66e472b6eda17fb8051ec1ebac",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveSetupPolicy.kt",
@@ -15110,7 +15132,9 @@
       "file": "app/src/test/java/conectate/com/data/repository/LiveInvitationUpdatesTest.kt",
       "phase": "android",
       "gitBlobId": "d34e41b50069004ed117ac3115fa2d76b373e888",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/LiveSessionLifecycleCoordinatorTest.kt",
@@ -15122,7 +15146,9 @@
       "file": "app/src/test/java/conectate/com/data/repository/LiveSocketStartupTest.kt",
       "phase": "android",
       "gitBlobId": "190ee03ec186cca0b9dd387602260142515094ee",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/LiveStartupPolicyTest.kt",
@@ -15969,9 +15995,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/live/LiveAudienceSessionTest.kt",
       "phase": "android",
-      "gitBlobId": "5eed9b7bfdcf6f7e79cfb2d4f586f4597bc5bbdc",
+      "gitBlobId": "625f47728c305859399e83f67079df5e61ab4ac7",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19989,9 +20015,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "4efc31ee349ebbc672deb6aafab8a4bea4446274",
+      "gitBlobId": "b7ec131838a5dc71dd45b70ebca4fc0248d7b95f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20138,6 +20164,14 @@
       "gitBlobId": "a08e466fe974b5b70efc4c7a253eadfc46fc882b",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "95880b3be8a2cd67d979bb40f33933e6c2ab65b5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20669,9 +20703,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "b9b68dde89b62d8142248294109550dd48fbde82",
+      "gitBlobId": "1ccc9479c96e3d623544b05db8cac4879367d05a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21097,6 +21131,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "docs/product/ECOSYSTEM_IMPLEMENTATION_PLAN.md",
+      "phase": "documentation",
+      "gitBlobId": "d9143190ae377f21640f528fe163d1b8a27d4c01",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/product/FEATURE_STATUS_MATRIX.csv",
       "phase": "documentation",
       "gitBlobId": "728292d77387f3af5ebcf91375666db0047abf0b",
@@ -21125,9 +21167,9 @@
     {
       "file": "docs/product/PRODUCT_INVENTORY.md",
       "phase": "documentation",
-      "gitBlobId": "8eee159acda9ade3cdea9c15939d5517813581dc",
+      "gitBlobId": "28f88d4a718df9620871e68e9624583d86843843",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21139,10 +21181,8 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "eb3f6bdf90bc0e989927fbfa6a2f101f5adae23d",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "abe0e40b4df7b6fb41433ede9211b76ab1271a96",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/production-readiness-report.md",
@@ -21161,10 +21201,8 @@
     {
       "file": "docs/quality/BASELINE_TESTS.md",
       "phase": "documentation",
-      "gitBlobId": "be4f42028b5c71229068576386ea44f4dbcb71ae",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "9c4d4ef201f1e9a1d003c4a99b249d7fd9b03ecf",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/quality/TEST_STRATEGY.md",
@@ -21222,6 +21260,14 @@
       "gitBlobId": "8b82ecb70730ce1c512232684544313ecd62139b",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/127-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "563e386fb5967aac79b2f8c58c5b8e60b0e58148",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21754,6 +21800,12 @@
       "file": "infrastructure/local-fallback/api/scripts/verify-live-collaboration-e2e.js",
       "phase": "server",
       "gitBlobId": "55b4b613320ff6fa6bc28740d38bb3aece9435f8",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/scripts/verify-live-invitation-local.js",
+      "phase": "server",
+      "gitBlobId": "6a91b4f26f4181c2bc1b3fde011d182a7232dd24",
       "reviewStatus": "pending"
     },
     {
@@ -22445,6 +22497,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/src/live-invitation-access.js",
+      "phase": "server",
+      "gitBlobId": "65d007e36453ea5e471e22acec4ba12f57f71abc",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "infrastructure/local-fallback/api/src/live-points-routes.js",
       "phase": "server",
       "gitBlobId": "4f8f732c7cb4eb61f7b393a605f6fb21cd0d20d8",
@@ -22453,10 +22511,8 @@
     {
       "file": "infrastructure/local-fallback/api/src/live-routes.js",
       "phase": "server",
-      "gitBlobId": "e0111d64f0aa3a3d35fbbac85fcaf65737311ab5",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "e3ba18654a4a2ff86392237c9397141722570233",
+      "reviewStatus": "pending"
     },
     {
       "file": "infrastructure/local-fallback/api/src/livekit-admin.js",
@@ -23691,6 +23747,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/live-guest-count.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "4e06745fc05caace84f4490543950a753efdbf2d",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/live-guest-exit.test.js",
       "phase": "server",
       "gitBlobId": "7f3c9e9e0e357757ef52eefedfd3b47b21164fd3",
@@ -23700,6 +23762,12 @@
       "file": "infrastructure/local-fallback/api/tests/live-internal-termination.test.js",
       "phase": "server",
       "gitBlobId": "dc8dc3ced9c80ef184682011321727f5e3d7918a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/live-invitation-access.test.js",
+      "phase": "server",
+      "gitBlobId": "4311ee0c4d080e72edc30926fadf05fb4e879255",
       "reviewStatus": "pending"
     },
     {
@@ -23717,10 +23785,8 @@
     {
       "file": "infrastructure/local-fallback/api/tests/live-private-guest-access.test.js",
       "phase": "server",
-      "gitBlobId": "4ce78ca90b41e69b1d957db0fe2f9c10eff470a3",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "bf4effc857c56d6834dc00542ab0e3ab87e2b98b",
+      "reviewStatus": "pending"
     },
     {
       "file": "infrastructure/local-fallback/api/tests/livekit-admin.test.js",
@@ -27649,6 +27715,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "tools/audit/check_requirement_traceability.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "21f320464a2fafb3602ee6b7c79f3d9a0e54172d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "tools/audit/fixtures/review116-stage-controller.js",
       "phase": "tooling-and-other",
       "gitBlobId": "ab228db2479846791697c852a15718909a955cf8",
@@ -27815,8 +27889,10 @@
     {
       "file": "tools/tests/test_mini_pc_health_audit.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "1b20b369136e2ac9d1b4ce6a791e114fb523c71c",
-      "reviewStatus": "pending"
+      "gitBlobId": "3276a12576454204f9b1f22e004fa347feb1fad6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/tests/test_monitoring_rules.py",
@@ -27843,6 +27919,14 @@
       "phase": "tooling-and-other",
       "gitBlobId": "20e53895e2547d627674e033901c46914d386b26",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_requirement_traceability.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "ca78809798049fb6d729f3235ccb797a061fafaa",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/tests/test_security_sql_audit_effective.py",
@@ -27913,7 +27997,7 @@
     {
       "file": "vercel.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "7ab469ad0ad4dd3decac4ba7ef9620a1732f5aed",
+      "gitBlobId": "ca21b31dc3b4f6d1fd0090d1ea9637b7c3f94354",
       "reviewStatus": "pending"
     }
   ]

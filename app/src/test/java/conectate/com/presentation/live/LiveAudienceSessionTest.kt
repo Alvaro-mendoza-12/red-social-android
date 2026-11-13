@@ -131,4 +131,113 @@ class LiveAudienceSessionTest {
             assertNotEquals(oldNonce, f.writes.last().getValue("requestNonce").jsonPrimitive.content)
         } finally { f.model.stop(); runCurrent(); Dispatchers.resetMain() }
     }
+
+    @Test fun resumingWaitsForThePreviousSubscriptionCleanup() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val f = Fixture(dispatcher)
+        val response = CompletableDeferred<LiveAudienceState>()
+        var tokenRequests = 0
+        f.ensureToken = { tokenRequests++; Result.success("fixture-token") }
+        f.request = { _, _ -> withContext(NonCancellable) { Result.success(response.await()) } }
+        try {
+            f.model.bind(f.live); runCurrent()
+            val beforePause = tokenRequests
+            f.model.stop()
+            f.request = { _, _ -> Result.success(f.state("Resumed visit")) }
+            f.model.bind(f.live); runCurrent()
+            assertEquals(beforePause, tokenRequests)
+            response.complete(f.state("Old response")); runCurrent()
+            assertTrue(tokenRequests > beforePause)
+            assertEquals("Resumed visit", f.model.state.value?.items?.single()?.content)
+        } finally { f.model.stop(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun anIgnoredCreationWhileBusyCannotReplaceTheUnconfirmedNonce() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val f = Fixture(dispatcher)
+        val response = CompletableDeferred<Result<LiveAudienceState>>()
+        try {
+            f.model.bind(f.live); runCurrent()
+            f.request = { _, _ -> response.await() }
+            f.model.ask("Original question"); runCurrent()
+            f.model.ask("Ignored while sending"); runCurrent()
+            response.complete(Result.failure(IllegalStateException("Lost acknowledgement"))); runCurrent()
+            f.request = { _, _ -> Result.success(f.state("Confirmed")) }
+            f.model.ask("Original question"); runCurrent()
+            assertEquals(2, f.writes.size)
+            assertEquals(f.writes.first()["requestNonce"], f.writes.last()["requestNonce"])
+            assertEquals(1, f.model.createdVersion.value)
+        } finally { f.model.stop(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun aReadReturningAfterThePanelStopsCannotPublish() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val f = Fixture(dispatcher)
+        val response = CompletableDeferred<LiveAudienceState>()
+        f.request = { _, _ -> withContext(NonCancellable) { Result.success(response.await()) } }
+        try {
+            f.model.bind(f.live); runCurrent()
+            f.model.stop()
+            response.complete(f.state("Response after pause")); runCurrent()
+            assertNull(f.model.state.value)
+        } finally { f.model.stop(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun stoppingDuringTokenResolutionPreventsTheWrite() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val f = Fixture(dispatcher)
+        try {
+            f.model.bind(f.live); runCurrent()
+            val token = CompletableDeferred<Result<String>>()
+            f.ensureToken = { withContext(NonCancellable) { token.await() } }
+            f.model.ask("Question before pause"); runCurrent()
+            f.model.stop()
+            token.complete(Result.success("fixture-token")); runCurrent()
+            assertTrue(f.writes.isEmpty())
+            assertEquals(0, f.model.createdVersion.value)
+            assertFalse(f.model.busy.value)
+        } finally { f.model.stop(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun retryAfterStoppingCannotStartAnotherRead() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val f = Fixture(dispatcher)
+        var reads = 0
+        f.request = { _, _ -> reads++; Result.success(f.state("Confirmed")) }
+        try {
+            f.model.bind(f.live); runCurrent()
+            val beforePause = reads
+            f.model.stop()
+            f.model.retry(); runCurrent()
+            assertEquals(beforePause, reads)
+        } finally { f.model.stop(); runCurrent(); Dispatchers.resetMain() }
+    }
+
+    @Test fun aLateCreateAfterStoppingKeepsItsNonceForResume() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(dispatcher)
+        val f = Fixture(dispatcher)
+        val response = CompletableDeferred<LiveAudienceState>()
+        try {
+            f.model.bind(f.live); runCurrent()
+            f.request = { method, _ -> if (method == HttpMethod.Post)
+                withContext(NonCancellable) { Result.success(response.await()) }
+                else Result.success(f.state("Current")) }
+            f.model.ask("Same question"); runCurrent()
+            val nonce = f.writes.single().getValue("requestNonce")
+            f.model.stop()
+            response.complete(f.state("Late confirmation")); runCurrent()
+            assertEquals(0, f.model.createdVersion.value)
+            f.request = { _, _ -> Result.success(f.state("Confirmed on resume")) }
+            f.model.bind(f.live); runCurrent()
+            f.model.ask("Same question"); runCurrent()
+            assertEquals(nonce, f.writes.last().getValue("requestNonce"))
+            assertEquals(1, f.model.createdVersion.value)
+        } finally { f.model.stop(); runCurrent(); Dispatchers.resetMain() }
+    }
 }
