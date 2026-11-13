@@ -829,7 +829,7 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
               className="ghost-btn"
               type="button"
               onClick={() => {
-                const url = `${getPublicWebOrigin()}/post/${encodeURIComponent(item.id)}`
+                const url = `${getPublicWebOrigin()}/post/${encodeURIComponent(item.id)}?preview=1`
                 const copy = async () => {
                   try { await navigator.clipboard.writeText(url); setShareStatus('Enlace copiado') }
                   catch { setShareStatus('No se pudo compartir el enlace. Inténtalo de nuevo.') }

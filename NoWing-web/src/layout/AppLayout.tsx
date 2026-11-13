@@ -28,8 +28,8 @@ import {
   Phone,
   Plus,
   Radio,
-  PanelLeftClose,
-  PanelLeftOpen,
+  ChevronLeft,
+  ChevronRight,
   Search,
   Settings,
   Users,
@@ -1066,7 +1066,7 @@ export function AppLayout() {
           <div className="offline-banner syncing">{migrationPasswordInfo}</div>
         ) : null}
 
-        {!isMessagesRoute && !isVideosRoute ? (
+        {!isMessagesRoute && !isVideosRoute && !location.pathname.startsWith('/app/assistant') ? (
           <header className="novvin-topbar">
             <div className="novvin-topbar-title">
               {!isSocialRoute && !isProfileRoute && !location.pathname.startsWith('/app/games') ? (
@@ -1154,16 +1154,13 @@ export function AppLayout() {
         </main>
 
         <nav id="novvin-navigation" className="novvin-bottom-nav" aria-label="Navegación principal">
-          <Link to="/app/social" className="rail-brand" aria-label="Novvin · Ir a Social">
-            <img src="/icons/novvin-96.png" width="36" height="36" alt="" />
-            <span>Novvin</span>
-          </Link>
-          <button type="button" className="rail-toggle rail-link" onClick={toggleRail}
+          <button type="button" className="rail-brand" onClick={toggleRail}
             aria-label={railCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'}
             title={railCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'}
             aria-expanded={!railCollapsed} aria-controls="novvin-navigation">
-            {railCollapsed ? <PanelLeftOpen aria-hidden="true"/> : <PanelLeftClose aria-hidden="true"/>}
-            <span>Contraer menú</span>
+            <img src="/icons/novvin-96.png" width="36" height="36" alt="" />
+            <span>Novvin</span>
+            {railCollapsed ? <ChevronRight className="rail-chevron" aria-hidden="true"/> : <ChevronLeft className="rail-chevron" aria-hidden="true"/>}
           </button>
           {mobileNavItems.map((item) => (
             <NavLink
@@ -1199,9 +1196,9 @@ export function AppLayout() {
             </NavLink>
           ))}
           <div className="rail-shortcuts">
-            {secondaryNavItems.filter(item => ['search', 'notifications', 'calls', 'voice', 'assistant'].includes(item.icon)).map(item => (
+            {secondaryNavItems.filter(item => ['search', 'notifications', 'assistant'].includes(item.icon)).map(item => (
               <NavLink key={item.to} to={item.to} aria-label={item.label} title={item.label} className={({isActive}) => `rail-link${isActive ? ' active' : ''}`}>
-                <ShellIcon name={item.icon} /><span className="rail-label">{item.icon === 'assistant' ? 'Nowy' : item.label}</span>
+                <ShellIcon name={item.icon} /><span className="rail-label">{item.icon === 'assistant' ? 'Novvin' : item.label}</span>
                 {item.icon === 'notifications' && notificationUnreadCount > 0 ? <span className="rail-count" aria-label={`${notificationUnreadCount} sin leer`}>{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span> : null}
               </NavLink>
             ))}

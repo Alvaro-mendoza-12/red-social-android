@@ -1,0 +1,115 @@
+{
+  "date": "2026-11-13",
+  "timezone": "America/Bogota",
+  "scope": "Correcciones web 130 y compartidos pÃƒÂºblicos 131; revisiÃƒÂ³n integral abierta",
+  "implementationGitBlobs": {
+    "NoWing-web/middleware.ts": "3b84f29ecf1f8a16c616fbe921e6ea4d1deb087e",
+    "NoWing-web/public/images/novvin-chat-web-demo.png": "6ed91290aab9cdf091336d674808e493df3fac73",
+    "NoWing-web/public/images/novvin-chat-web-demo.webp": "de88baf925d2213ad7704ce1df218576e4ad103f",
+    "NoWing-web/public/sitemap.xml": "2686853388a4ec930cd09708390c2227766c96e6",
+    "NoWing-web/scripts/prerender-public-home.mjs": "b4e3050eb8c61aa86a3c149ff9dbd29d3a74fc0c",
+    "NoWing-web/scripts/public-seo-state.json": "ade858fb9e6895f61628cde1058f58032c1d04e4",
+    "NoWing-web/scripts/verify-web-layout-local.cjs": "494c1d6b6892ce74302ba3a0e18778d50e647a7d",
+    "NoWing-web/src/components/ChatOptionsMenu.tsx": "c95e4d041550b00a6722cd84e908136e9898225c",
+    "NoWing-web/src/components/ShareVideoDialog.tsx": "8f70c48775998fa71ffc4409f80f1b0008f625e2",
+    "NoWing-web/src/core/sharePreview.ts": "b6ebb131f5eae6e8682bcd91d66ab2e5fbed6ded",
+    "NoWing-web/src/core/socialLinks.ts": "46c132ff9b4c9fe98f670f722b9cb6797b6c02fb",
+    "NoWing-web/src/features/assistant/AssistantPage.tsx": "79e71565e01aebc73f15c075de93dc4a26f89b56",
+    "NoWing-web/src/features/assistant/assistant.css": "89f22359aefc09c2eee2896f115affc26f2918a4",
+    "NoWing-web/src/features/messages/ChatDetailPage.tsx": "53854a9e81f7fe220295f788e6a2bed256ef0e9a",
+    "NoWing-web/src/features/reels/VideoDetailPage.tsx": "1ee46551f8c66218f75c4f71063e6224d0ba8de2",
+    "NoWing-web/src/features/reels/ReelsPage.tsx": "33544ba6b16517354d69af7fb202df4c7cced0b9",
+    "NoWing-web/src/pages/feed/FeedPage.tsx": "0f250aca6b48e637d91338fa5efbbe9d1adc2ca6",
+    "NoWing-web/src/layout/AppLayout.tsx": "3c638109b5c56035088ff76fb1fe865054a2cb9c",
+    "NoWing-web/src/ui/novvin/PublicHome.tsx": "87f7b048d5e1a03f0508a49ffc8a47b3eebed8f9",
+    "NoWing-web/src/ui/novvin/public-home.css": "d537e5dcb799510040f9a6a4d60b4605498a13ef",
+    "NoWing-web/src/ui/novvin/publicInfoPages.ts": "f99f34fdad524127083b8e4025f07be54c8d9e0c",
+    "NoWing-web/src/ui/novvin/shell.css": "f8b2c4f0068a8beff152d8cf9e7a338894dc9e7f",
+    "NoWing-web/src/ui/novvin/tokens.css": "df6009cb56f8498c9b4c9db5021bc10e2671064a",
+    "NoWing-web/src/ui/novvin/webParity.css": "e5064d2e0f98b14b8d674594ecc72fb79d8350cc",
+    "NoWing-web/vercel.json": "a0da242502d3d830163d540b326380d70fe867d9",
+    "infrastructure/local-fallback/api/src/public-profile-share.js": "5811af10d6bbd06995fe13561474f55295a0b8d0",
+    "infrastructure/local-fallback/api/src/public-content-share.js": "f76cba4946ff8f23fb5f1ee1a8ec460fe3d93612",
+    "infrastructure/local-fallback/api/src/public-share-image.js": "e03a5e9f145fd058af2373aac6c84dcb854adb75",
+    "infrastructure/local-fallback/api/src/public-share-policy.js": "d31bce09572ee4cd47c2cd1a7d9c9142502b8aa7",
+    "infrastructure/local-fallback/api/src/server.js": "4c491a398199eed53378fe97fa52935c58c7c71d",
+    "infrastructure/local-fallback/api/scripts/verify-public-sharing-local.js": "dfc34dcb8c27b1f15f552e16ede389c3906fd65f",
+    "vercel.json": "90fb4c01f1d51163b0edb2bb24ff75bc7266d22d"
+  },
+  "checks": {
+    "webGeneralEarlier": {
+      "passed": 1206,
+      "suites": 189,
+      "finalSharingChangesIncluded": false
+    },
+    "webFinalAssistantAndMenu": {
+      "passed": 11,
+      "suites": 2
+    },
+    "webFinalSharing": {
+      "passed": 42,
+      "suites": 6
+    },
+    "webNodePublicOutput": {
+      "developmentWorktree": {
+        "passed": 124,
+        "includesUnpublishedForeignHeaderTest": true
+      },
+      "mainCandidate": {
+        "passed": 123,
+        "failed": 0,
+        "buildPassed": true
+      }
+    },
+    "apiGeneral": {
+      "passed": 1106,
+      "skipped": 24,
+      "failed": 0,
+      "finalVideoCanonicalIncluded": false
+    },
+    "apiFinalFocused": {
+      "passed": 22,
+      "failed": 0
+    },
+    "apiHttpPostgres": {
+      "groups": 9,
+      "result": "131-http-postgres.json",
+      "transport": "loopback; public raster HTTPS mapped to local owned storage by QA preload"
+    },
+    "browser": {
+      "groups": 11,
+      "result": "130-navegador.json",
+      "syntheticAccounts": true,
+      "assistantResponseIntercepted": true
+    },
+    "build": {
+      "passed": true,
+      "publicPages": 21,
+      "publicApplicationJavaScriptBytes": 0,
+      "warning": "Private chunk larger than 1 MB remains"
+    },
+    "lintModifiedProduction": {
+      "files": 13,
+      "errors": 0,
+      "warnings": 0
+    },
+    "apiSourceDependencies": {
+      "passed": true,
+      "missing": []
+    }
+  },
+  "limits": [
+    "No despliegue de Ubuntu/Vercel",
+    "No comprobaciÃƒÂ³n fÃƒÂ­sica de WhatsApp ni teclado mÃƒÂ³vil",
+    "No APK nueva",
+    "Paridad del menÃƒÂº Android parcial",
+    "Bloque mÃƒÂ³vil 128 local sin publicar",
+    "Sin prueba de carga masiva ni cierre integral"
+  ],
+  "skills": [
+    "frontend-design",
+    "browser-qa",
+    "security-review"
+  ],
+  "premiumSkillAvailable": false
+}

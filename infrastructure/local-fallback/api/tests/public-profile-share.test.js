@@ -14,8 +14,8 @@ test('shared profiles use readable metadata, escape untrusted text and omit priv
   assert.match(html, /&lt;script&gt;/)
   assert.match(html, /conectate:\/\/profile\/test-id/)
   assert.ok(html.includes('rel="canonical" href="https://novvinapp.com/p/mirella_vr07"'))
-  assert.ok(html.includes('https://novvinapp.com/p/mirella_vr07/card.jpg?v=4'))
-  assert.ok(html.includes('https://novvinapp.com/login?next=%2Fu%2Ftest-id'))
+  assert.ok(html.includes('https://novvinapp.com/p/mirella_vr07/card.jpg?v=5'))
+  assert.ok(html.includes('https://novvinapp.com/login?next=%2Fapp%2Fprofile%2Ftest-id'))
   assert.match(html, /og:image:width" content="1200"/)
   assert.match(html, /rel="icon"/)
   assert.match(html, /\/p\/mirella_vr07\/card.jpg/)
@@ -73,7 +73,7 @@ test('profile card is a readable JPEG and escapes profile content', async () => 
   assert.equal(image.subarray(0, 2).toString('hex'), 'ffd8')
   assert.ok(image.length > 5_000)
   const metadata = await require('sharp')(image).metadata()
-  assert.equal(metadata.width, 1200); assert.equal(metadata.height, 1200)
+  assert.equal(metadata.width, 1200); assert.equal(metadata.height, 630)
 })
 
 test('public profile preview does not reveal unavailable profiles', async () => {

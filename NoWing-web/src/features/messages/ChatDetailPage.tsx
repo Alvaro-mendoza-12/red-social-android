@@ -2356,6 +2356,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       {showQuickShare ? <ChatOptionsMenu pinned={settings.isPinned} muted={settings.isMuted} favorite={settings.isFavorite} archived={settings.isArchived} busy={savingSettings}
         onPreference={patch => void saveChatPreferences(patch)} onInfo={() => setProfilePanelOpen(true)} onSearch={() => setShowMessageSearch(true)}
         onSelect={() => setSelectingMessages(true)} onAdvanced={() => setShowAdvancedTools(true)} onLeave={() => onCloseChat?onCloseChat():navigate('/app/messages')} onClose={() => setShowQuickShare(false)}
+        onSchedule={() => { setShowAdvancedTools(true); setShowScheduleComposer(true) }}
+        onTranslation={() => setShowAdvancedTools(true)} onPoll={() => { setShowAdvancedTools(true); setShowPollComposer(true) }}
         onNickname={otherParticipant ? () => { setNicknameDraft(otherParticipant.nickname || ''); setNicknameDialogOpen(true) } : undefined} /> : null}
       {nicknameDialogOpen && otherParticipant ? (
         <div className="chat-tools-overlay chat-advanced-options fade-in" role="dialog" aria-modal="true" aria-label="Apodo privado" onKeyDown={event => { if (event.key === 'Escape') setNicknameDialogOpen(false) }}>
@@ -2382,6 +2384,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
                   <input
                     className="text-input tiny-input"
                     placeholder="Idioma (es, en...)"
+                    aria-label="Idioma de traducción"
                     value={settings.targetLang}
                     onChange={(e) => setSettings(s => ({ ...s, targetLang: e.target.value }))}
                   />

@@ -9,6 +9,7 @@ import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackVideo, setFallbackVideoFavorite, setFallbackVideoReaction } from '../../core/fallbackData'
 import { fallbackApiJson, isFallbackAuthConfigured } from '../../core/auth/fallbackAuth'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
+import { buildVideoShareUrl } from '../../core/socialLinks'
 
 type VideoDetail = {
   id: string
@@ -452,7 +453,7 @@ export function VideoDetailPage() {
 
   async function copyVideoLink() {
     if (typeof window === 'undefined') return
-    const absoluteUrl = `${window.location.origin}/app/reels/${cleanVideoId}`
+    const absoluteUrl = buildVideoShareUrl(cleanVideoId)
     try {
       await navigator.clipboard.writeText(absoluteUrl)
       setShareCopied(true)

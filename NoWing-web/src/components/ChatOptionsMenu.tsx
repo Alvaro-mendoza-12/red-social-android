@@ -1,12 +1,13 @@
 import { useEffect, useRef, type ComponentType } from 'react'
-import { Archive, ArchiveRestore, Bell, BellOff, Heart, HeartOff, Info, Pencil, Pin, PinOff, Search, Settings2, SquareCheck, X } from 'lucide-react'
+import { Archive, ArchiveRestore, Bell, BellOff, Heart, HeartOff, Info, Pencil, Pin, PinOff, Search, Settings2, SquareCheck, X, CalendarClock, Languages, ListChecks } from 'lucide-react'
 
 type Item = { label: string; icon: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>; action: () => void; disabled?: boolean }
 
-export function ChatOptionsMenu({ pinned, muted, favorite, archived, busy, onPreference, onInfo, onSearch, onSelect, onAdvanced, onLeave, onClose, onNickname }: {
+export function ChatOptionsMenu({ pinned, muted, favorite, archived, busy, onPreference, onInfo, onSearch, onSelect, onAdvanced, onLeave, onClose, onNickname, onSchedule, onTranslation, onPoll }: {
   pinned: boolean; muted: boolean; favorite: boolean; archived: boolean; busy: boolean
   onPreference: (patch: { isPinned?: boolean; isMuted?: boolean; isFavorite?: boolean; isArchived?: boolean }) => void
   onInfo: () => void; onSearch: () => void; onSelect: () => void; onAdvanced: () => void; onLeave: () => void; onClose: () => void; onNickname?: () => void
+  onSchedule?: () => void; onTranslation?: () => void; onPoll?: () => void
 }) {
   const root = useRef<HTMLDivElement>(null)
   useEffect(() => { root.current?.querySelector<HTMLButtonElement>('button')?.focus() }, [])
@@ -20,6 +21,9 @@ export function ChatOptionsMenu({ pinned, muted, favorite, archived, busy, onPre
     ...(onNickname ? [{ label: 'Cambiar apodo privado', icon: Pencil, action: onNickname }] : []),
     { label: 'Buscar mensajes', icon: Search, action: onSearch },
     { label: 'Seleccionar mensajes', icon: SquareCheck, action: onSelect },
+    ...(onSchedule ? [{ label: 'Programar mensaje', icon: CalendarClock, action: onSchedule }] : []),
+    ...(onTranslation ? [{ label: 'Traducción', icon: Languages, action: onTranslation }] : []),
+    ...(onPoll ? [{ label: 'Crear encuesta', icon: ListChecks, action: onPoll }] : []),
     { label: muted ? 'Activar notificaciones' : 'Silenciar notificaciones', icon: muted ? Bell : BellOff, action: () => onPreference({ isMuted: !muted }), disabled: busy },
     { label: pinned ? 'Desfijar chat' : 'Fijar chat', icon: pinned ? PinOff : Pin, action: () => onPreference({ isPinned: !pinned }), disabled: busy },
     { label: favorite ? 'Quitar de favoritos' : 'Añadir a favoritos', icon: favorite ? HeartOff : Heart, action: () => onPreference({ isFavorite: !favorite }), disabled: busy },

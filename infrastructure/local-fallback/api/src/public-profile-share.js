@@ -3,6 +3,8 @@
 const { readPublicProfile } = require('./guest-mode-routes')
 const { canonicalStorageUrl } = require('./storage-url-canonicalization')
 const sharp = require('sharp')
+const { readPublicShareImage } = require('./public-share-image')
+const { publicShareProfileAllowed } = require('./public-share-policy')
 const logo = require('node:fs').readFileSync(require('node:path').join(__dirname, 'assets', 'novvin-logo.png')).toString('base64')
 
 function escapeHtml(value) {
@@ -15,7 +17,7 @@ function publicProfileUrl(profile, base) {
 }
 
 function previewImageUrl(profile, base) {
-  return `${publicProfileUrl(profile, base)}/card.jpg?v=4`
+  return `${publicProfileUrl(profile, base)}/card.jpg?v=5`
 }
 
 function previewText(value, limit) {
@@ -45,38 +47,22 @@ async function publicProfileCard(profile, publicBaseUrl) {
   const handle = previewText(profile.username ? `@${profile.username}` : 'Perfil en Novvin', 30)
   const bioLines = previewLines(profile.bio || `Conoce el perfil de ${name} en Novvin.`)
   const nameSize = name.length > 18 || /[^\u0000-\u00ff]/.test(name) ? 44 : 64
-  const avatarUrl = canonicalStorageUrl(profile.avatar_url, base)
-  let avatarMarkup = `<circle cx="186" cy="246" r="86" fill="#234572"/><text x="186" y="273" text-anchor="middle" font-size="82" font-weight="700" fill="#ffffff">${escapeHtml(name.charAt(0).toUpperCase())}</text>`
-  try {
-    const url = new URL(avatarUrl)
-    const origin = new URL(base)
-    if (url.protocol === 'https:' && url.origin === origin.origin &&
-        url.pathname.startsWith('/storage/v1/object/public/')) {
-      const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(2500) })
-      const type = response.headers.get('content-type') || ''
-      const size = Number(response.headers.get('content-length') || 0)
-      if (response.ok && /^image\/(jpeg|png|webp)$/i.test(type) && size <= 2_000_000) {
-        const bytes = Buffer.from(await response.arrayBuffer())
-        if (bytes.length <= 2_000_000) {
-          const square = await sharp(bytes, { limitInputPixels: 12_000_000 })
-            .resize(192, 192, { fit: 'cover' }).jpeg({ quality: 82 }).toBuffer()
-          avatarMarkup = `<image x="90" y="150" width="192" height="192" href="data:image/jpeg;base64,${square.toString('base64')}" clip-path="url(#avatarClip)"/>`
-        }
-      }
-    }
-  } catch (_) { /* A missing avatar must not prevent the profile card. */ }
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1200" viewBox="0 0 1200 1200">
-<defs><clipPath id="avatarClip"><circle cx="186" cy="246" r="96"/></clipPath></defs>
-<rect width="1200" height="1200" fill="#fffaf2"/><rect width="1200" height="14" fill="#09b9c7"/>
-<image x="345" y="80" width="510" height="510" href="data:image/png;base64,${logo}"/>
-<text x="600" y="655" text-anchor="middle" font-family="sans-serif" font-size="44" font-weight="700" fill="#172342">Conecta conmigo</text>
-<line x1="110" y1="714" x2="1090" y2="714" stroke="#c9dce0" stroke-width="3"/>
-<g transform="translate(40 570) scale(.8)">${avatarMarkup}</g>
-<text x="290" y="805" font-family="sans-serif" font-size="${nameSize}" font-weight="700" fill="#172342">${escapeHtml(name)}</text>
-<text x="294" y="864" font-family="sans-serif" font-size="34" fill="#086b76">${escapeHtml(handle)}</text>
-${bioLines.map((line, index) => `<text x="110" y="${986 + index * 45}" font-family="sans-serif" font-size="29" fill="#33445d">${escapeHtml(line)}</text>`).join('')}
-<rect x="0" y="1100" width="1200" height="100" fill="#172342"/>
-<text x="600" y="1163" text-anchor="middle" font-family="sans-serif" font-size="29" fill="#ffffff">Ver mi perfil · Conversar · Descubrir Novvin</text></svg>`
+  let avatarMarkup = `<circle cx="234" cy="325" r="128" fill="#2b629a"/><text x="234" y="361" text-anchor="middle" font-size="104" font-weight="700" fill="#ffffff">${escapeHtml(Array.from(name)[0]?.toUpperCase() || 'N')}</text>`
+  const avatar = await readPublicShareImage(profile.avatar_url, base)
+  if (avatar) {
+    const square = await sharp(avatar).resize(256, 256, { fit: 'cover' }).jpeg({ quality: 85 }).toBuffer()
+    avatarMarkup = `<image x="106" y="197" width="256" height="256" href="data:image/jpeg;base64,${square.toString('base64')}" clip-path="url(#avatarClip)"/>`
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+<defs><clipPath id="avatarClip"><circle cx="234" cy="325" r="128"/></clipPath></defs>
+<rect width="1200" height="630" fill="#eef5ff"/><rect width="1200" height="8" fill="#2168b5"/>
+<image x="58" y="42" width="50" height="50" href="data:image/png;base64,${logo}"/>
+<text x="122" y="79" font-family="sans-serif" font-size="30" font-weight="700" fill="#162d4b">Novvin</text>
+${avatarMarkup}
+<text x="430" y="255" font-family="sans-serif" font-size="${nameSize}" font-weight="700" fill="#162d4b">${escapeHtml(name)}</text>
+<text x="434" y="316" font-family="sans-serif" font-size="30" fill="#2168b5">${escapeHtml(handle)}</text>
+${bioLines.map((line, index) => `<text x="434" y="${386 + index * 42}" font-family="sans-serif" font-size="26" fill="#405976">${escapeHtml(line)}</text>`).join('')}
+<text x="434" y="536" font-family="sans-serif" font-size="23" fill="#50657d">Perfil en novvinapp.com</text></svg>`
   return sharp(Buffer.from(svg)).jpeg({ quality: 85, mozjpeg: true }).toBuffer()
 }
 
@@ -123,7 +109,7 @@ function profileShareHtml(profile, publicBaseUrl, posts = []) {
   const image = previewImageUrl(profile, webBase)
   const appLink = `conectate://profile/${encodeURIComponent(profile.id)}`
   const storeLink = 'https://play.google.com/store/apps/details?id=conectate.com'
-  const webPath = `/u/${encodeURIComponent(profile.id)}`
+  const webPath = `/app/profile/${encodeURIComponent(profile.id)}`
   const loginLink = `${webBase}/login?next=${encodeURIComponent(webPath)}`
   const registerLink = `${webBase}/register?next=${encodeURIComponent(webPath)}`
   const safeAvatar = /^https:\/\//i.test(avatar || '') ? avatar : ''
@@ -153,7 +139,7 @@ function profileShareHtml(profile, publicBaseUrl, posts = []) {
 <meta property="og:title" content="${escapeHtml(title)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 ${canonical ? `<meta property="og:url" content="${escapeHtml(canonical)}"><link rel="canonical" href="${escapeHtml(canonical)}">` : ''}
-${image ? `<meta property="og:image" content="${escapeHtml(image)}"><meta property="og:image:secure_url" content="${escapeHtml(image)}"><meta property="og:image:type" content="image/jpeg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="1200"><meta property="og:image:alt" content="Tarjeta del perfil de ${escapeHtml(name)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escapeHtml(title)}"><meta name="twitter:description" content="${escapeHtml(description)}"><meta name="twitter:image" content="${escapeHtml(image)}">` : ''}
+${image ? `<meta property="og:image" content="${escapeHtml(image)}"><meta property="og:image:secure_url" content="${escapeHtml(image)}"><meta property="og:image:type" content="image/jpeg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta property="og:image:alt" content="Tarjeta del perfil de ${escapeHtml(name)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${escapeHtml(title)}"><meta name="twitter:description" content="${escapeHtml(description)}"><meta name="twitter:image" content="${escapeHtml(image)}">` : ''}
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#0b1020;color:#f6f8ff;font:16px/1.55 system-ui,-apple-system,sans-serif}a{color:inherit}a:focus-visible{outline:3px solid #45d8d1;outline-offset:3px}main{width:min(100% - 32px,740px);margin:0 auto;padding:24px 0 80px}.brand{font-size:23px;font-weight:800;letter-spacing:.03em;margin:0 0 20px}.brand-mark{color:#39d6d1}.hero,.details{background:#171f36;border:1px solid #33415d;border-radius:24px;overflow:hidden}.hero-image{display:block;width:100%;height:auto;aspect-ratio:1;object-fit:cover}.intro{padding:24px}.eyebrow{color:#7ce6df;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.08em;margin:0 0 8px}h1{font-size:clamp(27px,6vw,40px);line-height:1.18;margin:0}.handle{color:#83e9e3;margin:6px 0 14px}.bio{color:#d8e0f1;margin:0;overflow-wrap:anywhere}.choices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:24px}.button{display:flex;align-items:center;justify-content:center;min-height:50px;padding:12px 15px;border-radius:13px;text-align:center;text-decoration:none;font-weight:750;line-height:1.25;background:#2d3b60;border:1px solid #637395}.button.primary{background:#53dbd5;color:#092230;border-color:#53dbd5}.button.wide{grid-column:1/-1}.hint{color:#b9c5dc;font-size:14px;margin:14px 0 0}.details{padding:24px;margin-top:24px}.details h2{font-size:24px;margin:0 0 6px}.details p{overflow-wrap:anywhere}.guest-note{color:#b9c5dc;margin:0 0 20px}.post{border-top:1px solid #34415c;padding:16px 0}.post p{white-space:pre-wrap;margin:0 0 12px}.post img,.post video{display:block;width:100%;max-height:520px;object-fit:contain;border-radius:12px;background:#0b1020}.post small{display:block;color:#aebbd2;margin-top:8px}.account-actions{display:flex;gap:18px;flex-wrap:wrap;border-top:1px solid #34415c;padding-top:22px;margin-top:24px}.account-actions a{color:#84e8e2;font-weight:650}footer{color:#aebbd2;text-align:center;font-size:13px;margin-top:24px}@media(max-width:520px){.choices{grid-template-columns:1fr}.button.wide{grid-column:auto}.intro,.details{padding:20px}}
 </style><style>.gallery{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;overscroll-behavior-inline:contain}.gallery img{flex:0 0 100%;scroll-snap-align:start}</style></head><body><main><div class="brand"><span class="brand-mark">✦</span> Novvin</div>
@@ -172,22 +158,22 @@ function registerPublicProfileShareRoutes(app, { pool, publicBaseUrl }) {
     try {
       // Share previews are not search opt-ins. Keep existing guest access, while
       // preventing indexing until a separate owner-controlled policy exists.
-      res.set('X-Robots-Tag', 'noindex, noarchive')
+      res.set('X-Robots-Tag', 'noindex, noarchive').set('Cache-Control', 'no-store')
       const identifier = String(req.params.identifier || '')
       if (!/^[a-z0-9_.-]{3,36}$/i.test(identifier)) return res.sendStatus(404)
       const profile = await readPublicProfile(pool, identifier)
-      if (!profile) return res.sendStatus(404)
+      if (!profile || !await publicShareProfileAllowed(pool, profile)) return res.sendStatus(404)
       const image = await publicProfileCard(profile, publicBaseUrl)
-      return res.set('Cache-Control', profile.is_private ? 'no-store' : 'public, max-age=300').type('image/jpeg').send(image)
+      return res.set('Cache-Control', 'no-store').type('image/jpeg').send(image)
     } catch (error) { next(error) }
   })
   app.get(['/v1/public/profiles/:identifier', '/p/:identifier'], async (req, res, next) => {
     try {
-      res.set('X-Robots-Tag', 'noindex, follow, noarchive')
+      res.set('X-Robots-Tag', 'noindex, follow, noarchive').set('Cache-Control', 'no-store')
       const identifier = String(req.params.identifier || '')
       if (!/^[a-z0-9_.-]{3,36}$/i.test(identifier)) return res.status(404).type('text').send('Perfil no disponible.')
       const profile = await readPublicProfile(pool, identifier)
-      if (!profile) return res.status(404).type('text').send('Perfil no disponible.')
+      if (!profile || !await publicShareProfileAllowed(pool, profile)) return res.status(404).type('text').send('Perfil no disponible.')
       const posts = await publicProfilePosts(pool, profile)
       res.set('Cache-Control', 'no-store')
       res.set('Content-Security-Policy', "default-src 'none'; img-src https:; media-src https:; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'")

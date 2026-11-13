@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-13T16:57:04.324521+00:00",
-  "baseCommit": "4fd4ed64138179229e8c09f7b5a1bff1ee6f6cea",
+  "generatedAtUtc": "2026-11-13T20:39:37.669579+00:00",
+  "baseCommit": "0d9684c815d903fb21d836b8391305644fa99d08",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3610,
-    "partial": 227,
-    "code-read": 571
+    "pending": 3613,
+    "partial": 231,
+    "code-read": 587
   },
   "countsByPhase": {
     "android": {
@@ -21,13 +21,13 @@
       "code-read": 425
     },
     "documentation": {
-      "pending": 583,
-      "code-read": 37,
+      "pending": 592,
+      "code-read": 40,
       "partial": 15
     },
     "server": {
       "pending": 857,
-      "code-read": 49,
+      "code-read": 55,
       "partial": 27
     },
     "tooling-and-other": {
@@ -36,9 +36,9 @@
       "code-read": 15
     },
     "web": {
-      "partial": 81,
-      "pending": 509,
-      "code-read": 45
+      "partial": 85,
+      "pending": 503,
+      "code-read": 52
     }
   },
   "files": [
@@ -261,9 +261,9 @@
     {
       "file": "NoWing-web/middleware.ts",
       "phase": "web",
-      "gitBlobId": "e583837814ad8eaca20aeb2e996a1621c79c926c",
+      "gitBlobId": "3b84f29ecf1f8a16c616fbe921e6ea4d1deb087e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -397,13 +397,13 @@
     {
       "file": "NoWing-web/public/images/novvin-chat-web-demo.png",
       "phase": "web",
-      "gitBlobId": "bd7db75b986eea5a09e264e91a0bb01177de7e0b",
+      "gitBlobId": "6ed91290aab9cdf091336d674808e493df3fac73",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/public/images/novvin-chat-web-demo.webp",
       "phase": "web",
-      "gitBlobId": "164e89faae0a7966baa298475b1cbfae240fdb2f",
+      "gitBlobId": "de88baf925d2213ad7704ce1df218576e4ad103f",
       "reviewStatus": "pending"
     },
     {
@@ -609,7 +609,7 @@
     {
       "file": "NoWing-web/public/sitemap.xml",
       "phase": "web",
-      "gitBlobId": "3efae6748c3a65f308cc526e482adac0dee2a008",
+      "gitBlobId": "2686853388a4ec930cd09708390c2227766c96e6",
       "reviewStatus": "pending"
     },
     {
@@ -689,8 +689,10 @@
     {
       "file": "NoWing-web/scripts/prerender-public-home.mjs",
       "phase": "web",
-      "gitBlobId": "6a3fe31480691627e2520b8f7d7c3caf514c3523",
-      "reviewStatus": "pending"
+      "gitBlobId": "b4e3050eb8c61aa86a3c149ff9dbd29d3a74fc0c",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/scripts/public-page-model.mjs",
@@ -701,7 +703,7 @@
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "fbef727a5d484b570ca68b643f3e1da9d05737e2",
+      "gitBlobId": "ade858fb9e6895f61628cde1058f58032c1d04e4",
       "reviewStatus": "pending"
     },
     {
@@ -744,6 +746,14 @@
       "gitBlobId": "80b0223e4bbc5b7dcbfe3535d262a29e1487d74b",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/scripts/verify-web-layout-local.cjs",
+      "phase": "web",
+      "gitBlobId": "494c1d6b6892ce74302ba3a0e18778d50e647a7d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -805,8 +815,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/ChatOptionsMenu.test.tsx",
       "phase": "web",
-      "gitBlobId": "b21be2505796be8791807b58824ae270661f55a3",
-      "reviewStatus": "pending"
+      "gitBlobId": "dbd7e650296fb6dc9418daf1534425749ca822e6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/ChatProfilePanel.test.tsx",
@@ -1393,6 +1405,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/gatewaySharePreview.test.ts",
+      "phase": "web",
+      "gitBlobId": "4d5387b382fb41cbcd821539600a4d2583d02e35",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/guestAccess.test.ts",
       "phase": "web",
       "gitBlobId": "85dc3e7177e84ff6332bfeb52edb9e4f714a7bea",
@@ -1583,6 +1603,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "NoWing-web/src/__tests__/core/sharePreview.test.ts",
+      "phase": "web",
+      "gitBlobId": "1ab265e586e813c5d3874689db022b0515213ef5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/sharedVideoReference.test.ts",
       "phase": "web",
       "gitBlobId": "adb6a74e0a005cf49bab0524e91defb6be7e3870",
@@ -1595,6 +1623,14 @@
       "phase": "web",
       "gitBlobId": "3d2e74fa441613c29e6bb23f559111f96e78a3f9",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/socialLinks.test.ts",
+      "phase": "web",
+      "gitBlobId": "a6ee546469d11b72d22f520026fc11fcb42ad134",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/spellingWord.test.ts",
@@ -2021,9 +2057,9 @@
     {
       "file": "NoWing-web/src/components/ChatOptionsMenu.tsx",
       "phase": "web",
-      "gitBlobId": "188b6d0cfcbefe311a64a3d55088d429b8604267",
+      "gitBlobId": "c95e4d041550b00a6722cd84e908136e9898225c",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2343,9 +2379,9 @@
     {
       "file": "NoWing-web/src/components/ShareVideoDialog.tsx",
       "phase": "web",
-      "gitBlobId": "9efa59ee154486426ffd7926f1f2fc53cf189f00",
+      "gitBlobId": "8f70c48775998fa71ffc4409f80f1b0008f625e2",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3107,6 +3143,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/core/sharePreview.ts",
+      "phase": "web",
+      "gitBlobId": "b6ebb131f5eae6e8682bcd91d66ab2e5fbed6ded",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/core/sharedVideoReference.ts",
       "phase": "web",
       "gitBlobId": "f5452f5b67abfa1fe54d428a3ad71aff0603617b",
@@ -3123,9 +3167,9 @@
     {
       "file": "NoWing-web/src/core/socialLinks.ts",
       "phase": "web",
-      "gitBlobId": "3474ba34def81fc8086ad84fc86c3c424bd9c1b8",
+      "gitBlobId": "46c132ff9b4c9fe98f670f722b9cb6797b6c02fb",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3239,14 +3283,18 @@
     {
       "file": "NoWing-web/src/features/assistant/AssistantPage.tsx",
       "phase": "web",
-      "gitBlobId": "dc7c9a91490fc01ed4069a8803221cbb6571f0c3",
-      "reviewStatus": "pending"
+      "gitBlobId": "79e71565e01aebc73f15c075de93dc4a26f89b56",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/assistant/assistant.css",
       "phase": "web",
-      "gitBlobId": "bff80e9ab0fb9575bb3ca545511c80e244cc8596",
-      "reviewStatus": "pending"
+      "gitBlobId": "89f22359aefc09c2eee2896f115affc26f2918a4",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/calls/CallInterface.tsx",
@@ -3419,9 +3467,9 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "9697287b5e8ce4088305f51907a7762f86fb11f5",
+      "gitBlobId": "53854a9e81f7fe220295f788e6a2bed256ef0e9a",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3663,16 +3711,18 @@
     {
       "file": "NoWing-web/src/features/reels/ReelsPage.tsx",
       "phase": "web",
-      "gitBlobId": "7e6c106b0e3c94318e3423f922a374c214da03d0",
+      "gitBlobId": "33544ba6b16517354d69af7fb202df4c7cced0b9",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/reels/VideoDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "a940e7d72786a5b8f46998ceb9479a8fa9116de9",
-      "reviewStatus": "pending"
+      "gitBlobId": "1ee46551f8c66218f75c4f71063e6224d0ba8de2",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/reels/reelFeedOrder.ts",
@@ -3865,9 +3915,9 @@
     {
       "file": "NoWing-web/src/layout/AppLayout.tsx",
       "phase": "web",
-      "gitBlobId": "dfa6bc52d55ae76e7c15096cd2f67c9d06da1607",
+      "gitBlobId": "3c638109b5c56035088ff76fb1fe865054a2cb9c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3961,9 +4011,9 @@
     {
       "file": "NoWing-web/src/pages/feed/FeedPage.tsx",
       "phase": "web",
-      "gitBlobId": "16398e880a798a31e8b227d62d94eea85483e3ce",
+      "gitBlobId": "0f250aca6b48e637d91338fa5efbbe9d1adc2ca6",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4033,9 +4083,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/PublicHome.tsx",
       "phase": "web",
-      "gitBlobId": "793eb1149200b02584bc512102d3829573214bf8",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "gitBlobId": "87f7b048d5e1a03f0508a49ffc8a47b3eebed8f9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4103,16 +4153,18 @@
     {
       "file": "NoWing-web/src/ui/novvin/public-home.css",
       "phase": "web",
-      "gitBlobId": "b7b3373bb892165109b4696ecf6e424e30e8607f",
+      "gitBlobId": "d537e5dcb799510040f9a6a4d60b4605498a13ef",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/publicInfoPages.ts",
       "phase": "web",
-      "gitBlobId": "33b09675a5700f93bf6f165eff34e0e188e4c13d",
-      "reviewStatus": "pending"
+      "gitBlobId": "f99f34fdad524127083b8e4025f07be54c8d9e0c",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/publicNavigationData.ts",
@@ -4133,25 +4185,25 @@
     {
       "file": "NoWing-web/src/ui/novvin/shell.css",
       "phase": "web",
-      "gitBlobId": "743cbf243df5ecd154aebf38206868900d289a75",
+      "gitBlobId": "f8b2c4f0068a8beff152d8cf9e7a338894dc9e7f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/tokens.css",
       "phase": "web",
-      "gitBlobId": "9687ce6bb0ca4a5858e1a9fbcc80bf00483c46d5",
+      "gitBlobId": "df6009cb56f8498c9b4c9db5021bc10e2671064a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
       "phase": "web",
-      "gitBlobId": "025cd04667efcad7c9ea8ea670c30fc4b20d211e",
+      "gitBlobId": "e5064d2e0f98b14b8d674594ecc72fb79d8350cc",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4185,9 +4237,9 @@
     {
       "file": "NoWing-web/tests/public-home.test.mjs",
       "phase": "web",
-      "gitBlobId": "49e8c89eb1cbce5d4332e3980c17096392e12e20",
+      "gitBlobId": "4914e775a5883d5e1382eaa43858e675cb340e6c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4245,7 +4297,7 @@
     {
       "file": "NoWing-web/vercel.json",
       "phase": "web",
-      "gitBlobId": "e67eca9fcc173b746f1b4d1cb2183a6ab86ae4ac",
+      "gitBlobId": "1a05d0ed5dce221bfcf5992c4d7d01c540df9dc0",
       "reviewStatus": "pending"
     },
     {
@@ -20053,9 +20105,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "a58348685a718e5f44bf6d40639d41fb186088ad",
+      "gitBlobId": "25d728ca5cb06e0ff1fd371203d89a3e8a3caae7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20225,6 +20277,22 @@
       "phase": "documentation",
       "gitBlobId": "2cc901c4d69d040b796a304e32ffa83108c0131d",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/130-web-compacta-asistente-y-portada-2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "284d1e7f1a3d4d41268580e5c601f6e6eebc0e44",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "dd6d3f799e84f6c5a310f5d4d0a0f9ee1b874c3f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/14-sistema-musical-legal.md",
@@ -20749,9 +20817,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "7fed0ad51079e4737d23ac631b8d9ab6f8846c74",
+      "gitBlobId": "0f89e3cc9101b21797a4cce24e292324f8383b17",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21223,8 +21291,16 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "38553d125909f84c2e3d56ed5bf59086389b6a8a",
+      "gitBlobId": "6afff305560b5aff8c7f833ce97b7fa0b52173b6",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/product/WEB_COMPACT_SHARE_REQUIREMENTS_2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "13c59690f6f9f826e600bd6fb2d120364d7208e6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/product/WEB_NAVIGATION_CALL_REQUIREMENTS_2026-11-13.md",
@@ -21342,6 +21418,60 @@
       "file": "docs/quality/evidence/129-resultados.json",
       "phase": "documentation",
       "gitBlobId": "9043364f4b9838cea95f4878119838d324d5b4eb",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/130-131-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "ad972ec6002b33dc424022545dc014ef79c73cc4",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/130-asistente.png",
+      "phase": "documentation",
+      "gitBlobId": "d8fbe5bd5f09123472aa03a75bb708f04af63224",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/130-chat-web.png",
+      "phase": "documentation",
+      "gitBlobId": "6ed91290aab9cdf091336d674808e493df3fac73",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/130-menu-plegado.png",
+      "phase": "documentation",
+      "gitBlobId": "f15e257854eb8a8ddc9fb0e4a5ce97518f468b62",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/130-navegador.json",
+      "phase": "documentation",
+      "gitBlobId": "fde2e85396c1327a46935754a32819e86779849a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/130-portada.png",
+      "phase": "documentation",
+      "gitBlobId": "e21f47df6ceabdb6a546f3701333c3ba761c406b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/131-http-postgres.json",
+      "phase": "documentation",
+      "gitBlobId": "1397cd4fa5197bc41f7746a7523af4f8e90a28c4",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/131-perfil.jpg",
+      "phase": "documentation",
+      "gitBlobId": "5e787d4580eee9f500aee42ff5c52d33a294cd42",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/131-publicacion.jpg",
+      "phase": "documentation",
+      "gitBlobId": "c744933d3ecb94e9a0ee55e22fd3de654aa2c53e",
       "reviewStatus": "pending"
     },
     {
@@ -22035,6 +22165,14 @@
       "phase": "server",
       "gitBlobId": "205af6d30a75553f4b3b4b8c1d254c9f2f091a84",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/scripts/verify-public-sharing-local.js",
+      "phase": "server",
+      "gitBlobId": "dfc34dcb8c27b1f15f552e16ede389c3906fd65f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-registration-avatar-e2e.js",
@@ -22853,6 +22991,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/src/public-content-share.js",
+      "phase": "server",
+      "gitBlobId": "f76cba4946ff8f23fb5f1ee1a8ec460fe3d93612",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/src/public-creator-visibility.js",
       "phase": "server",
       "gitBlobId": "42615eaae3d70940b86a68d28654077f768d523e",
@@ -22867,9 +23013,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/public-profile-share.js",
       "phase": "server",
-      "gitBlobId": "6f7d7e1b64adeca204ad7c1629fb7020f5e84d46",
+      "gitBlobId": "5811af10d6bbd06995fe13561474f55295a0b8d0",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22877,6 +23023,22 @@
       "phase": "server",
       "gitBlobId": "3e525faa765b736bca0fd3e382286e7a855eec40",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/public-share-image.js",
+      "phase": "server",
+      "gitBlobId": "e03a5e9f145fd058af2373aac6c84dcb854adb75",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/public-share-policy.js",
+      "phase": "server",
+      "gitBlobId": "d31bce09572ee4cd47c2cd1a7d9c9142502b8aa7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/push-notifications.js",
@@ -22963,9 +23125,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "f2e934f6d7bd9f3f3413d401d2ce5340feee3f0e",
+      "gitBlobId": "4c491a398199eed53378fe97fa52935c58c7c71d",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24297,6 +24459,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/public-content-share.test.js",
+      "phase": "server",
+      "gitBlobId": "7b3d15f3fc28626be8683a4b1b86b6305642f596",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/public-creator-visibility.test.js",
       "phase": "server",
       "gitBlobId": "728ec6942985d89eda80f1c41253f8f1986f023c",
@@ -24323,9 +24493,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/public-profile-share.test.js",
       "phase": "server",
-      "gitBlobId": "12bfadb8e880152348addc09045fd0614d65f281",
+      "gitBlobId": "af731995c6d1b6fb24fd6a01db2bad2baa383c86",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24339,6 +24509,14 @@
       "phase": "server",
       "gitBlobId": "c26ee94dfc67992620a83ecd3ca79168e75b3984",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/public-share-image.test.js",
+      "phase": "server",
+      "gitBlobId": "518f9c16d8b9a33e3b195a799722b3f12fe9f149",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/public-tunnel-dns.test.mjs",
@@ -28083,7 +28261,7 @@
     {
       "file": "vercel.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "ca21b31dc3b4f6d1fd0090d1ea9637b7c3f94354",
+      "gitBlobId": "8a49daab57c7d7e59401661602f4833e9ce31ba5",
       "reviewStatus": "pending"
     }
   ]
