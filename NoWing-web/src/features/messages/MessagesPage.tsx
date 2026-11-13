@@ -1622,7 +1622,7 @@ export function MessagesPage() {
           >
             {activeTab === 'chats' ? <MessageSquarePlus size={22} /> : <Plus size={22} />}
           </button>
-          <button className="icon-btn" type="button" aria-label="Más opciones" title="Más opciones" aria-haspopup="dialog" aria-controls="mobile-explore-menu" onClick={openNovvinMenu}>
+          <button className="icon-btn" type="button" aria-label="Más opciones" title="Más opciones" aria-haspopup="dialog" aria-controls="mobile-explore-menu" onClick={() => openNovvinMenu(activeTab)}>
             <MoreVertical size={20} aria-hidden="true" />
           </button>
         </div>

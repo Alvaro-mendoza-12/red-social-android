@@ -1,4 +1,23 @@
 export type SectionMenuItem = { label: string; to?: string; voiceAction?: 'settings' | 'refresh' | 'copy' | 'leave' }
+export type MessagesMenuTab = 'chats' | 'groups' | 'communities' | 'voice'
+
+export const messagesMenuLabels: Record<MessagesMenuTab, string> = {
+  chats: 'mensajes', groups: 'grupos', communities: 'comunidades', voice: 'salas de voz',
+}
+
+export function messagesMenu(tab: MessagesMenuTab): SectionMenuItem[] {
+  if (tab === 'groups') return [{ label: 'Crear grupo', to: '/app/create-space?type=group' }]
+  if (tab === 'communities') return [{ label: 'Crear comunidad', to: '/app/create-space?type=community' }]
+  if (tab === 'voice') return [
+    { label: 'Crear sala de voz', to: '/app/create-space?type=voice' },
+    { label: 'Ver salas de voz', to: '/app/voice' },
+  ]
+  return [
+    { label: 'Nueva llamada', to: '/app/calls' },
+    { label: 'Crear grupo', to: '/app/create-space?type=group' },
+    { label: 'Crear comunidad', to: '/app/create-space?type=community' },
+  ]
+}
 export function sectionMenu(path: string): SectionMenuItem[] {
   if (/^\/app\/voice\/[^/]+/.test(path)) return [
     { label: 'Ajustes de audio y video', voiceAction: 'settings' },

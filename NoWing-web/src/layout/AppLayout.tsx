@@ -5,7 +5,7 @@ import { AttachmentJobsStatus } from '../components/AttachmentJobsStatus'
 import { MessageReactionNotice } from '../components/MessageReactionNotice'
 import { dedupeInboxConversations } from '../features/messages/conversationInboxSupport'
 import { voiceBackPath } from '../core/voiceDirectory'
-import { sectionMenu } from '../core/sectionMenu'
+import { sectionMenu, messagesMenu, messagesMenuLabels, type MessagesMenuTab } from '../core/sectionMenu'
 import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -242,7 +242,8 @@ export function AppLayout() {
     getDeferredMutationCount(user?.id ?? 'signed-out'),
   )
   const [isMobileExploreOpen, setIsMobileExploreOpen] = useState(false)
-  const [menuMode, setMenuMode] = useState<'navigation' | 'section'>('navigation')
+  const [menuMode, setMenuMode] = useState<'navigation' | 'section' | 'messages'>('navigation')
+  const [messagesMenuTab, setMessagesMenuTab] = useState<MessagesMenuTab>('chats')
   const [logoutBusy, setLogoutBusy] = useState(false)
   const [logoutFailed, setLogoutFailed] = useState(false)
   const logoutInFlight = useRef(false)
@@ -794,7 +795,8 @@ export function AppLayout() {
   const isMessagesRoute = location.pathname.startsWith('/app/messages')
   const isSocialRoute = location.pathname.startsWith('/app/social')
   const isProfileRoute = location.pathname === '/app/profile'
-  const currentMenu = sectionMenu(location.pathname)
+  const currentMenu = menuMode === 'messages' ? messagesMenu(messagesMenuTab) : sectionMenu(location.pathname)
+  const menuTitle = menuMode === 'navigation' ? 'Explorar Novvin' : `Opciones de ${menuMode === 'messages' ? messagesMenuLabels[messagesMenuTab] : screenTitle(location.pathname)}`
   const activeSection = primarySection(location.pathname)
   const isVideosRoute = activeSection === '/app/videos'
   const isConversationRoute = /^\/app\/messages\/.+/.test(location.pathname)
@@ -887,10 +889,14 @@ export function AppLayout() {
   }, [isMobileExploreOpen])
 
   useEffect(() => {
-    const open = () => {
+    const open = (event: Event) => {
       if (document.activeElement instanceof HTMLButtonElement)
         mobileExploreButtonRef.current = document.activeElement
-      setMenuMode('navigation')
+      const tab = (event as CustomEvent<{ messagesTab?: string }>).detail?.messagesTab
+      if (tab && Object.hasOwn(messagesMenuLabels, tab)) {
+        setMessagesMenuTab(tab as MessagesMenuTab)
+        setMenuMode('messages')
+      } else setMenuMode('navigation')
       setIsMobileExploreOpen(true)
     }
     window.addEventListener('novvin:open-menu', open)
@@ -1207,7 +1213,7 @@ export function AppLayout() {
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mobile-explore-head">
-                <strong id="novvin-menu-title">{menuMode === 'section' ? `Opciones de ${screenTitle(location.pathname)}` : 'Explorar Novvin'}</strong>
+                <strong id="novvin-menu-title">{menuTitle}</strong>
                 <button
                   ref={mobileExploreCloseRef}
                   type="button"
@@ -1220,7 +1226,7 @@ export function AppLayout() {
                   <X size={20} aria-hidden="true" />
                 </button>
               </div>
-              {menuMode === 'section' ? currentMenu.map(item => item.to ? <Link key={item.label} to={item.to} className="mobile-explore-link" onClick={()=>setIsMobileExploreOpen(false)}>{item.label}</Link> : <button key={item.label} type="button" className="mobile-explore-link" onClick={()=>{setIsMobileExploreOpen(false);window.dispatchEvent(new CustomEvent('novvin:voice-action',{detail:item.voiceAction}))}}>{item.label}</button>) : secondaryNavItems.map((item) => (
+              {menuMode !== 'navigation' ? currentMenu.map(item => item.to ? <Link key={item.label} to={item.to} className="mobile-explore-link" onClick={()=>setIsMobileExploreOpen(false)}>{item.label}</Link> : <button key={item.label} type="button" className="mobile-explore-link" onClick={()=>{setIsMobileExploreOpen(false);window.dispatchEvent(new CustomEvent('novvin:voice-action',{detail:item.voiceAction}))}}>{item.label}</button>) : secondaryNavItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
