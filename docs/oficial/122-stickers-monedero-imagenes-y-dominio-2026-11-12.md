@@ -1,5 +1,7 @@
 # Stickers, monedero y publicación en novvinapp.com
 
+Actualización del propietario posterior a esta revisión: el correo corporativo se usa solo para contacto directo. Se conserva el remitente habitual de los códigos. La posible migración de recuperación descrita aquí se descartó. Véase la [revisión 123](123-rediseno-web-navegacion-y-controles-2026-11-12.md).
+
 El propietario confirmó el dominio novvinapp.com y el correo administracion@novvinapp.com el 12 de noviembre de 2026. La web pública se identifica como Novvin. En Android se añadió acceso al correo corporativo desde Ajustes. La API y R2 conservan sus orígenes de transporte y permisos. Los enlaces históricos que todavía se reciben requieren compatibilidad.
 
 | Área | Problema detectado | Severidad | Solución implementada | Prueba ejecutada | Estado |

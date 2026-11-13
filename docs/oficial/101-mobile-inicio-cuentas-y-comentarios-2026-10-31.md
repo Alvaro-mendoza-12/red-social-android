@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 12 de noviembre de 2026
 
+La [revisión 123](123-rediseno-web-navegacion-y-controles-2026-11-12.md) documenta la portada, la navegación web y las acciones de conversación, publicación y perfil. `administracion@novvinapp.com` es el contacto directo. Los códigos de verificación y recuperación conservan su remitente habitual por decisión del propietario.
+
 La [revisión 122](122-stickers-monedero-imagenes-y-dominio-2026-11-12.md) documenta las correcciones de stickers y monedero, las imágenes de Momentos y los enlaces y códigos QR de perfil con el dominio novvinapp.com. El sitio y la API de Ubuntu ya sirven las invitaciones públicas. El contacto oficial es administracion@novvinapp.com. El proveedor rechazó su autenticación SMTP y el remitente activo anterior autenticó por TLS. La revisión integral continúa abierta.
 
 La [continuación 121](121-dominio-live-y-prompt-auditoria-2026-11-12.md) añade enlaces LIVE del dominio oficial y su lectura Android, corrige el compartido web del directo minimizado y conserva los enlaces propios en moderación. Incluye el encargo detallado de auditoría independiente para Gemini. Separa el código de una nueva APK y de la actualización de índices de buscadores.
