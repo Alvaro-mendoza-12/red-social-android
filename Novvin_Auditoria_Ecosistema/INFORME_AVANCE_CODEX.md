@@ -1,4 +1,12 @@
-# Novvin · Revisión nocturna 124
+# Novvin · Seguimiento nocturno 124–125
+
+## Avance vigente 125
+
+Se implementaron las encuestas y preguntas de LIVE en Android, web y API. Se corrigieron la admisión simultánea de canales Android, el acceso de invitados privados y las confirmaciones de inicio/salida web. Pasaron 2 777 pruebas JVM, 12 controles de emulador, 20 pruebas Node de servicios y siete recorridos de navegador contra los servicios del laboratorio con Node 22.23.4.
+
+El [informe 125](../docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md) delimita estas comprobaciones. La [trazabilidad](../docs/product/REQUIREMENT_TRACEABILITY.csv) conserva 297 entradas y sus pendientes. El recorrido autenticado de la nueva participación Android–web, SFU/TURN físico, R2 externo, economía y restauración operativa permanecen abiertos. No hubo publicación ni despliegue productivo.
+
+## Resultado de la fase 124
 
 **13 de noviembre de 2026. Candidato local apto para staging.** Se leyeron los siete documentos del paquete del propietario, incluida la versión Word del prompt maestro. Las dos ramas estables contienen el mismo árbol de código probado. El ámbito actual incluye los recorridos de las capturas y defectos reproducidos durante las pruebas.
 

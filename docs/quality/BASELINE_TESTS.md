@@ -1,4 +1,8 @@
-# Línea base del candidato 124
+# Línea base y continuación 125
+
+La [continuación 125](../oficial/125-live-participacion-y-recuperacion-2026-11-13.md) supera 2 777 pruebas JVM en 524 suites y doce controles de emulador API 35. Sus veinte pruebas Node de API/SQL/R2 y la comprobación del gateway se ejecutaron con Node 22.23.4, además de siete recorridos web con cuentas sintéticas. Se separan los componentes Android del recorrido autenticado Android–web aún pendiente. [Evidencia 125](evidence/125-resultados.json).
+
+## Línea base del candidato 124
 
 Ejecución local entre el 12 y el 13 de noviembre de 2026, hora de Bogotá. PostgreSQL 16, datos sintéticos, navegador Chromium de escritorio, API y gateway propios. El servidor de producción no formó parte del ensayo. El resumen verificable se encuentra en [resultados](evidence/124-resultados.json).
 

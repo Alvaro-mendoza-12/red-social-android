@@ -4,6 +4,8 @@ Estado documental al 13 de noviembre de 2026. Esta es la entrada para desarrollo
 
 ## Estado vigente
 
+La [continuación 125](125-live-participacion-y-recuperacion-2026-11-13.md) incorpora encuestas y preguntas de LIVE en Android, web y API, corrige el acceso de invitados privados y la recuperación de suscripciones Android y confirma inicio/salida en la web. Supera 2 777 pruebas JVM y doce controles de emulador. Son cambios y ensayos locales, con integración física y despliegue pendientes. La [trazabilidad de requisitos](../product/REQUIREMENT_TRACEABILITY.csv) conserva también las fases todavía abiertas.
+
 La [revisión nocturna 124](../../Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md) corrige mensajería colectiva en tiempo real, documentos, stickers, llamadas y el vencimiento de rondas. El [estado de salida](../operations/PRODUCTION_READINESS.md) corresponde al candidato local de las dos ramas estables. Los ensayos completos de red física, R2 externo y recuperación operativa siguen abiertos.
 
 La [revisión 123](123-rediseno-web-navegacion-y-controles-2026-11-12.md) documenta la portada, la navegación web y las acciones de conversación, publicación y perfil. `administracion@novvinapp.com` es el contacto directo. Los códigos de verificación y recuperación conservan su remitente habitual por decisión del propietario.
