@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-13T03:26:26.688892+00:00",
-  "baseCommit": "6c9d8141235e88017cdcee9c5ff325b75e93af72",
+  "generatedAtUtc": "2026-11-13T04:03:19.163215+00:00",
+  "baseCommit": "6e5efe0d8cbcc093b4025e30aa20338cc467774e",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3621,
-    "code-read": 515,
-    "partial": 201
+    "pending": 3613,
+    "code-read": 519,
+    "partial": 206
   },
   "countsByPhase": {
     "android": {
@@ -23,7 +23,7 @@
     "documentation": {
       "pending": 558,
       "code-read": 20,
-      "partial": 12
+      "partial": 13
     },
     "server": {
       "pending": 858,
@@ -36,9 +36,9 @@
       "partial": 7
     },
     "web": {
-      "partial": 68,
-      "pending": 529,
-      "code-read": 32
+      "partial": 72,
+      "pending": 521,
+      "code-read": 36
     }
   },
   "files": [
@@ -699,7 +699,7 @@
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "aae1c341ebd82dd3880329e9a327741bb9ee4121",
+      "gitBlobId": "fbef727a5d484b570ca68b643f3e1da9d05737e2",
       "reviewStatus": "pending"
     },
     {
@@ -1565,8 +1565,10 @@
     {
       "file": "NoWing-web/src/__tests__/core/sectionMenu.test.ts",
       "phase": "web",
-      "gitBlobId": "39230f26842c1e4c27e55b063c3ad99861c7d85d",
-      "reviewStatus": "pending"
+      "gitBlobId": "370c663feda3e2b4ed23c9061f5bed4ce53fbca0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/sharedVideoReference.test.ts",
@@ -1695,8 +1697,10 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "phase": "web",
-      "gitBlobId": "68d0d98eedfd507d523078c144f37e9e97a8dc92",
-      "reviewStatus": "pending"
+      "gitBlobId": "a14b34cf8fad44a78135b2bc2f1f5ae8cfbce214",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/features/messages/conversationInboxSupport.test.ts",
@@ -3051,8 +3055,10 @@
     {
       "file": "NoWing-web/src/core/sectionMenu.ts",
       "phase": "web",
-      "gitBlobId": "360868584ff67a6da641a76fa3cd7fa3d125403f",
-      "reviewStatus": "pending"
+      "gitBlobId": "9ef19a376b89888704bccfdea3068c27a44d16b1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/sharedVideoReference.ts",
@@ -3285,8 +3291,10 @@
     {
       "file": "NoWing-web/src/features/help/HelpPage.tsx",
       "phase": "web",
-      "gitBlobId": "98f05c3965f5a3ad7c70160163f56e553a5acffa",
-      "reviewStatus": "pending"
+      "gitBlobId": "913a7a3ee626ea668d357c3b2da0f874cf2ee582",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/help/help.css",
@@ -3335,9 +3343,9 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "7a95ad5fac2ff50f752703289277740ebd275881",
+      "gitBlobId": "183c024fb221596d62543d386236369e5d5882fa",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3361,17 +3369,17 @@
     {
       "file": "NoWing-web/src/features/messages/MessagesPage.tsx",
       "phase": "web",
-      "gitBlobId": "07b7968de5af951dc091fac7d56ed820e336c340",
+      "gitBlobId": "31bd3ff223e19140103d00c6c057823cde0c3788",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/messages/RoomChatPage.tsx",
       "phase": "web",
-      "gitBlobId": "82d01218a095a8c795c3bb6510a5c454e9bae044",
+      "gitBlobId": "94d0419969d1987e123a58f503d58d29a8a3224d",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3519,9 +3527,9 @@
     {
       "file": "NoWing-web/src/features/profile/AccountSettingsPage.tsx",
       "phase": "web",
-      "gitBlobId": "657ddc2e5b771f466c5d5f1e7012279e0214e8ee",
+      "gitBlobId": "2d658389bd9f6dab8ae9a4ef2dd3fc538598f69e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3541,8 +3549,10 @@
     {
       "file": "NoWing-web/src/features/profile/ProfilePage.tsx",
       "phase": "web",
-      "gitBlobId": "f8bccd7af37fef9abb0c41250d4c5f0cae6d0759",
-      "reviewStatus": "pending"
+      "gitBlobId": "34e353cedae090028a588ab8832a7f5883fd2ee9",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/profile/PublicProfilePage.tsx",
@@ -3577,8 +3587,10 @@
     {
       "file": "NoWing-web/src/features/reels/ReelsPage.tsx",
       "phase": "web",
-      "gitBlobId": "c473c0000afe55c74e7706c7f82c97300df0add6",
-      "reviewStatus": "pending"
+      "gitBlobId": "7e6c106b0e3c94318e3423f922a374c214da03d0",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/reels/VideoDetailPage.tsx",
@@ -3647,8 +3659,10 @@
     {
       "file": "NoWing-web/src/features/social/SocialPage.tsx",
       "phase": "web",
-      "gitBlobId": "9c4d4c13c19ad6503ddabe4937c6874eec467419",
-      "reviewStatus": "pending"
+      "gitBlobId": "a9fdcd935f91d278928a0e3811e3056f02fcdb3c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/social/ranking.css",
@@ -3773,9 +3787,9 @@
     {
       "file": "NoWing-web/src/layout/AppLayout.tsx",
       "phase": "web",
-      "gitBlobId": "42ff6cd3496a875c242f088dce9cdd2e9a0f1517",
+      "gitBlobId": "bd7d243f742a60ae116c9ff5d70a649bdbc52e2c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/116-ubuntu-tiempo-real-y-diseno-web-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3869,9 +3883,9 @@
     {
       "file": "NoWing-web/src/pages/feed/FeedPage.tsx",
       "phase": "web",
-      "gitBlobId": "31c871c6d813e9b9db1be2bf82810cdf73283f63",
+      "gitBlobId": "16398e880a798a31e8b227d62d94eea85483e3ce",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3941,9 +3955,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/PublicHome.tsx",
       "phase": "web",
-      "gitBlobId": "cd758ee58a5e59750d2079a5fc9daf51b7ab8c8b",
+      "gitBlobId": "793eb1149200b02584bc512102d3829573214bf8",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4013,9 +4027,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/public-home.css",
       "phase": "web",
-      "gitBlobId": "6a513823d1ebf052e81cdf717d16807f5b4969cd",
+      "gitBlobId": "b7b3373bb892165109b4696ecf6e424e30e8607f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4035,16 +4049,18 @@
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
       "phase": "web",
-      "gitBlobId": "7be1b58594c2f03659764c1b79b72ed89131445b",
+      "gitBlobId": "4f91b17759c6d28fc9b31b4acdbafb6f855f4d52",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/shell.css",
       "phase": "web",
-      "gitBlobId": "cfc12449611b26ec7889f1708d3ce88c45c9f720",
-      "reviewStatus": "pending"
+      "gitBlobId": "6c40684fbf0715a8b916256aa53eb5f5b600da3b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/tokens.css",
@@ -4057,9 +4073,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
       "phase": "web",
-      "gitBlobId": "3ede537f0f199ce766548172eaef4bd6089a4fb9",
+      "gitBlobId": "7348ed45738af675fbbfff4b55e4a1bcdd57f74e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19799,9 +19815,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "b23ef9152b76e23ea4030fb87d33e61e382823a2",
+      "gitBlobId": "b4eb1f1a8e2605da2402eb497b33427f270c51d7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19929,9 +19945,17 @@
     {
       "file": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "phase": "documentation",
-      "gitBlobId": "00d77299c8922f4a3240bc15fa2d5ee9a108bbd7",
+      "gitBlobId": "cf1bccc743ab8ed7dbf862d44f3c543c60d53323",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "phase": "documentation",
+      "gitBlobId": "ef50d3d3d560bc735f2fa53c54246cfd394e9f13",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20463,9 +20487,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "b606a73c515a27d4f9c8d0af03ed6a267b7a50f2",
+      "gitBlobId": "1fd68acc933417c112bacf8ed30ff6162a3625e6",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
