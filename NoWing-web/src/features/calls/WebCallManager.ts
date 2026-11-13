@@ -812,6 +812,7 @@ export class WebCallManager {
   }
 
   private async initializeLocalMedia(audio: boolean, video: boolean, callId: string): Promise<void> {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error('Abre Novvin en un navegador con acceso al micrófono para hacer llamadas.')
     const constraints: MediaStreamConstraints = {
       audio,
       video: video

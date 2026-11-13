@@ -1,6 +1,5 @@
 import {downloadMedia,originalFileName} from '../../core/media/downloadMedia'
 import {updateStorageReadIdentity,invalidateStorageReadIdentity} from '../../core/media/storageReadSession'
-jest.mock('../../core/media/browserStreaming',()=>({browserStreamingSource:jest.fn(async()=>'/__novvin_media/opaque')}))
 jest.mock('../../core/media/storageReadClient',()=>({trustedStorageBackend:()=>''}))
 jest.mock('../../core/runtimeBackend',()=>({rewriteRuntimeStorageUrl:(s:string)=>s}))
 test('preserves ZIP and media extensions rather than using the opaque handle as a filename',()=>{

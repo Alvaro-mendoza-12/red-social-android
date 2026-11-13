@@ -243,6 +243,18 @@ export function AppLayout() {
   )
   const [isMobileExploreOpen, setIsMobileExploreOpen] = useState(false)
   const [menuMode, setMenuMode] = useState<'navigation' | 'section'>('navigation')
+  const [logoutBusy, setLogoutBusy] = useState(false)
+  const [logoutFailed, setLogoutFailed] = useState(false)
+  const logoutInFlight = useRef(false)
+  async function handleLogout() {
+    if (logoutInFlight.current) return
+    logoutInFlight.current = true
+    setLogoutBusy(true)
+    setLogoutFailed(false)
+    try { await signOut() }
+    catch { setLogoutFailed(true) }
+    finally { logoutInFlight.current = false; setLogoutBusy(false) }
+  }
   const mobileExploreButtonRef = useRef<HTMLButtonElement | null>(null)
   const mobileExploreCloseRef = useRef<HTMLButtonElement | null>(null)
   const [supabaseRestriction, setSupabaseRestriction] = useState(() =>
@@ -1173,7 +1185,11 @@ export function AppLayout() {
             onClick={event => { mobileExploreButtonRef.current=event.currentTarget; setMenuMode('navigation'); setIsMobileExploreOpen(true) }}>
             <Compass aria-hidden="true" /><span>Explorar Novvin</span>
           </button>
+          <button type="button" className="rail-logout rail-link" onClick={() => void handleLogout()} disabled={logoutBusy}>
+            <LogOut aria-hidden="true"/><span>{logoutBusy ? 'Cerrando sesión…' : 'Cerrar sesión'}</span>
+          </button>
         </nav>
+        {logoutFailed ? <p role="alert" className="social-share-status">No se pudo cerrar la sesión. Inténtalo de nuevo.</p> : null}
         {isMobileExploreOpen && (
           <div
             className="mobile-explore-backdrop"
@@ -1217,7 +1233,7 @@ export function AppLayout() {
                   {item.label}
                 </NavLink>
               ))}
-              {menuMode === 'navigation' ? <button className="mobile-explore-link" type="button" onClick={() => void signOut()}>
+              {menuMode === 'navigation' ? <button className="mobile-explore-link" type="button" disabled={logoutBusy} onClick={() => void handleLogout()}>
                 <LogOut aria-hidden="true" />
                 Cerrar sesión
               </button> : null}

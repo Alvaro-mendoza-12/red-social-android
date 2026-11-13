@@ -17,6 +17,14 @@ let reconnectTimer: number | null = null
 let authenticated = false
 let connectionGeneration = 0
 const subscribedChannels = new Set<string>()
+const awaitingSubscriptions = new Set<string>()
+const deniedChannels = new Set<string>()
+
+function clearSubscriptions() {
+  subscribedChannels.clear()
+  awaitingSubscriptions.clear()
+  deniedChannels.clear()
+}
 
 export function ubuntuRealtimeConnected(): boolean { return authenticated && sharedSocket?.readyState === WebSocket.OPEN }
 
@@ -25,7 +33,7 @@ onFallbackAuthChanged(() => {
   if (!sharedToken || nextToken === sharedToken) return
   const old = sharedSocket
   connectionGeneration += 1
-  authenticated = false; subscribedChannels.clear()
+  authenticated = false; clearSubscriptions()
   sharedSocket = null
   sharedToken = ''
   if (reconnectTimer) { window.clearTimeout(reconnectTimer); reconnectTimer = null }
@@ -40,7 +48,7 @@ function fallbackApiOrigin(): string {
 subscribeRuntimeBackend(() => {
   const old = sharedSocket
   connectionGeneration += 1
-  authenticated = false; subscribedChannels.clear()
+  authenticated = false; clearSubscriptions()
   sharedSocket = null
   sharedToken = ''
   old?.close()
@@ -75,9 +83,9 @@ function subscribeChannel(channel: string) {
   const clean = channel.trim()
   if (!clean) return
   pendingChannels.add(clean)
-  if (!authenticated || subscribedChannels.has(clean)) return
+  if (!authenticated || awaitingSubscriptions.size >= 3 || awaitingSubscriptions.has(clean) || subscribedChannels.has(clean) || deniedChannels.has(clean)) return
+  awaitingSubscriptions.add(clean)
   sendSocketMessage({ type: 'subscribe', channel: clean })
-  subscribedChannels.add(clean)
 }
 
 function flushPendingSubscriptions() {
@@ -99,7 +107,7 @@ async function ensureSocket() {
   }
 
   sharedSocket?.close()
-  authenticated = false; subscribedChannels.clear()
+  authenticated = false; clearSubscriptions()
   sharedSocket = null
   sharedToken = token
 
@@ -122,6 +130,7 @@ async function ensureSocket() {
       const parsed = JSON.parse(String(raw.data || '{}')) as {
         type?: string
         channel?: string
+        error?: string
         payload?: Record<string, unknown>
         ts?: string
       }
@@ -132,7 +141,17 @@ async function ensureSocket() {
         window.dispatchEvent(new Event('novvin:realtime-ready'))
         return
       }
-      if (authenticated && parsed?.type === 'event' && parsed.channel) {
+      if (authenticated && parsed.channel && (parsed.type === 'subscribed' || parsed.type === 'error')) {
+        const channel = parsed.channel
+        awaitingSubscriptions.delete(channel)
+        if (parsed.type === 'subscribed') {
+          if (channelHandlers.has(channel)) {
+            subscribedChannels.add(channel)
+            window.dispatchEvent(new CustomEvent('novvin:channel-ready', { detail: channel }))
+          } else sendSocketMessage({ type: 'unsubscribe', channel })
+        } else deniedChannels.add(channel)
+        flushPendingSubscriptions()
+      } else if (authenticated && parsed?.type === 'event' && parsed.channel) {
         dispatchEvent(parsed as UbuntuRealtimeEvent)
       }
     } catch {
@@ -143,7 +162,7 @@ async function ensureSocket() {
   socket.addEventListener('close', event => {
     window.clearTimeout(authenticationTimer)
     if (sharedSocket !== socket) return
-    authenticated = false; subscribedChannels.clear()
+    authenticated = false; clearSubscriptions()
     // The transport may be revoked before its channel handler is mounted.
     // Expiry and transient network failures must still be allowed to recover.
     if (webSessionTransportWasRevoked(event, token, readFallbackSession()?.accessToken)) {
@@ -188,12 +207,13 @@ export function subscribeUbuntuRealtime(input: {
       channelHandlers.delete(channel)
       pendingChannels.delete(channel)
       subscribedChannels.delete(channel)
+      deniedChannels.delete(channel)
       sendSocketMessage({ type: 'unsubscribe', channel })
     }
     if (channelHandlers.size === 0) {
       const old = sharedSocket
       connectionGeneration += 1
-      authenticated = false; subscribedChannels.clear()
+      authenticated = false; clearSubscriptions()
       sharedSocket = null
       sharedToken = ''
       if (reconnectTimer) { window.clearTimeout(reconnectTimer); reconnectTimer = null }

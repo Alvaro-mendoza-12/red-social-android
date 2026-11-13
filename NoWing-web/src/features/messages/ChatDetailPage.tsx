@@ -23,7 +23,7 @@ import { MessageText } from '../../components/MessageText'
 import { MessageReplyPreview } from '../../components/MessageReplyPreview'
 import { ChatProfilePanel } from '../../components/ChatProfilePanel'
 import { droppedAttachments, prepareAttachmentFiles } from '../../core/attachmentPreparation'
-import { attachmentKind } from '../../core/attachmentKind'
+import { attachmentKind, shouldRenderMessageText } from '../../core/attachmentKind'
 import { useAttachmentDraft, useAttachmentPreparation } from '../../core/attachmentJobs'
 import { chatGallery } from '../../core/chatGallery'
 import { MediaViewer } from '../../components/MediaViewer'
@@ -201,20 +201,6 @@ function fileNameFromUrl(url: string, fallback = 'Archivo'): string {
     try { return decodeURIComponent(rawName).replace(/^\d+_\d+_/, '').replace(/_/g, ' ') }
     catch { return rawName.replace(/_/g, ' ') }
   }
-}
-
-function contentLooksLikeAttachmentName(content: string): boolean {
-  return /\.(avif|gif|jpe?g|m4a|m4v|mov|mp3|mp4|oga|ogg|pdf|png|webm|webp|wav|docx?|xlsx?|pptx?|zip)$/i.test(
-    content.trim(),
-  )
-}
-
-function shouldRenderMessageText(message: ChatMessage): boolean {
-  const content = message.content.trim()
-  if (!content) return false
-  if (!message.mediaUrl) return true
-  if (message.contentType === 'location' || message.contentType === 'contact') return true
-  return !contentLooksLikeAttachmentName(content)
 }
 
 function toBoolean(value: unknown): boolean {
@@ -2477,7 +2463,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       {forwardMessages.length ? <ForwardMessagesDialog messages={forwardMessages} onClose={() => setForwardMessages([])} /> : null}
       <div className="chat-thread-shell" inert={pendingAttachments.length > 0}>
         {useUbuntu && user ? <DirectMessageRequestNotice key={`${user.id}:${cleanChatId}`} accountId={user.id} chatId={cleanChatId} revision={messages.length}/> : null}
-        <section className="chat-thread" ref={threadRef} onContextMenu={event => { if(event.target === event.currentTarget) { event.preventDefault(); setShowQuickShare(true) } }} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
+        <section className="chat-thread" tabIndex={0} aria-label="Historial de mensajes" ref={threadRef} onContextMenu={event => { if(event.target === event.currentTarget) { event.preventDefault(); setShowQuickShare(true) } }} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
           {hasOlderMessages ? <button type="button" className="ghost-btn" disabled={loadingOlderMessages} onClick={() => loadOlderMessagesRef.current()}>
             {loadingOlderMessages ? 'Cargando mensajes…' : 'Ver mensajes anteriores'}
           </button> : renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
@@ -2517,7 +2503,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             toMillis(message.createdAt) > 0 &&
             toMillis(otherParticipant?.lastReadAt ?? '') >= toMillis(message.createdAt)
           const deliveryState = mine ? mineDeliveryState(message, readByOther) : null
-          const showMessageText = message.contentType !== 'sticker' && shouldRenderMessageText(message)
+          const showMessageText = shouldRenderMessageText(message)
           const activeReactions = Object.keys(message.reactions).filter(
             (emoji) => reactionCount(message.reactions, emoji) > 0,
           )

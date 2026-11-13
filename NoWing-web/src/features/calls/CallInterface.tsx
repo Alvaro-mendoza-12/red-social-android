@@ -26,6 +26,15 @@ type CallInterfaceProps = {
   joinExisting?: boolean
 }
 
+function callFailureMessage(cause: unknown) {
+  if (cause instanceof DOMException) {
+    if (cause.name === 'NotAllowedError') return 'Permite el acceso al micrófono y, para videollamadas, a la cámara en tu navegador.'
+    if (cause.name === 'NotFoundError') return 'No encontramos el dispositivo de audio o video. Conéctalo y vuelve a intentarlo.'
+    if (cause.name === 'NotReadableError') return 'Otra aplicación podría estar usando el micrófono o la cámara. Libera el dispositivo y vuelve a intentarlo.'
+  }
+  return cause instanceof Error && !/^[A-Z_]+$/.test(cause.message) ? cause.message : 'No se pudo conectar la llamada. Revisa tu conexión e inténtalo de nuevo.'
+}
+
 export function CallInterface({
   initialContextId = '',
   initialCallId = '',
@@ -38,8 +47,8 @@ export function CallInterface({
   const navigate = useNavigate()
   const [callState, setCallState] = useState<CallState | null>(null)
   const [callManager, setCallManager] = useState<WebCallManager | null>(null)
-  const [remoteUserId, setRemoteUserId] = useState<string>(initialRemoteUserId)
-  const [videoEnabled, setVideoEnabled] = useState(initialVideoEnabled)
+  const remoteUserId = initialRemoteUserId
+  const videoEnabled = initialVideoEnabled
   const [participantInfo, setParticipantInfo] = useState<CallParticipant | null>(null)
   const [localStream, setLocalStream] = useState<MediaStream | null>(null)
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
@@ -75,11 +84,11 @@ export function CallInterface({
     let cancelled = false
     void ensureFallbackAccessToken()
       .then((token) => {
-        if (!cancelled) setFallbackAccessToken(token)
+        if (cancelled) return
+        if (token) setFallbackAccessToken(token)
+        else setError('Vuelve a iniciar sesión para hacer la llamada.')
       })
-      .catch(() => {
-        if (!cancelled) setFallbackAccessToken('')
-      })
+      .catch(() => { if (!cancelled) setError('No se pudo preparar la llamada. Revisa tu conexión y vuelve a intentarlo.') })
     return () => {
       cancelled = true
     }
@@ -99,7 +108,7 @@ export function CallInterface({
         avatarUrl,
         signalingBaseUrl,
       })
-      queueMicrotask(() => setCallManager(manager))
+      queueMicrotask(() => { if (active) setCallManager(manager) })
 
       manager.onCallState((state) => {
         if (!active) return
@@ -125,11 +134,11 @@ export function CallInterface({
         }).catch(() => undefined)
         if (reason === 'cleanup' || !active) return
         setCallState(null)
-        setRemoteUserId('')
         setParticipantInfo(null)
         setLocalStream(null)
         setRemoteStream(null)
 
+        if (reason === 'start_failed') return
         navigationTimer = setTimeout(() => {
           navigate('/app/messages')
         }, 2000)
@@ -167,9 +176,9 @@ export function CallInterface({
     try {
       const callId = initialCallId || crypto.randomUUID()
       const contextId = initialContextId || await new CallControlClient(accessToken).directContext(remoteUserId)
-      const mockParticipantInfo: CallParticipant = {
+      const participant: CallParticipant = {
         id: remoteUserId,
-        name: initialRemoteName || `Usuario ${remoteUserId}`,
+        name: initialRemoteName || 'Contacto',
         avatarUrl: '',
         isAudioEnabled: true,
         isVideoEnabled: videoEnabled,
@@ -177,15 +186,15 @@ export function CallInterface({
       }
 
       await callManager.initiateCall(callId, remoteUserId, {
-        name: mockParticipantInfo.name,
-        avatarUrl: mockParticipantInfo.avatarUrl,
+        name: participant.name,
+        avatarUrl: participant.avatarUrl,
         videoEnabled,
         contextId,
       })
 
       await sendCallInvite(supabase, remoteUserId, {
         callId,
-        title: mockParticipantInfo.name,
+        title: displayName,
         callerUserId: user.id,
         callerName: displayName,
         callerAvatarUrl: avatarUrl,
@@ -194,11 +203,11 @@ export function CallInterface({
         isVideo: videoEnabled,
       }, accessToken)
 
-      setParticipantInfo(mockParticipantInfo)
+      setParticipantInfo(participant)
       setIsInitializing(false)
     } catch (error) {
       callManager.endCall('start_failed')
-      setError(error instanceof Error ? error.message : 'No se pudo iniciar la llamada')
+      setError(callFailureMessage(error))
       setIsInitializing(false)
     }
   }, [accessToken, avatarUrl, callManager, displayName, initialCallId, initialContextId, initialRemoteName, remoteUserId, user, videoEnabled])
@@ -220,26 +229,19 @@ export function CallInterface({
       setIsInitializing(false)
     } catch (error) {
       callManager.endCall('start_failed')
-      setError(error instanceof Error ? error.message : 'No se pudo contestar la llamada')
+      setError(callFailureMessage(error))
       setIsInitializing(false)
     }
   }, [accessToken, callManager, initialCallId, initialRemoteName, initialRemoteUserId, user, videoEnabled])
 
   useEffect(() => {
     if (!callManager || autoStartedRef.current) return
-    if (joinExisting && initialCallId) {
+    if (!(joinExisting ? initialCallId : initialRemoteUserId)) return
+    const timer = window.setTimeout(() => {
       autoStartedRef.current = true
-      window.setTimeout(() => {
-        void joinCall()
-      }, 0)
-      return
-    }
-    if (initialRemoteUserId && !joinExisting) {
-      autoStartedRef.current = true
-      window.setTimeout(() => {
-        void initiateCall()
-      }, 0)
-    }
+      void (joinExisting ? joinCall() : initiateCall())
+    }, 0)
+    return () => window.clearTimeout(timer)
   }, [callManager, initialCallId, initialRemoteUserId, initiateCall, joinCall, joinExisting])
 
   useEffect(() => {
@@ -271,7 +273,6 @@ export function CallInterface({
     try {
       callManager.rejectCall()
       setCallState(null)
-      setRemoteUserId('')
       setParticipantInfo(null)
     } catch (error) {
       console.error('Error rejecting call:', error)
@@ -318,8 +319,8 @@ export function CallInterface({
       <div className="call-interface-container">
         <StatusView title="Error de llamadas" description={error} />
         <div className="call-actions">
-          <button className="back-btn" onClick={() => navigate('/app/messages')}>
-            Volver a mensajes
+          <button className="back-btn" onClick={() => navigate('/app/calls', { replace: true })}>
+            Volver a contactos
           </button>
         </div>
       </div>
@@ -327,59 +328,11 @@ export function CallInterface({
   }
 
   if (!callState) {
-    // Show dialer interface
-    return (
-      <div className="call-interface-container">
-        <header className="call-header">
-          <h1>Nueva Llamada</h1>
-          <p>Ingresa el ID del usuario para llamar</p>
-        </header>
-
-        <main className="call-main">
-          <div className="dialer-section">
-            <div className="user-input">
-              <label htmlFor="userId">ID de Usuario:</label>
-              <input
-                id="userId"
-                type="text"
-                value={remoteUserId}
-                onChange={(e) => setRemoteUserId(e.target.value)}
-                placeholder="Ingresa el ID del usuario"
-                className="user-id-input"
-              />
-            </div>
-
-            <div className="dialer-actions">
-              <label className="call-mode-toggle">
-                <input
-                  type="checkbox"
-                  checked={videoEnabled}
-                  onChange={(event) => setVideoEnabled(event.target.checked)}
-                />
-                <span>Video</span>
-              </label>
-              <button
-                className="call-btn primary"
-                onClick={initiateCall}
-                disabled={!remoteUserId.trim() || isInitializing}
-              >
-                {isInitializing ? 'Llamando...' : videoEnabled ? 'Videollamar' : 'Llamar'}
-              </button>
-            </div>
-          </div>
-
-
-        </main>
-
-        <div className="call-footer">
-          <button className="back-btn" onClick={() => navigate('/app/messages')}>
-            Volver
-          </button>
-        </div>
-      </div>
-    )
+    return <div className="call-interface-container call-preparing">
+      <p role="status">{isInitializing ? 'Conectando…' : 'Preparando llamada…'}</p>
+      <button type="button" className="back-btn" onClick={() => navigate('/app/calls', { replace: true })}>Volver a contactos</button>
+    </div>
   }
-
   // Show active call interface
   return (
     <div ref={container} className={`call-interface-container active-call floating-call${minimized ? ' call-minimized' : ''}`}>

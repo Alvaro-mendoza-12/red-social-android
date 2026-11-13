@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
@@ -13,6 +13,7 @@ type ProfileItem = {
   id: string
   name: string
   username: string
+  following: boolean
 }
 
 function mapProfile(row: GenericRow): ProfileItem {
@@ -20,12 +21,20 @@ function mapProfile(row: GenericRow): ProfileItem {
     id: textOf(row, ['id'], ''),
     name: textOf(row, ['displayName', 'display_name', 'full_name'], 'Usuario'),
     username: textOf(row, ['username'], ''),
+    following: row.is_following === true,
   }
 }
 
 export function FollowsPage() {
   const { user, isFallbackSession } = useAuth()
-  const [activeTab, setActiveTab] = useState<FollowTab>('following')
+  const [params, setParams] = useSearchParams()
+  const activeTab: FollowTab = params.get('tab') === 'followers' ? 'followers' : 'following'
+  const setActiveTab = (tab: FollowTab) => setParams({ tab }, { replace: true })
+  return <FollowTabContent key={`${user?.id}/${activeTab}/${isFallbackSession}`} activeTab={activeTab} setActiveTab={setActiveTab}/>
+}
+
+function FollowTabContent({ activeTab, setActiveTab }: { activeTab: FollowTab; setActiveTab: (tab: FollowTab) => void }) {
+  const { user, isFallbackSession } = useAuth()
   const [items, setItems] = useState<ProfileItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +57,7 @@ export function FollowsPage() {
         const response = await loadFallbackFollows(activeTab)
         setItems(response.items.map(mapProfile))
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo cargar follows desde Ubuntu'))
+        setError(friendlyError(caught, 'No se pudo cargar la lista.'))
       } finally {
         setLoading(false)
       }
@@ -85,7 +94,7 @@ export function FollowsPage() {
       if (profileError) throw profileError
       setItems(((profileRows ?? []) as GenericRow[]).map(mapProfile))
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar follows'))
+      setError(friendlyError(caught, 'No se pudo cargar la lista.'))
     } finally {
       setLoading(false)
     }
@@ -95,14 +104,14 @@ export function FollowsPage() {
     void load()
   }, [load])
 
-  async function toggleFollow(targetUserId: string) {
+  async function toggleFollow(targetUserId: string, following: boolean) {
     if (!user) return
     if (useFallback) {
       try {
-        await setFallbackProfileFollow(targetUserId, activeTab !== 'following')
+        await setFallbackProfileFollow(targetUserId, !following)
         await load()
       } catch (caught) {
-        setError(friendlyError(caught, activeTab === 'following' ? 'No se pudo dejar de seguir' : 'No se pudo seguir al usuario'))
+        setError(friendlyError(caught, 'No se pudo actualizar el seguimiento.'))
       }
       return
     }
@@ -132,16 +141,15 @@ export function FollowsPage() {
   }
 
   if (!supabase && !useFallback) {
-    return <StatusView title="Servidor social no configurado" description="Configura Ubuntu o Supabase para usar follows." />
+    return <StatusView title="Lista no disponible" description="Inténtalo de nuevo más tarde." />
   }
   if (loading) return <StatusView title="Cargando red social" description="Espera un momento..." />
-  if (error) return <StatusView title="Follows no disponibles" description={error} />
+  if (error) return <StatusView title="Lista no disponible" description={error} action={<button className="ghost-btn" type="button" onClick={() => void load()}>Reintentar</button>} />
 
   return (
     <section className="section-stack">
       <header className="section-header">
         <h2>Seguidores y siguiendo</h2>
-        <p>Gestiona tu grafo social en web.</p>
       </header>
       <div className="chip-row">
         <button
@@ -180,8 +188,8 @@ export function FollowsPage() {
                 <Link className="ghost-btn" to={`/app/profile/${profile.id}`}>
                   Ver perfil
                 </Link>
-                <button className="ghost-btn" type="button" onClick={() => void toggleFollow(profile.id)}>
-                  {activeTab === 'following' ? 'Dejar de seguir' : 'Seguir'}
+                <button className="ghost-btn" type="button" onClick={() => void toggleFollow(profile.id, activeTab === 'following' || profile.following)}>
+                  {activeTab === 'following' || profile.following ? 'Dejar de seguir' : 'Seguir'}
                 </button>
               </div>
             </article>

@@ -1,5 +1,5 @@
 import { stickerTitle } from '../core/stickerTitle'
-import { RefreshCw, Sparkles, Star } from 'lucide-react'
+import { Import, RefreshCw, Search, Smile, Sparkles, Star, X } from 'lucide-react'
 import { EmojiPicker } from './EmojiPicker'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -32,6 +32,7 @@ export function StickerPicker({ onSelect, onImport, onClose, onEmoji }: {
   const [saving, setSaving] = useState('')
   const [saveError, setSaveError] = useState('')
   const [emojiMode, setEmojiMode] = useState(false)
+  const importInput = useRef<HTMLInputElement>(null)
   const [menu, setMenu] = useState<{ item: CatalogSticker; x: number; y: number; anchor: HTMLButtonElement } | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const press = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -96,15 +97,17 @@ export function StickerPicker({ onSelect, onImport, onClose, onEmoji }: {
   }
 
   if (emojiMode && onEmoji) return <section className="stickers-tray" aria-label="Emojis"><EmojiPicker onPick={onEmoji} onStickers={() => setEmojiMode(false)} onClose={onClose} /></section>
-  return <section className="stickers-tray" aria-label="Stickers">
+  const visibleItems = items.filter(item => (!favoritesOnly || item.isFavorite) && (!animatedOnly || item.isAnimated))
+  return <section className="stickers-tray sticker-catalog" aria-label="Stickers" onKeyDown={event => {
+    if (event.key === 'Escape' && !menu) { event.stopPropagation(); onClose() }
+  }}>
     <div className="sticker-toolbar">
-      <input className="text-input" type="search" placeholder="Buscar stickers…" aria-label="Buscar stickers" value={query} onChange={event => setQuery(event.target.value)} />
-      <label className="ghost-btn file-pick-btn" role="button" tabIndex={0} title="Importar un sticker, también si el archivo no tiene extensión" onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector<HTMLInputElement>('input')?.click() } }}>Importar<input type="file" hidden onChange={event => { onImport(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = '' }} /></label>
-      {onEmoji ? <button className="ghost-btn" type="button" onClick={() => setEmojiMode(true)}>Emojis</button> : null}
-      <button className="icon-btn-sm" type="button" onClick={onClose} aria-label="Cerrar stickers">✕</button>
+      <label className="sticker-search"><Search size={16} aria-hidden="true"/><input type="search" placeholder="Buscar stickers" aria-label="Buscar stickers" value={query} onChange={event => setQuery(event.target.value)} /></label>
+      <button type="button" className="sticker-tool" aria-label="Importar sticker" title="Importar sticker" onClick={() => importInput.current?.click()}><Import size={18} aria-hidden="true"/><span>Importar</span></button>
+      <input type="file" ref={importInput} hidden onChange={event => { onImport(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = '' }} />
+      {onEmoji ? <button className="sticker-tool" type="button" aria-label="Emojis" title="Emojis" onClick={() => setEmojiMode(true)}><Smile size={18} aria-hidden="true"/></button> : null}
+      <button className="sticker-tool" type="button" onClick={onClose} aria-label="Cerrar stickers" title="Cerrar stickers"><X size={18}/></button>
     </div>
-    {loading ? <p className="sticker-empty" role="status">Cargando stickers…</p> : null}
-    {!loading && !items.length ? <p className="sticker-empty">{failed ? 'No se pudieron cargar los stickers. Puedes importar uno de tu equipo.' : 'No hay stickers que coincidan. Puedes importar una imagen de tu equipo.'}</p> : null}
     <nav className="sticker-library-tabs" aria-label="Colección de stickers">
       <button className="chip-btn" type="button" aria-pressed={!favoritesOnly && !animatedOnly}
         onClick={() => { setFavoritesOnly(false); setAnimatedOnly(false) }}>Todos</button>
@@ -115,16 +118,17 @@ export function StickerPicker({ onSelect, onImport, onClose, onEmoji }: {
       <button className="chip-btn sticker-refresh" type="button" disabled={loading || Boolean(saving)}
         aria-label="Actualizar stickers" title="Actualizar stickers" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16}/></button>
     </nav>
-    <p className="sticker-paste-hint">Pega aquí una imagen para enviarla como sticker. Clic derecho o pulsación larga para favoritos.</p>
+    {loading ? <p className="sticker-empty" role="status">Cargando stickers…</p> : null}
+    {!loading && !items.length ? <p className="sticker-empty" role="status">{failed ? 'No se pudieron cargar. Usa Actualizar para reintentar.' : 'No se encontraron stickers. Puedes importar uno.'}</p> : null}
     {saveError ? <p role="alert">{saveError}</p> : null}
-    {!loading && items.length > 0 && !items.some(item => (!favoritesOnly || item.isFavorite) && (!animatedOnly || item.isAnimated)) ? <p className="sticker-empty">{favoritesOnly ? 'Haz clic derecho o mantén pulsado un sticker para guardarlo en favoritos.' : 'No hay stickers animados en esta búsqueda.'}</p> : null}
-    <div className="sticker-grid-compact">{items.filter(item => (!favoritesOnly || item.isFavorite) && (!animatedOnly || item.isAnimated)).map(item => <div className="sticker-library-tile" key={item.stickerId}>
+    {!loading && items.length > 0 && !visibleItems.length ? <p className="sticker-empty" role="status">{favoritesOnly ? 'Haz clic derecho o mantén pulsado un sticker para guardarlo en favoritos.' : 'No hay stickers animados en esta búsqueda.'}</p> : null}
+    <div className="sticker-grid-compact">{visibleItems.map(item => <div className="sticker-library-tile" key={item.stickerId}>
       <button className="sticker-item-btn" type="button" onClick={() => { if (longPressed.current) { longPressed.current = false; return }; setMenu(null); onSelect(item) }} aria-label={`Enviar sticker ${item.title}`} aria-haspopup="menu" title={`${item.title} · Clic derecho para más opciones`}
         onContextMenu={event => { event.preventDefault(); stopPress(); setMenu({ item, x: event.clientX, y: event.clientY, anchor: event.currentTarget }) }}
         onKeyDown={event => { if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); setMenu({ item, x: rect.left, y: rect.bottom, anchor: event.currentTarget }) } }}
         onPointerDown={event => { longPressed.current = false; if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return; const anchor = event.currentTarget, x = event.clientX, y = event.clientY; stopPress(); press.current = setTimeout(() => { longPressed.current = true; setMenu({ item, x, y, anchor }) }, 550) }}
         onPointerMove={stopPress} onPointerUp={stopPress} onPointerCancel={stopPress} onPointerLeave={stopPress}>
-        <ChatAttachmentMedia url={item.mediaUrl} kind="image" title={item.title} imageLink={false} preserveAnimation allowRetry={false} inlineDownload={false} />
+        <ChatAttachmentMedia url={item.mediaUrl} kind="image" title={item.title} imageLink={false} preserveAnimation allowRetry={false} inlineDownload={false} tilePreview />
       </button>
     </div>)}</div>
     {menu ? createPortal(<div ref={menuRef} className="sticker-context-menu" role="menu" aria-label={`Opciones de sticker ${menu.item.title}`} style={{ left: menu.x, top: menu.y }} onKeyDown={event => { if (event.key === 'Tab') setMenu(null); if (event.key === 'ArrowDown' || event.key === 'ArrowUp') { event.preventDefault(); const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')); const index = buttons.indexOf(document.activeElement as HTMLButtonElement); buttons[(index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length]?.focus() } }}>

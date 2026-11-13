@@ -6,7 +6,7 @@ import { readConversationDraft, useDraftRevision } from '../../core/conversation
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Bot, Search, MessageSquarePlus, Phone, Plus, Trash2, Users, Compass, Archive, ArchiveRestore, Bell, BellOff, MailCheck, Mail, MessageSquare, Pin, PinOff, Star, StarOff } from 'lucide-react'
+import { Bot, Search, MessageSquarePlus, Phone, Plus, Trash2, Users, MoreVertical, Archive, ArchiveRestore, Bell, BellOff, MailCheck, Mail, MessageSquare, Pin, PinOff, Star, StarOff } from 'lucide-react'
 import { openNovvinMenu } from '../../ui/novvin/navigation'
 import { StatusView } from '../../components/StatusView'
 import { SafeAvatar } from '../../components/SafeAvatar'
@@ -1598,7 +1598,7 @@ export function MessagesPage() {
         <h1>Mensajes</h1>
         <div className="row-actions messages-head-actions"><Link className="icon-btn" to="/app/assistant" aria-label="Asistente de Novvin" title="Asistente de Novvin"><Bot size={21} aria-hidden="true"/></Link>
           <Link className="icon-btn" to="/app/search" aria-label="Buscar personas" title="Buscar personas"><Search size={21}/></Link>
-          <Link className="icon-btn" to="/app/calls" aria-label="Llamadas" title="Llamadas">
+          <Link className="icon-btn" to="/app/calls" aria-label="Nueva llamada" title="Nueva llamada">
             <Phone size={21} />
           </Link>
           <button
@@ -1622,8 +1622,8 @@ export function MessagesPage() {
           >
             {activeTab === 'chats' ? <MessageSquarePlus size={22} /> : <Plus size={22} />}
           </button>
-          <button className="icon-btn" type="button" aria-label="Explorar Novvin" title="Explorar Novvin" onClick={openNovvinMenu}>
-            <Compass size={22} aria-hidden="true" />
+          <button className="icon-btn" type="button" aria-label="Más opciones" title="Más opciones" aria-haspopup="dialog" aria-controls="mobile-explore-menu" onClick={openNovvinMenu}>
+            <MoreVertical size={20} aria-hidden="true" />
           </button>
         </div>
       </header>
@@ -1662,6 +1662,7 @@ export function MessagesPage() {
                   ? 'chip-btn active'
                   : 'chip-btn'
               }
+              aria-pressed={!showUnreadOnly && !showFavoritesOnly && !showArchived}
               onClick={() => {
                 setShowUnreadOnly(false)
                 setShowFavoritesOnly(false)
