@@ -939,6 +939,22 @@ fun SettingsScreen(
                     Text("Centro de ayuda")
                 }
 
+                val corporateEmail = "administracion@novvinapp.com"
+                TextButton(
+                    onClick = {
+                        try {
+                            screenContext.startActivity(Intent(Intent.ACTION_SENDTO, android.net.Uri.fromParts("mailto", corporateEmail, null)))
+                        } catch (_: android.content.ActivityNotFoundException) {
+                            android.widget.Toast.makeText(screenContext, "Abre tu correo y escribe a $corporateEmail", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(corporateEmail)
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(

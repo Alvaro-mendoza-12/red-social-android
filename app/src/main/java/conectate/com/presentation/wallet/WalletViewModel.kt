@@ -173,30 +173,28 @@ class WalletViewModel @Inject constructor(
         _error.value = null
     }
 
-    fun verifyGooglePlayPurchase(productId: String, purchaseToken: String) {
-        if (_billingVerifying.value) return
-        viewModelScope.launch(Dispatchers.IO) {
-            _billingVerifying.value = true
-            walletRepository.verifyGooglePlayPurchase(productId, purchaseToken)
-                .onSuccess { result ->
-                    _billingMessage.value = when (result.status) {
-                        "pending" -> "Pago pendiente. Las monedas se acreditarán cuando Google Play confirme el cobro."
-                        "credited" -> if (result.credited) {
-                            "Compra verificada: se acreditaron ${result.coins} monedas."
-                        } else {
-                            "Esta compra ya había sido acreditada."
+    private val purchaseQueue = PlayPurchaseQueue(viewModelScope) { busy -> _billingVerifying.value = busy }
+
+    fun verifyGooglePlayPurchase(accountId: String, productId: String, purchaseToken: String) {
+        val session = walletRepository.purchaseSession()
+        if (!accountId.equals(session.accountId, ignoreCase = true) || !session.isCurrent()) return
+        purchaseQueue.submit(accountId, purchaseToken) {
+            if (!session.isCurrent()) return@submit
+            val result = walletRepository.verifyGooglePlayPurchase(productId, purchaseToken, session)
+            walletRepository.publishPurchaseResult(session) {
+                _billingMessage.value = result.fold(
+                    onSuccess = { verified ->
+                        when (verified.status) {
+                            "pending" -> "Pago pendiente. Las monedas se acreditarán cuando Google Play confirme el cobro."
+                            "credited" -> if (verified.credited) "Compra verificada: se acreditaron ${verified.coins} monedas."
+                                else "Esta compra ya había sido acreditada."
+                            else -> "Google Play devolvió un estado no reconocido."
                         }
-                        else -> "Google Play devolvió un estado no reconocido."
-                    }
-                    // A new purchase may have paid a previous refund debt;
-                    // read the authoritative wallet again instead of trusting
-                    // only the purchase response.
-                    walletRepository.fetchBalance()
-                }
-                .onFailure { failure ->
-                    _billingMessage.value = failure.message ?: "No se pudo verificar la compra con Google Play."
-                }
-            _billingVerifying.value = false
+                    },
+                    onFailure = { it.message ?: "No se pudo verificar la compra con Google Play." }
+                )
+            }
+            if (result.isSuccess && session.isCurrent()) walletRepository.fetchBalance()
         }
     }
 

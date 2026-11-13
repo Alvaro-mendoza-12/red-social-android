@@ -104,7 +104,7 @@ fun CoinsAndPaymentsScreen(
                 catalogLoading = false
             },
             onCatalogIssues = { catalogIssues = it },
-            onPurchased = viewModel::verifyGooglePlayPurchase,
+            onPurchased = { product, token -> viewModel.verifyGooglePlayPurchase(accountId, product, token) },
             onPending = {
                 viewModel.showBillingMessage(
                     "Pago pendiente. Las monedas se acreditarán cuando Google Play confirme el cobro."
