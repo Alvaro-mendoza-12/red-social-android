@@ -339,6 +339,7 @@ export function ReelFeedCard({
           type="button"
           onClick={() => onLike(item)}
           aria-label="Me gusta"
+          aria-pressed={item.likedByMe}
           title="Me gusta"
         >
           <Heart aria-hidden="true" fill={item.likedByMe ? 'currentColor' : 'none'} />
@@ -353,6 +354,7 @@ export function ReelFeedCard({
           type="button"
           onClick={() => onFavorite(item)}
           aria-label="Favorito"
+          aria-pressed={item.favoritedByMe}
           title="Favorito"
         >
           <Star

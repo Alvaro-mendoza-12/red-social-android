@@ -10,11 +10,13 @@ import { StreamingImage } from '../components/StreamingMedia'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
-  BarChart3,
+  Wallet,
   Bell,
   Bot,
   CircleHelp,
   CirclePlus,
+  Clapperboard,
+  Compass,
   Eye,
   Flag,
   Gamepad2,
@@ -31,7 +33,8 @@ import {
   Users,
   UserRoundPlus,
   Trophy,
-  Video,
+  UserRound,
+  X,
   Mic,
 } from 'lucide-react'
 import { SafeAvatar } from '../components/SafeAvatar'
@@ -163,7 +166,7 @@ function screenTitle(path: string) {
   if (path === '/app/profile') return 'Perfil'
   if (path.startsWith('/app/profile/')) return 'Perfil'
   const titles: Record<string, string> = {
-    social: 'Novvin',
+    social: 'Social',
     calls: 'Llamadas',
     voice: 'Salas de voz',
     live: 'En vivo',
@@ -205,14 +208,14 @@ function passwordChangeErrorMessage(error: unknown): string {
 function ShellIcon({ name }: { name: NavIconName }) {
   const icons = {
     social: Globe,
-    videos: Video,
+    videos: Clapperboard,
     messages: MessageSquareText,
     calls: Phone,
-    profile: Users,
+    profile: UserRound,
     voice: Mic,
     search: Search,
     notifications: Bell,
-    monetization: BarChart3,
+    monetization: Wallet,
     settings: Settings,
     games: Gamepad2,
     assistant: Bot,
@@ -779,6 +782,7 @@ export function AppLayout() {
   const isMessagesRoute = location.pathname.startsWith('/app/messages')
   const isSocialRoute = location.pathname.startsWith('/app/social')
   const isProfileRoute = location.pathname === '/app/profile'
+  const currentMenu = sectionMenu(location.pathname)
   const activeSection = primarySection(location.pathname)
   const isVideosRoute = activeSection === '/app/videos'
   const isConversationRoute = /^\/app\/messages\/.+/.test(location.pathname)
@@ -1094,17 +1098,18 @@ export function AppLayout() {
                   </Link>
                 </>
               ) : null}
-              <button
-                ref={mobileExploreButtonRef}
+              {currentMenu.length > 0 ? <button
                 className="icon-btn"
                 type="button"
                 aria-label={`Opciones de ${screenTitle(location.pathname)}`}
-                aria-expanded={isMobileExploreOpen}
+                title={`Opciones de ${screenTitle(location.pathname)}`}
+                aria-haspopup="dialog"
+                aria-expanded={isMobileExploreOpen && menuMode === 'section'}
                 aria-controls="mobile-explore-menu"
-                onClick={() => {setMenuMode('section');setIsMobileExploreOpen(true)}}
+                onClick={event => {mobileExploreButtonRef.current=event.currentTarget;setMenuMode('section');setIsMobileExploreOpen(true)}}
               >
                 <MoreVertical />
-              </button>
+              </button> : null}
             </div>
           </header>
         ) : null}
@@ -1120,6 +1125,10 @@ export function AppLayout() {
         </main>
 
         <nav className="novvin-bottom-nav" aria-label="Navegación principal">
+          <Link to="/app/social" className="rail-brand" aria-label="Novvin · Ir a Social">
+            <img src="/icons/novvin-96.png" width="36" height="36" alt="" />
+            <span>Novvin</span>
+          </Link>
           {mobileNavItems.map((item) => (
             <NavLink
               key={item.to}
@@ -1148,9 +1157,22 @@ export function AppLayout() {
                   )
                 ) : null}
               </span>
-              <span>{item.label}</span>
+              <span className="nav-label">{item.label}</span>
             </NavLink>
           ))}
+          <div className="rail-shortcuts">
+            {secondaryNavItems.filter(item => ['search', 'notifications', 'voice'].includes(item.icon)).map(item => (
+              <NavLink key={item.to} to={item.to} className={({isActive}) => `rail-link${isActive ? ' active' : ''}`}>
+                <ShellIcon name={item.icon} /><span>{item.label}</span>
+                {item.icon === 'notifications' && notificationUnreadCount > 0 ? <span className="rail-count" aria-label={`${notificationUnreadCount} sin leer`}>{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span> : null}
+              </NavLink>
+            ))}
+          </div>
+          <button type="button" className="rail-explore rail-link" aria-haspopup="dialog"
+            aria-controls="mobile-explore-menu" aria-expanded={isMobileExploreOpen && menuMode === 'navigation'}
+            onClick={event => { mobileExploreButtonRef.current=event.currentTarget; setMenuMode('navigation'); setIsMobileExploreOpen(true) }}>
+            <Compass aria-hidden="true" /><span>Explorar Novvin</span>
+          </button>
         </nav>
         {isMobileExploreOpen && (
           <div
@@ -1165,11 +1187,11 @@ export function AppLayout() {
               className="mobile-explore-panel"
               role="dialog"
               aria-modal="true"
-              aria-label="Más funciones"
+              aria-labelledby="novvin-menu-title"
               onClick={(event) => event.stopPropagation()}
             >
               <div className="mobile-explore-head">
-                <strong>{menuMode === 'section' ? screenTitle(location.pathname) : 'Explorar Novvin'}</strong>
+                <strong id="novvin-menu-title">{menuMode === 'section' ? `Opciones de ${screenTitle(location.pathname)}` : 'Explorar Novvin'}</strong>
                 <button
                   ref={mobileExploreCloseRef}
                   type="button"
@@ -1179,10 +1201,10 @@ export function AppLayout() {
                     mobileExploreButtonRef.current?.focus()
                   }}
                 >
-                  Cerrar
+                  <X size={20} aria-hidden="true" />
                 </button>
               </div>
-              {menuMode === 'section' ? sectionMenu(location.pathname).map(item => item.to ? <Link key={item.label} to={item.to} className="mobile-explore-link" onClick={()=>setIsMobileExploreOpen(false)}>{item.label}</Link> : <button key={item.label} type="button" className="mobile-explore-link" onClick={()=>{setIsMobileExploreOpen(false);window.dispatchEvent(new CustomEvent('novvin:voice-action',{detail:item.voiceAction}))}}>{item.label}</button>) : secondaryNavItems.map((item) => (
+              {menuMode === 'section' ? currentMenu.map(item => item.to ? <Link key={item.label} to={item.to} className="mobile-explore-link" onClick={()=>setIsMobileExploreOpen(false)}>{item.label}</Link> : <button key={item.label} type="button" className="mobile-explore-link" onClick={()=>{setIsMobileExploreOpen(false);window.dispatchEvent(new CustomEvent('novvin:voice-action',{detail:item.voiceAction}))}}>{item.label}</button>) : secondaryNavItems.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}

@@ -43,6 +43,7 @@ import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import { SocialPromotion } from '../../components/SocialPromotion'
 import { SocialMoments } from '../../ui/novvin/SocialMoments'
 import { runtimeStoragePreviewUrl } from '../../core/runtimeBackend'
+import { getPublicWebOrigin } from '../../core/socialLinks'
 
 type FeedItem = {
   id: string
@@ -96,6 +97,7 @@ function mapPost(row: GenericRow): FeedItem {
 
 type FeedPageProps = {
   composerOpen?: boolean
+  onOpenComposer?: () => void
   onCloseComposer?: () => void
   promotionsOpen?: boolean
   onClosePromotions?: () => void
@@ -105,7 +107,8 @@ function FeedAvatar({ url, name, priority = false }: { url: string; name: string
   return <SafeAvatar url={url} name={name} priority={priority} />
 }
 
-export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen = false, onClosePromotions }: FeedPageProps) {
+export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer, promotionsOpen = false, onClosePromotions }: FeedPageProps) {
+  const mediaInput = useRef<HTMLInputElement>(null)
   const { user, isFallbackSession } = useAuth()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
   const [webPreferences] = useWebPreferences()
@@ -561,8 +564,8 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
       ) : null}
       <span className="sr-only" role="status">
         {realtimeRefreshing ? 'Actualizando novedades' : ''}
-        {shareStatus}
       </span>
+      {shareStatus ? <p role="status" className="social-share-status">{shareStatus}<button type="button" aria-label="Cerrar aviso" onClick={() => setShareStatus('')}><X size={16} aria-hidden="true" /></button></p> : null}
       <div className="social-discovery-tabs">
         <button
           className={discoveryTab === 'discover' ? 'tab-pill active' : 'tab-pill'}
@@ -606,13 +609,19 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
         <Link className="social-composer-prompt" to="/app/social?tab=posts&compose=1">
           ¿Qué estás pensando?
         </Link>
-        <Link
+        <button
           className="icon-btn"
-          to="/app/social?tab=posts&compose=1"
-          aria-label="Publicar foto o video"
+          type="button" title="Adjuntar foto o video"
+          aria-label="Adjuntar foto o video"
+          onClick={() => mediaInput.current?.click()}
         >
           <ImagePlus />
-        </Link>
+        </button>
+        <input ref={mediaInput} type="file" hidden accept="image/*,video/*" onChange={event => {
+          const file = event.currentTarget.files?.[0]
+          event.currentTarget.value = ''
+          if (file) { setAttachedFile(file); onOpenComposer?.() }
+        }} />
       </div>
       <SocialMoments />
       <SocialPromotion showAd={false} manageOpen={promotionManager || promotionsOpen} onClose={()=>{setPromotionManager(false);onClosePromotions?.()}} onManageAccess={setCanManagePromotions}/>
@@ -677,23 +686,15 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
             <footer className="feed-composer-actions row-between">
               <small>{newPostText.trim().length}/2200</small>
               <div className="row-actions">
-                <label
+                <button
+                  type="button"
                   className="icon-btn file-pick-btn"
                   title="Adjuntar imagen o video"
                   aria-label="Adjuntar imagen o video"
+                  onClick={() => mediaInput.current?.click()}
                 >
                   <ImagePlus aria-hidden="true" />
-                  <input
-                    type="file"
-                    accept="image/*,video/*"
-                    hidden
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null
-                      setAttachedFile(file)
-                      event.currentTarget.value = ''
-                    }}
-                  />
-                </label>
+                </button>
                 <button
                   className="primary-btn composer-publish-btn"
                   type="button"
@@ -803,10 +804,9 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
             </div>
           ) : null}
           <div className="feed-stats">
-            <Link to={`/app/feed/post/${item.id}`} aria-label={`Ver ${item.likeCount} Me gusta`}>
-              <ThumbsUp size={15} />
-              {item.likeCount || ''}
-            </Link>
+            <span aria-label={`${item.likeCount} Me gusta`}>
+              <ThumbsUp size={15} aria-hidden="true" /> {item.likeCount}
+            </span>
             <Link to={`/app/feed/post/${item.id}#comments`}>
               {item.commentCount === 1 ? '1 comentario' : `${item.commentCount} comentarios`}
             </Link>
@@ -829,14 +829,16 @@ export function FeedPage({ composerOpen = false, onCloseComposer, promotionsOpen
               className="ghost-btn"
               type="button"
               onClick={() => {
-                const url = `${window.location.origin}/app/feed/post/${item.id}`
-                if (navigator.share)
-                  void navigator.share({ title: item.authorName, url }).catch(() => undefined)
-                else
-                  void navigator.clipboard
-                    .writeText(url)
-                    .then(() => setShareStatus('Enlace copiado'))
-                    .catch(() => setShareStatus('No se pudo copiar el enlace'))
+                const url = `${getPublicWebOrigin()}/post/${encodeURIComponent(item.id)}`
+                const copy = async () => {
+                  try { await navigator.clipboard.writeText(url); setShareStatus('Enlace copiado') }
+                  catch { setShareStatus('No se pudo compartir el enlace. Inténtalo de nuevo.') }
+                }
+                if (navigator.share) {
+                  void navigator.share({ title: item.authorName, url }).catch(error => {
+                    if (error?.name !== 'AbortError') void copy()
+                  })
+                } else void copy()
               }}
             >
               <Share2 />

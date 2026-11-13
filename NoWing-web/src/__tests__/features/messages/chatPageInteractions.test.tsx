@@ -71,6 +71,14 @@ function open(scope: 'chat' | 'group' | 'community' = 'chat', state?: unknown) {
   return render(<MemoryRouter initialEntries={[{ pathname: '/app/messages/room-a', state }]}><Routes><Route path="/app/messages/:chatId" element={scope === 'chat' ? <ChatDetailPage/> : <RoomChatPage scope={scope} roomId="room-a"/>}/></Routes></MemoryRouter>)
 }
 
+test('a conversation without saved preferences still opens its options', async () => {
+  ;(loadFallbackChat as jest.Mock).mockResolvedValue({ ...response, settings: undefined })
+  open('chat')
+  await screen.findByText('Mensaje recibido')
+  fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  expect(await screen.findByRole('menuitem', { name: 'Fijar chat' })).toBeVisible()
+})
+
 test.each(['chat', 'group', 'community'] as const)('%s accepts typing immediately after opening without another click', async scope => {
   const user = userEvent.setup()
   open(scope)

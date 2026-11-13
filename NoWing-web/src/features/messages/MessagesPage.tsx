@@ -1595,7 +1595,7 @@ export function MessagesPage() {
   const renderInbox = () => (
     <>
       <header className="messages-inbox-head">
-        <h1>Novvin</h1>
+        <h1>Mensajes</h1>
         <div className="row-actions messages-head-actions"><Link className="icon-btn" to="/app/assistant" aria-label="Asistente de Novvin" title="Asistente de Novvin"><Bot size={21} aria-hidden="true"/></Link>
           <Link className="icon-btn" to="/app/search" aria-label="Buscar personas" title="Buscar personas"><Search size={21}/></Link>
           <Link className="icon-btn" to="/app/calls" aria-label="Llamadas" title="Llamadas">

@@ -1,3 +1,4 @@
+import { ArrowLeft, BarChart3, Check, CircleDot, Files, Import, LoaderCircle, Mic, MoreVertical, Paperclip, Search, Send, Square, Sticker } from 'lucide-react'
 import { animatedImageFile } from '../../core/imageEditPolicy'
 import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../../core/media/storageReadSession'
 import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
@@ -1547,8 +1548,8 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
       <div className="chat-header-row row-between shadow-sm">
         <div className="row-actions">
           {!embedded ? (
-            <Link to="/app/messages" className="icon-btn-sm" title="Volver">
-              ←
+            <Link to="/app/messages" className="icon-btn-sm" title="Volver" aria-label="Volver a Mensajes">
+              <ArrowLeft size={20} aria-hidden="true" />
             </Link>
           ) : null}
           {useUbuntu ? <button type="button" className="chat-room-identity" aria-label={`Información de ${title}`} onClick={()=>setShowInfo(true)}><SafeAvatar url={roomAvatar} name={title} size="md"/><span><strong>{title}</strong><small>{participants.length ? `${participants.length} miembros` : scope==='group'?'Grupo':'Comunidad'}</small></span></button> : <h2>{title}</h2>}
@@ -1557,7 +1558,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           <button
             className={showMessageSearch ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
             type="button"
-            title="Buscar"
+            title="Buscar en la conversación" aria-label="Buscar en la conversación" aria-expanded={showMessageSearch}
             onClick={() => {
               setShowMessageSearch((current) => !current)
               if (showMessageSearch) {
@@ -1567,21 +1568,17 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
               }
             }}
           >
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor" /></svg>
+            <Search size={20} aria-hidden="true" />
           </button>
           {useUbuntu && isMember ? <CommunityRaffles key={`raffles:${user?.id}:${scope}:${cleanRoomId}`} scope={scope} roomId={cleanRoomId}/> : null}
           {useUbuntu && isMember ? <CollectionQuestionTools key={`${user?.id}:${scope}:${cleanRoomId}`} scope={scope} roomId={cleanRoomId} onCreated={() => void loadRoom({silent:true})} onPolicy={setCanPublish}/> : null}
           <button
             className={showQuickTools ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
             type="button"
-            title="Menú"
+            title="Opciones de la conversación" aria-label="Opciones de la conversación" aria-expanded={showQuickTools} aria-controls="room-chat-tools"
             onClick={() => setShowQuickTools((current) => !current)}
           >
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <circle cx="12" cy="5" r="1.8" fill="currentColor" />
-              <circle cx="12" cy="12" r="1.8" fill="currentColor" />
-              <circle cx="12" cy="19" r="1.8" fill="currentColor" />
-            </svg>
+            <MoreVertical size={20} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -1591,6 +1588,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           <input
             ref={messageSearchInputRef}
             className="text-input chat-search-input"
+            aria-label="Buscar en esta conversación"
             placeholder={`Buscar en ${scope === 'group' ? 'grupo' : 'comunidad'}...`}
             value={messageSearchQuery}
             onChange={(event) => setMessageSearchQuery(event.target.value)}
@@ -1614,7 +1612,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
       ) : null}
 
       {showQuickTools ? (
-        <section className="surface-subcard chat-inline-tools">
+        <section id="room-chat-tools" className="surface-subcard chat-inline-tools">
           <div className="row-between">
             <strong>Herramientas</strong>
             <button className="mini-action-btn" type="button" onClick={() => setShowQuickTools(false)}>
@@ -1880,10 +1878,10 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           } catch { setError('No se pudo borrar el chat. Inténtalo de nuevo.') }
         }}>Borrar de mi lista</button>
       </section> : !canPublish ? <div className="composer muted-line"><p>{adminsOnly ? 'Solo los administradores pueden escribir. Puedes reaccionar y responder preguntas.' : 'Solo el creador escribe. Puedes reaccionar, crear encuestas y responder preguntas.'}</p>{!adminsOnly ? <button type="button" className="mini-action-btn" onClick={()=>setShowPollComposer(true)}>Crear encuesta</button> : null}</div> : <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
-        <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover"><FolderAttachmentPicker onFiles={handleAttachFile}/>
-        <button type="button" className="chat-attachment-option" onClick={event => { setShowStickers(true); event.currentTarget.closest('details')?.removeAttribute('open') }}>Buscar stickers</button>
+        <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar" title="Adjuntar"><Paperclip size={21} aria-hidden="true" /></summary><div className="chat-attachment-popover"><FolderAttachmentPicker onFiles={handleAttachFile}/>
+        <button type="button" className="chat-attachment-option" onClick={event => { setShowStickers(true); event.currentTarget.closest('details')?.removeAttribute('open') }}><Sticker size={20} aria-hidden="true" /><span>Buscar stickers</span></button>
         <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Importar sticker" aria-label="Importar sticker">
-          <span aria-hidden="true">☺</span><span>Sticker</span>
+          <Import size={20} aria-hidden="true" /><span>Importar sticker</span>
           <input
             type="file"
             hidden
@@ -1895,7 +1893,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
           />
         </label>
         <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Adjuntar archivo"><span>Fotos, videos y documentos</span>
-          <svg viewBox="0 0 24 24" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" /></svg>
+          <Files size={20} aria-hidden="true" />
           <input
             type="file"
             multiple
@@ -1911,10 +1909,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
 
 
         <label className="chat-attachment-option" tabIndex={0} role="button" onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.currentTarget.querySelector<HTMLInputElement>('input')?.click()}}} title="Foto o video de una sola vista"><span>Una sola vista</span>
-          <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-            <path d="M12 4a8 8 0 018 8 8 8 0 01-8 8 8 8 0 01-8-8 8 8 0 018-8z" fill="none" stroke="currentColor" strokeWidth="1.8" />
-            <circle cx="12" cy="12" r="2.5" fill="currentColor" />
-          </svg>
+          <CircleDot size={20} aria-hidden="true" />
           <input
             type="file"
             hidden
@@ -1928,25 +1923,17 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
         </label>
 
         <button className="chat-attachment-option" type="button" title="Nueva encuesta" onClick={(event) => {event.currentTarget.closest('details')?.removeAttribute('open');setShowPollComposer((current) => !current)}}><span>Encuesta</span>
-          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M4 5h16v2H4V5zm0 6h10v2H4v-2zm0 6h6v2H4v-2z" fill="currentColor" /></svg>
+          <BarChart3 size={20} aria-hidden="true" />
         </button>
 
         </div></details>
         <button
-          className={isRecordingAudio ? 'icon-btn recording' : 'icon-btn'}
+          className={isRecordingAudio ? 'icon-btn chat-mic-button recording' : 'icon-btn chat-mic-button'}
           type="button"
           title={isRecordingAudio ? 'Detener grabación' : 'Grabar audio'}
           onClick={() => void toggleAudioRecording()}
         >
-          {isRecordingAudio ? (
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-              <rect x="7" y="7" width="10" height="10" rx="2.2" fill="currentColor" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-              <path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zm5 9a1 1 0 112 0 7 7 0 01-6 6.93V21h3a1 1 0 110 2H8a1 1 0 110-2h3v-2.07A7 7 0 015 12a1 1 0 112 0 5 5 0 0010 0z" fill="currentColor" />
-            </svg>
-          )}
+          {isRecordingAudio ? <Square size={20} fill="currentColor" aria-hidden="true" /> : <Mic size={21} aria-hidden="true" />}
         </button>
         <input
           ref={composerInputRef}
@@ -1963,11 +1950,8 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
         />
 
         <button className="primary-btn circle-btn" type="submit" aria-label={editingMessageId ? 'Guardar corrección' : 'Enviar mensaje'} disabled={sending || uploading || preparingAttachments}>
-          {sending || uploading ? (
-            '...'
-          ) : (
-            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor" /></svg>
-          )}
+          {sending || uploading ? <LoaderCircle size={20} aria-hidden="true" />
+            : editingMessageId ? <Check size={22} aria-hidden="true" /> : <Send size={21} aria-hidden="true" />}
         </button>
       </form>}
       {viewOnceLease ? <ViewOnceMediaDialog lease={viewOnceLease} onClose={() => setViewOnceLease(null)} /> : null}

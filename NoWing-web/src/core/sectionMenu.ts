@@ -6,9 +6,9 @@ export function sectionMenu(path: string): SectionMenuItem[] {
     { label: 'Copiar enlace de la sala', voiceAction: 'copy' },
     { label: 'Salir de la sala', voiceAction: 'leave' },
   ]
-  if (path.startsWith('/app/voice')) return [{ label: 'Buscar salas', to: '/app/voice' }, { label: 'Crear sala de voz', to: '/app/create-space?type=voice' }]
-  if (path.startsWith('/app/social')) return [{ label: 'Nueva publicación', to: '/app/social?tab=posts&compose=1' }, { label: 'Solicitudes de amistad', to: '/app/friend-requests' }, { label: 'Publicidad · Crear y gestionar', to: '/app/social?tab=posts&advertising=1' }]
-  if (path.startsWith('/app/profile')) return [{ label: 'Ajustes del perfil y apariencia', to: '/app/settings' }, { label: 'Seguidores y seguidos', to: '/app/follows' }]
-  if (path.startsWith('/app/live')) return [{ label: 'Explorar directos', to: '/app/live' }]
-  return [{ label: 'Ayuda de este apartado', to: '/app/help?section=' + encodeURIComponent(path.split('/')[2] || 'inicio') }]
+  if (path.startsWith('/app/voice')) return [{ label: 'Crear sala de voz', to: '/app/create-space?type=voice' }]
+  if (path.startsWith('/app/social')) return [{ label: 'Nueva publicación', to: '/app/social?tab=posts&compose=1' }, { label: 'Solicitudes de amistad', to: '/app/friend-requests' }]
+  if (path === '/app/profile') return [{ label: 'Ajustes del perfil y apariencia', to: '/app/settings' }, { label: 'Seguidores y seguidos', to: '/app/follows' }]
+  if (path.startsWith('/app/live/')) return [{ label: 'Explorar directos', to: '/app/live' }]
+  return path === '/app/help' ? [] : [{ label: 'Centro de ayuda', to: '/app/help' }]
 }
