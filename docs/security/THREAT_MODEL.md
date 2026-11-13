@@ -9,3 +9,5 @@
 | Saldos | Una operación definitiva produce un solo movimiento | Transacciones y pruebas de idempotencia con fixtures. | Ensayo de conciliación, reembolsos y restauración. |
 
 Se usó revisión defensiva de código y ejercicios funcionales aislados. ASVS sirve como referencia para permisos, identidad y manejo de datos. [OWASP ASVS](https://owasp.org/www-project-application-security-verification-standard/)
+
+El bloque 125 comprueba la participación de LIVE en cada lectura y escritura. Usa la identidad canónica para votos únicos, transacciones, nonce de creación, límite de solicitudes y roles de moderación. El WebSocket entrega una invalidación, sin respuestas o preguntas privadas. La aceptación concede acceso a invitados de directos privados mientras no haya salida, bloqueo o expulsión. Android descarta resultados de una visita anterior aunque se vuelva a la misma cuenta. [Evidencia y límites](../oficial/125-live-participacion-y-recuperacion-2026-11-13.md).

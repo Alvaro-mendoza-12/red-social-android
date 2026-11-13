@@ -7,7 +7,9 @@
       "2026-11-12",
       "2026-11-13"
     ],
-    "timezone": "America/Bogota"
+    "timezone": "America/Bogota",
+    "menuMain": "72f80ec8",
+    "menuFeatureLiveGifts": "d408edf1"
   },
   "environment": {
     "clients": "dos contextos independientes de Chromium, cámara y micrófono sintéticos",
@@ -76,6 +78,7 @@
       "DM entrega y tiempo real",
       "sticker enviado desde selector y animado en receptor",
       "inicio, invitación, audio WebRTC y cierre",
+      "opciones propias de cada pestaña",
       "menú y cierre de sesión"
     ],
     "fail": [],

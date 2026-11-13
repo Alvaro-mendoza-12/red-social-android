@@ -19,7 +19,7 @@
 "LIVE","Parcial","API propia y PostgreSQL","Crear, activar, comentar, salir y finalizar","Cámara, SFU y moderación física"
 "Invitaciones y co-host","Parcial","API autenticada","Invitar, recibir, responder y repetir sin duplicar","Recepción de medios reales y expiración por red"
 "Dibuja y adivina","Parcial","API y PostgreSQL","Partida, trazo, puntuación y vencimiento concurrente","Recepción de trazos visible en dos dispositivos"
-"Encuestas y preguntas de LIVE","No se pudo verificar","Inventario","Encuestas de conversación constituyen otro recorrido","Confirmar cobertura específica en directo"
+"Encuestas y preguntas de LIVE","Parcial","API/SQL, dos navegadores y emulador API 35","Voto único, resultado, preguntas, respuesta y destacado; borrador y guardia de visita Android","Recorrido autenticado Android–web, medios entre redes e historial anterior a 80 participaciones"
 "Regalos y puntos de canal","Parcial","Pruebas de servicios","Contabilidad e idempotencia de prueba","Conciliación y animación móvil de bajo rendimiento"
 "Compras y retiros","No se pudo verificar","Sin proveedor productivo","Sin movimientos de dinero durante la revisión","Proveedor sandbox, elegibilidad y reverso"
 "Efectos de regalo sobre juegos externos","No se pudo verificar","Propuesta por etapas","Sin validación de un puente de propósito general","Lista autorizada, límites, accesibilidad y compensación"

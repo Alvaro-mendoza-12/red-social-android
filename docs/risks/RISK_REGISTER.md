@@ -11,5 +11,8 @@
 | R7 | P0 de salida económica | Falta conciliación integral con proveedor y recuperación ante reembolso. | Economía y operaciones. Exigir balance idéntico antes y después de reproducir movimientos de prueba. |
 | R8 | P1 de salida | Red doméstica, SFU/TURN, R2 externo, push real y restauración operativa quedaron fuera de la prueba local. | Operaciones. Staging aislado, medición por red y restauración cronometrada. |
 | R9 | P2 | Lint web registra siete advertencias sobre dependencias de efectos en LIVE, Momentos y solicitudes. | Web. Reproducir sustitución de sesión y desmontaje antes de cambiar dependencias. |
+| R10 | P1 | Participación LIVE conectada a Android, web y API. El navegador y los componentes Android pasaron sus controles separados. | LIVE. Completar entrada autenticada Android–web, cuentas distintas y medios entre redes. |
+| R11 | P2 | La consulta retiene la encuesta abierta y hasta ochenta participaciones recientes/destacadas. | LIVE. Añadir y validar paginación del historial anterior sin mezclar sesiones ni perder la encuesta activa. |
+| R12 | P1 | La nueva API añade tablas e índices de participación. Su inicialización solo se ejecutó en laboratorio. | Operaciones. Revisar respaldo, permisos y compatibilidad antes de autorizar despliegue. |
 
 **Prioridad de entrega.** R1–R6 se refieren a recorridos concretos. R7 y R8 impiden clasificar el conjunto como listo para producción.

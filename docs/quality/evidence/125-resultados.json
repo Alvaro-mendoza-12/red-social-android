@@ -1,0 +1,188 @@
+{
+  "candidate": {
+    "main": "09aa3e76ca96f485e4357935a8209ca8c698345c",
+    "featureLiveGifts": "8729705905a6e5a839d94b100ff31ea458eedcaf",
+    "codeTree": "46a3eef5bb76a8e74c56402a28bf9a9ae457f7bf",
+    "localDate": "2026-11-13",
+    "timezone": "America/Bogota",
+    "publication": "local-only"
+  },
+  "environment": {
+    "servicesRuntime": "Node 22.23.4",
+    "database": "PostgreSQL 16, bases aisladas en loopback",
+    "clients": "dos contextos Chrome con medios sintéticos y emulador API 35",
+    "storage": "fixtures locales; sin tráfico a R2 externo",
+    "productionModified": false,
+    "paidServices": false,
+    "foreignChangesPreserved": true
+  },
+  "automated": {
+    "androidJvm": {
+      "tests": 2777,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "suites": 524
+    },
+    "androidEmulator": {
+      "api": 35,
+      "tests": 12,
+      "failures": 0,
+      "scope": "componentes de participación LIVE e importación, entrega y gestos de stickers"
+    },
+    "androidDebug": {
+      "versionName": "9.1.40-debug",
+      "versionCode": 180,
+      "sha256": "9e2487b0b7a662c6a485a09b1abe537bd5601afb399544ae123b39ea84862fed",
+      "distributedRelease": false
+    },
+    "webJest": {
+      "tests": 1196,
+      "suites": 187,
+      "failures": 0
+    },
+    "webLint": {
+      "errors": 0,
+      "warnings": 7
+    },
+    "publicBuild": {
+      "pages": 21,
+      "publicJavaScriptBytes": 0
+    },
+    "apiNode22": {
+      "tests": 20,
+      "pass": 20,
+      "fail": 0,
+      "skip": 0,
+      "includes": "audiencia PostgreSQL, acceso privado, temporizador, regalos, procedencia y R2 local"
+    },
+    "gatewayNode22": "authentication and authorization tests passed",
+    "sourceDependencies": {
+      "ok": true,
+      "missing": []
+    }
+  },
+  "browser": {
+    "passed": [
+      "PASS inicio fallido mostrado con reintento y sin transmisión confirmada",
+      "PASS anfitrión inicia LIVE desde la pantalla real",
+      "PASS crear, recibir y votar encuesta en dos navegadores sin duplicar votos",
+      "PASS preguntar, responder y destacar con actualización en el espectador",
+      "PASS retirar, cerrar y recuperar resultados después de recargar",
+      "PASS salida del espectador confirma reintento y conserva activo al anfitrión",
+      "PASS cámara apagada al cerrar, fallo recuperable y cierre confirmado tras reintento"
+    ],
+    "failures": 0,
+    "privateLive": [
+      "PASS invitado de LIVE privado accede tras aceptar y pierde acceso al salir; tercero sigue excluido"
+    ]
+  },
+  "regressions": {
+    "nativeSubscriptionBefore": {
+      "tests": 5,
+      "fail": 5
+    },
+    "nativeSubscriptionAfter": "Five cases pass, including maximum three authorizations, canceling an in-flight request and obsolete socket replies. Included again in the final complete JVM run.",
+    "accountVisit": "Four JVM cases cover stale read, token resolution after ABA, nonce reuse after failed send and a new visit after ABA.",
+    "crowdedLive": "Active poll remains first after 100 new questions; at most 80 items returned."
+  },
+  "dependencyAudits": {
+    "command": "npm audit --omit=dev --json",
+    "vulnerabilities": {
+      "api": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "web": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "gateway": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "signaling": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      },
+      "chatbot": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      }
+    },
+    "root": "script bridge without declared runtime dependencies or lockfile; npm audit not applicable"
+  },
+  "coverageLimits": [
+    "No completed authenticated Android–web audience UI flow.",
+    "No physical SFU/TURN or revocation of remote media across independent networks.",
+    "No external R2, closed-app push, provider reconciliation or operational restore.",
+    "Earlier audience history beyond the latest 80 items still needs pagination.",
+    "File reading is tracked separately from tests and production readiness."
+  ],
+  "sourceBlobs": {
+    "NoWing-web/src/features/live/LiveSessionPage.tsx": "d38fc712745404b3bdcffa1aea1578420a8dc8b0",
+    "NoWing-web/src/features/live/live.css": "0668d6943e83ef3ab22a00fba27b04f508c1c55b",
+    "NoWing-web/src/features/live/LiveAudienceDialog.tsx": "1a8fd776041186b3e01624547bee741f051adde0",
+    "app/src/main/java/conectate/com/data/model/LiveCollaborationModels.kt": "afe06af315ecbb8716a9ce9c8a37cfae44430673",
+    "app/src/main/java/conectate/com/data/model/LiveAudienceModels.kt": "63c13fd6b89c9bd0a9fc112addb20f1cbb12a027",
+    "app/src/main/java/conectate/com/data/localfallback/LiveAudienceApiClient.kt": "58148348fecadb69e2d2dcfe8ec1cc7f06efcd7d",
+    "app/src/main/java/conectate/com/data/localfallback/UbuntuRealtimeClient.kt": "08891b7c8db95e4b1788565b0dc5fd1b2db846cd",
+    "app/src/main/java/conectate/com/presentation/live/FigmaLiveHostScreen.kt": "062b745528cef8abed3afc63b106754ed8abf7a3",
+    "app/src/main/java/conectate/com/presentation/live/FigmaLiveViewerScreen.kt": "d94439ad3c8b3c9fa88f2cf3a7c7a41b162749eb",
+    "app/src/main/java/conectate/com/presentation/live/LiveExperienceScaffold.kt": "bdd317e47eeaf54bc38cc454eb8a3b62e0bd5d64",
+    "app/src/main/java/conectate/com/presentation/live/LiveExtraTools.kt": "b61d28fd1847d50e4d833b3ab893952dd337ba38",
+    "app/src/main/java/conectate/com/presentation/live/LiveHostScreen.kt": "baf54072d62de982758319a56028bb60a96b6055",
+    "app/src/main/java/conectate/com/presentation/live/LiveViewerScreen.kt": "eaf489c5f4b092dcca7e676c751764734377ec24",
+    "app/src/main/java/conectate/com/presentation/live/LiveAudienceDialog.kt": "71a354d0880b9df0102f7a7bd0b61cac32241caf",
+    "app/src/main/java/conectate/com/presentation/live/LiveAudienceViewModel.kt": "c514ceebbb669d2fc0f7a10a3b501ccc6288f9f6",
+    "app/src/androidTest/java/conectate/com/presentation/live/LiveAudienceInteractionDeviceTest.kt": "55e02808831ad2474361a008b8fd2bb275347f5f",
+    "app/src/test/java/conectate/com/data/localfallback/UbuntuRealtimeAdmissionTest.kt": "3f778a94ded432ae21e5e5ffb671bdf95fa6a25c",
+    "app/src/test/java/conectate/com/data/localfallback/UbuntuRealtimeSubscriptionsTest.kt": "a2c3ec55b21b53835fb7b358ebdcfa027e2084df",
+    "app/src/test/java/conectate/com/presentation/live/LiveAudienceSessionTest.kt": "5eed9b7bfdcf6f7e79cfb2d4f586f4597bc5bbdc",
+    "infrastructure/local-fallback/api/package-lock.json": "2055163638bb2d471894b1d7386b7f80eb453d17",
+    "infrastructure/local-fallback/api/src/live-routes.js": "e0111d64f0aa3a3d35fbbac85fcaf65737311ab5",
+    "infrastructure/local-fallback/api/src/live-audience-routes.js": "7c11288288ad1560ce4418dbd112fcf120d02208",
+    "infrastructure/local-fallback/api/tests/live-audience.postgres.test.js": "16c58ac84e389d63b63060e0b334f618d0e8e737",
+    "infrastructure/local-fallback/api/tests/live-private-guest-access.test.js": "4ce78ca90b41e69b1d957db0fe2f9c10eff470a3",
+    "infrastructure/local-fallback/api/tests/storage-r2-journal.postgres.test.js": "bf12ee37835bf29e71ef0c0744052f454618b6a5",
+    "infrastructure/local-fallback/realtime-gateway/src/server.js": "9f6ff108cb045f2132ac91db2b13fabd617ca804"
+  },
+  "localLogSha256": {
+    "125-final-android.log": "a9cd17bbe9f59b86a61c48b1e5e67962aeacf76727839cbd186d13e6cd7c9a3f",
+    "125-device-final.log": "e715320cef6828c4943910798ef7b266fc30bf761707de8b737061e2b23f97f2",
+    "realtime-native-before.log": "e509de42cd85800b40735f313182e04df0d01987d99786dcab751c460453b4ae",
+    "realtime-native-after.log": "0b32088970673f7f1f902ef7ee5b3e43df160cb92ed7f6bc9c1feb609d17518a",
+    "125-web-jest-confirmed.log": "9601e3cbd206a7afda0f88fd00eeb340f6b8efa22fd0654b55a3cc59a0982cf1",
+    "125-web-lint-confirmed.log": "eb36c21276febbae5bb9459cb492f5589c69780c7d61db2954a8677a37090002",
+    "125-web-build-confirmed.log": "a3d22445b03b038b1b04c92c561db0269820a871faff5499910869ecaddcd840",
+    "125-node22-api-final.log": "32f16cb0a62f4d932adcb5c40a18a4bceabf262b5c1d4b83cedf86482269fc34",
+    "125-node22-gateway.log": "1979298e3a785f7564c869d8626234f8045c711cd9c17f69077b0aa6970e4e0a",
+    "125-node22-browser.log": "b2eec4f4d455e96237c09d4f353d6365ec8cc2e7a4aeffe010893dd5756ab95c",
+    "125-node22-private.log": "625244bb01ff508696452e7205379838036e03a963c5883dd9276cee51ab9f58"
+  },
+  "screenshots": {
+    "125-encuesta-web.png": "7dd7c7eef078b2089c8297eb043ab28bd5d8dfd909e16dc8843c8a17227ce6de",
+    "125-pregunta-web.png": "a3fc689e7ae80ed5db7cae59bbd89b7a02ac44abf35b177fc7517d431d2721d5",
+    "125-pregunta-movil-web.png": "5731bab259c6d5bb640a2b707a47a3fa3cc81563d146e5f3b9160db629ab43b1"
+  }
+}
