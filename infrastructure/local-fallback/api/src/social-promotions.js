@@ -63,9 +63,9 @@ function registerSocialPromotionRoutes(app,{pool,authRequired,getCurrentUser,use
       }
       const {rows}=await pool.query(`SELECT id,title,description,image_url AS "imageUrl",destination,cta,active,cards FROM fallback_social_promotions ${canManage&&req.query.manage==='1'?'':'WHERE active=TRUE'} ORDER BY created_at DESC LIMIT 100`)
       res.json({canManage,items:rows.length?rows:[{id:'novvin-welcome',title:'Descubre todo lo que puedes hacer en Novvin',description:'Conversa, descubre videos y comparte con tu comunidad.',imageUrl:'',destination:'/app/messages',cta:'Explorar',active:true,cards:[
-        {title:'Conversa a tu manera',description:'Chats privados y grupos.',imageUrl:'https://red-social-android.vercel.app/images/promotion-messages.svg',destination:'/app/messages',cta:'Abrir mensajes'},
-        {title:'Descubre nuevos videos',description:'Encuentra creadores y comparte.',imageUrl:'https://red-social-android.vercel.app/images/promotion-videos.svg',destination:'/app/videos',cta:'Ver videos'},
-        {title:'Encuentra tu comunidad',description:'Ideas, preguntas y novedades.',imageUrl:'https://red-social-android.vercel.app/images/promotion-social.svg',destination:'/app/social',cta:'Explorar Social'}]}]})
+        {title:'Conversa a tu manera',description:'Chats privados y grupos.',imageUrl:'https://novvinapp.com/images/promotion-messages.svg',destination:'/app/messages',cta:'Abrir mensajes'},
+        {title:'Descubre nuevos videos',description:'Encuentra creadores y comparte.',imageUrl:'https://novvinapp.com/images/promotion-videos.svg',destination:'/app/videos',cta:'Ver videos'},
+        {title:'Encuentra tu comunidad',description:'Ideas, preguntas y novedades.',imageUrl:'https://novvinapp.com/images/promotion-social.svg',destination:'/app/social',cta:'Explorar Social'}]}]})
     }catch(error){if(error.status)res.status(error.status).json({error:error.message});else next(error)}
   }
   app.get('/v1/data/social/promotions',authRequired,(req,res,next)=>run(req,res,next))

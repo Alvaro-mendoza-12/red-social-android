@@ -11,7 +11,7 @@ let userId
 async function request(path, token, body, method = body ? 'POST' : 'GET', web = false) {
   const response = await fetch(base + path, { method, signal: AbortSignal.timeout(8000), headers: {
     'Content-Type':'application/json', ...(token ? {Authorization:`Bearer ${token}`} : {}),
-    ...(web ? {Origin:'https://red-social-android.vercel.app','X-Novvin-Web-Session':'web-v1'} : {}),
+    ...(web ? {Origin:'https://novvinapp.com','X-Novvin-Web-Session':'web-v1'} : {}),
   }, ...(body ? {body:JSON.stringify(body)} : {}) })
   const value = await response.json()
   return { status:response.status, value }

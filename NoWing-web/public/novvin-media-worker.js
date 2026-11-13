@@ -100,7 +100,7 @@ self.addEventListener('message', event => {
 function gatewayMediaCredentials(value) {
   try {
     const target = new URL(value), page = new URL(self.location.origin)
-    const official = ['red-social-android.vercel.app', 'red-social-android-alvaro-s-projects1.vercel.app', 'red-social-android-git-main-alvaro-s-projects1.vercel.app', 'red-social-android-git-correcciones-dot-alvaro-s-projects1.vercel.app'].includes(page.hostname)
+    const official = ['novvinapp.com', 'www.novvinapp.com', 'red-social-android.vercel.app', 'red-social-android-alvaro-s-projects1.vercel.app', 'red-social-android-git-main-alvaro-s-projects1.vercel.app', 'red-social-android-git-correcciones-dot-alvaro-s-projects1.vercel.app'].includes(page.hostname)
       || /^red-social-android-[a-z0-9]+-alvaro-s-projects1\.vercel\.app$/.test(page.hostname)
     return official && page.protocol === 'https:' && !page.port && !page.username && !page.password &&
       target.origin === page.origin && !target.username && !target.password &&

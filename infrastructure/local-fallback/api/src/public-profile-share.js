@@ -117,12 +117,12 @@ function profileShareHtml(profile, publicBaseUrl, posts = []) {
   const title = `${name}${handle} · Perfil de Novvin`
   const description = previewText(`Conoce a ${name} en Novvin. ${profile.bio || 'Mira su perfil y publicaciones.'}`, 155)
   const base = String(publicBaseUrl || '').replace(/\/+$/, '')
-  const canonical = base ? publicProfileUrl(profile, base) : ''
+  const webBase = String(process.env.PUBLIC_WEB_URL || 'https://novvinapp.com').replace(/\/+$/, '')
+  const canonical = publicProfileUrl(profile, webBase)
   const avatar = canonicalStorageUrl(profile.avatar_url, base)
-  const image = base.startsWith('https://') ? previewImageUrl(profile, base) : ''
+  const image = previewImageUrl(profile, webBase)
   const appLink = `conectate://profile/${encodeURIComponent(profile.id)}`
   const storeLink = 'https://play.google.com/store/apps/details?id=conectate.com'
-  const webBase = String(process.env.PUBLIC_WEB_URL || 'https://red-social-android.vercel.app').replace(/\/+$/, '')
   const webPath = `/u/${encodeURIComponent(profile.id)}`
   const loginLink = `${webBase}/login?next=${encodeURIComponent(webPath)}`
   const registerLink = `${webBase}/register?next=${encodeURIComponent(webPath)}`

@@ -130,13 +130,13 @@ curl -i http://127.0.0.1:3080/ready || true
 echo
 echo "==> CORS preflight por edge local"
 curl -i -X OPTIONS http://127.0.0.1:3080/v1/auth/login \
-  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Origin: https://novvinapp.com" \
   -H "Access-Control-Request-Method: POST" || true
 curl -i -X OPTIONS http://127.0.0.1:3080/v1/auth/web-login-pairing \
-  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Origin: https://novvinapp.com" \
   -H "Access-Control-Request-Method: POST" || true
 curl -i -X OPTIONS http://127.0.0.1:3080/functions/v1/web-login-pairing \
-  -H "Origin: https://red-social-android.vercel.app" \
+  -H "Origin: https://novvinapp.com" \
   -H "Access-Control-Request-Method: POST" || true
 
 echo
@@ -145,11 +145,11 @@ if [ -n "$PUBLIC_BASE_URL_INPUT" ]; then
   echo "PUBLIC_BASE_URL=$PUBLIC_BASE_URL_INPUT"
   curl -i -H "ngrok-skip-browser-warning: true" "$PUBLIC_BASE_URL_INPUT/ready" || true
   curl -i -X OPTIONS "$PUBLIC_BASE_URL_INPUT/v1/auth/login" \
-    -H "Origin: https://red-social-android.vercel.app" \
+    -H "Origin: https://novvinapp.com" \
     -H "Access-Control-Request-Method: POST" \
     -H "ngrok-skip-browser-warning: true" || true
   curl -i -X OPTIONS "$PUBLIC_BASE_URL_INPUT/v1/auth/web-login-pairing" \
-    -H "Origin: https://red-social-android.vercel.app" \
+    -H "Origin: https://novvinapp.com" \
     -H "Access-Control-Request-Method: POST" \
     -H "ngrok-skip-browser-warning: true" || true
 else

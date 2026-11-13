@@ -25,6 +25,7 @@ export default function middleware(request: Request): Response {
   // Browser cookies may authorize Vercel Preview access, but guest/media
   // endpoints must keep their explicit bearer identity at the backend.
   if (isCookieIsolatedBackendPath(incoming.pathname)) headers.delete('cookie')
+  if (incoming.pathname.startsWith('/p/')) headers.delete('authorization')
   return rewrite(destination, {
     request: { headers },
     headers: { 'Vercel-CDN-Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow, noarchive', ...(!incoming.pathname.startsWith('/storage/') ? { 'Cache-Control': 'no-store' } : {}) },
@@ -33,5 +34,5 @@ export default function middleware(request: Request): Response {
 
 export const config = {
   runtime: 'nodejs',
-  matcher: ['/v1/:path*', '/auth/v1/:path*', '/rest/v1/:path*', '/storage/v1/:path*', '/realtime/:path*', '/socket.io/:path*', '/call/socket.io/:path*', '/live/socket.io/:path*', '/health', '/ready', '/turn-credentials', '/live-active-ids'],
+  matcher: ['/p/:path*', '/v1/:path*', '/auth/v1/:path*', '/rest/v1/:path*', '/storage/v1/:path*', '/realtime/:path*', '/socket.io/:path*', '/call/socket.io/:path*', '/live/socket.io/:path*', '/health', '/ready', '/turn-credentials', '/live-active-ids'],
 }
