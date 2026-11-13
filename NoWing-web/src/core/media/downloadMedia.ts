@@ -1,6 +1,6 @@
-import { browserStreamingSource } from './browserStreaming'
+import { readStorageDownloadBlob, STORAGE_DOWNLOAD_MAX_BYTES } from './boundedStorageRead'
 import { getStorageReadIdentity, onStorageReadInvalidated, requireStorageReadIdentity } from './storageReadSession'
-import { trustedStorageBackend } from './storageReadClient'
+import { prepareStorageReadAccessToken, trustedStorageBackend } from './storageReadClient'
 import { rewriteRuntimeStorageUrl } from '../runtimeBackend'
 
 export function originalFileName(url: string, label = '') {
@@ -13,24 +13,46 @@ export function originalFileName(url: string, label = '') {
 /** Fetch from the page's authorized client: browser download navigations have no clientId. */
 export async function downloadMedia(raw:string,label='') {
  const source=rewriteRuntimeStorageUrl(raw),identity=getStorageReadIdentity(),controller=new AbortController()
- const name=originalFileName(source,label),protectedSource=Boolean(trustedStorageBackend(source))
+ const name=originalFileName(source,label),backendBase=trustedStorageBackend(source)
  const guard=()=>{if(identity.accountId)requireStorageReadIdentity(identity)}
  const unsubscribe=onStorageReadInvalidated(()=>controller.abort())
  try {
   if(!/^(https?:|blob:|\/__novvin_media\/)/i.test(source))throw Error('INVALID_DOWNLOAD')
   guard()
-  const url=protectedSource?await browserStreamingSource(source,identity):source
-  const response=await fetch(url,{signal:controller.signal,credentials:'omit',cache:'no-store',redirect:'error'})
-  if(!response.ok)throw Error('DOWNLOAD_FAILED')
-  const maximum=500*1024*1024
-  if(Number(response.headers.get('Content-Length'))>maximum){await response.body?.cancel();throw Error('DOWNLOAD_TOO_LARGE')}
-  const parts:Uint8Array<ArrayBuffer>[]=[],reader=response.body?.getReader();let bytes=0
-  if(!reader)throw Error('DOWNLOAD_EMPTY')
-  try {while(true){const chunk=await reader.read();if(chunk.done)break;guard();bytes+=chunk.value.byteLength;if(bytes>maximum)throw Error('DOWNLOAD_TOO_LARGE');parts.push(new Uint8Array(chunk.value))}}finally{await reader.cancel().catch(()=>{});reader.releaseLock()}
+  const data = backendBase
+    ? await readStorageDownloadBlob({ url: source, backendBase, identity, signal: controller.signal, getAccessToken: () => prepareStorageReadAccessToken(identity) })
+    : await readExternalDownload(source, controller.signal, guard)
   guard()
-  const blob=new Blob(parts,{type:'application/octet-stream'}),objectUrl=URL.createObjectURL(blob)
+  const blob = data.slice(0, data.size, 'application/octet-stream'), objectUrl = URL.createObjectURL(blob)
   const link=document.createElement('a');link.href=objectUrl;link.download=name;link.rel='noopener noreferrer';document.body.append(link);link.click();link.remove()
   window.setTimeout(()=>URL.revokeObjectURL(objectUrl),60000)
-  return {name,bytes}
+  return { name, bytes: blob.size }
  }finally{unsubscribe()}
+}
+
+async function readExternalDownload(source: string, signal: AbortSignal, guard: () => void) {
+  const response = await fetch(source, { signal, credentials: 'omit', cache: 'no-store', redirect: 'error' })
+  if (!response.ok) throw Error('DOWNLOAD_FAILED')
+  if (Number(response.headers.get('Content-Length')) > STORAGE_DOWNLOAD_MAX_BYTES) {
+    await response.body?.cancel()
+    throw Error('DOWNLOAD_TOO_LARGE')
+  }
+  const reader = response.body?.getReader()
+  if (!reader) throw Error('DOWNLOAD_EMPTY')
+  const parts: ArrayBuffer[] = []
+  let bytes = 0
+  try {
+    for (;;) {
+      const chunk = await reader.read()
+      guard()
+      if (chunk.done) break
+      bytes += chunk.value.byteLength
+      if (bytes > STORAGE_DOWNLOAD_MAX_BYTES) throw Error('DOWNLOAD_TOO_LARGE')
+      parts.push(Uint8Array.from(chunk.value).buffer)
+    }
+  } finally {
+    await reader.cancel().catch(() => {})
+    reader.releaseLock()
+  }
+  return new Blob(parts)
 }

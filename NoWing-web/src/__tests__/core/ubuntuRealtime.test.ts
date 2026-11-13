@@ -46,6 +46,23 @@ test('subscriptions wait for authentication and are sent once per channel', asyn
   duplicate(); first(); second()
 })
 
+test('room channels queue behind acknowledgments and a denial does not starve the next room', async () => {
+  const { subscribeUbuntuRealtime } = await import('../../core/ubuntuRealtime')
+  const rooms = Array.from({ length: 6 }, (_, index) => `chat:room:group:r${index}`)
+  const close = rooms.map(channel => subscribeUbuntuRealtime({ channel, onEvent: jest.fn() }))
+  await tick()
+  const socket = SocketStub.instances[0]
+  socket.open()
+  socket.receive({ type: 'connected' })
+  const subscriptions = () => socket.send.mock.calls.map(([value]) => JSON.parse(value)).filter(item => item.type === 'subscribe').map(item => item.channel)
+  expect(subscriptions()).toEqual(rooms.slice(0, 3))
+  socket.receive({ type: 'subscribed', channel: rooms[0] })
+  socket.receive({ type: 'error', channel: rooms[1], error: 'FORBIDDEN_CHANNEL' })
+  socket.receive({ type: 'subscribed', channel: rooms[2] })
+  expect(subscriptions()).toEqual(rooms)
+  close.forEach(stop => stop())
+})
+
 test('an account change discards delayed events from the replaced socket', async () => {
   const auth = await import('../../core/auth/fallbackAuth')
   const { subscribeUbuntuRealtime } = await import('../../core/ubuntuRealtime')

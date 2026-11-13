@@ -94,3 +94,11 @@
   .active-call .call-controls .active-controls { gap: 6px; }
   .active-call .video-wrapper.local-video { width: 120px; right: 8px; bottom: 56px; }
 }
+
+.call-directory { max-width: 620px; padding: clamp(12px, 2vw, 22px); display: grid; gap: 12px; }
+.call-directory h2 { font-size: 1.3rem; }
+.call-directory h3 { font-size: .86rem; color: var(--secondary-text); }
+.call-contact-search { display: flex; gap: 10px; align-items: center; padding-inline: 12px; background: var(--surface-raised); border-radius: 12px; }
+.call-contact-search input { flex: 1; min-width: 0; min-height: 42px; background: transparent; border: 0; color: var(--foreground); }
+.call-directory-rooms { justify-self: start; display: inline-flex; gap: 8px; align-items: center; min-height: 40px; }
+.call-preparing { padding: 20px; align-items: center; gap: 12px; }

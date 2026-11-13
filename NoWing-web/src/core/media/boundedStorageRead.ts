@@ -6,6 +6,7 @@ import { isolatedBackendRequestCredentials, publicBackendTransportUrl } from '..
 
 export const STORAGE_PREVIEW_MAX_BYTES = 16 * 1024 * 1024
 export const STORAGE_SHORT_MEDIA_MAX_BYTES = 32 * 1024 * 1024
+export const STORAGE_DOWNLOAD_MAX_BYTES = 500 * 1024 * 1024
 const maxTransferMillis = 30_000
 const maxCredentialMillis = 8_000
 const maxActiveReads = 4
@@ -110,9 +111,18 @@ export type BoundedStorageReadOptions = {
   fetcher?: typeof fetch
 }
 
-export async function readBoundedStorageBlob(options: BoundedStorageReadOptions): Promise<Blob> {
+export function readBoundedStorageBlob(options: BoundedStorageReadOptions): Promise<Blob> {
+  return readStorageBlob(options, STORAGE_SHORT_MEDIA_MAX_BYTES, false)
+}
+
+/** An explicit download may be larger and stays alive while bytes keep arriving. */
+export function readStorageDownloadBlob(options: Omit<BoundedStorageReadOptions, 'maxBytes'>): Promise<Blob> {
+  return readStorageBlob({ ...options, maxBytes: STORAGE_DOWNLOAD_MAX_BYTES }, STORAGE_DOWNLOAD_MAX_BYTES, true)
+}
+
+async function readStorageBlob(options: BoundedStorageReadOptions, limit: number, download: boolean): Promise<Blob> {
   if (!isTrustedStorageReadUrl(options.url, options.backendBase)) throw new Error('MEDIA_UNTRUSTED_ORIGIN')
-  if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1 || options.maxBytes > STORAGE_SHORT_MEDIA_MAX_BYTES) {
+  if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1 || options.maxBytes > limit) {
     throw new Error('MEDIA_INVALID_LIMIT')
   }
   requireStorageReadIdentity(options.identity)
@@ -121,7 +131,7 @@ export async function readBoundedStorageBlob(options: BoundedStorageReadOptions)
   options.signal.addEventListener('abort', abort, { once: true })
   if (options.signal.aborted) abort()
   const removeInvalidator = onStorageReadInvalidated(abort)
-  const timer = setTimeout(abort, maxTransferMillis)
+  let timer = setTimeout(abort, maxTransferMillis)
   let release: (() => void) | undefined
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   let credentialTimer: ReturnType<typeof setTimeout> | undefined
@@ -180,6 +190,10 @@ export async function readBoundedStorageBlob(options: BoundedStorageReadOptions)
       requireStorageReadIdentity(options.identity)
       if (result.done) break
       if (!result.value) continue
+      if (download && result.value.byteLength) {
+        clearTimeout(timer)
+        timer = setTimeout(abort, maxTransferMillis)
+      }
       total += result.value.byteLength
       if (total > options.maxBytes) throw new Error('MEDIA_TOO_LARGE')
       // Retain a bounded copy; a transport may reuse its input buffer.

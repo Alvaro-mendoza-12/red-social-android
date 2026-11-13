@@ -66,12 +66,13 @@ import { ViewOnceMediaDialog } from '../../components/ViewOnceMediaDialog'
 import { requestViewOnceMedia } from '../../core/media/viewOnceClient'
 import type { ViewOnceLease } from '../../core/media/viewOnceLease'
 import { ChatAttachmentMedia } from '../../components/ChatAttachmentMedia'
-import {attachmentKind} from '../../core/attachmentKind'
+import { attachmentKind, shouldRenderMessageText } from '../../core/attachmentKind'
 import { StickerPicker } from '../../components/StickerPicker'
 
 type RoomScope = 'group' | 'community'
 
 type RoomMessage = {
+  mediaSize?: number
   id: string
   senderId: string
   content: string
@@ -252,6 +253,7 @@ function mapRoomMessage(row: GenericRow): RoomMessage {
     content: textOf(row, ['content'], ''),
     contentType: textOf(row, ['content_type'], 'text'),
     mediaUrl: textOf(row, ['media_url'], ''),
+    mediaSize: Number(row.media_size || row.mediaSize) || undefined,
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
     updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
     status: textOf(row, ['status'], 'sent'),
@@ -1108,15 +1110,23 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
 
   useEffect(() => {
     if (!useUbuntu || !user || !cleanRoomId || !isMember) return
+    const channel = `chat:room:${scope}:${cleanRoomId}`
+    const catchUp = (event: Event) => {
+      if ((event as CustomEvent<string>).detail === channel) void loadRoom({ silent: true })
+    }
+    window.addEventListener('novvin:channel-ready', catchUp)
     const unsubscribe = subscribeUbuntuRealtime({
-      channel: `chat:room:${scope}:${cleanRoomId}`,
+      channel,
       onEvent: (event) => {
         const row = (event.payload.message || event.payload.row) as GenericRow | undefined
         if (row && textOf(row, ['id'], '')) upsertMessageInState(mapRoomMessage(row))
         else void loadRoom({ silent: true })
       },
     })
-    return unsubscribe
+    return () => {
+      window.removeEventListener('novvin:channel-ready', catchUp)
+      unsubscribe()
+    }
   }, [cleanRoomId, isMember, loadRoom, scope, upsertMessageInState, useUbuntu, user])
 
   useEffect(() => {
@@ -1130,9 +1140,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
     mediaUrl = '',
     contentType = 'text',
     replyToMessageId: string | null = null,
-    isForwarded = false,
-    forwardedFromMessageId: string | null = null,
-    forwardedFromUserId: string | null = null,
+    mediaSize?: number,
   ) {
     if (!user || !cleanRoomId) return
     forceScrollToBottomRef.current = true
@@ -1142,10 +1150,8 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
         content,
         contentType,
         mediaUrl: mediaUrl || null,
+        mediaSize,
         replyToId: replyToMessageId,
-        isForwarded,
-        forwardedFromMessageId,
-        forwardedFromUserId,
       })
       forceScrollToBottomRef.current = true
       upsertMessageInState(mapRoomMessage(response.message))
@@ -1158,9 +1164,9 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
       p_content_type: contentType,
       p_media_url: mediaUrl || null,
       p_reply_to_id: replyToMessageId,
-      p_is_forwarded: isForwarded,
-      p_forwarded_from_message_id: forwardedFromMessageId,
-      p_forwarded_from_user_id: forwardedFromUserId,
+      p_is_forwarded: false,
+      p_forwarded_from_message_id: null,
+      p_forwarded_from_user_id: null,
     }
     const { error: rpcError } = await supabase.rpc(config.sendRpc, payload)
     if (!rpcError) return
@@ -1205,7 +1211,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
         if (owner !== preparationOwnerRef.current) return
         const caption =
           attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || (attachment.contentType === 'sticker' ? 'Sticker' : attachment.file.name)
-        await sendMessage(caption, publicUrl, attachment.contentType, index === 0 ? replyToId : null)
+        await sendMessage(caption, publicUrl, attachment.contentType, index === 0 ? replyToId : null, attachment.file.size)
         setPendingAttachments((current) => current.filter((entry) => entry.id !== attachment.id))
         if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
       }
@@ -1323,6 +1329,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
         publicUrl,
         contentType === 'image' ? 'view_once_image' : 'view_once_video',
         replyToId,
+        file.size,
       )
       setReplyToId(null)
     } catch (caught) {
@@ -1658,7 +1665,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
 
       {forwardMessages.length ? <ForwardMessagesDialog messages={forwardMessages} onClose={() => setForwardMessages([])} /> : null}
       <div className="chat-thread-shell" inert={pendingAttachments.length > 0}>
-        <section className="chat-thread" ref={threadRef} onScroll={handleThreadScroll}>
+        <section className="chat-thread" tabIndex={0} aria-label="Historial de mensajes" ref={threadRef} onScroll={handleThreadScroll}>
           {hasOlderMessages ? <button type="button" className="ghost-btn" disabled={loadingOlderMessages} onClick={() => loadOlderMessagesRef.current()}>
             {loadingOlderMessages ? 'Cargando mensajes…' : 'Ver mensajes anteriores'}
           </button> : renderedMessages.length < filteredMessages.length ? <button type="button" className="ghost-btn" onClick={() => {
@@ -1736,10 +1743,10 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
                   </div>
                 ) : (
                   <>
-                    {message.contentType === 'contact' ? <ContactMessageCard content={message.content} /> : message.content && message.contentType !== 'sticker' ? <MessageText text={message.content} mentions={mentionCandidates}/> : null}
+                    {message.contentType === 'contact' ? <ContactMessageCard content={message.content} /> : shouldRenderMessageText(message) ? <MessageText text={message.content} mentions={mentionCandidates}/> : null}
                     {message.contentType === 'location' && messageLocationUrl(message.mediaUrl) ? <a className="inline-link" href={messageLocationUrl(message.mediaUrl)!} target="_blank" rel="noreferrer">📍 Abrir ubicación</a> : null}
                     {message.mediaUrl && !['location', 'contact'].includes(message.contentType) && !isViewOnceType(message.contentType) ? (
-                      message.contentType === 'sticker' ? <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => beginReply(message.id)} onForward={() => void sendForwardedMessage(message)} /> : <ChatAttachmentMedia inlineDownload={false} url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} onImageOpen={() => openGallery(message)} overlay={photoTimestamp} />
+                      message.contentType === 'sticker' ? <MessageSticker url={message.mediaUrl} title={message.content || 'Sticker'} onReply={() => beginReply(message.id)} onForward={() => void sendForwardedMessage(message)} /> : <ChatAttachmentMedia inlineDownload={false} size={message.mediaSize} url={message.mediaUrl} kind={attachmentKind(message.contentType, message.mediaUrl)} title={message.content || 'Archivo'} onImageOpen={() => openGallery(message)} overlay={photoTimestamp} />
                     ) : null}
                     {message.mediaUrl && isViewOnceType(message.contentType) ? (
                       consumed ? (

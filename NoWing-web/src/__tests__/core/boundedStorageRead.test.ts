@@ -1,7 +1,8 @@
 /** @jest-environment node */
 import { ReadableStream } from 'node:stream/web'
 import {
-  readBoundedStorageBlob, isTrustedStorageReadUrl, storageReadEdgeUrl,
+  readBoundedStorageBlob, readStorageDownloadBlob, isTrustedStorageReadUrl, storageReadEdgeUrl,
+  STORAGE_DOWNLOAD_MAX_BYTES, STORAGE_SHORT_MEDIA_MAX_BYTES,
 } from '../../core/media/boundedStorageRead'
 import {
   getStorageReadIdentity, invalidateStorageReadBackend, invalidateStorageReadIdentity,
@@ -37,6 +38,18 @@ function options(maxBytes = 100) {
 
 beforeEach(() => { jest.useRealTimers(); fetcher.mockReset(); invalidateStorageReadIdentity(); updateStorageReadIdentity('account-a', 'fallback') })
 afterEach(() => { invalidateStorageReadIdentity(); jest.useRealTimers() })
+
+test('explicit downloads use the authenticated page and keep the smaller preview limit', async () => {
+  const bytes = new Uint8Array([37, 80, 68, 70])
+  fetcher.mockResolvedValueOnce(response([bytes]))
+  const settings = options()
+  const file = await readStorageDownloadBlob(settings)
+  expect(new Uint8Array(await file.arrayBuffer())).toEqual(bytes)
+  expect(new Headers(fetcher.mock.calls[0][1].headers).get('Authorization')).toBe('Bearer ' + token)
+  await expect(readBoundedStorageBlob({ ...settings, maxBytes: STORAGE_SHORT_MEDIA_MAX_BYTES + 1 })).rejects.toThrow('MEDIA_INVALID_LIMIT')
+  fetcher.mockResolvedValueOnce(response([], { 'Content-Length': String(STORAGE_DOWNLOAD_MAX_BYTES + 1) }))
+  await expect(readStorageDownloadBlob(settings)).rejects.toThrow('MEDIA_TOO_LARGE')
+})
 
 describe('storage origin policy', () => {
   test('uses the official same-origin Vercel transport without trusting a different upstream', () => {

@@ -286,8 +286,10 @@ export async function setFallbackProfileFollow(
   )
 }
 
-export async function loadFallbackFollows(tab: 'following' | 'followers'): Promise<FallbackProfilesResponse> {
-  return fallbackApiJson<FallbackProfilesResponse>(`/v1/data/follows?tab=${encodeURIComponent(tab)}`)
+export async function loadFallbackFollows(tab: 'following' | 'followers', profileId?: string, signal?: AbortSignal): Promise<FallbackProfilesResponse> {
+  const params = new URLSearchParams({ tab })
+  if (profileId) params.set('profileId', profileId)
+  return fallbackApiJson<FallbackProfilesResponse>(`/v1/data/follows?${params}`, { signal, cache: 'no-store' })
 }
 
 export async function submitFallbackUserReport(input: {
