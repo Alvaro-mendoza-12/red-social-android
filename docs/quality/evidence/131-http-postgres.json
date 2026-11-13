@@ -1,0 +1,20 @@
+{
+  "pass": [
+    "real authenticated upload and anonymous public raster delivery",
+    "public profile metadata and actual avatar card",
+    "public post HTML identifies the exact object; card embeds its uploaded photo",
+    "private and sensitive posts deny both HTML and direct card requests",
+    "changing a public post to private revokes its HTML and card",
+    "private, hidden and restricted creators revoke their public content previews",
+    "suspension denies profile and content HTML and cards",
+    "video metadata and thumbnail identify the video; privacy revokes both routes",
+    "deleting a post revokes its metadata and direct card"
+  ],
+  "environment": "Isolated loopback API/PostgreSQL; owned HTTPS raster fetch mapped to local storage by QA preload",
+  "fixtures": {
+    "owner": "63721c89-c5ae-4aab-a73a-5b834f037ddc",
+    "post": "831abc17-e510-4c24-8567-0e0ad08da012",
+    "video": "fd5371fd-3f50-45e4-950a-c408ab4da0be"
+  },
+  "physicalWhatsAppTest": false
+}

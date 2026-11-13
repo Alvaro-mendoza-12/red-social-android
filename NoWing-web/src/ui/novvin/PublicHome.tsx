@@ -1,115 +1,32 @@
-import { PublicFooter, PublicGuideNavigation, PublicHeader } from './PublicNavigation'
+import { PublicFooter, PublicHeader } from './PublicNavigation'
 
 export function PublicHome() {
-  return (
-    <div className="public-home">
-      <a className="public-skip-link" href="#contenido">Ir al contenido</a>
-      <PublicHeader />
-      <main id="contenido">
-        <section className="public-home-hero">
-          <div>
-            <h1>
-              Novvin. Conversa,
-              <br />
-              comparte y descubre.
-            </h1>
-            <p>
-              Novvin es una red social para conectar con tu gente. Envía mensajes, comparte fotos
-              y videos y únete a grupos y comunidades desde Android o la web.
-            </p>
-            <div className="public-home-actions">
-              <a className="primary-btn" href="/login">
-                Entrar a Novvin
-              </a>
-              <a className="ghost-btn" href="/explore/videos">
-                Explorar videos
-              </a>
-            </div>
-            <a className="public-home-register" href="/register">
-              ¿Eres nuevo? Crea tu cuenta
-            </a>
-            <a className="public-home-download" href="/descargar">También disponible para Android →</a>
+  return <div className="public-home public-home-main">
+    <a className="public-skip-link" href="#contenido">Ir al contenido</a>
+    <PublicHeader/>
+    <main id="contenido">
+      <section className="public-home-hero">
+        <div>
+          <h1>Novvin.<br/>Tu gente, más cerca.</h1>
+          <p>Novvin es una red social para conectar con tu gente. Conversa, comparte fotos y videos y encuentra tus comunidades desde Android o la web.</p>
+          <div className="public-home-actions">
+            <a className="primary-btn" href="/login">Abrir Novvin Web</a>
+            <a className="ghost-btn" href="/descargar">Descargar para Android</a>
           </div>
-          <figure className="public-home-preview">
-            <picture>
-              <source srcSet="/images/novvin-chat-web-demo.webp" type="image/webp" />
-              <img src="/images/novvin-chat-web-demo.png" alt="Conversación de ejemplo en Novvin Web" width="1440" height="900" fetchPriority="high" />
-            </picture>
-            <figcaption><a href="/mensajes">Ver cómo funcionan los mensajes <span aria-hidden="true">→</span></a></figcaption>
-          </figure>
-        </section>
-        <section className="public-home-features" aria-label="Qué puedes hacer en Novvin">
-          <article>
-            <picture><source srcSet="/images/novvin-chats.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-chats.png" alt="Vista ilustrativa de los chats de Novvin con mensajes y fotos de ejemplo" width="1200" height="800" loading="lazy" decoding="async" /></picture>
-            <h2>Mensajes</h2>
-            <p>
-              Mensajes privados, grupos y comunidades para compartir texto, fotos, archivos y notas
-              de voz con tu gente.
-            </p>
-            <a href="/login?next=%2Fapp%2Fmessages">Abrir mis mensajes →</a>
-          </article>
-          <article>
-            <picture><source srcSet="/images/novvin-videos.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-videos.png" alt="Vista ilustrativa de la sección de videos de Novvin" width="1200" height="800" loading="lazy" decoding="async" /></picture>
-            <h2>Videos y publicaciones</h2>
-            <p>Explora videos y publicaciones, sigue a tus creadores y comparte lo que te gusta.</p>
-            <a href="/explore/posts">Descubrir Social →</a>
-          </article>
-          <article>
-            <picture><source srcSet="/images/novvin-momentos.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-momentos.png" alt="Vista ilustrativa de fotos y videos en Momentos de Novvin" width="1200" height="800" loading="lazy" decoding="async" /></picture>
-            <h2>Momentos</h2>
-            <p>
-              Comparte una foto o un video con música, muestra tu personalidad y encuentra a tu
-              comunidad.
-            </p>
-            <a href="/explore/moments">Ver momentos →</a>
-          </article>
-        </section>
-        <PublicGuideNavigation />
-        <section className="public-home-faq">
-          <h2>Tu cuenta, también en la web.</h2>
-          <details open>
-            <summary>¿Qué es Novvin y para qué sirve?</summary>
-            <p>
-              Novvin reúne conversaciones privadas, grupos, comunidades, videos y publicaciones
-              sociales. Puedes usar la app para Android y Novvin Web con la misma cuenta.
-              Conoce <a href="/que-es-novvin">qué puedes hacer en Novvin</a> o consulta las
-              <a href="/ayuda/preguntas-frecuentes"> preguntas frecuentes</a> para empezar.
-            </p>
-          </details>
-          <details>
-            <summary>¿Cómo inicio sesión en Novvin Web?</summary>
-            <p>
-              Abre <a href="/login">Iniciar sesión</a> y usa el correo y la contraseña de tu cuenta.
-              También puedes elegir el código QR y escanearlo desde Perfil → Vincular web en
-              Novvin móvil.
-            </p>
-          </details>
-          <details>
-            <summary>¿Puedo entrar desde celular, tablet o computadora?</summary>
-            <p>
-              Sí. Novvin Web adapta sus mensajes, videos y perfiles al tamaño de tu pantalla. Usa la
-              misma cuenta del aplicativo móvil.
-            </p>
-          </details>
-          <details>
-            <summary>¿Puedo explorar sin una cuenta?</summary>
-            <p>
-              Puedes <a href="/explore/videos">entrar como invitado</a> para explorar contenido
-              público. Inicia sesión para conversar, seguir y participar.
-            </p>
-          </details>
-          <details open>
-            <summary>¿Cómo encuentro el acceso oficial a Novvin?</summary>
-            <p>
-              Entra a tus mensajes, descubre videos y participa en grupos y comunidades desde
-              Android o tu navegador. Puedes <a href="/login">iniciar sesión</a>,
-              <a href="/descargar"> descargar la app</a> o <a href="/funciones">conocer sus funciones</a>.
-              Consulta <a href="/ayuda/encontrar-novvin">los enlaces oficiales de Novvin</a>.
-            </p>
-          </details>
-        </section>
-      </main>
-      <PublicFooter />
-    </div>
-  )
+          <div className="public-home-entry-links"><a href="/register">Crear una cuenta</a><a href="/explore/posts">Explorar sin cuenta</a></div>
+        </div>
+        <figure className="public-home-preview">
+          <picture><source srcSet="/images/novvin-chat-web-demo.webp" type="image/webp"/><img src="/images/novvin-chat-web-demo.png" alt="Captura real de Novvin Web con una conversación de demostración" width="1440" height="900" fetchPriority="high"/></picture>
+          <figcaption>Novvin Web · Conversación con una cuenta de demostración</figcaption>
+        </figure>
+      </section>
+      <section className="public-home-features" aria-label="Qué puedes hacer en Novvin">
+        <article><h2>Conversa</h2><p>Chats privados, archivos, notas de voz y llamadas para seguir cerca.</p><a href="/mensajes">Ver mensajes</a></article>
+        <article><h2>Comparte</h2><p>Fotos, videos y Momentos para contar lo que pasa en tu día.</p><a href="/videos">Descubrir videos</a></article>
+        <article><h2>Encuentra tu espacio</h2><p>Grupos y comunidades para reunirte con personas que comparten tus intereses.</p><a href="/comunidades">Conocer las comunidades</a></article>
+      </section>
+      <nav className="public-home-help" aria-label="Ayuda para empezar"><a href="/funciones">Todas las funciones</a><a href="/ayuda">Necesito ayuda</a><a href="/ayuda/encontrar-novvin">Enlaces oficiales de Novvin</a></nav>
+    </main>
+    <PublicFooter/>
+  </div>
 }

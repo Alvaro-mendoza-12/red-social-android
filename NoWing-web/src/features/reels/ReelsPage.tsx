@@ -28,6 +28,7 @@ import { StatusView } from '../../components/StatusView'
 import { PublicationDialog } from '../../components/PublicationDialog'
 import { loadRecommendedVideoPage, loadFriendsVideoPage } from '../../core/videoRecommendations'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
+import { buildVideoShareUrl } from '../../core/socialLinks'
 import {
   removeRealtimeChannel,
   reportSupabaseServiceRestrictionIfPresent,
@@ -395,7 +396,7 @@ export function ReelFeedCard({
                 onClick={() => {
                   setShareMenuOpen(false)
                   if (typeof window !== 'undefined') {
-                    const shareUrl = `${window.location.origin}/app/reels/${item.id}`
+                    const shareUrl = buildVideoShareUrl(item.id)
                     const sendIntent = {
                       title: item.title || 'Video de Novvin',
                       text: `Mira este video en Novvin: ${shareUrl}`,

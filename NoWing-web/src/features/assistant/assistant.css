@@ -1,26 +1,53 @@
-.assistant-page { width: min(980px,100%); height: max(380px,calc(100dvh - 168px)); max-height: 980px; gap: 12px; }
-.assistant-page>header { padding-bottom: 14px; border-bottom: 1px solid var(--outline); align-items: center; }
-.assistant-page>header>div>svg { color: #a5a7ff; flex-shrink: 0; }.assistant-page>header h2 { font-size: 1.2rem; margin: 0; }.assistant-page>header small { color: var(--secondary-text); font-size: .78rem; display: block; margin-top: 4px; }
-.assistant-page .assistant-conversation { padding: 16px clamp(4px,2vw,24px); overscroll-behavior: contain; min-height: 0; scrollbar-width: thin; }
-.assistant-page .assistant-message { line-height: 1.6; font-size: .9rem; }.assistant-page .assistant-message.assistant { max-width: min(92%,760px); background: transparent; padding-left: 0; }.assistant-page .assistant-message.user { max-width: 82%; border: 0; background: var(--surface-raised); }
-.assistant-message-copy { display: flex; align-items: center; gap: 6px; color: var(--secondary-text); font-size: .75rem; padding: 8px 0 0; }
-.assistant-page>form { border: 1px solid var(--outline); border-radius: 20px; padding: 8px; background: var(--surface); gap: 8px; align-items: flex-end; }
-.assistant-page>form textarea { border: 0; background: transparent; resize: vertical; min-height: 46px; max-height: 160px; padding: 12px; }.assistant-page>form>.icon-btn { flex-shrink: 0; }
-.assistant-footnote { text-align: center; color: var(--secondary-text); font-size: .72rem; }
-.assistant-notice { margin: 0; font-size: .8rem; padding: 10px 14px; border: 1px solid var(--outline); border-radius: 12px; color: var(--secondary-text); overflow-wrap: anywhere; }
-.assistant-typing { display: flex; align-items: center; gap: 8px; color: var(--secondary-text); font-size: .82rem; }.assistant-typing>span { width: 8px; height: 8px; border-radius: 50%; background: #a5a7ff; animation: assistant-pulse 1s ease-in-out infinite alternate; }
-@keyframes assistant-pulse { to { opacity: .25; } }@media(prefers-reduced-motion:reduce) { .assistant-typing>span { animation: none; } }
-@media(max-width:520px) { .assistant-page>header h2 { font-size: 1rem; }.assistant-page .assistant-welcome { margin: 20px auto; }.assistant-page .assistant-message { max-width: 95%; padding: 12px 14px; }.assistant-footnote { font-size: .65rem; } }
-@media(max-width:1099px) { .assistant-page { height: max(360px,calc(100dvh - 184px)); } }
-
+.assistant-page {
+  display: flex; flex-direction: column; width: min(860px, 100%); margin: auto;
+  height: calc(100dvh - var(--novvin-system-notice-height, 0px) - var(--bottom-nav-height) - 32px);
+  min-height: 360px; max-height: none; gap: 12px;
+}
+.assistant-page > header { display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; padding: 0 0 12px; border: 0; }
+.assistant-page > header > div { display: flex; align-items: center; gap: 12px; }
+.assistant-page > header > div > svg { color: var(--primary); width: 28px; height: 28px; }
+.assistant-page > header h2 { font-size: 1.15rem; margin: 0; letter-spacing: -.02em; }
+.assistant-page > header small { color: var(--secondary-text); font-size: .76rem; display: block; margin-top: 3px; }
+.assistant-page .assistant-conversation { display: flex; flex-direction: column; flex: 1; min-height: 0; width: min(760px, 100%); margin-inline: auto; padding: 14px 4px; gap: 24px; overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: transparent; }
+.assistant-conversation:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; border-radius: 12px; }
+.assistant-page .assistant-message { border: 0; font-size: .93rem; line-height: 1.65; margin: 0; }
+.assistant-page .assistant-message.assistant { width: 100%; max-width: 100%; padding: 6px 2px; background: transparent; }
+.assistant-page .assistant-message.user { align-self: flex-end; max-width: 82%; padding: 12px 16px; border-radius: 18px 18px 5px 18px; background: var(--surface-raised); }
+.assistant-message > strong { color: var(--secondary-text); font-size: .75rem; display: block; margin-bottom: 7px; font-weight: 550; }
 .assistant-page .assistant-answer { min-width: 0; overflow-wrap: anywhere; }
 .assistant-page .assistant-answer p { margin: 0 0 12px; white-space: pre-wrap; }
 .assistant-page .assistant-answer p:last-child { margin-bottom: 0; }
-.assistant-followups { display: flex; flex-wrap: wrap; gap: 8px; flex-shrink: 0; }
-.assistant-followups button { font-size: .78rem; line-height: 1.4; padding: 10px 14px; text-align: left; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
-.assistant-composer-options { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--secondary-text); font-size: .75rem; }
-.assistant-composer-options label { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.assistant-message-copy { display: flex; align-items: center; gap: 6px; color: var(--secondary-text); font-size: .75rem; padding: 8px 0 0; min-height: 36px; }
+.assistant-page .assistant-welcome { margin: auto; max-width: 590px; padding: 28px 8px; text-align: center; background: transparent; border: 0; }
+.assistant-welcome > svg { color: var(--primary); margin-inline: auto; }
+.assistant-welcome h3 { margin-top: 18px; font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: -.04em; }
+.assistant-welcome p { margin-block: 12px 24px; color: var(--secondary-text); }
+.assistant-welcome > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.assistant-welcome .ghost-btn { padding: 11px 14px; border: 1px solid var(--outline); border-radius: 14px; font-size: .8rem; line-height: 1.4; white-space: normal; }
+.assistant-page > form { display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; padding: 8px; background: var(--surface-raised); border: 1px solid var(--outline); border-radius: 22px; }
+.assistant-page > form textarea { flex: 1; width: 100%; min-width: 0; min-height: 44px; max-height: 160px; height: 44px; padding: 11px 12px; border: 0; background: transparent; resize: none; font-size: .92rem; }
+.assistant-page > form > .icon-btn { flex-shrink: 0; width: 44px; height: 44px; border-radius: 14px; background: var(--primary); color: var(--on-primary); }
+.assistant-page > form > .icon-btn:disabled { opacity: .45; }
+.assistant-page > form:focus-within { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.assistant-page > form textarea:focus { outline: 0; box-shadow: none; }
+.assistant-followups { display: flex; flex-wrap: wrap; gap: 6px; flex-shrink: 0; max-height: 100px; overflow: auto; }
+.assistant-followups button { font-size: .77rem; line-height: 1.4; padding: 9px 12px; text-align: left; white-space: normal; overflow-wrap: anywhere; max-width: 100%; border-radius: 14px; }
+.assistant-composer-options { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--secondary-text); font-size: .73rem; padding-inline: 8px; }
+.assistant-composer-options label { display: flex; gap: 8px; align-items: center; min-height: 32px; cursor: pointer; }
 .assistant-composer-options input { accent-color: var(--primary); width: 16px; height: 16px; }
-.assistant-composer-options small { flex-shrink: 0; }
-.assistant-page>form textarea { resize: none; }
-@media(max-width:520px) { .assistant-followups { max-height: 116px; overflow-y: auto; }.assistant-followups button { padding: 8px 10px; } }
+.assistant-footnote { text-align: center; color: var(--secondary-text); font-size: .69rem; }
+.assistant-notice { margin: 0; font-size: .8rem; padding: 10px 14px; border: 1px solid var(--outline); border-radius: 12px; color: var(--secondary-text); overflow-wrap: anywhere; }
+.assistant-typing { display: flex; align-items: center; gap: 8px; color: var(--secondary-text); font-size: .82rem; }
+.assistant-typing > span { width: 7px; height: 7px; border-radius: 50%; background: var(--primary); animation: assistant-pulse 1s ease-in-out infinite alternate; }
+@keyframes assistant-pulse { to { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .assistant-typing > span { animation: none; } }
+@media (min-width: 1100px) { .assistant-page { height: calc(100dvh - var(--novvin-system-notice-height, 0px) - 48px); } }
+@media (max-width: 520px) {
+  .assistant-page { gap: 8px; }
+  .assistant-page > header h2 { font-size: 1.05rem; }
+  .assistant-page .assistant-message.user { max-width: 92%; }
+  .assistant-page .assistant-welcome { padding: 16px 4px; }
+  .assistant-welcome > div { flex-direction: column; }
+  .assistant-welcome .ghost-btn { text-align: left; }
+  .assistant-footnote { font-size: .63rem; }
+}

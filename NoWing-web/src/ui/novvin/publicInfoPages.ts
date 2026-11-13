@@ -307,31 +307,20 @@ export const publicInfoPages = {
   },
 } as const
 
-const productIllustrations = [
-  {src:'/images/novvin-chats.png',alt:'Vista ilustrativa de mensajes privados y fotos en Novvin',caption:'Chats de Novvin: mensajes y fotos. Ilustración con datos de ejemplo.',width:1200,height:800},
-  {src:'/images/novvin-grupos.png',alt:'Vista ilustrativa de un grupo de estudio y documentos en Novvin',caption:'Grupos de Novvin: conversaciones y documentos compartidos. Datos de ejemplo.',width:1200,height:800},
-  {src:'/images/novvin-comunidades.png',alt:'Vista ilustrativa de una comunidad de fotografía y sus canales en Novvin',caption:'Comunidades de Novvin: avisos, ideas y recursos. Ilustración con datos de ejemplo.',width:1200,height:800},
-  {src:'/images/novvin-videos.png',alt:'Vista ilustrativa del contenido de videos en Novvin',caption:'Videos de Novvin: contenido y creadores para descubrir. Datos de ejemplo.',width:1200,height:800},
-  {src:'/images/novvin-social.png',alt:'Vista ilustrativa de publicaciones y comentarios en Social de Novvin',caption:'Social de Novvin: publicaciones, fotos y comentarios. Datos de ejemplo.',width:1200,height:800},
-  {src:'/images/novvin-momentos.png',alt:'Vista ilustrativa de fotos y videos en Momentos de Novvin',caption:'Momentos de Novvin: comparte fotos y videos de tu día. Datos de ejemplo.',width:1200,height:800},
-]
 const demoCaptures = [
   {src:'/images/novvin-chat-android-demo.png',alt:'Captura real de un chat de Novvin para Android con mensajes y emojis entre Level Up y Juancito',caption:'Chat de Novvin para Android. Captura real con cuentas y mensajes de demostración.',width:1080,height:2400},
   {src:'/images/novvin-chat-web-demo.png',alt:'Captura real de Novvin Web con una conversación privada de demostración en una computadora',caption:'Novvin Web en computadora. Captura real de una conversación entre cuentas de demostración.',width:1440,height:900},
   {src:'/images/novvin-perfil-android-demo.png',alt:'Captura real del perfil Level Up en Novvin para Android con avatar y portada personalizados',caption:'Perfil de Novvin para Android con avatar y portada. Cuenta de demostración Level Up.',width:1080,height:2400},
 ]
-export const publicIllustrations: Record<string, typeof productIllustrations> = {
-  '/': [productIllustrations[0],productIllustrations[3],productIllustrations[5]],
-  '/funciones': [...productIllustrations,...demoCaptures],
-  '/mensajes': [...productIllustrations.slice(0,2),demoCaptures[0],demoCaptures[1]],
-  '/comunidades': [productIllustrations[2],productIllustrations[1]],
-  '/videos': [productIllustrations[3]],
-  '/social': [productIllustrations[4]],
-  '/momentos': [productIllustrations[5],
+export const publicIllustrations: Record<string, typeof demoCaptures> = {
+  '/': [demoCaptures[1]],
+  '/funciones': [...demoCaptures],
+  '/mensajes': [demoCaptures[0],demoCaptures[1]],
+  '/momentos': [
     {src:'/images/novvin-momentos-fragmento-android.png',alt:'Selector de música de Novvin con un fragmento de seis segundos marcado',caption:'Elige el tramo de la canción que acompañará tu Momento. Captura de Android con música de prueba.',width:720,height:1612},
     {src:'/images/novvin-momentos-letras-android.png',alt:'Editor de Momentos de Novvin con la letra de una canción sobre fondo turquesa',caption:'Vista previa de las letras antes de compartir un Momento en Android.',width:720,height:1612},
   ],
-  '/novvin-web': [demoCaptures[1],productIllustrations[2]],
+  '/novvin-web': [demoCaptures[1]],
   '/descargar': [demoCaptures[0],demoCaptures[2]],
 }
 

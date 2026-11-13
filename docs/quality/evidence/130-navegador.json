@@ -1,0 +1,61 @@
+{
+  "pass": [
+    "compact navigation and chat at 1355x608",
+    "compact navigation and chat at 1153x617",
+    "compact navigation and chat at 1440x900",
+    "compact navigation and chat at 1153x480",
+    "compact navigation and chat at 768x900",
+    "compact navigation and chat at 375x812",
+    "sticker catalog also omits scrollbar chrome",
+    "chat menu exposes scheduling, translation and polls directly",
+    "assistant transcript and composer stay inside the viewport",
+    "real application capture for the official home",
+    "public home is concise and uses only the real demonstration capture"
+  ],
+  "metrics": [
+    {
+      "width": 1355,
+      "height": 608,
+      "header": 58,
+      "composer": 52,
+      "scrollbar": "none"
+    },
+    {
+      "width": 1153,
+      "height": 617,
+      "header": 58,
+      "composer": 52,
+      "scrollbar": "none"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "header": 58,
+      "composer": 52,
+      "scrollbar": "none"
+    },
+    {
+      "width": 1153,
+      "height": 480,
+      "header": 58,
+      "composer": 52,
+      "scrollbar": "none"
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "header": 58,
+      "composer": 52,
+      "scrollbar": "none"
+    },
+    {
+      "width": 375,
+      "height": 812,
+      "header": 58,
+      "composer": 52,
+      "scrollbar": "none"
+    }
+  ],
+  "errors": [],
+  "assistantResponse": "Synthetic intercepted response; this UI run does not certify the AI service."
+}

@@ -21,7 +21,11 @@ const cssPath = 'css/public-' + createHash('sha256').update(publicCSS).digest('h
 fs.mkdirSync(path.join(root, 'dist/css'), { recursive: true })
 fs.writeFileSync(path.join(root, 'dist', cssPath), publicCSS)
 // Private routes keep their lazy application entry and explicitly cannot be indexed.
-fs.writeFileSync(path.join(root, 'dist/app-shell.html'), html.replace(schemaPattern, '').replace('</head>', '<meta name="robots" content="noindex, follow" /></head>'))
+const privateHtml = html.replace(schemaPattern, '')
+  .replace(/\s*<meta\b[^>]*(?:property|name)="(?:og:|twitter:)[^"]*"[^>]*>/g, '')
+  .replace(/\s*<link\b[^>]*rel="canonical"[^>]*>/g, '')
+  .replace('</head>', '<meta name="robots" content="noindex, follow" /></head>')
+fs.writeFileSync(path.join(root, 'dist/app-shell.html'), privateHtml)
 const template = html.replace(/\s*<script\b[^>]*type="module"[^>]*>[\s\S]*?<\/script>/g, '').replace(/\s*<link\b[^>]*rel="(?:modulepreload|stylesheet)"[^>]*>/g, '').replace(schemaPattern, '').replace('</head>', `<link rel="stylesheet" href="/${cssPath}" /></head>`)
 const metadata = []
 for (const info of pages) {

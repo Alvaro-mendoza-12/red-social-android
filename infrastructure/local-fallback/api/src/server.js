@@ -311,6 +311,10 @@ app.use(['/v1/public/profiles', '/p'], createDistributedRateLimitMiddleware({
   pool, scope: 'public:profile-preview', limit: 60, windowMs: 60_000,
   code: 'PROFILE_PREVIEW_RATE_LIMITED', key: authIpKey, methods: ['GET'],
 }))
+app.use(['/v1/public/posts', '/v1/public/videos'], createDistributedRateLimitMiddleware({
+  pool, scope: 'public:content-preview', limit: 60, windowMs: 60_000,
+  code: 'CONTENT_PREVIEW_RATE_LIMITED', key: authIpKey, methods: ['GET'],
+}))
 app.use('/v1/auth/logout', createDistributedRateLimitMiddleware({
   pool,
   scope: 'auth:logout',
@@ -3775,6 +3779,7 @@ registerPostgrestCompatRoutes(app, { pool, authRequired, authOptional })
 registerAiRoutes(app, { authRequired })
 registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName })
 registerPublicProfileShareRoutes(app, { pool, publicBaseUrl: process.env.PUBLIC_BASE_URL })
+require('./public-content-share').registerPublicContentShareRoutes(app, { pool, publicBaseUrl: process.env.PUBLIC_BASE_URL })
 registerDocumentPreviewRoutes(app, { authRequired, rateLimit: createDistributedRateLimitMiddleware({
   pool, scope: 'document:preview', limit: 10, windowMs: 60_000,
   code: 'OFFICE_PREVIEW_RATE_LIMITED', key: req => stableKey(req.auth.sub), methods: ['POST'],

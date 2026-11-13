@@ -30,12 +30,12 @@ test('public image alternatives use smaller WebP files and preserve original dis
   assert.equal(webp.toString('ascii',8,12),'WEBP')
   assert.ok(webp.length<png.length)
  }
- assert.equal([...html.matchAll(/<source /g)].length,9)
+ assert.equal([...html.matchAll(/<source /g)].length,3)
 })
 
-test('feature illustrations have visible alternatives and discoverable public image URLs',()=>{
+test('real feature captures have visible alternatives and discoverable public image URLs',()=>{
  const html=read('funciones.html'),page=graph(html).find(item=>item['@type']==='WebPage')
- const images=[...['chats','grupos','comunidades','videos','social','momentos'],...['chat-android-demo','chat-web-demo','perfil-android-demo']].map(name=>'/images/novvin-'+name+'.png')
+ const images=['chat-android-demo','chat-web-demo','perfil-android-demo'].map(name=>'/images/novvin-'+name+'.png')
  assert.equal(page.image.length,images.length)
  for(const src of images){
   assert.ok(html.includes('src="'+src+'"'))
@@ -115,6 +115,7 @@ test('private shell is noindex, contains no public page and retains its applicat
  const html=read('app-shell.html')
  assert.match(html,/<div id="root"><\/div>/);assert.match(html,/type="module"/)
  assert.match(html,/name="robots" content="noindex, follow"/)
+ assert.ok(!html.includes('property="og:') && !html.includes('name="twitter:') && !html.includes('rel="canonical"'))
  assert.doesNotMatch(html,/<h1>Novvin|application\/ld\+json/)
 })
 test('sitemap advertises only the canonical public pages',()=>{
@@ -185,9 +186,9 @@ test('site name signals consistently prefer Novvin and offer the site hostname a
 
 test('the home links to the official-access guide without repeating typo keywords',()=>{
  const html=read('index.html')
- assert.match(html,/<details open=""><summary>¿Cómo encuentro el acceso oficial a Novvin\?<\/summary>/)
+ assert.match(html,/aria-label="Ayuda para empezar"/)
  assert.doesNotMatch(html,/Si llegaste escribiendo/)
- assert.match(html,/href="\/ayuda\/encontrar-novvin">los enlaces oficiales de Novvin/)
+ assert.match(html,/href="\/ayuda\/encontrar-novvin">Enlaces oficiales de Novvin/)
 })
 
 test('the web guide describes actual access and features while spelling help has its own guide',()=>{
@@ -198,8 +199,10 @@ test('the web guide describes actual access and features while spelling help has
  assert.equal(graph(html).find(item=>item['@type']==='Organization').name,'Novvin')
 })
 
-test('every public page links to the complete grouped guide directory',()=>{
- for(const [,file] of publicRoutes){
+test('guides retain the grouped directory while the concise home links to help',()=>{
+ assert.match(read('index.html'),/href="\/ayuda">Necesito ayuda/)
+ assert.doesNotMatch(read('index.html'),/aria-label="Guías de Novvin"/)
+ for(const [,file] of publicRoutes.filter(([route])=>route!=='/')){
   const html=read(file)
   assert.match(html,/aria-label="Guías de Novvin"/)
   for(const [route] of publicRoutes.filter(([route])=>route!=='/'))assert.ok(html.includes('href="'+route+'"'),file+' misses '+route)

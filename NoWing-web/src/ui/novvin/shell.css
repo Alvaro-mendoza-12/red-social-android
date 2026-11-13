@@ -236,8 +236,8 @@
     height: auto;
     display: flex;
     flex-direction: column;
-    gap: 3px;
-    padding: 16px 10px;
+    gap: 2px;
+    padding: 12px 10px;
     border-top: 0;
     border-right: 1px solid var(--divider);
     overflow-y: auto;
@@ -247,17 +247,24 @@
     align-items: center;
     flex-shrink: 0;
     gap: 9px;
-    padding: 0 10px;
-    margin: 0 0 15px;
+    padding: 0 6px;
+    margin: 0 0 10px;
     min-height: 46px;
     font-size: 1.38rem;
     font-weight: 750;
     letter-spacing: -.065em;
+    color: var(--foreground);
+    background: transparent;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
   }
   .rail-brand img { border-radius: 11px; }
-  .rail-toggle.rail-link { display: flex; margin-bottom: 10px; min-height: 40px; font-size: .8rem; }
+  .rail-chevron { margin-left: auto; width: 17px; height: 17px; flex-shrink: 0; color: var(--secondary-text); }
   .novvin-app.rail-collapsed { --rail-width: 76px; }
-  .rail-collapsed .rail-brand { justify-content: center; padding-inline: 0; }
+  .rail-collapsed .rail-brand { justify-content: center; padding-inline: 0; gap: 3px; }
+  .rail-collapsed .rail-brand img { width: 30px; height: 30px; }
+  .rail-collapsed .rail-chevron { margin-left: 0; width: 14px; }
   .rail-collapsed .novvin-bottom-nav :is(.rail-brand > span, .nav-label, .rail-label, .rail-explore > span, .rail-logout > span, .rail-toggle > span) { display: none; }
   .rail-collapsed .novvin-bottom-nav :is(.novvin-nav-item, .rail-link) { justify-content: center; padding-inline: 8px; gap: 0; position: relative; }
   .rail-collapsed .rail-count { position: absolute; top: 0; right: 0; font-size: .65rem; }
@@ -284,9 +291,9 @@
     color: var(--foreground);
   }
   .novvin-nav-item.active, .rail-link.active {
-    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
-    color: var(--primary);
-    box-shadow: inset 3px 0 var(--primary);
+    background: var(--primary);
+    color: var(--on-primary);
+    box-shadow: none;
   }
   .novvin-nav-pill, .novvin-nav-item.active .novvin-nav-pill {
     width: 26px;
@@ -298,8 +305,8 @@
   .rail-shortcuts {
     display: grid;
     gap: 2px;
-    margin-top: 12px;
-    padding-top: 12px;
+    margin-top: 8px;
+    padding-top: 8px;
     border-top: 1px solid var(--divider);
   }
   .rail-link > svg { width: 26px; height: 21px; }
@@ -318,6 +325,15 @@
     border-bottom: 1px solid var(--divider);
     padding-inline: clamp(20px, 3vw, 48px);
   }
+}
+@media (min-width: 1100px) and (max-height: 650px) {
+  .novvin-bottom-nav :is(.novvin-nav-item, .rail-link) { min-height: 40px; padding-block: 5px; }
+  .novvin-bottom-nav .rail-brand { min-height: 42px; margin-bottom: 6px; }
+}
+@media (min-width: 1100px) and (max-height: 540px) {
+  .novvin-bottom-nav { padding-block: 8px; gap: 1px; }
+  .novvin-bottom-nav :is(.novvin-nav-item, .rail-link) { min-height: 34px; padding-block: 3px; font-size: .85rem; }
+  .novvin-bottom-nav .rail-shortcuts { margin-top: 5px; padding-top: 5px; }
 }
 @media (max-width: 1099px) {
   .novvin-topbar {

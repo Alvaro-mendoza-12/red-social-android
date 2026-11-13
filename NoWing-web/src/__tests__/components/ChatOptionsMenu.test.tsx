@@ -34,3 +34,12 @@ test('click outside closes; disabled preference cannot mutate', () => {
   fireEvent.pointerDown(document.body)
   expect(handlers.onClose).toHaveBeenCalledTimes(1)
 })
+test('scheduling, translation and polls open their own chat tools', () => {
+  const onSchedule = jest.fn(), onTranslation = jest.fn(), onPoll = jest.fn()
+  const handlers = setup({ onSchedule, onTranslation, onPoll })
+  for (const [name, action] of [['Programar mensaje', onSchedule], ['Traducción', onTranslation], ['Crear encuesta', onPoll]] as const) {
+    fireEvent.click(screen.getByRole('menuitem', { name, exact: true }))
+    expect(action).toHaveBeenCalledTimes(1)
+  }
+  expect(handlers.onClose).toHaveBeenCalledTimes(3)
+})

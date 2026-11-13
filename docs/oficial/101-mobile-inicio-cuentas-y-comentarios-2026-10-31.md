@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 13 de noviembre de 2026
 
+Las continuaciones [130](130-web-compacta-asistente-y-portada-2026-11-13.md) y [131](131-compartidos-publicos-por-contenido-2026-11-13.md) compactan la navegación y el chat, renombran el asistente a Novvin, simplifican la portada con capturas reales y corrigen las vistas previas públicas por objeto. Identifican sus ensayos locales, la paridad parcial del menú y los despliegues pendientes. El bloque móvil 128 sigue sin publicar; no se entrega una APK nueva ni se cierra la revisión integral.
+
 La [continuación 129](129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md) incorpora el menú lateral web plegable y la invitación autorizada de una tercera persona durante una llamada, sin reiniciar los medios existentes. La prioridad web concreta fue indicada por el propietario; el bloque móvil 128 sigue local, sin publicar ni validar. Identifica los ensayos locales y mantiene pendientes la integración física, el despliegue de API y la revisión integral.
 
 La [continuación 127](127-android-participacion-pausa-y-trazabilidad-2026-11-13.md) impide que las tareas de participación LIVE confirmen respuestas o despachen envíos después de pausar el panel y conserva sus borradores al restaurar el estado. La trazabilidad incorpora sesenta líneas omitidas del paquete y mantiene 357 entradas con pendientes. Sus pruebas de sesión y componente no cierran Android ni sustituyen la validación física o la APK final.
