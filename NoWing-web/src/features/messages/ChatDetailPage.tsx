@@ -1,3 +1,4 @@
+import { animatedImageFile } from '../../core/imageEditPolicy'
 import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
 import { MessageTimestamp } from '../../components/MessageTimestamp'
 import { ContactMessageCard } from '../../components/ContactMessageCard'
@@ -1580,15 +1581,19 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   async function sendPendingAttachments(textFallback: string) {
     if (useUbuntu) {
       if (!user || !cleanChatId || pendingAttachments.length === 0) return
+      const owner = preparationOwnerRef.current
       const queued = [...pendingAttachments]
       setUploading(true)
       try {
         for (let index = 0; index < queued.length; index += 1) {
           const attachment = queued[index]
+          const animated = attachment.contentType === 'sticker' && await animatedImageFile(attachment.file)
+          if (owner !== preparationOwnerRef.current) return
           const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
           const filePath = `dm/${user.id}/${Date.now()}_${index}_${safeName}`
           const uploaded = await uploadFallbackFile('chat-media', attachment.file, filePath, undefined,
-            attachment.contentType === 'sticker' ? { id: crypto.randomUUID(), title: attachment.caption.trim() || 'Sticker', isAnimated: /^image\/(gif|webp)$/.test(attachment.file.type) } : undefined)
+            attachment.contentType === 'sticker' ? { id: crypto.randomUUID(), title: attachment.caption.trim() || 'Sticker', isAnimated: animated } : undefined)
+          if (owner !== preparationOwnerRef.current) return
           const caption =
             attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || (attachment.contentType === 'sticker' ? 'Sticker' : attachment.file.name)
           await sendMessage({
@@ -1608,11 +1613,13 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       return
     }
     if (!supabase || !user || !cleanChatId || pendingAttachments.length === 0) return
+    const owner = preparationOwnerRef.current
     const queued = [...pendingAttachments]
     setUploading(true)
     try {
       for (let index = 0; index < queued.length; index += 1) {
         const attachment = queued[index]
+        if (owner !== preparationOwnerRef.current) return
         const safeName = attachment.file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
         const filePath = `dm/${user.id}/${Date.now()}_${index}_${safeName}`
         const { error: uploadError } = await supabase.storage
@@ -1620,6 +1627,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           .upload(filePath, attachment.file, { contentType: attachment.file.type || undefined })
         if (uploadError) throw uploadError
         const { data } = supabase.storage.from('chat-media').getPublicUrl(filePath)
+        if (owner !== preparationOwnerRef.current) return
         const caption =
           attachment.caption.trim() || (index === 0 ? textFallback.trim() : '') || (attachment.contentType === 'sticker' ? 'Sticker' : attachment.file.name)
         await sendMessage({
@@ -2166,10 +2174,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     setUploading(true)
     setError(null)
     try {
+      const isAnimated = await animatedImageFile(file)
+      if (owner !== preparationOwnerRef.current) return
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
       const filePath = `stickers/${user.id}/${Date.now()}_${safeName}`
       const mediaUrl = useUbuntu
-        ? (await uploadFallbackFile('chat-media', file, filePath, undefined, { id: crypto.randomUUID(), title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', isAnimated: /\.(gif|webp)$/i.test(file.name) })).publicUrl
+        ? (await uploadFallbackFile('chat-media', file, filePath, undefined, { id: crypto.randomUUID(), title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', isAnimated })).publicUrl
         : await (async () => {
             if (!supabase) throw new Error('Backend no configurado')
             const { error: uploadError } = await supabase.storage
@@ -2178,10 +2188,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             if (uploadError) throw uploadError
             return supabase.storage.from('chat-media').getPublicUrl(filePath).data.publicUrl
           })()
+      if (owner !== preparationOwnerRef.current) return
       if (!useUbuntu) {
-        const saved = await backendRpc('secure_toggle_sticker_favorite', { p_sticker_id: crypto.randomUUID(), p_favorite: true, p_media_url: mediaUrl, p_title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', p_is_animated: /\.(gif|webp)$/i.test(file.name) })
+        const saved = await backendRpc('secure_toggle_sticker_favorite', { p_sticker_id: crypto.randomUUID(), p_favorite: true, p_media_url: mediaUrl, p_title: file.name.replace(/\.[^.]+$/, '') || 'Sticker', p_is_animated: isAnimated })
         if (saved.error) throw saved.error
       }
+      if (owner !== preparationOwnerRef.current) return
       await sendMessage({
         content: file.name.replace(/\.[^.]+$/, '') || 'Sticker',
         mediaUrl,

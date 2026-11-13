@@ -62,6 +62,9 @@ test('uses the mobile animation flag even when the URL has no animation extensio
   fireEvent.contextMenu(screen.getByRole('button',{name:'Enviar sticker En movimiento'}), {clientX:100,clientY:100})
   fireEvent.click(screen.getByRole('menuitem',{name:'Guardar en favoritos'}))
   await waitFor(()=>expect(rpc).toHaveBeenCalledWith('secure_toggle_sticker_favorite',expect.objectContaining({p_is_animated:true})))
+  fireEvent.click(screen.getByRole('button',{name:'Todos',exact:true}))
+  expect(screen.getByRole('button',{name:'Animados',exact:true})).toHaveAttribute('aria-pressed','false')
+  expect(screen.getByRole('button',{name:'Enviar sticker Fijo'})).toBeInTheDocument()
 })
 
 test('refreshes favorites saved from another device without reopening the chat', async () => {
