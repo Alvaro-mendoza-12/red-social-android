@@ -97,7 +97,7 @@ export function StickerPicker({ onSelect, onImport, onClose, onEmoji }: {
 
   if (emojiMode && onEmoji) return <section className="stickers-tray" aria-label="Emojis"><EmojiPicker onPick={onEmoji} onStickers={() => setEmojiMode(false)} onClose={onClose} /></section>
   return <section className="stickers-tray" aria-label="Stickers">
-    <div className="row-between">
+    <div className="sticker-toolbar">
       <input className="text-input" type="search" placeholder="Buscar stickers…" aria-label="Buscar stickers" value={query} onChange={event => setQuery(event.target.value)} />
       <label className="ghost-btn file-pick-btn" role="button" tabIndex={0} title="Importar un sticker, también si el archivo no tiene extensión" onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector<HTMLInputElement>('input')?.click() } }}>Importar<input type="file" hidden onChange={event => { onImport(event.currentTarget.files?.[0] ?? null); event.currentTarget.value = '' }} /></label>
       {onEmoji ? <button className="ghost-btn" type="button" onClick={() => setEmojiMode(true)}>Emojis</button> : null}
@@ -105,7 +105,16 @@ export function StickerPicker({ onSelect, onImport, onClose, onEmoji }: {
     </div>
     {loading ? <p className="sticker-empty" role="status">Cargando stickers…</p> : null}
     {!loading && !items.length ? <p className="sticker-empty">{failed ? 'No se pudieron cargar los stickers. Puedes importar uno de tu equipo.' : 'No hay stickers que coincidan. Puedes importar una imagen de tu equipo.'}</p> : null}
-    <nav className="sticker-library-tabs" aria-label="Colección de stickers"><button className="chip-btn" type="button" aria-pressed={!favoritesOnly} onClick={() => setFavoritesOnly(false)}>Todos</button><button className="chip-btn" type="button" aria-pressed={favoritesOnly} onClick={() => setFavoritesOnly(true)}><Star size={14}/>Favoritos</button><button className="chip-btn" type="button" aria-pressed={animatedOnly} onClick={() => setAnimatedOnly(value => !value)}><Sparkles size={14}/>Animados</button><button className="chip-btn" type="button" disabled={loading || Boolean(saving)} aria-label="Actualizar stickers" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={14}/>Actualizar</button></nav>
+    <nav className="sticker-library-tabs" aria-label="Colección de stickers">
+      <button className="chip-btn" type="button" aria-pressed={!favoritesOnly && !animatedOnly}
+        onClick={() => { setFavoritesOnly(false); setAnimatedOnly(false) }}>Todos</button>
+      <button className="chip-btn" type="button" aria-pressed={favoritesOnly}
+        onClick={() => setFavoritesOnly(value => !value)}><Star size={14}/>Favoritos</button>
+      <button className="chip-btn" type="button" aria-pressed={animatedOnly}
+        onClick={() => setAnimatedOnly(value => !value)}><Sparkles size={14}/>Animados</button>
+      <button className="chip-btn sticker-refresh" type="button" disabled={loading || Boolean(saving)}
+        aria-label="Actualizar stickers" title="Actualizar stickers" onClick={() => setRefresh(value => value + 1)}><RefreshCw size={16}/></button>
+    </nav>
     <p className="sticker-paste-hint">Pega aquí una imagen para enviarla como sticker. Clic derecho o pulsación larga para favoritos.</p>
     {saveError ? <p role="alert">{saveError}</p> : null}
     {!loading && items.length > 0 && !items.some(item => (!favoritesOnly || item.isFavorite) && (!animatedOnly || item.isAnimated)) ? <p className="sticker-empty">{favoritesOnly ? 'Haz clic derecho o mantén pulsado un sticker para guardarlo en favoritos.' : 'No hay stickers animados en esta búsqueda.'}</p> : null}

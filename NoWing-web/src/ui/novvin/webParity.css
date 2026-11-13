@@ -81,7 +81,13 @@
 @media(max-width:600px) { .games-catalog-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }.games-catalog-card { padding: 10px; }.live-guests-strip { left: 12px; right: 12px; bottom: 100px; }.live-guests-strip figure { width: 130px; flex-basis: 130px; }.live-guest-video { height: 85px; } }
 @media(prefers-reduced-motion:reduce) { .live-reaction-overlay>span { animation: none; opacity: .85; } }
 .sticker-library-tabs,.emoji-picker nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }.sticker-library-tabs button,.emoji-picker nav button { display: inline-flex; gap: 5px; align-items: center; padding: 7px 12px; }.sticker-library-tabs button[aria-pressed=true],.emoji-picker nav button[aria-pressed=true] { background: var(--primary,#26d8d5); color: var(--on-primary,#0a1920); }
-.stickers-tray .sticker-grid-compact { grid-template-columns: repeat(auto-fill, minmax(72px, 88px)); gap: 8px; justify-content: start; }
+.stickers-tray { container-type: inline-size; }
+.sticker-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.sticker-toolbar .text-input { flex: 1 1 12rem; }
+.sticker-toolbar button, .sticker-toolbar .file-pick-btn, .sticker-library-tabs button { min-height: 44px; }
+.sticker-library-tabs .sticker-refresh { margin-inline-start: auto; min-width: 44px; justify-content: center; }
+@container (max-width: 360px) { .sticker-toolbar .text-input { flex-basis: 100%; } }
+.stickers-tray .sticker-grid-compact { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
 .sticker-library-tile { position: relative; min-width: 0; aspect-ratio: 1; }
 .sticker-library-tile>.sticker-item-btn { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 10px; padding: 4px; background: transparent; border: 0; touch-action: pan-y; }
 .sticker-library-tile>.sticker-item-btn:hover { background: var(--surface-raised,#25252b); }
