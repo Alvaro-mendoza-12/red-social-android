@@ -34,16 +34,17 @@ function fixture(kind = 'dm') {
     if (text.startsWith('INSERT INTO fallback_call_invitees')) {
       const existing = invitees.get(key(params[0], params[1]));
       const accepted = text.includes("'owner','accepted'") || text.includes("'member','accepted'");
-      invitees.set(key(params[0], params[1]), { role: existing?.role || (text.includes("'owner'") ? 'owner' : 'member'), state: accepted ? 'accepted' : 'invited' }); return { rows: [] };
+      invitees.set(key(params[0], params[1]), { role: existing?.role || (text.includes("'owner'") ? 'owner' : 'member'), state: accepted ? 'accepted' : 'invited', updated_at: new Date().toISOString() }); return { rows: [] };
     }
     if (text.startsWith('SELECT id::text') && text.includes('FROM fallback_call_sessions')) return { rows: sessions.has(params[0]) ? [{ ...sessions.get(params[0]) }] : [] };
     if (text.startsWith('SELECT user_id FROM fallback_call_invitees')) return { rows: [...invitees.entries()]
-      .filter(([entry, invite]) => entry.startsWith(params[0] + ':') && entry !== key(params[0], params[1]) && ['invited', 'accepted'].includes(invite.state))
+      .filter(([entry, invite]) => entry.startsWith(params[0] + ':') && entry !== key(params[0], params[1]) && ['invited', 'accepted'].includes(invite.state) && (typeof params[2] !== 'boolean' || !params[2] || invite.state === 'accepted') && (typeof params[2] !== 'number' || invite.state === 'accepted' || new Date(invite.updated_at).getTime() > Date.now() - params[2] * 1000))
       .map(([entry]) => ({ user_id: entry.slice(params[0].length + 1) })) };
     if (text.startsWith('SELECT COUNT(*)::int')) return { rows: [{ count: [...invitees.entries()].filter(([entry, invite]) => entry.startsWith(params[0] + ':') && entry !== key(params[0], params[1]) && invite.state === 'accepted').length }] };
-    if (text.startsWith('SELECT state FROM fallback_call_invitees') || text.startsWith('SELECT role,state FROM fallback_call_invitees')) return { rows: invitees.has(key(params[0], params[1])) ? [{ ...invitees.get(key(params[0], params[1])) }] : [] };
+    if ((text.startsWith('SELECT state') || text.startsWith('SELECT role,state')) && text.includes('FROM fallback_call_invitees')) return { rows: invitees.has(key(params[0], params[1])) ? [{ ...invitees.get(key(params[0], params[1])) }] : [] };
     if (text.startsWith('UPDATE fallback_call_sessions')) {
       const session = sessions.get(params[0]);
+      if (text.includes('expanded=TRUE')) { session.expanded = true; return { rows: [] }; }
       if (text.includes("state='ended'")) { session.state = 'ended'; session.expires_at = new Date().toISOString(); }
       else { if (text.includes("state='active'")) session.state = 'active'; session.expires_at = new Date(Date.now() + params[1] * 1000).toISOString(); }
       return { rows: [{ expires_at: session.expires_at }] };
@@ -51,11 +52,11 @@ function fixture(kind = 'dm') {
     if (text.startsWith('UPDATE fallback_call_invitees')) { invitees.get(key(params[0], params[1])).state = params[2]; return { rows: [] }; }
     if (text.startsWith('SELECT c.id::text')) {
       const session = sessions.get(params[0]), actor = invitees.get(key(params[0], params[1])), recipient = invitees.get(key(params[0], params[2]));
-      return { rows: session && actor && recipient ? [{ ...session, actor_state: actor.state, recipient_state: recipient.state }] : [] };
+      return { rows: session && actor && recipient ? [{ ...session, actor_state: actor.state, recipient_state: recipient.state, recipient_updated_at: recipient.updated_at }] : [] };
     }
     throw new Error(`UNHANDLED_SYNTHETIC_SQL:${text.slice(0, 100)}`);
   }, async connect() { return { query: database.query, release() {} }; } };
-  const store = createCallAccessStore({ pool: database, loadContext: async () => ({ memberIds: [...members] }) });
+  const store = createCallAccessStore({ pool: database, loadContext: async (_db, user) => members.has(user.supabase_user_id || identities.get(user.id)?.supabase_user_id || user.id) ? ({ memberIds: [...members] }) : null });
   const prepare = (callId = CALL, targets = [B]) => store.prepare({ id: A }, { callId, contextType: kind, contextId: 'context-test', inviteeIds: targets });
   return { store, prepare, members, blocks, identities, database, sqlLog,
     invite: (call, user) => invitees.get(key(call, user)), session: call => sessions.get(call), sessionCount: () => sessions.size };
@@ -63,6 +64,55 @@ function fixture(kind = 'dm') {
 async function rejected(action, code = 'CALL_ACCESS_DENIED') { await assert.rejects(action, error => error.code === code); }
 async function run() {
   let cases = 0;
+  {
+    const f = fixture(); await f.prepare(); await f.store.accept({ id: B }, CALL);
+    await f.store.invite({ id: A }, CALL, { inviteeIds: [C] });
+    f.invite(CALL, C).updated_at = new Date(Date.now() - 46000).toISOString();
+    await rejected(() => f.store.accept({ id: C }, CALL), 'CALL_INVITE_EXPIRED'); cases++;
+    await rejected(() => f.store.validateAlert({ id: A }, { type: 'call_invite', targetId: CALL, recipientId: C })); cases++;
+    await f.store.invite({ id: A }, CALL, { inviteeIds: [C] });
+    assert.equal((await f.store.accept({ id: C }, CALL)).state, 'active'); cases++;
+  }
+  {
+    const f = fixture(); await f.prepare();
+    await rejected(() => f.store.invite({ id: A }, CALL, { inviteeIds: [C] })); cases++;
+    await f.store.accept({ id: B }, CALL);
+    await rejected(() => f.store.invite({ id: B }, CALL, { inviteeIds: [C] })); cases++;
+    const invitation = await f.store.invite({ id: A }, CALL, { inviteeIds: [C] });
+    assert.equal(invitation.state, 'invited'); assert.equal(invitation.participantLimit, 8);
+    assert.equal((await f.store.invite({ id: A }, CALL, { inviteeIds: [C] })).state, 'invited'); cases++;
+    const alert = await f.store.validateAlert({ id: A }, { type: 'call_invite', targetId: CALL, recipientId: C, extraData: { call_context_id: 'forged' } });
+    assert.equal(alert.extraData.call_context_id, ''); assert.equal(f.members.has(C), false); cases++;
+    await rejected(() => f.store.access({ id: C }, CALL)); cases++;
+    await f.store.accept({ id: C }, CALL); assert.equal((await f.store.access({ id: C }, CALL)).allowed, true); cases++;
+    await rejected(() => f.store.accept({ id: D }, CALL)); cases++;
+    await f.store.leave({ id: C }, CALL, 'end'); assert.equal(f.session(CALL).state, 'active');
+    await f.store.validateAlert({ id: C }, { type: 'call_cancel', targetId: CALL, recipientId: A, extraData: { call_action: 'end' } });
+    assert.equal((await f.store.access({ id: B }, CALL)).allowed, true); cases++;
+    await f.store.invite({ id: A }, CALL, { inviteeIds: [D] }); await f.store.leave({ id: D }, CALL, 'decline');
+    assert.equal((await f.store.access({ id: A }, CALL)).state, 'active'); cases++;
+    await f.store.leave({ id: A }, CALL, 'end'); await rejected(() => f.store.access({ id: B }, CALL)); cases++;
+  }
+  {
+    const f = fixture(); await f.prepare(); await f.store.accept({ id: B }, CALL);
+    f.blocks.add(`${C}:${B}`); await rejected(() => f.store.invite({ id: A }, CALL, { inviteeIds: [C] }));
+    assert.equal(f.invite(CALL, C), undefined); assert.equal(f.session(CALL).expanded, undefined); cases++;
+    f.blocks.clear(); await f.store.invite({ id: A }, CALL, { inviteeIds: [C] });
+    f.blocks.add(`${C}:${B}`); await rejected(() => f.store.accept({ id: C }, CALL));
+    assert.equal((await f.store.access({ id: B }, CALL)).allowed, true); cases++;
+  }
+  {
+    const f = fixture('group'); await f.prepare(); await f.store.accept({ id: B }, CALL);
+    await rejected(() => f.store.invite({ id: A }, CALL, { inviteeIds: [C] })); cases++;
+  }
+  {
+    const f = fixture(); await f.prepare(); await f.store.accept({ id: B }, CALL);
+    for (let i = 0; i < 6; i++) {
+      const target = `${String(i + 10).padStart(8, '0')}-7777-4777-8777-777777777777`;
+      f.identities.set(target, { id: target }); await f.store.invite({ id: A }, CALL, { inviteeIds: [target] });
+    }
+    await rejected(() => f.store.invite({ id: A }, CALL, { inviteeIds: [C] }), 'CALL_PARTICIPANT_LIMIT_REACHED'); cases++;
+  }
   {
     const f = fixture(); await rejected(() => f.store.access({ id: A }, CALL)); cases++;
     await f.prepare(); assert.equal(f.sessionCount(), 1);

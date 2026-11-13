@@ -1,7 +1,7 @@
 import { getRuntimeBackendUrl } from '../../core/runtimeBackend'
 
 export type CallLeaveAction = 'end' | 'cancel' | 'decline' | 'busy' | 'missed' | 'collision'
-export type CallPermission = { callId: string; state: 'ringing' | 'active'; expiresAt: string }
+export type CallPermission = { callId: string; state: 'ringing' | 'active'; expiresAt: string; ownerUserId?: string }
 
 export class CallControlError extends Error {
   readonly code: string
@@ -18,6 +18,7 @@ export class CallControlError extends Error {
 function callControlMessage(code: string): string {
   if (code === 'CALL_ACCOUNT_BUSY') return 'Ya hay otra llamada activa en tu cuenta.'
   if (code === 'CALL_PARTICIPANT_LIMIT_REACHED') return 'La llamada ya está llena.'
+  if (code === 'CALL_INVITE_EXPIRED') return 'La invitación venció. Pide que te inviten de nuevo.'
   if (code === 'CALL_REQUEST_INVALID') return 'Revisa la conversación y los participantes de la llamada.'
   if (code === 'AUTH_REQUIRED') return 'Inicia sesión para usar llamadas.'
   if (code === 'CALL_ACCESS_UNAVAILABLE') return 'No se pudo confirmar la llamada. Intenta nuevamente.'
@@ -69,6 +70,14 @@ export class CallControlClient {
 
   accept(callId: string): Promise<CallPermission> {
     return postCallData(`/v1/data/calls/${encodeURIComponent(callId)}/accept`, {}, this.accessToken)
+  }
+
+  invite(callId: string, inviteeId: string): Promise<{ inviteeId: string; state: 'accepted' | 'invited'; participantLimit: number; expiresAt: string }> {
+    return postCallData(`/v1/data/calls/${encodeURIComponent(callId)}/invite`, { inviteeIds: [inviteeId] }, this.accessToken)
+  }
+
+  access(callId: string): Promise<CallPermission> {
+    return postCallData(`/v1/data/calls/${encodeURIComponent(callId)}/access`, {}, this.accessToken)
   }
 
   leave(callId: string, action: CallLeaveAction): Promise<{ left: boolean }> {

@@ -28,6 +28,8 @@ import {
   Phone,
   Plus,
   Radio,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings,
   Users,
@@ -242,6 +244,14 @@ export function AppLayout() {
     getDeferredMutationCount(user?.id ?? 'signed-out'),
   )
   const [isMobileExploreOpen, setIsMobileExploreOpen] = useState(false)
+  const [railCollapsed, setRailCollapsed] = useState(() => {
+    try { return localStorage.getItem('novvin.navigation.collapsed') === 'true' } catch { return false }
+  })
+  const toggleRail = () => setRailCollapsed(current => {
+    const next = !current
+    try { localStorage.setItem('novvin.navigation.collapsed', String(next)) } catch { /* Layout remains usable without storage. */ }
+    return next
+  })
   const [menuMode, setMenuMode] = useState<'navigation' | 'section' | 'messages'>('navigation')
   const [messagesMenuTab, setMessagesMenuTab] = useState<MessagesMenuTab>('chats')
   const [logoutBusy, setLogoutBusy] = useState(false)
@@ -908,6 +918,7 @@ export function AppLayout() {
       className={[
         'app-shell',
         'novvin-app',
+        railCollapsed ? 'rail-collapsed' : '',
         isVideosRoute ? 'route-videos' : '',
         isConversationRoute ? 'route-conversation' : '',
         isSocialRoute ? 'route-social' : '',
@@ -1142,15 +1153,24 @@ export function AppLayout() {
           </div>
         </main>
 
-        <nav className="novvin-bottom-nav" aria-label="Navegación principal">
+        <nav id="novvin-navigation" className="novvin-bottom-nav" aria-label="Navegación principal">
           <Link to="/app/social" className="rail-brand" aria-label="Novvin · Ir a Social">
             <img src="/icons/novvin-96.png" width="36" height="36" alt="" />
             <span>Novvin</span>
           </Link>
+          <button type="button" className="rail-toggle rail-link" onClick={toggleRail}
+            aria-label={railCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'}
+            title={railCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'}
+            aria-expanded={!railCollapsed} aria-controls="novvin-navigation">
+            {railCollapsed ? <PanelLeftOpen aria-hidden="true"/> : <PanelLeftClose aria-hidden="true"/>}
+            <span>Contraer menú</span>
+          </button>
           {mobileNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
+              aria-label={item.label}
+              title={item.label}
               className={activeSection === item.to ? 'novvin-nav-item active' : 'novvin-nav-item'}
               aria-current={activeSection === item.to ? 'page' : undefined}
             >
@@ -1179,19 +1199,20 @@ export function AppLayout() {
             </NavLink>
           ))}
           <div className="rail-shortcuts">
-            {secondaryNavItems.filter(item => ['search', 'notifications', 'voice'].includes(item.icon)).map(item => (
-              <NavLink key={item.to} to={item.to} className={({isActive}) => `rail-link${isActive ? ' active' : ''}`}>
-                <ShellIcon name={item.icon} /><span>{item.label}</span>
+            {secondaryNavItems.filter(item => ['search', 'notifications', 'calls', 'voice', 'assistant'].includes(item.icon)).map(item => (
+              <NavLink key={item.to} to={item.to} aria-label={item.label} title={item.label} className={({isActive}) => `rail-link${isActive ? ' active' : ''}`}>
+                <ShellIcon name={item.icon} /><span className="rail-label">{item.icon === 'assistant' ? 'Nowy' : item.label}</span>
                 {item.icon === 'notifications' && notificationUnreadCount > 0 ? <span className="rail-count" aria-label={`${notificationUnreadCount} sin leer`}>{notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}</span> : null}
               </NavLink>
             ))}
           </div>
           <button type="button" className="rail-explore rail-link" aria-haspopup="dialog"
+            aria-label="Explorar Novvin" title="Explorar Novvin"
             aria-controls="mobile-explore-menu" aria-expanded={isMobileExploreOpen && menuMode === 'navigation'}
             onClick={event => { mobileExploreButtonRef.current=event.currentTarget; setMenuMode('navigation'); setIsMobileExploreOpen(true) }}>
             <Compass aria-hidden="true" /><span>Explorar Novvin</span>
           </button>
-          <button type="button" className="rail-logout rail-link" onClick={() => void handleLogout()} disabled={logoutBusy}>
+          <button type="button" className="rail-logout rail-link" aria-label={logoutBusy ? 'Cerrando sesión…' : 'Cerrar sesión'} title="Cerrar sesión" onClick={() => void handleLogout()} disabled={logoutBusy}>
             <LogOut aria-hidden="true"/><span>{logoutBusy ? 'Cerrando sesión…' : 'Cerrar sesión'}</span>
           </button>
         </nav>

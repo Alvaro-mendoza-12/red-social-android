@@ -211,7 +211,7 @@
   width: 11px;
   height: 11px;
 }
-.rail-brand, .rail-shortcuts, .rail-explore, .rail-logout { display: none; }
+.rail-brand, .rail-shortcuts, .rail-explore, .rail-logout, .rail-toggle { display: none; }
 .novvin-nav-item:focus-visible, .rail-link:focus-visible, .rail-brand:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: -3px;
@@ -255,6 +255,12 @@
     letter-spacing: -.065em;
   }
   .rail-brand img { border-radius: 11px; }
+  .rail-toggle.rail-link { display: flex; margin-bottom: 10px; min-height: 40px; font-size: .8rem; }
+  .novvin-app.rail-collapsed { --rail-width: 76px; }
+  .rail-collapsed .rail-brand { justify-content: center; padding-inline: 0; }
+  .rail-collapsed .novvin-bottom-nav :is(.rail-brand > span, .nav-label, .rail-label, .rail-explore > span, .rail-logout > span, .rail-toggle > span) { display: none; }
+  .rail-collapsed .novvin-bottom-nav :is(.novvin-nav-item, .rail-link) { justify-content: center; padding-inline: 8px; gap: 0; position: relative; }
+  .rail-collapsed .rail-count { position: absolute; top: 0; right: 0; font-size: .65rem; }
   .novvin-nav-item, .rail-link {
     display: flex;
     flex-direction: row;

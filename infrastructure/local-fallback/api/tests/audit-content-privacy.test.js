@@ -135,6 +135,7 @@ test(`native profile respects post audience and current follow state (${followAc
     if (sql.includes('FROM fallback_users') && sql.includes('WHERE id = $1')) return { rows: [{ id: viewer, supabase_user_id: publicViewer }] }
     if (sql.includes('FROM fallback_users u') && sql.includes('profile_visibility')) return { rows: [{ id: owner, display_name: 'Owner', profile_visibility: 'everyone' }] }
     if (sql.includes('FROM fallback_follow_overrides')) return { rows: [{ follower_id: publicViewer, following_id: owner, active: followActive }] }
+    if (sql.includes('FROM fallback_user_blocks')) return { rows: [] }
     if (sql.includes('FROM fallback_follows')) return { rows: [{ follower_id: publicViewer, following_id: owner }] }
     if (sql.includes('FROM fallback_posts')) return { rows: posts }
     if (sql.includes('to_regclass') || sql.includes('information_schema.tables') || sql.includes('fallback_follow_overrides') || sql.includes('fallback_post_reactions') || sql.includes('fallback_post_comments')) return { rows: [] }
