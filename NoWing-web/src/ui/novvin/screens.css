@@ -1813,9 +1813,8 @@
   .reels-toolbar-actions {
     gap: 4px;
   }
-  .reels-filter-menu {
-    display: none;
-  }
+  .reels-filter-menu summary { min-width: 36px; min-height: 40px; }
+  .reels-filter-popover { width: min(212px, 65vw); }
   .reels-publish-button {
     padding: 10px;
     min-width: 42px;
