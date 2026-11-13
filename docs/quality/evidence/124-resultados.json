@@ -1,0 +1,153 @@
+{
+  "candidate": {
+    "main": "8fced39a",
+    "featureLiveGifts": "92c4f15c",
+    "gitTree": "74c78646c7bc1212708ea5a1b8792f693fb5c0b6",
+    "localDates": [
+      "2026-11-12",
+      "2026-11-13"
+    ],
+    "timezone": "America/Bogota"
+  },
+  "environment": {
+    "clients": "dos contextos independientes de Chromium, cámara y micrófono sintéticos",
+    "backend": "API, gateway y señalización de Novvin con PostgreSQL 16 dedicado",
+    "storage": "directorio local y pruebas independientes del adaptador S3 y diario R2",
+    "delivery": "local"
+  },
+  "automated": {
+    "androidJvm": {
+      "tests": 2768,
+      "suites": 522,
+      "failures": 0,
+      "skipped": 0
+    },
+    "webJest": {
+      "tests": 1196,
+      "suites": 187,
+      "failures": 0
+    },
+    "webLint": {
+      "errors": 0,
+      "warnings": 7
+    },
+    "publicBuild": {
+      "pages": 21,
+      "publicJavaScriptBytes": 0
+    },
+    "apiSelected": 50,
+    "profileAndDataSelected": 20,
+    "signaling": 34,
+    "liveSelected": 5,
+    "postgresHistory": 1,
+    "postgresCounts": 1,
+    "postgresConcurrentRound": 1,
+    "r2Local": {
+      "journalAndMirror": 10,
+      "adapter": 3
+    },
+    "androidEmulator": {
+      "api": 35,
+      "version": "9.1.40-debug",
+      "versionCode": 180,
+      "tests": 10,
+      "failures": 0,
+      "classes": [
+        "AnimatedStickerImportDeviceTest",
+        "StickerDeliveryUiTest",
+        "StickerMessageGestureDeviceTest"
+      ]
+    }
+  },
+  "browser": {
+    "pass": [
+      "scroll 1355",
+      "PDF 1355",
+      "contacto 1355",
+      "stickers 1355",
+      "scroll 1153",
+      "PDF 1153",
+      "contacto 1153",
+      "stickers 1153",
+      "scroll 390",
+      "PDF 390",
+      "contacto 390",
+      "stickers 390",
+      "DM entrega y tiempo real",
+      "sticker enviado desde selector y animado en receptor",
+      "inicio, invitación, audio WebRTC y cierre",
+      "menú y cierre de sesión"
+    ],
+    "fail": [],
+    "counts": {
+      "thread1355": {
+        "hidden": true,
+        "moved": true,
+        "height": 454
+      },
+      "tray1355": {
+        "height": 288,
+        "grid": 196,
+        "tile": 58,
+        "width": 827
+      },
+      "thread1153": {
+        "hidden": true,
+        "moved": true,
+        "height": 469
+      },
+      "tray1153": {
+        "height": 295,
+        "grid": 203,
+        "tile": 56,
+        "width": 679
+      },
+      "thread390": {
+        "hidden": true,
+        "moved": true,
+        "height": 604
+      },
+      "tray390": {
+        "height": 354,
+        "grid": 262,
+        "tile": 58,
+        "width": 390
+      }
+    }
+  },
+  "additionalBrowser": [
+    "TXT de grupo recibido sin recarga, bytes iguales y persistencia al recargar",
+    "TXT de comunidad recibido sin recarga, bytes iguales y persistencia al recargar",
+    "Mensaje enviado al grupo mientras el receptor estaba desconectado, visible una sola vez al volver",
+    "Videollamada con pistas de audio y vídeo sintéticas en ambos extremos",
+    "Micrófono denegado por el navegador, mensaje explicativo y sin pista remota",
+    "PPTX sintético de 11 084 008 bytes enviado desde el selector del chat privado y descargado con bytes idénticos"
+  ],
+  "wsAndDatabase": [
+    "Invitación y comentario repetidos, un único registro por operación",
+    "Invitado aceptado o rechazado, permiso al canal para host/invitado y revocación al salir",
+    "Trazo recibido por WebSocket en la segunda cuenta, respuesta correcta, incremento de puntos y fin de juego",
+    "Dos temporizadores concurrentes sobre una ronda vencida, una sola transición y una sola publicación"
+  ],
+  "syntheticStickerCount": 49,
+  "latencyMilliseconds": {
+    "requestsPerRoute": 12,
+    "concurrency": 1,
+    "source": "HTTP en loopback, no extrapolar a WAN",
+    "history": {
+      "p50": 12.5,
+      "p95": 30
+    },
+    "contactFollowers": {
+      "p50": 16,
+      "p95": 24.1
+    }
+  },
+  "outstanding": [
+    "TURN y SFU sobre redes independientes",
+    "R2 real con autenticación, cargas grandes y entrega por rangos",
+    "Notificación push real, tienda y circuito económico",
+    "Restauración de datos y rollback operativos",
+    "Cobertura integral de todos los módulos"
+  ]
+}

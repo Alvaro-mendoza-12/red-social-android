@@ -1,8 +1,10 @@
 # Novvin — Documentación oficial del proyecto
 
-Estado documental: 12 de noviembre de 2026. Esta es la entrada para desarrollo, operación y traspaso técnico.
+Estado documental al 13 de noviembre de 2026. Esta es la entrada para desarrollo, operación y traspaso técnico.
 
 ## Estado vigente
+
+La [revisión nocturna 124](../../Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md) corrige mensajería colectiva en tiempo real, documentos, stickers, llamadas y el vencimiento de rondas. El [estado de salida](../operations/PRODUCTION_READINESS.md) corresponde al candidato local de las dos ramas estables. Los ensayos completos de red física, R2 externo y recuperación operativa siguen abiertos.
 
 La [revisión 123](123-rediseno-web-navegacion-y-controles-2026-11-12.md) documenta la portada, la navegación web y las acciones de conversación, publicación y perfil. `administracion@novvinapp.com` es el contacto directo. Los códigos de verificación y recuperación conservan su remitente habitual por decisión del propietario.
 

@@ -2,7 +2,9 @@
 
 Este es un avance de correcciones comprobadas, no el cierre de la revisión integral ni una declaración de que toda la aplicación esté lista. Se continúa primero en Android. La revisión 100 ya registró la reparación de documentos de la web y la comprobación de 20 formatos; ese recorrido y el historial con personas y grupos se revalidarán en la fase web, después del móvil.
 
-## Estado vigente — 12 de noviembre de 2026
+## Estado vigente — 13 de noviembre de 2026
+
+La [revisión 124](../../Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md) integra las correcciones de chats, contactos y archivos en ambas ramas estables, y prueba llamadas y la lógica compartida de juego con cuentas sintéticas. Android 9.1.40 supera 2 768 pruebas JVM. La [línea base](../quality/BASELINE_TESTS.md) y la [decisión de salida](../operations/PRODUCTION_READINESS.md) delimitan el alcance de la entrega local.
 
 La [revisión 123](123-rediseno-web-navegacion-y-controles-2026-11-12.md) documenta la portada, la navegación web y las acciones de conversación, publicación y perfil. `administracion@novvinapp.com` es el contacto directo. Los códigos de verificación y recuperación conservan su remitente habitual por decisión del propietario.
 

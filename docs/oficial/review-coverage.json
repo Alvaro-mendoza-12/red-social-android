@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-13T04:03:19.163215+00:00",
-  "baseCommit": "6e5efe0d8cbcc093b4025e30aa20338cc467774e",
+  "generatedAtUtc": "2026-11-13T05:23:12.308861+00:00",
+  "baseCommit": "8fced39aeeea623da23b7dd5028c3ccd19167cc7",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3613,
-    "code-read": 519,
-    "partial": 206
+    "pending": 3619,
+    "code-read": 525,
+    "partial": 220
   },
   "countsByPhase": {
     "android": {
@@ -21,14 +21,14 @@
       "code-read": 410
     },
     "documentation": {
-      "pending": 558,
+      "pending": 583,
       "code-read": 20,
-      "partial": 13
+      "partial": 11
     },
     "server": {
-      "pending": 858,
-      "code-read": 41,
-      "partial": 24
+      "pending": 853,
+      "code-read": 43,
+      "partial": 29
     },
     "tooling-and-other": {
       "pending": 154,
@@ -36,9 +36,9 @@
       "partial": 7
     },
     "web": {
-      "partial": 72,
-      "pending": 521,
-      "code-read": 36
+      "partial": 83,
+      "pending": 507,
+      "code-read": 40
     }
   },
   "files": [
@@ -1169,8 +1169,10 @@
     {
       "file": "NoWing-web/src/__tests__/core/boundedStorageRead.test.ts",
       "phase": "web",
-      "gitBlobId": "82f03a7491f8f5989cbcb790305eea992b7c1219",
-      "reviewStatus": "pending"
+      "gitBlobId": "c2f32ec1dd0cf384e284d795235717e7d404f767",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/browserStreaming.test.ts",
@@ -1297,8 +1299,10 @@
     {
       "file": "NoWing-web/src/__tests__/core/downloadMedia.test.ts",
       "phase": "web",
-      "gitBlobId": "f347bcd5529990b3eaea4ba505d91e57d3e68f7e",
-      "reviewStatus": "pending"
+      "gitBlobId": "973e9f976f194919ebbb5892a10834a83fc53b60",
+      "reviewStatus": "code-read",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/fallbackAuthStorage.test.ts",
@@ -1617,8 +1621,10 @@
     {
       "file": "NoWing-web/src/__tests__/core/ubuntuRealtime.test.ts",
       "phase": "web",
-      "gitBlobId": "a7af464de7e784b93462e3fa30574509a2ffaa85",
-      "reviewStatus": "pending"
+      "gitBlobId": "0c39c9e04fd6432b8ebddd6ac966f2141d21ec36",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/uploadProgress.test.ts",
@@ -1965,8 +1971,10 @@
     {
       "file": "NoWing-web/src/components/ChatAttachmentMedia.tsx",
       "phase": "web",
-      "gitBlobId": "00feffc628d79b532ee3f1e1d213fe4373cbb52f",
-      "reviewStatus": "pending"
+      "gitBlobId": "e5315000d8ad9beda10ba611184c8b1bc6aeafbe",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/ChatAttachmentPreview.tsx",
@@ -1997,8 +2005,10 @@
     {
       "file": "NoWing-web/src/components/ChatProfilePanel.tsx",
       "phase": "web",
-      "gitBlobId": "318af4a0e68544e26d3d4948b045c61965fba4c4",
-      "reviewStatus": "pending"
+      "gitBlobId": "c7cccb9ed7df0f184d3acf3cb13640d24c6f0659",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/CollectionInfo.tsx",
@@ -2047,6 +2057,14 @@
       "phase": "web",
       "gitBlobId": "82a312138afeb9953f7668ceee12b5367ee8357b",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/components/ContactFollowList.tsx",
+      "phase": "web",
+      "gitBlobId": "84b38f1c46dc8e7b44f1aefd039fd1579d5f1211",
+      "reviewStatus": "code-read",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/ContactMessageCard.tsx",
@@ -2333,8 +2351,10 @@
     {
       "file": "NoWing-web/src/components/StickerPicker.tsx",
       "phase": "web",
-      "gitBlobId": "e001f18f8c25c3bc7f514c94de890ecf51f7b5a7",
-      "reviewStatus": "pending"
+      "gitBlobId": "6c219f09257c880a48b4ee1bc652c657ca066c6b",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/StreamingMedia.tsx",
@@ -2521,8 +2541,10 @@
     {
       "file": "NoWing-web/src/core/attachmentKind.ts",
       "phase": "web",
-      "gitBlobId": "0ecf15e518c439e477715963eed5aa4c8a2538a1",
-      "reviewStatus": "pending"
+      "gitBlobId": "5d880286abdf8144a8f2466043b6665d34353001",
+      "reviewStatus": "code-read",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/attachmentPreparation.ts",
@@ -2755,9 +2777,9 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "e1878b2556b492d9a96fee5d7b2a006d44ec54ad",
+      "gitBlobId": "456e99956a5bebbd66b9971c0b78719ee55b39f0",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2837,9 +2859,9 @@
     {
       "file": "NoWing-web/src/core/media/boundedStorageRead.ts",
       "phase": "web",
-      "gitBlobId": "3513b3d28a1dbebf171b9d34f747f289ed9cbb3d",
+      "gitBlobId": "2e3da65729a8a9c81b1a681739bd7e0bcd36a00a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2859,8 +2881,10 @@
     {
       "file": "NoWing-web/src/core/media/downloadMedia.ts",
       "phase": "web",
-      "gitBlobId": "23a64092496a76ee2367cbae92df7936ab526ca0",
-      "reviewStatus": "pending"
+      "gitBlobId": "852ba18505017b97993c23f61bf5d31f8b041df9",
+      "reviewStatus": "code-read",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/media/imagePreviewCache.ts",
@@ -3121,8 +3145,10 @@
     {
       "file": "NoWing-web/src/core/ubuntuRealtime.ts",
       "phase": "web",
-      "gitBlobId": "39c6c25685e37fbeb8b65e2651b9ba99f0c67e9f",
-      "reviewStatus": "pending"
+      "gitBlobId": "1d4d1fb368ae46470071237683a672340f35245b",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/uploadProgress.ts",
@@ -3203,20 +3229,26 @@
     {
       "file": "NoWing-web/src/features/calls/CallInterface.tsx",
       "phase": "web",
-      "gitBlobId": "8a41c85af25a4a4824f77dc04b7230c1ea86d3ad",
-      "reviewStatus": "pending"
+      "gitBlobId": "b5fa8abf14dc9ef21c7a44f3dac33de88f40ca91",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/calls/CallsPage.tsx",
       "phase": "web",
-      "gitBlobId": "af098af779e22b736a092436879236898d1a4855",
-      "reviewStatus": "pending"
+      "gitBlobId": "d770e7fd3120d47cf2c5458bebb9e1339cd58ade",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/calls/WebCallManager.ts",
       "phase": "web",
-      "gitBlobId": "1c8cea06e95aaefddb284b874ded91effbf3d000",
-      "reviewStatus": "pending"
+      "gitBlobId": "ad191aa632d91fde7db5655a853532a40ef93278",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/calls/WebRtcPeerSession.ts",
@@ -3239,8 +3271,10 @@
     {
       "file": "NoWing-web/src/features/calls/calls.css",
       "phase": "web",
-      "gitBlobId": "18fb4c0c14e8088108d9dc2140bf9ff6b140a365",
-      "reviewStatus": "pending"
+      "gitBlobId": "ba39249cf3a3a5fb6a3c6dddd95167dd5006d628",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/calls/incomingCallOverlay.css",
@@ -3343,9 +3377,9 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "183c024fb221596d62543d386236369e5d5882fa",
+      "gitBlobId": "9697287b5e8ce4088305f51907a7762f86fb11f5",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3369,17 +3403,17 @@
     {
       "file": "NoWing-web/src/features/messages/MessagesPage.tsx",
       "phase": "web",
-      "gitBlobId": "31bd3ff223e19140103d00c6c057823cde0c3788",
+      "gitBlobId": "c4f8e44465b640299aee047f6b655fd08ec2b31e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/messages/RoomChatPage.tsx",
       "phase": "web",
-      "gitBlobId": "94d0419969d1987e123a58f503d58d29a8a3224d",
+      "gitBlobId": "d0573d8611f61f41bbfdc6a45dbdd0da7535399b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3633,8 +3667,10 @@
     {
       "file": "NoWing-web/src/features/social/FollowsPage.tsx",
       "phase": "web",
-      "gitBlobId": "b0bcf6a8b5665a0aa7a4096ea7c6753d366e98ad",
-      "reviewStatus": "pending"
+      "gitBlobId": "fececa6115a76eaf801300162c3a2fe0278dfbe7",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/social/FriendRequestsPage.tsx",
@@ -3787,9 +3823,9 @@
     {
       "file": "NoWing-web/src/layout/AppLayout.tsx",
       "phase": "web",
-      "gitBlobId": "bd7d243f742a60ae116c9ff5d70a649bdbc52e2c",
+      "gitBlobId": "07303a0d17ffc14d138a5c8a758edd5e43d6df90",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4057,9 +4093,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/shell.css",
       "phase": "web",
-      "gitBlobId": "6c40684fbf0715a8b916256aa53eb5f5b600da3b",
+      "gitBlobId": "a2e16027373647e752ad995ba966731e51d89a68",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4073,9 +4109,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
       "phase": "web",
-      "gitBlobId": "7348ed45738af675fbbfff4b55e4a1bcdd57f74e",
+      "gitBlobId": "12a3af44efa9465489b76bf69383cedf4c86ab12",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4184,6 +4220,12 @@
       "file": "Novvin logo.jpeg",
       "phase": "tooling-and-other",
       "gitBlobId": "263ae7560ff46ced6727c3f29506346d8fb4112f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "phase": "documentation",
+      "gitBlobId": "216c016a99998439e2597108d869e8ca93b97639",
       "reviewStatus": "pending"
     },
     {
@@ -18273,6 +18315,24 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/architecture/CURRENT_ARCHITECTURE.md",
+      "phase": "documentation",
+      "gitBlobId": "c238ca176b12b9a5da0319b0bd5c3a240e07c0ff",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/architecture/REALTIME_MEDIA_ARCHITECTURE.md",
+      "phase": "documentation",
+      "gitBlobId": "6ec130af6e1682ae8302b0923bb996457ef9386d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/architecture/TARGET_ARCHITECTURE.md",
+      "phase": "documentation",
+      "gitBlobId": "50b9bd4f49168be70a70ae1c81546d96d536ee76",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/archive/AUDITORIA_FINAL_CONECTATE.md",
       "phase": "documentation",
       "gitBlobId": "d7b99e792dd2134f147a32decc5c7a4dd37e921b",
@@ -19815,10 +19875,8 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "b4eb1f1a8e2605da2402eb497b33427f270c51d7",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "e4399b9876ce2efbbce9201902b8eca93be5a176",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
@@ -20487,10 +20545,8 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "1fd68acc933417c112bacf8ed30ff6162a3625e6",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "a000060eaa80d4e62dbefdf3734a3580dee20050",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/VALIDACION_ANDROID_E729365.json",
@@ -20907,9 +20963,123 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/operations/PRODUCTION_READINESS.md",
+      "phase": "documentation",
+      "gitBlobId": "13ef4d336e4ac076034ea546f733cd74b10eeb3d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/product/FEATURE_STATUS_MATRIX.csv",
+      "phase": "documentation",
+      "gitBlobId": "bfc151cbf11abbd1116831444a0177eec6770c3b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/product/PRD_NOVVIN_LIVE.md",
+      "phase": "documentation",
+      "gitBlobId": "d894ed5bc1454c436bd5dd1acb7bfa18b0e48076",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/product/PRD_NOVVIN_LIVE_PLAY.md",
+      "phase": "documentation",
+      "gitBlobId": "9808f9f45422ff7009f2414c80dca3ca0a511507",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/product/PRD_VIRTUAL_GIFTS.md",
+      "phase": "documentation",
+      "gitBlobId": "27091385fd0cee3899c01ced1a80d26a32b34555",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/product/PRODUCT_INVENTORY.md",
+      "phase": "documentation",
+      "gitBlobId": "80d3846e89d8d416ee23559db375938eb929c3ce",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/product/PRODUCT_STRATEGY.md",
+      "phase": "documentation",
+      "gitBlobId": "e2f8bd90943016dec2d96d7da249a010a1680d87",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/production-readiness-report.md",
       "phase": "documentation",
       "gitBlobId": "1bdce51d652fe26ce4bf5225f542665b333b463d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/ACCEPTANCE_MATRIX.csv",
+      "phase": "documentation",
+      "gitBlobId": "4e37bb8b0546e6e6532dff9fd647b706f1f12852",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/BASELINE_TESTS.md",
+      "phase": "documentation",
+      "gitBlobId": "d14534d0bb7d4e18f7e5d59822fb7b14ac63233f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/TEST_STRATEGY.md",
+      "phase": "documentation",
+      "gitBlobId": "f61be47ba838b497bcf57e6cc6475bab4b7b6155",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/124-contacto.png",
+      "phase": "documentation",
+      "gitBlobId": "95edc5a54878553cc3e99ecd1b53ecb87b487d13",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/124-documento.png",
+      "phase": "documentation",
+      "gitBlobId": "25d8418a3db75572ec4f2d0386774c5aeaed2fd2",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/124-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "10d746bdc2834e9326c66f0734f739cb303f31f2",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/124-stickers.png",
+      "phase": "documentation",
+      "gitBlobId": "8424115ffaaa6773575869d8c1d2d2d40686ac12",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/research/COMPETITIVE_BENCHMARK.md",
+      "phase": "documentation",
+      "gitBlobId": "b314877e00dd7354fb87330e2d08cbf2dde258ec",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/risks/INITIAL_RISK_REGISTER.md",
+      "phase": "documentation",
+      "gitBlobId": "a0d41242f5b0b094c55aab2642aacf8329547bf7",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/risks/RISK_REGISTER.md",
+      "phase": "documentation",
+      "gitBlobId": "328828724d397e154801676d927b9310ccdca66e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/security/THREAT_MODEL.md",
+      "phase": "documentation",
+      "gitBlobId": "998500925912ce0f6499f2a6dd885039d13fee5e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/security/TRUST_AND_SAFETY.md",
+      "phase": "documentation",
+      "gitBlobId": "70002da9b277c3848dc87959baea70e63d6d0cd8",
       "reviewStatus": "pending"
     },
     {
@@ -21787,6 +21957,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/src/blocked-profile-ids.js",
+      "phase": "server",
+      "gitBlobId": "bd1cbaf2b095866ce51e8462d914a8c740b21725",
+      "reviewStatus": "code-read",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/src/bounded-work-queue.js",
       "phase": "server",
       "gitBlobId": "79c92477c590d959c46932755685b690f781b9cf",
@@ -21909,9 +22087,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "5232dc68a33291ae314a4419df1f105727f919ef",
+      "gitBlobId": "cd0d03778a91c604a6166310286f0b19a4731eee",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22059,8 +22237,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
       "phase": "server",
-      "gitBlobId": "df3096ed81fa0f17988266d351681d5e364852e9",
-      "reviewStatus": "pending"
+      "gitBlobId": "af693a817259f68ad0db8f4344829fe428463d54",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/live-follower-notifications.js",
@@ -22089,8 +22269,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/live-routes.js",
       "phase": "server",
-      "gitBlobId": "076310ace96dbc90aa339dbadf7a58cebd3831ec",
-      "reviewStatus": "pending"
+      "gitBlobId": "a16904ac6ea25253ef4cb0b8bafe97aef6a526e4",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/livekit-admin.js",
@@ -22337,8 +22519,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/proximity-routes.js",
       "phase": "server",
-      "gitBlobId": "697487f66266c2dea7674e6d3127e2b4e1647c2a",
-      "reviewStatus": "pending"
+      "gitBlobId": "919799864a54e9829cd5187fe2471db891118f08",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/public-api-error.js",
@@ -22457,9 +22641,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "ab5676d3770a45b0645975b3e197698368ddeff9",
+      "gitBlobId": "f2e934f6d7bd9f3f3413d401d2ce5340feee3f0e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23293,6 +23477,14 @@
       "phase": "server",
       "gitBlobId": "22b53f8cdf094f46b1fe44723206b35447811935",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/live-draw-timer.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "18987406d8bbac01e312ce402d3eca4c4646775d",
+      "reviewStatus": "code-read",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/live-follower-notifications.test.js",
@@ -24267,9 +24459,9 @@
     {
       "file": "infrastructure/local-fallback/config.example",
       "phase": "server",
-      "gitBlobId": "52c48f06701cc701b4c77ec3194c325e207074d3",
+      "gitBlobId": "b64968257ff7385f7aeffe7420f0c02e2cf1b27b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24647,14 +24839,18 @@
     {
       "file": "infrastructure/local-fallback/realtime-gateway/src/server.js",
       "phase": "server",
-      "gitBlobId": "97e4200ac08a9547d83dd39b6e80095ac686fdeb",
-      "reviewStatus": "pending"
+      "gitBlobId": "0c0eec2f6b54d6a3b29a4af994ee2dc497faca09",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/realtime-gateway/tests/server.test.js",
       "phase": "server",
-      "gitBlobId": "700ddfed03187dca9da228aa1f516dfe3d104a8e",
-      "reviewStatus": "pending"
+      "gitBlobId": "15e5d34a53d2a20a0672f93dbacfb262e5325f6e",
+      "reviewStatus": "partial",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/apply-root-ops-hotfix.sh",
@@ -25545,9 +25741,9 @@
     {
       "file": "signaling-server/index.js",
       "phase": "tooling-and-other",
-      "gitBlobId": "9898d298577ef33ff31b005f333cb67541ba6e4d",
+      "gitBlobId": "bf98afd0340906acbe9ca73f109c78ccb14a988d",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
