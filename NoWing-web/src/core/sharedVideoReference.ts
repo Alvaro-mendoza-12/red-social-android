@@ -9,7 +9,7 @@ export function sharedVideoReference(content: string): SharedVideoReference | nu
     let videoId=''
     if(url.protocol==='conectate:'&&url.hostname==='video'&&parts.length===1)videoId=parts[0]
     else if(['http:','https:'].includes(url.protocol)&&!url.port){
-      if(url.protocol==='https:'&&['novvinapp.com','www.novvinapp.com','red-social-android.vercel.app'].includes(url.hostname)&&parts.length===3&&parts[0]==='app'&&parts[1]==='reels')videoId=parts[2]
+      if(url.protocol==='https:'&&['novvinapp.com','www.novvinapp.com','red-social-android.vercel.app'].includes(url.hostname)&&((parts.length===3&&parts[0]==='app'&&parts[1]==='reels')||(parts.length===2&&parts[0]==='video')))videoId=parts[parts.length-1]
       if(['conectate.com','www.conectate.com'].includes(url.hostname)&&parts.length===2&&parts[0]==='video')videoId=parts[1]
     }
     if(!/^[A-Za-z0-9_-]{8,100}$/.test(videoId))return null

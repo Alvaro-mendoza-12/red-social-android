@@ -27,7 +27,7 @@ export function createSeoCandidateServer(directory = path.join(root, 'dist')) {
       if (new RegExp('^(?:' + rule.source.replace(/:[a-zA-Z]+\*/g, '.*') + ')$').test(route)) for (const header of rule.headers) response.setHeader(header.key, header.value)
     }
     const known = config.rewrites.find(rule => rule.source === route)
-    const privateShell = /^\/(app|explore|u|profile|chat|group|community|voice|post)(\/|$)/.test(route)
+    const privateShell = /^\/(app|explore|u|p|profile|chat|group|community|voice|post)(\/|$)/.test(route)
     const relative = known?.destination || (privateShell ? '/app-shell.html' : route === '/' ? '/index.html' : route)
     const file = path.resolve(directory, '.' + relative)
     if (!file.startsWith(path.resolve(directory) + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {

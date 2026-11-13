@@ -5,6 +5,22 @@ import { request } from 'node:http'
 import { createSeoCandidateServer } from '../scripts/serve-seo-candidate.mjs'
 import { publicRoutes, site } from '../scripts/public-seo.mjs'
 
+test('public brand graphics allow email embedding without relaxing page isolation', async () => {
+  const server = createSeoCandidateServer().listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  const base = 'http://127.0.0.1:' + server.address().port
+  try {
+    for (const asset of ['/novvin-logo.png', '/novvin-share.png']) {
+      const response = await fetch(base + asset)
+      assert.equal(response.status, 200)
+      assert.equal(response.headers.get('cross-origin-resource-policy'), 'cross-origin')
+    }
+    for (const route of ['/', '/app/messages']) {
+      assert.equal((await fetch(base + route)).headers.get('cross-origin-resource-policy'), 'same-origin')
+    }
+  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)) }
+})
+
 test('all built public routes and canonical redirects work over isolated HTTP', async () => {
   const server = createSeoCandidateServer().listen(0, '127.0.0.1')
   await once(server, 'listening')
@@ -31,6 +47,9 @@ test('all built public routes and canonical redirects work over isolated HTTP', 
     const shell = await fetch(base + '/app/messages')
     assert.match(shell.headers.get('x-robots-tag'), /noindex/)
     assert.match(await shell.text(), /type="module"/)
+    const profileAlias = await fetch(base + '/p/example')
+    assert.match(profileAlias.headers.get('x-robots-tag'), /noindex/)
+    assert.match(await profileAlias.text(), /type="module"/)
     const robots = await fetch(base + '/robots.txt')
     assert.match(await robots.text(), /Sitemap:/)
     const legacy = path => new Promise((resolve, reject) => {

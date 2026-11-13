@@ -1080,7 +1080,7 @@ private fun GameArtwork(
             SubcomposeAsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(url)
-                    .addHeader("User-Agent", "Novvin/${BuildConfig.VERSION_NAME} (Android; https://conectate.com)")
+                    .addHeader("User-Agent", "Novvin/${BuildConfig.VERSION_NAME} (Android; ${conectate.com.data.model.PublicWebDomain.activeOrigin})")
                     .memoryCacheKey(cacheKey)
                     .diskCacheKey(cacheKey)
                     .build(),

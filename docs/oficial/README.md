@@ -4,6 +4,8 @@ Estado documental: 12 de noviembre de 2026. Esta es la entrada para desarrollo, 
 
 ## Estado vigente
 
+La entrega [122-antigravity-correcciones-produccion-2026-11-12.md](122-antigravity-correcciones-produccion-2026-11-12.md) consolida exclusivamente en la rama `antigravity` las correcciones `F-01` a `F-10` (aislamiento de billetera y cola Play Billing, monetización web Ubuntu manteniendo deshabilitado el retiro, controles 2FA/sesiones/eliminación de cuenta, registro >=13 años con antispam, coherencia de iconos, áreas táctiles >=44px y cierre de enlaces `novvinapp.com`), la configuración de memoria de pruebas JVM (`maxHeapSize = "1536m"`, `forkEvery = 80`) y la lectura UTF-8 en `verify_android_release.py`, manteniendo intactas `main` y `feature/live-gifts`.
+
 La [continuación 121](121-dominio-live-y-prompt-auditoria-2026-11-12.md) añade enlaces LIVE del dominio oficial y su lectura Android, corrige el compartido web del directo minimizado y conserva los enlaces propios en moderación. Incluye el encargo detallado de auditoría independiente para Gemini. Separa el código de una nueva APK y de la actualización de índices de buscadores.
 
 La [continuación 120](120-contadores-bandeja-e-iconos-2026-11-12.md) conecta los contadores de los filtros privados en Android y web y corrige iconos de la bandeja. Distingue pruebas automatizadas, publicación y entrega instalada; no representa una APK nueva ni el cierre integral.

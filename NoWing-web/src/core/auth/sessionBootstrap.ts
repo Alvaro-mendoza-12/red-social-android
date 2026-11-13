@@ -177,6 +177,9 @@ export async function signUpAndBootstrapProfile(
     password: string
     displayName: string
     username?: string
+    birthDate?: string
+    website?: string
+    turnstileToken?: string
   },
 ): Promise<void> {
   const normalizedEmail = normalizeEmail(params.email)
@@ -188,6 +191,9 @@ export async function signUpAndBootstrapProfile(
       password: params.password,
       displayName: cleanDisplayName,
       username: params.username,
+      birthDate: params.birthDate,
+      website: params.website,
+      turnstileToken: params.turnstileToken,
     })
     return
   }

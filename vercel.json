@@ -35,7 +35,7 @@
         },
         {
           "key": "X-DNS-Prefetch-Control",
-          "value": "on"
+          "value": "off"
         },
         {
           "key": "Strict-Transport-Security",
@@ -47,7 +47,7 @@
         },
         {
           "key": "Cross-Origin-Resource-Policy",
-          "value": "cross-origin"
+          "value": "same-origin"
         },
         {
           "key": "Permissions-Policy",
@@ -83,6 +83,10 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex, nofollow, noarchive"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
     },
@@ -92,6 +96,10 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
     },
@@ -101,6 +109,10 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex, follow"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
     },
@@ -110,6 +122,10 @@
         {
           "key": "X-Robots-Tag",
           "value": "noindex, follow"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
         }
       ]
     },
@@ -133,6 +149,15 @@
     },
     {
       "source": "/u/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, follow"
+        }
+      ]
+    },
+    {
+      "source": "/p/:path*",
       "headers": [
         {
           "key": "X-Robots-Tag",
@@ -182,6 +207,42 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=3600"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/novvin-logo.png",
+      "headers": [
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "cross-origin"
+        }
+      ]
+    },
+    {
+      "source": "/novvin-share.png",
+      "headers": [
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "cross-origin"
         }
       ]
     }
@@ -289,6 +350,10 @@
     },
     {
       "source": "/u/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/p/:path*",
       "destination": "/app-shell.html"
     },
     {

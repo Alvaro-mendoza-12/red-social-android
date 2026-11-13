@@ -39,6 +39,9 @@ class AuthRepositoryStartupAuditTest {
             groupRepositoryProvider = unused<GroupRepository>("groups"),
             communityRepositoryProvider = unused<CommunityRepository>("communities"),
             notificationRepositoryProvider = unused<NotificationRepository>("notifications"),
+            walletRepositoryProvider = unused<WalletRepository>("wallet"),
+            algorithmRepositoryProvider = unused<AlgorithmRepository>("algorithm"),
+            linkPreviewRepositoryProvider = unused<LinkPreviewRepository>("link previews"),
             twoFactorAuthManagerProvider = unused<TwoFactorAuthManager>("second factor"),
             localFallbackApiClient = dependency("localFallbackApiClient") as LocalFallbackApiClient
         )

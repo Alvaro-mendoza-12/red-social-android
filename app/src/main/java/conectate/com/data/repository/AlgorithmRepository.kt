@@ -130,7 +130,10 @@ class AlgorithmRepository @Inject constructor(
     }
 
     fun clearCachedConfig() {
-        authService.getCurrentUserId()?.let { userId -> securePrefs?.edit()?.remove(cacheKey(userId))?.apply() }
+        val currentUser = authService.getCurrentUserId()
+        if (!currentUser.isNullOrBlank()) {
+            securePrefs?.edit()?.remove(cacheKey(currentUser))?.apply()
+        }
         _cachedConfig.value = null
     }
 

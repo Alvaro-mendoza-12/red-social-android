@@ -7,9 +7,12 @@ import org.junit.Test
 class VideoClipPolicyTest {
     @Test fun `shared Vercel and app links resolve to the same video`() {
         val id = "550e8400-e29b-41d4-a716-446655440000"
+        assertEquals(id, videoIdFromSharedLink("https://novvinapp.com/app/reels/$id"))
+        assertEquals(id, videoIdFromSharedLink("https://novvinapp.com/video/$id"))
         assertEquals(id, videoIdFromSharedLink("https://red-social-android.vercel.app/app/reels/$id"))
         assertEquals(id, videoIdFromSharedLink("https://conectate.com/video/$id?resumeMs=5000"))
         assertEquals(id, videoIdFromSharedLink("conectate://video/$id"))
+        assertNull(videoIdFromSharedLink("http://novvinapp.com/video/$id"))
         assertNull(videoIdFromSharedLink("https://evil.example/app/reels/$id"))
     }
 

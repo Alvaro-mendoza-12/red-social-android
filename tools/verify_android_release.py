@@ -84,7 +84,7 @@ def find_apksigner(requested: str) -> str | None:
 
 
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, capture_output=True, text=True, check=False)
+    return subprocess.run(command, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
 
 
 def sha256_file(path: Path) -> str:

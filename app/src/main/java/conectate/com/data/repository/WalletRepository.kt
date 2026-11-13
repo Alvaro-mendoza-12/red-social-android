@@ -76,29 +76,44 @@ class WalletRepository @Inject constructor(
     private val _transactionsHasMore = MutableStateFlow(false)
     val transactionsHasMore: StateFlow<Boolean> = _transactionsHasMore.asStateFlow()
 
+    private val sessionWriteGuard = SessionWriteGuard { authService.getCurrentUserId() }
+
+    fun clearData() {
+        sessionWriteGuard.invalidate()
+        _coinBalance.value = 0
+        _coinDebt.value = 0
+        _availableGifts.value = emptyList()
+        _transactions.value = emptyList()
+        _transactionsHasMore.value = false
+    }
+
     suspend fun fetchBalance() = withContext(Dispatchers.IO) {
+        val sessionSnapshot = sessionWriteGuard.capture()
         runCatching {
             if (!supabaseConfig.isConfigured) {
+                if (sessionWriteGuard.isValid(sessionSnapshot)) {
+                    _coinBalance.value = 0
+                    _coinDebt.value = 0
+                }
+                return@runCatching
+            }
+
+            val userId = sessionSnapshot.accountId.orEmpty()
+            val token = authService.getAccessToken()?.trim().orEmpty()
+            if (userId.isBlank() || token.isBlank()) {
                 _coinBalance.value = 0
                 _coinDebt.value = 0
                 return@runCatching
             }
 
-            val userId = authService.getCurrentUserId()?.trim().orEmpty()
-            if (userId.isBlank()) {
-                _coinBalance.value = 0
-                _coinDebt.value = 0
-                return@runCatching
-            }
-
-            val token = authService.getAccessToken()
-                ?: throw IllegalStateException("No hay token de acceso")
             val balance = fetchWalletViaRpc(token)
                 ?: fetchWalletByRest(token, userId)
                 ?: WalletBalance(userId = userId)
 
-            _coinBalance.value = balance.balanceDiamonds.coerceAtLeast(0)
-            _coinDebt.value = balance.balanceDebtDiamonds.coerceAtLeast(0)
+            if (sessionWriteGuard.isValid(sessionSnapshot)) {
+                _coinBalance.value = balance.balanceDiamonds.coerceAtLeast(0)
+                _coinDebt.value = balance.balanceDebtDiamonds.coerceAtLeast(0)
+            }
         }.onFailure { error ->
             Log.e(TAG, "Unable to fetch wallet balance", error)
             // A temporary network failure must never make a real wallet look
@@ -137,14 +152,18 @@ class WalletRepository @Inject constructor(
     }
 
     suspend fun fetchTransactionHistory(reset: Boolean = true) = withContext(Dispatchers.IO) {
+        val sessionSnapshot = sessionWriteGuard.capture()
         runCatching {
             if (!supabaseConfig.isConfigured) {
-                _transactions.value = emptyList()
-                _transactionsHasMore.value = false
+                if (sessionWriteGuard.isValid(sessionSnapshot)) {
+                    _transactions.value = emptyList()
+                    _transactionsHasMore.value = false
+                }
                 return@runCatching
             }
-            val userId = authService.getCurrentUserId()?.trim().orEmpty()
-            if (userId.isBlank()) {
+            val userId = sessionSnapshot.accountId.orEmpty()
+            val token = authService.getAccessToken()?.trim().orEmpty()
+            if (userId.isBlank() || token.isBlank()) {
                 _transactions.value = emptyList()
                 _transactionsHasMore.value = false
                 return@runCatching
@@ -152,7 +171,7 @@ class WalletRepository @Inject constructor(
             val pageSize = 50
             val offset = if (reset) 0 else _transactions.value.size
             val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/wallet_transactions") {
-                restHeaders(authService.getAccessToken())
+                restHeaders(token)
                 parameter("user_id", "eq.$userId")
                 parameter("select", "*")
                 parameter("order", "created_at.desc")
@@ -163,6 +182,7 @@ class WalletRepository @Inject constructor(
                 throw IllegalStateException("No se pudo cargar el historial: ${response.status}")
             }
             val decoded = decodeObjects(response.bodyAsText())
+            if (!sessionWriteGuard.isValid(sessionSnapshot)) return@runCatching
             _transactionsHasMore.value = decoded.size > pageSize
             val page = decoded.take(pageSize).mapNotNull { value ->
                 val id = value.string("id").orEmpty()
@@ -189,8 +209,10 @@ class WalletRepository @Inject constructor(
             }
         }.onFailure { error ->
             Log.w(TAG, "Unable to fetch wallet transaction history", error)
-            if (reset) _transactions.value = emptyList()
-            _transactionsHasMore.value = false
+            if (sessionWriteGuard.isValid(sessionSnapshot)) {
+                if (reset) _transactions.value = emptyList()
+                _transactionsHasMore.value = false
+            }
         }
     }
 
@@ -216,6 +238,7 @@ class WalletRepository @Inject constructor(
             val cleanReceiverId = receiverId.trim()
             val cleanGiftId = giftId.trim()
             val cleanLiveStreamId = liveStreamId?.trim().orEmpty()
+            val sessionSnapshot = sessionWriteGuard.capture()
             val senderId = authService.getCurrentUserId()?.trim()
                 ?: throw IllegalStateException("No hay una sesion activa")
             val token = authService.getAccessToken()
@@ -269,7 +292,9 @@ class WalletRepository @Inject constructor(
                 ?: throw IllegalStateException("El comprobante del regalo no es válido")
             val newBalance = receipt["sender_balance_diamonds"]?.jsonPrimitive?.intOrNull
                 ?: throw IllegalStateException("El comprobante no contiene el saldo confirmado")
-            if (currentAccountId() == senderId) _coinBalance.value = newBalance.coerceAtLeast(0)
+            if (sessionWriteGuard.isValid(sessionSnapshot) && currentAccountId() == senderId) {
+                _coinBalance.value = newBalance.coerceAtLeast(0)
+            }
             GiftReceipt(
                 transactionId = transactionId,
                 liveStreamId = receipt.string("live_stream_id") ?: cleanLiveStreamId.takeIf { it.isNotBlank() },
@@ -333,6 +358,7 @@ class WalletRepository @Inject constructor(
         productId: String,
         purchaseToken: String
     ): Result<CoinPurchaseVerification> = withContext(Dispatchers.IO) {
+        val sessionSnapshot = sessionWriteGuard.capture()
         runCatching {
             val token = authService.getAccessToken()
                 ?: throw IllegalStateException("No hay token de acceso")
@@ -356,7 +382,7 @@ class WalletRepository @Inject constructor(
                 coins = value.int("coins"),
                 balanceDiamonds = value.int("balance_diamonds")
             )
-            if (verified.status == "credited") {
+            if (verified.status == "credited" && sessionWriteGuard.isValid(sessionSnapshot)) {
                 _coinBalance.value = verified.balanceDiamonds.coerceAtLeast(0)
             }
             verified

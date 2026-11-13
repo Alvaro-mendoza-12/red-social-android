@@ -40,4 +40,19 @@ class SessionWriteGuardTest {
 
         assertFalse(guard.isValid(snapshot))
     }
+
+    @Test
+    fun snapshot_fromFirstSession_remainsInvalid_onSwitchAtoBtoA() {
+        var activeAccount = "alvaro"
+        val guard = SessionWriteGuard { activeAccount }
+
+        val firstSnapshot = guard.capture()
+        activeAccount = "conectate"
+        guard.invalidate()
+        activeAccount = "alvaro"
+
+        assertFalse(guard.isValid(firstSnapshot))
+        val secondSnapshot = guard.capture()
+        assertTrue(guard.isValid(secondSnapshot))
+    }
 }

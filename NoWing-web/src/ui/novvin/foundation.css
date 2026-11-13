@@ -183,15 +183,19 @@ button {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 42px;
-  height: 42px;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
   padding: 9px;
   border-radius: 50%;
   color: inherit;
 }
 .icon-btn-sm {
-  width: 36px;
-  height: 36px;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
   padding: 8px;
 }
 .circle-btn {

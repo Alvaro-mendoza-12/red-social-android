@@ -210,6 +210,9 @@ function AppRouter() {
         <Route path="/juegos" element={<PublicInfo path="/juegos" />} />
         <Route path="/asistente" element={<PublicInfo path="/asistente" />} />
         <Route path="/ayuda" element={<PublicInfo path="/ayuda" />} />
+        <Route path="/funciones" element={<PublicInfo path="/funciones" />} />
+        <Route path="/ayuda/stickers-animados" element={<PublicInfo path="/ayuda/stickers-animados" />} />
+        <Route path="/ayuda/privacidad-y-seguridad" element={<PublicInfo path="/ayuda/privacidad-y-seguridad" />} />
         <Route
           path="/explore/:kind?/:id?"
           element={
@@ -254,6 +257,14 @@ function AppRouter() {
         />
         <Route
           path="/profile/:profileId"
+          element={
+            <RouteSuspense>
+              <PublicProfilePage />
+            </RouteSuspense>
+          }
+        />
+        <Route
+          path="/p/:profileId"
           element={
             <RouteSuspense>
               <PublicProfilePage />
@@ -500,6 +511,14 @@ function AppRouter() {
           />
           <Route
             path="profile/:profileId"
+            element={
+              <RouteSuspense>
+                <PublicProfilePage />
+              </RouteSuspense>
+            }
+          />
+          <Route
+            path="p/:profileId"
             element={
               <RouteSuspense>
                 <PublicProfilePage />

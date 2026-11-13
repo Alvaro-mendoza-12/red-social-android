@@ -169,9 +169,11 @@
     font-size: 0.8rem;
   }
   .media-viewer-toolbar .icon-btn {
-    width: 34px;
-    height: 34px;
-    padding: 7px;
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
+    padding: 10px;
   }
   .media-viewer-toolbar .icon-btn svg {
     width: 19px;
@@ -182,8 +184,10 @@
   }
   .media-viewer-prev,
   .media-viewer-next {
-    width: 36px;
-    height: 36px;
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
     top: auto;
     bottom: 48px;
   }

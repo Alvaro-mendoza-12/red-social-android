@@ -442,74 +442,19 @@ object IntentRouter {
             "Handling deep link scheme=${uri.scheme} host=${uri.host} path=${uri.path.orEmpty().take(120)}"
         )
 
-        val isWebLoginQr =
-            (uri.scheme == "conectate" && uri.host == "web-login") ||
-                (
-                    (uri.scheme == "https" || uri.scheme == "http") &&
-                        (uri.host == "conectate.com" || uri.host == "www.conectate.com") &&
-                        uri.pathSegments.firstOrNull() == "web-login"
-                    )
-        if (isWebLoginQr) {
+        resolveHttpsAppRoute(uri)?.let { route ->
+            navController.navigate(route)
+            clearIntent()
+            return true
+        }
+        val scheme = uri.scheme?.lowercase()
+        val host = uri.host?.lowercase()
+        if (scheme == "conectate" && host == "web-login") {
             val pairId = safeExternalRouteValue(uri.getQueryParameter("pairId"), 160)
             val nonce = safeExternalRouteValue(uri.getQueryParameter("nonce"), 512)
             navController.navigate(Screen.WebLoginScanner.createRoute(pairId = pairId, nonce = nonce))
             clearIntent()
             return true
-        }
-
-        if ((uri.scheme == "https" || uri.scheme == "http") && (uri.host == "conectate.com" || uri.host == "www.conectate.com")) {
-            val pathSegments = uri.pathSegments
-            if (pathSegments.isNotEmpty()) {
-                when (pathSegments[0]) {
-                    "post" -> {
-                        val postId = safeExternalRouteId(pathSegments.getOrNull(1))
-                        if (postId != null) {
-                            navController.navigate(Screen.PostDetail.createRoute(postId))
-                            clearIntent()
-                            return true
-                        }
-                    }
-                    "video" -> {
-                        val videoId = safeExternalRouteId(pathSegments.getOrNull(1))
-                        if (videoId != null) {
-                            navController.navigate(Screen.VideoPlayer.createRoute(
-                                videoId, resumeMs = videoResumeMsFromLink(uri),
-                                endMs = videoClipEndMsFromLink(uri)))
-                            clearIntent()
-                            return true
-                        }
-                    }
-                    "profile", "u" -> {
-                        val userId = safeExternalRouteId(pathSegments.getOrNull(1))
-                        if (userId != null) {
-                            navController.navigate(Screen.UserProfile.createRoute(userId))
-                            clearIntent()
-                            return true
-                        }
-                    }
-                    "group" -> {
-                        val groupId = safeExternalRouteId(pathSegments.getOrNull(1))
-                        if (groupId != null) {
-                            navController.navigate(
-                                Screen.GroupDetail.createRoute(
-                                    groupId,
-                                    safeExternalRouteValue(uri.getQueryParameter("invite"), 256)
-                                )
-                            )
-                            clearIntent()
-                            return true
-                        }
-                    }
-                    "community" -> {
-                        val communityId = safeExternalRouteId(pathSegments.getOrNull(1))
-                        if (communityId != null) {
-                            navController.navigate(Screen.CommunityDetail.createRoute(communityId))
-                            clearIntent()
-                            return true
-                        }
-                    }
-                }
-            }
         } else if (uri.scheme == "conectate") {
             when (uri.host) {
                 "videos" -> {
@@ -644,6 +589,37 @@ internal fun resolveLiveStartedRoute(liveId: String?): String? {
     val normalizedLiveId = liveId?.trim().orEmpty()
     if (normalizedLiveId.isBlank()) return null
     return Screen.LiveViewer.createRoute(normalizedLiveId)
+}
+
+internal fun resolveHttpsAppRoute(uri: Uri): String? {
+    if (uri.userInfo != null || uri.port != -1) return null
+    val scheme = uri.scheme?.lowercase()
+    val host = uri.host?.lowercase()
+    val trustedHttpHost = (scheme in setOf("https", "http") && host in setOf("conectate.com", "www.conectate.com")) ||
+        (scheme == "https" && host in conectate.com.data.model.PublicWebDomain.httpsHosts)
+    if (!trustedHttpHost) return null
+    val pathSegments = uri.pathSegments
+    if (pathSegments.isEmpty()) return null
+    return when (pathSegments[0]) {
+        "web-login" -> Screen.WebLoginScanner.createRoute(
+            pairId = safeExternalRouteValue(uri.getQueryParameter("pairId"), 160),
+            nonce = safeExternalRouteValue(uri.getQueryParameter("nonce"), 512),
+        )
+        "post" -> safeExternalRouteId(pathSegments.getOrNull(1))?.let(Screen.PostDetail::createRoute)
+        "video" -> safeExternalRouteId(pathSegments.getOrNull(1))?.let { videoId ->
+            Screen.VideoPlayer.createRoute(
+                videoId,
+                resumeMs = videoResumeMsFromLink(uri),
+                endMs = videoClipEndMsFromLink(uri),
+            )
+        }
+        "profile", "u" -> safeExternalRouteId(pathSegments.getOrNull(1))?.let(Screen.UserProfile::createRoute)
+        "group" -> safeExternalRouteId(pathSegments.getOrNull(1))?.let { groupId ->
+            Screen.GroupDetail.createRoute(groupId, safeExternalRouteValue(uri.getQueryParameter("invite"), 256))
+        }
+        "community" -> safeExternalRouteId(pathSegments.getOrNull(1))?.let(Screen.CommunityDetail::createRoute)
+        else -> null
+    }
 }
 
 internal fun isTrustedRecoveryOrigin(scheme: String?, host: String?): Boolean =

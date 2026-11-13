@@ -6,13 +6,25 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { ProfileCoverEffect } from '../../components/ProfileCoverEffect'
 import { ProfileAppearanceControls } from '../../components/ProfileAppearanceControls'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
-import { changeFallbackPassword } from '../../core/auth/fallbackAuth'
+import {
+  changeFallbackPassword,
+  deleteFallbackOwnAccount,
+  disableFallbackTwoFactor,
+  enableFallbackTwoFactor,
+  getFallbackTwoFactorStatus,
+  listFallbackWebSessions,
+  revokeAllFallbackWebSessions,
+  revokeFallbackWebSession,
+  setupFallbackTwoFactor,
+  type FallbackTwoFactorStatus,
+  type FallbackWebSession,
+} from '../../core/auth/fallbackAuth'
 import {
   loadFallbackProfileMe,
   updateFallbackProfileMe,
@@ -160,6 +172,8 @@ export function AccountSettingsPage() {
 
 function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof useAuth>, 'user' | 'isFallbackSession'>) {
   const location = useLocation()
+  const navigate = useNavigate()
+  const userId = user?.id?.trim() ?? ''
   const [activeSection, setActiveSection] = useState('perfil')
   const mounted = useRef(false)
   useEffect(() => {
@@ -207,6 +221,19 @@ function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [twoFactorStatus, setTwoFactorStatus] = useState<FallbackTwoFactorStatus | null>(null)
+  const [twoFactorLoading, setTwoFactorLoading] = useState(false)
+  const [twoFactorBusy, setTwoFactorBusy] = useState(false)
+  const [twoFactorPassword, setTwoFactorPassword] = useState('')
+  const [twoFactorCode, setTwoFactorCode] = useState('')
+  const [twoFactorSetup, setTwoFactorSetup] = useState<{ secret: string; provisioningUri: string } | null>(null)
+  const [twoFactorRecoveryCodes, setTwoFactorRecoveryCodes] = useState<string[]>([])
+  const [webSessions, setWebSessions] = useState<FallbackWebSession[]>([])
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [sessionsBusy, setSessionsBusy] = useState(false)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deletingAccount, setDeletingAccount] = useState(false)
 
   const currentEmail = user?.email?.trim() ?? ''
   const profileQrValue = useMemo(
@@ -609,6 +636,163 @@ function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof
       setError(friendlyError(caught, 'No se pudo enviar el acceso por correo'))
     } finally {
       setSendingAccessLink(false)
+    }
+  }
+
+  const refreshSecurityControls = useCallback(async () => {
+    if (!isFallbackSession || !userId) return
+    if (typeof getFallbackTwoFactorStatus === 'function') {
+      setTwoFactorLoading(true)
+      try {
+        const status = await getFallbackTwoFactorStatus(userId)
+        if (mounted.current) setTwoFactorStatus(status)
+      } catch {
+        /* Ignore optional security probe errors so primary profile/privacy forms stay usable. */
+      } finally {
+        if (mounted.current) setTwoFactorLoading(false)
+      }
+    }
+    if (typeof listFallbackWebSessions === 'function') {
+      setSessionsLoading(true)
+      try {
+        const sessions = await listFallbackWebSessions(userId)
+        if (mounted.current) setWebSessions(sessions)
+      } catch {
+        /* Keep primary settings responsive even if sessions endpoint is unavailable. */
+      } finally {
+        if (mounted.current) setSessionsLoading(false)
+      }
+    }
+  }, [isFallbackSession, userId])
+
+  useEffect(() => {
+    void refreshSecurityControls()
+  }, [refreshSecurityControls])
+
+  async function handleSetupTwoFactor() {
+    if (!isFallbackSession || twoFactorBusy || typeof setupFallbackTwoFactor !== 'function') return
+    if (!twoFactorPassword) {
+      setError('Escribe tu contraseña actual para preparar la verificación en dos pasos.')
+      return
+    }
+    setTwoFactorBusy(true)
+    setError(null)
+    setInfo(null)
+    try {
+      const setup = await setupFallbackTwoFactor(twoFactorPassword, userId)
+      setTwoFactorSetup(setup)
+      setTwoFactorRecoveryCodes([])
+      setInfo('Escanea el QR o copia la clave en tu app autenticadora y escribe el código de 6 dígitos.')
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo preparar la verificación en dos pasos.'))
+    } finally {
+      setTwoFactorBusy(false)
+    }
+  }
+
+  async function handleEnableTwoFactor() {
+    if (!isFallbackSession || twoFactorBusy || typeof enableFallbackTwoFactor !== 'function') return
+    if (!twoFactorPassword || !twoFactorCode.trim()) {
+      setError('Escribe tu contraseña actual y el código de 6 dígitos de tu app autenticadora.')
+      return
+    }
+    setTwoFactorBusy(true)
+    setError(null)
+    setInfo(null)
+    try {
+      const result = await enableFallbackTwoFactor(twoFactorPassword, twoFactorCode.trim(), userId)
+      setTwoFactorSetup(null)
+      setTwoFactorCode('')
+      setTwoFactorPassword('')
+      setTwoFactorRecoveryCodes(result.recoveryCodes)
+      setTwoFactorStatus({ enabled: true, recoveryCodesRemaining: result.recoveryCodes.length })
+      setInfo('Verificación en dos pasos activada. Guarda tus códigos de respaldo en un lugar seguro.')
+      await refreshSecurityControls()
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo activar la verificación en dos pasos.'))
+    } finally {
+      setTwoFactorBusy(false)
+    }
+  }
+
+  async function handleDisableTwoFactor() {
+    if (!isFallbackSession || twoFactorBusy || typeof disableFallbackTwoFactor !== 'function') return
+    if (!twoFactorPassword || !twoFactorCode.trim()) {
+      setError('Escribe tu contraseña actual y un código TOTP o código de respaldo para desactivar 2FA.')
+      return
+    }
+    setTwoFactorBusy(true)
+    setError(null)
+    setInfo(null)
+    try {
+      const cleanCode = twoFactorCode.trim()
+      const isTotp = /^\d{6}$/.test(cleanCode)
+      await disableFallbackTwoFactor({
+        password: twoFactorPassword,
+        totpCode: isTotp ? cleanCode : undefined,
+        backupCode: isTotp ? undefined : cleanCode,
+        expectedAccountId: userId,
+      })
+      setTwoFactorPassword('')
+      setTwoFactorCode('')
+      setTwoFactorRecoveryCodes([])
+      setTwoFactorStatus({ enabled: false, recoveryCodesRemaining: 0 })
+      navigate('/login', { replace: true })
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo desactivar la verificación en dos pasos.'))
+    } finally {
+      setTwoFactorBusy(false)
+    }
+  }
+
+  async function handleRevokeWebSession(sessionId: string) {
+    if (!isFallbackSession || sessionsBusy || typeof revokeFallbackWebSession !== 'function') return
+    setSessionsBusy(true)
+    setError(null)
+    setInfo(null)
+    try {
+      await revokeFallbackWebSession(sessionId, userId)
+      setWebSessions((current) => current.filter((item) => item.sessionId !== sessionId))
+      setInfo('Sesión web cerrada.')
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo cerrar esa sesión web.'))
+    } finally {
+      setSessionsBusy(false)
+    }
+  }
+
+  async function handleRevokeAllWebSessions() {
+    if (!isFallbackSession || sessionsBusy || typeof revokeAllFallbackWebSessions !== 'function') return
+    setSessionsBusy(true)
+    setError(null)
+    setInfo(null)
+    try {
+      const count = await revokeAllFallbackWebSessions(userId)
+      setWebSessions([])
+      setInfo(`Se cerraron ${count} sesiones web activas.`)
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudieron cerrar todas las sesiones web.'))
+    } finally {
+      setSessionsBusy(false)
+    }
+  }
+
+  async function handleDeleteOwnAccount() {
+    if (!isFallbackSession || deletingAccount || typeof deleteFallbackOwnAccount !== 'function') return
+    if (deleteConfirmText.trim().toUpperCase() !== 'ELIMINAR') {
+      setError('Escribe ELIMINAR en mayúsculas para confirmar el borrado definitivo de tu cuenta.')
+      return
+    }
+    setDeletingAccount(true)
+    setError(null)
+    setInfo(null)
+    try {
+      await deleteFallbackOwnAccount(userId)
+      navigate('/login', { replace: true })
+    } catch (caught) {
+      setError(friendlyError(caught, 'No se pudo eliminar tu cuenta.'))
+    } finally {
+      setDeletingAccount(false)
     }
   }
 
@@ -1123,6 +1307,203 @@ function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof
               {savingPassword ? 'Actualizando...' : 'Cambiar contraseña'}
             </button>
           </div>
+
+          {isFallbackSession ? (
+            <>
+              <div className="surface-subcard section-stack">
+                <div>
+                  <h4>Verificación en dos pasos (2FA)</h4>
+                  <p>
+                    {twoFactorLoading
+                      ? 'Comprobando estado...'
+                      : twoFactorStatus?.enabled
+                        ? `Activa · ${twoFactorStatus.recoveryCodesRemaining} códigos de respaldo disponibles.`
+                        : 'Desactivada · Protege tu cuenta con un código TOTP de 6 dígitos.'}
+                  </p>
+                </div>
+                <label className="settings-field">
+                  <span>Contraseña actual para 2FA</span>
+                  <input
+                    className="text-input"
+                    type="password"
+                    autoComplete="current-password"
+                    value={twoFactorPassword}
+                    disabled={twoFactorBusy}
+                    onChange={(event) => setTwoFactorPassword(event.target.value)}
+                  />
+                </label>
+                {!twoFactorStatus?.enabled ? (
+                  <>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      disabled={twoFactorBusy}
+                      onClick={() => void handleSetupTwoFactor()}
+                    >
+                      {twoFactorBusy ? 'Preparando...' : 'Preparar 2FA (TOTP)'}
+                    </button>
+                    {twoFactorSetup ? (
+                      <div className="section-stack">
+                        <QrCodeTile
+                          value={twoFactorSetup.provisioningUri}
+                          title="Escanea en tu app autenticadora"
+                          description={`Clave manual: ${twoFactorSetup.secret}`}
+                          compact
+                        />
+                        <label className="settings-field">
+                          <span>Código 2FA de 6 dígitos</span>
+                          <input
+                            className="text-input"
+                            inputMode="numeric"
+                            maxLength={6}
+                            placeholder="123456"
+                            value={twoFactorCode}
+                            disabled={twoFactorBusy}
+                            onChange={(event) => setTwoFactorCode(event.target.value)}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="primary-btn"
+                          disabled={twoFactorBusy}
+                          onClick={() => void handleEnableTwoFactor()}
+                        >
+                          {twoFactorBusy ? 'Activando...' : 'Activar 2FA'}
+                        </button>
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="section-stack">
+                    <label className="settings-field">
+                      <span>Código TOTP o código de respaldo</span>
+                      <input
+                        className="text-input"
+                        placeholder="123456 o código de respaldo"
+                        value={twoFactorCode}
+                        disabled={twoFactorBusy}
+                        onChange={(event) => setTwoFactorCode(event.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      disabled={twoFactorBusy}
+                      onClick={() => void handleDisableTwoFactor()}
+                    >
+                      {twoFactorBusy ? 'Desactivando...' : 'Desactivar 2FA'}
+                    </button>
+                  </div>
+                )}
+                {twoFactorRecoveryCodes.length > 0 ? (
+                  <div className="surface-subcard" role="status">
+                    <strong>Códigos de respaldo (guárdalos ahora):</strong>
+                    <p>{twoFactorRecoveryCodes.join(' · ')}</p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="surface-subcard section-stack">
+                <div className="row-between">
+                  <div>
+                    <h4>Sesiones web activas</h4>
+                    <p>Dispositivos conectados mediante código QR o sesión web.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    disabled={sessionsLoading || sessionsBusy}
+                    onClick={() => void refreshSecurityControls()}
+                  >
+                    Actualizar
+                  </button>
+                </div>
+                {sessionsLoading ? (
+                  <p>Cargando sesiones activas…</p>
+                ) : webSessions.length === 0 ? (
+                  <p>No hay sesiones web vinculadas en este momento.</p>
+                ) : (
+                  <div className="list-stack">
+                    {webSessions.map((session) => (
+                      <div key={session.sessionId} className="row-between">
+                        <div>
+                          <strong>{session.deviceLabel || 'Novvin Web'}</strong>
+                          <p>{session.ipAddress || 'IP no registrada'}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          disabled={sessionsBusy}
+                          onClick={() => void handleRevokeWebSession(session.sessionId)}
+                        >
+                          Cerrar sesión
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      disabled={sessionsBusy}
+                      onClick={() => void handleRevokeAllWebSessions()}
+                    >
+                      Cerrar todas las sesiones web
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="surface-subcard section-stack">
+                <div>
+                  <h4>Eliminar cuenta</h4>
+                  <p>Esta acción borra tu cuenta y cierra tus sesiones de forma permanente.</p>
+                </div>
+                {!deleteDialogOpen ? (
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    disabled={deletingAccount}
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    Eliminar mi cuenta
+                  </button>
+                ) : (
+                  <div className="section-stack">
+                    <label className="settings-field">
+                      <span>Escribe ELIMINAR para confirmar</span>
+                      <input
+                        className="text-input"
+                        placeholder="ELIMINAR"
+                        value={deleteConfirmText}
+                        disabled={deletingAccount}
+                        onChange={(event) => setDeleteConfirmText(event.target.value)}
+                      />
+                    </label>
+                    <div className="row-actions wrap">
+                      <button
+                        type="button"
+                        className="primary-btn"
+                        disabled={deletingAccount}
+                        onClick={() => void handleDeleteOwnAccount()}
+                      >
+                        {deletingAccount ? 'Eliminando...' : 'Confirmar eliminación'}
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        disabled={deletingAccount}
+                        onClick={() => {
+                          setDeleteDialogOpen(false)
+                          setDeleteConfirmText('')
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : null}
         </article>
 
         <article id="acceso-qr-ajustes" className="surface-card section-stack">
@@ -1157,12 +1538,9 @@ function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof
               </button>
               <Link
                 className="ghost-btn"
-                to={`/login?mode=code${currentEmail ? `&email=${encodeURIComponent(currentEmail)}` : ''}`}
+                to={`/forgot-password${currentEmail ? `?email=${encodeURIComponent(currentEmail)}` : ''}`}
               >
-                Abrir login por código
-              </Link>
-              <Link className="ghost-btn" to="/login?mode=recovery">
-                Vincular con enlace
+                Recuperar con código al correo
               </Link>
               <Link className="ghost-btn" to="/login?mode=qr">
                 Abrir login por QR

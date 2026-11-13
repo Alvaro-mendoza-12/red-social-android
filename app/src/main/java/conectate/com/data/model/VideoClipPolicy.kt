@@ -17,8 +17,10 @@ fun videoIdFromSharedLink(raw: String): String? {
         scheme == "conectate" && host == "video" && segments.size == 1 -> segments[0]
         scheme in setOf("http", "https") && host in setOf("conectate.com", "www.conectate.com") &&
             segments.size == 2 && segments[0] == "video" -> segments[1]
-        scheme == "https" && host in PublicWebDomain.httpsHosts &&
-            segments.size == 3 && segments[0] == "app" && segments[1] == "reels" -> segments[2]
+        scheme == "https" && host in PublicWebDomain.httpsHosts && (
+            (segments.size == 3 && segments[0] == "app" && segments[1] == "reels") ||
+                (segments.size == 2 && segments[0] == "video")
+            ) -> segments.last()
         else -> return null
     }
     return id.takeIf { it.matches(Regex("[A-Za-z0-9_-]{8,100}")) }

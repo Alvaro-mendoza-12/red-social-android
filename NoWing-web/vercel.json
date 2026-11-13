@@ -157,6 +157,15 @@
       ]
     },
     {
+      "source": "/p/:path*",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, follow"
+        }
+      ]
+    },
+    {
       "source": "/profile/:path*",
       "headers": [
         {
@@ -216,6 +225,24 @@
         {
           "key": "Cache-Control",
           "value": "no-cache, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/novvin-logo.png",
+      "headers": [
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "cross-origin"
+        }
+      ]
+    },
+    {
+      "source": "/novvin-share.png",
+      "headers": [
+        {
+          "key": "Cross-Origin-Resource-Policy",
+          "value": "cross-origin"
         }
       ]
     }
@@ -323,6 +350,10 @@
     },
     {
       "source": "/u/:path*",
+      "destination": "/app-shell.html"
+    },
+    {
+      "source": "/p/:path*",
       "destination": "/app-shell.html"
     },
     {

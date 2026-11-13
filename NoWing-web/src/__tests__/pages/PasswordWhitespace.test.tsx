@@ -1,60 +1,112 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { PasswordResetPage } from '../../pages/auth/PasswordResetPage'
-import { LoginPage } from '../../pages/auth/LoginPage'
-import { completeMigratedPasswordReset, confirmFallbackPasswordReset } from '../../core/auth/fallbackAuth'
-import { signInWithResolvedEmail } from '../../core/auth/sessionBootstrap'
+import { ForgotPasswordPage } from '../../pages/auth/ForgotPasswordPage'
+import { RegisterPage } from '../../pages/auth/RegisterPage'
+import {
+  confirmFallbackPasswordReset,
+  fallbackApiJson,
+  requestFallbackPasswordReset,
+  verifyFallbackPasswordReset,
+} from '../../core/auth/fallbackAuth'
+import { signUpAndBootstrapProfile } from '../../core/auth/sessionBootstrap'
 
 jest.mock('../../core/supabase', () => ({ supabase: null }))
-jest.mock('../../core/auth/fallbackAuth', () => ({
-  isFallbackAuthConfigured: true,
-  completeMigratedPasswordReset: jest.fn(), confirmFallbackPasswordReset: jest.fn(),
-  requestFallbackPasswordReset: async () => ({ resetToken: 'test-reset-token' }),
-  FallbackTwoFactorRequiredError: class extends Error {},
-  FallbackPasswordChangedNeedsTwoFactorError: class extends Error {},
-  isMigratedAccountPasswordSetupRequired: () => true,
-  isMigratedPasswordResetRequired: () => false,
+jest.mock('../../core/auth/fallbackAuth', () => {
+  const actual = jest.requireActual('../../core/auth/fallbackAuth')
+  return {
+    ...actual,
+    isFallbackAuthConfigured: true,
+    fallbackApiJson: jest.fn(),
+    requestFallbackPasswordReset: jest.fn(),
+    verifyFallbackPasswordReset: jest.fn(),
+    confirmFallbackPasswordReset: jest.fn(),
+  }
+})
+jest.mock('../../core/auth/sessionBootstrap', () => ({
+  signUpAndBootstrapProfile: jest.fn(),
 }))
-jest.mock('../../core/auth/sessionBootstrap', () => ({ signInWithResolvedEmail: jest.fn() }))
-jest.mock('../../core/auth/webLoginPairing', () => ({}))
-jest.mock('../../core/webPreferences', () => ({ useWebPreferences: () => [{}] }))
-jest.mock('../../components/QrCodeTile', () => ({ QrCodeTile: () => null }))
-jest.mock('../../components/StreamingMedia', () => ({ StreamingImage: () => null }))
-const exact = ' clave multibyte ñ 🐈 '
+
 beforeEach(() => {
+  jest.useFakeTimers()
   jest.clearAllMocks()
-  ;(completeMigratedPasswordReset as jest.Mock).mockRejectedValue(new Error('Synthetic stop after payload'))
-  ;(confirmFallbackPasswordReset as jest.Mock).mockRejectedValue(new Error('Synthetic stop after payload'))
+  sessionStorage.clear()
 })
 
-test.each([true, false])('legacy reset preserves password whitespace (migration=%s)', async migrated => {
-  render(<PasswordResetPage email="test@example.invalid" migrationToken={migrated ? 'test-migration' : undefined} />)
-  fireEvent.click(screen.getByRole('button', { name: /Continuar/ }))
-  fireEvent.change(await screen.findByLabelText('Nueva Contraseña'), { target: { value: exact } })
-  fireEvent.change(screen.getByLabelText('Confirmar Contraseña'), { target: { value: exact } })
-  fireEvent.click(screen.getByRole('button', { name: /Guardar Contraseña/ }))
-  await waitFor(() => expect(migrated ? completeMigratedPasswordReset : confirmFallbackPasswordReset).toHaveBeenCalledWith(migrated ? 'test-migration' : 'test-reset-token', exact))
+afterEach(() => {
+  jest.useRealTimers()
 })
 
-test('login migration keeps the exact password payload', async () => {
-  ;(signInWithResolvedEmail as jest.Mock).mockRejectedValue({ email: 'test@example.invalid', migrationToken: 'test-migration', displayName: 'Test' })
-  render(<MemoryRouter initialEntries={['/login']}><LoginPage /></MemoryRouter>)
-  fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'test@example.invalid' } })
-  fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'old-password' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Iniciar sesión' }))
-  fireEvent.change(await screen.findByLabelText('Nueva contraseña local'), { target: { value: exact } })
-  fireEvent.change(screen.getByLabelText('Confirmar contraseña local'), { target: { value: exact } })
-  fireEvent.click(screen.getByRole('button', { name: 'Crear contraseña y entrar' }))
-  await waitFor(() => expect(completeMigratedPasswordReset).toHaveBeenCalledWith('test-migration', exact))
+test('preserves leading and trailing whitespace in ForgotPasswordPage password confirmation', async () => {
+  jest.mocked(requestFallbackPasswordReset).mockResolvedValue({
+    requested: true,
+    delivery: 'email',
+  })
+  jest.mocked(verifyFallbackPasswordReset).mockResolvedValue({ resetToken: 'reset-tok-1' })
+  jest.mocked(confirmFallbackPasswordReset).mockResolvedValue({
+    id: 'user-1',
+    email: 'test@novvinapp.com',
+  } as never)
+
+  render(
+    <MemoryRouter initialEntries={['/forgot-password']}>
+      <ForgotPasswordPage />
+    </MemoryRouter>,
+  )
+
+  fireEvent.change(screen.getByLabelText(/Correo de tu cuenta/i), {
+    target: { value: 'test@novvinapp.com' },
+  })
+  fireEvent.submit(screen.getByLabelText(/Correo de tu cuenta/i).closest('form')!)
+
+  const codeInput = await screen.findByLabelText(/Código de seis dígitos/i)
+  fireEvent.change(codeInput, { target: { value: '123456' } })
+  fireEvent.submit(codeInput.closest('form')!)
+
+  const newPassInput = await screen.findByLabelText(/^Nueva contraseña$/i)
+  fireEvent.change(newPassInput, { target: { value: '  secret 123  ' } })
+  fireEvent.change(screen.getByLabelText(/Repite la nueva contraseña/i), {
+    target: { value: '  secret 123  ' },
+  })
+  fireEvent.submit(newPassInput.closest('form')!)
+
+  await waitFor(() => {
+    expect(confirmFallbackPasswordReset).toHaveBeenCalledWith('reset-tok-1', '  secret 123  ')
+  })
 })
 
-test('legacy recovery shows the same safe official login link for an origin rejection', async () => {
-  ;(confirmFallbackPasswordReset as jest.Mock).mockRejectedValue(new Error('UNTRUSTED_WEB_SESSION_REQUEST'))
-  render(<PasswordResetPage email="test@example.invalid" />)
-  fireEvent.click(screen.getByRole('button', { name: /Continuar/ }))
-  fireEvent.change(await screen.findByLabelText('Nueva Contraseña'), { target: { value: exact } })
-  fireEvent.change(screen.getByLabelText('Confirmar Contraseña'), { target: { value: exact } })
-  fireEvent.click(screen.getByRole('button', { name: /Guardar Contraseña/ }))
-  expect(await screen.findByRole('alert')).toHaveTextContent('Esta dirección web no está autorizada')
-  expect(screen.getByRole('link', { name: 'Abrir la web oficial' })).toHaveAttribute('href', 'https://novvinapp.com/login')
+test('preserves leading and trailing whitespace in RegisterPage password submission', async () => {
+  jest.mocked(fallbackApiJson).mockResolvedValue({
+    username: 'usuario_demo',
+    available: true,
+    suggestions: [],
+  } as never)
+  jest.mocked(signUpAndBootstrapProfile).mockResolvedValue()
+
+  render(
+    <MemoryRouter initialEntries={['/register']}>
+      <RegisterPage />
+    </MemoryRouter>,
+  )
+
+  fireEvent.change(screen.getByLabelText('Nombre visible', { exact: true }), { target: { value: 'Usuario Demo' } })
+  jest.advanceTimersByTime(350)
+  expect(await screen.findByText(/Disponible\. Será tu identificador permanente/i)).toBeInTheDocument()
+
+  fireEvent.change(screen.getByLabelText(/^Correo$/i), { target: { value: 'demo@novvinapp.com' } })
+  fireEvent.change(screen.getByLabelText(/^Contraseña$/i), { target: { value: '  secret 123  ' } })
+  fireEvent.change(screen.getByLabelText(/Fecha de nacimiento/i), {
+    target: { value: '2000-05-15' },
+  })
+  fireEvent.submit(screen.getByRole('button', { name: 'Crear cuenta' }).closest('form')!)
+
+  await waitFor(() => {
+    expect(signUpAndBootstrapProfile).toHaveBeenCalledWith(
+      null,
+      expect.objectContaining({
+        email: 'demo@novvinapp.com',
+        password: '  secret 123  ',
+        birthDate: '2000-05-15',
+      }),
+    )
+  })
 })

@@ -1162,20 +1162,6 @@ class AuthService @Inject constructor(
         return Result.success(Unit)
     }
 
-    suspend fun directPasswordReset(
-        email: String,
-        newPassword: String
-    ): Result<Unit> {
-        val requestGeneration = localSessionMutationGuard.snapshot()
-        if (!localFallbackApiClient.isConfigured) {
-            return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        }
-        val localSession = localFallbackApiClient.directPasswordReset(email, newPassword)
-            .getOrElse { return Result.failure(it) }
-        persistLocalFallbackSession(localSession, expectedGeneration = requestGeneration)
-        return Result.success(Unit)
-    }
-
     suspend fun changePassword(
         currentPassword: String,
         newPassword: String

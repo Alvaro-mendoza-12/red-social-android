@@ -24,6 +24,14 @@ for (const file of [path.join(root, 'vercel.json'), path.join(root, '../vercel.j
   const csp = config.headers.find(rule => rule.source === '/(.*)')?.headers.find(header => header.key === 'Content-Security-Policy')
   if (!csp) throw new Error('Global CSP header not found')
   csp.value = csp.value.replace(/script-src [^;]+;/, "script-src 'self' " + hashes.join(' ') + ';')
+  // Public brand graphics are intentionally embedded by mail and link previews.
+  // Keep the default same-origin isolation for private media and other resources.
+  for (const source of ['/novvin-logo.png', '/novvin-share.png']) {
+    let rule = config.headers.find(rule => rule.source === source)
+    if (!rule) { rule = { source, headers: [] }; config.headers.push(rule) }
+    rule.headers = rule.headers.filter(header => header.key.toLowerCase() !== 'cross-origin-resource-policy')
+    rule.headers.push({ key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' })
+  }
   for (const [route, file] of publicRoutes) {
     if (!config.rewrites.some(rule => rule.source === route)) config.rewrites.push({source:route,destination:'/'+file})
     if (!config.redirects.some(rule => rule.source === '/'+file)) config.redirects.push({source:'/'+file,destination:route,permanent:true})

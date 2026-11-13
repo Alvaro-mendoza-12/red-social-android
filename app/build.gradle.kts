@@ -99,8 +99,8 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 180
-        versionName = "9.1.40"
+        versionCode = 181
+        versionName = "9.1.41"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
         val props = Properties()
@@ -294,6 +294,10 @@ android {
     testOptions {
         unitTests {
             isIncludeAndroidResources = true
+            all {
+                it.maxHeapSize = "1536m"
+                it.forkEvery = 80
+            }
         }
     }
 

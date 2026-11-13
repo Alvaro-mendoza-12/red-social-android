@@ -67,6 +67,9 @@ class AuthRepository @Inject constructor(
     private val groupRepositoryProvider: dagger.Lazy<GroupRepository>,
     private val communityRepositoryProvider: dagger.Lazy<CommunityRepository>,
     private val notificationRepositoryProvider: dagger.Lazy<NotificationRepository>,
+    private val walletRepositoryProvider: dagger.Lazy<WalletRepository>,
+    private val algorithmRepositoryProvider: dagger.Lazy<AlgorithmRepository>,
+    private val linkPreviewRepositoryProvider: dagger.Lazy<LinkPreviewRepository>,
     private val twoFactorAuthManagerProvider: dagger.Lazy<conectate.com.auth.twoFactor.TwoFactorAuthManager>,
     private val localFallbackApiClient: LocalFallbackApiClient
 ) {
@@ -79,6 +82,9 @@ class AuthRepository @Inject constructor(
     private val groupRepository get() = groupRepositoryProvider.get()
     private val communityRepository get() = communityRepositoryProvider.get()
     private val notificationRepository get() = notificationRepositoryProvider.get()
+    private val walletRepository get() = walletRepositoryProvider.get()
+    private val algorithmRepository get() = algorithmRepositoryProvider.get()
+    private val linkPreviewRepository get() = linkPreviewRepositoryProvider.get()
     private val twoFactorAuthManager get() = twoFactorAuthManagerProvider.get()
 
     private val repositoryScope = CoroutineScope(
@@ -801,26 +807,6 @@ class AuthRepository @Inject constructor(
         return Result.success(confirmedEntryUser(user))
     }
 
-    suspend fun directPasswordReset(
-        email: String,
-        newPassword: String
-    ): Result<User> {
-        val result = authService.directPasswordReset(email, newPassword)
-        if (result.isFailure) {
-            return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo restablecer la contraseña."))
-        }
-
-        val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
-        accountSessionRepository.captureCurrentAccount(
-            displayName = user.displayName,
-            avatarUrl = user.avatar_url,
-            expectedUserId = user.id
-        ).onFailure {
-            android.util.Log.w("AuthRepository", "Failed to save local fallback account after direct reset", it)
-        }
-        return Result.success(confirmedEntryUser(user))
-    }
-
     suspend fun updatePassword(newPassword: String): Result<Unit> {
         return authService.updateUserPassword(newPassword)
     }
@@ -1455,6 +1441,9 @@ class AuthRepository @Inject constructor(
         runCatching { groupRepository.clearData() }
         runCatching { communityRepository.clearData() }
         runCatching { notificationRepository.clearData() }
+        runCatching { walletRepository.clearData() }
+        runCatching { algorithmRepository.clearCachedConfig() }
+        runCatching { linkPreviewRepository.clearCache() }
     }
 }
 

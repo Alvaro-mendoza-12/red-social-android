@@ -157,14 +157,15 @@ test('videos, documents, oversized images and Range requests never enter the ima
 
 
 test('protected gateway streams send same-origin deployment cookies without changing the bearer or Range', async () => {
-  const origin = 'https://red-social-android-6xn6c21te-alvaro-s-projects1.vercel.app'
-  const target = origin + '/storage/v1/object/public/videos/test.mp4'
-  const f = fixture(async (_url, options) => new Response('', { status: options.credentials === 'same-origin' ? 206 : 401 }), origin)
-  f.register('a', { source: target, base: origin })
-  assert.equal((await f.read()).status, 206)
-  assert.equal(f.requests[0][1].headers.get('Authorization'), `Bearer ${token}`)
-  assert.equal(f.requests[0][1].headers.get('Range'), 'bytes=0-1')
-  assert.equal(f.requests[0][1].redirect, 'error')
+  for (const origin of ['https://novvinapp.com', 'https://www.novvinapp.com', 'https://red-social-android-6xn6c21te-alvaro-s-projects1.vercel.app']) {
+    const target = origin + '/storage/v1/object/public/videos/test.mp4'
+    const f = fixture(async (_url, options) => new Response('', { status: options.credentials === 'same-origin' ? 206 : 401 }), origin)
+    f.register('a', { source: target, base: origin })
+    assert.equal((await f.read()).status, 206, origin)
+    assert.equal(f.requests[0][1].headers.get('Authorization'), `Bearer ${token}`)
+    assert.equal(f.requests[0][1].headers.get('Range'), 'bytes=0-1')
+    assert.equal(f.requests[0][1].redirect, 'error')
+  }
 })
 
 test('cross-origin accelerated reads omit cookies even when the fallback is a protected gateway', async () => {

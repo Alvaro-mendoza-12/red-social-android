@@ -520,6 +520,9 @@ fun LegacyLiveViewerScreen(
                             buildString {
                                 append("Mira este live en Novvin")
                                 if (!stream?.hostName.isNullOrBlank()) append(": ${stream?.hostName}")
+                                runCatching { conectate.com.presentation.navigation.liveShareLink(liveId) }
+                                    .getOrNull()
+                                    ?.let { link -> append("\n$link") }
                             }
                         )
                     context.startActivity(Intent.createChooser(shareIntent, "Compartir live"))

@@ -30,7 +30,7 @@ internal fun sharedContentDestination(url: String): SharedContentDestination? {
         scheme in setOf("https", "http") && host in (setOf("conectate.com", "www.conectate.com") + conectate.com.data.model.PublicWebDomain.httpsHosts) -> {
             if (host in conectate.com.data.model.PublicWebDomain.httpsHosts && scheme != "https") return null
             when {
-                path.size == 2 && path[0] in setOf("post", "profile", "u") -> path
+                path.size == 2 && path[0] in setOf("post", "profile", "u", "p") -> path
                 path.size == 4 && path.take(3) == listOf("app", "feed", "post") -> listOf("post", path[3])
                 path.size == 3 && path.take(2) == listOf("app", "profile") -> listOf("profile", path[2])
                 else -> return null

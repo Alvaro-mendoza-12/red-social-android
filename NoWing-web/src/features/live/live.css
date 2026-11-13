@@ -60,7 +60,7 @@
 .live-host-link small svg { width: 12px; height: 12px; color: #ff7a8d; }
 .live-session-viewers { font-size: .75rem; display: inline-flex; align-items: center; gap: 5px; padding: 8px; border-radius: 20px; background: #0009; }
 .live-session-viewers svg { width: 15px; height: 15px; }
-.live-icon-button, .live-control { display: inline-grid; place-items: center; width: 38px; height: 38px; padding: 9px; border-radius: 50%; border: 1px solid #fff3; background: #151519b3; color: #fff; flex-shrink: 0; }
+.live-icon-button, .live-control { display: inline-grid; place-items: center; min-width: 44px; min-height: 44px; width: 44px; height: 44px; padding: 9px; border-radius: 50%; border: 1px solid #fff3; background: #151519b3; color: #fff; flex-shrink: 0; }
 .live-icon-button svg, .live-control svg { width: 19px; height: 19px; }
 .live-comments-panel { grid-area: 1 / 2 / 4 / 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--surface); color: var(--foreground); border-left: 1px solid var(--outline); }
 .live-comments-list { flex: 1; min-height: 0; overflow: auto; padding: 18px 14px; display: flex; flex-direction: column; gap: 14px; }
@@ -71,13 +71,13 @@
 .live-comment-composer { display: flex; align-items: center; gap: 8px; padding: 12px; border-top: 1px solid var(--outline); flex-shrink: 0; }
 .live-comment-composer > svg { display: none; }
 .live-comment-composer input { min-width: 0; width: 0; flex: 1; background: var(--surface-raised); color: var(--foreground); border: 0; border-radius: 24px; padding: 12px; font-size: .85rem; }
-.live-comment-composer button { display: grid; place-items: center; width: 34px; height: 34px; color: var(--foreground); flex-shrink: 0; }
+.live-comment-composer button { display: grid; place-items: center; min-width: 44px; min-height: 44px; width: 44px; height: 44px; color: var(--foreground); flex-shrink: 0; }
 .live-comment-composer button svg { width: 19px; height: 19px; }
 .live-session-controls { grid-area: 3 / 1 / 4 / 2; position: relative; z-index: 3; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; padding: 16px; background: linear-gradient(transparent, #000b); }
 .live-control.off, .live-control.danger { background: #872a36; }
 .live-control.active { color: #62e0de; border-color: #62e0de; }
-.live-reaction-button { display: grid; place-items: center; border-radius: 50%; width: 38px; height: 38px; font-size: 1.15rem; padding: 0; background: #151519b3; border: 1px solid #fff3; }
-.live-like-button { display: inline-flex; align-items: center; gap: 7px; background: #151519e6; border: 1px solid #fff3; border-radius: 24px; padding: 9px 14px; min-height: 40px; font-size: .82rem; font-weight: 700; color: #fff; }
+.live-reaction-button { display: grid; place-items: center; border-radius: 50%; min-width: 44px; min-height: 44px; width: 44px; height: 44px; font-size: 1.15rem; padding: 0; background: #151519b3; border: 1px solid #fff3; }
+.live-like-button { display: inline-flex; align-items: center; gap: 7px; background: #151519e6; border: 1px solid #fff3; border-radius: 24px; padding: 9px 14px; min-height: 44px; font-size: .82rem; font-weight: 700; color: #fff; }
 .live-like-button svg { width: 20px; height: 20px; color: #ff6484; }
 .live-reaction-overlay { position: absolute; left: 20px; right: 330px; bottom: 90px; pointer-events: none; height: 0; z-index: 3; }
 .live-reaction-overlay span { position: absolute; bottom: 0; font-size: 1.7rem; animation: novvin-live-rise 3s ease-out both; will-change: transform, opacity; }
@@ -102,13 +102,13 @@
   .live-main-video { grid-area: 1 / 1 / 4 / 2; }
   .live-video-placeholder { top: 32%; width: 100%; }
   .live-session-topbar { gap: 6px; padding: 9px; }
-  .live-session-topbar .live-icon-button { width: 32px; height: 32px; padding: 7px; }
+  .live-session-topbar .live-icon-button { min-width: 44px; min-height: 44px; width: 44px; height: 44px; padding: 10px; }
   .live-host-link .safe-avatar { width: 32px; height: 32px; }
   .live-host-link strong { font-size: .8rem; }
   .live-session-viewers { font-size: .65rem; padding: 7px; }
   .live-session-controls { gap: 7px; padding: 10px; }
-  .live-control, .live-reaction-button { width: 34px; height: 34px; }
-  .live-like-button { padding: 7px 10px; min-height: 34px; }
+  .live-control, .live-reaction-button { min-width: 44px; min-height: 44px; width: 44px; height: 44px; }
+  .live-like-button { padding: 7px 12px; min-height: 44px; }
   .live-comments-panel { grid-area: 4 / 1 / 5 / 2; border-left: 0; border-top: 1px solid var(--outline); }
   .live-comments-list { padding: 10px 12px; gap: 9px; }
   .live-comment-composer { padding: 8px; }

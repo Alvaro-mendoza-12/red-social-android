@@ -1,4 +1,5 @@
 import { io, type Socket } from 'socket.io-client'
+import { voiceTransportOptions } from '../voice/voiceTransportPolicy'
 import { buildSignalingAffinity } from '../../core/signalingAffinity'
 import { WebRtcPeerSession } from './WebRtcPeerSession'
 import { CallControlClient, type CallLeaveAction } from './callControl'
@@ -479,8 +480,7 @@ export class WebCallManager {
     this.ensureCallStillCurrent(callId)
 
     const socket = io(toCallNamespaceUrl(this.signalingBaseUrl), {
-      transports: ['websocket', 'polling'],
-      tryAllTransports: true,
+      ...voiceTransportOptions,
       query: { affinity: buildSignalingAffinity('call', callId) },
       auth: { token: this.accessToken },
       autoConnect: false,

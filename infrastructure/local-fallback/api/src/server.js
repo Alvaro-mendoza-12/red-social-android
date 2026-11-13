@@ -2308,7 +2308,20 @@ app.get('/v1/auth/username/availability', async (req, res, next) => {
 
 app.post('/v1/auth/register', requireBcryptPasswordLength('password'), async (req, res, next) => {
   try {
-    if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
+    const isWebClient = isWebClientRequest(req)
+    if (isWebClient && !requireTrustedWebSessionRequest(req, res)) return
+    const { validateRegistrationRequest } = require('./registration-security')
+    const registrationCheck = await validateRegistrationRequest({
+      body: req.body,
+      isWebClient,
+      remoteIp: requestIpAddress(req),
+    })
+    if (!registrationCheck.ok) {
+      return res.status(registrationCheck.status).json({
+        error: registrationCheck.error,
+        message: registrationCheck.message,
+      })
+    }
     const email = normalizeEmail(req.body?.email)
     const password = String(req.body?.password || '')
     const {normalizedDisplayName,displayNameProblem}=require('./display-name-policy')
@@ -2358,8 +2371,13 @@ app.post('/v1/auth/register', requireBcryptPasswordLength('password'), async (re
       rows = inserted.rows
       await client.query(
         `INSERT INTO fallback_profile_overrides(user_id, profile, updated_at)
-         VALUES ($1, jsonb_build_object('username', $2::text, 'username_origin', $3::text), NOW())`,
-        [rows[0].id, username, requestedUsername ? 'chosen' : 'generated'],
+         VALUES (
+           $1,
+           jsonb_build_object('username', $2::text, 'username_origin', $3::text)
+             || CASE WHEN $4::text <> '' THEN jsonb_build_object('birth_date', $4::text) ELSE '{}'::jsonb END,
+           NOW()
+         )`,
+        [rows[0].id, username, requestedUsername ? 'chosen' : 'generated', registrationCheck.birthDate || ''],
       )
       await client.query('COMMIT')
     } catch (error) {

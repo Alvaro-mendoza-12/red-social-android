@@ -56,6 +56,32 @@ class WalletViewModel @Inject constructor(
 
     private val _billingVerifying = MutableStateFlow(false)
     val billingVerifying: StateFlow<Boolean> = _billingVerifying.asStateFlow()
+    private val playVerificationQueue = PlayBillingVerificationQueue()
+    @Volatile
+    private var observedAccountId: String? = null
+
+    private fun ensureAccountScope(): String? {
+        val currentAccount = walletRepository.currentAccountId()
+        val previous = observedAccountId
+        if (previous != null && previous != currentAccount) {
+            playVerificationQueue.clearForOtherAccount(currentAccount)
+            _billingVerifying.value = false
+            _billingMessage.value = null
+            _error.value = null
+            _lastReceipt.value = null
+            _creatorDashboard.value = CreatorProgramDashboard()
+            _earningsError.value = null
+            _earningsLoading.value = false
+            _payoutSummary.value = null
+            _payoutMessage.value = null
+            _payoutLoading.value = false
+            _historyLoadingMore.value = false
+        } else if (currentAccount == null && previous == null) {
+            playVerificationQueue.clearForOtherAccount(null)
+        }
+        observedAccountId = currentAccount
+        return currentAccount
+    }
 
     private val _creatorDashboard = MutableStateFlow(CreatorProgramDashboard())
     val creatorDashboard: StateFlow<CreatorProgramDashboard> = _creatorDashboard.asStateFlow()
@@ -107,6 +133,7 @@ class WalletViewModel @Inject constructor(
         gift: VirtualGift,
         isPublic: Boolean
     ) {
+        val activeAccount = ensureAccountScope() ?: return
         val limits = _billingCapabilities.value.giftLimits
         val pending = hasPendingGift(receiverId, liveStreamId, gift.id, isPublic)
         if (gift.priceDiamonds > limits.maxCoinsPerGift && !pending) {
@@ -129,7 +156,9 @@ class WalletViewModel @Inject constructor(
                 isPublic = isPublic,
                 idempotencyKey = idempotencyKey
             ).onSuccess { receipt ->
-                if (walletRepository.currentAccountId() == receipt.senderId) _lastReceipt.value = receipt
+                if (walletRepository.currentAccountId() == activeAccount && receipt.senderId == activeAccount) {
+                    _lastReceipt.value = receipt
+                }
             }.onFailure { failure ->
                 val rawMessage = failure.message.orEmpty()
                 _error.value = when {
@@ -174,29 +203,66 @@ class WalletViewModel @Inject constructor(
     }
 
     fun verifyGooglePlayPurchase(productId: String, purchaseToken: String) {
-        if (_billingVerifying.value) return
+        val accountId = ensureAccountScope() ?: return
+        if (!playVerificationQueue.enqueue(accountId, productId, purchaseToken)) return
+        if (!_billingVerifying.compareAndSet(false, true)) return
         viewModelScope.launch(Dispatchers.IO) {
-            _billingVerifying.value = true
-            walletRepository.verifyGooglePlayPurchase(productId, purchaseToken)
-                .onSuccess { result ->
-                    _billingMessage.value = when (result.status) {
-                        "pending" -> "Pago pendiente. Las monedas se acreditarán cuando Google Play confirme el cobro."
-                        "credited" -> if (result.credited) {
-                            "Compra verificada: se acreditaron ${result.coins} monedas."
-                        } else {
-                            "Esta compra ya había sido acreditada."
-                        }
-                        else -> "Google Play devolvió un estado no reconocido."
+            var lastMessage: String? = null
+            var shouldRefreshHistory = false
+            try {
+                while (true) {
+                    val activeAccount = ensureAccountScope()
+                    if (activeAccount == null) {
+                        playVerificationQueue.clearForOtherAccount(null)
+                        break
                     }
-                    // A new purchase may have paid a previous refund debt;
-                    // read the authoritative wallet again instead of trusting
-                    // only the purchase response.
-                    walletRepository.fetchBalance()
+                    val next = playVerificationQueue.drainNext(activeAccount) ?: break
+                    try {
+                        walletRepository.verifyGooglePlayPurchase(next.productId, next.purchaseToken)
+                            .onSuccess { result ->
+                                if (walletRepository.currentAccountId() == next.accountId) {
+                                    lastMessage = when (result.status) {
+                                        "pending" -> "Pago pendiente. Las monedas se acreditarán cuando Google Play confirme el cobro."
+                                        "credited" -> if (result.credited) {
+                                            shouldRefreshHistory = true
+                                            "Compra verificada: se acreditaron ${result.coins} monedas."
+                                        } else {
+                                            "Esta compra ya había sido acreditada."
+                                        }
+                                        else -> "Google Play devolvió un estado no reconocido."
+                                    }
+                                    // A new purchase may have paid a previous refund debt;
+                                    // read the authoritative wallet again instead of trusting
+                                    // only the purchase response.
+                                    walletRepository.fetchBalance()
+                                }
+                            }
+                            .onFailure { failure ->
+                                if (walletRepository.currentAccountId() == next.accountId) {
+                                    lastMessage = failure.message ?: "No se pudo verificar la compra con Google Play."
+                                }
+                            }
+                    } finally {
+                        playVerificationQueue.complete(next)
+                    }
                 }
-                .onFailure { failure ->
-                    _billingMessage.value = failure.message ?: "No se pudo verificar la compra con Google Play."
+                if (shouldRefreshHistory && walletRepository.currentAccountId() != null) {
+                    walletRepository.fetchTransactionHistory()
                 }
-            _billingVerifying.value = false
+                if (lastMessage != null) {
+                    _billingMessage.value = lastMessage
+                }
+            } finally {
+                _billingVerifying.value = false
+                val remainingAccount = walletRepository.currentAccountId().orEmpty()
+                if (remainingAccount.isNotBlank() && playVerificationQueue.hasPendingForAccount(remainingAccount)) {
+                    val nextQueued = playVerificationQueue.drainNext(remainingAccount)
+                    if (nextQueued != null) {
+                        playVerificationQueue.complete(nextQueued)
+                        verifyGooglePlayPurchase(nextQueued.productId, nextQueued.purchaseToken)
+                    }
+                }
+            }
         }
     }
 
@@ -213,28 +279,48 @@ class WalletViewModel @Inject constructor(
     }
 
     fun refreshEarnings() {
+        val accountId = ensureAccountScope() ?: return
         if (_earningsLoading.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _earningsLoading.value = true
             _earningsError.value = null
             creatorProgramRepository.loadDashboard()
-                .onSuccess { _creatorDashboard.value = it }
-                .onFailure { failure ->
-                    _earningsError.value = failure.message
-                        ?: "No se pudo actualizar el estado de ganancias."
+                .onSuccess {
+                    if (walletRepository.currentAccountId() == accountId) {
+                        _creatorDashboard.value = it
+                    }
                 }
-            _earningsLoading.value = false
+                .onFailure { failure ->
+                    if (walletRepository.currentAccountId() == accountId) {
+                        _earningsError.value = failure.message
+                            ?: "No se pudo actualizar el estado de ganancias."
+                    }
+                }
+            if (walletRepository.currentAccountId() == accountId) {
+                _earningsLoading.value = false
+            }
         }
     }
 
     fun refreshPayouts() {
+        val accountId = ensureAccountScope() ?: return
         if (_payoutLoading.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _payoutLoading.value = true
             creatorPayoutRepository.summary()
-                .onSuccess { _payoutSummary.value = it }
-                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
-            _payoutLoading.value = false
+                .onSuccess {
+                    if (walletRepository.currentAccountId() == accountId) {
+                        _payoutSummary.value = it
+                    }
+                }
+                .onFailure {
+                    if (walletRepository.currentAccountId() == accountId) {
+                        _payoutMessage.value = payoutErrorMessage(it)
+                    }
+                }
+            if (walletRepository.currentAccountId() == accountId) {
+                _payoutLoading.value = false
+            }
         }
     }
 
@@ -305,11 +391,14 @@ class WalletViewModel @Inject constructor(
     }
 
     fun loadMoreTransactions() {
+        val accountId = ensureAccountScope() ?: return
         if (_historyLoadingMore.value || !transactionsHasMore.value) return
         viewModelScope.launch(Dispatchers.IO) {
             _historyLoadingMore.value = true
             walletRepository.fetchTransactionHistory(reset = false)
-            _historyLoadingMore.value = false
+            if (walletRepository.currentAccountId() == accountId) {
+                _historyLoadingMore.value = false
+            }
         }
     }
 

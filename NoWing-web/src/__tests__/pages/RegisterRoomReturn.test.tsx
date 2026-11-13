@@ -38,6 +38,7 @@ test('confirmed registration returns to the invited room instead of the inbox', 
   fireEvent.change(screen.getByLabelText(/Identificador único/), { target: { value: 'qa_room' } })
   fireEvent.change(screen.getByLabelText('Correo'), { target: { value: 'qa@example.invalid' } })
   fireEvent.change(screen.getByLabelText('Contraseña'), { target: { value: 'SyntheticPassword123' } })
+  fireEvent.change(screen.getByLabelText(/Fecha de nacimiento/), { target: { value: '2000-01-01' } })
   await waitFor(() => expect(screen.getByRole('button', { name: 'Crear cuenta' })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: 'Crear cuenta' }))
   expect(await screen.findByText('Invited room')).toBeInTheDocument()

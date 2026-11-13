@@ -28,6 +28,9 @@ class SharedContentDestinationTest {
         PendingSharedContentDestination.remember("profile", "person-123", state)
         assertEquals(Screen.UserProfile.createRoute("person-123"), PendingSharedContentDestination.consume(state))
         assertEquals("person-123", sharedContentDestination(profileShareLink("person-123"))?.id)
+        val previewDestination = sharedContentDestination("https://novvinapp.com/p/mirella_vr07?preview=4")
+        assertEquals("profile", previewDestination?.kind)
+        assertEquals("mirella_vr07", previewDestination?.id)
     }
     @Test fun anotherSharedLinkReplacesTheOlderPendingDestination() {
         val state = SavedStateHandle()
@@ -37,7 +40,7 @@ class SharedContentDestinationTest {
     }
     @Test fun malformedAndForeignLinksCannotBecomeApplicationDestinations() {
         for (url in listOf("https://evil.test/post/id", "https://conectate.com.evil.test/post/id",
-            "https://novvinapp.com/post/a%2Fb", "https://conectate.com/post/../profile",
+            "https://novvinapp.com/post/a%2Fb", "https://novvinapp.com/p/a%2Fb", "https://conectate.com/post/../profile",
             "https://u:pass@conectate.com/post/id", "javascript://post/id")) assertNull(url, sharedContentDestination(url))
     }
 }

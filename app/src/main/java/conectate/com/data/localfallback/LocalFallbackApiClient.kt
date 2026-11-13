@@ -1862,21 +1862,6 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun directPasswordReset(
-        email: String,
-        newPassword: String
-    ): Result<LocalFallbackAuthResponse> {
-        if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
-        val reset = requestPasswordReset(email).getOrElse { return Result.failure(it) }
-        val resetToken = reset.resetToken?.trim().orEmpty()
-        if (resetToken.isBlank()) {
-            return Result.failure(
-                Exception("Ubuntu generó el restablecimiento, pero no devolvió token en esta configuración. Usa el token entregado por el canal configurado.")
-            )
-        }
-        return confirmPasswordReset(resetToken, newPassword)
-    }
-
     suspend fun loadMessagesInbox(accessToken: String, tab: String = "chats"): Result<LocalFallbackInboxResponse> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return runReadWithDeadline(InteractiveReadDeadlines.InboxMillis) {

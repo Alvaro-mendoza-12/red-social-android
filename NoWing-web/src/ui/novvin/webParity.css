@@ -256,7 +256,7 @@
 .chat-profile-hero .profile-avatar-open .chat-profile-avatar { position:static; }
 .chat-profile-hero+h3{margin-top:12px}
 .message-reaction-bar{display:flex;align-items:center;justify-content:space-between;gap:2px;padding:4px 0 9px;margin-bottom:5px;border-bottom:1px solid var(--outline)}
-.message-reaction-bar>button{display:grid;place-items:center;width:34px;height:36px;padding:0;border:0;background:transparent;border-radius:50%;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;font-size:24px;line-height:1}
+.message-reaction-bar>button{display:grid;place-items:center;width:38px;min-height:44px;height:44px;padding:0;border:0;background:transparent;border-radius:50%;font-family:"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif;font-size:24px;line-height:1}
 .message-reaction-bar>button:hover,.message-reaction-bar>button:focus-visible{background:var(--surface-container);transform:scale(1.12)}
 .message-menu summary{display:grid;place-items:center;font-size:inherit}
 .message-menu summary svg{width:18px;height:18px}

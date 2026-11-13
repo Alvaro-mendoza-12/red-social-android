@@ -93,7 +93,13 @@ private fun publicProfileShareLink(user: User): String {
 }
 
 internal fun profileUserIdFromQr(raw: String?): String? {
-    val uri = runCatching { Uri.parse(raw?.trim().orEmpty()) }.getOrNull() ?: return null
+    val trimmed = raw?.trim().orEmpty()
+    if (trimmed.isEmpty() || trimmed.length > 2_048) return null
+    conectate.com.presentation.navigation.sharedContentDestination(trimmed)
+        ?.takeIf { it.kind == "profile" }
+        ?.id
+        ?.let { return it }
+    val uri = runCatching { Uri.parse(trimmed) }.getOrNull() ?: return null
     val validWebHost = uri.scheme in setOf("https", "http") &&
         uri.host in setOf("conectate.com", "www.conectate.com") &&
         uri.pathSegments.firstOrNull() == "profile"
@@ -101,7 +107,7 @@ internal fun profileUserIdFromQr(raw: String?): String? {
     if (!validWebHost && !validAppHost) return null
     return uri.pathSegments.getOrNull(if (validWebHost) 1 else 0)
         ?.trim()
-        ?.takeIf { it.isNotBlank() && it.length <= 128 }
+        ?.takeIf { it.isNotBlank() && it.length <= 128 && it.matches(Regex("[A-Za-z0-9_-]+")) }
 }
 
 internal fun profileVisitLabel(raw: String): String {
@@ -994,7 +1000,11 @@ fun ProfileScreen(
                                                 Text("Compartir", maxLines = 1, fontSize = 12.sp)
                                             }
                                             OutlinedButton(
-                                                onClick = { profileQrLink = profileShareLink(user.id) },
+                                                onClick = {
+                                                    profileQrLink = runCatching {
+                                                        conectate.com.presentation.navigation.profileShareLink(user.id)
+                                                    }.getOrElse { profileShareLink(user.id) }
+                                                },
                                                 modifier = Modifier.weight(1f).heightIn(min = 40.dp),
                                                 shape = RoundedCornerShape(10.dp),
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)

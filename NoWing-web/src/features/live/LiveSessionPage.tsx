@@ -2,12 +2,13 @@ import { buildLiveShareUrl } from '../../core/socialLinks'
 import { ReactionCloud } from '../../components/ReactionCloud'
 import { REACTION_FLIGHT_MS } from '../../components/useReactionBursts'
 import { useLiveSfu } from './useLiveSfu'
+import { voiceTransportOptions } from '../voice/voiceTransportPolicy'
 import { claimInteractiveMediaSession, releaseInteractiveMediaSession, useInteractiveMediaSession } from '../../core/interactiveMediaSession'
 import { MediaSessionConflict } from '../../components/MediaSessionConflict'
 import { mediaPeerIsInitiator } from '../../core/mediaPeerRole'
 import { liveReactionEmoji } from '../../core/liveReaction'
 import { publicProfileSummaries } from '../../core/publicProfileSummaries'
-import { Settings, Maximize, UserPlus, X } from 'lucide-react'
+import { Settings, Maximize, UserPlus, X, Gift } from 'lucide-react'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { LiveStreamVideo } from '../../components/LiveStreamMedia'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
@@ -30,6 +31,13 @@ import {
 } from 'lucide-react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { io, type Socket } from 'socket.io-client'
+import {
+  fetchUbuntuVirtualGifts,
+  fetchUbuntuWallet,
+  mapUbuntuGiftError,
+  sendUbuntuVirtualGift,
+  type UbuntuVirtualGift,
+} from '../../core/ubuntuMonetization'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StatusView } from '../../components/StatusView'
 import { ensureFallbackAccessToken } from '../../core/auth/fallbackAuth'
@@ -209,7 +217,82 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
   const displayName = displayNameOf(user)
   const avatarUrl = avatarOf(user)
   const hostName = stream ? textOf(stream, ['host_name'], 'Creador') : 'Creador'
-  const isOwner = Boolean(user && stream && textOf(stream, ['host_user_id'], '') === user.id)
+  const hostUserId = stream ? textOf(stream, ['host_user_id'], '') : ''
+  const isOwner = Boolean(user && stream && hostUserId === user.id)
+  const [giftsOpen, setGiftsOpen] = useState(false)
+  const [giftCatalog, setGiftCatalog] = useState<UbuntuVirtualGift[]>([])
+  const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [giftLoading, setGiftLoading] = useState(false)
+  const [sendingGiftId, setSendingGiftId] = useState<string | null>(null)
+  const [giftStatus, setGiftStatus] = useState<string | null>(null)
+  const [giftError, setGiftError] = useState<string | null>(null)
+  const pendingGiftKeysRef = useRef<Map<string, string>>(new Map())
+
+  useEffect(() => {
+    setGiftsOpen(false)
+    setGiftError(null)
+    setGiftStatus(null)
+    setWalletBalance(null)
+    pendingGiftKeysRef.current.clear()
+  }, [cleanLiveId, userId])
+
+  const loadGiftDrawer = useCallback(async () => {
+    if (!isFallbackSession || !userId || !hostUserId || isOwner) return
+    setGiftLoading(true)
+    setGiftError(null)
+    try {
+      const [wallet, catalog] = await Promise.all([
+        fetchUbuntuWallet(userId),
+        fetchUbuntuVirtualGifts(),
+      ])
+      setWalletBalance(wallet.balanceDiamonds)
+      setGiftCatalog(catalog)
+    } catch (caught) {
+      setGiftError(mapUbuntuGiftError(caught))
+    } finally {
+      setGiftLoading(false)
+    }
+  }, [hostUserId, isFallbackSession, isOwner, userId])
+
+  useEffect(() => {
+    if (giftsOpen) {
+      void loadGiftDrawer()
+    }
+  }, [giftsOpen, loadGiftDrawer])
+
+  async function handleSendGift(gift: UbuntuVirtualGift) {
+    if (!isFallbackSession || !userId || !hostUserId || !cleanLiveId || isOwner || sendingGiftId) return
+    if (stream?.gifts_enabled === false) {
+      setGiftError('El creador desactivó los regalos para este directo.')
+      return
+    }
+    const keyScope = `${userId}:${cleanLiveId}:${hostUserId}:${gift.id}`
+    const idempotencyKey = pendingGiftKeysRef.current.get(keyScope)
+      ?? (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `gift-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`)
+    pendingGiftKeysRef.current.set(keyScope, idempotencyKey)
+    setSendingGiftId(gift.id)
+    setGiftError(null)
+    setGiftStatus(null)
+    try {
+      const receipt = await sendUbuntuVirtualGift({
+        senderId: userId,
+        receiverId: hostUserId,
+        giftId: gift.id,
+        liveStreamId: cleanLiveId,
+        idempotencyKey,
+        isPublic: true,
+      })
+      pendingGiftKeysRef.current.delete(keyScope)
+      setWalletBalance(receipt.senderBalanceDiamonds)
+      setGiftStatus(`Enviaste ${receipt.giftName || gift.name}. Saldo restante: ${receipt.senderBalanceDiamonds.toLocaleString('es')} monedas.`)
+    } catch (caught) {
+      setGiftError(mapUbuntuGiftError(caught))
+    } finally {
+      setSendingGiftId(null)
+    }
+  }
 
   const sfu = useLiveSfu({ liveId: cleanLiveId, hostId: textOf(stream || {}, ['host_user_id']), role: role === 'host' ? 'host' : guestMedia ? 'guest' : 'viewer', enabled: !blocked && !closed && sfuAvailable && Boolean(stream?.is_active), localMedia: role === 'host' ? localMedia : guestMedia, source: role === 'host' ? liveState.source : 'camera', micEnabled: role === 'host' ? liveState.micEnabled : guestMic, videoEnabled: role === 'host' ? liveState.videoEnabled && !liveState.isPaused : guestCamera })
   useEffect(() => {
@@ -522,8 +605,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
         })
 
         const socket: LiveSocket = io(`${getRuntimeBackendUrl().replace(/\/$/, '')}/live`, {
-          transports: ['websocket', 'polling'],
-          tryAllTransports: true,
+          ...voiceTransportOptions,
           query: { affinity: buildSignalingAffinity('live', cleanLiveId) },
           auth: { token },
           autoConnect: false,
@@ -790,6 +872,32 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
           <button className="live-end-setting" type="button" onClick={() => void leaveOrEnd()}>Finalizar directo</button>
         </> : <><p>Puedes comentar, reaccionar y solicitar participar cuando el anfitrión lo permita.</p><label className="checkbox-inline"><input type="checkbox" checked={!viewerMuted} onChange={() => setViewerMuted(value => !value)}/>Escuchar el directo</label></>}
       </section></div> : null}
+      {giftsOpen && role === 'viewer' && !isOwner ? <div className="app-dialog-backdrop"><section className="surface-card live-settings-dialog" role="dialog" aria-modal="true" aria-label="Regalos del directo">
+        <header className="row-between"><h3>Regalos del directo</h3><button type="button" className="icon-button" aria-label="Cerrar regalos" onClick={() => setGiftsOpen(false)}><X aria-hidden="true" /></button></header>
+        <p className="field-help">Saldo disponible: <strong>{walletBalance === null ? 'Cargando...' : `${walletBalance.toLocaleString('es')} monedas`}</strong></p>
+        {giftError ? <p className="field-error" role="alert">{giftError}</p> : null}
+        {giftStatus ? <p className="field-help" role="status">{giftStatus}</p> : null}
+        {giftLoading ? <p className="field-help">Cargando catálogo de regalos...</p> : giftCatalog.length === 0 ? (
+          <div className="stack">
+            <p className="field-help">No hay regalos disponibles en este momento.</p>
+            <button type="button" className="ghost-button" onClick={() => void loadGiftDrawer()}>Reintentar</button>
+          </div>
+        ) : (
+          <div className="stack">
+            {giftCatalog.map((gift) => (
+              <div key={gift.id} className="row-between">
+                <div>
+                  <strong>{gift.name}</strong>
+                  <p className="field-help">{gift.priceDiamonds.toLocaleString('es')} monedas</p>
+                </div>
+                <button type="button" className="primary-button" disabled={sendingGiftId !== null} onClick={() => void handleSendGift(gift)}>
+                  {sendingGiftId === gift.id ? 'Enviando...' : 'Enviar'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section></div> : null}
       {isOwner && pendingRequests.length > 0 && !settingsOpen ? <div className="live-request-notice" role="status"><UserPlus size={18}/><span>{pendingRequests.length === 1 ? 'Una persona solicita participar' : `${pendingRequests.length} personas solicitan participar`}</span><button type="button" onClick={() => setSettingsOpen(true)}>Revisar</button></div> : null}
       {role === 'viewer' && guestRequested && !acceptedInvitation && !guestMedia ? <p className="live-request-status" role="status">{invitations.some(item => item.status === 'pending') ? 'Solicitud enviada. Esperando al anfitrión…' : 'Tu solicitud ya fue revisada.'}</p> : null}
       {role === 'viewer' && acceptedInvitation && !guestMedia ? <div className="live-guest-confirmation"><strong>Tu solicitud fue aceptada</strong><label><input type="checkbox" checked={guestCamera} onChange={event => setGuestCamera(event.target.checked)}/>Cámara</label><label><input type="checkbox" checked={guestMic} onChange={event => setGuestMic(event.target.checked)}/>Micrófono</label><button className="primary-btn" type="button" disabled={guestBusy} onClick={() => void joinAsGuest()}>Activar y unirme</button></div> : null}
@@ -841,7 +949,7 @@ export function LiveSessionPage({ liveIdOverride, initialSearch, minimized = fal
           <button className="live-control" type="button" aria-label="Pantalla completa" onClick={() => { const node = document.querySelector<HTMLElement>('.live-session-page'); void (document.fullscreenElement ? document.exitFullscreen() : node?.requestFullscreen())?.catch(() => setError('No se pudo ampliar el directo.')) }}><Maximize/></button>
           {role === 'viewer' && sfuAvailable && stream.allow_guest_requests && !guestMedia && !acceptedInvitation ? <button className="live-control" type="button" aria-label="Solicitar participar" disabled={guestBusy || invitations.some(item => item.status === 'pending')} onClick={() => void requestGuest()}><UserPlus/></button> : null}
           {guestMedia ? <><button type="button" className="live-control" aria-label="Activar o silenciar tu micrófono" disabled={guestBusy} onClick={() => void toggleGuestMedia('audio')}>{guestMic?<Mic/>:<MicOff/>}</button><button type="button" className="live-control" aria-label="Activar o apagar tu cámara" disabled={guestBusy} onClick={() => void toggleGuestMedia('video')}>{guestCamera?<Camera/>:<CameraOff/>}</button><button type="button" className="live-control danger" aria-label="Dejar de participar" onClick={leaveGuest}><PhoneOff/></button></> : null}
-          {role === 'viewer' ? <><button className="live-control" type="button" onClick={() => setViewerMuted(current => !current)} aria-label={viewerMuted ? 'Activar sonido' : 'Silenciar directo'} title={viewerMuted ? 'Activar sonido' : 'Silenciar directo'}>{viewerMuted ? <VolumeX /> : <Volume2 />}</button><button className="live-control danger" aria-label="Salir del directo" onClick={() => void leaveOrEnd()}><PhoneOff/></button></> : null}
+          {role === 'viewer' ? <>{isFallbackSession && !isOwner && hostUserId && stream.gifts_enabled !== false ? <button className="live-control" type="button" onClick={() => setGiftsOpen(value => !value)} aria-label="Enviar regalo" title="Enviar regalo"><Gift aria-hidden="true" /></button> : null}<button className="live-control" type="button" onClick={() => setViewerMuted(current => !current)} aria-label={viewerMuted ? 'Activar sonido' : 'Silenciar directo'} title={viewerMuted ? 'Activar sonido' : 'Silenciar directo'}>{viewerMuted ? <VolumeX /> : <Volume2 />}</button><button className="live-control danger" aria-label="Salir del directo" onClick={() => void leaveOrEnd()}><PhoneOff/></button></> : null}
           {role === 'host' ? (
             <>
               <button className={liveState.micEnabled ? 'live-control' : 'live-control off'} type="button" onClick={toggleMic} title="Micrófono" aria-label="Alternar micrófono">{liveState.micEnabled ? <Mic aria-hidden="true" /> : <MicOff aria-hidden="true" />}</button>

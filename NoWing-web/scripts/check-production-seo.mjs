@@ -98,7 +98,7 @@ for (const [route, file] of publicRoutes) {
     assert(new URL(response.headers.get('location'), site).href === site + route, 'Incorrect canonical destination')
   })
 }
-for (const path of ['/login', '/register', '/forgot-password', '/app/messages', '/app/videos', '/explore/videos', '/u/example']) {
+for (const path of ['/login', '/register', '/forgot-password', '/app/messages', '/app/videos', '/explore/videos', '/u/example', '/p/example']) {
   await check('Private or interactive shell is noindex: ' + path, async () => {
     const response = await request(path), html = await response.text()
     assert(response.status === 200 && response.headers.get('x-robots-tag')?.includes('noindex'), 'Missing noindex header')

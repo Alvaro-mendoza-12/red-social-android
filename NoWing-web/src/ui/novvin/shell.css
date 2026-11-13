@@ -256,8 +256,10 @@
     gap: 1px;
   }
   .novvin-topbar-actions .icon-btn {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
   .content-shell.wide {
     padding: 16px;

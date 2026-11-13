@@ -1680,8 +1680,12 @@
     border: 0;
   }
   .messages-inbox-head {
-    padding: 10px 16px;
+    padding: 10px 12px;
     min-height: 64px;
+    gap: 6px;
+  }
+  .messages-inbox-head h1 {
+    font-size: 1.35rem;
   }
   .messages-page {
     min-height: 0;
@@ -1701,12 +1705,15 @@
     gap: 0;
   }
   .chat-header-row .icon-btn {
-    width: 36px;
-    height: 36px;
-    padding: 8px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
   }
   .chat-header-row strong {
-    max-width: 160px;
+    max-width: none;
+    min-width: 0;
   }
   .chat-thread {
     padding: 14px 12px;
@@ -1716,13 +1723,17 @@
   }
   .chat-composer > .icon-btn,
   .chat-composer > label {
-    width: 32px;
-    height: 38px;
-    padding: 7px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 10px;
   }
   .chat-composer .circle-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
   .chat-input-field {
     padding: 12px;
@@ -1735,8 +1746,10 @@
     font-size: 0.62rem;
   }
   .messages-head-actions .icon-btn {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
   .messages-tab-row .tab-pill {
     padding: 12px 10px;
@@ -2219,7 +2232,10 @@
     font-size: 0.8rem;
   }
   .reels-toolbar-actions .icon-btn {
-    width: 32px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
   .conversation-status-col .icon-tiny {
     display: none;

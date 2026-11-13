@@ -641,6 +641,9 @@ export async function signUpWithFallbackAuth(params: {
   password: string
   displayName: string
   username?: string
+  birthDate?: string
+  website?: string
+  turnstileToken?: string
 }): Promise<User> {
   if (!isFallbackAuthConfigured) {
     throw new Error('El servidor Ubuntu no está configurado para esta web.')
@@ -659,6 +662,9 @@ export async function signUpWithFallbackAuth(params: {
       password: params.password,
       displayName: params.displayName.trim(),
       username: params.username,
+      birthDate: params.birthDate?.trim() || undefined,
+      website: params.website ?? '',
+      turnstileToken: params.turnstileToken?.trim() || undefined,
       client: 'web',
     }),
   })
@@ -666,6 +672,7 @@ export async function signUpWithFallbackAuth(params: {
 
   if (!response.ok) {
     const code = String(payload.error || payload.message || '').trim()
+    const message = typeof payload.message === 'string' ? payload.message.trim() : ''
     if (code === 'EMAIL_ALREADY_EXISTS') {
       throw new Error('Ese correo ya existe en el servidor Ubuntu.')
     }
@@ -675,7 +682,18 @@ export async function signUpWithFallbackAuth(params: {
     if (code.startsWith('USERNAME_')) {
       throw new Error('El identificador no está disponible o no es válido. Elige otro.')
     }
-    throw new Error(code || 'No se pudo crear la cuenta en el servidor Ubuntu.')
+    if (
+      code === 'UNDERAGE_NOT_ALLOWED' ||
+      code === 'INVALID_BIRTH_DATE' ||
+      code === 'BOT_TRAP_TRIGGERED' ||
+      code === 'CAPTCHA_REQUIRED' ||
+      code === 'CAPTCHA_VERIFICATION_FAILED' ||
+      code === 'CAPTCHA_UNAVAILABLE' ||
+      code === 'DISPLAY_NAME_INVALID'
+    ) {
+      throw new Error(message || code)
+    }
+    throw new Error(message || code || 'No se pudo crear la cuenta en el servidor Ubuntu.')
   }
 
   return persistFallbackSession(payload as {
@@ -787,4 +805,169 @@ export async function confirmFallbackPasswordReset(
 
 export function toFallbackFriendlyError(error: unknown): Error {
   return new Error(fallbackErrorMessage(error))
+}
+
+
+export type FallbackTwoFactorStatus = {
+  enabled: boolean
+  recoveryCodesRemaining: number
+}
+
+export type FallbackWebSession = {
+  sessionId: string
+  deviceLabel: string
+  ipAddress: string | null
+  userAgent: string | null
+  createdAt: string | null
+  lastSeenAt: string | null
+  expiresAt: string | null
+  revokedAt: string | null
+}
+
+function mapSecurityError(caught: unknown, fallbackMessage: string): Error {
+  const raw = caught instanceof Error ? caught.message : String(caught ?? '')
+  if (/INVALID_PASSWORD/i.test(raw)) return new Error('La contraseña actual no es correcta.')
+  if (/TWO_FACTOR_ALREADY_ENABLED/i.test(raw)) return new Error('La verificación en dos pasos ya está activada.')
+  if (/TWO_FACTOR_SETUP_REQUIRED/i.test(raw)) return new Error('Primero genera el código secreto 2FA.')
+  if (/TWO_FACTOR_INVALID/i.test(raw)) return new Error('El código de 2FA o respaldo no es válido.')
+  if (/TWO_FACTOR_LOCKED/i.test(raw)) return new Error('Demasiados intentos de 2FA. Espera unos minutos.')
+  if (/TWO_FACTOR_REQUIRED/i.test(raw)) return new Error('Ingresa tu código 2FA o código de respaldo para continuar.')
+  if (/WEB_SESSION_NOT_FOUND/i.test(raw)) return new Error('La sesión web ya fue cerrada o no existe.')
+  return caught instanceof Error && raw.trim() ? caught : new Error(fallbackMessage)
+}
+
+export async function getFallbackTwoFactorStatus(expectedAccountId?: string): Promise<FallbackTwoFactorStatus> {
+  try {
+    const response = await fallbackApiJson<{ enabled?: boolean; recoveryCodesRemaining?: number }>(
+      '/v1/auth/2fa/status',
+      { expectedAccountId },
+    )
+    return {
+      enabled: response.enabled === true,
+      recoveryCodesRemaining: Math.max(0, Math.trunc(Number(response.recoveryCodesRemaining ?? 0) || 0)),
+    }
+  } catch (caught) {
+    throw mapSecurityError(caught, 'No se pudo consultar el estado de 2FA.')
+  }
+}
+
+export async function setupFallbackTwoFactor(
+  password: string,
+  expectedAccountId?: string,
+): Promise<{ secret: string; provisioningUri: string }> {
+  try {
+    return await fallbackApiJson<{ secret: string; provisioningUri: string }>('/v1/auth/2fa/setup', {
+      method: 'POST',
+      expectedAccountId,
+      body: JSON.stringify({ password }),
+    })
+  } catch (caught) {
+    throw mapSecurityError(caught, 'No se pudo iniciar la configuración de 2FA.')
+  }
+}
+
+export async function enableFallbackTwoFactor(
+  password: string,
+  totpCode: string,
+  expectedAccountId?: string,
+): Promise<{ recoveryCodes: string[] }> {
+  try {
+    const payload = await fallbackApiJson<{
+      ok?: boolean
+      recoveryCodes?: string[]
+      accessToken?: string
+      tokenType?: string
+      expiresIn?: string | number
+      user?: FallbackUser
+    }>('/v1/auth/2fa/enable', {
+      method: 'POST',
+      expectedAccountId,
+      body: JSON.stringify({ password, totpCode: totpCode.trim() }),
+    })
+    if (payload.accessToken && payload.user) {
+      persistFallbackSession(payload)
+    }
+    return {
+      recoveryCodes: Array.isArray(payload.recoveryCodes)
+        ? payload.recoveryCodes.map((entry) => String(entry)).filter(Boolean)
+        : [],
+    }
+  } catch (caught) {
+    throw mapSecurityError(caught, 'No se pudo activar la verificación en dos pasos.')
+  }
+}
+
+export async function disableFallbackTwoFactor(params: {
+  password: string
+  totpCode?: string
+  backupCode?: string
+  expectedAccountId?: string
+}): Promise<{ signInRequired: boolean }> {
+  try {
+    const payload = await fallbackApiJson<{ ok?: boolean; signInRequired?: boolean }>('/v1/auth/2fa/disable', {
+      method: 'POST',
+      expectedAccountId: params.expectedAccountId,
+      body: JSON.stringify({
+        password: params.password,
+        totpCode: params.totpCode?.trim() || undefined,
+        backupCode: params.backupCode?.trim() || undefined,
+      }),
+    })
+    if (payload.signInRequired !== false) {
+      clearFallbackSession()
+    }
+    return { signInRequired: payload.signInRequired !== false }
+  } catch (caught) {
+    throw mapSecurityError(caught, 'No se pudo desactivar la verificación en dos pasos.')
+  }
+}
+
+export async function listFallbackWebSessions(expectedAccountId?: string): Promise<FallbackWebSession[]> {
+  try {
+    const payload = await fallbackApiJson<{ sessions?: FallbackWebSession[] }>('/v1/auth/web-sessions', {
+      expectedAccountId,
+    })
+    return Array.isArray(payload.sessions) ? payload.sessions : []
+  } catch (caught) {
+    throw mapSecurityError(caught, 'No se pudieron cargar tus sesiones web activas.')
+  }
+}
+
+export async function revokeFallbackWebSession(
+  sessionId: string,
+  expectedAccountId?: string,
+): Promise<void> {
+  try {
+    await fallbackApiJson(`/v1/auth/web-sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      expectedAccountId,
+    })
+  } catch (caught) {
+    throw mapSecurityError(caught, 'No se pudo cerrar esa sesión web.')
+  }
+}
+
+export async function revokeAllFallbackWebSessions(expectedAccountId?: string): Promise<number> {
+  try {
+    const payload = await fallbackApiJson<{ revoked?: number }>('/v1/auth/web-sessions', {
+      method: 'DELETE',
+      expectedAccountId,
+    })
+    return Math.max(0, Math.trunc(Number(payload.revoked ?? 0) || 0))
+  } catch (caught) {
+    throw mapSecurityError(caught, 'No se pudieron cerrar las sesiones web.')
+  }
+}
+
+export async function deleteFallbackOwnAccount(expectedAccountId?: string): Promise<void> {
+  try {
+    await fallbackApiJson('/rest/v1/rpc/delete_own_account', {
+      method: 'POST',
+      expectedAccountId,
+      body: JSON.stringify({}),
+    })
+    clearFallbackSession()
+  } catch (caught) {
+    throw mapSecurityError(caught, 'No se pudo eliminar tu cuenta en este momento.')
+  }
 }

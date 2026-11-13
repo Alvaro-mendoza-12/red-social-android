@@ -98,38 +98,59 @@
                 <data android:pathPrefix="/web-login" />
             </intent-filter>
 
-            <!-- Custom Scheme Fallback -->
+            <!-- App Links verified on primary novvinapp.com (no 308 redirecting hosts in autoVerify filter) -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/voice/" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/post/" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/feed/post/" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/profile/" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/u/" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/reels/" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/live/" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/group/" />
-                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/community/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/voice/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/post/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/app/feed/post/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/app/profile/" />
+                <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/profile/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/u/" />
+                <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/p/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/app/reels/" />
+                <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/video/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/app/live/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/group/" />
                 <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/community/" />
+                <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/survey/" />
+                <data android:scheme="https" android:host="novvinapp.com" android:pathPrefix="/web-login" />
+            </intent-filter>
+            <!-- Legacy and redirecting web hosts stay supported without polluting novvinapp.com autoVerify -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/voice/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/post/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/app/feed/post/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/app/profile/" />
+                <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/profile/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/u/" />
+                <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/p/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/app/reels/" />
+                <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/video/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/app/live/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/group/" />
                 <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/community/" />
+                <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/survey/" />
+                <data android:scheme="https" android:host="www.novvinapp.com" android:pathPrefix="/web-login" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/voice/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/post/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/feed/post/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/profile/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/profile/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/u/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/p/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/reels/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/video/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/app/live/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/group/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/community/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/survey/" />
+                <data android:scheme="https" android:host="red-social-android.vercel.app" android:pathPrefix="/web-login" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
