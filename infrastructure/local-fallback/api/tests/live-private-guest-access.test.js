@@ -9,7 +9,7 @@ function database({ invitation, blocked = false, banned = false } = {}) {
   return {
     query: async sql => {
       if (sql.includes('fallback_live_bans')) return { rows: banned ? [{}] : [] }
-      if (sql.includes('fallback_user_blocks')) return { rowCount: blocked ? 1 : 0, rows: [] }
+      if (sql.includes('fallback_user_blocks')) return { rows: blocked ? [{ blocker_id: 'guest', blocked_id: 'host' }] : [] }
       if (sql.includes('fallback_live_guest_invitations')) return { rows: invitation ? [{ status: invitation }] : [] }
       throw new Error('Unexpected query in access policy')
     },
@@ -27,4 +27,18 @@ test('an accepted private LIVE invitation preserves blocks and bans', async () =
 })
 test('a host retains access to their own private LIVE', async () => {
   assert.equal(await canViewStream(database(), stream, { ...identity, ids: new Set(['host']) }), true)
+})
+
+test('an accepted private invitation can use either identity alias of the account', async () => {
+  const guest = { ids:new Set(['guest-local','guest-public']),values:['guest-local','guest-public'],displayUserId:'guest-public' }
+  const db = database()
+  const query = db.query
+  db.query = async (sql,params) => {
+    if (sql.includes('fallback_live_guest_invitations')) {
+      assert.deepEqual(params[1],guest.values)
+      return { rows:[{status:'accepted',invitee_user_id:'guest-local'}] }
+    }
+    return query(sql,params)
+  }
+  assert.equal(await canViewStream(db,stream,guest),true)
 })
