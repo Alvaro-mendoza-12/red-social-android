@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-13T02:55:13.129914+00:00",
-  "baseCommit": "d8309004d670d6fa7e0ecc014a2785b865fcb75f",
+  "generatedAtUtc": "2026-11-13T03:26:26.688892+00:00",
+  "baseCommit": "6c9d8141235e88017cdcee9c5ff325b75e93af72",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,30 +10,30 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3630,
-    "code-read": 514,
-    "partial": 193
+    "pending": 3621,
+    "code-read": 515,
+    "partial": 201
   },
   "countsByPhase": {
     "android": {
-      "pending": 1524,
+      "pending": 1522,
       "partial": 90,
-      "code-read": 408
+      "code-read": 410
     },
     "documentation": {
-      "pending": 561,
+      "pending": 558,
       "code-read": 20,
-      "partial": 9
+      "partial": 12
     },
     "server": {
-      "pending": 861,
-      "code-read": 42,
-      "partial": 20
+      "pending": 858,
+      "code-read": 41,
+      "partial": 24
     },
     "tooling-and-other": {
-      "pending": 155,
+      "pending": 154,
       "code-read": 12,
-      "partial": 6
+      "partial": 7
     },
     "web": {
       "partial": 68,
@@ -259,9 +259,9 @@
     {
       "file": "NoWing-web/middleware.ts",
       "phase": "web",
-      "gitBlobId": "0f9154a0d40bc4e6b8cc09abd2838d73ac705b26",
+      "gitBlobId": "e583837814ad8eaca20aeb2e996a1621c79c926c",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -587,10 +587,8 @@
     {
       "file": "NoWing-web/public/novvin-media-worker.js",
       "phase": "web",
-      "gitBlobId": "587c0f271037440dd24ad760f33368f8f848b6a8",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "f7af675f291c1299e9f5fa6a437d47b5cbb82c00",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/public/novvin-share.png",
@@ -1541,9 +1539,9 @@
     {
       "file": "NoWing-web/src/__tests__/core/publicBackendTransport.test.ts",
       "phase": "web",
-      "gitBlobId": "e98cf4e7ab00311267cb5fd5e57fc78fc3aae8b8",
+      "gitBlobId": "13f3156f19a5c55b404020c231f427df7c146342",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3007,9 +3005,9 @@
     {
       "file": "NoWing-web/src/core/publicBackendTransport.ts",
       "phase": "web",
-      "gitBlobId": "a47fe88e66b8eb2222e6436631c268674de04034",
+      "gitBlobId": "9dae5303cf5578ef5e10f497cabdc674a7e2e8f6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4087,8 +4085,10 @@
     {
       "file": "NoWing-web/tests/media-worker.test.mjs",
       "phase": "web",
-      "gitBlobId": "27580a904d6db708938c85bb340e514d242d6eae",
-      "reviewStatus": "pending"
+      "gitBlobId": "54a72d5e77e38c2f2e928913c80dcc20a69ac915",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/tests/public-home.test.mjs",
@@ -4179,9 +4179,9 @@
     {
       "file": "README.md",
       "phase": "documentation",
-      "gitBlobId": "51c92caa42c7663c75a19be7d0ce45742c094e27",
+      "gitBlobId": "42e18e11eb0fa1dea5c61ee2719bd6729c779197",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4644,7 +4644,9 @@
       "file": "app/src/androidTest/java/conectate/com/presentation/components/OriginalStickerAnimationTest.kt",
       "phase": "android",
       "gitBlobId": "7b6cd2ca859272e50c13da50d1766a42edf82990",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/PostMediaTileUiTest.kt",
@@ -7209,7 +7211,7 @@
       "phase": "android",
       "gitBlobId": "7bb686f35f93e01982b87b9a12d59871e329cb09",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11049,7 +11051,7 @@
       "phase": "android",
       "gitBlobId": "99b8991ab59321d019861dfcd861eb1803d84e78",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11347,9 +11349,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "0a1e1847ede37b2e03b5120b9fc29e34cd0450c3",
+      "gitBlobId": "c376a64622897c5c58869e5e63418afe6450e718",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16435,8 +16437,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/ProfileShareContentTest.kt",
       "phase": "android",
-      "gitBlobId": "150b311e0e79d25ed35f9f851f3480b9276c0bb1",
-      "reviewStatus": "pending"
+      "gitBlobId": "d770c07557469d8dcd04e34c436787b9e8d94686",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/ProfileSharedPostsPagerTest.kt",
@@ -19749,8 +19753,10 @@
     {
       "file": "docs/oficial/06-operaciones-runbook.md",
       "phase": "documentation",
-      "gitBlobId": "bf01b743bc44bf9152a82c567ce94ffcf25e8646",
-      "reviewStatus": "pending"
+      "gitBlobId": "47e7540dcba060b49178f5b05aa80451d1119137",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/07-seguridad-legal.md",
@@ -19793,8 +19799,10 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "7719016ee6501376d7fbce64c075df64c099ebf1",
-      "reviewStatus": "pending"
+      "gitBlobId": "b23ef9152b76e23ea4030fb87d33e61e382823a2",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
@@ -19921,7 +19929,7 @@
     {
       "file": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "phase": "documentation",
-      "gitBlobId": "fc1ffaf8f3b1bd9ac77f62cf465763f8cc0a339d",
+      "gitBlobId": "00d77299c8922f4a3240bc15fa2d5ee9a108bbd7",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -20455,8 +20463,10 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "bb0e58289586b383c7856c875e943c8809d56ece",
-      "reviewStatus": "pending"
+      "gitBlobId": "b606a73c515a27d4f9c8d0af03ed6a267b7a50f2",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/VALIDACION_ANDROID_E729365.json",
@@ -21641,7 +21651,7 @@
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-web-device-revocation-e2e.js",
       "phase": "server",
-      "gitBlobId": "a140b550846d2349a2f2e06f35ac547de895f95f",
+      "gitBlobId": "841f49940a96a407280cfe6c64a535adb2ec088f",
       "reviewStatus": "pending"
     },
     {
@@ -22224,7 +22234,9 @@
       "file": "infrastructure/local-fallback/api/src/password-reset-mailer.js",
       "phase": "server",
       "gitBlobId": "85a48c3a6dd824276425e75bd1d9e32bba17222a",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/playback-cache-policy.js",
@@ -22325,9 +22337,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/public-profile-share.js",
       "phase": "server",
-      "gitBlobId": "285cbd958f0c8662c58e8f79c23d7b48b71b73d1",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "6f7d7e1b64adeca204ad7c1629fb7020f5e84d46",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22429,7 +22441,7 @@
     {
       "file": "infrastructure/local-fallback/api/src/social-promotions.js",
       "phase": "server",
-      "gitBlobId": "f0e9cc96db90f331b01fc48c48c928bd294cb42e",
+      "gitBlobId": "3ab52dd673773cd2abc7e3e77aee23e40d0f3903",
       "reviewStatus": "pending"
     },
     {
@@ -23743,9 +23755,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/public-profile-share.test.js",
       "phase": "server",
-      "gitBlobId": "bad18e96c0f292f2e9a303c8702364b624460627",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "12bfadb8e880152348addc09045fd0614d65f281",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23867,8 +23879,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/social-promotions.test.js",
       "phase": "server",
-      "gitBlobId": "9a2d13fdac67da6dea1152a6c10aa620f90443a9",
-      "reviewStatus": "pending"
+      "gitBlobId": "ce0cd07a506c417cd36300cb76714a3c8cc47953",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/socialization-cards-routes.test.js",
@@ -24229,8 +24243,10 @@
     {
       "file": "infrastructure/local-fallback/config.example",
       "phase": "server",
-      "gitBlobId": "51bb586cc8502dc747fcb9f3d5c0ab9fbd882c75",
-      "reviewStatus": "pending"
+      "gitBlobId": "52c48f06701cc701b4c77ec3194c325e207074d3",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/db/init/001_schema.sql",
@@ -24661,7 +24677,7 @@
     {
       "file": "infrastructure/local-fallback/scripts/diagnose-api.sh",
       "phase": "server",
-      "gitBlobId": "13a7d5cc91e9d898adb15ac919ab4f36b923fcad",
+      "gitBlobId": "e10d69773975c9e497111c8b1d02ed3f78a1acd7",
       "reviewStatus": "pending"
     },
     {
@@ -24775,7 +24791,7 @@
     {
       "file": "infrastructure/local-fallback/scripts/repair-ubuntu-primary.sh",
       "phase": "server",
-      "gitBlobId": "51e8ec7d01d5e7fa39a0be69f89f977a730338e4",
+      "gitBlobId": "cf8ca8b8dd3936cff50452654c1f1e1e49deb6ab",
       "reviewStatus": "pending"
     },
     {
@@ -25267,8 +25283,10 @@
     {
       "file": "scripts/deploy-mini-pc-current.ps1",
       "phase": "tooling-and-other",
-      "gitBlobId": "e9e93c07b9c09445cb8e11e36338e3020716ae18",
-      "reviewStatus": "pending"
+      "gitBlobId": "28d5acc56826adf4d086fd9d4f7dc8fa8d503522",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "scripts/deploy-moment-music-api-candidate.sh",
