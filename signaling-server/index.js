@@ -3231,7 +3231,7 @@ async function startSignalingServer() {
         };
         server.once('error', onError);
         server.once('listening', onListening);
-        server.listen(PORT, '0.0.0.0');
+        server.listen(PORT, process.env.SIGNALING_LISTEN_HOST || '0.0.0.0');
     });
     console.log(`[SOCKET_DEBUG] Signaling server running on port ${PORT}`);
 }

@@ -339,7 +339,7 @@ app.post('/internal/publish', (req, res) => {
 })
 
 if (require.main === module) {
-  server.listen(port, '0.0.0.0', () => {
+  server.listen(port, process.env.REALTIME_LISTEN_HOST || '0.0.0.0', () => {
     console.log(`[realtime] ${serviceName} ${version} listening on ${port}`)
   })
 }

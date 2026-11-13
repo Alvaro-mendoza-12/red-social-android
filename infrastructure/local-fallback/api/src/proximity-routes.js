@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { blockedProfileIds: blockedIds } = require('./blocked-profile-ids')
 const { publishRealtimeEvent } = require('./realtime-publish')
 
 const ALLOWED_GENDERS = new Set(['unspecified', 'woman', 'man'])
@@ -227,26 +228,6 @@ async function profileById(pool, userId) {
     breakMode: normalizeId(profileText(profile, ['break_mode', 'breakMode'], 'off')),
   }
 }
-
-async function blockedIds(pool, identity) {
-  const values = Array.from(identity.ids)
-  const { rows } = await pool.query(
-    `SELECT lower(blocker_id::text) AS blocker_id, lower(blocked_id::text) AS blocked_id
-     FROM fallback_user_blocks
-     WHERE lower(blocker_id::text) = ANY($1::text[])
-        OR lower(blocked_id::text) = ANY($1::text[])`,
-    [values],
-  )
-  const blocked = new Set()
-  rows.forEach((row) => {
-    const blocker = normalizeId(row.blocker_id)
-    const blockedId = normalizeId(row.blocked_id)
-    if (identity.ids.has(blocker)) blocked.add(blockedId)
-    if (identity.ids.has(blockedId)) blocked.add(blocker)
-  })
-  return blocked
-}
-
 
 // Query both participants' canonical and imported identities: stale client state
 // must not bypass a block created after an offer or session was established.

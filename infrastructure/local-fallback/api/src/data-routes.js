@@ -2,6 +2,7 @@ const { visibleLegacyFriends, createNativeFriend, answerNativeFriend, cancelNati
 const { latestConversationReadAt } = require('./conversation-read-sync')
 const { isMessageLocationUrl } = require('./message-location')
 const { ensureFollowState, visibleFollowRows, setFollowState, publishFollowChange } = require('./follow-store')
+const { blockedProfileIds } = require('./blocked-profile-ids')
 const crypto = require('crypto')
 const { adminAccessFromStoredRow, appAdminAccess } = require('./admin-moderation-routes')
 const { SYSTEM_MEMBERSHIP, ensureCollectionMembershipTables, loadCollectionMembershipState, collectionHistoryAllows, registerCollectionMembershipRoutes } = require('./collection-membership-policy')
@@ -7640,14 +7641,16 @@ function registerDataRoutes(app, {
       const query = cleanText(req.query.q || req.query.query || '', 120).toLowerCase()
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 120, 250))
       const identity = userIdentity(user)
-      const [profiles, importedFollows, fallbackFollows] = await Promise.all([
+      const [profiles, importedFollows, fallbackFollows, blocked] = await Promise.all([
         publicProfileSearchCandidates(pool, query, Math.min(500, limit * 2)),
         importedRowsByFieldValues(pool, 'follows', ['follower_id', 'user_id'], identity.values, 20_000),
         localFollowsByFollowerIds(pool, identity.values, 20_000),
+        blockedProfileIds(pool, identity),
       ])
-      const follows = [...importedFollows, ...fallbackFollows]
+      const follows = await visibleFollowRows(pool, [...importedFollows, ...fallbackFollows])
       const followedIds = followedProfileIds(follows, identity.ids)
       const items = profiles
+        .filter(profile => !Array.from(profileAliasSet(profile)).some(id => blocked.has(id)))
         .filter((profile) => profileVisibleToViewer(profile, {
           viewerIds: identity.ids,
           isFollowing: Array.from(profileAliasSet(profile)).some((id) => followedIds.has(id)),
@@ -7730,6 +7733,8 @@ function registerDataRoutes(app, {
 
       const targetIds = cleanSet([rawProfile.id, rawProfile.user_id, rawProfile.profile_id, rawProfile.supabase_user_id, profileId])
       const targetValues = Array.from(targetIds)
+      const blocked = await blockedProfileIds(pool, identity)
+      if (targetValues.some(id => blocked.has(id))) return res.status(404).json({ error: 'PROFILE_HIDDEN' })
       const [importedPosts, fallbackPosts, importedFollows, fallbackFollows] = await Promise.all([
         importedRowsByFieldValues(
           pool,
@@ -7844,10 +7849,11 @@ function registerDataRoutes(app, {
       const tab = String(req.query.tab || 'following').toLowerCase() === 'followers' ? 'followers' : 'following'
       const identity = userIdentity(user)
       const requestedProfileId = normalizeId(req.query.profileId || req.query.profile_id || '')
-      const [requestedProfiles, importedViewerFollows, fallbackViewerFollows] = await Promise.all([
+      const [requestedProfiles, importedViewerFollows, fallbackViewerFollows, blocked] = await Promise.all([
         requestedProfileId ? publicProfilesByIds(pool, [requestedProfileId]) : Promise.resolve([]),
         importedRowsByFieldValues(pool, 'follows', ['follower_id', 'user_id'], identity.values, 20_000),
         localFollowsByFollowerIds(pool, identity.values, 20_000),
+        blockedProfileIds(pool, identity),
       ])
       const sourceProfile = requestedProfileId
         ? requestedProfiles.find((row) => profileAliasSet(row).has(requestedProfileId))
@@ -7855,11 +7861,17 @@ function registerDataRoutes(app, {
       if (requestedProfileId && !sourceProfile) {
         return res.status(404).json({ error: 'PROFILE_NOT_FOUND' })
       }
-      const sourceIds = sourceProfile ? profileAliasSet(sourceProfile) : identity.ids
+      const sourceIds = sourceProfile
+        ? cleanSet([sourceProfile.id, sourceProfile.user_id, sourceProfile.profile_id, sourceProfile.supabase_user_id])
+        : identity.ids
+      if (Array.from(sourceIds).some(id => blocked.has(id))) return res.status(404).json({ error: 'PROFILE_HIDDEN' })
       const viewerIsSource = Array.from(sourceIds).some((id) => identity.ids.has(id))
-      const viewerFollows = [...importedViewerFollows, ...fallbackViewerFollows]
+      const viewerFollows = await visibleFollowRows(pool, [...importedViewerFollows, ...fallbackViewerFollows])
       const followedIds = followedProfileIds(viewerFollows, identity.ids)
       const isFollowingSource = Array.from(sourceIds).some((id) => followedIds.has(id))
+      if (sourceProfile && !viewerIsSource && !isFollowingSource && boolOf(sourceProfile, ['is_private', 'private'], false)) {
+        return res.status(404).json({ error: 'PROFILE_HIDDEN' })
+      }
       if (sourceProfile && !viewerIsSource && !profileVisibleToViewer(sourceProfile, {
         viewerIds: identity.ids,
         isFollowing: isFollowingSource,
@@ -7877,19 +7889,21 @@ function registerDataRoutes(app, {
           ? localFollowsByFollowerIds(pool, sourceValues, 20_000)
           : localFollowsByFollowingIds(pool, sourceValues, 20_000),
       ])
-      const follows = [...importedFollows, ...fallbackFollows]
-        .filter((row) => rowMatchesAny(row, [tab === 'following' ? 'follower_id' : 'following_id'], sourceIds))
+      const peerFields = tab === 'following' ? ['following_id', 'target_user_id'] : ['follower_id', 'user_id']
+      const follows = (await visibleFollowRows(pool, [...importedFollows, ...fallbackFollows]))
+        .filter((row) => rowMatchesAny(row, importedFollowFields, sourceIds))
       const targetIds = Array.from(cleanSet(follows.map((row) => (
-        textOf(row, [tab === 'following' ? 'following_id' : 'follower_id'], '')
+        textOf(row, peerFields, '')
       ))))
       const profiles = await publicProfilesByIds(pool, targetIds)
       const profilesById = indexProfiles(profiles)
       const seenProfiles = new Set()
       const items = follows.map((row) => {
-        const targetId = normalizeId(textOf(row, [tab === 'following' ? 'following_id' : 'follower_id'], ''))
+        const targetId = normalizeId(textOf(row, peerFields, ''))
         const targetProfile = targetId ? profilesById.get(targetId) : null
         if (!targetProfile) return null
         const aliases = profileAliasSet(targetProfile)
+        if (Array.from(aliases).some(id => blocked.has(id))) return null
         const canonicalId = profileId(targetProfile) || targetId
         if (seenProfiles.has(canonicalId)) return null
         const viewerIsTarget = Array.from(aliases).some((id) => identity.ids.has(id))
@@ -7899,7 +7913,7 @@ function registerDataRoutes(app, {
           isFollowing: isFollowingTarget,
         })) return null
         seenProfiles.add(canonicalId)
-        return profileSearchCard(normalizeProfileForPublic(targetProfile, targetId))
+        return { ...profileSearchCard(normalizeProfileForPublic(targetProfile, targetId)), is_following: isFollowingTarget }
       }).filter(Boolean)
       setPrivateShortCache(res, 10)
       res.json({ items })

@@ -3853,7 +3853,7 @@ withSchemaInitializationLock({
     deliverSystemNotices()
     systemAnnouncementTimer = setInterval(deliverSystemNotices, 5_000)
     systemAnnouncementTimer.unref()
-    server = app.listen(port, '0.0.0.0', () => {
+    server = app.listen(port, process.env.API_LISTEN_HOST || '0.0.0.0', () => {
       console.log(`${serviceName} ${version} listening on ${port}`)
     })
     if (passwordResetMailOutbox) {
