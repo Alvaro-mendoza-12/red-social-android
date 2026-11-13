@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 12 de noviembre de 2026
 
+La [revisión 122](122-stickers-monedero-imagenes-y-dominio-2026-11-12.md) documenta los stickers animados, el monedero, la restauración de Android y las imágenes de Momentos publicadas en novvinapp.com. El contacto oficial es administracion@novvinapp.com. La validación de SMTP y la revisión integral siguen abiertas.
+
 La [continuación 121](121-dominio-live-y-prompt-auditoria-2026-11-12.md) añade enlaces LIVE del dominio oficial y su lectura Android, corrige el compartido web del directo minimizado y conserva los enlaces propios en moderación. Incluye el encargo detallado de auditoría independiente para Gemini. Separa el código de una nueva APK y de la actualización de índices de buscadores.
 
 La [continuación 120](120-contadores-bandeja-e-iconos-2026-11-12.md) conecta los contadores de los filtros privados en Android y web y corrige iconos de la bandeja. Distingue pruebas automatizadas, publicación y entrega instalada; no representa una APK nueva ni el cierre integral.

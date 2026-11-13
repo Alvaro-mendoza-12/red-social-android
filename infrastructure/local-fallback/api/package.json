@@ -2,7 +2,7 @@
   "name": "conectate-local-fallback-api",
   "version": "0.1.0",
   "private": true,
-  "description": "Local fallback API for Conectate when Supabase is restricted or unavailable.",
+  "description": "API de Novvin alojada en Ubuntu para las aplicaciones Android y web.",
   "main": "src/server.js",
   "scripts": {
     "r2:inventory": "node scripts/storage-r2-mirror.js --inventory",
