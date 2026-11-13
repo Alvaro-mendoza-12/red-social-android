@@ -1,3 +1,5 @@
+import type { MessagesMenuTab } from '../../core/sectionMenu'
+
 export const NOVVIN_TABS = [
   { to: '/app/messages', label: 'Mensajes', icon: 'messages' },
   { to: '/app/videos', label: 'Videos', icon: 'videos' },
@@ -14,8 +16,8 @@ export function primarySection(path: string) {
   return /^\/app\/messages(\/|$)/.test(path) ? '/app/messages' : ''
 }
 
-export function openNovvinMenu() {
-  window.dispatchEvent(new Event('novvin:open-menu'))
+export function openNovvinMenu(messagesTab?: MessagesMenuTab) {
+  window.dispatchEvent(new CustomEvent('novvin:open-menu', { detail: { messagesTab } }))
 }
 export function openProfileVisits() {
   window.dispatchEvent(new Event('novvin:profile-visits'))
