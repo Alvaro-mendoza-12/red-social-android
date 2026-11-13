@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 13 de noviembre de 2026
 
+La [continuación 127](127-android-participacion-pausa-y-trazabilidad-2026-11-13.md) impide que las tareas de participación LIVE confirmen respuestas o despachen envíos después de pausar el panel y conserva sus borradores al restaurar el estado. La trazabilidad incorpora sesenta líneas omitidas del paquete y mantiene 357 entradas con pendientes. Sus pruebas de sesión y componente no cierran Android ni sustituyen la validación física o la APK final.
+
 La [continuación 125](125-live-participacion-y-recuperacion-2026-11-13.md) conecta encuestas y preguntas al servidor propio, protege su estado por visita de cuenta y corrige el envío simultáneo de suscripciones Android al reconectar. Pasaron 2 777 pruebas JVM y doce controles de emulador. La nueva participación necesita todavía su ensayo autenticado Android–web y las pruebas físicas de medios. No se publicó una APK de producción ni se cerraron los demás módulos.
 
 La [revisión 124](../../Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md) integra las correcciones de chats, contactos y archivos en ambas ramas estables, y prueba llamadas y la lógica compartida de juego con cuentas sintéticas. Android 9.1.40 supera 2 768 pruebas JVM. La [línea base](../quality/BASELINE_TESTS.md) y la [decisión de salida](../operations/PRODUCTION_READINESS.md) delimitan el alcance de la entrega local.

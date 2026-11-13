@@ -1,0 +1,186 @@
+{
+  "block": 127,
+  "localDate": "2026-11-13",
+  "timezone": "America/Bogota",
+  "recordedAtUtc": "2026-11-13T15:35:56.956001+00:00",
+  "base": {
+    "main": "f5999d3e",
+    "featureLiveGifts": "dcae01e4",
+    "tree": "78ca8ef638139cdf94aa5dfc4aae71cc5ad74b3c"
+  },
+  "scope": "Android participation lifecycle and saved form state; source traceability. Whole-project review remains open.",
+  "automated": {
+    "androidJvm": {
+      "suites": 524,
+      "tests": 2783,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "firstTimestampUtc": "2026-11-13T15:15:20.024Z",
+      "lastTimestampUtc": "2026-11-13T15:17:49.548Z"
+    },
+    "androidEmulator": {
+      "api": 35,
+      "tests": 5,
+      "failures": 0,
+      "method": "Compose component tests, including StateRestorationTester; not real process death or authenticated Android-web integration."
+    },
+    "lint": {
+      "engine": "K1",
+      "errors": 0,
+      "fatal": 0,
+      "warnings": 342,
+      "informational": 0
+    },
+    "toolingPython": {
+      "tests": 80,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "newTraceabilityTests": 8,
+      "dependency": "PyYAML 6.0.3 in an isolated lab venv"
+    },
+    "startupClasses": {
+      "expected": 4,
+      "verified": 4
+    },
+    "workflowYaml": "Parsed both modified workflows; local source check passed. Remote CI execution is not claimed."
+  },
+  "regressions": {
+    "jvmBefore": {
+      "tests": 8,
+      "failures": 4
+    },
+    "jvmFocusedAfter": {
+      "tests": 10,
+      "failures": 0
+    },
+    "emulatorBefore": {
+      "tests": 5,
+      "failures": 3
+    },
+    "emulatorAfter": {
+      "tests": 5,
+      "failures": 0
+    },
+    "traceabilityBefore": {
+      "entries": 297,
+      "unregisteredContentLines": 60
+    },
+    "traceabilityAfter": {
+      "entries": 357,
+      "unregisteredContentLines": 0,
+      "errors": 0
+    },
+    "additionalJvmCoverage": [
+      "resume waits for old subscription cleanup",
+      "ignored creation preserves unconfirmed nonce"
+    ]
+  },
+  "artifacts": {
+    "androidDebug": {
+      "file": "app/build/outputs/apk/debug/app-debug.apk",
+      "bytes": 272302342,
+      "sha256": "fcedf335beb3a5a1539ce1fe3b024862acde0ba90a5d02ada6443a920117d881",
+      "versionName": "9.1.40-debug",
+      "versionCode": 180,
+      "signature": "Android Debug, APK v2 verified",
+      "installed": "emulator-5590",
+      "productionRelease": false
+    },
+    "instrumentation": {
+      "file": "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      "bytes": 3054935,
+      "sha256": "a2660f9df02118b4600db06b0bc3233b2f36ef48d85d06abcb91b3b0feb4d297"
+    }
+  },
+  "sourceInputs": [
+    {
+      "file": "app/src/main/java/conectate/com/presentation/live/LiveAudienceViewModel.kt",
+      "bytes": 10762,
+      "sha256": "be257e42581dfcf40cd38a99e5e62964bdb29f3b257023754ed11fcda390381c",
+      "gitBlobId": "65b31e71f406430df5b7fe0290389e57b9609da2"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/live/LiveAudienceDialog.kt",
+      "bytes": 12452,
+      "sha256": "3d718a1dd74922399f449158062dad799e27ded97fa8c8894b1b180a614c1d9c",
+      "gitBlobId": "503fd26e01a3b37b43253027691fac0a7f6cd8ab"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/live/LiveAudienceSessionTest.kt",
+      "bytes": 11997,
+      "sha256": "523e3c58346c10030c3e0faae441a32103cd282c6600850395896d1eb7dbf076",
+      "gitBlobId": "625f47728c305859399e83f67079df5e61ab4ac7"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/live/LiveAudienceInteractionDeviceTest.kt",
+      "bytes": 6538,
+      "sha256": "256c0450ffd749f7e9af49bfaf41a01f8e9413bfb839b20dce86a1cda0601cea",
+      "gitBlobId": "0f138be1c9a99700263285d633963f7fe811836f"
+    }
+  ],
+  "sourceRegistration": [
+    {
+      "document": "Novvin_Auditoria_Ecosistema/README.md",
+      "contentLines": 13,
+      "registeredLines": 13
+    },
+    {
+      "document": "Novvin_Auditoria_Ecosistema/PROMPT_MAESTRO_NOVVIN.md",
+      "contentLines": 190,
+      "registeredLines": 190
+    },
+    {
+      "document": "Novvin_Auditoria_Ecosistema/PROMPT_MAESTRO_NOVVIN.docx",
+      "kind": "binary_fingerprint_only"
+    },
+    {
+      "document": "Novvin_Auditoria_Ecosistema/INVESTIGACION_MERCADO_BENCHMARK.md",
+      "contentLines": 62,
+      "registeredLines": 62
+    },
+    {
+      "document": "Novvin_Auditoria_Ecosistema/PRD_NOVVIN_LIVE_LIVE_PLAY.md",
+      "contentLines": 22,
+      "registeredLines": 22
+    },
+    {
+      "document": "Novvin_Auditoria_Ecosistema/MATRIZ_ACEPTACION_QA.md",
+      "contentLines": 30,
+      "registeredLines": 30
+    },
+    {
+      "document": "Novvin_Auditoria_Ecosistema/FUENTES_Y_REFERENCIAS.md",
+      "contentLines": 31,
+      "registeredLines": 31
+    }
+  ],
+  "repetition": {
+    "android": "JDK 21: GradleWrapperMain :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug \"-Pandroid.lint.useK2Uast=false\" --offline --console=plain --max-workers=2",
+    "emulator": "adb -s emulator-5590 shell am instrument -w -r -e class conectate.com.presentation.live.LiveAudienceInteractionDeviceTest conectate.com.test/androidx.test.runner.AndroidJUnitRunner",
+    "tooling": "python -m unittest discover -s tools/tests -p test_*.py; python tools/audit/check_requirement_traceability.py",
+    "stableTreeCheck": "git rev-parse 'main^{tree}' 'feature/live-gifts^{tree}'; git ls-remote --heads origin main feature/live-gifts"
+  },
+  "environmentPreparation": [
+    "PyYAML installed in the lab venv, not the system interpreter",
+    "Git Bash resolved explicitly so Windows does not execute the System32 WSL shim",
+    "PowerShell Lint property quoted before the successful complete run"
+  ],
+  "deployment": {
+    "ubuntuModified": false,
+    "productionDataUsed": false,
+    "paidServices": false,
+    "productionApkDelivered": false
+  },
+  "remaining": [
+    "mobile file and flow review",
+    "account lifetime of invitations, channel points and drawing game",
+    "participation pagination and cross-form confirmation recovery",
+    "authenticated Android-web flows",
+    "SFU/TURN and media revocation on physical independent networks",
+    "external R2 and background push",
+    "provider reconciliation and recovery",
+    "final signed APK and release acceptance"
+  ]
+}

@@ -110,6 +110,9 @@ jobs:
       - name: Test release tooling
         run: python -m unittest discover -s tools/tests -p 'test_*.py'
 
+      - name: Check requirement source traceability
+        run: python tools/audit/check_requirement_traceability.py
+
       - name: Build signed production bundle
         env:
           NOVVIN_BUILD_COMMIT: ${{ github.sha }}

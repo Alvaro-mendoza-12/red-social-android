@@ -1,5 +1,6 @@
 import subprocess
 import re
+import shutil
 import unittest
 from pathlib import Path
 
@@ -7,12 +8,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts" / "audit-mini-pc-health.sh"
 SCRIPT_ARGUMENT = "scripts/audit-mini-pc-health.sh"
+# On Windows, CreateProcess can prefer the System32 WSL shim over PATH.
+# Resolve the selected shell before launching it; Linux uses its usual bash.
+BASH = shutil.which("bash") or "bash"
 
 
 class MiniPcHealthAuditTest(unittest.TestCase):
     def test_shell_syntax(self) -> None:
         completed = subprocess.run(
-            ["bash", "-n", SCRIPT_ARGUMENT],
+            [BASH, "-n", SCRIPT_ARGUMENT],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -22,7 +26,7 @@ class MiniPcHealthAuditTest(unittest.TestCase):
 
     def test_threshold_self_test(self) -> None:
         completed = subprocess.run(
-            ["bash", SCRIPT_ARGUMENT, "--self-test"],
+            [BASH, SCRIPT_ARGUMENT, "--self-test"],
             cwd=ROOT,
             capture_output=True,
             text=True,
