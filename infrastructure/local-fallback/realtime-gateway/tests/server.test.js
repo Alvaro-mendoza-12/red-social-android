@@ -31,6 +31,9 @@ const {
 } = require('../src/server')
 
 assert.equal(subscriptionAuthorizationUrl('chat:chat-1'), '/v1/data/messages/chats/chat-1')
+assert.equal(subscriptionAuthorizationUrl('chat:room:group:group-1'), '/v1/data/messages/markers/group/group-1/access')
+assert.equal(subscriptionAuthorizationUrl('chat:room:community:community-1'), '/v1/data/messages/markers/community/community-1/access')
+assert.equal(subscriptionAuthorizationUrl('live-game:live-1'), '/v1/data/live/live-1/games/draw-guess/access')
 assert.equal(subscriptionAuthorizationUrl('message-markers:chat:chat-1'), '/v1/data/messages/markers/chat/chat-1/access')
 assert.equal(subscriptionAuthorizationUrl('message-markers:group:group-1'), '/v1/data/messages/markers/group/group-1/access')
 assert.equal(subscriptionAuthorizationUrl('random-chat:session-1'), '/v1/data/proximity/random/sessions/session-1')

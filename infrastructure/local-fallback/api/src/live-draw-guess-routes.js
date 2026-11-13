@@ -1339,10 +1339,12 @@ function registerLiveDrawGuessRoutes(app, {
 async function reconcileExpiredLiveDrawGuessGames({ pool, publishEvent = publishRealtimeEvent, limit = 25 }) {
   if (!drawGuessEnabled()) return { processed: 0, advanced: 0, disabled: true }
   const due = await pool.query(
-    `SELECT DISTINCT g.id::text, g.live_id::text
+    `SELECT g.id::text, g.live_id::text
      FROM fallback_live_draw_games g
-     JOIN fallback_live_draw_rounds r ON r.game_id = g.id AND r.status = 'active'
-     WHERE g.status = 'active' AND r.ends_at <= NOW()
+     WHERE g.status = 'active' AND EXISTS (
+       SELECT 1 FROM fallback_live_draw_rounds r
+       WHERE r.game_id = g.id AND r.status = 'active' AND r.ends_at <= NOW()
+     )
      ORDER BY g.id
      LIMIT $1`,
     [intBetween(limit, 1, 100, 25)],

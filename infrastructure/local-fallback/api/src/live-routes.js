@@ -472,10 +472,8 @@ function ownsStream(stream, identity) {
   return identity.ids.has(normalizeId(stream?.host_user_id))
 }
 
-async function canViewStream(pool, stream, identity) {
-  if (!stream) return false
-  if (ownsStream(stream, identity)) return true
-  if (await isLiveBanned(pool, stream.id, identity)) return false
+async function restrictedLiveParticipant(pool, stream, identity) {
+  if (await isLiveBanned(pool, stream.id, identity)) return true
   const { rowCount: blocked } = await pool.query(
     `SELECT 1 FROM fallback_user_blocks
      WHERE (lower(blocker_id) = lower($1) AND lower(blocked_id) = ANY($2::text[]))
@@ -483,7 +481,13 @@ async function canViewStream(pool, stream, identity) {
      LIMIT 1`,
     [String(stream.host_user_id || ''), identity.values],
   )
-  if (blocked > 0) return false
+  return blocked > 0
+}
+
+async function canViewStream(pool, stream, identity) {
+  if (!stream) return false
+  if (ownsStream(stream, identity)) return true
+  if (await restrictedLiveParticipant(pool, stream, identity)) return false
   const visibility = normalizeId(stream.visibility || 'public')
   if (visibility === 'public') return true
   if (visibility !== 'followers') return false
@@ -791,6 +795,24 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
     }
   })
 
+  app.get('/v1/data/live/:liveId/games/draw-guess/access', authRequired, async (req, res, next) => {
+    try {
+      const user = await getCurrentUser(pool, req)
+      const id = validUuid(req.params.liveId)
+      if (!user || !id || !drawGuessEnabled()) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const stream = await streamById(pool, id)
+      if (!stream?.is_active) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+      const identity = userIdentity(user)
+      if (!ownsStream(stream, identity)) {
+        if (await restrictedLiveParticipant(pool, stream, identity)) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
+        const invitation = await invitationForUser(pool, id, identity.displayUserId)
+        if (invitation?.status !== 'accepted') return res.status(403).json({ error: 'LIVE_GUEST_INVITATION_REQUIRED' })
+      }
+      res.setHeader('Cache-Control', 'private, no-store')
+      res.json({ allowed: true })
+    } catch (error) { next(error) }
+  })
+
   app.post('/v1/data/live/:liveId/sfu-token', authRequired, async (req, res, next) => {
     try {
       if (!requireLiveCollaborationFeature(res)) return
@@ -818,7 +840,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
       }
       if (requestedRole === 'guest') {
-        if (await isLiveBanned(pool, liveId, identity)) {
+        if (await restrictedLiveParticipant(pool, stream, identity)) {
           return res.status(403).json({ error: 'LIVE_BANNED' })
         }
         const invitation = await invitationForUser(pool, liveId, identity.displayUserId)
@@ -961,6 +983,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       const identity = userIdentity(user)
       if (!ownsStream(stream, identity)) return res.status(403).json({ error: 'LIVE_HOST_REQUIRED' })
       const inviteeUserId = cleanText(req.body?.inviteeUserId || req.body?.invitee_user_id, 160).toLowerCase()
+      if (stream.ended_at && !stream.is_active) return res.status(409).json({ error: 'LIVE_NOT_ACTIVE' })
       const requestNonce = cleanText(req.body?.requestNonce || req.body?.request_nonce, 128) || crypto.randomUUID()
       if (!inviteeUserId || identity.ids.has(inviteeUserId)) {
         return res.status(400).json({ error: 'LIVE_INVITATION_TARGET_INVALID' })
@@ -976,8 +999,10 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         [liveId, identity.displayUserId, inviteeUserId, requestNonce, INVITATION_TTL_MINUTES],
       )
       const invitation = rows[0] || await invitationByNonce(pool, liveId, requestNonce)
-      if (!invitation) return res.status(409).json({ error: 'LIVE_INVITATION_CONFLICT' })
-      await publishLiveCollaborationEvent(liveId, {
+      if (!invitation || invitation.initiated_by !== 'host' || normalizeId(invitation.invitee_user_id) !== inviteeUserId) {
+        return res.status(409).json({ error: 'LIVE_INVITATION_CONFLICT' })
+      }
+      if (rows.length) await publishLiveCollaborationEvent(liveId, {
         type: 'guest_invitation_created',
         invitation,
       })
@@ -999,6 +1024,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       if (!stream || !stream.is_active) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
       const identity = userIdentity(user)
       if (ownsStream(stream, identity)) return res.status(409).json({ error: 'LIVE_HOST_CANNOT_REQUEST_GUEST' })
+      if (!(await canViewStream(pool, stream, identity))) return res.status(404).json({ error: 'LIVE_NOT_FOUND' })
       if (!stream.allow_guest_requests) return res.status(403).json({ error: 'LIVE_GUEST_REQUESTS_DISABLED' })
       const requestNonce = cleanText(req.body?.requestNonce || req.body?.request_nonce, 128) || crypto.randomUUID()
       const { rows } = await pool.query(
@@ -1012,8 +1038,10 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         [liveId, stream.host_user_id, identity.displayUserId, requestNonce, INVITATION_TTL_MINUTES],
       )
       const invitation = rows[0] || await invitationByNonce(pool, liveId, requestNonce)
-      if (!invitation) return res.status(409).json({ error: 'LIVE_GUEST_REQUEST_CONFLICT' })
-      await publishLiveCollaborationEvent(liveId, { type: 'guest_request_created', invitation })
+      if (!invitation || invitation.initiated_by !== 'viewer' || !identity.ids.has(normalizeId(invitation.invitee_user_id))) {
+        return res.status(409).json({ error: 'LIVE_GUEST_REQUEST_CONFLICT' })
+      }
+      if (rows.length) await publishLiveCollaborationEvent(liveId, { type: 'guest_request_created', invitation })
       res.status(rows[0] ? 201 : 200).json({ invitation })
     } catch (error) {
       if (error?.code === '23505') return res.status(409).json({ error: 'LIVE_INVITATION_ALREADY_PENDING' })
@@ -1080,7 +1108,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
       }
       const existing = await invitationById(client, liveId, invitationId)
       if (!existing) return fail(404, 'LIVE_INVITATION_NOT_FOUND')
-      const stream = await streamById(client, liveId)
+      const stream = await streamById(client, liveId, { forUpdate: true })
       if (!stream) return fail(404, 'LIVE_NOT_FOUND')
       const viewerInitiated = existing.initiated_by === 'viewer'
       const canRespond = viewerInitiated
@@ -1088,6 +1116,15 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         : identity.ids.has(normalizeId(existing.invitee_user_id))
       if (!canRespond) {
         return fail(403, viewerInitiated ? 'LIVE_HOST_REQUIRED' : 'LIVE_INVITEE_REQUIRED')
+      }
+      if (stream.ended_at && !stream.is_active) return fail(409, 'LIVE_NOT_ACTIVE')
+      if (action === 'accepted') {
+        const guest = viewerInitiated ? { values: [normalizeId(existing.invitee_user_id)] } : identity
+        if (await restrictedLiveParticipant(client, stream, guest)) return fail(403, 'LIVE_BANNED')
+      }
+      if (existing.status === action) {
+        await client.query('COMMIT')
+        return res.json({ invitation: existing })
       }
       if (existing.status !== 'pending' || new Date(existing.expires_at).getTime() <= Date.now()) {
         return fail(409, 'LIVE_INVITATION_NOT_PENDING')

@@ -91,6 +91,8 @@ function subscriptionAuthorizationUrl(channel) {
   const mappings = [
     ['profile-counts:', (id) => `/v1/data/profiles/${encodeURIComponent(id)}`],
     ['profile-music:', (id) => `/v1/data/profiles/${encodeURIComponent(id)}/music/reactions`],
+    ['chat:room:group:', (id) => `/v1/data/messages/markers/group/${encodeURIComponent(id)}/access`],
+    ['chat:room:community:', (id) => `/v1/data/messages/markers/community/${encodeURIComponent(id)}/access`],
     ['chat:', (id) => `/v1/data/messages/chats/${encodeURIComponent(id)}`],
     ['random-chat:', (id) => `/v1/data/proximity/random/sessions/${encodeURIComponent(id)}`],
     ['typing-chat:', (id) => `/v1/data/messages/chats/${encodeURIComponent(id)}`],
@@ -105,6 +107,7 @@ function subscriptionAuthorizationUrl(channel) {
     ['video-comments:', (id) => `/v1/data/videos/${encodeURIComponent(id)}`],
     ['live-comments:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
     ['live-collaboration:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
+    ['live-game:', (id) => `/v1/data/live/${encodeURIComponent(id)}/games/draw-guess/access`],
     ['live-moderation:', (id) => `/v1/data/live/${encodeURIComponent(id)}`],
   ]
   for (const [prefix, resolvePath] of mappings) {
@@ -250,12 +253,12 @@ wss.on('connection', (ws, req) => {
       const channel = String(msg.channel || '').trim()
       if (!channel || channel.length > 256) return send(ws, { type: 'error', error: 'INVALID_CHANNEL' })
       if (ws._pendingSubscriptions >= 4 || (!ws._rooms.has(channel) && ws._rooms.size + ws._pendingSubscriptions >= MAX_SUBSCRIPTIONS)) {
-        return send(ws, { type: 'error', error: 'SUBSCRIPTION_LIMIT' })
+        return send(ws, { type: 'error', error: 'SUBSCRIPTION_LIMIT', channel })
       }
       ws._pendingSubscriptions++
       try {
         if (!(await maySubscribeToChannel(ws._token, allowedUserIds, channel))) {
-          return send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL' })
+          return send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL', channel })
         }
         if (ws.readyState !== WebSocket.OPEN || Date.now() >= ws._validatedUntil) return
         ws._rooms.add(channel)
