@@ -56,6 +56,7 @@ export function SocialPage() {
         {activeTab === 'posts' ? (
           <FeedPage
             composerOpen={searchParams.get('compose') === '1'}
+            onOpenComposer={() => setSearchParams({ tab: 'posts', compose: '1' })}
             promotionsOpen={searchParams.get('advertising') === '1'}
             onClosePromotions={() => setSearchParams({ tab: 'posts' }, { replace: true })}
             onCloseComposer={closeComposer}

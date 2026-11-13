@@ -211,41 +211,106 @@
   width: 11px;
   height: 11px;
 }
+.rail-brand, .rail-shortcuts, .rail-explore { display: none; }
+.novvin-nav-item:focus-visible, .rail-link:focus-visible, .rail-brand:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -3px;
+}
+.mobile-explore-head > button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+}
 @media (min-width: 1100px) {
-  .novvin-app:not(.route-conversation) {
-    padding-left: 84px;
+  .novvin-app {
+    --rail-width: clamp(174px, 15vw, 218px);
+    padding-left: var(--rail-width);
+    padding-bottom: 0;
   }
   .novvin-bottom-nav {
     top: var(--novvin-system-notice-height, 0px);
     right: auto;
-    width: 84px;
-    height: calc(100dvh - var(--novvin-system-notice-height, 0px));
+    width: var(--rail-width);
+    height: auto;
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
-    gap: 18px;
-    padding: 90px 6px 20px;
+    gap: 3px;
+    padding: 16px 10px;
     border-top: 0;
     border-right: 1px solid var(--divider);
+    overflow-y: auto;
   }
-  .novvin-nav-item {
-    min-height: 58px;
+  .rail-brand {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 9px;
+    padding: 0 10px;
+    margin: 0 0 15px;
+    min-height: 46px;
+    font-size: 1.38rem;
+    font-weight: 750;
+    letter-spacing: -.065em;
   }
-  .novvin-bottom-nav:before {
-    content: '';
-    position: absolute;
-    left: 23px;
-    top: 23px;
-    width: 38px;
-    height: 38px;
-    background: #fff url('/novvin-logo.png') center/contain no-repeat;
+  .rail-brand img { border-radius: 11px; }
+  .novvin-nav-item, .rail-link {
+    display: flex;
+    flex-direction: row;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 8px 12px;
+    min-height: 45px;
+    border: 0;
     border-radius: 12px;
+    background: transparent;
+    color: var(--secondary-text);
+    font: inherit;
+    font-size: .92rem;
+    font-weight: 550;
+    text-align: left;
   }
-  .route-conversation .novvin-bottom-nav {
-    width: 84px;
+  .novvin-nav-item:hover, .rail-link:hover {
+    background: var(--surface-raised);
+    color: var(--foreground);
   }
-  .route-conversation {
-    padding-left: 84px;
+  .novvin-nav-item.active, .rail-link.active {
+    background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+    color: var(--primary);
+    box-shadow: inset 3px 0 var(--primary);
+  }
+  .novvin-nav-pill, .novvin-nav-item.active .novvin-nav-pill {
+    width: 26px;
+    height: 30px;
+    flex-shrink: 0;
+    background: transparent;
+    color: inherit;
+  }
+  .rail-shortcuts {
+    display: grid;
+    gap: 2px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--divider);
+  }
+  .rail-link > svg { width: 26px; height: 21px; }
+  .rail-explore { margin-top: auto; }
+  .rail-count {
+    border-radius: 10px;
+    padding: 1px 5px;
+    background: var(--primary);
+    color: var(--on-primary);
+    font-size: .72rem;
+  }
+  .novvin-nav-pill .nav-badge { right: -6px; top: -3px; }
+  .novvin-nav-pill .nav-dot { right: 0; }
+  .novvin-topbar {
+    max-width: none;
+    border-bottom: 1px solid var(--divider);
+    padding-inline: clamp(20px, 3vw, 48px);
   }
 }
 @media (max-width: 1099px) {

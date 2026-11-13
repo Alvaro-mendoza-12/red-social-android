@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { QrCodeTile } from '../../components/QrCodeTile'
 import { ProfileCoverEffect } from '../../components/ProfileCoverEffect'
 import { ProfileAppearanceControls } from '../../components/ProfileAppearanceControls'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
 import { useWebPreferences } from '../../core/webPreferences'
@@ -160,7 +160,9 @@ export function AccountSettingsPage() {
 
 function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof useAuth>, 'user' | 'isFallbackSession'>) {
   const location = useLocation()
-  const [activeSection, setActiveSection] = useState('perfil')
+  const navigate = useNavigate()
+  const sections = ['perfil', 'privacidad', 'seguridad', 'acceso-qr', 'preferencias-web'] as const
+  const activeSection = sections.find(section => location.hash === `#${section}-ajustes`) ?? 'perfil'
   const mounted = useRef(false)
   useEffect(() => {
     mounted.current = true
@@ -342,7 +344,7 @@ function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof
   }, [loadSettings])
 
   useEffect(() => {
-    if (!loading && location.hash === '#personalizar-perfil') document.getElementById('personalizar-perfil')?.scrollIntoView?.({ block: 'start' })
+    if (!loading && location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView?.({ block: 'start' })
   }, [loading, location.hash])
 
   async function saveProfileBasics() {
@@ -625,7 +627,7 @@ function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof
   return (
     <section className="section-stack settings-page-shell" data-section={activeSection}>
       <nav className="settings-section-nav" aria-label="Apartados de ajustes">
-        {(['perfil', 'privacidad', 'seguridad', 'acceso-qr', 'preferencias-web'] as const).map((id, index) => <button type="button" key={id} aria-pressed={activeSection === id} onClick={() => setActiveSection(id)}>{['Perfil', 'Privacidad', 'Seguridad', 'Acceso y QR', 'Apariencia'][index]}</button>)}
+        {sections.map((id, index) => <button type="button" key={id} aria-pressed={activeSection === id} onClick={() => navigate({ pathname: location.pathname, search: location.search, hash: `#${id}-ajustes` }, { replace: true })}>{['Perfil', 'Privacidad', 'Seguridad', 'Acceso y QR', 'Apariencia'][index]}</button>)}
       </nav>
       {error ? (
         <p className="error-text" role="alert">

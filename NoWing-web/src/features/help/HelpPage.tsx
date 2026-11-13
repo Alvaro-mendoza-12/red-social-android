@@ -14,6 +14,6 @@ export function HelpPage() {
   return <section className="help-page">
     <div className="surface-card help-intro"><h2>¿En qué necesitas ayuda?</h2><p>Elige un tema para ver una respuesta y entrar directamente a la función.</p></div>
     <div className="help-list">{topics.map((topic) => <details key={topic.title} className="surface-card help-topic"><summary>{topic.title}</summary><p>{topic.answer}</p><Link className="ghost-btn" to={topic.path}>{topic.action}</Link></details>)}</div>
-    <div className="surface-card help-intro"><h3>¿La app muestra un error?</h3><p>Revisa tu conexión y vuelve a intentar la acción. Si persiste, anota qué estabas haciendo y conserva el mensaje de error para soporte.</p></div>
+    <div className="surface-card help-intro"><h3>Contacto directo</h3><p>Si algo falla, cuéntanos qué estabas haciendo y qué mensaje apareció.</p><a className="ghost-btn" href="mailto:administracion@novvinapp.com">administracion@novvinapp.com</a></div>
   </section>
 }

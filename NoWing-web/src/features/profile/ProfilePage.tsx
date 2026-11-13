@@ -351,7 +351,7 @@ export function ProfilePage() {
           </div>
         ) : null}
         <div className="mobile-profile-actions">
-          <Link className="ghost-btn" to="/app/settings">
+          <Link className="ghost-btn" to="/app/settings#perfil-ajustes">
             <Edit3 />
             Editar
           </Link>

@@ -8,7 +8,6 @@ export function PublicHome() {
       <main id="contenido">
         <section className="public-home-hero">
           <div>
-            <p className="public-home-eyebrow">TU GENTE. TU MUNDO.</p>
             <h1>
               Novvin. Conversa,
               <br />
@@ -31,16 +30,18 @@ export function PublicHome() {
             </a>
             <a className="public-home-download" href="/descargar">También disponible para Android →</a>
           </div>
-          <div className="public-home-visual" aria-hidden="true">
-            <img src="/novvin-logo.png" alt="" width="220" height="220" />
-            <span>Mensajes · Videos · Social</span>
-          </div>
+          <figure className="public-home-preview">
+            <picture>
+              <source srcSet="/images/novvin-chat-web-demo.webp" type="image/webp" />
+              <img src="/images/novvin-chat-web-demo.png" alt="Conversación de ejemplo en Novvin Web" width="1440" height="900" fetchPriority="high" />
+            </picture>
+            <figcaption><a href="/mensajes">Ver cómo funcionan los mensajes <span aria-hidden="true">→</span></a></figcaption>
+          </figure>
         </section>
         <section className="public-home-features" aria-label="Qué puedes hacer en Novvin">
           <article>
             <picture><source srcSet="/images/novvin-chats.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-chats.png" alt="Vista ilustrativa de los chats de Novvin con mensajes y fotos de ejemplo" width="1200" height="800" loading="lazy" decoding="async" /></picture>
-            <span>01</span>
-            <h2>La conversación sigue.</h2>
+            <h2>Mensajes</h2>
             <p>
               Mensajes privados, grupos y comunidades para compartir texto, fotos, archivos y notas
               de voz con tu gente.
@@ -49,15 +50,13 @@ export function PublicHome() {
           </article>
           <article>
             <picture><source srcSet="/images/novvin-videos.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-videos.png" alt="Vista ilustrativa de la sección de videos de Novvin" width="1200" height="800" loading="lazy" decoding="async" /></picture>
-            <span>02</span>
-            <h2>Algo nuevo por descubrir.</h2>
+            <h2>Videos y publicaciones</h2>
             <p>Explora videos y publicaciones, sigue a tus creadores y comparte lo que te gusta.</p>
             <a href="/explore/posts">Descubrir Social →</a>
           </article>
           <article>
             <picture><source srcSet="/images/novvin-momentos.webp" type="image/webp" /><img className="public-feature-preview" src="/images/novvin-momentos.png" alt="Vista ilustrativa de fotos y videos en Momentos de Novvin" width="1200" height="800" loading="lazy" decoding="async" /></picture>
-            <span>03</span>
-            <h2>Momentos que conectan.</h2>
+            <h2>Momentos</h2>
             <p>
               Comparte una foto o un video con música, muestra tu personalidad y encuentra a tu
               comunidad.

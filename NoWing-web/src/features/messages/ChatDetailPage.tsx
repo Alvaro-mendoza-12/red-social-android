@@ -1,3 +1,4 @@
+import { ArrowLeft, Check, Files, LoaderCircle, Mic, MoreVertical, Paperclip, Phone, Search, Send, Square, Sticker, Video, X } from 'lucide-react'
 import { animatedImageFile } from '../../core/imageEditPolicy'
 import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
 import { MessageTimestamp } from '../../components/MessageTimestamp'
@@ -138,6 +139,11 @@ type ChatSettings = {
   isFavorite: boolean
   translateEnabled: boolean
   targetLang: string
+}
+
+const initialChatSettings: ChatSettings = {
+  isMuted: false, isPinned: false, isArchived: false, isFavorite: false,
+  translateEnabled: false, targetLang: 'es',
 }
 
 const CONVERSATION_PAGE_SIZE = 80
@@ -508,14 +514,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   const [nicknameDraft, setNicknameDraft] = useState('')
   const [savingNickname, setSavingNickname] = useState(false)
   const otherParticipantRef = useRef<OtherParticipantState | null>(notificationParticipant)
-  const [settings, setSettings] = useState<ChatSettings>({
-    isMuted: false,
-    isPinned: false,
-    isArchived: false,
-    isFavorite: false,
-    translateEnabled: false,
-    targetLang: 'es',
-  })
+  const [settings, setSettings] = useState<ChatSettings>(initialChatSettings)
   const [savingSettings, setSavingSettings] = useState(false)
   const [showScrollToBottom, setShowScrollToBottom] = useState(false)
   const threadRef = useRef<HTMLElement | null>(null)
@@ -1185,7 +1184,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           ? mergeLatestMessagePage(current, mappedMessages, Boolean(response.historyPage?.hasMore), idsAtRequestStart)
               .filter(message => ['pending', 'failed'].includes(message.status) || fallbackHistoryAllows(response, message.createdAt))
           : mergeMessageSnapshot(current, mappedMessages))
-        setSettings(response.settings)
+        setSettings({ ...initialChatSettings, ...response.settings })
         setScheduledJobs([])
         await loadPollStates(mappedMessages)
         setConsumedViewOnce({})
@@ -2279,8 +2278,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       <div className="chat-header-row row-between shadow-sm">
         <div className="row-actions">
           {!embedded ? (
-            <Link to="/app/messages" className="icon-btn-sm" title="Volver">
-              ←
+            <Link to="/app/messages" className="icon-btn-sm" title="Volver" aria-label="Volver a Mensajes">
+              <ArrowLeft size={20} aria-hidden="true" />
             </Link>
           ) : null}
           {otherParticipant ? (
@@ -2301,27 +2300,23 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
               <Link
                 className="icon-btn header-icon-btn"
                 to={`/app/calls?contextId=${encodeURIComponent(cleanChatId)}&target=${encodeURIComponent(otherParticipant.id)}&kind=audio&name=${encodeURIComponent(otherParticipant.name)}`}
-                title="Llamada de voz"
+                title="Llamada de voz" aria-label="Llamada de voz"
               >
-                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                  <path d="M6.62 10.79c1.44 2.82 3.77 5.15 6.59 6.59l2.2-2.2a1 1 0 0 1 1.02-.24c1.12.37 2.33.57 3.57.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.61 21 3 13.39 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.24.2 2.45.57 3.57a1 1 0 0 1-.25 1.02l-2.2 2.2z" fill="currentColor" />
-                </svg>
+                <Phone size={20} aria-hidden="true" />
               </Link>
               <Link
                 className="icon-btn header-icon-btn"
                 to={`/app/calls?contextId=${encodeURIComponent(cleanChatId)}&target=${encodeURIComponent(otherParticipant.id)}&kind=video&name=${encodeURIComponent(otherParticipant.name)}`}
-                title="Videollamada"
+                title="Videollamada" aria-label="Videollamada"
               >
-                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                  <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h7A2.5 2.5 0 0 1 16 6.5v1.9l3.55-2.13A1 1 0 0 1 21 7.13v9.74a1 1 0 0 1-1.45.9L16 15.6v1.9a2.5 2.5 0 0 1-2.5 2.5h-7A2.5 2.5 0 0 1 4 17.5v-11z" fill="currentColor" />
-                </svg>
+                <Video size={20} aria-hidden="true" />
               </Link>
             </>
           ) : null}
           <button
             className={showMessageSearch ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
             type="button"
-            title="Buscar"
+            title="Buscar en la conversación" aria-label="Buscar en la conversación" aria-expanded={showMessageSearch}
             onClick={() => {
               setShowMessageSearch((current) => !current)
               if (showMessageSearch) {
@@ -2331,7 +2326,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
               }
             }}
           >
-            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor" /></svg>
+            <Search size={20} aria-hidden="true" />
           </button>
           <button
             className={showQuickShare ? 'icon-btn header-icon-btn active' : 'icon-btn header-icon-btn'}
@@ -2339,11 +2334,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             title="Menú" aria-label="Opciones del chat" aria-haspopup="menu" aria-expanded={showQuickShare} aria-controls="chat-options-menu"
             onClick={() => setShowQuickShare((c) => !c)}
           >
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <circle cx="12" cy="5" r="1.8" fill="currentColor" />
-              <circle cx="12" cy="12" r="1.8" fill="currentColor" />
-              <circle cx="12" cy="19" r="1.8" fill="currentColor" />
-            </svg>
+            <MoreVertical size={20} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -2353,6 +2344,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           <input
             ref={messageSearchInputRef}
             className="text-input chat-search-input"
+            aria-label="Buscar en este chat"
             placeholder="Buscar en este chat..."
             value={messageSearchQuery}
             onChange={(event) => setMessageSearchQuery(event.target.value)}
@@ -2382,7 +2374,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       {nicknameDialogOpen && otherParticipant ? (
         <div className="chat-tools-overlay chat-advanced-options fade-in" role="dialog" aria-modal="true" aria-label="Apodo privado" onKeyDown={event => { if (event.key === 'Escape') setNicknameDialogOpen(false) }}>
           <article className="surface-card section-stack shadow-lg">
-            <div className="row-between"><h3>Apodo privado</h3><button type="button" className="icon-btn-sm" aria-label="Cerrar apodo privado" onClick={() => setNicknameDialogOpen(false)}>✕</button></div>
+            <div className="row-between"><h3>Apodo privado</h3><button type="button" className="icon-btn-sm" aria-label="Cerrar apodo privado" onClick={() => setNicknameDialogOpen(false)}><X size={18} aria-hidden="true" /></button></div>
             <p className="muted-line">Solo tú verás este apodo. Déjalo vacío para volver al nombre del perfil.</p>
             <input autoFocus className="text-input" maxLength={120} value={nicknameDraft} onChange={event => setNicknameDraft(event.target.value)} placeholder={otherParticipant.publicName || otherParticipant.name} aria-label="Apodo" />
             <div className="row-actions"><button type="button" className="ghost-btn" disabled={savingNickname} onClick={() => setNicknameDialogOpen(false)}>Cancelar</button><button type="button" className="primary-btn" disabled={savingNickname} onClick={() => void saveChatNickname()}>{savingNickname ? 'Guardando…' : 'Guardar apodo'}</button></div>
@@ -2394,7 +2386,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           <article className="surface-card section-stack shadow-lg">
             <div className="row-between">
               <h3>Más opciones del chat</h3>
-              <button className="icon-btn-sm" aria-label="Cerrar más opciones" onClick={() => setShowAdvancedTools(false)}>✕</button>
+              <button className="icon-btn-sm" aria-label="Cerrar más opciones" onClick={() => setShowAdvancedTools(false)}><X size={18} aria-hidden="true" /></button>
             </div>
 
             <div className="grid-2-col">
@@ -2466,7 +2458,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       ) : null}
 
       {selectingMessages ? <div className="message-selection-toolbar" role="region" aria-label="Mensajes seleccionados">
-        <button type="button" className="icon-btn" aria-label="Cancelar selección" onClick={() => { setSelectingMessages(false); setSelectedMessageIds(new Set()) }}>✕</button>
+        <button type="button" className="icon-btn" aria-label="Cancelar selección" onClick={() => { setSelectingMessages(false); setSelectedMessageIds(new Set()) }}><X size={18} aria-hidden="true" /></button>
         <strong>{selectedMessageIds.size} seleccionados</strong>
         <button type="button" className="mini-action-btn" onClick={() => setSelectedMessageIds(new Set(renderedMessages.filter(item => !item.deletedForAll && !item.deletedBy.includes(user?.id ?? '')).map(item => item.id)))}>Seleccionar visibles</button>
         <button type="button" className="mini-action-btn" disabled={!selectedMessageIds.size} onClick={() => { void navigator.clipboard.writeText(messages.filter(item => selectedMessageIds.has(item.id)).map(item => item.content || item.mediaUrl).join('\n')).catch(() => setError('No se pudo copiar. Permite el acceso al portapapeles.')) }}>Copiar</button>
@@ -2722,15 +2714,15 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           className="icon-btn"
           type="button"
           onClick={() => setShowStickers((c) => !c)}
-          title="Stickers"
+          title="Stickers" aria-label="Stickers" aria-expanded={showStickers}
         >
-          <svg viewBox="0 0 24 24" width="24" height="24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" fill="currentColor" /></svg>
+          <Sticker size={22} aria-hidden="true" />
         </button>
 
-        <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar">＋</summary><div className="chat-attachment-popover">
+        <details className="chat-attachment-menu"><summary className="icon-btn" aria-label="Adjuntar" title="Adjuntar"><Paperclip size={21} aria-hidden="true" /></summary><div className="chat-attachment-popover">
         <label className="chat-attachment-option" role="button" tabIndex={0} aria-label="Adjuntar archivos" title="Adjuntar archivos"
           onKeyDown={event => { if(event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.currentTarget.querySelector<HTMLInputElement>('input')?.click() } }}>
-            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor" /></svg>
+            <Files size={20} aria-hidden="true" />
           <span>Fotos, videos y documentos</span><input
             type="file"
             multiple
@@ -2766,23 +2758,12 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           title={isRecordingAudio ? 'Detener grabación' : 'Grabar audio'}
           onClick={() => void toggleAudioRecording()}
         >
-          {isRecordingAudio ? (
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-              <rect x="7" y="7" width="10" height="10" rx="2.2" fill="currentColor" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-              <path d="M12 3a3 3 0 00-3 3v6a3 3 0 006 0V6a3 3 0 00-3-3zm5 9a1 1 0 112 0 7 7 0 01-6 6.93V21h3a1 1 0 110 2H8a1 1 0 110-2h3v-2.07A7 7 0 015 12a1 1 0 112 0 5 5 0 0010 0z" fill="currentColor" />
-            </svg>
-          )}
+          {isRecordingAudio ? <Square size={20} fill="currentColor" aria-hidden="true" /> : <Mic size={21} aria-hidden="true" />}
         </button>
 
         <button className="primary-btn circle-btn" type="submit" aria-label={editingMessageId ? 'Guardar corrección' : 'Enviar mensaje'} disabled={loading || sending || uploading || preparingAttachments}>
-          {sending || uploading ? (
-            '...'
-          ) : (
-            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor" /></svg>
-          )}
+          {sending || uploading ? <LoaderCircle size={20} aria-hidden="true" />
+            : editingMessageId ? <Check size={22} aria-hidden="true" /> : <Send size={21} aria-hidden="true" />}
         </button>
       </form>
       {viewOnceLease ? <ViewOnceMediaDialog lease={viewOnceLease} onClose={() => setViewOnceLease(null)} /> : null}

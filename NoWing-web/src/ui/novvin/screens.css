@@ -890,7 +890,7 @@
   font-size: 0.8rem;
   color: var(--secondary-text);
 }
-.feed-stats a:first-child {
+.feed-stats > span {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -916,6 +916,30 @@
 }
 .feed-card-actions .active-action {
   color: #63c4ef;
+}
+.social-share-status {
+  position: fixed;
+  z-index: 80;
+  inset-inline-end: 16px;
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 12px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100% - 32px);
+  padding: 6px 8px 6px 16px;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  background: var(--surface-raised);
+  color: var(--foreground);
+}
+.social-share-status button {
+  display: grid;
+  place-items: center;
+  min-width: 36px;
+  min-height: 36px;
+  background: transparent;
+  color: inherit;
+  border: 0;
 }
 .feed-composer-dialog {
   width: min(560px, 100%);

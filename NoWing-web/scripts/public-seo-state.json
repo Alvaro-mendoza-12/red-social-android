@@ -3,7 +3,7 @@
   "routes": {
     "/": {
       "file": "index.html",
-      "contentHash": "8aaa8540176da227c2f5d57aa58040bbfccdcffb20e0fe2c2b5a2feb2174f003",
+      "contentHash": "fbd999e685c06815ccd636b8d477a93921edbdfccd8b5d39737456af86e4b1ba",
       "lastmod": "2026-11-12"
     },
     "/privacidad": {
