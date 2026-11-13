@@ -327,7 +327,10 @@ export const publicIllustrations: Record<string, typeof productIllustrations> = 
   '/comunidades': [productIllustrations[2],productIllustrations[1]],
   '/videos': [productIllustrations[3]],
   '/social': [productIllustrations[4]],
-  '/momentos': [productIllustrations[5]],
+  '/momentos': [productIllustrations[5],
+    {src:'/images/novvin-momentos-fragmento-android.png',alt:'Selector de música de Novvin con un fragmento de seis segundos marcado',caption:'Elige el tramo de la canción que acompañará tu Momento. Captura de Android con música de prueba.',width:720,height:1612},
+    {src:'/images/novvin-momentos-letras-android.png',alt:'Editor de Momentos de Novvin con la letra de una canción sobre fondo turquesa',caption:'Vista previa de las letras antes de compartir un Momento en Android.',width:720,height:1612},
+  ],
   '/novvin-web': [demoCaptures[1],productIllustrations[2]],
   '/descargar': [demoCaptures[0],demoCaptures[2]],
 }
