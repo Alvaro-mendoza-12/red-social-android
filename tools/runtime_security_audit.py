@@ -39,6 +39,7 @@ EXPECTED_GITIGNORE_PATTERNS = {
 }
 
 SENSITIVE_PREFS = {
+    "content_safety_prefs.xml",  # Includes the local adult-content confirmation.
     "auth_cache.xml",
     "account_switch_secure_prefs.xml",
     "notification_repository_cache.xml",
@@ -51,9 +52,6 @@ SAFE_PREF_ALLOWLIST = {
     "theme_prefs.xml",
     "messages_preferences.xml",
     "app_prefs.xml",
-    # Contains only UX moderation choices (blur/show/warnings) and no account,
-    # token, profile, or server state. It is safe to restore across devices.
-    "content_safety_prefs.xml",
 }
 
 

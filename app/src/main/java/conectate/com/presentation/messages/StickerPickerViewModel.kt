@@ -212,13 +212,14 @@ class StickerPickerViewModel @Inject constructor(
         }
     }
 
-    fun createStickerFromImage(uri: Uri, preferredPackId: String?) {
+    fun createStickerFromImage(uri: Uri, preferredPackId: String?, title: String? = null, onCreated: (StickerItem) -> Unit = {}) {
         viewModelScope.launch {
             _isLoading.value = true
             val existingIds = stickerRepository.catalog.value.mapTo(mutableSetOf()) { it.id }
             val result = stickerRepository.createStickerFromImage(
                 imageUri = uri,
-                packId = preferredPackId
+                packId = preferredPackId,
+                title = title
             )
             _isLoading.value = false
             if (result.isSuccess) {
@@ -229,6 +230,7 @@ class StickerPickerViewModel @Inject constructor(
                 _actionMessage.value = if (result.getOrNull()?.id?.let { it in existingIds } == true) {
                     "Este sticker ya está guardado"
                 } else "Sticker creado"
+                result.getOrNull()?.let(onCreated)
             } else {
                 _actionMessage.value = result.exceptionOrNull()?.message ?: "No se pudo crear sticker"
             }

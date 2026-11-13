@@ -37,4 +37,22 @@ class StickerFormatSupportTest {
             chunk.toByteArray(Charsets.US_ASCII) +
             ByteArray(8)
     }
+
+    @Test
+    fun `uses the animation bit even when the file name and mime are missing`() {
+        val header = webpPayload("VP8X").apply { this[16] = 10; this[20] = 2 }
+        assertEquals("image/webp", StickerFormatSupport.animatedMime(header.inputStream()))
+        header[20] = 0
+        assertFalse(StickerFormatSupport.isAnimated(header + "ANIM".toByteArray(), "image/webp"))
+    }
+
+    @Test
+    fun `recognizes animation control before PNG image data`() {
+        val png = byteArrayOf(0x89.toByte(), 80, 78, 71, 13, 10, 26, 10)
+        val control = byteArrayOf(0, 0, 0, 8) + "acTL".toByteArray() + byteArrayOf(0, 0, 0, 2) + ByteArray(8)
+        assertEquals("image/png", StickerFormatSupport.animatedMime((png + control).inputStream()))
+        val pixels = byteArrayOf(0, 0, 0, 12) + "IDAT".toByteArray()
+        assertFalse(StickerFormatSupport.isAnimated(png + pixels + control, "image/png"))
+        assertFalse(StickerFormatSupport.isAnimated(png + control.take(8).toByteArray(), "image/png"))
+    }
 }

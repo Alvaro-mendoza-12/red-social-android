@@ -262,6 +262,13 @@ fun StickerPanel(
             imageUri = selectedUri,
             onDismiss = { pendingEditorUri = null },
             isSaving = isLoading,
+            onSendOriginal = { title ->
+                model.createStickerFromImage(selectedUri, selectedPackId, title) { created ->
+                    pendingEditorUri = null
+                    model.recordStickerSelection(created)
+                    onStickerSelected(created)
+                }
+            },
             onSave = { pngBytes, title ->
                 model.createStickerFromEditedBytes(
                     imageBytes = pngBytes,

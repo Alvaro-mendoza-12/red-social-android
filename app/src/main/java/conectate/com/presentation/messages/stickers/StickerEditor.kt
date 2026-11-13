@@ -60,6 +60,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import conectate.com.data.repository.StickerFormatSupport
+import conectate.com.presentation.components.StickerArtwork
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import java.io.IOException
 
 private enum class StickerEditMode {
     MOVE,
@@ -80,9 +87,45 @@ fun StickerEditor(
     imageUri: Uri,
     onDismiss: () -> Unit,
     onSave: (bytes: ByteArray, title: String) -> Unit,
+    onSendOriginal: (title: String) -> Unit,
     isSaving: Boolean = false
 ) {
     val context = LocalContext.current
+    var format by remember(imageUri) { mutableStateOf<Result<Boolean>?>(null) }
+    LaunchedEffect(imageUri) {
+        format = withContext(Dispatchers.IO) {
+            try {
+                val animated = context.contentResolver.openInputStream(imageUri)?.use { StickerFormatSupport.animatedMime(it) != null }
+                    ?: throw IOException()
+                Result.success(animated)
+            } catch (ex: IOException) { Result.failure(ex) }
+              catch (ex: SecurityException) { Result.failure(ex) }
+        }
+    }
+    val inspected = format
+    if (inspected == null || inspected.isFailure) {
+        AlertDialog(onDismissRequest = onDismiss, text = {
+            Text(if (inspected == null) "Abriendo imagen…" else "No se pudo abrir la imagen. Vuelve a seleccionarla.")
+        }, confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } })
+        return
+    }
+    if (inspected.getOrThrow()) {
+        var name by remember(imageUri) { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { if (!isSaving) onDismiss() },
+            title = { Text("Enviar sticker animado") },
+            text = {
+                Column {
+                    StickerArtwork(imageUri.toString(), modifier = Modifier.size(144.dp))
+                    OutlinedTextField(value = name, onValueChange = { name = it.take(60) },
+                        label = { Text("Nombre (opcional)") }, singleLine = true)
+                }
+            },
+            confirmButton = { TextButton(enabled = !isSaving, onClick = { onSendOriginal(createStickerTitleFromText(name)) }) { Text("Enviar") } },
+            dismissButton = { TextButton(enabled = !isSaving, onClick = onDismiss) { Text("Cancelar") } },
+        )
+        return
+    }
     val scope = rememberCoroutineScope()
     val loadedBitmap by produceState<android.graphics.Bitmap?>(initialValue = null, imageUri) {
         value = loadStickerBitmapFromUri(context, imageUri)
