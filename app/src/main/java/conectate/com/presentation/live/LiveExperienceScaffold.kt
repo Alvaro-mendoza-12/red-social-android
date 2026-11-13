@@ -60,6 +60,7 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Poll
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayArrow
@@ -184,6 +185,7 @@ internal fun NovvinLiveViewerExperience(
     onModerate: () -> Unit,
     onDrawGuess: (() -> Unit)? = null,
     onChannelPoints: (() -> Unit)? = null,
+    onAudience: (() -> Unit)? = null,
     onCommentOptions: ((LiveComment) -> Unit)? = null,
 ) {
     var message by remember { mutableStateOf("") }
@@ -318,6 +320,7 @@ internal fun NovvinLiveViewerExperience(
             canModerate = canModerate,
             onDrawGuess = onDrawGuess?.let { action -> { panel = null; action() } },
             onChannelPoints = onChannelPoints?.let { action -> { panel = null; action() } },
+            onAudience = onAudience?.let { action -> { panel = null; action() } },
             onModerate = { panel = null; onModerate() },
             onShare = { panel = null; onShare() },
             onExit = { panel = null; onClose() },
@@ -398,6 +401,7 @@ internal fun NovvinLiveHostExperience(
     onEnd: () -> Unit,
     onDrawGuess: (() -> Unit)? = null,
     onChannelPoints: (() -> Unit)? = null,
+    onAudience: (() -> Unit)? = null,
     onCommentOptions: ((LiveComment) -> Unit)? = null,
     floatingOverlay: @Composable BoxScope.() -> Unit = {}
 ) {
@@ -542,6 +546,7 @@ internal fun NovvinLiveHostExperience(
             onModeration = { panel = null; onModeration() },
             onDrawGuess = onDrawGuess?.let { action -> { panel = null; action() } },
             onChannelPoints = onChannelPoints?.let { action -> { panel = null; action() } },
+            onAudience = onAudience?.let { action -> { panel = null; action() } },
             onMoment = { panel = null; onMoment() },
             onSwitchCamera = { panel = null; onSwitchCamera() },
             onCameraToggle = { panel = null; onCameraToggle() },
@@ -1761,6 +1766,7 @@ private fun ViewerMoreSheet(
     canModerate: Boolean,
     onDrawGuess: (() -> Unit)?,
     onChannelPoints: (() -> Unit)?,
+    onAudience: (() -> Unit)?,
     onModerate: () -> Unit,
     onShare: () -> Unit,
     onExit: () -> Unit,
@@ -1777,6 +1783,7 @@ private fun ViewerMoreSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             LiveSheetHeader("Más opciones", "Acciones del directo", Icons.Filled.MoreHoriz, onDismiss)
+            if (onAudience != null) SheetActionRow(Icons.Filled.Poll, "Encuestas y preguntas", "Participa con quienes ven el directo", onAudience)
             if (onDrawGuess != null) SheetActionRow(Icons.Filled.Star, "Dibuja y adivina", "Participa con el anfitrión y sus invitados", onDrawGuess)
             if (onChannelPoints != null) SheetActionRow(Icons.Filled.Star, "Puntos del canal", "Consulta puntos y recompensas", onChannelPoints)
             SheetActionRow(Icons.Filled.Share, "Compartir directo", "Invita a otras personas", onShare)
@@ -2585,6 +2592,7 @@ private fun HostToolsSheet(
     onNotifications: () -> Unit,
     onDrawGuess: (() -> Unit)?,
     onChannelPoints: (() -> Unit)?,
+    onAudience: (() -> Unit)?,
     onEnd: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -2599,6 +2607,7 @@ private fun HostToolsSheet(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             LiveSheetHeader("Herramientas LIVE", "Control de transmisión", Icons.Filled.MoreHoriz, onDismiss)
+            if (onAudience != null) SheetActionRow(Icons.Filled.Poll, "Encuestas y preguntas", "Participa con quienes ven el directo", onAudience)
             if (onDrawGuess != null) SheetActionRow(Icons.Filled.Star, "Dibuja y adivina", "Crea una partida con tus invitados", onDrawGuess)
             if (onChannelPoints != null) SheetActionRow(Icons.Filled.Star, "Puntos del canal", "Gestiona recompensas gratuitas", onChannelPoints)
             SheetActionRow(

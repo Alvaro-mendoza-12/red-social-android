@@ -139,6 +139,39 @@
 .live-guest-avatar .safe-avatar { width:56px; height:56px; }
 .live-session-page:fullscreen { max-width:none; width:100vw; height:100dvh; background:#08080b; padding:0; }
 .live-session-page:fullscreen .live-video-stage { height:100dvh; min-height:0; border:0; border-radius:0; }
+.live-audience-dialog { width: min(560px, calc(100vw - 24px)); }
+.live-audience-dialog .publication-dialog-body { display: grid; gap: 14px; }
+.live-audience-tabs, .live-audience-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.live-audience-tabs button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  border: 1px solid var(--divider); border-radius: 12px; min-height: 40px; padding: 8px 12px;
+  background: var(--surface-raised); color: var(--foreground); cursor: pointer;
+}
+.live-audience-tabs button[aria-pressed=true] { background: var(--primary); color: var(--on-primary); }
+.live-audience-card { display: grid; gap: 10px; border: 1px solid var(--divider); border-radius: 16px; padding: 16px; }
+.live-audience-card p, .live-audience-card h4 { margin: 0; overflow-wrap: anywhere; }
+.live-audience-card h4 { font-size: 1rem; line-height: 1.4; }
+.live-audience-form, .live-audience-form label { display: grid; gap: 7px; }
+.live-audience-form { gap: 12px; }
+.live-audience-form input, .live-audience-form textarea, .live-audience-form select {
+  width: 100%; border: 1px solid var(--divider); border-radius: 10px; padding: 10px;
+  background: var(--surface-raised); color: var(--foreground); font: inherit; min-height: 40px;
+}
+.live-audience-form textarea { resize: vertical; }
+.live-audience-form .primary-btn { justify-self: start; }
+.live-poll-choices { display: grid; gap: 7px; }
+.live-poll-choice {
+  display: grid; width: 100%; gap: 8px; padding: 11px; text-align: start; border: 1px solid var(--divider);
+  border-radius: 11px; background: var(--surface-raised); color: var(--foreground); cursor: pointer;
+}
+.live-poll-choice:disabled { cursor: default; opacity: 1; }
+.live-poll-choice[aria-pressed=true] { border-color: var(--primary); }
+.live-poll-choice > span { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.live-poll-choice > span > span { display: inline-flex; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.live-poll-choice small { white-space: nowrap; }
+.live-poll-choice progress { width: 100%; height: 5px; accent-color: var(--primary); }
+.live-question-highlight { display: flex; gap: 6px; align-items: center; color: var(--primary); }
+.live-audience-card blockquote { border-left: 3px solid var(--primary); margin: 0; padding: 6px 10px; display: grid; gap: 5px; }
 @media(max-width:680px) {
  .live-video-stage>.live-playback-action { max-width:calc(100% - 32px); }
  .live-comments-heading { padding:9px 12px; font-size:.8rem; }

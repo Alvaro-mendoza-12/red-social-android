@@ -15,6 +15,12 @@ test('durable PostgreSQL journal: replay, replacement, deletion, retry, target i
     if(!['127.0.0.1','localhost'].includes(url.hostname)||url.pathname!=='/novvin_r2_test')throw Error('Requires isolated local-forwarded novvin_r2_test database')
     const db=new Client({connectionString:url.href}),other=new Client({connectionString:url.href})
     await db.connect();await other.connect();t.after(()=>db.end());t.after(()=>other.end())
+    // Each run owns a fresh namespace. A repeated verification neither collides
+    // with previous fixtures nor needs to drop their tables or retained evidence.
+    const schema='r2_journal_'+crypto.randomUUID().replace(/-/g,'')
+    await db.query(`CREATE SCHEMA "${schema}"`)
+    await db.query(`SET search_path TO "${schema}", public`)
+    await other.query(`SET search_path TO "${schema}", public`)
     const root=await fs.mkdtemp(path.join(os.tmpdir(),'r2-pg-'));t.after(()=>fs.rm(root,{recursive:true,force:true}))
     await db.query(`CREATE TABLE fallback_storage_objects(id uuid PRIMARY KEY,bucket_id text,name text,object_revision uuid,
       scan_state text,scan_sha256 text,scan_bytes bigint,size_bytes bigint,content_type text,scan_engine text,

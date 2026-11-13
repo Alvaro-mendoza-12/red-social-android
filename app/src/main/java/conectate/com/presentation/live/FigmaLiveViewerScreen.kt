@@ -283,6 +283,7 @@ fun LiveViewerScreen(
         onModerate = { showModerationDialog = true },
         onDrawGuess = extraTools.drawGuess,
         onChannelPoints = extraTools.channelPoints,
+        onAudience = extraTools.audience,
         onCommentOptions = extraTools.commentOptions,
     )
 }

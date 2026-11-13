@@ -4,6 +4,7 @@ const { publishRealtimeEvent } = require('./realtime-publish')
 const { publishLiveCollaborationEvent } = require('./live-collaboration-events')
 const { leaveLiveGuest } = require('./live-guest-exit')
 const { drawGuessEnabled } = require('./live-draw-guess-routes')
+const { ensureLiveAudienceTables, registerLiveAudienceRoutes } = require('./live-audience-routes')
 const { netWithdrawableGiftAmount } = require('./economic-provenance')
 const { constantTimeSecretEqual } = require('./request-security')
 const { createDistributedRateLimitMiddleware } = require('./distributed-rate-limit')
@@ -446,6 +447,7 @@ async function ensureLiveTables(pool) {
     ON fallback_live_battle_events(battle_id, occurred_at ASC)
   `)
   await ensureLiveFollowerNotificationTables(pool)
+  await ensureLiveAudienceTables(pool)
 }
 
 async function resolvedProfile(pool, user) {
@@ -490,6 +492,10 @@ async function canViewStream(pool, stream, identity) {
   if (await restrictedLiveParticipant(pool, stream, identity)) return false
   const visibility = normalizeId(stream.visibility || 'public')
   if (visibility === 'public') return true
+  if (visibility === 'private') {
+    const invitation = await invitationForUser(pool, stream.id, identity.displayUserId)
+    return invitation?.status === 'accepted'
+  }
   if (visibility !== 'followers') return false
   const query =
     'SELECT 1 FROM fallback_follows ' +
@@ -762,6 +768,9 @@ async function moderationState(pool, stream, identity) {
 }
 
 function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdentity }) {
+  registerLiveAudienceRoutes(app, {
+    pool, authRequired, getCurrentUser, userIdentity, streamById, ownsStream, canViewStream, moderationMembership, containsBlockedWord,
+  })
   const limitLiveComments = createDistributedRateLimitMiddleware({
     pool,
     scope: 'live:comments',
@@ -787,6 +796,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
         channelPointsEnabled: /^(1|true|yes|on)$/i.test(String(process.env.LIVE_CHANNEL_POINTS_ENABLED || '').trim()) &&
           Boolean(String(process.env.LIVE_POINTS_SESSION_SECRET || '').trim()),
         drawGuessEnabled: drawGuessEnabled(),
+        audienceToolsEnabled: true,
         maxGuests: configuration.maxGuests,
         scoringSources: ['gift_ledger', 'channel_points'],
       })
@@ -2579,6 +2589,7 @@ function registerLiveRoutes(app, { pool, authRequired, getCurrentUser, userIdent
 }
 
 module.exports = {
+  canViewStream,
   cleanBlockedWords,
   containsBlockedWord,
   ensureLiveTables,
