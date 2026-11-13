@@ -7,7 +7,7 @@ jest.mock('../../core/supabase', () => ({ supabase: { rpc: jest.fn() } }))
 let mockFallback = false
 jest.mock('../../core/auth/AuthProvider', () => ({ useAuth: () => ({ user: { id: 'owned-synthetic' }, isFallbackSession: mockFallback }) }))
 jest.mock('../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn() }))
-jest.mock('../../components/ChatAttachmentMedia', () => ({ ChatAttachmentMedia: ({ title }: { title: string }) => <span>{title}</span> }))
+jest.mock('../../components/ChatAttachmentMedia', () => ({ ChatAttachmentMedia: ({ title, preserveAnimation }: { title: string; preserveAnimation: boolean }) => <span data-original={preserveAnimation}>{title}</span> }))
 const rpc = supabase!.rpc as jest.Mock
 beforeEach(() => {
   mockFallback = false
@@ -30,6 +30,7 @@ test('loads the mobile catalog immediately and sends its actual sticker identifi
   const select = jest.fn()
   render(<StickerPicker onSelect={select} onImport={() => {}} onClose={() => {}} />)
   fireEvent.click(await screen.findByRole('button', { name: 'Enviar sticker Hola' }))
+  expect(screen.getByText('Hola', { selector: 'span[data-original]' })).toHaveAttribute('data-original', 'true')
   expect(rpc).toHaveBeenCalledWith('secure_search_stickers', { p_query: '', p_limit: 250 })
   expect(select).toHaveBeenCalledWith({ stickerId: 'sticker-1', title: 'Hola', mediaUrl: 'https://media.test/sticker.webp', isFavorite: false, isAnimated: false })
 })

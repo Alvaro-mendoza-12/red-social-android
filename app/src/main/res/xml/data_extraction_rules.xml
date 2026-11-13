@@ -4,7 +4,6 @@
         <include domain="sharedpref" path="theme_prefs.xml" />
         <include domain="sharedpref" path="messages_preferences.xml" />
         <include domain="sharedpref" path="app_prefs.xml" />
-        <include domain="sharedpref" path="content_safety_prefs.xml" />
 
     </cloud-backup>
 
@@ -12,7 +11,6 @@
         <include domain="sharedpref" path="theme_prefs.xml" />
         <include domain="sharedpref" path="messages_preferences.xml" />
         <include domain="sharedpref" path="app_prefs.xml" />
-        <include domain="sharedpref" path="content_safety_prefs.xml" />
 
     </device-transfer>
 </data-extraction-rules>
