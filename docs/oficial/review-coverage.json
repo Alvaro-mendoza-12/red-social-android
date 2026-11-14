@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T20:30:32.322843+00:00",
-  "baseCommit": "96c7188ea78e7f58f27e91ca4078ff4363547ee7",
+  "generatedAtUtc": "2026-11-14T20:59:02.608951+00:00",
+  "baseCommit": "d820e1dfa927147c05d641c05184ae20ea7ad6b3",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -20679,7 +20679,7 @@
     {
       "file": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "phase": "documentation",
-      "gitBlobId": "d3a28e77eddb4216f7c19fd571a0b5cfabdda398",
+      "gitBlobId": "a1bf5cbfcfe88423fac6fe89f4143cffc300e613",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -22067,7 +22067,7 @@
     {
       "file": "docs/quality/evidence/143-ide-server-performance.json",
       "phase": "documentation",
-      "gitBlobId": "f8d3addf3e1a4c85e5168dc1c8d8ae472fade984",
+      "gitBlobId": "2158569a5f4be858ab83413dc7aa1f490e41e7ae",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

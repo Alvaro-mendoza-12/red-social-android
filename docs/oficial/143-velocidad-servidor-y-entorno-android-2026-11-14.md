@@ -20,6 +20,8 @@ Una transferencia HTTPS IPv4 a Cloudflare de 20 MB dio **19,218 Mbps de descarga
 
 100 Mbps equivalen a un máximo teórico de 12,5 MB/s antes de sobrecargas; no son 100 MB/s. En este intervalo el enlace no estaba saturado. Después de sustituir cable o switch debe repetirse la negociación y la medición: la categoría del cable por sí sola no prueba una velocidad superior ni elimina la latencia de otros componentes.
 
+La lectura posterior de `ethtool` confirma que la tarjeta del servidor admite y anuncia **1000baseT/Full**, pero el interlocutor solo anuncia 10/100; el enlace actual es **100 Mbps, dúplex completo**. Esto es compatible con el switch de 100 Mbps descrito por el propietario. No se cambiaron rutas, DNS ni ajustes del router. Debe contrastarse la negociación después del cambio físico.
+
 ## Latencia e imágenes
 
 Tres peticiones HTTPS nuevas por ruta, desde el propio Ubuntu, produjeron estas medianas de tiempo hasta el primer byte:
@@ -60,6 +62,10 @@ El IDE propio ocupaba aproximadamente 3.988 MiB y Windows tenía unos 247 MiB li
 Con esa configuración, **`:app:assembleDebug` terminó BUILD SUCCESSFUL en 7 min 55 s**. Se creó un AVD nuevo, **NovvinIDE143**, con Android 15/API 35 y aceleración WHPX disponible, sin sobrescribir dispositivos anteriores. La APK se instaló, la actividad principal arrancó y la pantalla de bienvenida se mostró; el buffer de fallos estaba vacío. Después se apagó ese emulador para recuperar memoria.
 
 APK exclusivamente de laboratorio: **9.1.40-debug, código 180**, paquete `conectate.com`, 270.435.298 bytes, SHA-256 `56e3adb0048488add8aea1eaf56b677357b6351aa5c5ebf92a1a585dc8820e21`. Contiene el trabajo móvil 141 todavía sin publicar; **no es una APK final entregada ni un cierre funcional de Android**. No se inició sesión personal ni se ensayaron llamadas físicas con esa instalación.
+
+Se creó además una **muestra Flutter separada de los proyectos del propietario**, con Flutter 3.44.0/Dart 3.12.0, JDK 21 y Gradle 9.1.0. Compiló en **538,7 s**, se instaló y mostró `Hello World!` en primer plano. La APK de muestra tiene SHA-256 `5b45f657230f56c4c117fa1eb4ad045434aed4998a941a01b64a933c5385d5c0`; no es Novvin. El intento inicial se canceló tras conservar pilas de conexión y conexiones IPv4 pendientes. El reintento cambió solo los ajustes de la muestra a 4 GiB, un trabajador y preferencia IPv6, sin cambiar versiones ni configuraciones globales. No se presenta el intento cancelado como una compilación aprobada.
+
+El buffer del emulador de ese ensayo conserva **dos abortos de `com.android.bluetooth` al iniciar su pila**. La primera verificación, que exigía buffer vacío, falló; la inspección posterior distinguió ese servicio del proceso Flutter, que seguía vivo y en primer plano, sin fallo observado en su registro. Se conserva el fallo inicial: el arranque de la muestra está comprobado, **Bluetooth no está validado**. Se apagó el AVD antes de continuar las compilaciones Android. No se garantiza que cualquier proyecto móvil sea compatible sin sus propios SDK y dependencias.
 
 La reapertura final automática del IDE fue rechazada por la revisión de aprobación de herramientas con el motivo genérico `blocked by policy`, sin explicación adicional. No se repitió la acción bloqueada ni se afirma que el IDE haya quedado abierto. La sincronización, la compilación, la instalación y el arranque anteriores sí están comprobados. Los respaldos del entorno siguen en `D:/Novvin-IDE-Repair-20261114` y el acceso directo apunta a `D:/AndroidSTUDIO/bin/studio64.exe`.
 
