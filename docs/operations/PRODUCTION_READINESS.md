@@ -22,3 +22,8 @@ La [integración 136](../oficial/136-integracion-api-compartidos-y-mandato-word-
 ## Continuación 138 — 14 de noviembre de 2026
 
 La [integración de tonos y web](../oficial/138-tonos-android-y-web-desplegada-2026-11-14.md) registra ocho pruebas focalizadas Android y la comprobación del despliegue web con 97 controles HTTP. No certifica audio físico, todos los datos de producción ni una APK nueva. Los historiales vacíos, las tarjetas externas, LIVE y la revisión móvil integral siguen abiertos.
+
+
+## Continuación 139 — 14 de noviembre de 2026
+
+La [corrección de visitas LIVE](../oficial/139-visitas-notificacion-y-cierre-live-2026-11-14.md) protege las notificaciones y el coordinador de cierre por instancia. La batería JVM aprobada se distingue de los ensayos físicos ausentes. A → B → A, credenciales actuales al cerrar, callbacks globales y salidas retenidas de pantalla siguen abiertos: no se declara preparación integral ni se entrega una APK nueva.

@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -19,7 +20,7 @@ import androidx.core.content.ContextCompat
 import conectate.com.MainActivity
 import conectate.com.R
 import conectate.com.core.concurrency.newSafeScope
-import conectate.com.data.repository.LiveRepository
+import conectate.com.domain.live.LiveForegroundSessionController
 import conectate.com.util.TrustedNavigationIntents
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -32,7 +33,8 @@ import kotlinx.coroutines.launch
 
 internal data class LiveForegroundState(
     val liveId: String = "",
-    val types: Int = 0
+    val types: Int = 0,
+    val sessionId: String = ""
 )
 
 // These foreground-service type constants are compile-time bit flags. The
@@ -68,10 +70,10 @@ internal object LiveForegroundPolicy {
 class LiveForegroundService : Service() {
 
     @Inject
-    lateinit var liveRepository: LiveRepository
+    lateinit var liveRepository: LiveForegroundSessionController
 
     private val serviceScope = newSafeScope("LiveForegroundService", Dispatchers.Main)
-    private var currentLiveId: String = ""
+    private var currentSessionId: String = ""
 
     companion object {
         const val CHANNEL_ID = "LiveServiceChannel"
@@ -83,6 +85,7 @@ class LiveForegroundService : Service() {
         const val EXTRA_LIVE_TITLE = "EXTRA_LIVE_TITLE"
         const val EXTRA_LIVE_ROLE = "EXTRA_LIVE_ROLE"
         const val EXTRA_TYPE = "EXTRA_TYPE"
+        const val EXTRA_SESSION_ID = "EXTRA_LIVE_SESSION_ID"
 
         private const val NOTIFICATION_ID = 3
         private const val END_REQUEST_CODE = 31
@@ -98,33 +101,42 @@ class LiveForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_END -> {
+                val sessionId = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
+                val liveId = intent.getStringExtra(EXTRA_LIVE_ID).orEmpty()
+                val active = liveRepository.currentForegroundSession()
+                if (sessionId.isBlank() || currentSessionId != sessionId || active?.sessionId != sessionId ||
+                    !active.isHost || !active.liveId.equals(liveId, ignoreCase = true)) {
+                    if (currentSessionId.isBlank()) stopSelf(startId)
+                    return START_NOT_STICKY
+                }
                 serviceScope.launch {
-                    runCatching { liveRepository.endLive() }
-                    stopForeground(STOP_FOREGROUND_REMOVE)
-                    stopSelf(startId)
+                    runCatching { liveRepository.endLive(sessionId) }
+                    stopOwnedForeground(sessionId, startId, requireEnded = true)
                 }
                 return START_NOT_STICKY
             }
             ACTION_STOP -> {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf(startId)
+                stopOwnedForeground(intent.getStringExtra(EXTRA_SESSION_ID).orEmpty(), startId)
                 return START_NOT_STICKY
             }
             ACTION_START -> Unit
             else -> {
-                stopSelf(startId)
+                if (currentSessionId.isBlank()) stopSelf(startId)
                 return START_NOT_STICKY
             }
         }
 
         val liveId = intent?.getStringExtra(EXTRA_LIVE_ID).orEmpty()
+        val sessionId = intent?.getStringExtra(EXTRA_SESSION_ID).orEmpty()
         val title = intent?.getStringExtra(EXTRA_LIVE_TITLE).orEmpty().ifBlank { "Live" }
         val role = intent?.getStringExtra(EXTRA_LIVE_ROLE).orEmpty()
         val requestedTypes = intent?.getIntExtra(EXTRA_TYPE, 0) ?: 0
 
-        if (liveId.isBlank() || !role.equals("host", ignoreCase = true)) {
+        val active = liveRepository.currentForegroundSession()
+        if (liveId.isBlank() || sessionId.isBlank() || !role.equals("host", ignoreCase = true) ||
+            active?.sessionId != sessionId || !active.isHost || !active.liveId.equals(liveId, ignoreCase = true)) {
             android.util.Log.w("LiveForegroundService", "Rejecting invalid live foreground request")
-            stopSelf(startId)
+            if (currentSessionId.isBlank()) stopSelf(startId)
             return START_NOT_STICKY
         }
 
@@ -137,10 +149,12 @@ class LiveForegroundService : Service() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && types == 0) {
             android.util.Log.w("LiveForegroundService", "No eligible foreground type for host live $liveId")
-            stopSelf(startId)
+            if (currentSessionId.isBlank()) stopSelf(startId)
             return START_NOT_STICKY
         }
 
+        val previousSessionId = currentSessionId
+        currentSessionId = sessionId
         val notification = buildNotification(liveId, title, role)
         val promoted = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && types != 0) {
@@ -159,18 +173,19 @@ class LiveForegroundService : Service() {
         }
 
         if (!promoted) {
-            stopSelf(startId)
+            currentSessionId = previousSessionId
+            if (currentSessionId.isBlank()) stopSelf(startId)
             return START_NOT_STICKY
         }
 
-        currentLiveId = liveId
-        _foregroundState.value = LiveForegroundState(liveId = liveId, types = types)
+        _foregroundState.value = LiveForegroundState(liveId = liveId, types = types, sessionId = sessionId)
 
         return START_NOT_STICKY
     }
 
     private fun buildNotification(liveId: String, liveTitle: String, liveRole: String): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java).apply {
+            data = sessionIntentUri(liveId, "return")
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("type", "live_return")
             putExtra("live_id", liveId)
@@ -185,6 +200,9 @@ class LiveForegroundService : Service() {
 
         val endIntent = Intent(this, LiveForegroundService::class.java).apply {
             action = ACTION_END
+            data = sessionIntentUri(liveId, "end")
+            putExtra(EXTRA_LIVE_ID, liveId)
+            putExtra(EXTRA_SESSION_ID, currentSessionId)
         }
         val endPendingIntent = PendingIntent.getService(
             this,
@@ -219,14 +237,31 @@ class LiveForegroundService : Service() {
 
     override fun onBind(intent: Intent): IBinder? = null
 
+    private fun sessionIntentUri(liveId: String, action: String): Uri = Uri.Builder()
+        .scheme("novvin-internal").authority("live-session")
+        .appendPath(currentSessionId).appendPath(liveId).appendPath(action).build()
+
+    private fun stopOwnedForeground(sessionId: String, startId: Int, requireEnded: Boolean = false) {
+        if (sessionId.isBlank() || currentSessionId != sessionId || _foregroundState.value.sessionId != sessionId) {
+            if (currentSessionId.isBlank()) stopSelf(startId)
+            return
+        }
+        val active = liveRepository.currentForegroundSession()
+        if (active != null && (active.sessionId != sessionId || requireEnded)) return
+        _foregroundState.value = LiveForegroundState()
+        currentSessionId = ""
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf(startId)
+    }
+
     private fun hasPermission(permission: String): Boolean =
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     override fun onDestroy() {
-        if (_foregroundState.value.liveId == currentLiveId) {
+        if (currentSessionId.isNotBlank() && _foregroundState.value.sessionId == currentSessionId) {
             _foregroundState.value = LiveForegroundState()
         }
-        currentLiveId = ""
+        currentSessionId = ""
         super.onDestroy()
         serviceScope.cancel()
     }

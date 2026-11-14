@@ -10,6 +10,37 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class LiveSessionLifecycleCoordinatorTest {
+    @Test fun `a late no-op for a previous visit cannot consume the current visits close`() = runTest {
+        val coordinator = LiveSessionCloseCoordinator()
+        var active = "new-visit"
+        coordinator.closeOnce("old-visit") {
+            if (active == "old-visit") active = ""
+            Result.success(Unit)
+        }
+        coordinator.closeOnce("new-visit") {
+            active = ""
+            Result.success(Unit)
+        }
+        assertEquals("", active)
+    }
+
+    @Test fun `different visits serialize teardown and duplicate requests share only their own result`() = runTest {
+        val coordinator = LiveSessionCloseCoordinator()
+        val release = CompletableDeferred<Unit>()
+        val calls = mutableListOf<String>()
+        val old = async { coordinator.closeOnce("old") { calls += "old"; release.await(); Result.failure(IllegalStateException("old result")) } }
+        val current = async { coordinator.closeOnce("new") { calls += "new"; Result.success(Unit) } }
+        val duplicate = async { coordinator.closeOnce("new") { calls += "duplicate"; Result.failure(IllegalStateException()) } }
+        testScheduler.runCurrent()
+        assertEquals(listOf("old"), calls)
+        assertFalse(coordinator.resetForNewSession())
+        release.complete(Unit)
+        assertTrue(old.await().isFailure)
+        assertTrue(current.await().isSuccess)
+        assertTrue(duplicate.await().isSuccess)
+        assertEquals(listOf("old", "new"), calls)
+    }
+
     @Test
     fun `concurrent close requests share one suspendable teardown`() = runTest {
         val coordinator = LiveSessionCloseCoordinator()
