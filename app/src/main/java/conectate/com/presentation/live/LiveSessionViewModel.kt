@@ -21,16 +21,22 @@ import conectate.com.data.webrtc.LiveCameraFilter
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
-import kotlinx.coroutines.Dispatchers
+import conectate.com.core.concurrency.DispatcherProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 
 sealed interface LiveHostPreparationState {
@@ -51,65 +57,119 @@ class LiveSessionViewModel @Inject constructor(
     private val liveChannelPointsRepository: LiveChannelPointsRepository,
     private val authService: AuthService,
     private val userRepository: UserRepository,
-    private val walletRepository: WalletRepository
+    private val walletRepository: WalletRepository,
+    private val dispatchers: DispatcherProvider
 ) : ViewModel() {
 
-    val activeSession = liveRepository.activeSession
-    val isFrontCamera = liveRepository.isFrontCamera
-    val comments = liveRepository.comments
-    val reactions = liveRepository.reactions
-    val reactionCount = liveRepository.reactionCount
-    val giftEvents = liveRepository.giftEvents
-    val viewerCount = liveRepository.viewerCount
-    val audienceStats = liveRepository.audienceStats
-    val liveViewers = liveRepository.liveViewers
-    val guestRequests = liveRepository.guestRequests
-    val activeGuests = liveRepository.activeGuests
-    val guestAccessState = liveRepository.guestAccessState
-    val isGuestBroadcasting = liveRepository.isGuestBroadcasting
-    val isGuestMicEnabled = liveRepository.isGuestMicEnabled
-    val isGuestVideoEnabled = liveRepository.isGuestVideoEnabled
-    val battleState = liveRepository.battleState
-    val availableGifts = walletRepository.availableGifts
-    val coinBalance = walletRepository.coinBalance
-    val collaborationCapabilities = liveRepository.collaborationCapabilities
-    val guestInvitations = liveRepository.guestInvitations
-    val activeBattle = liveRepository.activeBattle
-    val battleCandidates = liveRepository.battleCandidates
-    val liveSupporters = liveRepository.liveSupporters
-    val moderationState = liveRepository.moderationState
-    val isMicEnabled = liveRepository.isMicEnabled
-    val isMediaReady = liveRepository.isMediaReady
-    val isPaused = liveRepository.isPaused
-    val isVideoEnabled = liveRepository.isVideoEnabled
-    val isMediaTransitioning = liveRepository.isMediaTransitioning
-    val currentSource = liveRepository.currentSource
-    val cameraFilter = liveRepository.cameraFilter
-    val creatorLayoutStyle = liveRepository.creatorLayoutStyle
-    val cameraFilterPerformance = liveRepository.cameraFilterPerformance
-    val eglBaseContext = liveRepository.eglBaseContext
-    val localVideoTrack = liveRepository.localVideoTrack
-    val remoteVideoTracks = liveRepository.remoteVideoTracks
-    val liveKitState: StateFlow<LiveKitRoomBridge.State> = liveRepository.liveKitState
-    val liveKitRemoteVideos = liveRepository.liveKitRemoteVideos
-    val liveKitLocalPreview = liveRepository.liveKitLocalPreview
-    val liveKitRemoteParticipants = liveRepository.liveKitRemoteParticipants
-    val liveMusic = liveRepository.liveMusic
+    // Created before any launch/dispatcher hop; retained callbacks keep this exact receipt.
+    private val screenEntry = liveRepository.createScreenEntry()
+    private fun isScreenOpen(): Boolean = !screenEntry.closed && screenEntry.account.isCurrent()
+    private val screenAccess = combine(screenEntry.changes, authService.accountVisitChanges, liveRepository.activeSession) { _, _, _ ->
+        isScreenOpen() to liveRepository.ownsScreenEntry(screenEntry)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, isScreenOpen() to false)
+
+    private fun <T> screenState(source: StateFlow<T>, empty: T, requiresMedia: Boolean = true): StateFlow<T> {
+        fun snapshot(): T {
+            var current = empty
+            if (requiresMedia) {
+                liveRepository.commitScreenEntry(screenEntry) { current = source.value }
+            } else {
+                authService.commitForAccountLease(screenEntry.account) {
+                    if (!screenEntry.closed) current = source.value
+                }
+            }
+            return current
+        }
+        val projected = combine(source, screenAccess) { _, _ ->
+            snapshot()
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, empty)
+        return object : StateFlow<T> by projected {
+            override val value: T get() = snapshot()
+            override val replayCache: List<T> get() = listOf(value)
+
+            @OptIn(kotlinx.coroutines.InternalCoroutinesApi::class)
+            override suspend fun collect(collector: FlowCollector<T>): Nothing {
+                var emitted = false
+                var previous = empty
+                return projected.collect(object : FlowCollector<T> {
+                    override suspend fun emit(value: T) {
+                        // The shared cache can predate an account/route invalidation. Read
+                        // under the receipt's commit at delivery, including its first replay.
+                        val current = snapshot()
+                        if (!emitted || previous != current) {
+                            emitted = true
+                            previous = current
+                            collector.emit(current)
+                        }
+                    }
+                })
+            }
+        }
+    }
+
+    private fun screenAction(action: () -> Unit): Boolean = liveRepository.commitScreenEntry(screenEntry, action)
+    private fun <T> screenValue(empty: T, action: () -> T): T {
+        var result = empty
+        screenAction { result = action() }
+        return result
+    }
+
+    val activeSession = screenState(liveRepository.activeSession, null)
+    val isFrontCamera = screenState(liveRepository.isFrontCamera, true)
+    val comments = screenState(liveRepository.comments, emptyList())
+    val reactions = screenState(liveRepository.reactions, emptyList())
+    val reactionCount = screenState(liveRepository.reactionCount, 0L)
+    val giftEvents = screenState(liveRepository.giftEvents, emptyList())
+    val viewerCount = screenState(liveRepository.viewerCount, 0)
+    val audienceStats = screenState(liveRepository.audienceStats, conectate.com.data.model.LiveAudienceStats())
+    val liveViewers = screenState(liveRepository.liveViewers, emptyList())
+    val guestRequests = screenState(liveRepository.guestRequests, emptyList())
+    val activeGuests = screenState(liveRepository.activeGuests, emptyList())
+    val guestAccessState = screenState(liveRepository.guestAccessState, conectate.com.data.model.LiveGuestAccessState())
+    val isGuestBroadcasting = screenState(liveRepository.isGuestBroadcasting, false)
+    val isGuestMicEnabled = screenState(liveRepository.isGuestMicEnabled, false)
+    val isGuestVideoEnabled = screenState(liveRepository.isGuestVideoEnabled, false)
+    val battleState = screenState(liveRepository.battleState, conectate.com.data.model.LiveBattleState())
+    val availableGifts = screenState(walletRepository.availableGifts, emptyList(), requiresMedia = false)
+    val coinBalance = screenState(walletRepository.coinBalance, 0, requiresMedia = false)
+    val collaborationCapabilities = screenState(liveRepository.collaborationCapabilities, conectate.com.data.model.LiveCollaborationCapabilities())
+    val guestInvitations = screenState(liveRepository.guestInvitations, emptyList())
+    val activeBattle = screenState(liveRepository.activeBattle, null)
+    val battleCandidates = screenState(liveRepository.battleCandidates, emptyList())
+    val liveSupporters = screenState(liveRepository.liveSupporters, emptyList())
+    val moderationState = screenState(liveRepository.moderationState, conectate.com.data.model.LiveModerationState())
+    val isMicEnabled = screenState(liveRepository.isMicEnabled, false)
+    val isMediaReady = screenState(liveRepository.isMediaReady, false)
+    val isPaused = screenState(liveRepository.isPaused, false)
+    val isVideoEnabled = screenState(liveRepository.isVideoEnabled, false)
+    val isMediaTransitioning = screenState(liveRepository.isMediaTransitioning, false)
+    val currentSource = screenState(liveRepository.currentSource, conectate.com.data.model.LiveSource.CAMERA)
+    val cameraFilter = screenState(liveRepository.cameraFilter, LiveCameraFilter.NONE)
+    val creatorLayoutStyle = screenState(liveRepository.creatorLayoutStyle, conectate.com.data.model.LiveCreatorLayoutStyle.FUSION)
+    val cameraFilterPerformance = screenState(liveRepository.cameraFilterPerformance, conectate.com.data.webrtc.LiveFilterPerformanceState.NATURAL)
+    val eglBaseContext = screenState(liveRepository.eglBaseContext, null)
+    val localVideoTrack = screenState(liveRepository.localVideoTrack, null)
+    val remoteVideoTracks = screenState(liveRepository.remoteVideoTracks, emptyMap())
+    val liveKitState: StateFlow<LiveKitRoomBridge.State> = screenState(liveRepository.liveKitState, LiveKitRoomBridge.State.DISCONNECTED)
+    val liveKitRemoteVideos = screenState(liveRepository.liveKitRemoteVideos, emptyList())
+    val liveKitLocalPreview = screenState(liveRepository.liveKitLocalPreview, null)
+    val liveKitRemoteParticipants = screenState(liveRepository.liveKitRemoteParticipants, emptyList())
+    val liveMusic = screenState(liveRepository.liveMusic, conectate.com.data.model.LiveMusicPlaybackState())
 
     private val pointsController = LiveChannelPointsController(
         liveChannelPointsRepository, viewModelScope, authService::captureAccountLease, authService::commitForAccountLease,
-        accountVisitChanges = authService.accountVisitChanges,
+        accountVisitChanges = authService.accountVisitChanges, ioDispatcher = dispatchers.io,
     )
-    val channelPoints = pointsController.state
+    val channelPoints = screenState(pointsController.state, LiveChannelPointsUiState(), requiresMedia = false)
 
     private val _isFollowingHost = MutableStateFlow<Boolean?>(null)
-    val isFollowingHost: StateFlow<Boolean?> = _isFollowingHost.asStateFlow()
+    val isFollowingHost: StateFlow<Boolean?> = screenState(_isFollowingHost, null, requiresMedia = false)
 
     private val _uiError = MutableStateFlow<String?>(null)
-    val uiError: StateFlow<String?> = _uiError.asStateFlow()
+    val uiError: StateFlow<String?> = screenState(_uiError, null, requiresMedia = false)
 
     private val _hostPreparation = MutableStateFlow<LiveHostPreparationState>(LiveHostPreparationState.Idle)
-    val hostPreparation: StateFlow<LiveHostPreparationState> = _hostPreparation.asStateFlow()
+    val hostPreparation: StateFlow<LiveHostPreparationState> = screenState(_hostPreparation, LiveHostPreparationState.Idle, requiresMedia = false)
 
     private val _connectionRequest = MutableStateFlow<LiveConnectionRequest?>(null)
     private var hostPreparationJob: Job? = null
@@ -119,21 +179,24 @@ class LiveSessionViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             liveRepository.runtimeErrors.collect { message ->
-                _uiError.value = message
+                if (liveRepository.ownsScreenEntry(screenEntry)) _uiError.value = message
             }
         }
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
+            if (!isScreenOpen()) return@launch
             walletRepository.fetchAvailableGifts()
+            if (!isScreenOpen()) return@launch
             walletRepository.fetchBalance()
         }
     }
 
-    fun getCurrentUserId(): String? = authService.getCurrentUserId()
+    fun getCurrentUserId(): String? = screenEntry.account.accountId.takeIf { isScreenOpen() }
 
     internal val accountVisitGeneration: StateFlow<Long> get() = authService.accountVisitChanges
 
     internal fun captureToolVisit(liveId: String): LiveToolAccountVisit = captureLiveToolAccountVisit(
-        liveId, authService::captureAccountLease, { accountVisitGeneration.value }, authService::commitForAccountLease,
+        liveId, { screenEntry.account }, { accountVisitGeneration.value }, authService::commitForAccountLease,
+        entryCurrent = ::isScreenOpen,
     )
 
     internal fun channelPointsFor(visit: LiveToolAccountVisit): LiveChannelPointsUiState =
@@ -161,7 +224,7 @@ class LiveSessionViewModel @Inject constructor(
         val previousPolling = collaborationPollingJob
         previousPolling?.cancel()
         collaborationPollingLiveId = normalizedId
-        collaborationPollingJob = viewModelScope.launch(Dispatchers.IO) {
+        collaborationPollingJob = viewModelScope.launch(dispatchers.io) {
             previousPolling?.join()
             ensureActive()
             coroutineScope {
@@ -179,21 +242,21 @@ class LiveSessionViewModel @Inject constructor(
     }
 
     fun inviteGuest(liveId: String, userId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.inviteLiveGuest(liveId, userId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo enviar la invitación.") }
         }
     }
 
     fun requestToJoin(liveId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.requestToJoinLive(liveId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo enviar la solicitud para unirte.") }
         }
     }
 
     fun setGuestRequestsAllowed(liveId: String, allowed: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.setGuestRequestsAllowed(liveId, allowed)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo actualizar el permiso de invitados.") }
         }
@@ -206,7 +269,7 @@ class LiveSessionViewModel @Inject constructor(
         publishCamera: Boolean = false,
         connectMediaAfterAccept: Boolean = true
     ) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.respondToGuestInvitation(liveId, invitationId, accept)
                 .onSuccess { invitation ->
                     val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
@@ -227,28 +290,28 @@ class LiveSessionViewModel @Inject constructor(
     }
 
     fun startBattle(liveId: String, opponentUserId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.startBattle(liveId, opponentUserId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo iniciar la batalla.") }
         }
     }
 
     fun startCrossLiveBattle(liveId: String, opponentLiveId: String, opponentUserId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.startBattle(liveId, opponentUserId, opponentLiveId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo enviar la invitación de batalla.") }
         }
     }
 
     fun refreshBattleCandidates(liveId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.refreshBattleCandidates(liveId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudieron cargar otros creadores en LIVE.") }
         }
     }
 
     fun refreshActiveBattle(liveId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.refreshActiveBattle(liveId)
                 .onFailure { error ->
                     android.util.Log.w("LiveBattle", "No se pudo actualizar la batalla", error)
@@ -257,7 +320,7 @@ class LiveSessionViewModel @Inject constructor(
     }
 
     fun respondToCrossLiveBattle(liveId: String, battleId: String, accepted: Boolean) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.respondToCrossLiveBattle(liveId, battleId, accepted)
                 .onSuccess {
                     if (accepted) {
@@ -276,33 +339,36 @@ class LiveSessionViewModel @Inject constructor(
     }
 
     fun endBattle(liveId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.endBattle(liveId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo finalizar la batalla.") }
         }
     }
 
     fun removeGuest(liveId: String, guestUserId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.removeLiveGuest(liveId, guestUserId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo retirar al invitado.") }
         }
     }
 
     fun muteGuest(liveId: String, guestUserId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.muteLiveGuest(liveId, guestUserId)
                 .onFailure { _uiError.value = it.toUserFacingMessage("No se pudo silenciar al invitado.") }
         }
     }
 
     fun prepareHost(liveId: String) {
+        if (!isScreenOpen()) return
         val normalizedId = normalizeLiveSessionId(liveId)
         if (normalizedId == null) {
             hostPreparationJob?.cancel()
             _hostPreparation.value = LiveHostPreparationState.Failed("El identificador del live no es válido.")
             return
         }
+        if (!screenEntry.accepts(normalizedId, LiveRole.HOST)) return
+        liveRepository.adoptScreenSetupPreview(screenEntry)
 
         when (val current = _hostPreparation.value) {
             is LiveHostPreparationState.Loading -> if (current.liveId == normalizedId) return
@@ -314,12 +380,15 @@ class LiveSessionViewModel @Inject constructor(
         _hostPreparation.value = LiveHostPreparationState.Loading(normalizedId)
         hostPreparationJob = viewModelScope.launch {
             try {
-                val stream = withContext(Dispatchers.IO) {
+                val stream = withContext(dispatchers.io) {
+                    screenEntry.account.requireCurrent()
                     liveRepository.getLiveStreamById(normalizedId).getOrThrow()
                 }
                 // A previous lookup must not overwrite a newer host setup screen.
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+                if (!isScreenOpen()) return@launch
+                liveRepository.adoptScreenSetupPreview(screenEntry)
+                val currentUserId = screenEntry.account.accountId.orEmpty()
                 if (currentUserId.isBlank() || !stream.hostUserId.equals(currentUserId, ignoreCase = true)) {
                     _hostPreparation.value = LiveHostPreparationState.Failed("No eres el anfitrión de este live.")
                     return@launch
@@ -336,7 +405,7 @@ class LiveSessionViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                _hostPreparation.value = LiveHostPreparationState.Failed(
+                if (isScreenOpen()) _hostPreparation.value = LiveHostPreparationState.Failed(
                     error.toUserFacingMessage("No se pudo preparar el live.")
                 )
             }
@@ -345,17 +414,17 @@ class LiveSessionViewModel @Inject constructor(
 
     fun host(liveId: String) {
         startSession(liveId = liveId, role = LiveRole.HOST) { id ->
-            liveRepository.hostLive(id)
+            liveRepository.hostLive(id, screenEntry)
         }
     }
 
     fun releaseUnusedSetupPreview() {
-        liveRepository.stopSetupCameraPreviewAsync()
+        liveRepository.stopScreenSetupPreview(screenEntry)
     }
 
     fun joinAsViewer(liveId: String) {
         startSession(liveId = liveId, role = LiveRole.VIEWER) { id ->
-            liveRepository.joinLiveAsViewer(id)
+            liveRepository.joinLiveAsViewer(id, screenEntry)
         }
     }
 
@@ -364,17 +433,15 @@ class LiveSessionViewModel @Inject constructor(
         role: LiveRole,
         start: suspend (String) -> Result<Unit>
     ) {
+        if (!isScreenOpen()) return
         val normalizedId = normalizeLiveSessionId(liveId)
         if (normalizedId == null) {
             _uiError.value = "El identificador del live no es válido."
             return
         }
 
-        val existingSession = activeSession.value
-        if (
-            existingSession?.role == role &&
-            existingSession.stream.id.equals(normalizedId, ignoreCase = true)
-        ) {
+        if (!screenEntry.accepts(normalizedId, role)) {
+            _uiError.value = "Esta pantalla pertenece a otro LIVE. Vuelve a abrirlo."
             return
         }
 
@@ -386,11 +453,11 @@ class LiveSessionViewModel @Inject constructor(
         }
 
         _connectionRequest.value = request
-        viewModelScope.launch(Dispatchers.IO) {
+        val startup = viewModelScope.launch(dispatchers.io, start = CoroutineStart.LAZY) {
             try {
                 val result = conectate.com.data.repository.awaitLiveConnection { start(normalizedId) }
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                if (result.isFailure) {
+                if (result.isFailure && isScreenOpen()) {
                     val fallback = if (role == LiveRole.HOST) {
                         "No se pudo iniciar el live."
                     } else {
@@ -401,17 +468,20 @@ class LiveSessionViewModel @Inject constructor(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                _uiError.value = error.toUserFacingMessage("No se pudo conectar al live. Inténtalo de nuevo.")
+                if (isScreenOpen()) _uiError.value = error.toUserFacingMessage("No se pudo conectar al live. Inténtalo de nuevo.")
             } finally {
+                screenEntry.clearStartup(currentCoroutineContext()[Job])
                 if (_connectionRequest.value == request) {
                     _connectionRequest.value = null
                 }
             }
         }
+        if (screenEntry.registerStartup(startup) && isScreenOpen()) startup.start()
+        else { startup.cancel(); _connectionRequest.value = null }
     }
 
     fun endLive() {
-        liveRepository.endLiveAsync()
+        liveRepository.closeScreenEntry(screenEntry)
     }
 
     suspend fun connectLiveKit(
@@ -440,10 +510,10 @@ class LiveSessionViewModel @Inject constructor(
         renderer: io.livekit.android.renderer.TextureViewRenderer
     ) = liveRepository.detachLiveKitRenderer(video, renderer)
 
-    suspend fun endLiveAndAwait(): Result<Unit> = liveRepository.endLive()
+    suspend fun endLiveAndAwait(): Result<Unit> = liveRepository.closeScreenEntry(screenEntry).await()
 
     fun toggleMic(enabled: Boolean) {
-        liveRepository.toggleMic(enabled)
+        screenAction { liveRepository.toggleMic(enabled) }
     }
 
     fun prepareLiveMusic(
@@ -458,18 +528,18 @@ class LiveSessionViewModel @Inject constructor(
         }
     }
 
-    fun setLiveMusicEnabled(enabled: Boolean) = liveRepository.setLiveMusicEnabled(enabled)
+    fun setLiveMusicEnabled(enabled: Boolean) { screenAction { liveRepository.setLiveMusicEnabled(enabled) } }
 
-    fun setLiveMusicVolume(volume: Float) = liveRepository.setLiveMusicVolume(volume)
+    fun setLiveMusicVolume(volume: Float) { screenAction { liveRepository.setLiveMusicVolume(volume) } }
 
-    fun clearLiveMusic() = liveRepository.clearLiveMusic()
+    fun clearLiveMusic() { screenAction { liveRepository.clearLiveMusic() } }
 
     fun pauseLive() {
-        liveRepository.pauseLive()
+        screenAction { liveRepository.pauseLive() }
     }
 
     fun resumeLive(screenIntent: Intent? = null): Boolean {
-        return liveRepository.resumeLive(screenIntent)
+        return screenValue(false) { liveRepository.resumeLive(screenIntent) }
     }
 
     fun applyHostConfiguration(
@@ -478,49 +548,49 @@ class LiveSessionViewModel @Inject constructor(
         videoEnabled: Boolean,
         projectionIntent: Intent? = null
     ): Boolean {
-        return liveRepository.updateHostConfiguration(
+        return screenValue(false) { liveRepository.updateHostConfiguration(
             source = source,
             micEnabled = micEnabled,
             videoEnabled = videoEnabled,
             projectionIntent = projectionIntent
-        )
+        ) }
     }
 
-    fun canReuseScreenShareIntent(): Boolean = liveRepository.canReuseScreenShareIntent()
+    fun canReuseScreenShareIntent(): Boolean = screenValue(false) { liveRepository.canReuseScreenShareIntent() }
 
     fun consumeSetupScreenProjectionIntent(): Intent? =
-        liveRepository.consumeSetupScreenProjectionIntent()
+        screenValue<Intent?>(null) { liveRepository.consumeSetupScreenProjectionIntent() }
 
     fun startCamera(): Boolean {
-        return liveRepository.startCamera()
+        return screenValue(false) { liveRepository.startCamera() }
     }
 
     fun setCameraFilter(filter: LiveCameraFilter) {
-        liveRepository.setCameraFilter(filter)
+        screenAction { liveRepository.setCameraFilter(filter) }
     }
 
     fun setCreatorLayoutStyle(style: conectate.com.data.model.LiveCreatorLayoutStyle) {
-        liveRepository.setCreatorLayoutStyle(style)
+        screenAction { liveRepository.setCreatorLayoutStyle(style) }
     }
 
-    fun switchCamera(): Boolean = liveRepository.switchCamera()
+    fun switchCamera(): Boolean = screenValue(false) { liveRepository.switchCamera() }
 
     fun startScreenShare(intent: Intent): Boolean {
-        return liveRepository.startScreenShare(intent)
+        return screenValue(false) { liveRepository.startScreenShare(intent) }
     }
 
     fun stopVideo() {
-        liveRepository.stopVideo()
+        screenAction { liveRepository.stopVideo() }
     }
 
     fun leaveLive() {
         stopCollaborationPolling()
-        liveRepository.endLiveAsync()
+        liveRepository.closeScreenEntry(screenEntry)
     }
 
     suspend fun leaveLiveAndAwait(): Result<Unit> {
         stopCollaborationPolling()
-        return liveRepository.endLive()
+        return liveRepository.closeScreenEntry(screenEntry).await()
     }
 
     private fun stopCollaborationPolling() {
@@ -530,7 +600,7 @@ class LiveSessionViewModel @Inject constructor(
     }
 
     fun sendComment(text: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             val result = liveRepository.sendComment(text)
             if (result.isFailure) {
                 _uiError.value = result.exceptionOrNull().toUserFacingMessage("No se pudo enviar el comentario.")
@@ -539,64 +609,64 @@ class LiveSessionViewModel @Inject constructor(
     }
 
     fun sendReaction() {
-        liveRepository.sendReaction()
+        screenAction { liveRepository.sendReaction() }
     }
 
     fun announceCommittedGift(receipt: GiftReceipt) {
-        liveRepository.announceCommittedGift(receipt)
+        screenAction { liveRepository.announceCommittedGift(receipt) }
     }
 
-    fun requestGuestAccess() = liveRepository.requestGuestAccess()
+    fun requestGuestAccess() { screenAction { liveRepository.requestGuestAccess() } }
 
-    fun cancelGuestAccessRequest() = liveRepository.cancelGuestAccessRequest()
+    fun cancelGuestAccessRequest() { screenAction { liveRepository.cancelGuestAccessRequest() } }
 
     fun respondToGuestRequest(socketId: String, accepted: Boolean) {
-        liveRepository.respondToGuestRequest(socketId, accepted)
+        screenAction { liveRepository.respondToGuestRequest(socketId, accepted) }
     }
 
     fun startGuestBroadcast(videoEnabled: Boolean, micEnabled: Boolean): Boolean =
-        liveRepository.startGuestBroadcast(videoEnabled, micEnabled)
+        screenValue(false) { liveRepository.startGuestBroadcast(videoEnabled, micEnabled) }
 
-    fun setGuestMicEnabled(enabled: Boolean) = liveRepository.setGuestMicEnabled(enabled)
+    fun setGuestMicEnabled(enabled: Boolean) { screenAction { liveRepository.setGuestMicEnabled(enabled) } }
 
-    fun setGuestVideoEnabled(enabled: Boolean): Boolean = liveRepository.setGuestVideoEnabled(enabled)
+    fun setGuestVideoEnabled(enabled: Boolean): Boolean = screenValue(false) { liveRepository.setGuestVideoEnabled(enabled) }
 
-    fun leaveGuestSeat() = liveRepository.leaveGuestSeat()
+    fun leaveGuestSeat() { screenAction { liveRepository.leaveGuestSeat() } }
 
     fun refreshGifts() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             walletRepository.fetchAvailableGifts()
             walletRepository.fetchBalance()
         }
     }
 
     fun startBattle(opponentSocketId: String, durationSeconds: Int) {
-        liveRepository.startBattle(opponentSocketId, durationSeconds)
+        screenAction { liveRepository.startBattle(opponentSocketId, durationSeconds) }
     }
 
-    fun respondToBattle(accepted: Boolean) = liveRepository.respondToBattle(accepted)
+    fun respondToBattle(accepted: Boolean) { screenAction { liveRepository.respondToBattle(accepted) } }
 
     fun updateModerationSettings(chatPaused: Boolean, blockedWords: List<String>) {
-        liveRepository.updateLiveModerationSettings(
+        screenAction { liveRepository.updateLiveModerationSettings(
             chatPaused = chatPaused,
             blockedWords = blockedWords
-        )
+        ) }
     }
 
     fun updateModerationPause(chatPaused: Boolean) {
-        liveRepository.updateLiveModerationSettings(chatPaused = chatPaused)
+        screenAction { liveRepository.updateLiveModerationSettings(chatPaused = chatPaused) }
     }
 
     fun setModerator(userId: String, enabled: Boolean) {
-        liveRepository.setLiveModerator(userId, enabled)
+        screenAction { liveRepository.setLiveModerator(userId, enabled) }
     }
 
     fun moderateViewer(userId: String, ban: Boolean) {
-        liveRepository.moderateLiveViewer(userId, ban)
+        screenAction { liveRepository.moderateLiveViewer(userId, ban) }
     }
 
     fun markReplayMoment(title: String, onSaved: () -> Unit = {}) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             liveRepository.addLiveChapter(title)
                 .onSuccess { onSaved() }
                 .onFailure {
@@ -612,7 +682,7 @@ class LiveSessionViewModel @Inject constructor(
     fun refreshFollowing(hostUserId: String) {
         val id = hostUserId.trim()
         if (id.isBlank()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             val isFollowing = userRepository.checkIsFollowing(id).getOrNull() ?: false
             _isFollowingHost.value = isFollowing
         }
@@ -621,7 +691,7 @@ class LiveSessionViewModel @Inject constructor(
     fun toggleFollow(hostUserId: String) {
         val id = hostUserId.trim()
         if (id.isBlank()) return
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(dispatchers.io) {
             val currentlyFollowing = _isFollowingHost.value
                 ?: (userRepository.checkIsFollowing(id).getOrNull() ?: false)
 
@@ -635,5 +705,10 @@ class LiveSessionViewModel @Inject constructor(
                 _isFollowingHost.value = !currentlyFollowing
             }
         }
+    }
+
+    override fun onCleared() {
+        liveRepository.abandonScreenEntry(screenEntry)
+        super.onCleared()
     }
 }

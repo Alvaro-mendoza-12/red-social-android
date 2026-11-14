@@ -203,6 +203,121 @@
       "path": "app/build/audit143/studio-bundled-runtime-version.txt",
       "sha256": "b412c591938b10ff3add842e5b8ca7524ab8b92b9a79d7b4ebaa27c06a7fae25",
       "bytes": 170
+    },
+    {
+      "path": "app/build/audit143/server-post-cable.jsonl",
+      "sha256": "654613169a2c40bac99e69ab8baed91e8ce0276151b4b9ee922a5a61ce4bcba6",
+      "bytes": 5244
+    },
+    {
+      "path": "app/build/audit143/server_post_cable_probe.py",
+      "sha256": "ff51dceb946c67a91595e23efec5e344fc32e0cce333736f994861cc6e42e7fe",
+      "bytes": 4225
+    },
+    {
+      "path": "app/build/audit143/server-link-recheck.txt",
+      "sha256": "e4c3311a3cc35343e8ad718cdf681779d91171fac0153de806f79e08faccc736",
+      "bytes": 1267
+    },
+    {
+      "path": "app/build/audit143/tailscale-ready-route-private.txt",
+      "sha256": "f5817e0d490b6212ae5742009db5295708e8ae0f85f034891e836f120fc59691",
+      "bytes": 168
+    },
+    {
+      "path": "app/build/audit143/environment-followup/publication-remote.json",
+      "sha256": "929ac97ef1b07d55e0a92b410753f7b17a948bde7c2479bc41f7bd2607026151",
+      "bytes": 882
+    },
+    {
+      "path": "app/build/audit143/environment-followup/remote-after-failed-push.json",
+      "sha256": "20e91985380c2ed9e4921fbc511b1911609cc636101cd0d28b2aa9744791fcf3",
+      "bytes": 379
+    },
+    {
+      "path": "app/build/audit143/environment-followup/atomic-push-stderr-private.txt",
+      "sha256": "cc79d89c73e8b67c031740eebac11c42ae0c17d000325d8c62850affe77900ab",
+      "bytes": 228
+    },
+    {
+      "path": "app/build/audit143/environment-followup/web-production-provenance.json",
+      "sha256": "54eb05ae4800c304ce8977e36225de32c58c22ac5ea71e27941c33c654b388f2",
+      "bytes": 491
+    },
+    {
+      "path": "app/build/audit143/server-ipv4-transport-private.jsonl",
+      "sha256": "b1f081efb4153518287a98d56e96fb409da17120056bccc002a3c7ccfb69e309",
+      "bytes": 1256
+    },
+    {
+      "path": "app/build/audit143/server_ipv4_transport_probe.py",
+      "sha256": "502fd709a56f860b6e2514dd0d2d04915c81fbd612398f6f5b9b5f4ed6f7b931",
+      "bytes": 1291
+    },
+    {
+      "path": "app/build/audit143/mini-pc-equal-probe.jsonl",
+      "sha256": "197b3a987fbda6f59575504ce6fce57206db6ff7d43497c1b37b9860a29997df",
+      "bytes": 1680
+    },
+    {
+      "path": "app/build/audit143/laptop-equal-probe.jsonl",
+      "sha256": "ec86f8343141528c96719b7e6a13525fa3d336515bfb664e9631b8e3e7186e1e",
+      "bytes": 1683
+    },
+    {
+      "path": "app/build/audit143/equal_internet_probe.py",
+      "sha256": "fe34c780bf6a02a15910e3db9f437423bfcd7cbbd29b8d0b881e8fcdb337e5e6",
+      "bytes": 1953
+    },
+    {
+      "path": "app/build/audit143/equal-probe-summary.json",
+      "sha256": "113c6016a73c7bc92acf12bf6e14d8c70fd53e3840aaea574265b036945fe66e",
+      "bytes": 904
+    },
+    {
+      "path": "app/build/audit143/laptop-network-before-equal-probe.json",
+      "sha256": "3e01b3a4389870e9bcab18b53855d4dbcd03116f5d23bfe2b8a27c3361da8677",
+      "bytes": 1758
+    },
+    {
+      "path": "app/build/audit143/laptop-gigabit-link-observed.json",
+      "sha256": "d6be29102b1999d1614ee777a503d8dd374b35e20033507b8705961f98a45824",
+      "bytes": 442
+    },
+    {
+      "path": "app/build/audit143/mini-link-after-laptop-change.txt",
+      "sha256": "ee0ee23f9f6f94eacf05dc36248ab69d1bf83798e9ffc56f4b98ef93095fc2d7",
+      "bytes": 26
+    },
+    {
+      "path": "app/build/audit143/laptop-gigabit-equal-probe.jsonl",
+      "sha256": "6f48e477997ff690a319761395ef8856cfe42c0d23dbc1f9b2d774ccfbddc584",
+      "bytes": 1685
+    },
+    {
+      "path": "app/build/audit143/parallel_download_probe.py",
+      "sha256": "c4dfa63e66b9743800e5138904fade8ceb46f2ec08ecd4aa49d07dcd2ae8f2bc",
+      "bytes": 1543
+    },
+    {
+      "path": "app/build/audit143/mini-four-downloads.json",
+      "sha256": "43f37b094fbcc41678229ee98e010030a06a19010a03259b2af34ceaa7ae465e",
+      "bytes": 724
+    },
+    {
+      "path": "app/build/audit143/laptop-four-downloads.json",
+      "sha256": "d064ed928f9290afc92ffad746d2606cfbc8a15aa3bf595b61a6484f87205887",
+      "bytes": 725
+    },
+    {
+      "path": "app/build/audit143/port-outcome-summary.json",
+      "sha256": "fefa09d1cb77f2ffcd2776cd7b9deb6db95112aa24a166180140b10fa26c45f5",
+      "bytes": 5137
+    },
+    {
+      "path": "app/build/audit143/server-router-path-private.txt",
+      "sha256": "c6cb3d05e5f38016f7108ad515d438358192891fa42d30ff476fa2f56398bb09",
+      "bytes": 57
     }
   ],
   "server": {
@@ -294,7 +409,521 @@
       "linkPartnerAdvertisesGigabit": false,
       "negotiatedMbps": 100,
       "duplex": "Full",
-      "routerConfigurationChanged": false
+      "routerConfigurationChanged": false,
+      "historicalBeforeGigabitSample": true
+    },
+    "postGigabitSample": {
+      "load": {
+        "sampleSeconds": 15.0,
+        "cpuBusyPercent": 7.93,
+        "cores": 8,
+        "loadAverage": [
+          "1.09",
+          "1.20",
+          "0.81"
+        ],
+        "memoryMiB": {
+          "MemTotal": 14915,
+          "MemAvailable": 11612
+        },
+        "linkMbps": 1000,
+        "trafficMbps": {
+          "rx_bytes": 0.0037,
+          "tx_bytes": 0.0061
+        },
+        "networkErrorDeltas": {
+          "rx_dropped": 3,
+          "tx_dropped": 0,
+          "rx_errors": 0,
+          "tx_errors": 0
+        },
+        "containers": [
+          {
+            "Name": "conectate-local-fallback-realtime-main",
+            "CPUPerc": "0.00%",
+            "MemUsage": "17.94MiB / 192MiB",
+            "NetIO": "788B / 126B",
+            "PIDs": "7"
+          },
+          {
+            "Name": "conectate-local-fallback-api-main",
+            "CPUPerc": "0.36%",
+            "MemUsage": "104.3MiB / 2GiB",
+            "NetIO": "1.22MB / 2.32MB",
+            "PIDs": "12"
+          },
+          {
+            "Name": "conectate-local-fallback-signaling-1",
+            "CPUPerc": "0.29%",
+            "MemUsage": "72.17MiB / 256MiB",
+            "NetIO": "12MB / 217kB",
+            "PIDs": "11"
+          },
+          {
+            "Name": "conectate-local-fallback-storage-r2-mirror-1",
+            "CPUPerc": "0.04%",
+            "MemUsage": "23.38MiB / 256MiB",
+            "NetIO": "344kB / 626kB",
+            "PIDs": "11"
+          },
+          {
+            "Name": "conectate-local-fallback-edge-main",
+            "CPUPerc": "0.00%",
+            "MemUsage": "14.61MiB / 256MiB",
+            "NetIO": "188kB / 84.8kB",
+            "PIDs": "9"
+          },
+          {
+            "Name": "conectate-local-fallback-storage-antivirus-1",
+            "CPUPerc": "0.00%",
+            "MemUsage": "947.3MiB / 3GiB",
+            "NetIO": "79.8kB / 89.7kB",
+            "PIDs": "2"
+          },
+          {
+            "Name": "conectate-local-fallback-db-main",
+            "CPUPerc": "0.29%",
+            "MemUsage": "109.6MiB / 1GiB",
+            "NetIO": "2.7MB / 1.43MB",
+            "PIDs": "10"
+          },
+          {
+            "Name": "conectate-local-fallback-signaling-redis-main",
+            "CPUPerc": "0.86%",
+            "MemUsage": "24.32MiB / 512MiB",
+            "NetIO": "219kB / 12MB",
+            "PIDs": "6"
+          },
+          {
+            "Name": "conectate-local-fallback-ai-main",
+            "CPUPerc": "25.23%",
+            "MemUsage": "21.95MiB / 512MiB",
+            "NetIO": "2.7kB / 126B",
+            "PIDs": "7"
+          },
+          {
+            "Name": "conectate-local-fallback-storage-antivirus-updater-1",
+            "CPUPerc": "0.00%",
+            "MemUsage": "17.83MiB / 1GiB",
+            "NetIO": "1.74kB / 4.13kB",
+            "PIDs": "1"
+          },
+          {
+            "Name": "conectate-local-fallback-survey-antivirus-1",
+            "CPUPerc": "0.00%",
+            "MemUsage": "951.9MiB / 2GiB",
+            "NetIO": "2.66kB / 126B",
+            "PIDs": "2"
+          },
+          {
+            "Name": "conectate-local-fallback-office-preview-1",
+            "CPUPerc": "0.04%",
+            "MemUsage": "193.6MiB / 1GiB",
+            "NetIO": "1.78kB / 126B",
+            "PIDs": "13"
+          },
+          {
+            "Name": "ferrenorte-test-app-1",
+            "CPUPerc": "0.00%",
+            "MemUsage": "73.16MiB / 768MiB",
+            "NetIO": "1.77kB / 126B",
+            "PIDs": "11"
+          },
+          {
+            "Name": "ferrenorte-test-database-1",
+            "CPUPerc": "6.88%",
+            "MemUsage": "44.38MiB / 512MiB",
+            "NetIO": "1.49kB / 126B",
+            "PIDs": "6"
+          },
+          {
+            "Name": "conectate-local-fallback-coturn-main",
+            "CPUPerc": "0.04%",
+            "MemUsage": "43.36MiB / 512MiB",
+            "NetIO": "0B / 0B",
+            "PIDs": "15"
+          }
+        ]
+      },
+      "capacityDownloadIpv6": {
+        "label": "Cloudflare 20 MB single HTTPS transfer after gigabit negotiation",
+        "family": "-6",
+        "exitCode": 0,
+        "status": 200,
+        "dnsSeconds": 0.013278,
+        "connectSeconds": 0.025127,
+        "tlsSeconds": 0.071494,
+        "ttfbSeconds": 0.138933,
+        "totalSeconds": 0.942883,
+        "downloadBytes": 20000000,
+        "uploadBytes": 0,
+        "downloadMbps": 169.692,
+        "uploadMbps": 0.0,
+        "error": null
+      },
+      "capacityUploadIpv6": {
+        "label": "Cloudflare 4 MB single HTTPS transfer after gigabit negotiation",
+        "family": "-6",
+        "exitCode": 0,
+        "status": 200,
+        "dnsSeconds": 0.001435,
+        "connectSeconds": 0.15245,
+        "tlsSeconds": 0.317146,
+        "ttfbSeconds": 0.471131,
+        "totalSeconds": 1.981691,
+        "downloadBytes": 0,
+        "uploadBytes": 4000000,
+        "downloadMbps": 0.0,
+        "uploadMbps": 16.148,
+        "error": null
+      },
+      "latency": [
+        {
+          "route": "localReady",
+          "samples": [
+            {
+              "exitCode": 0,
+              "status": 200,
+              "ttfbSeconds": 0.00668,
+              "totalSeconds": 0.006786,
+              "error": null
+            },
+            {
+              "exitCode": 0,
+              "status": 200,
+              "ttfbSeconds": 0.00489,
+              "totalSeconds": 0.004954,
+              "error": null
+            },
+            {
+              "exitCode": 0,
+              "status": 200,
+              "ttfbSeconds": 0.009917,
+              "totalSeconds": 0.011222,
+              "error": null
+            }
+          ]
+        },
+        {
+          "route": "publicReady",
+          "samples": [
+            {
+              "exitCode": 28,
+              "status": 0,
+              "ttfbSeconds": 0.0,
+              "totalSeconds": 3.00156,
+              "error": "Failed to connect to novvinapp.com port 443 after 3001 ms: Timeout was reached"
+            },
+            {
+              "exitCode": 28,
+              "status": 0,
+              "ttfbSeconds": 0.0,
+              "totalSeconds": 3.001555,
+              "error": "Failed to connect to novvinapp.com port 443 after 3001 ms: Timeout was reached"
+            },
+            {
+              "exitCode": 28,
+              "status": 0,
+              "ttfbSeconds": 0.0,
+              "totalSeconds": 3.001758,
+              "error": "Failed to connect to novvinapp.com port 443 after 3001 ms: Timeout was reached"
+            }
+          ]
+        },
+        {
+          "route": "directFunnelReady",
+          "samples": [
+            {
+              "exitCode": 0,
+              "status": 200,
+              "ttfbSeconds": 0.688647,
+              "totalSeconds": 0.689745,
+              "error": null
+            },
+            {
+              "exitCode": 0,
+              "status": 200,
+              "ttfbSeconds": 0.654489,
+              "totalSeconds": 0.65467,
+              "error": null
+            },
+            {
+              "exitCode": 0,
+              "status": 200,
+              "ttfbSeconds": 0.045711,
+              "totalSeconds": 0.04579,
+              "error": null
+            }
+          ]
+        }
+      ],
+      "ipv4CloudflareDownload": {
+        "label": "Cloudflare 20 MB single HTTPS transfer after gigabit negotiation",
+        "family": "-4",
+        "exitCode": 28,
+        "status": 0,
+        "dnsSeconds": 0.013085,
+        "connectSeconds": 0.0,
+        "tlsSeconds": 0.0,
+        "ttfbSeconds": 0.0,
+        "totalSeconds": 5.001184,
+        "downloadBytes": 0,
+        "uploadBytes": 0,
+        "downloadMbps": 0.0,
+        "uploadMbps": 0.0,
+        "error": "Failed to connect to speed.cloudflare.com port 443 after 5001 ms: Timeout was reached"
+      },
+      "throughputImprovementRatioEstablished": false,
+      "maximumContractedBandwidthKnown": false
+    },
+    "tailscaleRouteClarification": {
+      "legacyLabel": "directFunnelReady",
+      "currentRemoteAddressScope": "private tailnet, own server",
+      "currentRemoteAddress": "100.91.84.2",
+      "originalRemoteIpSaved": false,
+      "publicFunnelLatencyEstablished": false,
+      "successfulInternetIpv4ProvenByThisRoute": false
+    },
+    "laterIpv4TcpRecovery": {
+      "checkedAtUtc": "2026-11-14T22:49:23Z",
+      "github443Connected": true,
+      "domain443Connected": true,
+      "dnsIndependent11443Connected": true,
+      "noNetworkConfigurationChanged": true,
+      "rootCauseEstablished": false,
+      "scope": "TCP only; not a bandwidth, TLS or HTTP test"
+    },
+    "equalMiniPcLaptopComparison": {
+      "miniPc": {
+        "-4": {
+          "downloadSamplesMbps": [
+            142.044,
+            138.326
+          ],
+          "uploadSampleMbps": 121.152
+        },
+        "-6": {
+          "downloadSamplesMbps": [
+            107.479,
+            118.931
+          ],
+          "uploadSampleMbps": 35.658
+        }
+      },
+      "laptop": {
+        "-4": {
+          "downloadSamplesMbps": [
+            75.485,
+            19.624
+          ],
+          "uploadSampleMbps": 29.622
+        },
+        "-6": {
+          "downloadSamplesMbps": [
+            69.113,
+            70.272
+          ],
+          "uploadSampleMbps": 37.685
+        }
+      },
+      "miniPcLinkMbps": 1000,
+      "laptopLinkMbps": 100,
+      "laptopSpeedDuplex": "Auto negotiation",
+      "settingsChanged": false,
+      "concurrentSpeedTransfers": false,
+      "laptopNovvinLintRunning": true,
+      "maximumContractedBandwidthEstablished": false,
+      "faultyCableOrRouterPortProven": false,
+      "physicalPortSwapAwaitingOwner": true
+    },
+    "postPortChange": {
+      "observedLinkAtUtc": "2026-11-14T23:16:49.4931195Z",
+      "ownerReportedAction": "Laptop connection moved from router LAN 4 to LAN 2; mini PC connected to LAN 1",
+      "laptopLinkMbps": 1000,
+      "miniPcLinkMbps": 1000,
+      "laptopNegotiationStillAutomatic": true,
+      "assistantChangedAdapterSettings": false,
+      "permanentRouterPortDefectProven": false,
+      "laptopSingleTransferSamples": [
+        {
+          "atUtc": "2026-11-14T23:16:55Z",
+          "family": "-4",
+          "direction": "download",
+          "sequence": 1,
+          "exitCode": 0,
+          "status": 200,
+          "bytes": 50000000,
+          "seconds": 3.502716,
+          "ttfbSeconds": 0.395739,
+          "connectSeconds": 0.153994,
+          "speedMbps": 114.197,
+          "error": null
+        },
+        {
+          "atUtc": "2026-11-14T23:17:02Z",
+          "family": "-4",
+          "direction": "download",
+          "sequence": 2,
+          "exitCode": 0,
+          "status": 200,
+          "bytes": 50000000,
+          "seconds": 6.596707,
+          "ttfbSeconds": 1.561687,
+          "connectSeconds": 0.049197,
+          "speedMbps": 60.636,
+          "error": null
+        },
+        {
+          "atUtc": "2026-11-14T23:17:05Z",
+          "family": "-4",
+          "direction": "upload",
+          "sequence": 1,
+          "exitCode": 0,
+          "status": 200,
+          "bytes": 10000000,
+          "seconds": 2.866242,
+          "ttfbSeconds": 0.334254,
+          "connectSeconds": 0.128617,
+          "speedMbps": 27.911,
+          "error": null
+        },
+        {
+          "atUtc": "2026-11-14T23:17:09Z",
+          "family": "-6",
+          "direction": "download",
+          "sequence": 1,
+          "exitCode": 0,
+          "status": 200,
+          "bytes": 50000000,
+          "seconds": 3.943668,
+          "ttfbSeconds": 0.549935,
+          "connectSeconds": 0.192717,
+          "speedMbps": 101.429,
+          "error": null
+        },
+        {
+          "atUtc": "2026-11-14T23:17:14Z",
+          "family": "-6",
+          "direction": "download",
+          "sequence": 2,
+          "exitCode": 0,
+          "status": 200,
+          "bytes": 50000000,
+          "seconds": 4.685556,
+          "ttfbSeconds": 0.5592,
+          "connectSeconds": 0.205171,
+          "speedMbps": 85.369,
+          "error": null
+        },
+        {
+          "atUtc": "2026-11-14T23:17:19Z",
+          "family": "-6",
+          "direction": "upload",
+          "sequence": 1,
+          "exitCode": 0,
+          "status": 200,
+          "bytes": 10000000,
+          "seconds": 5.194316,
+          "ttfbSeconds": 0.521252,
+          "connectSeconds": 0.191004,
+          "speedMbps": 15.401,
+          "error": null
+        }
+      ],
+      "fourConcurrentDownloads": {
+        "miniPc": {
+          "startedAtUtc": "2026-11-14T23:18:25Z",
+          "system": "Linux",
+          "method": "Four concurrent IPv4 HTTPS downloads, 25 MB each; aggregate payload divided by wall-clock; devices tested sequentially",
+          "elapsedSeconds": 9.974912,
+          "complete": true,
+          "aggregateMbps": 80.201,
+          "streams": [
+            {
+              "stream": 0,
+              "exitCode": 0,
+              "status": 200,
+              "bytes": 25000000,
+              "seconds": 3.318296,
+              "error": null
+            },
+            {
+              "stream": 1,
+              "exitCode": 0,
+              "status": 200,
+              "bytes": 25000000,
+              "seconds": 9.956645,
+              "error": null
+            },
+            {
+              "stream": 2,
+              "exitCode": 0,
+              "status": 200,
+              "bytes": 25000000,
+              "seconds": 3.732686,
+              "error": null
+            },
+            {
+              "stream": 3,
+              "exitCode": 0,
+              "status": 200,
+              "bytes": 25000000,
+              "seconds": 3.778947,
+              "error": null
+            }
+          ],
+          "maximumContractedBandwidthEstablished": false
+        },
+        "laptop": {
+          "startedAtUtc": "2026-11-14T23:20:34Z",
+          "system": "Windows",
+          "method": "Four concurrent IPv4 HTTPS downloads, 25 MB each; aggregate payload divided by wall-clock; devices tested sequentially",
+          "elapsedSeconds": 5.282,
+          "complete": true,
+          "aggregateMbps": 151.458,
+          "streams": [
+            {
+              "stream": 0,
+              "exitCode": 0,
+              "status": 200,
+              "bytes": 25000000,
+              "seconds": 1.455632,
+              "error": null
+            },
+            {
+              "stream": 1,
+              "exitCode": 0,
+              "status": 200,
+              "bytes": 25000000,
+              "seconds": 3.949356,
+              "error": null
+            },
+            {
+              "stream": 2,
+              "exitCode": 0,
+              "status": 200,
+              "bytes": 25000000,
+              "seconds": 4.427761,
+              "error": null
+            },
+            {
+              "stream": 3,
+              "exitCode": 0,
+              "status": 200,
+              "bytes": 25000000,
+              "seconds": 5.168603,
+              "error": null
+            }
+          ],
+          "maximumContractedBandwidthEstablished": false
+        }
+      },
+      "ownerReportedSpeedTestLaptopMbps": "150-170",
+      "ownerReportedSpeedTestMiniPcMbps": "130-140",
+      "concurrentOtherHouseholdTrafficMeasured": false,
+      "productionVideoFirstFrameMeasuredAfterPortChange": false,
+      "allServiceConcurrentCapacityEstablished": false,
+      "tiktokEquivalentPerformanceEstablished": false
     }
   },
   "ide": {
@@ -440,8 +1069,8 @@
     "fieldMetricsUnavailable": true
   },
   "publication": {
-    "143RemotePublicationNotYetPerformed": true,
-    "143ProductionDeploymentNotYetPerformed": true,
+    "143RemotePublicationNotYetPerformed": false,
+    "143ProductionDeploymentNotYetPerformed": false,
     "unfinished141ExcludedFromStableSelection": true,
     "finalApkDelivery": false,
     "143LocalIntegrationVerified": {
@@ -451,6 +1080,45 @@
       },
       "tree": "d34670005606bdb69c996b6a3238c04ef82276f2",
       "remoteConfirmed": false
+    },
+    "143RemoteConfirmed": {
+      "heads": {
+        "feature/live-gifts": "972b727a3bfa2c23398926ba394f42fd150a064a",
+        "main": "400f183a60b964f3a01ab721fee46c01bbd9880e"
+      },
+      "baseHeads": {
+        "feature/live-gifts": "ee5ea2586011dd252db2ecf18ba3fa628d934245",
+        "main": "7ac918cc93ab4205d9065ee40e60c3ec4cba327b"
+      },
+      "remoteBaseHeads": {
+        "feature/live-gifts": "96c7188ea78e7f58f27e91ca4078ff4363547ee7",
+        "main": "19b641508b75ba4ed98e8a3dde249a273dcf0e0c"
+      },
+      "tree": "ed74b32f34c78ce8a4d330ea5d4e5b3091e439fa",
+      "equalStableTrees": true,
+      "foreignAndUnpublished141Preserved": true,
+      "indexesEmpty": true,
+      "coverageFingerprintsVerified": 4513,
+      "remotePublished": true,
+      "finalApk": false,
+      "remoteVerified": true,
+      "remoteCheckedAtUtc": "2026-11-14T22:50:59.225606+00:00",
+      "priorPushReportedTransportFailure": true,
+      "productionDeploymentVerified": false
+    },
+    "143ProductionDeploymentConfirmed": {
+      "checkedAtUtc": "2026-11-14T22:55:05.107946+00:00",
+      "id": "dpl_3BnLLwp35sddsvRSNhTqvVwrfmEj",
+      "url": "red-social-android-glpijy6g3-alvaro-s-projects1.vercel.app",
+      "readyState": "READY",
+      "source": "git",
+      "commit": "400f183a60b964f3a01ab721fee46c01bbd9880e",
+      "expectedMainCommit": "400f183a60b964f3a01ab721fee46c01bbd9880e",
+      "ref": "main",
+      "productionAliasVerified": true,
+      "expectedCommitDeployed": true,
+      "createdAt": 1794696624495,
+      "confirmed": true
     }
   },
   "openItems": [
@@ -462,5 +1130,6 @@
     "final identified validated APK"
   ],
   "followupAtUtc": "2026-11-14T20:58:16.402205+00:00",
-  "environmentFollowupAtUtc": "2026-11-14T22:13:38.851249+00:00"
+  "environmentFollowupAtUtc": "2026-11-14T22:13:38.851249+00:00",
+  "postGigabitAtUtc": "2026-11-14T22:42:14Z"
 }

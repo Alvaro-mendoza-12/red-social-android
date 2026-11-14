@@ -201,7 +201,8 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.live.LiveHostScreen(
                 navController = navController,
-                liveId = liveId
+                liveId = liveId,
+                routeEntryId = backStackEntry.id
             )
         }
     }
@@ -214,7 +215,8 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.live.LiveViewerScreen(
                 navController = navController,
-                liveId = streamId
+                liveId = streamId,
+                routeEntryId = backStackEntry.id
             )
         }
     }

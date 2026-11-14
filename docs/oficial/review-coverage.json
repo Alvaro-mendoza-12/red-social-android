@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T22:13:55.203232+00:00",
-  "baseCommit": "ee5ea2586011dd252db2ecf18ba3fa628d934245",
+  "generatedAtUtc": "2026-11-14T23:33:02.544523+00:00",
+  "baseCommit": "972b727a3bfa2c23398926ba394f42fd150a064a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,19 +11,19 @@
   },
   "counts": {
     "pending": 3624,
-    "partial": 246,
-    "code-read": 643
+    "partial": 249,
+    "code-read": 651
   },
   "countsByPhase": {
     "android": {
       "pending": 1498,
-      "partial": 103,
-      "code-read": 451
+      "partial": 105,
+      "code-read": 458
     },
     "documentation": {
       "pending": 623,
-      "code-read": 48,
-      "partial": 21
+      "code-read": 49,
+      "partial": 22
     },
     "server": {
       "pending": 855,
@@ -4597,9 +4597,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "62a377921681d511e10b4eba56d77f3af9ee3eed",
+      "gitBlobId": "ec7efb84c9c799587c5b28f2b2fcc2c402fae847",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8097,11 +8097,27 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/data/repository/LiveMediaVisit.kt",
+      "phase": "android",
+      "gitBlobId": "3ee7ece256e04aabf32acd6debcb64df25daab97",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/repository/LiveRepository.kt",
       "phase": "android",
-      "gitBlobId": "9b1308b73c780dea05177d4ab510fd842c6e3260",
+      "gitBlobId": "4c57141562c93e9b232a691d30d83c4381d597f5",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/139-visitas-notificacion-y-cierre-live-2026-11-14.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/repository/LiveScreenEntry.kt",
+      "phase": "android",
+      "gitBlobId": "bc5635b0747f300216dd61a497786ee68c864c7d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8110,6 +8126,14 @@
       "gitBlobId": "eed215a9460e97b93baaf370c73bfe9b3bb01e7a",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/139-visitas-notificacion-y-cierre-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/repository/LiveSessionPlatform.kt",
+      "phase": "android",
+      "gitBlobId": "ce70e6153110ba7950e873f4f8723b500f3c7f29",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9160,6 +9184,14 @@
       "gitBlobId": "496e76883596ba1a4630b4bb82a24c85dbcbc682",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/139-visitas-notificacion-y-cierre-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/di/LiveMediaModule.kt",
+      "phase": "android",
+      "gitBlobId": "c140f50b7df24c0ee4e0aa0df601ddeef5527bc8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10217,9 +10249,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/FigmaLiveHostScreen.kt",
       "phase": "android",
-      "gitBlobId": "062b745528cef8abed3afc63b106754ed8abf7a3",
+      "gitBlobId": "c26defac8ed8a9e395aced33df0a3ff6f2497924",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10233,9 +10265,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/FigmaLiveViewerScreen.kt",
       "phase": "android",
-      "gitBlobId": "d94439ad3c8b3c9fa88f2cf3a7c7a41b162749eb",
+      "gitBlobId": "504c5681a0ace5b442b3d7cad08ae195f44830a7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10353,9 +10385,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveHostScreen.kt",
       "phase": "android",
-      "gitBlobId": "9f1fb66d6a0b405311f14b8e9c0e225818aa1776",
+      "gitBlobId": "4d7f9ba915761c121237edf71c9ef08d004b4398",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10415,9 +10447,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt",
       "phase": "android",
-      "gitBlobId": "b3d46d6356d9ea8b4a71ce7e0099ba551d89a8f4",
+      "gitBlobId": "ada2ee8cfb1c5304214b25a46d20fe3808bc51d8",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10447,9 +10479,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveToolAccountVisit.kt",
       "phase": "android",
-      "gitBlobId": "70cb55b8426d94a6aa030c7533d39e8f8c509fbc",
+      "gitBlobId": "35ec1b498080875a93a647ed8f2857785e98bbfd",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10481,9 +10513,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveViewerScreen.kt",
       "phase": "android",
-      "gitBlobId": "1b874b3e8c3753bd9d36d54da497fd9071a270f3",
+      "gitBlobId": "db1d517005c50ffdcf8a6fc4df64aeaa0a7767bb",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11473,6 +11505,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/navigation/LiveRouteExit.kt",
+      "phase": "android",
+      "gitBlobId": "def3b66baae2d948663518b9afb5a552aa137d72",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/navigation/LiveShareLinks.kt",
       "phase": "android",
       "gitBlobId": "6df09b5c602f249f7559519140f671447de415a0",
@@ -11483,9 +11523,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/MainNavigationRoutes.kt",
       "phase": "android",
-      "gitBlobId": "99d3a6afe2b07d6192e5d127268377a9293a3500",
+      "gitBlobId": "42541e285e261b3fa8f467eb9ff96466206066f7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15477,6 +15517,22 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/LiveMediaVisitTest.kt",
+      "phase": "android",
+      "gitBlobId": "c21bc678beb76a8786cd8f8b3bca20c33ec1a3bf",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/LiveRepositorySessionOwnershipTest.kt",
+      "phase": "android",
+      "gitBlobId": "25d5917e66cd820c43a22025ab9de2db74f2b3a5",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/LiveSessionLifecycleCoordinatorTest.kt",
       "phase": "android",
       "gitBlobId": "d60ea89efc89d50dc3bc9f4c36f850ea3794a41b",
@@ -16389,6 +16445,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/live/LiveScreenOwnershipTest.kt",
+      "phase": "android",
+      "gitBlobId": "446458219154f3c31c17a601e1d307ce0720c6b2",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/live/LiveSessionScaffoldPolicyTest.kt",
       "phase": "android",
       "gitBlobId": "0bc5b34d5f61e076c2582462d0f9762c1d15a7f8",
@@ -16795,6 +16859,14 @@
       "phase": "android",
       "gitBlobId": "514a7fbd9f76a2bfccab9e3e9e7142b9f1d07559",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/navigation/LiveRouteExitTest.kt",
+      "phase": "android",
+      "gitBlobId": "d1e4c80a6dd396e447d7b678ba8266967a0a2551",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/navigation/LiveShareLinksTest.kt",
@@ -20413,9 +20485,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "2313bf9a7449eade623342a41de1b19b379d1042",
+      "gitBlobId": "d31068b7fec34e5a29e43a8208aaf666932066fd",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20669,6 +20741,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "14606ec81f0f58a2d2ef675f8e36b97e148e2fb4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
       "phase": "documentation",
       "gitBlobId": "5f1ce05e51fd7fc1b21635744de3bb14ec0dc9c4",
@@ -20679,9 +20759,9 @@
     {
       "file": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "phase": "documentation",
-      "gitBlobId": "f39317d182aba894f77b01f59b4e991d1039bd64",
+      "gitBlobId": "713a59f49388015302928c6ca0c481acc6bbc73d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21201,9 +21281,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "76d138195e893b13f683979b52d17b04fa81890f",
+      "gitBlobId": "a0790c91daecea8d40f2fccf032fc5e2f19da057",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21623,9 +21703,9 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "d5d58dba891d28771cbc65357e5d2fb060b1dd60",
+      "gitBlobId": "032add75d14165191929736abe46aeb6eecda4ec",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21681,9 +21761,9 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "cbb82e50713f60ef750b19096bb078fc8ee6404c",
+      "gitBlobId": "138a01f05ab7ad7ec8b2ce218a48dc28c75049c6",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22057,6 +22137,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "docs/quality/evidence/141-cuentas-motor-pantallas.json",
+      "phase": "documentation",
+      "gitBlobId": "5ef19c93c2961b05b96dc3334221c5ed5b683a64",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/quality/evidence/142-web-ide-network.json",
       "phase": "documentation",
       "gitBlobId": "d00942d37a6bb3da7124c7d169f88e504a0adbfc",
@@ -22067,9 +22155,9 @@
     {
       "file": "docs/quality/evidence/143-ide-server-performance.json",
       "phase": "documentation",
-      "gitBlobId": "9e497651ba3046953d8fb2f1ca65632cbc4c14ec",
+      "gitBlobId": "5c8298e09f79973fdf1b175be8082f268800c63a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

@@ -20,7 +20,36 @@ Una transferencia HTTPS IPv4 a Cloudflare de 20 MB dio **19,218 Mbps de descarga
 
 100 Mbps equivalen a un máximo teórico de 12,5 MB/s antes de sobrecargas; no son 100 MB/s. En este intervalo el enlace no estaba saturado. Después de sustituir cable o switch debe repetirse la negociación y la medición: la categoría del cable por sí sola no prueba una velocidad superior ni elimina la latencia de otros componentes.
 
-La lectura posterior de `ethtool` confirma que la tarjeta del servidor admite y anuncia **1000baseT/Full**, pero el interlocutor solo anuncia 10/100; el enlace actual es **100 Mbps, dúplex completo**. Esto es compatible con el switch de 100 Mbps descrito por el propietario. No se cambiaron rutas, DNS ni ajustes del router. Debe contrastarse la negociación después del cambio físico.
+La lectura de `ethtool` previa a la muestra Gigabit confirmó que la tarjeta del servidor admite y anuncia **1000baseT/Full**, pero su interlocutor solo anunciaba 10/100; el enlace en esa muestra era **100 Mbps, dúplex completo**. Esto es compatible con el switch de 100 Mbps descrito por el propietario. No se cambiaron rutas, DNS ni ajustes del router. La comprobación posterior se describe a continuación.
+
+## Nueva muestra con enlace Gigabit
+
+A las **17:42 de Colombia** el servidor ya negociaba **1000 Mbps**. En quince segundos se observaron RX **0,0037 Mbps**, TX **0,0061 Mbps**, CPU **7,93 %** y **11.612 MiB disponibles de 14.915 MiB**. La transferencia HTTPS **IPv6** de 20 MB completos dio **169,692 Mbps de descarga**; la subida de 4 MB completos dio **16,148 Mbps**. Son transferencias individuales, sin datos del proyecto. No se presenta una mejora multiplicativa frente a la muestra IPv4 anterior: cambiaron familia de red, momento y estado de conexión, y la primera descarga IPv6 había fallado. La negociación Gigabit y la transferencia efectiva son medidas distintas.
+
+La descarga IPv4 hacia Cloudflare no conectó en cinco segundos y las tres peticiones IPv4 al dominio no conectaron en tres segundos cada una. No se hizo la subida IPv4 después de ese fallo. El gateway local respondió con mediana **6,68 ms**. Windows también agotó su conexión IPv4 a GitHub. Estos ensayos no demuestran saturación de CPU, memoria o enlace de Ubuntu ni miden la capacidad de usuarios simultáneos. El origen concreto del fallo de salida pública sigue sin establecerse.
+
+Se corrige una distinción de ruta: la URL denominada `directFunnelReady` resolvió y conectó en la comprobación posterior a **100.91.84.2**, la dirección privada del propio servidor en Tailscale. Su éxito **no demuestra Internet IPv4 ni mide el acceso público de Funnel**. Las primeras muestras no conservaron `remote_ip`; su tabla identifica la URL utilizada sin atribuirle ahora un recorrido WAN comprobado. Los resultados privados completos se conservan; no se reemplaza un timeout por una latencia cero.
+
+## Contraste solicitado entre mini PC y laptop
+
+El propietario confirmó dos cables directos del router, de unos 27 metros, y comunicó una prueba de unos 65 en la laptop frente a 170–180 junto al router. La lectura de Windows a las **17:56–17:59** mostró la tarjeta Realtek PCIe GbE enlazada a **100 Mbps**, dúplex completo, con **negociación automática**. La mini PC ya enlazaba a **1000 Mbps**. No se forzó la velocidad ni se reinició el adaptador. El nombre comercial del cable no acredita por sí solo el enlace negociado.
+
+Se ejecutaron por separado, sin transferencias de velocidad simultáneas, dos descargas HTTPS de **50 MB** y una subida de **10 MB de bytes nulos** por familia IP y equipo, contra el mismo servicio Cloudflare:
+
+| Equipo | Enlace LAN | Descargas IPv4 (Mbps) | Descargas IPv6 (Mbps) | Subida IPv4 / IPv6 (Mbps) |
+|---|---:|---:|---:|---:|
+| Mini PC, 17:58 | 1000 | 142,044 / 138,326 | 107,479 / 118,931 | 121,152 / 35,658 |
+| Laptop, 17:59 | 100 | 75,485 / 19,624 | 69,113 / 70,272 | 29,622 / 37,685 |
+
+La laptop seguía ejecutando Lint de Novvin durante su muestra; se registra esa condición y la segunda descarga IPv4 lenta no se omite. Son transferencias individuales y variables, no máximos contratados ni una prueba idéntica a la del celular. El enlace de 100 Mbps es un límite comprobado en la laptop; todavía no distingue puerto del router, cable/conectores o comportamiento del adaptador. Se solicitó al propietario intercambiar los puertos solo después de terminar estas medidas; esa comprobación física no se presume realizada. Las conexiones IPv4 y HTTPS volvieron a responder antes de estas transferencias: el fallo anterior era intermitente y no se presenta como desconexión IPv4 permanente.
+
+## Resultado posterior al cambio de puerto
+
+A las **18:16** Windows pasó a **1 Gbps**, conservando `SpeedDuplex=0` (negociación automática), y la mini PC seguía a **1000 Mbps**. El asistente no cambió opciones del adaptador. El propietario confirmó después mover la conexión de la laptop de LAN 4 a LAN 2, con la mini PC en LAN 1, y comunicó 150–170 Mbps en su prueba de laptop y 130–140 en la del servidor. Esa intervención y la renegociación están registradas; no demuestran por sí solas un defecto permanente del puerto LAN 4.
+
+Con el mismo ensayo de transferencias individuales de 50 MB, la laptop ya a Gigabit dio descargas IPv4 de **114,197 / 60,636 Mbps** e IPv6 de **101,429 / 85,369 Mbps**. Una prueba adicional de **cuatro descargas IPv4 concurrentes de 25 MB cada una**, con cada equipo ensayado por separado, dio **151,458 Mbps agregados en laptop** y **80,201 Mbps en mini PC**. En esta última, tres flujos acabaron en 3,3–3,8 s y uno tardó 9,96 s. No se omite ese flujo lento ni se transforma la muestra de 80,201 en un límite fijo: las otras muestras del servidor habían dado 138–142 y 169,692, bajo métodos/familias/momentos distintos. No se controló todo el tráfico del resto de la casa.
+
+Se retiró el límite LAN de 100 Mbps observado en la laptop y hay transferencias verificadas que lo superan. La capacidad de todos los servicios y la fluidez del feed tipo TikTok siguen sin establecerse con estas pruebas. Cuando los medios salen de la mini PC, importa su subida; si se sirven desde almacenamiento/CDN, debe medirse esa ruta. La precarga, el peso de los archivos, el primer cuadro y las pausas al cambiar de video requieren ensayos propios de Android. Referencias primarias: [precarga Media3](https://developer.android.com/media/media3/exoplayer/preloading-media/preloadmanager) y [entrega de medios por caché](https://developers.cloudflare.com/use-cases/media-streaming/cache-delivery/).
 
 ## Latencia e imágenes
 
@@ -29,7 +58,7 @@ Tres peticiones HTTPS nuevas por ruta, desde el propio Ubuntu, produjeron estas 
 | Ruta | Mediana |
 |---|---:|
 | `/ready` por gateway local | 7,37 ms |
-| `/ready` por Funnel directo | 45,04 ms |
+| `/ready` por URL de Tailscale (destino no guardado entonces) | 45,04 ms |
 | `/ready` por novvinapp.com | 618,99 ms |
 | Logo público por novvinapp.com | 314,95 ms |
 
@@ -73,7 +102,7 @@ La reapertura final automática del IDE fue rechazada por la revisión de aproba
 
 ## Publicación y continuidad
 
-Se verificó la publicación remota atómica de **142** y su despliegue Git `READY` bajo el dominio: main `19b641508b75ba4ed98e8a3dde249a273dcf0e0c`, despliegue `dpl_3SRa1x4H77j4eHoFn1CPc3wHtk1m`. La selección 143 se publicará y comprobará por separado; un build local no acredita su despliegue.
+Se verificó la publicación remota atómica de **142** y su despliegue Git `READY` bajo el dominio: main `19b641508b75ba4ed98e8a3dde249a273dcf0e0c`, despliegue `dpl_3SRa1x4H77j4eHoFn1CPc3wHtk1m`. La selección **143** quedó publicada: main `400f183a60b964f3a01ab721fee46c01bbd9880e` y feature/live-gifts `972b727a3bfa2c23398926ba394f42fd150a064a`, con árbol igual `ed74b32f34c78ce8a4d330ea5d4e5b3091e439fa`. El push notificó desconexión al leer la respuesta; una consulta independiente confirmó ambas refs antes de cualquier reintento. A las **17:55 de Colombia**, Vercel confirmó el despliegue Git `dpl_3BnLLwp35sddsvRSNhTqvVwrfmEj`, `READY`, del commit main indicado y con alias `novvinapp.com`. Los cambios móviles 141 no formaban parte de esos commits; su integración posterior requiere evidencia propia.
 
 La tanda 141 de recibos de pantalla terminó con **30 de 32 casos aprobados**. Los cierres retenidos, la entrada encolada, la reapertura del minimizado y la espera de liberación modelada aprobaron; permanecen reproducidos dos fallos de control de micrófono y lectura de estado desde una pantalla antigua. Sus fuentes, XML y log se conservaron antes de continuar. No se incluyen esos cambios móviles incompletos en la selección estable de este bloque.
 

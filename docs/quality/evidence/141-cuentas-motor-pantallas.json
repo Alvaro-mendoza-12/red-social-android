@@ -1,0 +1,2990 @@
+{
+  "checkedAtUtc": "2026-11-14T23:32:11.357427+00:00",
+  "scope": "Bounded Android LIVE account/media/screen ownership fixes; full mobile audit remains open",
+  "sources": [
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/LiveRepository.kt",
+      "sha256": "d43bc9e9791897c05ab16b8dfed887bd0bc180d246c4f0c7d366e7b6a30ca744"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/LiveMediaVisit.kt",
+      "sha256": "b75285f9403e82df49d8dcd6b2e0114fa0733bd1c30ef4afe3eec589e9b0e667"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/LiveScreenEntry.kt",
+      "sha256": "6bb251df45321e1a9027fe3c7549502514af5b6a5cb607cab8d0586e32d22e5d"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/LiveSessionPlatform.kt",
+      "sha256": "65d3967df1ed29247f860e83f515c332465c838a288f5723d69565a8982137bf"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/di/LiveMediaModule.kt",
+      "sha256": "0c3fc9fc399a63183b2d476d6aba15e3eae61c9380e730ac66fe22621627ce6b"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt",
+      "sha256": "5561eca561b76474f36707db5ff0f4d64600e396869709c480a1a7a5bf9b4a0b"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/live/LiveScreenOwnershipTest.kt",
+      "sha256": "cfbba6805c4939d3b3708d2bed03d51f300b4c31621e187e3dc3c620df4d0774"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/data/repository/LiveRepositorySessionOwnershipTest.kt",
+      "sha256": "4723d77f082ab1f373e7ca58fc93556e50a20331b626dff521fa4522f0d1049a"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/data/repository/LiveMediaVisitTest.kt",
+      "sha256": "fe277b6220cc7cd818fb831a730e9dc7b5b2e98694243c29f58abb21750bd578"
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "sha256": "c525402695c4a725fa5fc9935763d90575ea66a1892129f0a44547bfef476d6d"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/live/LiveToolAccountVisit.kt",
+      "sha256": "65d128e31188cf25d0b7f6a58234a629bd9fdbdab4413ca210d94a9e718210d3"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/live/LiveToolAccountVisitTest.kt",
+      "sha256": "a39c14a508ee6fb82da7bc83435601a3268a959f35ac17fb53f8cc2b8999f4e6"
+    },
+    {
+      "path": "gradle.properties",
+      "sha256": "aaa815944e1b200476e7df989ffbb7a672ad34edf4bce38b27bc499870acf373"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/navigation/MainNavigationRoutes.kt",
+      "sha256": "390601bb7cb09f2682f22d1cf024f7d2323054a913945b4074d007147dcff802"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/navigation/LiveRouteExit.kt",
+      "sha256": "a67fd856811e46bbf580e31788f6d13f81ae762aeac34da3f690f04aacdc1a22"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/navigation/LiveRouteExitTest.kt",
+      "sha256": "5012b0a00db04594990b5b44e1112d1b3e7a54669192384cce08d4ac26a25bd9"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/live/FigmaLiveHostScreen.kt",
+      "sha256": "9e4962e5688627b2b865e2f6ac7631732dc57b26c6fc364b85d0f45ecdeebbfb"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/live/FigmaLiveViewerScreen.kt",
+      "sha256": "51e32711b5c8c1d7057f304f82bc899a5343dc0ef77ebb4277bd0b20996bde80"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/live/LiveHostScreen.kt",
+      "sha256": "b05139f9fb2daa8b82eb0465f0ae9edec370e53deb733e09a198ea57f4647acb"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/live/LiveViewerScreen.kt",
+      "sha256": "602c93f9ff7f7a362ecc18b5543f9160fbf0b1e051bbe3730265846a372cd35a"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/audit128/live141-quality-final/interruption.json",
+      "sha256": "4d915210f3a4de60d10391fde487b8fa01a8b6d2eeaf223a66fe317def9a1b4a",
+      "bytes": 545
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final/gradle.log",
+      "sha256": "1bb21daf322ee18a335b017439c77666a446a2053a1b2a928417467c6dcebc3b",
+      "bytes": 3286
+    },
+    {
+      "path": "app/build/audit128/live141-baseline-result.json",
+      "sha256": "f4b0536d0446990fe3df9c7112a0d4f29daf0665636c24c768128c75d3936d3b",
+      "bytes": 8660
+    },
+    {
+      "path": "app/build/audit128/live141-ui-baseline-result.json",
+      "sha256": "4930b21a38e7452f7671a1e0403389eaf0c19f03dcff19f696450da1f614874d",
+      "bytes": 8226
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair1-result.json",
+      "sha256": "30336be57778c0197c7c32d541bbc380555e8cb8d3035dd6349c47dc4cb20982",
+      "bytes": 2703
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair2-result/result.json",
+      "sha256": "55ef4be779709e15e2888940918c877542614cb93ea826d900efb48da854fee1",
+      "bytes": 4314
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair2-result/gradle.log",
+      "sha256": "236251d8692d7b6aa8b391527ed50a8fc46597f6d37d37a04bbea8b3ff2814d3",
+      "bytes": 12974
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair3-result/result.json",
+      "sha256": "8f89922a7bc817749ec875ce0531dc964145572bafe917f0bb34482ba2bc5617",
+      "bytes": 3716
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair3-result/gradle.log",
+      "sha256": "a2adf6a6bb3eff7914f3d23b1c5d82674caba6633f72f9abdf2c5eca010fcb23",
+      "bytes": 12978
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair4-result/result.json",
+      "sha256": "57c3be8c890939c47414e4a0950f66921bcde97dbd711b1a0b66fe71cd041bf7",
+      "bytes": 4920
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair4-result/sources.json",
+      "sha256": "a0944ddfd5324589e26c32a8c6079c9ca91656c249df7b5e34d82a7ffc53cd63",
+      "bytes": 3521
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair4-result/gradle.log",
+      "sha256": "8ca15fcd4aaf7c6118a0d6b20058b98b5e271ae1d794b0a92f357927844ff0c0",
+      "bytes": 12172
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/result.json",
+      "sha256": "f6a15889b9055a7f01b933a72f7d50f585aa02a1e7ea71d4f20a8f86942c4e91",
+      "bytes": 153429
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/sources.json",
+      "sha256": "a0944ddfd5324589e26c32a8c6079c9ca91656c249df7b5e34d82a7ffc53cd63",
+      "bytes": 3521
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/gradle.log",
+      "sha256": "16ae8d21a0ee1f3be0a4636721b3ca281f51b25274ca64e7bd036922b0bb5918",
+      "bytes": 12773
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/lint-results-debug.xml",
+      "sha256": "092b47af7e2879ae4912c04d7f993a1fa4c5cde5785b5e1b7a49a3429978d87c",
+      "bytes": 353004
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair4-result/TEST-conectate.com.data.repository.LiveMediaVisitTest.xml",
+      "sha256": "428d918e5886e147367d35de2e14457f8cc1af8ce85ad90b84e4d872b4ff6cca",
+      "bytes": 1111
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair4-result/TEST-conectate.com.data.repository.LiveRepositorySessionOwnershipTest.xml",
+      "sha256": "bbfca83df21150682d52b55c90011a3635a9fbc7d016b358cd51adaf53c69cf7",
+      "bytes": 3056
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair4-result/TEST-conectate.com.presentation.live.LiveScreenOwnershipTest.xml",
+      "sha256": "08af3d9ecddc7839cbcda2035f6c57f8941e24cfa4c074cd25caad23ea4387d7",
+      "bytes": 4699
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair4-result/TEST-conectate.com.presentation.live.LiveToolAccountVisitTest.xml",
+      "sha256": "808edfdf0740bee66a3dbba386a9f349c1adadd2b072de63cc187348ceb8075c",
+      "bytes": 1239
+    },
+    {
+      "path": "app/build/audit128/live141-ui-repair4-result/TEST-conectate.com.presentation.navigation.LiveRouteExitTest.xml",
+      "sha256": "13fb717f818b943bc36b140f419e55c65a8031accbdbd29291f02faaf01237b9",
+      "bytes": 1109
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.cache.LocalAccountSnapshotTest.xml",
+      "sha256": "0562b24c05810595dddd4a4696e4ad459ec70c6b62e70bb2f51721bde6bb6c60",
+      "bytes": 892
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.concurrency.DeferredRepositoryFlowTest.xml",
+      "sha256": "c33b2935b8e3ce224b25a55a574f5947e883ac162b641c616973c1a48749d9dc",
+      "bytes": 661
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.feed.FeedNoveltyPriorityTest.xml",
+      "sha256": "7dfddbf55d5e28d7a027e344cf03c214824ec11e3c068464043a0d0db3218a5b",
+      "bytes": 1476
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.feed.FeedRankingEngineTest.xml",
+      "sha256": "c5ea21e38f10447ad80466a314111de6c2d15100af0d88a66c8c1525e9a8aed6",
+      "bytes": 1044
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.feed.FeedSeenHistoryTest.xml",
+      "sha256": "1502b39ddc95ff07667bfe11f17f93c48bb3dd66cd0878db273e7fd46abcae68",
+      "bytes": 1739
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.feed.FeedSignalAccountIsolationTest.xml",
+      "sha256": "5448edd9eeb17107f755c05a0aa5841476d4b011ce0ccc7fee9c7663184198f5",
+      "bytes": 682
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.BoundedMediaCopyTest.xml",
+      "sha256": "696e1dbc7b66ee2aeb5893079e6db8334578e85d8d56acda8567e4cd4c8cab56",
+      "bytes": 840
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.BoundedMediaReadTest.xml",
+      "sha256": "1029458069c587b37970071dca9d9af57dd892ec4b0d60eb2b70253c83c36299",
+      "bytes": 847
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ChatMediaExportTest.xml",
+      "sha256": "a5c0de3178c7c67a083337b05854cc64f299b5a2fddd47440a8fe65d15af5128",
+      "bytes": 1076
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ChatMediaOfflineCacheTest.xml",
+      "sha256": "99d48f6fffb4ca7e602cfefc9eb1a38044f404465254673f997176caa396b6de",
+      "bytes": 3112
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.CollectionIconContentTest.xml",
+      "sha256": "284b12891d39e6d873012cfbfd52e3dcf0e4aa1970f050c066112dc4f8432b9e",
+      "bytes": 1212
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.FileProviderPathContractTest.xml",
+      "sha256": "5f64be142e29946a190de0e8910bfeee858fb37bbe3fb1ad9e936249fa7c89b5",
+      "bytes": 485
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.GifMetadataTest.xml",
+      "sha256": "a3e7a1fc35c756c78018f061793310bcf57a0de9fc6cda593fd40c113fea6164",
+      "bytes": 847
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.InteractiveMediaGateTest.xml",
+      "sha256": "cbe5316bacbf0a81adeb4931f7f000e957f37b2cae5275f89b8195c6bd9a5256",
+      "bytes": 648
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.MediaUploadGuardTest.xml",
+      "sha256": "4ed434e232ccc7b5713b9ad9e09d2f7bf734b45d4927c18c56841a64184be6b0",
+      "bytes": 2864
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.NotificationAvatarOptionalLookupTest.xml",
+      "sha256": "3b901ad958bbb5a8ed24bde5819d0b26f34826bb3bfa628a2dd38f53338ea872",
+      "bytes": 807
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileAvatarMediaTest.xml",
+      "sha256": "cb9a0768595b7fe20220b51c34b86c658c43eb8d87f847be8240ce7d752f30e0",
+      "bytes": 1333
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileAvatarPlaybackTest.xml",
+      "sha256": "eb54d73494ed8cf6dcfdf374a8302b9b230475eec437d15c5acda982ae951c88",
+      "bytes": 824
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileIdentityFilesTest.xml",
+      "sha256": "bd089aee2bb2653420d2e81f550e9b42ffb77888c53de5fe63092de4193f9ce2",
+      "bytes": 1982
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileIdentityImageStoreTest.xml",
+      "sha256": "3cd0e72345f75c92b14931937c0d4a16efe74bfa1b735a45db4bb9178724b099",
+      "bytes": 659
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileIdentityPersistenceTest.xml",
+      "sha256": "89b8af1f1634d76f279d99ec8cd5e618e42afde197566686779952c58c3d4061",
+      "bytes": 1788
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileIdentityRequestTest.xml",
+      "sha256": "5aac21cee56965f2c555221c26746948e2bdc24f7a0ae51b79ed11f9a4e8c5fc",
+      "bytes": 1012
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileIdentityWarmupTest.xml",
+      "sha256": "27513359f5fa94091ff7081379b2c4c89d6aff5e7cd68de9a76f93d32321c95e",
+      "bytes": 647
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileIdentityWriteFenceTest.xml",
+      "sha256": "c382a202cbdc88184fef6b0bf2aa01b799ec3ef295c334c9d93efe8406396adc",
+      "bytes": 679
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ProfileMediaSyncTest.xml",
+      "sha256": "a98bf6098a73b251642a7b87144af2cc54b43c1fdca2598620d4aeb0384023cc",
+      "bytes": 1562
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ReceivedChatImagePolicyTest.xml",
+      "sha256": "8e3d6a6e13782c55b5dfd435bad154a2b921c2b037a32c46449faf94eed6463a",
+      "bytes": 1372
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.StorageReadCoilOfflineTest.xml",
+      "sha256": "f9b0168855c2e2c7a31379e5d5bd8cd870bd3e8c0ec19bbf806ab91807248924",
+      "bytes": 1877
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.StorageReadDownloadsTest.xml",
+      "sha256": "6c1981f73cd11ae329a3326d7b7423e9c39dc723eec2e68e5339a37c81058bdd",
+      "bytes": 1890
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.StorageReadInterceptorsTest.xml",
+      "sha256": "8b2bdfc046cd07b77eaac2a144772e1da9dd6ea0c094977e6072ce1a478642f1",
+      "bytes": 3403
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.StorageReadPolicyTest.xml",
+      "sha256": "5f4cf8645dc4a8c66005110a4ce693ef01714a969fada0928ca7c120c95f4f40",
+      "bytes": 4111
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.media.ViewOnceLeasePolicyTest.xml",
+      "sha256": "e327c0f4066aa18aa11abe6b84ca3c6a773dd45bc38fcf278629b2876fc23efd",
+      "bytes": 1011
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.messaging.MessageReceiptStateTest.xml",
+      "sha256": "09051a167809898940781a0fb4b6ab88173153fcde12ebfc1ab5353036b978ea",
+      "bytes": 1296
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.messaging.MessageSendConfirmationTest.xml",
+      "sha256": "dc1a5f616eeeaba47660096fdd85798581549411cc4e62c262f7006bc1a4d0bf",
+      "bytes": 799
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.messaging.MessageTimelineOrderTest.xml",
+      "sha256": "3bb79506e3c734926964d20c2b7a3acaf0925e77e3354356d0fe9f41554e56c2",
+      "bytes": 1000
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.messaging.MessageUploadProgressTest.xml",
+      "sha256": "4e050c9df1bb29658efe61921b1fb661adb14429e493784f05e83db7a4bb6f4d",
+      "bytes": 519
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.messaging.MessagingExtremesStressTest.xml",
+      "sha256": "370bb26bcf35bbea8f4a9ba278d50a3b36a311ce92e86c57a7be571ccb51bf5d",
+      "bytes": 845
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.messaging.PendingMessageSyncPolicyTest.xml",
+      "sha256": "70c504531f86f951e3ef424844f681f4f4ab61a379fef3da5c1d4e04a5fe784c",
+      "bytes": 836
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.messaging.UnreadPolicyRegressionTest.xml",
+      "sha256": "78a6d7ab58631aca3d467ec39b46aa3ec883309b5ffe3d5cfa1314bfdce2c0ad",
+      "bytes": 1147
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.moderation.ContentModerationServiceTest.xml",
+      "sha256": "a5d31c4d160761e23ab774ba6dde0b6c25db87a4085311dc42302b174ac20507",
+      "bytes": 2331
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.network.AutomaticRetryPolicyTest.xml",
+      "sha256": "1ae50931cbb1a5889542123f2fc264fad26b4b898e0f07edd0c0762b907c9aec",
+      "bytes": 760
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.network.BackendAddressCacheTest.xml",
+      "sha256": "67bc97178c941d12c94487876625b94889fbebdd3892b49ef1e1328b5dd90927",
+      "bytes": 1249
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.network.BackendTrustPolicyTest.xml",
+      "sha256": "0b1443809c47a1c1511dfb233439e1ed7d8dcf66c679c4772159d46e3e0cde8a",
+      "bytes": 779
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.network.FirstSuccessfulDnsLookupTest.xml",
+      "sha256": "ca831c7a79e8afc523599e69013de24469b177a49226364acfdcb4613082747c",
+      "bytes": 1086
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.network.ObservedRefreshTest.xml",
+      "sha256": "8aaaacaafb3eca0657f544321e002e90f31a8160d810b82fa0485b40c14ea12b",
+      "bytes": 855
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.network.ReadDeadlineTest.xml",
+      "sha256": "c3b304d59272abda5931062c4259a07b7433a6f7f9ab67564ca09582cdeaf7c5",
+      "bytes": 1049
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.observability.InMemoryAppMetricsAlertingTest.xml",
+      "sha256": "e2c6ba0b5d5182d5c6684ee0c992b684c224982abef7e65fb25f00a131b6487a",
+      "bytes": 991
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.observability.MediaStartupTraceTest.xml",
+      "sha256": "e1ca2af52ab5c484a9f13872ebf80277f3433d3b920a1bb902e406d4967ea81b",
+      "bytes": 498
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.profile.ProfileSocialLinksTest.xml",
+      "sha256": "eb789e223ffa0ff4175d961c81cf33f75f363fd93b28242a14b70fda1276d02c",
+      "bytes": 869
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.repository.RepositoryCallHandlerTest.xml",
+      "sha256": "835832e875e970e76b9bb7a57e809b76b66759d0dabbccedce3b6da34746d180",
+      "bytes": 819
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.core.security.OperationGuardStressTest.xml",
+      "sha256": "7b3b2232ba44b3fce001dbc58b9d2b83c683ae1c1692967ba8e8b5152336747e",
+      "bytes": 1062
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.algorithm.AlgorithmApiPayloadTest.xml",
+      "sha256": "747556ffababb58191b53aaa3a3c31e21e35fe2c25dd61c5764d99d27a273b09",
+      "bytes": 501
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.algorithm.NaturalLanguageAlgorithmProposalTest.xml",
+      "sha256": "bce4ea1a0f1350c88eb7bc69a8a7a16254d6cf47cfb254ae77c6a7c66ae4eab5",
+      "bytes": 1390
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.auth.AccountDeletionNoticeTest.xml",
+      "sha256": "0420d46d1c7da3e6ea6d62c54623f081189f5ba66d9bbf31b472fc8594fd63f8",
+      "bytes": 1715
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.auth.AccountLocalStorageGateTest.xml",
+      "sha256": "2ce663b86811205785ea5189ad91225f82dc937510ef6e0fd11e982974eab6e3",
+      "bytes": 1246
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.auth.AccountSwitchCoordinatorTest.xml",
+      "sha256": "3bb11f5bd3b854ad9173ec4fe2735c9cb5fab15f93f0b27cc159dae02be68765",
+      "bytes": 2400
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.cache.PostFeedCacheTest.xml",
+      "sha256": "efb4730df80bd855254ec6c00d696ea69eab7ed529f81bbfaa9464f7240f160a",
+      "bytes": 1428
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.documents.DocumentCatalogTest.xml",
+      "sha256": "7785ad328d260fff6358e5c9186b6e62ef8b3818fe020a839334a775375b2360",
+      "bytes": 1190
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.livekit.LatestFrameDispatcherTest.xml",
+      "sha256": "be2f39762f1d924fa4414752d175b776e66bee8126681304d0da8f389c128947",
+      "bytes": 1543
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.livekit.LiveCollaborationConnectionGateTest.xml",
+      "sha256": "56250acf1019b88c84388a17d88d776bd209646fec36b2cd8a82d8e9daffd75e",
+      "bytes": 831
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.livekit.LiveCollaborationMediaTest.xml",
+      "sha256": "1c561abda79b9c4646a6f3e2c25d0b0260807333106fce171874c10f6d0a1b72",
+      "bytes": 805
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.livekit.LiveCollaborationParticipantCleanupTest.xml",
+      "sha256": "5ec57e31c54e886aa6191e62d76078cc69f1627db5faeb609da53efc3a1fa566",
+      "bytes": 984
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.livekit.LiveCollaborationQualityProfileTest.xml",
+      "sha256": "e21e37c1a8c0877ce8262db6d72362f44f7cb025f83d6afb7bb29dc822d1a3d9",
+      "bytes": 1088
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.livekit.LiveHostMediaControlPolicyTest.xml",
+      "sha256": "3564a09b3f64571cb9c93fd49105bc821109ab11ce0c7637055dd95a445f01ee",
+      "bytes": 655
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.livekit.LiveRemoteVideoBindingsTest.xml",
+      "sha256": "c39d19371d715b67d13686b7f7b1f0d405edb17f0d05062bcecb0e121037b44d",
+      "bytes": 934
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.livekit.LiveRendererRecoveryPolicyTest.xml",
+      "sha256": "a8d4c368246257d2aa6182279f65a0f6c8900f8e4b951095f9b6f1216ff4a197",
+      "bytes": 1412
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.AccountOutboxVaultTest.xml",
+      "sha256": "f88e7a92192081a9a9240a9e881b11f8059c9207033904d24af79bfc24277fb4",
+      "bytes": 1482
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.CollectionAccountVisibilityTest.xml",
+      "sha256": "d7e0ec3c0a20c469043f97bb50896da46c40c79a3b6c6e9b34c4c4dc52e29628",
+      "bytes": 812
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.CollectionCreationTransactionTest.xml",
+      "sha256": "162411aa3ebea31d4fbf5a1c51277fa53a579472b7e1084a083732efd376eb61",
+      "bytes": 1365
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.ConversationDraftStoreTest.xml",
+      "sha256": "3ee4c3f1e935c4e1438c2a0721e14349a13142ba45a421262fbc05660e8364d2",
+      "bytes": 1228
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.ConversationDraftUnicodeTest.xml",
+      "sha256": "eaf39ffd66554679c6f8bb9beba63917394dae61b9bfde679a96bf1d3763a69a",
+      "bytes": 960
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.DatabaseMigrationSchemaContractTest.xml",
+      "sha256": "15d8154f6b31b8a51878feefff57b3d5c058c41d210af42365d40048a324f55b",
+      "bytes": 510
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.entity.ChatEntityTest.xml",
+      "sha256": "dc8a1a9ddfd6c8bf41ed07a2463eb43339fb59842f7968e3bbcbee748fe0ad05",
+      "bytes": 614
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.MessageDeletionMigrationTest.xml",
+      "sha256": "42c31cbd84549ff18844edb46ef64b98a4b5783c705537ec93fde1b6d940ac71",
+      "bytes": 703
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.MessageReceiptPersistenceTest.xml",
+      "sha256": "19bfa931a76abb07e1ad41e2198e439a516ed236f23c79d83631c0f1f04e06ef",
+      "bytes": 2359
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.OfflineMessageStorageTest.xml",
+      "sha256": "f7fed8359a4cde1dc83e440aaf9552b3e933e0ccb9fb5acac4b55883bb3abd02",
+      "bytes": 823
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.OutgoingPreviewOrderTest.xml",
+      "sha256": "6345f2aadd818e1eae9df60f50d567f744ad4e5a0a87157444fda027d524c7b6",
+      "bytes": 678
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.OwnedMessageTransactionTest.xml",
+      "sha256": "5c1ee48057b25d9c0ba249c2d809afed94374e2b9cefd0314645729989c4c115",
+      "bytes": 1571
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.prefs.AppLocalePreferencesTest.xml",
+      "sha256": "3620a416c9f9748b8c910f25f0fa35dae263d3e967c0a297bbd2cc5100487dd6",
+      "bytes": 808
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.prefs.LivePreferencesTest.xml",
+      "sha256": "8bb12ad3bc0dc0c2369c1d09e7a25a7fee5d7417c49ac85b02686f9a29ef44ac",
+      "bytes": 807
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.prefs.SeenFriendRequestsPreferencesTest.xml",
+      "sha256": "31c6afb35b9cfed0681e8a3889a618dfacf4f40663409d304caa96539a35ee1b",
+      "bytes": 688
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.local.UserProfileCacheTest.xml",
+      "sha256": "51b6b1b534b2757a6342ed4bf8140e7b3d4ef6e82a8cea72ebf006a8c818453a",
+      "bytes": 1221
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.CollectionHistoryAccessTest.xml",
+      "sha256": "f7cc80cb0f726d0d35de016bdb2594e67ab7cb02d95045c736867b6a37285391",
+      "bytes": 1067
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.CollectionHistoryCachePolicyTest.xml",
+      "sha256": "0295667ac5a2405f3db7eee8c9ab96dd6125977745a461268459a8a8594c1eb7",
+      "bytes": 1269
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.CollectionInviteQueryTest.xml",
+      "sha256": "260bf0dfb59c10ad1fde0dc06aba31ddd64df8ed9c7a27deb1b909216c8bb7a5",
+      "bytes": 625
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.EndpointRefreshGateTest.xml",
+      "sha256": "fa834da2b7bd7066869aaebcdff3e18de623cfd0ccea3a2e4180a14bb2fd7040",
+      "bytes": 1070
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.GuestModeSessionTest.xml",
+      "sha256": "ed0e279d00119a7fdc39cec03b4717b5cac0093fd21abb5679f7ca815a248840",
+      "bytes": 2549
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.LocalFallbackMomentMusicRequestTest.xml",
+      "sha256": "b2f25cee2ea11b5ff8c1b61d76abb2869d1eb90eecd329856fd018c71cc3728b",
+      "bytes": 835
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.LocalFallbackProfilePatchTest.xml",
+      "sha256": "a490d9de383231dc335fba4654cd27af46be2ca79d04c2e3f62d8d26325ae454",
+      "bytes": 887
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.MessageSendHttpExceptionTest.xml",
+      "sha256": "1f02bc447650a4da9061ad72d36a9ba1973c68a26eac0e796e02c7aff1f64048",
+      "bytes": 1477
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.PendingMessagePermissionPolicyTest.xml",
+      "sha256": "9280333556a0905f64a38063ed873e92a3bf6b6d2cfbeb6b951990382eee2694",
+      "bytes": 700
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.ProfileFollowCountMappingTest.xml",
+      "sha256": "931345d5a9b7f65328364113bd3a3b090879e19f971c8117039175918463d810",
+      "bytes": 850
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.PublicAuthorRoleMappingTest.xml",
+      "sha256": "34ceaf89e13cfdb303517609c9c9c32443e21470d2b1debab875e30998a97eb4",
+      "bytes": 1152
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.PublicFeedPagingTest.xml",
+      "sha256": "be951bea719540802a99dcc6b89ed403f372dd955c4b476032181c9781ab9de3",
+      "bytes": 776
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.PublicProfileBirthdayMappingTest.xml",
+      "sha256": "c88a10351a63d907348e93baa9cd33e637e4ed513018d5665994ba1db59ca1bf",
+      "bytes": 689
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.StorageUploadPolicyTest.xml",
+      "sha256": "814ef6e84e7e6016d0f604b6dc372143ac6eac8b348ec6168a52fc2bf892cdf0",
+      "bytes": 1524
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.SystemAnnouncementOrderingTest.xml",
+      "sha256": "4357f9d6d97cd1187e94c3d22434405c0600047896e672fe4bef79d4f4592585",
+      "bytes": 1058
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.SystemAnnouncementTest.xml",
+      "sha256": "f09384b0ea544b8bb81ee42dcc6a2f86225ccd0aca5fe2a46da250d339a610b2",
+      "bytes": 662
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.UbuntuRealtimeAdmissionTest.xml",
+      "sha256": "02e922e3e60e3d95a45e60bcc85ea74f63f9d5de1687f67924f10e584bdba6a9",
+      "bytes": 2117
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.UbuntuRealtimeSubscriptionsTest.xml",
+      "sha256": "4e0ee806a00dbca4f54a6d9c2e181ee2b3208ee4263934e00f713dd1108163dc",
+      "bytes": 1232
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.localfallback.UbuntuStorageUrlTest.xml",
+      "sha256": "ddd88b842d87563f0ab6fac3f7a8f8b5159bfa5f17f2347be11c8b65fbd5ce4c",
+      "bytes": 1465
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.AlgorithmModelsTest.xml",
+      "sha256": "233de068697a68944fa5e4305fbe7d76c591250caa97e5aae0c131c97d2d211f",
+      "bytes": 944
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.BirthdayCardTest.xml",
+      "sha256": "ddb45abd4efa85bd71357af3bb9610c3689fb1a68f2025731de1c77d1d0125b4",
+      "bytes": 619
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.CommunityRoleCapabilitiesTest.xml",
+      "sha256": "185ca8830a30cc0f8393c5c9bbdc3dfbd132590d20b71524e0574e15056c576d",
+      "bytes": 919
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.ContentSensitivityStateTest.xml",
+      "sha256": "59c2adbbe8388adc13ddf41c497c74ea6c6afb3c2d2abd11e70d490a6a5928fd",
+      "bytes": 1224
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.DirectMessageOfflineQueuePolicyTest.xml",
+      "sha256": "e2689687112837e2e6d2275a724bfc3a838289d3f84da0919214b3158e7c133e",
+      "bytes": 999
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.DirectMessageRequestStateTest.xml",
+      "sha256": "3f0d2f78fd790b3c73317a8c4eab525b68836961d33b177ce2de734b7db5c739",
+      "bytes": 471
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.DisplayNamePolicyTest.xml",
+      "sha256": "83df59a863d2389c73e17f1dbfa9dc58f5b033c17036e1c2e61e9db6dbb8ba8f",
+      "bytes": 746
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.GiftCatalogTest.xml",
+      "sha256": "155d973b1c815ff87bfa37b047df1c0bdac831aeef99c4b3cf3667c1bd4c1cf6",
+      "bytes": 1123
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.LiveAudienceStatsTest.xml",
+      "sha256": "8c1aba355cc16a7560cedbbdd03105609346f9a609eae121894e8529a8ba6298",
+      "bytes": 739
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.LiveDrawGuessModelsTest.xml",
+      "sha256": "13fa14cc241ee94009f11acbac91a6fefe89c194c95981b0d32f7cf61c5fb97f",
+      "bytes": 790
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.MentionDraftTest.xml",
+      "sha256": "e8954328592db0a3fadc329301f93120f5812ffbc2e8eaecea08d1ac61b499c8",
+      "bytes": 853
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.MessageTimestampCacheTest.xml",
+      "sha256": "3ee1629cc7e0651f6be72196a6388275ccd3c49d399ea0713fa2934755980c11",
+      "bytes": 1164
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.MomentHighlightExpiryTest.xml",
+      "sha256": "524e8e701df83efcca8865e29bd9fdd26a6c1fccadcee409a1f46430b37a7f40",
+      "bytes": 763
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.MomentMusicPlaybackTest.xml",
+      "sha256": "9646d6294eae4eb666102fcc25491e0e9cc38c08aee6761d9b180dd085399de8",
+      "bytes": 646
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.MomentMusicPresentationTest.xml",
+      "sha256": "50891f6d4aa0823fdcfc01c05b1dfb901a4d2532660832df9203abe82de69104",
+      "bytes": 1156
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.PlayMatchModelsTest.xml",
+      "sha256": "0de75003507124b637df60fae2597e1e3028192bc665f83135e00f3674673de5",
+      "bytes": 623
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.ProfileIdentityTest.xml",
+      "sha256": "b6fef3518877b3eaac3dcd95474349e1a4d027aad6814387179b62f53aafe87a",
+      "bytes": 1616
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.RegistrationAgePolicyTest.xml",
+      "sha256": "ce3f6274c20d718fc2b5dbc22cccfaee007462e14e42df767cbbc215a6d3f1d7",
+      "bytes": 1017
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.RoomMentionCandidatesTest.xml",
+      "sha256": "83bb87254b58e81419bc54b11c39685d489f6f416ecb01ba2794e09a78549988",
+      "bytes": 1544
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.SharedVideoReferenceTest.xml",
+      "sha256": "450a00df2b1d67c40285a475c20676fd6b3c7a32c31693fd79a62f070a428db4",
+      "bytes": 1090
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.SocialIdentityTest.xml",
+      "sha256": "4c672380f82018a80a511d6a8a0fb83c4cea060e985ef256213c78e483952a62",
+      "bytes": 894
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.SocializationModelsTest.xml",
+      "sha256": "385341958f483240ce9c9cedd7e059e49b62984df725477c1380c3cecb92b8bf",
+      "bytes": 635
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.UsernamePolicyTest.xml",
+      "sha256": "022cdbbf01717ca1e3f5ba44b3704163c15afbfe298b1bee00d378d6765059c4",
+      "bytes": 767
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.UserSerializationTest.xml",
+      "sha256": "b97b8df773878f3fb3a14fe840765eeebaa77ad18a987638f1260e55195a0876",
+      "bytes": 477
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.VideoChapterPolicyTest.xml",
+      "sha256": "67df4815a8c9a8dcbf72839c56fd5ee0972e31a1e61862d4fe7ec123369f1941",
+      "bytes": 644
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.VideoClipPolicyTest.xml",
+      "sha256": "1fb2f374a11654442e395a2916ba4cef51d18741c13d8bc5421313d84b83a497",
+      "bytes": 631
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.model.VoiceStagePolicyTest.xml",
+      "sha256": "bca1a4348d24f2018eb369f6060ce1b587ef997eabfe967a206b5686aba38012",
+      "bytes": 596
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.music.CommunityMusicArtworkTest.xml",
+      "sha256": "7855faddb4a657bb0d57d3b87aa04c7a7d0ac6ce70d89c1af5a031ca5ef869b8",
+      "bytes": 1468
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.music.CommunityMusicPolicyTest.xml",
+      "sha256": "49634943113809a0246028d86e08e7c8dcab1ed32d4a9d10d0e5d227d2b948d3",
+      "bytes": 778
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.music.CommunityMusicTrackTest.xml",
+      "sha256": "11b732ccf53a4d2ec1431d2f2d1e531716c24f498919be423f61ffdd00f95154",
+      "bytes": 664
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.music.CommunityMusicUploadCleanupTest.xml",
+      "sha256": "f6401049488fa573a5c656f89cb903dd6b0e64d4d2b4dc75d2e6cd7f9cb46aa8",
+      "bytes": 679
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.music.MomentMusicCompositionExporterTest.xml",
+      "sha256": "d397ad7c6d2047c084ad03a3180ae326014dfccf8793531007c2ca087cc93b39",
+      "bytes": 684
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.music.MomentMusicPolicyTest.xml",
+      "sha256": "f4ee50316370e09dc691a2f247558bd39feb1a981d159f8ab141bd5a7f5ff4ee",
+      "bytes": 781
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.music.MusicLyricsImportTest.xml",
+      "sha256": "fdcf0e9e2508ae26374f8288699a70cf7cc290b427ddd14bd706a63455147977",
+      "bytes": 1202
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.music.SyncedMusicLyricsTest.xml",
+      "sha256": "e3376fdf947ffdfb5e8d4687839910a85f0d6f014f3fc594e454d57c7f5640ab",
+      "bytes": 1535
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.points.LivePointRedemptionJournalTest.xml",
+      "sha256": "38778d6f345e4eaa2d6f4d7502206deaf5d45e0d32a989984e72ce64cf638352",
+      "bytes": 1643
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.recommendations.AuthoritativeRecommendationMappingsTest.xml",
+      "sha256": "e28bbf656b2de127a93517cd659ac44e544295134d9db42df8a53f92f9bf5cf2",
+      "bytes": 1287
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.recommendations.AuthoritativeRecommendationPageJsonTest.xml",
+      "sha256": "fbf09256ab545cbed6a2926adc3e9415d4fc501e9a45ab49a6ce9eb8637b1765",
+      "bytes": 1107
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.AccountChatBackgroundStoreTest.xml",
+      "sha256": "e6a70d65d4578680da45612a2660260a3cf6bae2e92446489ba916154dc2f073",
+      "bytes": 1359
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.CallCollisionPolicyTest.xml",
+      "sha256": "c9a2434a82dd157f47ec8879ba38d1d362c5b73c1d6b0a617e304719aa887fc8",
+      "bytes": 957
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.CallEndSignalTargetsTest.xml",
+      "sha256": "0c88cfd318592a652c434b16cfa2748b72b68e258bdc408fc9c0157e05620b24",
+      "bytes": 771
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.CallHistoryAccountStorageTest.xml",
+      "sha256": "339e0fb8eacc232e9847d857c489107d76748cc6b53466e6f64a424f40b8c1b4",
+      "bytes": 815
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.CallMediaSessionPolicyTest.xml",
+      "sha256": "0ef0e998b5cd44fc6f4f2b2029ccd8ae4033a406eee973892da406934a2a0bc2",
+      "bytes": 1189
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.CallNotificationVisitTest.xml",
+      "sha256": "16b260073e39002ac57880b88c35c92d5e938d8f919b3d8fa9d1ce65f6476e47",
+      "bytes": 1546
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.CallSetupTimingTest.xml",
+      "sha256": "10724289dc6882536c52851e42b650ece393a0a8317ac6a6f439c69bd0629477",
+      "bytes": 776
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.CallSignalingTransportPlanTest.xml",
+      "sha256": "421e12ba0ae308f5ad1ad43395b8d2b07f073dd654cb50d2ff1314f4a8ad2f6c",
+      "bytes": 1121
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionCreationAccountTest.xml",
+      "sha256": "e094ec12baaefd4a0926955ca921cb16e5c1a4cb13f9f42ef38b8fc52f0700ad",
+      "bytes": 1393
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionCreationCacheTest.xml",
+      "sha256": "95e766f5ab62f3d0b0609ecc5c3607d9c120686cf9c48408ba3b257fcc6a5363",
+      "bytes": 733
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionCreationJournalTest.xml",
+      "sha256": "29d4e58efb4f1a52aa5af36bb21bd516c9e079d7d0177e25de9ba3d40cbd9e8a",
+      "bytes": 2289
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionGovernanceSupportTest.xml",
+      "sha256": "635d98d04199053e6761282a07a556697ad80308e7a163dd0b031f2c1f35c632",
+      "bytes": 1785
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionMediaFileNameTest.xml",
+      "sha256": "44c9e6b6af17780c2f1febcbd5dee5d13d6cd340c953198ba5311cf998fbbda6",
+      "bytes": 693
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionMessageDeletionTest.xml",
+      "sha256": "e44e3611896eb13c8e8097153736f983b35ec56018e5d997a2a6bdd0a5c95745",
+      "bytes": 1702
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionMessageForwardingSupportTest.xml",
+      "sha256": "83d0de87f30269fce26f888b62129ce905ac1e470ef31b486c34f5cfd03c925a",
+      "bytes": 1101
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionMessageSyncSupportTest.xml",
+      "sha256": "f0531d977ce296995dd7a5f3d0c128b0b31e9305f37c5c0efefc620fb497b486",
+      "bytes": 1336
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionReadReceiptTest.xml",
+      "sha256": "39a2ab078576bbfde75388ae9527fcb379e13353c537d0652e7f93f8f98be71b",
+      "bytes": 1281
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.collection.CollectionRetryCancellationTest.xml",
+      "sha256": "5234832c03b4806e968ab6f95a0d67f9eb9e3f88f2bd30d8d26f8d020488a176",
+      "bytes": 1717
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.ConversationPreviewOrderingTest.xml",
+      "sha256": "340f1b733f364f6b82b1064918c217a72f35ad160aed2f7e9944655a448fc370",
+      "bytes": 838
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.ExplicitPreferenceUndoTest.xml",
+      "sha256": "4e60e2d48edd3b497dac8e43bdf83ff1a0cee663205175a03da99022cfe1284c",
+      "bytes": 512
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.FriendMutationPolicyTest.xml",
+      "sha256": "bbacf185ea29a1f47fc84bc6e913ddac656ac9863480debc57c8ce858f4697bc",
+      "bytes": 482
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.GiftSendCoordinatorTest.xml",
+      "sha256": "03d5884f7a8323356afd9e557c03aa608bb58575a4c4f275285ddcea16dbb2ac",
+      "bytes": 1160
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.InboxPreferenceChangesTest.xml",
+      "sha256": "9f3c7b6d0f210a1c9b19c31459a6d05712dd2ca07ce912da0904643d927dae85",
+      "bytes": 864
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.InboxStateStoreTest.xml",
+      "sha256": "4572038a523d6106552e482e31559b4f24756274eb26924b50c63693691b8a1a",
+      "bytes": 3118
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LinkPreviewRepositoryTest.xml",
+      "sha256": "c156b8dbf9902a085782fbd14d1bc5696f9f6532cd2ab1bedaf6a564ebb55f8a",
+      "bytes": 514
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveDrawGuessAccountTest.xml",
+      "sha256": "eb5c44157119591753e4462b46e04823e13e592dc2bf58b893ff966bbe81f8e8",
+      "bytes": 1475
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveDrawGuessRepositoryPolicyTest.xml",
+      "sha256": "b3ac59098501781802f120aba5c2eb10c190485babc19d702a6b273d9b14def8",
+      "bytes": 534
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveGiftEventStoreTest.xml",
+      "sha256": "af9ce35e3c516f822e22b21c1a986a1a0b019d422551dcea96ccf5f6bae393bb",
+      "bytes": 1166
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveGuestCaptureProfileTest.xml",
+      "sha256": "e378ecfae33750957afbc9a5aae68141cf7989d308b3e46850c32d2ff72d0518",
+      "bytes": 1240
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveGuestMediaStartCoordinatorTest.xml",
+      "sha256": "3f7271b34ac97468009927e61589c81c88fa272e4642f086a75a44599a97c17b",
+      "bytes": 1722
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveGuestRequestErrorTest.xml",
+      "sha256": "4d0d2cc6f90035ec319246325582000ac6468760390e6f2971cbcc6583072a7a",
+      "bytes": 1072
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveInitialCameraPolicyTest.xml",
+      "sha256": "af4630858306885033d8632e763a5a8d40341c3aee0213e123bbdc5d7d8810d0",
+      "bytes": 789
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveInvitationUpdatesTest.xml",
+      "sha256": "9f49cb0631591306632eda4edbfdd269583bd5afb0d9bac349f435961aebb35e",
+      "bytes": 2077
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveMediaVisitTest.xml",
+      "sha256": "df4293946a539d12ddfb7b9ba8b8a7d91ff567db0c11c4f9f8851f6d08e2e58d",
+      "bytes": 1113
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveRepositorySessionOwnershipTest.xml",
+      "sha256": "85da7af222824a82ba5b5ce5a9ba0fc838322e3f12f61d71305953dd539170d8",
+      "bytes": 3551
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveSessionLifecycleCoordinatorTest.xml",
+      "sha256": "f1941dd5717f9f3b965fe7fbdec3af293da853add7dda987231189ad94f755d3",
+      "bytes": 1417
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveSocketStartupTest.xml",
+      "sha256": "1b191e9d63c220cd95c58b7c479c33eb178d536a9fff44cf2c116142c4b0596f",
+      "bytes": 1203
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LiveStartupPolicyTest.xml",
+      "sha256": "12083fab766982383943c85650b60477edc7cd0d3c24734075e3eea5f49655e8",
+      "bytes": 1097
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LocalInboxNavigationRetentionTest.xml",
+      "sha256": "41e2099baa922dbc07a952dd8097d6d362d27a9757a737c6c5eef5354d402a4a",
+      "bytes": 722
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.LocalInboxSnapshotTest.xml",
+      "sha256": "edf6eae2ed7869742a02b7b55459850a6107a902866fa9307d0bcc093f1da3ae",
+      "bytes": 1078
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.AccountChatAccessTest.xml",
+      "sha256": "9ede4613e615be425af7b718fc7c461681f40b9adf2ccfa07d255f91d6dd9d0e",
+      "bytes": 3026
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.ChatFolderStoreTest.xml",
+      "sha256": "5061a063b6f730d0dc9a4cf7c5668f011411f6d46eb7e774831b796591c52790",
+      "bytes": 2598
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.ChatMediaPrefetchGateTest.xml",
+      "sha256": "372a06858166701157278f9f3b88c26a347eb9c997eeec925ef38acb43051a36",
+      "bytes": 861
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.ChatMediaPrefetchPolicyTest.xml",
+      "sha256": "3691d35c090861fb0bb809f0b00a8498ab552cce8c07930265a05bc9ec36d6aa",
+      "bytes": 854
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.ConversationReadDeliveryNativeRoomTest.xml",
+      "sha256": "90b1ec3910852ca7487a1037653133fddf5334eddaf6313a41692055da208f92",
+      "bytes": 1724
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.ConversationReadDeliveryRoomTest.xml",
+      "sha256": "18116570083972bbcf0347b0e7caff067ecfa6a0c378f46f8817e1a2e81922d8",
+      "bytes": 1677
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.DirectChatLookupPolicyTest.xml",
+      "sha256": "4420f67cf9001b118d76acc85e972a334a71beacd1433d1819555d3060b26bbf",
+      "bytes": 1054
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.InboxIdentityCacheTest.xml",
+      "sha256": "3d33d129345f70a8006920becfbac616c1e1f078f1389bea8742bdde135689ff",
+      "bytes": 1532
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.InboxInitialPresentationTest.xml",
+      "sha256": "25bab026546eb0edea3bfc94e751d27c1710600245289640135f1777700651fb",
+      "bytes": 984
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.InboxPreviewNativeReaderTest.xml",
+      "sha256": "c5db42317665ad323708c19895e3e1f674ab187d6e0e394cf621005216307b8a",
+      "bytes": 6692
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.InboxPreviewReaderTest.xml",
+      "sha256": "cb8a7c8e12bf631cabb42d014ea750d1622b87d99fbd9fd26098523053fa9c5b",
+      "bytes": 6472
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.InboxSyncPolicyTest.xml",
+      "sha256": "4ae97904174d91b95fdafe4e77825c5ff962300970110eac0194582c65ef5bac",
+      "bytes": 1167
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.IncomingInboxRecoveryTest.xml",
+      "sha256": "800aa13905972db0c0b187fa38252b339bca36246065f19f3c1f78d71282d0dd",
+      "bytes": 1377
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.MessageDeletionPolicyTest.xml",
+      "sha256": "652e2e20c628c7cea5b1c3362218ea0110f395188be7d5a20ce554be194787c7",
+      "bytes": 1030
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.MessageDeletionQueueTest.xml",
+      "sha256": "e0dc61b16ca6504891296851255169319b1e83cacf7e52ef24f1a8e9b99586d2",
+      "bytes": 3265
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.MessageRealtimeAccountTransactionTest.xml",
+      "sha256": "e5c102c529ee71c99b311e14d491a6d18655a121ac2733cf60057681b42f3947",
+      "bytes": 1084
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.MessageRealtimeLifecycleTest.xml",
+      "sha256": "9e3eee4bd2607e8549d1ce986237345500b5a69e9ed8b00a03db41be26dec373",
+      "bytes": 903
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.MessageSendCoordinatorTest.xml",
+      "sha256": "653b3c31f6bdc9b28bb7ae8a3d2f7452ae92b8662d5c83a23250ac0181b116f5",
+      "bytes": 869
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.MessageSendExecutionTest.xml",
+      "sha256": "d65f6948a2a64f6db1f7ab2d324043a7a1cdf8d42fc8b83b589785941a4a5eb3",
+      "bytes": 1141
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.OwnedMessageSendExecutionTest.xml",
+      "sha256": "1a740773504db2acb881dfa7703fef719d5190df3fc72adc253c59bd044700d0",
+      "bytes": 2037
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.PendingMessageBatchRunnerTest.xml",
+      "sha256": "b763cbfea2f6f564b24887f79085b06e254e5dd8f8202b10ee9cb76bd06c4d67",
+      "bytes": 2050
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.ScheduledMessagesReaderTest.xml",
+      "sha256": "6d7560657a409741bf5b7e3b5cd146b9ac48a7b3c1311c50d4096f511f7ab36c",
+      "bytes": 3825
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.SessionListenerBindingTest.xml",
+      "sha256": "7c9cc2c0e4ebd0a8bb93950253907fa04913d6c141f4859667a976559c9fe7c0",
+      "bytes": 1197
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.UploadedMessageRetryTest.xml",
+      "sha256": "0c49a5983c1985f0b9be31486b08d4521bf1eb734dd72f15f9a093f2d4e5d5c4",
+      "bytes": 1487
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.message.VisibleReadJournalTest.xml",
+      "sha256": "3e551fff60ad2bb7b42879c26f7b2d01e992d2ffdb54177cf7d9c3f43d100902",
+      "bytes": 1216
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.moment.MomentAudiencePolicyTest.xml",
+      "sha256": "e3851773a25b3f065e3515060ca424a75af1f1672cc62a82959f1e9ac2492c17",
+      "bytes": 1268
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.moment.MomentHighlightMapperTest.xml",
+      "sha256": "d77544ae1b25b26b8f48ce07af972c4bffa95d125bd3c2e7b36b8a3e2b4c0ecb",
+      "bytes": 1068
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.MomentDeletionRollbackTest.xml",
+      "sha256": "bb3de3991b5540aa856fb35a29622274e7e534136735d6bba18c87c4ec104f6a",
+      "bytes": 666
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.MultiAccountInboxRepositoryTest.xml",
+      "sha256": "fba80e1d066941c0296414f22a979f2c3a9d1537defc9a0a0f2965223d23287e",
+      "bytes": 1040
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.NotificationAccountCallTest.xml",
+      "sha256": "bf7d9d47b43674d08890eab96f6df8fdae2a5cd56963f7db5da3511f9eb4b75d",
+      "bytes": 1544
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.NotificationEventGateTest.xml",
+      "sha256": "e93dfcc004e5f9d27b5e3ae8967e7f5ee0ddd27ff23aec699b58b87d1b81c9e1",
+      "bytes": 1262
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.NotificationUnreadCounterTest.xml",
+      "sha256": "1d6050ccffe0a16e9fd5c64ef71638556efbc5a6e993cd823cb8a0ae10432bc8",
+      "bytes": 1439
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.OwnedChatHideTest.xml",
+      "sha256": "ad0827e6ec2df55a8c110320a4b2be2da1cb1b04062eece031aa733c6dddd4f5",
+      "bytes": 2524
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.PostShareChangeTest.xml",
+      "sha256": "49d6216e259325fcc5f2462be057b6912b9f10465d28391d2795be778209f4d8",
+      "bytes": 647
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.PreparedCallSignalingContextTest.xml",
+      "sha256": "c7ba555f717bff264f8b85f91cf11183ced9d1ecfc34fa8634e323f284bc91e8",
+      "bytes": 975
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.ProfileReadPolicyTest.xml",
+      "sha256": "c2f36e7783122b8f0ec7e5bd93da5d408c0b28c862539c79a0c62544c0573ad8",
+      "bytes": 834
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.ProfileVisitorsProfileJsonTest.xml",
+      "sha256": "c3499db864211be6466d59cab844b41718b6e017bee01891f359660edd3ca460",
+      "bytes": 829
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.SessionWriteGuardTest.xml",
+      "sha256": "4657fab7fb27fe74edc80c343cd0c0158d9c7d7c0d964395a538570c2931ff94",
+      "bytes": 769
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.StickerCatalogPolicyTest.xml",
+      "sha256": "c63c20db3074047e70e2b635460cb51ff5061343755ce89bc723cbd2be379831",
+      "bytes": 641
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.StickerFormatSupportTest.xml",
+      "sha256": "748fa56e22a0756a5d6388f7b43360d90e16ae575bb5c6ce378402392a4b5b97",
+      "bytes": 1091
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.StickerIdentityTest.xml",
+      "sha256": "fa46a3785ff3f53f743f56bb40e99ee97756fe945dc05c9985f6cc4f16bd3da4",
+      "bytes": 1832
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.StickerRefreshGateTest.xml",
+      "sha256": "c264f2dbbf6b1f4b629d2f89b9ab73a216dcd4770b17bb703330227e03dd8a60",
+      "bytes": 830
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.StoredAccountsStoreTest.xml",
+      "sha256": "0f4d108655fe3a945f5067553ed40a5d55c6525ca0257dd200d842767b196d08",
+      "bytes": 2098
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.user.CachedProfileAvatarTest.xml",
+      "sha256": "600fd3425d27e1315b62bf526ed76f5fa2a6a6af97289979363b46a4b81a446a",
+      "bytes": 1032
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.user.ConfirmedBlockRelationshipTest.xml",
+      "sha256": "58892e72b23daf29747c6e8fc3fe80c4a697cfd6139f81ec3d606f4eb95b139f",
+      "bytes": 853
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.user.LocalProfileIdentityTest.xml",
+      "sha256": "61d904e6cb8ae5e892df4c6d0f0b81a7437e2a47f191f78034d28a7538fb8a4d",
+      "bytes": 841
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.VideoAccountOrderingTest.xml",
+      "sha256": "0d938c1301fdc0f2068d968f2c1e0b33c8919c4aa77b7233cb2326900827ac3a",
+      "bytes": 774
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.VideoPublishRetryPolicyTest.xml",
+      "sha256": "5829b7cc9234469c6907cb0f0a1f718f76548e4f27f83047af7d0416fde8fdc3",
+      "bytes": 514
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.VideoViewSessionRegistryTest.xml",
+      "sha256": "4ce4d2f6c7c91f1ff21bf308bf55c92f3fd972d37c5242d2997662cf3b0098a3",
+      "bytes": 632
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.VoiceRoomAdmissionStateTest.xml",
+      "sha256": "4406089cd0e3e0c4f87e1e0afdb46e19d8602827a3b00b464a57134bc89848e7",
+      "bytes": 1181
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.repository.VoiceRoomDeletionRollbackTest.xml",
+      "sha256": "db19e36390d57d21eed2b40f36ed1f4ae6f5aea0804a875db459dadd577cd242",
+      "bytes": 858
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.service.CallCancellationGuardTest.xml",
+      "sha256": "2e745efa1f142bca72d3f3fa4498dcb149dc8ef0c7c08440fc206486d12a70b9",
+      "bytes": 626
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.service.IncomingCallAccountTargetTest.xml",
+      "sha256": "761b4528e266e3a5b544f570c0915ec72d0bf15be1305e7dcb27aab37060349d",
+      "bytes": 486
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.service.IncomingCallRefreshPolicyTest.xml",
+      "sha256": "877f51e6a99cb5ce029ec9f1329054462df7dc17815ef85224e0142d95061315",
+      "bytes": 635
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.signaling.MediaSignalingTransportPlanTest.xml",
+      "sha256": "e69dd42630a47abf19f67025345bc1f32c00d3b728bc57da85708bcb737b8f78",
+      "bytes": 1277
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.signaling.SocketAuthConfigTest.xml",
+      "sha256": "5accc3ccefe80df42158c89e25209d5d7d5a31d81cd60e0d2ff47659861def4f",
+      "bytes": 931
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.supabase.AuthMediaReadSnapshotPolicyTest.xml",
+      "sha256": "26224c269fe771d8993235ec4b9666a653f48e4697f3324758e58b46476e76d8",
+      "bytes": 1100
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.supabase.AuthSessionMutationGuardTest.xml",
+      "sha256": "265ea9cdd9a4c72eda7894b3460c23fc66c8c92e0ed243038ef2d6e1364d5275",
+      "bytes": 4345
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.supabase.OwnedUploadSessionTest.xml",
+      "sha256": "6aeaa97c1fcd094a2a22712be4d1e84055215e94b5409af29421114dc0b44514",
+      "bytes": 2644
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.supabase.ResumableUploadProtocolTest.xml",
+      "sha256": "245c492a6c15448c5c1d99bf29d9e3b14497443d2dbb517d67a3c522ca58f535",
+      "bytes": 1485
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.supabase.StorageUploadCallTest.xml",
+      "sha256": "e9993b5fb330429549d207623d61f3aa03510e6bc1b955522a6cfa248577ca2f",
+      "bytes": 1721
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.supabase.StreamUploadTimingCalculatorTest.xml",
+      "sha256": "17722ef3d093b8c884e48f5f309b26db7f0a69a3e859550c736f175b1c738647",
+      "bytes": 843
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.sync.AccountSyncStageTest.xml",
+      "sha256": "4e393134b329b82e58f73b1ddd2efa40c8b8058b2f9d57e07e6bb8a1a08f6daf",
+      "bytes": 1565
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.sync.PushRegistrationTest.xml",
+      "sha256": "12f8a469c578a35e75e328103abab192c547d5f7cff004a9a250e15de2fdabc9",
+      "bytes": 894
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.sync.SyncForegroundNotificationTest.xml",
+      "sha256": "b26141f31d292f049a4a3798f8128b30d3dbe963831d9133bd86bef69c30caca",
+      "bytes": 1119
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.voice.VoiceRoomCuePolicyTest.xml",
+      "sha256": "861dcfba25242e978b25b9ba32458e80f3c7074d8b12e2932282f34a5201ff0a",
+      "bytes": 1238
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.DeferredNativeDisposalsTest.xml",
+      "sha256": "3a2161faf702be4056419b4c8bf395676ef6a0e9988e6b06e57ac8388592afb2",
+      "bytes": 786
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.LiveCameraFilterTest.xml",
+      "sha256": "796553841282ad66a0dddb1e355058776b5aefdfd51dbc52c788127ab599169b",
+      "bytes": 1336
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.LiveGuestPeerNegotiationPolicyTest.xml",
+      "sha256": "da1491f846c6393d3d69baf18769aedbc559ec8aff8b45506f9c3135e14bbb89",
+      "bytes": 1239
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.LiveMusicAudioMixerSignalTest.xml",
+      "sha256": "d247edaed16eaca4e5a38416a10f86be22969119072ee62d96b7c87de11f40db",
+      "bytes": 609
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.ManagedIceReadinessTest.xml",
+      "sha256": "adc1c98b27d1db9a0034644534ad501d77265554d195b8e871e46a5df74ac876",
+      "bytes": 1614
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.MediaSenderIdentityTest.xml",
+      "sha256": "28374cb7fe81cc5590c5c4e65dd8431ebd39044561ba3a3e964f561b8fba8af3",
+      "bytes": 651
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.MediaTaskExecutorTest.xml",
+      "sha256": "d5e1f4557c48f8b28f8eccdfdc22c1c5284fe2532261c63b6542f71362fa3e5c",
+      "bytes": 770
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.NativeCameraProfileTest.xml",
+      "sha256": "d4252cb94a29c9977c3f8756fc2581f9783287ea567476a0e203e3cde91af6fb",
+      "bytes": 1696
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.NetworkHandoffPolicyTest.xml",
+      "sha256": "6749b962575f4a142072de519a8bee74627d7af73db47846dc02bda3d7364fcb",
+      "bytes": 774
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.RtcAudioLevelBatchTest.xml",
+      "sha256": "7be6426d7c5c9eeb197495abd771c5fab5beda01af32c8ae7d1f97200b3cce8a",
+      "bytes": 893
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.StableCameraFpsSelectorTest.xml",
+      "sha256": "9fa57d0f8e52f5489c6eb69f283f493ed1f325d55d6112f6b5e8e701215ddd2e",
+      "bytes": 1657
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.data.webrtc.WebRtcNegotiationPolicyTest.xml",
+      "sha256": "1b5997504d785f3e85925f679d58b9dc9fe860a3f3fe7afaf0519725c033227c",
+      "bytes": 639
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.domain.sync.PendingSyncRetryExceptionTest.xml",
+      "sha256": "50f5287f587bf2076447738bf6daf77600270f8404a52470d5b591c0b2602c33",
+      "bytes": 647
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.analytics.CreatorAnalyticsPeriodTest.xml",
+      "sha256": "8df04777844c67f65f3fb4cbcc95cfb647de57049446e5309d4a2c31072ae115",
+      "bytes": 506
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.analytics.CreatorAnalyticsPresentationTest.xml",
+      "sha256": "ea20443c5fe499037d55f559c6b9a9c32ce6a6c00f4fbaa1aae01fd5ca8f4912",
+      "bytes": 678
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.auth.AuthEntryFormCancellationTest.xml",
+      "sha256": "9ab94e808e8334f5aaa2597e66e8e9d8ebc09cc998ea5eabeddbce30e6ccf09b",
+      "bytes": 710
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.auth.AuthEntryOperationTest.xml",
+      "sha256": "7d4fbebab943ba5ffa02d1514c0b1b25eaf5a471e4980dbfc9290357b73a891c",
+      "bytes": 963
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.auth.GuestSocialSectionsTest.xml",
+      "sha256": "6251620793cc01dfbcea6278f37f55f74a2430aab499e16583f4bfec15bc4035",
+      "bytes": 804
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.auth.PasswordChangeValidationTest.xml",
+      "sha256": "2f9db6d5bcef66e1e733fc65f9ad995785b8123e42d66e38067817bce1b660c7",
+      "bytes": 1008
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.auth.StartupDestinationPolicyTest.xml",
+      "sha256": "eb5676690f193d99ee24bfaeb80992f098ba49a870759d2e251ba9ac5c459202",
+      "bytes": 1236
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.auth.WebApprovalAccountIsolationTest.xml",
+      "sha256": "6ee8eeab0093ca98e00ae9ea988e116a3da65f9bd5abbdeadff513f85bb8995d",
+      "bytes": 1429
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.auth.WebPairingApprovalPolicyTest.xml",
+      "sha256": "303559834b35360efaa1a64ebb2d8e1a340d04ce287c742e088e084d57634dec",
+      "bytes": 830
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.calls.CallMediaVisibilityTest.xml",
+      "sha256": "7fd586668132ff3b6be5442fa0e6f64cf65b3d12d806fc2c75c52ef279613d65",
+      "bytes": 679
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.calls.IncomingCallAnswerControllerTest.xml",
+      "sha256": "5b0b9b62661a235a91ecb14d679473b450d52b902dc11ee3c425e2c08a222573",
+      "bytes": 1760
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.calls.IncomingCallAnswerPolicyTest.xml",
+      "sha256": "1fddb7303b34d64981b35773e4081d7a73c27e6c43c0e6e59e7978e4587033b2",
+      "bytes": 1137
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.common.FeedRecoveryPolicyTest.xml",
+      "sha256": "3091b9e5af5b5f517e87d911edce0d33288047d96b4caaebd2de89bb9e0306d2",
+      "bytes": 640
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.common.ForcedSessionExitGateTest.xml",
+      "sha256": "7f7d3b76c11ff6bf714e5c3f3854073912a8cd5b030174023cd7580c53b1a4a0",
+      "bytes": 963
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.common.NotificationAccountOpeningTest.xml",
+      "sha256": "1eb1f99b169d5df9b01757d693eff86b0fb611eb8e4438dcb5ec04998db3d2b8",
+      "bytes": 2894
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.common.OfflineRoutePolicyTest.xml",
+      "sha256": "89d539b35e5842d770264ebdcbe6f39bc674f59cd46bdd83fe2cbe8c98038e66",
+      "bytes": 844
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.common.UserFacingErrorMessageTest.xml",
+      "sha256": "126b83e0a033d96254442b098975de5b63ad3ddd7308e0c9ab596cfa2a02796f",
+      "bytes": 1928
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.AvatarMomentIdentityTest.xml",
+      "sha256": "da185a8436d8d4b2d12d6f14c8d6e11eea0e8952b9fc8f12eda5554865593473",
+      "bytes": 819
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.ChatSpellCheckerRegressionTest.xml",
+      "sha256": "a01e416c3c7c7e50a74c48ba7135e942ac621f4ae0ec11374e9987bb59afb8ec",
+      "bytes": 9080
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.CircularProfileImageFallbackTest.xml",
+      "sha256": "980ca360acd32c5c3ec080f0d9b279d7ba5cb49f37028ed273620dbfef8213e2",
+      "bytes": 693
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.FullScreenMediaViewerTest.xml",
+      "sha256": "8757a80824b44339ba01e4d864f188d05173be465ceaa21bb5484a94a54ad83b",
+      "bytes": 3006
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.ImageCropGeometryTest.xml",
+      "sha256": "8c97ae560af329bf0ad178f3fe527ec8ce30e95c48f244c4cc0c6a92c6134d3b",
+      "bytes": 818
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.LegacyStickerContentTest.xml",
+      "sha256": "84f3c1353caa40a2e50526640ef486c7e2a37e91a08c67844412c48a5b745a0a",
+      "bytes": 668
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.MediaViewerSourceTest.xml",
+      "sha256": "bedfbf7cdeaf9210c61111f68789478ec9bab84081645c71771d52f7ba0feccd",
+      "bytes": 1359
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.MessageTimeFormattingTest.xml",
+      "sha256": "88027988095f510fe40b0c7b7bfb818a72d9c6c846cfe2d0ffed6ac7a9a6da87",
+      "bytes": 701
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.MyMomentComponentsTest.xml",
+      "sha256": "a4497690c7c658ea6e79474339e460c6e992f1e5fcef1cc1d6f64cf137b0c28d",
+      "bytes": 855
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.PostMediaTypeTest.xml",
+      "sha256": "a1fb8c8d8f74dd9ba9ff69571b3090665a380bffa6475f97e5f6e6aa90b39f61",
+      "bytes": 821
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.ProfileAvatarVisibilityTest.xml",
+      "sha256": "bc6c34202c3320d77d9bc1ae0171f79f92d7aedc5337ad024c6d891b6285bc82",
+      "bytes": 668
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.ProfileMusicUrlTest.xml",
+      "sha256": "311bb2aaf751e722e7e40789643de5d4d27c2752bec1f580ddf2cc3689f66231",
+      "bytes": 656
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.ProfileSystemAnimationsTest.xml",
+      "sha256": "7aa0e3bf04b7196e251b0eb04ed412029b36a28c57e682536aaac9a6115f1531",
+      "bytes": 1032
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.QuotedMessageAuthorTest.xml",
+      "sha256": "3d184f8623655760ec830e62e86d646b21dd4c5c4eb9012dfc7d3130045fa834",
+      "bytes": 1247
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.ReportSubmissionTest.xml",
+      "sha256": "8ee25635bfed5e14ca719013b6614e96883feb7b8cc7a17ec46fd9dee306f830",
+      "bytes": 1422
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.SharedPostLinkRegressionTest.xml",
+      "sha256": "57587b43e640af658d5ab9fe7875965893cf7c8c9b5a2a2e0038538b5b380f95",
+      "bytes": 998
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.VideoViewportTest.xml",
+      "sha256": "8e767ff24b608675cbccf9b593bbf2a06027b7c13c2e624413fea548ae1109c2",
+      "bytes": 927
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.components.WebTextLinksTest.xml",
+      "sha256": "1227166ece3d17fb6b198c3b7db86c21ac63cc7517342c0bf8bfe5f6f6d3fb92",
+      "bytes": 1255
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.documents.DocumentContentParserTest.xml",
+      "sha256": "d0d07039c9ceb36e5f7fbb394e462123f45186fc50ae865cdbbe603f825c2296",
+      "bytes": 2580
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.documents.DocumentExportMimeTypeTest.xml",
+      "sha256": "d629e4beadc11ec7fc9a8d51fa8b84eb0534c3284527608e556ae750011099a8",
+      "bytes": 672
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.documents.PdfViewportTransformTest.xml",
+      "sha256": "8e38e63628da0c5f14216ecb77759ea5f457d2135a81af633d9659a4722b0b86",
+      "bytes": 1450
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.gaming.PlayMatchAccountTasksTest.xml",
+      "sha256": "86b0e06147847ce1748a12266c236247af094b15935b48a9f85babe7fd66c31e",
+      "bytes": 501
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.gaming.PlayMatchDiscoveryControllerTest.xml",
+      "sha256": "792c0af99821d19d46493e6ed5b114d8f4978eef40f7826f416480ca2f7c561e",
+      "bytes": 1300
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.gaming.PlayMatchUiPolicyTest.xml",
+      "sha256": "6777aa1a47c8bb1d3e6cd9e14572d3d9f7cadcdf731441029391a2a95e29fe68",
+      "bytes": 1297
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.home.BottomNavigationGamesTest.xml",
+      "sha256": "bf592f46d5ffc7d2c94100f4365fdbba7c448417bf3f1a4d421f9ba19e24bd5d",
+      "bytes": 506
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.home.HomeGraphInitializationTest.xml",
+      "sha256": "8b4d5efab8ec9b83bcf26c1ff7c208929901aa7d6f48d529d69172373b418b32",
+      "bytes": 1180
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.home.HomeNoveltyPolicyTest.xml",
+      "sha256": "c7d163b5d85c3dbaedf6405b4303afa0fab97c81efe3b227406b18999de62380",
+      "bytes": 1147
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveAudienceSessionTest.xml",
+      "sha256": "1960384048798d7cf6ae39f423ccf279eb5cf3ab6a7ff10e8fadcaddfed21aa6",
+      "bytes": 1903
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveChannelPointsAccountTest.xml",
+      "sha256": "602b0cf0a5237d4a42a4d2f1e40cc7564ab830d81e6a94a56cbb176ab0633a21",
+      "bytes": 2941
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveCollaborationPollingTest.xml",
+      "sha256": "a6676b778ce11e1e3170bfad7efe99b7dd8a8540b2694298635ce3f5000123e2",
+      "bytes": 858
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveCollaborationRetryStateTest.xml",
+      "sha256": "209ca2710d4f16767c45940f1d99696fcde822a6858fbd98433ee6bc2418ea72",
+      "bytes": 1359
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveDrawGuessErrorMessageTest.xml",
+      "sha256": "4ca782beef0bc97aa27821b47daf15787f1513c1f4c06225ca73d88ea5fb9b54",
+      "bytes": 667
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveDrawGuessVisitTest.xml",
+      "sha256": "b9f44a23901e2e2664012ea3a5f13dca3a9d27a902899bba095e7180828b2d9e",
+      "bytes": 1314
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveParticipantLayoutPolicyTest.xml",
+      "sha256": "a142ba8c1a51ee2cb46a5a58e0baea7512d2c4f7394d475e6d744f9dd91c8958",
+      "bytes": 932
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveReactionsOverlayTest.xml",
+      "sha256": "3111afeda3fdf22c70761fb5ec8d5576c5be85dbcf7815b4c036d41ed3c6d2ca",
+      "bytes": 811
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveScreenOwnershipTest.xml",
+      "sha256": "b97b02f595bbff7503622b4e21f3f2e7c039120d155fc71d612191a95f8670b1",
+      "bytes": 3984
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveSessionScaffoldPolicyTest.xml",
+      "sha256": "54217a23b776d18c4910f9ff3dfcacb6c2e402bf4323b90c8b3fcb9089322736",
+      "bytes": 855
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveSetupPolicyTest.xml",
+      "sha256": "ed226b0ebeba5b81bbf44535d373c4de431df76d2ecf528106f2395989b80e17",
+      "bytes": 961
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveToolAccountVisitTest.xml",
+      "sha256": "e2bfafdfee97218b003cb1e5de8e4152256dc355312e9353d88fb02f6f090a31",
+      "bytes": 1238
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveViewerCollaborationPolicyTest.xml",
+      "sha256": "ec5727eec8d5fc8bd099e1d6437bd0204fc8e6aa2fc08ea406bf5c255a40efdd",
+      "bytes": 2233
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.live.LiveViewerExitGateTest.xml",
+      "sha256": "c75d98864c4106dbf6e12e35fdb86f30b97c2ff79de4aff8ce1e6d4339813fc9",
+      "bytes": 496
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ChatCameraCaptureSessionTest.xml",
+      "sha256": "6b02b62488e9ccc55e715640a736177c8af735526b46bf01b16be3604c964341",
+      "bytes": 972
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ChatCameraFlashTest.xml",
+      "sha256": "9019a400c7c0c34b175149d0b50c0c836024407346412df2705353e04bd1d51e",
+      "bytes": 939
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ChatComposerKeyboardTest.xml",
+      "sha256": "0d08a373f72675a7bbcf4816f43b08ae864c1fef66eb31cf683e55f49acdbd3b",
+      "bytes": 2700
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ChatEmojiBackspaceTest.xml",
+      "sha256": "7223c9e6b9c99d4f132a9b2dec741e80ed178ee9c85752410d132e3f4e2469aa",
+      "bytes": 1027
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ChatWorkspaceTest.xml",
+      "sha256": "e1420c14cf234df4724ca2c9a52fc7b2cdab088115c9d94faa6c2e62af91cfde",
+      "bytes": 2584
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.CollectionActionRunnerTest.xml",
+      "sha256": "f69736916611755ad0ae5bca74bc0937da66ff93d004baf36b02c83f16b7da63",
+      "bytes": 1063
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.CollectionCreationNavigationTest.xml",
+      "sha256": "1910082e214e843973573cd73f100f12f933910a46b8f902659acb58849cd1ac",
+      "bytes": 715
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.CollectionCreationRecoveryTest.xml",
+      "sha256": "6e3c5a47f16ed5b52f8acb6592637fc1f9d7cf2c37b75c8678c01a2117de1a1a",
+      "bytes": 1025
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.CollectionCreationSessionTest.xml",
+      "sha256": "7d9ce7e4214cde544c9dae70494d44f97e294a9c3f29276e78a141f120ac41bc",
+      "bytes": 1370
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.CollectionQrParserTest.xml",
+      "sha256": "88951f0f30a4607d1e378062b13b7e753bdc7135e0c6c9f84d025b368c608aeb",
+      "bytes": 875
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.CommunityDetailSessionTest.xml",
+      "sha256": "aead0ba83f2d8d0e4ef3feac946abee8fb4be1b196855726d8e842107064fabc",
+      "bytes": 1165
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.CommunityQuestionTest.xml",
+      "sha256": "50c2684e9b077e44377486898e604edc81184bc84d078c7a9746a54223dfb903",
+      "bytes": 486
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ConversationDraftComposerTest.xml",
+      "sha256": "28bf0659339e15da08166a6b3bf4c35b2c4052cf9b7155888dbd1631ea2e4500",
+      "bytes": 1004
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ConversationMarkerFeedbackTest.xml",
+      "sha256": "c8292280fe87e2d363eaed528363801ba8b58745c7109e5b181ec1c55eda2ccb",
+      "bytes": 839
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ConversationMediaGroupingTest.xml",
+      "sha256": "cd83865439f0b66f8c257dc5a8f6052f8bc478e7c9eac24082ca181b835d74cb",
+      "bytes": 800
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ConversationScrollAnchorTest.xml",
+      "sha256": "61fcb81a22aa62412a12f80e2c3d372cfc583fcf2d2c39c851751e83c686b58c",
+      "bytes": 852
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ForwardCoordinatorNavigationTest.xml",
+      "sha256": "fe1d2f6aabfc1561eaa4e231b2bb3e75ab33f018de873f6b8738249a1de2df8e",
+      "bytes": 2665
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.InboxFilterCountsTest.xml",
+      "sha256": "b8f874654f626ca96b79293f81c4bc1bf953e053e7251167d20e056481306c57",
+      "bytes": 1172
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.InboxMessagePreviewTest.xml",
+      "sha256": "b237d811b883ef382562b1d02acbf0ff94cfd28977e8d88353f63c9c48515ba2",
+      "bytes": 978
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.IncomingConversationVisibilityTest.xml",
+      "sha256": "0c54329ab8d363358f6ac99f8cb2bd7bd605886d0873cfb0a919a87847e26fe5",
+      "bytes": 532
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.IncomingShareCleanupQueueTest.xml",
+      "sha256": "797ae1b9b01cef2af6989c620ae3e4df75d86be2e1f89e64bda93271831730b7",
+      "bytes": 1508
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.IncomingShareDeliveryTest.xml",
+      "sha256": "f2feb76656d181687b6fe76f8dcc62f8ecc5b623da0fdff7540baa627d7aeeff",
+      "bytes": 2310
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.IncomingShareLaunchPolicyTest.xml",
+      "sha256": "94f2303d298b8b35012e27e38ed4154c7b17a05d25e28a7319f44c79a097dd8c",
+      "bytes": 1289
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.IncomingShareParsingTest.xml",
+      "sha256": "791822c02671ecdab1f2b772805a1ed57a6425f3ef63aa6890700f63124522e1",
+      "bytes": 1671
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.IncomingSharePermissionTest.xml",
+      "sha256": "2a0b5e35875c5ea0d2e1f1085fb8c5e1f5f33ac72d741f8c8deea17f453f11f8",
+      "bytes": 1224
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.IncomingShareSourcePolicyTest.xml",
+      "sha256": "dbcc113830751b096895d343871836fbdaf93b45ef8130ef6a78929398e96ea8",
+      "bytes": 2051
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.MessageDeletionSelectionPolicyTest.xml",
+      "sha256": "a53cf05668b14c27201ba6d7cc3a93550a181080413175688d8cd2b931a3dfba",
+      "bytes": 1152
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.MessageDeliveryStateTest.xml",
+      "sha256": "e3d9b21c04889a82eb5d187577f49fe9d1408c03c44179a9cfecab381dca8a9f",
+      "bytes": 968
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.MessageWebScannerTest.xml",
+      "sha256": "a8a014e088a07d0dd057527afc2191ece3c1fbd66d6a64923de81dee5677550f",
+      "bytes": 636
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.MessagingInboxFocusFilterTest.xml",
+      "sha256": "cca7707e80af92bc57f3c30705f803a0732943846873c7dd99bf4251a4400de3",
+      "bytes": 1123
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.NovvinChatControllerTest.xml",
+      "sha256": "f0ae1cd40a61ec69829b61358b2619d907a60d291a0f08ed50322cbe26ab3fb9",
+      "bytes": 2878
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.OptionalConversationDataTest.xml",
+      "sha256": "185a09568f6b9c760aa34419c4d3adb56ea233dd925ad044a7d81f65dd24874a",
+      "bytes": 852
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.OwnedForwardCoordinatorTest.xml",
+      "sha256": "69d18ecf8897801def203c396a0f7dff9770ca9569af3004b48fba46024891b0",
+      "bytes": 1003
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.PollVoteCountLabelTest.xml",
+      "sha256": "7bee1d3885d55ad4631c495da73226c93392fe81220b74407b8b8c5588158f79",
+      "bytes": 475
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.QuestionCloudMotionTest.xml",
+      "sha256": "528a0fedc85ae73694916443c2b3977b3635dc94266141c88133e9a50d7c69ea",
+      "bytes": 823
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.QueuedMessageComposerTest.xml",
+      "sha256": "c7d54740804ea6461d4f6325dfa873fed8b30c8ebe02995cb89214fb9250b9d1",
+      "bytes": 2669
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.SavedInboxControllerTest.xml",
+      "sha256": "e51264b7be0df585711fdb29e7997d65da726163d1bd9551e6c4049d1bf3fa1f",
+      "bytes": 2157
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ScheduledMessagesControllerTest.xml",
+      "sha256": "835f0b3060a2c7243bff79089c722570f46a536b04fa3fd0f1c0b31d122a09c7",
+      "bytes": 2319
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ShareBatchDeliveryTest.xml",
+      "sha256": "af39564ac9faf72a7f3ec55b70d9831237ee8039bfce87f704965b8fb82043c0",
+      "bytes": 2924
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ShareBatchJournalTest.xml",
+      "sha256": "25b016d1ee288a7bf69b508dd00af45cd10731337797b6f5639d254164a66077",
+      "bytes": 3633
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ShareBatchRecoveryTest.xml",
+      "sha256": "6de111c06f3cf1170d174abc65d94f76450862941cee0e4e1eb48b238c205150",
+      "bytes": 1478
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.SharedTextPolicyTest.xml",
+      "sha256": "c075d068ceb9cc407692ddf1bfa95de5d8bc6e93453267c1d8736913547fd709",
+      "bytes": 994
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ShareFlowUtilsTest.xml",
+      "sha256": "42facd4c22cfdfdbe5156255219a410965fcae3017742ea651b792277edb5a36",
+      "bytes": 782
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.ShareRequestSessionTest.xml",
+      "sha256": "e19dca909c5a31e6bedf92357d1cd44e068250c3e1da53f08526d2a59375c0a4",
+      "bytes": 2988
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.VisibleMessageLookupTest.xml",
+      "sha256": "c8c41e06fa35ffe7d7301867851208ab4a3164b75334ed1dd41129f15602b722",
+      "bytes": 690
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.VisiblePollRefreshControllerTest.xml",
+      "sha256": "898542956635f30a421a0e6216ce2920a6ad6b1eeccb370b14dfee8464fc4397",
+      "bytes": 1641
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.VoiceMessageManagerTest.xml",
+      "sha256": "d0a8e932dd9d690ce60f04d563224e9f3439ea85140ce9a63050fed436f6317b",
+      "bytes": 4509
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.VoiceNoteEnqueuerTest.xml",
+      "sha256": "281f14bd6bf40e65af7e52153305c73de5d82002caee862c9805be97820cbfe2",
+      "bytes": 1910
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.VoiceRoomSearchControllerTest.xml",
+      "sha256": "999c4f3880a9b8ce163ee453030e5b71a80cd1904c8ac5908c964c7a6da685c5",
+      "bytes": 1424
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.messages.WorkspaceCalendarExportTest.xml",
+      "sha256": "7c54b839878d943bd9cfa545b8b343adb1c1db4c9d1ab55cf3649904773de03c",
+      "bytes": 1529
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.AuthenticationJourneyRestorationTest.xml",
+      "sha256": "d8099fcba4c3bfe3c890fe713dc75eeda1e0ee49de6c9573bd873bce41fc9a4b",
+      "bytes": 1398
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.CallReturnRouteTest.xml",
+      "sha256": "db7b26af2f941b26147fd95a6915c6864cdf4380b7a0503e6b93466408ed65be",
+      "bytes": 766
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.ExternalDeepLinkSecurityTest.xml",
+      "sha256": "28e3af24f9ade233ba3c90f0ac100f6d9b4a2c5edeaf82775429b69183852c05",
+      "bytes": 882
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.ExternalNavigationRejectionTest.xml",
+      "sha256": "5711f411e4b19d04cdbfeb695801c739d431f8a7a0ebeaa5f188b3cdaa34a5cb",
+      "bytes": 830
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.LiveReturnRouteTest.xml",
+      "sha256": "dde56594a008451c8dccd840289569f7f73279d7df421c43a154e70efffe818d",
+      "bytes": 777
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.LiveRouteEncodingTest.xml",
+      "sha256": "d3a9aa0ba152bad19ad3bbf4454cb525d4cd639d0f44c3ef73b552315601a98a",
+      "bytes": 794
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.LiveRouteExitTest.xml",
+      "sha256": "7d776eec233a993a32abd3fcb3527905e26d6fab5433982876fcb48669634b7a",
+      "bytes": 1109
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.LiveShareLinksTest.xml",
+      "sha256": "7a3319de14f92f8179aeb2abfa7c4d09f877a61798f1d816b62577237747c435",
+      "bytes": 639
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.LiveStartedRouteTest.xml",
+      "sha256": "40d05b5c06b678cb9e82aba8f3dd26694053e46925b14036c0fb3598b334921f",
+      "bytes": 654
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.NotificationAccountSignInTest.xml",
+      "sha256": "0919fa46b6c2bf76114f75536917ad9dd65c4d90e656dd87f5f64224e6998cbd",
+      "bytes": 2426
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.NotificationConversationDestinationTest.xml",
+      "sha256": "df372e4fd92238fc2ff3be44b3f2945807b052000b0bf088668db4438d4d8d96",
+      "bytes": 1194
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.RegisteredDomainLinksTest.xml",
+      "sha256": "4acaaebaf192b73b17db04e9b835eb6d3e913df0eae0492682ca146c08dc402b",
+      "bytes": 672
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.RootSettingsNavigationTest.xml",
+      "sha256": "cf7405015e2b35bdc1540b308c872af1ab321b6177e3dfffd61481f8b48799cf",
+      "bytes": 527
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.SharedContentDestinationTest.xml",
+      "sha256": "52bd00687b1c76682959ce91afac63bc831536294f954c757a158615aad67c35",
+      "bytes": 1312
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.navigation.VoiceRoomLinksTest.xml",
+      "sha256": "7ab51d48a1d7021aa470dd62e3eeed83049c7c892d03e6f1e571ec91817675e4",
+      "bytes": 4779
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.posts.PostCommentDraftRevisionTest.xml",
+      "sha256": "7f6cf0a1b80edbfba5f1d82765ed4f5af0ea3ed60d61c16f81b5641df0d8ab80",
+      "bytes": 826
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.posts.PostCommentReadTest.xml",
+      "sha256": "1c357c161ff5b622e0d78516d3f2cfb11979d2a525b626395e9a7ef5c76cacb4",
+      "bytes": 1040
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.posts.PostCommentThreadsTest.xml",
+      "sha256": "1b8ad2ca22f5df5012f1f3c293cd9551dc6352b4bab51f932c2cf9fbaf498de1",
+      "bytes": 947
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.posts.PostCommentWindowTest.xml",
+      "sha256": "2141b1fe3ed59b4d6eac8a94260a3a4dbf7aeb465dea8bc3bd5893c33f00ec96",
+      "bytes": 989
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.posts.PostReactionStateTest.xml",
+      "sha256": "6ea0546d15eb3af376ba12ad6d36f4aaecc787b1da0ead304969c9530c330257",
+      "bytes": 1179
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.posts.PostReactionUsersLoaderTest.xml",
+      "sha256": "cbe5c7ac76f80ebf462a24819ee00fd1898e139e8d4ddc799443e66cfb023e8a",
+      "bytes": 1083
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.posts.PostReactionWriterTest.xml",
+      "sha256": "989c370f3cefbd9e26a22512373f759040c1c4aea46212dd73ef2c0cce7af983",
+      "bytes": 3249
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.AdminAccessCheckTest.xml",
+      "sha256": "467c8428109e1c7570aaab4ab5e191f4cdde30419dc720abd0a9d779eb464d53",
+      "bytes": 1204
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.AdminPanelNavigationTest.xml",
+      "sha256": "47b001d69074c410ce04f46c5c1e8d4f1ee07901446d57cc16ba6d3f28145477",
+      "bytes": 641
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.AdminRecoveryAccountLookupTest.xml",
+      "sha256": "83ab9e5cb1da66c61bd03a01841cc86554060fb9d778a00dcdb64de3565ea190",
+      "bytes": 1023
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.AnnouncementAdminMutationTest.xml",
+      "sha256": "fb0a7028406fedea5fbde8fba25b7cb380d8eb153fea93d53ce68d18b721ae21",
+      "bytes": 979
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.FriendRequestsRefreshTest.xml",
+      "sha256": "83802b7a46eb22f06f847356d6865440ffa795dceba58910ce4d3961b67dd52b",
+      "bytes": 1373
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.NotificationNavigationTest.xml",
+      "sha256": "894e597dbf913f62fed1cc56a4239fc6d7d165722906ab9a333ec8a0cf597843",
+      "bytes": 1025
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.NotificationRefreshTest.xml",
+      "sha256": "5a830f28fa105b02fd0d6fd700379e78dcdf7a9603f468277f96da8bb3033013",
+      "bytes": 714
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.NotificationRequestsTest.xml",
+      "sha256": "331ee3663fcab59a0b1b42863fd9662ec1c99cf17d27cdc22b72b9f5841061fd",
+      "bytes": 1734
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.NotificationTextSupportTest.xml",
+      "sha256": "62270a68b4c321be82e071588809340d5518b2913fd67810e83d6078add17a48",
+      "bytes": 929
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileBirthdayTest.xml",
+      "sha256": "572e5f24315e311b1d9206fba96db2560f6d710ae0f4d45c2a174abd6d4e1de7",
+      "bytes": 490
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileContentSubscriptionsTest.xml",
+      "sha256": "dd221bd1f271802079931bd01084540c31bf3ff81780fa482cb7fe9460cd4d8a",
+      "bytes": 715
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileMusicWriterTest.xml",
+      "sha256": "36a02da7e2193c309b7febe3c976dc2e224fd306425ece0388630d91e6c83af1",
+      "bytes": 961
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileReadScopeTest.xml",
+      "sha256": "951208e7f7ace5624ffdcdfc80faa2d901637f3f49448b3ab22a0f5ccf20902e",
+      "bytes": 918
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileScopedActionTest.xml",
+      "sha256": "16d26e8b9fd50251e0f6c8567c8e4b58cde4fe6758c68343e1da9a3e38f12fe6",
+      "bytes": 1363
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileShareContentTest.xml",
+      "sha256": "4dbe30701c23118f550085fb96f4bbf6c7141f995dc6638c757de9b54293889f",
+      "bytes": 821
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileSharedPostsPagerTest.xml",
+      "sha256": "4898c5ffec591b5fa88b1fedd789c64997281c101fa52482a42dfb7d56530a54",
+      "bytes": 829
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileSocialDraftTest.xml",
+      "sha256": "78928f7a502370b4e3e1edfc4bd94b0b24274e6f0beaf531f081dcaab476a229",
+      "bytes": 1464
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileVisitorsLoaderTest.xml",
+      "sha256": "47e49f0877185b1cca94aa42788360b17fdb6c8e78fdbffd30fb8f21adb27c59",
+      "bytes": 1427
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.ProfileVisitRecorderTest.xml",
+      "sha256": "589224a39e4acacef34e1ba0ef4f17159166dcafa52df57cd27d8ac605c03dce",
+      "bytes": 1121
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.profile.SettingsDirectoryTest.xml",
+      "sha256": "a7336f906fe0706fc170fd779d226923dff1bbeee506b0c1b1749489d0174d59",
+      "bytes": 634
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.proximity.AnonymousSendPolicyTest.xml",
+      "sha256": "c24c460362ab0ecc57cb638896a2417ed6d7c6f86e452b00bbb70e86809aed41",
+      "bytes": 824
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.raffles.RaffleDrawPresentationStateTest.xml",
+      "sha256": "268f75930472111d6d3d9a104222ca9e5efd14079099a5c536aaab3b1ba8c8da",
+      "bytes": 1464
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.raffles.RaffleListWindowTest.xml",
+      "sha256": "09e9a5faad505ea2e9241a2e94622e0856116b69472659c592782d83c84c3e28",
+      "bytes": 1057
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.raffles.RaffleStateTest.xml",
+      "sha256": "a89bb75302e72d6446c29ad964199ddc63fda82d3726043bad22a319b84ece51",
+      "bytes": 1347
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.search.SearchDiscoveryTest.xml",
+      "sha256": "8287e8311ef35f81f9107e4794cf37c5587f1909a913a4d8dbce963f139b9c2f",
+      "bytes": 973
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.search.UnifiedSearchControllerTest.xml",
+      "sha256": "2aa44e51e6bba7626cd4f8f2464116d4bfb528339275b0601b0baee4ad3c42c5",
+      "bytes": 1742
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.ChallengeControllerTest.xml",
+      "sha256": "11f82bcc2d51b795d8b3a1feccb244e9b3f1185b8b5527b62bc914bf2d91e061",
+      "bytes": 3736
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.ChallengeMediaKindTest.xml",
+      "sha256": "1cb0b0ac788e99005afe1f1b6717a69ef61f5efc568d850c9cd8329efd02c33d",
+      "bytes": 1140
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.ChallengeNavigationTest.xml",
+      "sha256": "7e4b65f94f074805c706fba8568b692575fc2ceafdca85614adef282a6514447",
+      "bytes": 840
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.components.RoundRemainingSecondsTest.xml",
+      "sha256": "2693e7818c60b6aac06d2af56cf979d86a9c22d8cbd1ac89861670bc69ccba79",
+      "bytes": 823
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.HighlightPlaybackSessionTest.xml",
+      "sha256": "f4edcd6d62f9566f7e5b87f30b5fbda943ca01d11cde540ac1ae8616797dc131",
+      "bytes": 1333
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentDownloadPolicyTest.xml",
+      "sha256": "46aedfbb6be87f7bd236d8f45ab12e5e87e804133cf61d7c67d4d35c80777e86",
+      "bytes": 1590
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentHighlightLoaderTest.xml",
+      "sha256": "f6956d831e0e1191d37270e7c795573c51cb23435a5a9a1822beafa983662e7c",
+      "bytes": 1422
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentImageLoadStateTest.xml",
+      "sha256": "2df352d92e4af426f9e1e3e2564033df678b112d2e71eab8fa6fe10faf96a18d",
+      "bytes": 1153
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentLocalMusicDurationTest.xml",
+      "sha256": "dbb36095a157088ea4c4cf04395bf77f132b53bd56ec18cb7e8c5212a6e0a57f",
+      "bytes": 654
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentMusicCanvasGeometryTest.xml",
+      "sha256": "9092f39dc6fdc8a7c8eb75e0386178cdb5a12064ec1d7ecca601ca243f4f83fd",
+      "bytes": 1274
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentMusicCatalogErrorTest.xml",
+      "sha256": "b92cdc06f6585ee8b18da780f15eb25cd23f3d554735e4517dae2fa983b5dfcb",
+      "bytes": 809
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentMusicCatalogLoaderTest.xml",
+      "sha256": "b2df8724a0e84d0739cd179c125963537b9574995b5545bb104066cb9b803c2f",
+      "bytes": 2340
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentMusicClipOptionsTest.xml",
+      "sha256": "d1bba6cbd8337e9cc1b588eb131897c5e46655e6e845e1a695c22bb4caf3f941",
+      "bytes": 1040
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentMusicDurationTest.xml",
+      "sha256": "8c4db70a5e5bfd33f6edcf0662941563b3b8c98f4a2b53ef35618a149ee9b090",
+      "bytes": 512
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentMusicPickerPolicyTest.xml",
+      "sha256": "4a4e9dbc616d4dbfe21c2613f15441cbbd73568519d11bf858438ee9af8ce125",
+      "bytes": 712
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentMusicTrimPolicyTest.xml",
+      "sha256": "ce3f2ac7ec80a573c9cb7f77754d1004884cfe0f877bb387a1c26c23d2eeb96f",
+      "bytes": 1729
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentPlaybackPolicyTest.xml",
+      "sha256": "20535c1b1a272b898cc229d88fc2e35b07836ff72431d5df4eee5250760c0403",
+      "bytes": 1145
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentSoundtrackClockTest.xml",
+      "sha256": "1bdf7f51957767f7a94bca300475c5499b0f14d44b73dda9b4823d6a8cb2b793",
+      "bytes": 841
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.MomentTimestampTest.xml",
+      "sha256": "4cbb0de4ca5d9b80596a242c8476ca484144dbdc1aad1dd1ffdc6fd59eff1fb6",
+      "bytes": 1128
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.RankingReadTest.xml",
+      "sha256": "bb7c4ea3680795f7400809b87a0e2a8945f8b15c7df5a56c22640e9ec628b14b",
+      "bytes": 637
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.RecommendedVideoNavigationTest.xml",
+      "sha256": "2eef893a2f03785cff467c59caa7e0f4701570bc0fd168ee12aa0b87eca48652",
+      "bytes": 1128
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.SocialAuthorHydratorTest.xml",
+      "sha256": "b04c68f92a7e4e84e3e6327322bc0762d7134e9459fff5f63ab443b88849eae7",
+      "bytes": 1777
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.SocialCurrentUserLoaderTest.xml",
+      "sha256": "a48d3e39214613ad7675f896130e11baeb47bd9454d25e381aa15bc29c4b374e",
+      "bytes": 828
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.SocialDiscoveryContinuationTest.xml",
+      "sha256": "a9079783cf062e872912177654658e5a8ea9f6b1fcd16b3788bf631dee75dcea",
+      "bytes": 813
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.SocialFeedPagingPolicyTest.xml",
+      "sha256": "95308372be21e1122747acd5ab6983629e866a4e451202b159d0907aa8d400ef",
+      "bytes": 825
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.SocialFeedSnapshotTest.xml",
+      "sha256": "6ba0569e2d3245f36d138ac4e910f66a7abb8edfd9106b3798008af63caec220",
+      "bytes": 1082
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.SocialReadingPolicyTest.xml",
+      "sha256": "3c7eb061882da257581364e2fe086d6598337145d8a1f6a30f73474494425b2b",
+      "bytes": 634
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.social.SocialRefreshOrderTest.xml",
+      "sha256": "1bbd278727a9d941acfd17908702e5523027f967480e718d65cb1b9e5e8f4ba1",
+      "bytes": 801
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.surveys.SurveyApiErrorsTest.xml",
+      "sha256": "94c95bdb73b8de1c79bc334f2e5057eb054a3f8aae13c88ad6871ce7216095ba",
+      "bytes": 1493
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.theme.AppThemesTest.xml",
+      "sha256": "f5fac23bbe53a5ab7c2e090ee44dab124fecfa263ad42f9e4cb8bc471f4a287b",
+      "bytes": 1077
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.theme.ChatAppearanceTest.xml",
+      "sha256": "0c86e41311a35b491f0a49d571cb8a1dbbb8118487bf943548eab3df00f45d39",
+      "bytes": 764
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.theme.ReadableLinkColorsTest.xml",
+      "sha256": "d315446809954d114d64e40b5562ac2522017189faafa188fbf4e3121ffab8c5",
+      "bytes": 799
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.FeedPlaybackPolicyTest.xml",
+      "sha256": "daae564eaef726b07c87d057a36f5c04e8f620cda27631b87a5c945b6dc48417",
+      "bytes": 948
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.FocusedVideoFeedTest.xml",
+      "sha256": "f53e5419d76351c4f349cc2b6713e1bf645775ef452dba651ae0226895d8f9aa",
+      "bytes": 815
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.FocusedVideoReadTest.xml",
+      "sha256": "a0a239df512065172b2746d01159c9dda11e051d540c041efa7f82fe1a79c2d7",
+      "bytes": 979
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.LightweightRenderingPolicyTest.xml",
+      "sha256": "2b3eb45bb03d3240e75eecf05c90c578b0868c8e9fbdd9eb8125f63d6b15e628",
+      "bytes": 897
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.ProfileVideoFeedPagingTest.xml",
+      "sha256": "b506a980fe1e42098cd6a8da710f1fe19051e30e718884092ab6e7b70bf57d78",
+      "bytes": 984
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.RealPlaybackViewTrackerTest.xml",
+      "sha256": "17081f18e185435a69ee746b5bf6c2b65dd56b68ae8b25ccf882fa8181fa3b02",
+      "bytes": 987
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoAlgorithmFeedbackPolicyTest.xml",
+      "sha256": "5de99b24b0286e6d71f935fd03c026f2f259ab04cffdd1fc611b77b910d3fcaf",
+      "bytes": 1040
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoCommentSessionTest.xml",
+      "sha256": "10061aae589ad1abf6863b70e4086059a2d451d826f8112e4e1a84d683fb2465",
+      "bytes": 807
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoDiscoveryTopicsTest.xml",
+      "sha256": "2d6e07970f7fda3baa8f3206688cb6342ec56c5cc9e89087b8be23043564ee96",
+      "bytes": 664
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoEntryPlaybackTest.xml",
+      "sha256": "cc230e20114a2f9ea022e56b46465a84ea41ffcea1e872cecbcd623a6b708f15",
+      "bytes": 901
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoFeedAuthoritativeEmptyTest.xml",
+      "sha256": "8839b9fb73237e2896f39b5b54bbaddcee0411255b7f3d0d5b4e63362f40360f",
+      "bytes": 1214
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoFeedContinuationTest.xml",
+      "sha256": "c0869b7cc1588ebf7d77857e253417c2ba5170df239d03475a62fb3d80fe284d",
+      "bytes": 1887
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoFeedCyclePolicyTest.xml",
+      "sha256": "71794c8dd600e8cbdf51e3ab876fcb51d43b07070fed8b6e73e4b9625dd136c6",
+      "bytes": 1247
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoFeedEntriesTest.xml",
+      "sha256": "7013ce10c9f78c114e5b72a20eeea1cc1d73c6435cef82b3414ff6771f0cd612",
+      "bytes": 1236
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoFeedOrderingTest.xml",
+      "sha256": "25194c6535e32908637603abbf9da17445e96b7c832bff50768d347cd20f9265",
+      "bytes": 1418
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoFeedPageStoreTest.xml",
+      "sha256": "36e1fe5843b9dbd152f9b008914f9bc682f6a3a20c94c2c1b3a8cbe09f603710",
+      "bytes": 1158
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoFollowStateTest.xml",
+      "sha256": "d6ed126bdecb29d18cc9ddba168fd0e1ad2e777f0d65ca03b0097483cec80835",
+      "bytes": 1014
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoLikeWriterTest.xml",
+      "sha256": "6415bdd7a766c1d30053c5d75d965e521799109e0a1f65d682ff563d1c9e6923",
+      "bytes": 1509
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoPersonalMarkerStoreTest.xml",
+      "sha256": "861c8d86b8fff46bc0ec29fb8bcd68c0635a535c520055fdba4eacebb0528daa",
+      "bytes": 1016
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoPlaybackRecoveryPolicyTest.xml",
+      "sha256": "eb9a974ffb3c5e7d0e168b229a86c8a9572a2bb92b25d385ee44b5096c86c754",
+      "bytes": 1179
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoPlaybackRecoveryRunnerTest.xml",
+      "sha256": "f4c25843d05a3ba8cce4c93eff52cdd6da52463d817259c598ea6bd9b3c32b98",
+      "bytes": 1242
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoPlaylistReconciliationTest.xml",
+      "sha256": "23342bc41ae02a476042553f4d4978c3c4faf5270b47d40016094bb7bd4f6126",
+      "bytes": 1522
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.video.VideoPreloadPolicyTest.xml",
+      "sha256": "2ba4a7fb188b970c8ea7afa23bf5391aeb0b39d13ece3c2deb25abf3bab24c22",
+      "bytes": 927
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.CommentSheetThreadingTest.xml",
+      "sha256": "a10b9119bc91d3084b42ae492e1017eb7f4babecaaebc6d9fdcc596ba76f1964",
+      "bytes": 651
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.CubeColorLutTest.xml",
+      "sha256": "b988bd03f946654f85cd2d98c7ebb3cbb262d222788006460d10ea2ded49fc8b",
+      "bytes": 750
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.EditorDraftStateTest.xml",
+      "sha256": "1738c42dd48e78532868ac7a8623b6ef8900599b2d3cafaa1db76c2a6db7ac09",
+      "bytes": 785
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.EditorEntityIdsTest.xml",
+      "sha256": "ac28f7367ecc80e97cb98f1bad294daf983d999191593a240ca75a0b80b75fb7",
+      "bytes": 630
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.EditorOverlayGeometryTest.xml",
+      "sha256": "aaa2eafaec9fafdbf07e74d1ea39803c1548e03a0dc67eb7f5948831d760ea9f",
+      "bytes": 1398
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.VideoColorResetTest.xml",
+      "sha256": "b013263fa7e97da4e1a9ebab9ee64aa8d37b12e9351593f514b7caca174120ff",
+      "bytes": 492
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.VideoCommentFiltersTest.xml",
+      "sha256": "14d1c2c95fd9a4da783b0d6296db8996a43e407b73c54aea0509a9f116727004",
+      "bytes": 802
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.VideoCommentStateTest.xml",
+      "sha256": "1cfcad75d640784856e22e8b4e23c4d6cab9ed5d89be6c80dee5987d5f67c557",
+      "bytes": 912
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.VideoDescriptionTextTest.xml",
+      "sha256": "e6320ca09817b3c7b2085c14a35573e1f68e63bf82d8bea4ddd9e805da0654dd",
+      "bytes": 620
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.VideoDocumentAccessTest.xml",
+      "sha256": "88c034a6c10e11b44715f99b8bd3ad880de13634a3945bdd37f8e14fd7f0bdb5",
+      "bytes": 801
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.VideoEditorTimelineTest.xml",
+      "sha256": "bf3dbfaa232cd60359ad3a05da48cc3645293c42f14cc4b2930635fa476b9b02",
+      "bytes": 2853
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.videos.VideoUploadPolicyTest.xml",
+      "sha256": "28f258f00e91819d55ada32bb079f3662540f252a24b0dca6803ca1c710ad2dc",
+      "bytes": 938
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.voicerooms.CinemaSourcePolicyTest.xml",
+      "sha256": "7aad3177378b4e79381abf01517d762a467489b9ed7cad4f3dcdd244b20ef63a",
+      "bytes": 663
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.voicerooms.ParticipantMediaVisibilityTest.xml",
+      "sha256": "f0204adc5b870892e03f97d041b983267a4038cc711662541f44d59d9dcbcba5",
+      "bytes": 714
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.voicerooms.RoomChatPhotoTest.xml",
+      "sha256": "0af07e0867131ba1484e26d54812d7b0f4e1e55e6d96fbdde77dd551ffb3e2d2",
+      "bytes": 961
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.voicerooms.VoiceRoomWebLinkTest.xml",
+      "sha256": "58b78268f012738bf5bbca4fc29cf6aa66e5e5da66824540c616b567f5eb4f3d",
+      "bytes": 480
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.wallet.GiftAnimatedArtworkTest.xml",
+      "sha256": "83c442ae2b518e5da8ec150e623b94b39a1b1960f284c4e727003b2f95bbf6ec",
+      "bytes": 1274
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.wallet.GiftAnimationTierTest.xml",
+      "sha256": "2a94662a6dbdc4be82cf6d05434de1cd52363da6a11ebec282612b189ba19641",
+      "bytes": 2138
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.wallet.GiftCelebrationLayoutTest.xml",
+      "sha256": "4147b7b887cbd3edcce57421fb9de5fab0a431814a7cd0d9979901847439ba2d",
+      "bytes": 1049
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.wallet.PlayBillingPolicyTest.xml",
+      "sha256": "2154e63966968db2bea39e7537cc69e115de874332712662703c5e4a161e753b",
+      "bytes": 1064
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.wallet.PlayPurchaseQueueTest.xml",
+      "sha256": "d4268dc1bad8426fe300ffbf655c4e9263b3d24a01c95efbbdd7058f3c05b50b",
+      "bytes": 501
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.presentation.wallet.WalletPresentationPolicyTest.xml",
+      "sha256": "96156018bef777f74f982bf0f36823684e666acfb4dc597e8c8120dc2c20672e",
+      "bytes": 1207
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.services.CallForegroundSessionTest.xml",
+      "sha256": "8199a1caafb553f6d68a928121d0b9345351897d730edf8d7a2b74b6059df44e",
+      "bytes": 2452
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.services.CallNotificationIdentityTest.xml",
+      "sha256": "27d4fe7008042d69a9a12bbfaf04b5d7c11b4ad2da87bef36a4e883b641f5f41",
+      "bytes": 1246
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.services.LiveForegroundSessionTest.xml",
+      "sha256": "826b28f317732f89a3360ac6888f1458a0cfd86d2b9f14d9bc57641ab4efbc66",
+      "bytes": 2105
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.services.VoiceRoomReturnIntentTest.xml",
+      "sha256": "2c5dbe8f7370ee419fc9c02b3ea99b0d5e0264179a82a42d16938b9bbefeec9f",
+      "bytes": 519
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.AccountNotificationEligibilityTest.xml",
+      "sha256": "3f91a9c7638233acda1f80ec4a429361738e38a19c7548282009aabefe7da0c4",
+      "bytes": 959
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.ActivityNotificationDeliveryTest.xml",
+      "sha256": "c49e58c6f81a8ed7d206527430f1361f4ff52427cf04cde2a0865c4499deebd0",
+      "bytes": 2278
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.AudioContentTypeTest.xml",
+      "sha256": "84c44109f47b2a93885dc51a2acccf5801475b3c4f9b04cb9db61727ecb24f4c",
+      "bytes": 591
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.AudioProgressTest.xml",
+      "sha256": "65804946949ec1f70813872bce00393a69d7ebe0adcbd11d835fdfba00907f7e",
+      "bytes": 1377
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.CallTonePlayerTest.xml",
+      "sha256": "4648ff1a635fa4e1276836d6b7a73b07c0770aeb89ae33df31007e6d55e1fe87",
+      "bytes": 1383
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.ChatAudioPlaybackCacheTest.xml",
+      "sha256": "561a5e8797c0467fc997fe35f13efb6f8730c3d5199b2768cc3e937b5ff0d31d",
+      "bytes": 1210
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.CollectionMembershipNoticePolicyTest.xml",
+      "sha256": "4490a343aa08a5c3e3938a4e1d4dc00d524356193444628620c31b8509c070b9",
+      "bytes": 937
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.CommentDateLabelTest.xml",
+      "sha256": "8f5afaae083da02014d89fa47ccbee156b71e32dab92b50f055dd75d1fe53dd7",
+      "bytes": 599
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.ConversationNotificationIdentityTest.xml",
+      "sha256": "028a5db56002a4199f739941d247cb673c366d09fd9450391c5d509912fce9f9",
+      "bytes": 774
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.ConversationNotificationPrefsTest.xml",
+      "sha256": "b81435edd97604c2951a3f83f34629067a8a599c1585fea09c44fbfcb6626f72",
+      "bytes": 1486
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.ConversationReadSyncTest.xml",
+      "sha256": "a39433f5520a81d023cf58bcb7ba375febab8331e1532488415af3252adeaa7c",
+      "bytes": 1071
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.CoreFormattingTest.xml",
+      "sha256": "f30111fd86449b5f891a276be80f530ecc84aa7fd3a2f338cb91b0ffdbcf428d",
+      "bytes": 1270
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.DeletedMessageNotificationCompatibilityTest.xml",
+      "sha256": "2d26cc19d1170794694cb141e3e95ff7fb9d433e09cd69213237cb8493198c11",
+      "bytes": 1022
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.DocumentMessageLabelTest.xml",
+      "sha256": "0c3c590c3ab827b2fa334f7b76143a88254ab8dcb87d04d0618851dd92403ec9",
+      "bytes": 856
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.FeedPlaybackCacheAdmissionTest.xml",
+      "sha256": "23c0bbbf6de84dd869c3ef09251c5b62423316bb3439914344ce757c056cc835",
+      "bytes": 962
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.InteractiveAudioBufferTest.xml",
+      "sha256": "005eb63ed65a1e0bedcba90c70092f1e6e31b55c46d42bee1ff844a5e72845ec",
+      "bytes": 478
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.LocalNotificationHelperTest.xml",
+      "sha256": "82589da72ea1f1717fa8c90f9f31973064c5abf23c782aee7fac60fbcce05e30",
+      "bytes": 2841
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.MediaMimeResolverTest.xml",
+      "sha256": "dd5716565006f1b6ce7f64eccb32417613f71bbe667ce7ecc16a14edb8465961",
+      "bytes": 1775
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.MediaNetworkTraceTest.xml",
+      "sha256": "0d4118e9b4893c8bc3bc11e495f475600d9e79d8414a2ea1c76b697c35e1d6de",
+      "bytes": 755
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.MediaPlaybackDataSourcesTest.xml",
+      "sha256": "d78b15ddc4628b08ecc13e41b03c1d0bd0a4f6f2e41fa694984c6a40f5ad7930",
+      "bytes": 789
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.MentionNotificationPreviewTest.xml",
+      "sha256": "bd845d6a710bf752e76b6fb0cd4c5fa6f00988e390de4e07345b7b2c7d3c2322",
+      "bytes": 581
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.MessageNotificationPreviewTest.xml",
+      "sha256": "b76086686d50ab16a01afaf2f57835871adc4bd1248cf9d5a63159f484b6cf3b",
+      "bytes": 667
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.NotificationAccountTargetTest.xml",
+      "sha256": "992db67d3443ad54a9cab94efd6c1a4c94732ff618a2c072334adcae47184321",
+      "bytes": 640
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.NotificationMetadataTest.xml",
+      "sha256": "7e9126fec6604aa303f11cef969f00354fa178ad47658b21f658b7ecdf2e1674",
+      "bytes": 789
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.PcmRecordingSessionTest.xml",
+      "sha256": "c98fed64924aa3070d6c2b9cd49f89e71704af8e9e25cdf555c374ebbf28412b",
+      "bytes": 1293
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.PendingOutgoingMediaStoreTest.xml",
+      "sha256": "9bb700e0a6aec8f5e727418f7d01716891c999c03bc2e99f7cf18ea892d9f11d",
+      "bytes": 1891
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.PlaybackCacheAdmissionTest.xml",
+      "sha256": "b51563d854cd789fb7d24e648585df150a9cdb622a624b79236e9ca114bb7168",
+      "bytes": 622
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.ProtobufRuntimeSecurityTest.xml",
+      "sha256": "1b520d69b9f5aa4fcb008ef1b7b73a56b516a18583838e2abbd112a1b8b7ae4a",
+      "bytes": 615
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.PushMessagePolicyTest.xml",
+      "sha256": "9d52aaf627d5c60cf09728bb7a568daae447a3ba8a45a6e3d3fa92f51ed31d97",
+      "bytes": 1198
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.QuotedMessagePreviewTest.xml",
+      "sha256": "0eb2cac3c868ab9e7d547080f09484bdf0c5f199e4a1158d232a0793bb48d3ca",
+      "bytes": 1144
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.RetiredNotificationPolicyTest.xml",
+      "sha256": "30b62e77feca704e494b7087b5b1976d6dc643c5d34eb54e9abaaa70282c7947",
+      "bytes": 616
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.ShortAudioSeekDataSourceTest.xml",
+      "sha256": "ae1dc67715a57b5129f4f33df55a694b941240b99034943f03f742b5e1d430eb",
+      "bytes": 2034
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.SocialNotificationCopyTest.xml",
+      "sha256": "98de53367d232841fa8b7ad37d7c06872f0dec9eea6753b4135326ec81b29477",
+      "bytes": 945
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.SoundPreviewPlaybackTest.xml",
+      "sha256": "d2cf10b6221307518287a6d2c8ce01c600fc6b4a79390c6f0a709794c6581abf",
+      "bytes": 595
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.StorageReadAdmittedCacheTest.xml",
+      "sha256": "e9af98b6d408d9b1cb653e012d15aabda23ab1449ba628e3f53c7f39d46eea0b",
+      "bytes": 1686
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.StorageReadHttpDataSourceTest.xml",
+      "sha256": "1e1ab92da5b6c858a91ae926a04f306bda85a109a597a801f9ac7b16e5e72372",
+      "bytes": 1217
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.TrustedLiveNotificationIntentTest.xml",
+      "sha256": "bc205a7a19e5d326d8e30f25c47a66e0e3b1bbe08b68e6d9cc1da49b13aae8ad",
+      "bytes": 495
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.TrustedNotificationBoundaryTest.xml",
+      "sha256": "d3dbf7d29ae12e05e84202f232c08aa4ea9f2edeb6312f69ac33b2fdd0b95333",
+      "bytes": 1347
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.UnreadPushPolicyTest.xml",
+      "sha256": "013808fee02c3dca212877a912f4280af784d414bc42ec0f27329835a3922872",
+      "bytes": 458
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.VideoCacheLocalPlaybackTest.xml",
+      "sha256": "26a99fb34a5f3a7c9a487aca7b77a9ccf61396bd01503446fd90bebf7ef29a0d",
+      "bytes": 833
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.VideoCacheResourceKeysTest.xml",
+      "sha256": "86211f2b966dfa58d830409c52d4368d2eb41c4b73bd7688f118165d7daa01f4",
+      "bytes": 896
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.util.VideoPrefetchBudgetTest.xml",
+      "sha256": "a52419dd1276d520631c16f905384b34bd0775d2b6abeb2fa25686b8770ad1b0",
+      "bytes": 482
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.widgets.NovvinWidgetIntentTest.xml",
+      "sha256": "e3f4937b4e508afb4e62ac2e1a4f90a53d50260d20385be7888293c3d17bf921",
+      "bytes": 634
+    },
+    {
+      "path": "app/build/audit128/live141-quality-final-retry/TEST-conectate.com.widgets.NovvinWidgetLayoutPolicyTest.xml",
+      "sha256": "f86811a34b0a149174835e7951e71ae1712d7e16dcb51b637863011d87ebb124",
+      "bytes": 824
+    }
+  ],
+  "baselines": {
+    "repository": {
+      "tests": 16,
+      "assertionFailures": 13,
+      "controlsPassed": 3
+    },
+    "initialViewModel": {
+      "tests": 5,
+      "assertionFailures": 4,
+      "controlsPassed": 1
+    },
+    "screenRepair1": {
+      "tests": 32,
+      "passed": 30,
+      "assertionFailures": 2
+    },
+    "screenRepair2": {
+      "tests": 45,
+      "passed": 44,
+      "assertionFailures": 1,
+      "failedCase": "new collector replays invalidated cached session"
+    },
+    "screenRepair3": {
+      "tests": 46,
+      "passed": 45,
+      "assertionFailures": 1,
+      "failedCase": "immediate collector misses minimized-session adoption"
+    }
+  },
+  "focusedAfter": [
+    {
+      "class": "conectate.com.presentation.live.LiveScreenOwnershipTest",
+      "tests": 22,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "failingCases": []
+    },
+    {
+      "class": "conectate.com.data.repository.LiveRepositorySessionOwnershipTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "failingCases": []
+    },
+    {
+      "class": "conectate.com.data.repository.LiveMediaVisitTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "failingCases": []
+    },
+    {
+      "class": "conectate.com.presentation.live.LiveToolAccountVisitTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "failingCases": []
+    },
+    {
+      "class": "conectate.com.presentation.navigation.LiveRouteExitTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "failingCases": []
+    }
+  ],
+  "generalAfter": {
+    "startedAtUtc": "2026-11-14T22:41:34.899784+00:00",
+    "finishedAtUtc": "2026-11-14T23:31:27.544333+00:00",
+    "gradleExitCode": 0,
+    "sourcesUnchanged": true,
+    "classes": 538,
+    "tests": 2927,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "lint": {
+      "errors": 0,
+      "warnings": 343,
+      "issues": 343,
+      "sha256": "092b47af7e2879ae4912c04d7f993a1fa4c5cde5785b5e1b7a49a3429978d87c"
+    },
+    "physicalDeviceValidated": false,
+    "newApk": false
+  },
+  "nativeBoundary": "Controlled WebRTC constructor/destroy callback; no physical camera/microphone/GPU/audio proof",
+  "rendererWaitMilliseconds": 96,
+  "rendererWaitTestUsesVirtualTime": true,
+  "newControlsExecutedOnlyAfterPatch": [
+    "preview adoption during startup",
+    "renderer wait after state clear",
+    "audio-only no extra wait",
+    "entry-owned navigation"
+  ],
+  "authAndWebRtcSharedImplementationsModified": false,
+  "retainedLegacyContracts": true,
+  "allAsyncLiveRpcConsumersMigrated": false,
+  "globalPhysicalAccountMediaBarrierEstablished": false,
+  "newApkDelivered": false,
+  "remotePublicationVerified": false,
+  "otherWorktreesPreserved": true,
+  "completeProjectGoal": false
+}

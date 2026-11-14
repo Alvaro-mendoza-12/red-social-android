@@ -1,5 +1,7 @@
 package conectate.com.presentation.live
 
+import conectate.com.presentation.navigation.popLiveRoute
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -36,8 +38,12 @@ internal class FigmaLiveViewerExitGate {
 fun LiveViewerScreen(
     navController: NavController,
     liveId: String,
-    viewModel: LiveSessionViewModel = hiltViewModel()
+    viewModel: LiveSessionViewModel = hiltViewModel(),
+    routeEntryId: String? = null
 ) {
+    val ownedRouteEntryId = remember(viewModel, liveId, routeEntryId) {
+        routeEntryId ?: navController.currentBackStackEntry?.id
+    }
     val viewerCount by viewModel.viewerCount.collectAsStateWithLifecycle()
     val comments by viewModel.comments.collectAsStateWithLifecycle()
     val reactions by viewModel.reactions.collectAsStateWithLifecycle()
@@ -153,7 +159,7 @@ fun LiveViewerScreen(
     fun leaveViewer() {
         manualLeaveRequested = true
         exitGate.runOnce(viewModel::leaveLive)
-        navController.popBackStack()
+        navController.popLiveRoute(ownedRouteEntryId)
     }
 
     fun shareLive() {
@@ -175,7 +181,7 @@ fun LiveViewerScreen(
         } catch (error: Exception) {
             android.util.Log.e("LiveViewerScreen", "Error joining live", error)
             AppFeedbackBus.showError("Error al unirse al directo: " + error.message)
-            navController.popBackStack()
+            navController.popLiveRoute(ownedRouteEntryId)
         }
     }
 
@@ -189,7 +195,7 @@ fun LiveViewerScreen(
     LaunchedEffect(session, wasConnectedToLive, manualLeaveRequested) {
         if (wasConnectedToLive && session == null && !manualLeaveRequested) {
             AppFeedbackBus.show("Directo finalizado")
-            navController.popBackStack()
+            navController.popLiveRoute(ownedRouteEntryId)
         }
     }
 
@@ -201,7 +207,7 @@ fun LiveViewerScreen(
     LaunchedEffect(uiError) {
         val error = uiError ?: return@LaunchedEffect
         AppFeedbackBus.showError(error)
-        if (session == null) navController.popBackStack()
+        if (session == null) navController.popLiveRoute(ownedRouteEntryId)
         viewModel.clearError()
     }
 
