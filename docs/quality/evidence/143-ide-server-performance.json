@@ -193,6 +193,16 @@
       "path": "app/build/audit143/finalize_flutter_launch.py",
       "sha256": "b46cd6c4baa413264f2c995392f03044888ced3c787cbe1a47ae276078df362b",
       "bytes": 2472
+    },
+    {
+      "path": "app/build/audit143/wrapper-from-registered-environment.txt",
+      "sha256": "698d163f42149a421afde23e6dc091a419789c9d87de94ffd1bb45f0b24d9c67",
+      "bytes": 2085
+    },
+    {
+      "path": "app/build/audit143/studio-bundled-runtime-version.txt",
+      "sha256": "b412c591938b10ff3add842e5b8ca7524ab8b92b9a79d7b4ebaa27c06a7fae25",
+      "bytes": 170
     }
   ],
   "server": {
@@ -362,6 +372,22 @@
       "physicalDevice": false,
       "scope": "Separate Flutter Android sample built, installed and displayed. No claim that all projects/frameworks or hardware features work.",
       "firstLauncherAssertionFailedOnSystemBluetoothCrash": true
+    },
+    "terminalEnvironment": {
+      "previousJavaHomeMissing": true,
+      "previousAndroidHomeMissing": true,
+      "previousJavaFromPathMajor": 24,
+      "registeredJavaHomeMajor": 21,
+      "registeredAndroidSdkExists": true,
+      "studioRuntimePinnedToBundledMajor": 25,
+      "wrapperVerifiedMajor": 21,
+      "wrapperVersion": "8.13",
+      "userPathSdkToolsAdded": true,
+      "machineVariablesChanged": false,
+      "oracleUninstalled": false,
+      "priorEnvironmentBackedUp": true,
+      "existingTerminalsRefreshed": false,
+      "ideReopenAttempted": false
     }
   },
   "web": {
@@ -435,5 +461,6 @@
     "remaining production avatar latency",
     "final identified validated APK"
   ],
-  "followupAtUtc": "2026-11-14T20:58:16.402205+00:00"
+  "followupAtUtc": "2026-11-14T20:58:16.402205+00:00",
+  "environmentFollowupAtUtc": "2026-11-14T22:13:38.851249+00:00"
 }
