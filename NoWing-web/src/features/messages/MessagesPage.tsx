@@ -1,4 +1,5 @@
 import { directConversationHasActivity } from '../../core/directConversationActivity'
+import { inboxConversationPreview, previewFromMessage } from '../../core/messagePreview'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,currentInboxUnreadCount,hasUnrepresentedInboxUnread,inboxActivityEvent,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
 import { inboxRefreshScheduler } from '../../core/inboxRefreshScheduler'
@@ -60,6 +61,10 @@ type ConversationItem = {
   id: string
   title: string
   subtitle: string
+  lastMessageId?: string
+  lastMessageSenderId?: string
+  lastMessageContentType?: string
+  lastMessageIsOwn?: boolean
   updatedAt: string
   kind: ConversationKind
   avatarUrl: string
@@ -414,21 +419,6 @@ async function loadCollection(
   })
 }
 
-function previewFromMessage(row: GenericRow): string {
-  if(row.content_type === 'birthday_card') return '🎂 Tarjeta de cumpleaños'
-  if(row.content_type === 'question') { try { const q=JSON.parse(String(row.content || '')); return q.prompt ? `Pregunta: ${String(q.prompt).slice(0,160)}` : 'Pregunta de la comunidad' } catch { return 'Pregunta de la comunidad' } }
-  const content = textOf(row, ['content'], '').trim()
-  if (content) return content
-  const contentType = textOf(row, ['content_type'], '').toLowerCase()
-  if (contentType === 'sticker') return 'Sticker'
-  if (contentType === 'image') return 'Imagen'
-  if (contentType === 'video') return 'Video'
-  if (contentType === 'audio') return 'Audio'
-  if (contentType === 'poll') return 'Encuesta'
-  if (contentType.startsWith('view_once')) return 'View once'
-  return 'Sin actividad reciente'
-}
-
 function sortByUpdatedAt(items: ConversationItem[]): ConversationItem[] {
   return [...items].sort((a, b) => Number(b.isPinned) - Number(a.isPinned) || toMillis(b.updatedAt) - toMillis(a.updatedAt))
 }
@@ -549,7 +539,10 @@ function withInboxActivity(accountId:string,items:ConversationItem[]):Conversati
  return sortByUpdatedAt(items.map(item=>{
   if(item.kind==='voice')return item
   const latest=latestInboxMessage(accountId,item.kind,item.id),at=latest?textOf(latest,['created_at','createdAt'],''):''
-  const next=latest&&toMillis(at)>=toMillis(item.updatedAt)?{...item,subtitle:previewFromMessage(latest),updatedAt:at}:item
+  const next=latest&&toMillis(at)>=toMillis(item.updatedAt)?{...item,subtitle:previewFromMessage(latest),updatedAt:at,
+    lastMessageId:textOf(latest,['id'],''),lastMessageSenderId:textOf(latest,['sender_id','senderId'],''),
+    lastMessageContentType:textOf(latest,['content_type','contentType'],'text'),
+    lastMessageIsOwn:textOf(latest,['sender_id','senderId'],'').trim().toLowerCase()===accountId.trim().toLowerCase()}:item
   // The preview may be our optimistic send. Read state must use the server snapshot's
   // timestamp, otherwise that newer outgoing timestamp revives a stale unread count.
   return {...next,unreadCount:currentInboxUnreadCount(accountId,item.kind,item)}
@@ -941,6 +934,8 @@ export function MessagesPage() {
                 ? textOf(row, ['group_name', 'name'], 'Grupo')
                 : profile?.name || fallbackName,
               subtitle: textOf(row, ['last_message'], 'Sin mensajes'),
+              lastMessageId: textOf(row, ['last_message_id'], ''),
+              lastMessageSenderId: textOf(row, ['last_message_sender_id'], ''),
               updatedAt: textOf(row, ['last_message_at', 'updated_at', 'created_at'], ''),
               kind: 'chat' as const,
               avatarUrl: profile?.avatarUrl || fallbackAvatar,
@@ -1404,7 +1399,6 @@ export function MessagesPage() {
       <button
         type="button"
         className="conversation-open-button"
-        aria-label={`Abrir conversación con ${item.title}`}
         onClick={() => void openConversation(item)}
       >
       <FallbackAvatar
@@ -1418,7 +1412,7 @@ export function MessagesPage() {
           <h3>{item.title} {item.kind === 'chat' && item.profileId ? <ProfileStatusBadges profileId={item.profileId}/> : null}</h3>
           {item.kind === 'voice' ? <small className="voice-inbox-presence" aria-label={`${Math.max(0, item.participantCount || 0)} participantes conectados`}><Users size={14} aria-hidden="true"/>{Math.max(0, item.participantCount || 0)} conectados</small> : <small className="timestamp">{inboxTime(item.updatedAt)}</small>}
         </div>
-        <p className={item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?'conversation-draft':undefined}>{item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?`Borrador: ${readConversationDraft(user?.id,item.kind,item.id)}`:item.subtitle}</p>
+        <p className={item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?'conversation-draft':undefined}>{item.kind!=='voice'&&readConversationDraft(user?.id,item.kind,item.id)?`Borrador: ${readConversationDraft(user?.id,item.kind,item.id)}`:inboxConversationPreview(item,user?.id)}</p>
       </div>
       <div className="conversation-status-col">
         {item.unreadCount > 0 && (

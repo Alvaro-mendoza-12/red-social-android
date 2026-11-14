@@ -19,17 +19,17 @@ class RequirementTraceabilityTest(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.rows = []
-        for name in checker.SOURCES:
-            path = self.root / checker.PACKAGE / name
+        for relative in (*(checker.PACKAGE / name for name in checker.SOURCES), *checker.SUPPLEMENTAL_SOURCES):
+            path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"word fixture" if path.suffix == ".docx" else b"# Scope\n- A requirement\n")
-            self.rows.append({"id": name, "documento": (checker.PACKAGE / name).as_posix(),
+            self.rows.append({"id": relative.name, "documento": relative.as_posix(),
                               "linea": "" if path.suffix == ".docx" else "2",
                               "apartado": "Scope", "requerimiento": "Word mandate" if path.suffix == ".docx" else "A requirement",
                               "tipo": "requisito", "estado": "PENDIENTE", "evidencia": "",
                               "sha256_fuente": checker.source_fingerprint(path)})
         self.matrix = self.root / checker.MATRIX
-        self.matrix.parent.mkdir(parents=True)
+        self.matrix.parent.mkdir(parents=True, exist_ok=True)
 
     def write_matrix(self):
         with self.matrix.open("w", encoding="utf-8", newline="") as stream:
@@ -101,6 +101,21 @@ class RequirementTraceabilityTest(unittest.TestCase):
         result = checker.audit(self.root)
         problems = {error["problem"] for error in result["errors"]}
         self.assertTrue({"source_unregistered", "empty_text_or_status"} <= problems)
+
+    def test_followup_product_sources_cannot_drop_unregistered_requirements(self):
+        source = self.root / checker.SUPPLEMENTAL_SOURCES[-1]
+        source.write_text("# Follow-up\n- A requirement\n- Keep the actual last message.\n", encoding="utf-8")
+        self.write_matrix()
+        result = checker.audit(self.root)
+        self.assertFalse(result["ok"])
+        self.assertIn((checker.SUPPLEMENTAL_SOURCES[-1].as_posix(), 3),
+                      [(row["document"], row["line"]) for row in result["missing"]])
+
+    def test_missing_followup_product_source_is_rejected(self):
+        self.write_matrix()
+        (self.root / checker.SUPPLEMENTAL_SOURCES[-1]).unlink()
+        result = checker.audit(self.root)
+        self.assertIn({"document": checker.SUPPLEMENTAL_SOURCES[-1].as_posix(), "problem": "source_missing"}, result["errors"])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,211 @@
+{
+  "block": 134,
+  "date": "2026-11-13",
+  "timezone": "America/Bogota",
+  "baseCommit": "922c11419bb1f13c01d2f2f2845eba3687478abd",
+  "scope": "Sticker preview, last-message author and exact timestamp ordering; empty-history cause and broader requirements remain open",
+  "implementationGitBlobs": {
+    "NoWing-web/src/core/messagePreview.ts": "d3fc053f909c6e3fb11b6626b8e7c339ccdccf1e",
+    "NoWing-web/src/core/fallbackData.ts": "a92ab0c1aa3f9496e424a0950325eac489ab7fd2",
+    "NoWing-web/src/features/messages/MessagesPage.tsx": "23de1405859dd9e4919f39df87fcb5bdc71d5881",
+    "NoWing-web/src/features/messages/ChatDetailPage.tsx": "bb9c64d041d2c9c812ee4cd6b91a5b3173195f85",
+    "NoWing-web/src/layout/AppLayout.tsx": "2affa660263c6afc7f400fbb22a1eeb6ab8aba7b",
+    "NoWing-web/src/__tests__/core/messagePreview.test.ts": "6889c1d37979d7a3e6aa5e57f5ac0eb6e276c790",
+    "NoWing-web/src/__tests__/features/messages/messagesDiscovery.test.tsx": "9fcc5be7b40ec2f7900cc2eecb64c740f3569350",
+    "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx": "7b2818ea12b176cff25033c425f70b418a0923b2",
+    "infrastructure/local-fallback/api/src/data-routes.js": "509ee391b3f75e1d39eb5f95eb31857de5344c78",
+    "infrastructure/local-fallback/api/src/message-deletion-policy.js": "ea6431b0cce8d46b0a7e0538ee6f5b4343ba32db",
+    "infrastructure/local-fallback/api/tests/message-preview-business.test.js": "307b71616b4d2d3008561f5fc0d5d9fe6c689b61",
+    "tools/audit/check_requirement_traceability.py": "1f2158780de0c3d444294a6b6372d42a2651876f",
+    "tools/tests/test_requirement_traceability.py": "73a7a54f28fe6412b456f0361d5a3ead3b87643d"
+  },
+  "checks": {
+    "apiGeneral": {
+      "tests": 1136,
+      "pass": 1111,
+      "fail": 0,
+      "skipped": 25
+    },
+    "apiFocused": {
+      "tests": 21,
+      "pass": 21,
+      "fail": 0,
+      "skipped": 0,
+      "overlap": "20 overlap general API; one additional explicit native PostgreSQL regression"
+    },
+    "webGeneral": {
+      "tests": 1237,
+      "suites": 193,
+      "failed": 0,
+      "skipped": 0
+    },
+    "webEslint": {
+      "productionFiles": 5,
+      "errors": 0,
+      "warnings": 0
+    },
+    "webBuild": {
+      "typeScript": true,
+      "vite": true,
+      "publicSeo": true,
+      "publicPages": 21,
+      "prerenderedPublicJavaScriptBytes": 0,
+      "existingChunkSizeWarningRetained": true
+    },
+    "toolTests": {
+      "passed": 14,
+      "logSha256": "8c835a3f87f9fd648bfb3eb7f2352d6b5c7bdeb1e1388799a1d0aa3840eba9f7"
+    },
+    "traceability": {
+      "ok": true,
+      "rows": 387,
+      "documents": 10,
+      "scope": "Source registration only; no implementation, code review or production-readiness claim."
+    },
+    "browser": {
+      "browser": "158.0.8127.18",
+      "engine": "Playwright bundled Chromium with an isolated profile",
+      "fixturesOnly": true,
+      "productionRequestsSent": false,
+      "viewports": [
+        {
+          "width": 1440,
+          "ownStickerPreview": true,
+          "incomingStickerPreview": true,
+          "legacyOwnTextPreview": true,
+          "menuEscape": true,
+          "geometry": {
+            "viewport": 1440,
+            "documentWidth": 1440,
+            "headerHeight": 58,
+            "composerHeight": 52,
+            "threadHeight": 778,
+            "threadScrollHeight": 1080,
+            "scrollable": true,
+            "scrollbarWidth": "none",
+            "brokenImages": []
+          },
+          "axeVersion": "4.14.0",
+          "axeViolations": 0
+        },
+        {
+          "width": 768,
+          "ownStickerPreview": true,
+          "incomingStickerPreview": true,
+          "legacyOwnTextPreview": true,
+          "menuEscape": true,
+          "geometry": {
+            "viewport": 768,
+            "documentWidth": 768,
+            "headerHeight": 58,
+            "composerHeight": 52,
+            "threadHeight": 778,
+            "threadScrollHeight": 1080,
+            "scrollable": true,
+            "scrollbarWidth": "none",
+            "brokenImages": []
+          },
+          "axeVersion": "4.14.0",
+          "axeViolations": 0
+        },
+        {
+          "width": 375,
+          "ownStickerPreview": true,
+          "incomingStickerPreview": true,
+          "legacyOwnTextPreview": true,
+          "menuEscape": true,
+          "geometry": {
+            "viewport": 375,
+            "documentWidth": 375,
+            "headerHeight": 58,
+            "composerHeight": 52,
+            "threadHeight": 778,
+            "threadScrollHeight": 1080,
+            "scrollable": true,
+            "scrollbarWidth": "none",
+            "brokenImages": []
+          },
+          "axeVersion": "4.14.0",
+          "axeViolations": 0
+        }
+      ],
+      "consoleErrors": 0,
+      "pageErrors": 0,
+      "uninterceptedExternalRequests": 0,
+      "visualRegression": "INCONCLUSIVE: no committed screenshot baseline for this fixture",
+      "manualScreenReaderAudit": false
+    },
+    "runtimeImageCandidate": {
+      "candidate": "novvin-api:review134-b299955fa874-modes",
+      "imageId": "sha256:a2d746a6f748568bf09d415f549e445c7b4df472602aab0169e954ea1ec700c4",
+      "baseImageId": "sha256:564f4bdc8165cf99fd38ffe067490bef2482a49bbf166a99ae731c4922ad46cc",
+      "releaseDirectory": "/home/alvaro/novvin-review134-20261113",
+      "files": [
+        {
+          "name": "data-routes.js",
+          "beforeSha256": "e34d882092518216b0c4b3b8590e175002aaadb8444c62e95420af1b45cb6603",
+          "afterSha256": "b299955fa8741e24c266acd48c8ff852b36cbabd2d39f2f02c3680586928e3bb",
+          "hunks": 9
+        },
+        {
+          "name": "message-deletion-policy.js",
+          "beforeSha256": "fc4f4199eaf9963e5eec89c6477bcd2055fdef602ba82f9c36ccf6fdc0e2b920",
+          "afterSha256": "487db6c2eb0c76b978ae15d3e19ee76d5b30c2711ed8eebdbb915220f11a2351",
+          "hunks": 1
+        }
+      ],
+      "liveServiceModified": false,
+      "databaseModified": false,
+      "runtimeUser": "10001:10001",
+      "testIsolation": "network none; read-only root; no production env or volumes",
+      "tests": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "skipped": 0
+      },
+      "sourceFilesVerified": 180,
+      "changedSourceFiles": [
+        "data-routes.js",
+        "message-deletion-policy.js"
+      ],
+      "testsLogSha256": "8ec3efe1c3fb82ae56b939522bfb0479eacb7fefbaab5d52aff8d93b7d03c5d5"
+    }
+  },
+  "privateServerDiagnosis": {
+    "readOnly": true,
+    "productionMessageContentSelected": false,
+    "productionDataChanged": false,
+    "summaryPointersWithoutStoredHistoryObserved": true,
+    "crossScopePointerOrSiblingHistoryExplainedThosePointers": false,
+    "specificScreenshotConversationIdentified": false,
+    "recoveryCompleted": false,
+    "privateArtifactsVersioned": false
+  },
+  "unresolved": [
+    "Imported inbox global cap reproduced in isolated PostgreSQL; per-conversation projection not corrected",
+    "Actor-specific empty-history visibility, deletion audit and backup recovery",
+    "Optimistic inbox timestamp precision",
+    "Profile media and real-time follower/following paths",
+    "Group and community load latency",
+    "Assistant redesign, full menu parity and file layout",
+    "Physical call audio, browser ringing and third-party invitation",
+    "Further header/composer/sticker density",
+    "Whole mobile and LIVE session ownership audit",
+    "Production activation and web deployment",
+    "Final identified APK and full marketing readiness"
+  ],
+  "apiProductionDeployment": false,
+  "webProductionDeployment": false,
+  "newAndroidPackage": false,
+  "fullProjectAuditComplete": false,
+  "localArtifactSha256": {
+    "api-134-full.tap": "7e5b5126c0bc64298a274d520101f6e67e57612377bf2c3025945c4b20be8229",
+    "messaging-134-focused-final.tap": "ae265d64e001982008f872969d923e32e87292eca8ae5e66e269100d113431ad",
+    "web-134-publish.json": "65d35a140f116db89c32a0e482d41f2ab009e06ef782cd4f45bc3cb75d7bb228",
+    "web-134-artifact-final.log": "f3c323f0fbdf7f08d4d9cf5af1060314268f377f64bcba46055dc2ce556cfd01",
+    "web-134-eslint-publish.json": "1541b035f5d4636ddcf993026b453949b168479c407483f7396f331585f4ea18",
+    "browser134-result.json": "f00894d6cb67e0992412ce2e437bf42f4786ec00893d0a39af09204c039b952f",
+    "traceability-134-final.json": "96176868c0e4e8e48c79fc47182278a6334269f676d500c0ab3af0f2cb7b1103"
+  }
+}

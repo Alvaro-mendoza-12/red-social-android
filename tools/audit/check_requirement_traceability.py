@@ -16,6 +16,11 @@ SOURCES = (
     "MATRIZ_ACEPTACION_QA.md", "FUENTES_Y_REFERENCIAS.md",
 )
 MATRIX = Path("docs/product/REQUIREMENT_TRACEABILITY.csv")
+SUPPLEMENTAL_SOURCES = (
+    Path("docs/product/WEB_NAVIGATION_CALL_REQUIREMENTS_2026-11-13.md"),
+    Path("docs/product/WEB_COMPACT_SHARE_REQUIREMENTS_2026-11-13.md"),
+    Path("docs/product/WEB_MESSAGES_RELIABILITY_REQUIREMENTS_2026-11-13.md"),
+)
 
 
 def source_fingerprint(path: Path) -> str:
@@ -80,8 +85,8 @@ def audit(root: Path) -> dict:
         ids.add(key)
     missing = []
     coverage = []
-    for name in SOURCES:
-        relative = (PACKAGE / name).as_posix()
+    for source_path in (*(PACKAGE / name for name in SOURCES), *SUPPLEMENTAL_SOURCES):
+        relative = source_path.as_posix()
         source = root / relative
         if not source.is_file():
             errors.append({"document": relative, "problem": "source_missing"})

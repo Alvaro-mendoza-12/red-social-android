@@ -186,7 +186,7 @@ test('inbox options stay separate from opening the chat and restore keyboard foc
   const row = { id: 'separate-actions', title: 'Contacto de prueba', subtitle: 'Hola', updatedAt: '', kind: 'chat', avatarUrl: '', profileId: null, unreadCount: 0, isPinned: false, isMuted: false, isArchived: false, isFavorite: false, folders: [], openPath: '' }
   jest.mocked(loadFallbackMessagesInbox).mockResolvedValue({ items: [row] } as never)
   render(<MemoryRouter><MessagesPage/></MemoryRouter>)
-  const open = await screen.findByRole('button', { name: /^Abrir .* Contacto de prueba$/ })
+  const open = await screen.findByRole('button', { name: /^Contacto de prueba / })
   const options = screen.getByRole('button', { name: 'Opciones de Contacto de prueba' })
   expect(open.contains(options)).toBe(false)
   options.focus()

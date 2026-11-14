@@ -13,7 +13,7 @@ const { publicFeedPage } = require('./public-feed-page')
 const { profilePostShareCandidates, postShareProjection } = require('./profile-post-shares')
 const { createPostEngagementReader } = require('./post-engagement-reader')
 const { publicSearchPage, searchPageOptions } = require('./public-search-page')
-const { historyPageOptions, conversationHistoryPage } = require('./conversation-history-page')
+const { historyPageOptions, conversationHistoryPage, compareHistory } = require('./conversation-history-page')
 const { deniedPublicCreatorIds, publicCreatorVisibility } = require('./public-creator-visibility')
 const { loadCollectionReceipts, isCollectionMessageUnread, projectCollectionReceipt } = require('./collection-read-state')
 const bcrypt = require('bcrypt')
@@ -298,9 +298,10 @@ function sortByDateDesc(rows, keys) {
 
 function previewFromMessage(row) {
   if (isDeletedForAll(row)) return 'Mensaje eliminado'
-  const contentType = textOf(row, ['content_type'], '').toLowerCase()
+  const contentType = textOf(row, ['content_type'], '').trim().toLowerCase()
   if (contentType === 'birthday_card') return '🎂 Tarjeta de cumpleaños'
   if (contentType === 'contact') return 'Contacto'
+  if (contentType === 'sticker') return 'Sticker'
   const content = messageContentOf(row)
   if (contentType === 'question') {
     try { const value=JSON.parse(content);return typeof value.prompt==='string' && value.prompt.trim() ? 'Pregunta: '+value.prompt.trim().slice(0,160) : 'Pregunta de la comunidad' } catch { return 'Pregunta de la comunidad' }
@@ -309,7 +310,6 @@ function previewFromMessage(row) {
   if (contentType === 'image') return 'Imagen'
   if (contentType === 'video') return 'Video'
   if (contentType === 'audio') return 'Audio'
-  if (contentType === 'sticker') return 'Sticker'
   if (contentType === 'poll') return 'Encuesta'
   if (contentType.startsWith('view_once')) return 'View once'
   return 'Sin actividad reciente'
@@ -409,11 +409,12 @@ function videoMatchesSound(row, requestedSoundId) {
 }
 
 function sortMessagesNewestFirst(rows) {
-  return [...rows].sort((a, b) => {
-    const left = toMillis(a.created_at) || toMillis(a.updated_at)
-    const right = toMillis(b.created_at) || toMillis(b.updated_at)
-    return right - left
-  })
+  const ordered = rows.map(row => ({ row, position: {
+    id: textOf(row, ['id'], ''),
+    created_at: textOf(row, ['created_at', 'createdAt', 'updated_at', 'updatedAt'], ''),
+  } }))
+  ordered.sort((a, b) => compareHistory(b.position, a.position))
+  return ordered.map(item => item.row)
 }
 
 function messageVisibleTo(row, identity) {
@@ -593,11 +594,11 @@ async function localMessages(pool, chatIds) {
         is_forwarded,
         forwarded_from_message_id,
         forwarded_from_user_id,
-        created_at,
-        updated_at
+        to_jsonb(created_at) #>> '{}' AS created_at,
+        to_jsonb(updated_at) #>> '{}' AS updated_at
      FROM fallback_messages
      WHERE lower(chat_id) = ANY($1::text[])
-     ORDER BY created_at ASC`,
+     ORDER BY fallback_messages.created_at ASC, fallback_messages.id ASC`,
     [ids],
   )
   return rows.map(normalizeMessageRow)
@@ -10020,6 +10021,7 @@ function registerDataRoutes(app, {
             lastMessageId: textOf(latest || {}, ['id'], ''),
             unreadMessageIds,
             lastMessageSenderId: textOf(latest || {}, ['sender_id'], ''),
+            lastMessageIsOwn: identity.ids.has(normalizeId(textOf(latest || {}, ['sender_id'], ''))),
             lastMessageContentType: textOf(latest || {}, ['content_type'], 'text') || 'text',
             isMember: histories.get(cleanId)?.isMember === true,
             historyAccess: histories.get(cleanId),
@@ -10189,6 +10191,7 @@ function registerDataRoutes(app, {
             unreadMessageIds: Array.from(unreadIdsByChat.get(cleanChatId) || []),
             lastMessageId: hasVisibleLatest ? textOf(latest, ['id'], '') : '',
             lastMessageSenderId: hasVisibleLatest ? textOf(latest, ['sender_id'], '') : '',
+            lastMessageIsOwn: hasVisibleLatest && identity.ids.has(normalizeId(textOf(latest, ['sender_id'], ''))),
             lastMessageContentType: hasVisibleLatest ? textOf(latest, ['content_type'], 'text') || 'text' : 'text',
             isPinned: boolOf(participant, ['is_pinned'], false),
             isMuted: boolOf(participant, ['is_muted'], false),
@@ -15097,6 +15100,7 @@ module.exports = {
   conversationHiddenForViewer,
   normalizeMessageRow,
   previewFromMessage,
+  sortMessagesNewestFirst,
   normalizeFeedMode,
   normalizeCollectionRole,
   normalizeCommunityChannelType,
@@ -15131,6 +15135,7 @@ module.exports = {
   importedRecentRows,
   importedActivityNotificationsByRecipientIds,
   importedRowsByFieldValues,
+  localMessages,
   importedChatsForParticipantIds,
   localChatParticipantsByUserIds,
   localChatsByIds,

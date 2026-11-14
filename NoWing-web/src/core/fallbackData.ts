@@ -41,6 +41,10 @@ export type FallbackInboxItem = {
   id: string
   title: string
   subtitle: string
+  lastMessageId?: string
+  lastMessageSenderId?: string
+  lastMessageContentType?: string
+  lastMessageIsOwn?: boolean
   updatedAt: string
   kind: 'chat' | 'group' | 'community' | 'voice'
   avatarUrl: string

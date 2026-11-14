@@ -1155,7 +1155,7 @@ export function AppLayout() {
 
         <nav id="novvin-navigation" className="novvin-bottom-nav" aria-label="Navegación principal">
           <button type="button" className="rail-brand" onClick={toggleRail}
-            aria-label={railCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'}
+            aria-label={railCollapsed ? 'Novvin: expandir menú lateral' : 'Novvin: contraer menú lateral'}
             title={railCollapsed ? 'Expandir menú lateral' : 'Contraer menú lateral'}
             aria-expanded={!railCollapsed} aria-controls="novvin-navigation">
             <img src="/icons/novvin-96.png" width="36" height="36" alt="" />
