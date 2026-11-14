@@ -1,0 +1,328 @@
+{
+  "checkedAtUtc": "2026-11-14T20:17:07.928311+00:00",
+  "scope": "IDE configuration, server measurements and bounded web startup optimization; full project goal remains open",
+  "sources": [
+    {
+      "path": "gradle.properties",
+      "sha256": "aaa815944e1b200476e7df989ffbb7a672ad34edf4bce38b27bc499870acf373",
+      "bytes": 3246
+    },
+    {
+      "path": "NoWing-web/src/core/runtimeBackend.ts",
+      "sha256": "702c9ffd1ee57a97c2706d4134d3ef5797dca4a71122cf4470d97ac3c81f1efb",
+      "bytes": 11407
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/runtimeBackendHealthCache.test.ts",
+      "sha256": "c63f60b25d675d028dba04bd6984505663a7982f78254b82037cff0011d6b84c",
+      "bytes": 2855
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/audit143/server-load-speed.jsonl",
+      "sha256": "2c07852da3a2e64cfa95033e82907ddee66e4c9b3b1b59b202c521d4d722b02d",
+      "bytes": 7853
+    },
+    {
+      "path": "app/build/audit143/public-avatar-latency.jsonl",
+      "sha256": "e8fde5bc54d4823372fc521f53be2570df1ead0b8ca9f029186bf50527927d4e",
+      "bytes": 2228
+    },
+    {
+      "path": "app/build/audit143/avatar-browser-lab.json",
+      "sha256": "0cd56128a2ceb0ac14149fa8b816673d7ba719ccb0d9a7c083b2590d11e378ff",
+      "bytes": 34923
+    },
+    {
+      "path": "app/build/audit143/avatar-bootstrap-comparison.json",
+      "sha256": "074038b960e0c40fc090e02f75dfeeb53988a4530327dbcd24c1ad4ad98dd752",
+      "bytes": 1630
+    },
+    {
+      "path": "app/build/audit143/avatar-bootstrap-serial-comparison.json",
+      "sha256": "9fdc657c42fc38ef50bf39d68611adb2b41ebc79b3bcc3e0435777efbaf1413b",
+      "bytes": 354
+    },
+    {
+      "path": "app/build/audit143/avatar-bootstrap-serial-comparison.log",
+      "sha256": "3c86703244bee71318767acce9bad9c10af7373aff050efd370f7ff5c2a64c5a",
+      "bytes": 63
+    },
+    {
+      "path": "app/build/audit143/avatar-bootstrap-delayed-module-comparison.json",
+      "sha256": "48c77a500af6577a16f85e918295f18bdd33c10a8d670f4d6c3fb9a20ef44813",
+      "bytes": 337
+    },
+    {
+      "path": "app/build/audit143/avatar-bootstrap-delayed-module.log",
+      "sha256": "2dd1058bccbe09c7f8681541f4301bd1b722ab8ea294e3434775382dbe9319a1",
+      "bytes": 441
+    },
+    {
+      "path": "app/build/audit143/health-cache-valid-baseline.log",
+      "sha256": "cd1fdf0969ed4bf2fa4dfa6b3719ab0b87cb488abc5677b07396bd038ab9b909",
+      "bytes": 1497
+    },
+    {
+      "path": "app/build/audit143/health-cache-repair-tests.log",
+      "sha256": "29adb52902522550166549c194dc7d6d5285f0889f972e57a221ec4e32dd6a73",
+      "bytes": 700
+    },
+    {
+      "path": "app/build/audit143/web-tests-full.log",
+      "sha256": "b4f9ac0fb61f1f2da3b3d9a5f3ffaddfa5f23126a0b169be69821e920041bbf4",
+      "bytes": 58371
+    },
+    {
+      "path": "app/build/audit143/web143-build.log",
+      "sha256": "730fc8b484128a9155bf6025ac8ab26c024909029368d92cb10f217b100c8ba2",
+      "bytes": 9299
+    },
+    {
+      "path": "app/build/audit143/web142-production-provenance.json",
+      "sha256": "cc67a36aa41feabd5139e71d41e05d038b38c596cde80294302738d92cbc4662",
+      "bytes": 308
+    },
+    {
+      "path": "app/build/audit143/ide-sync-success-selected.log",
+      "sha256": "93c261b470d0407d396a64aa592569614ef1480d0bf1133bc712f0f8b77b87b0",
+      "bytes": 1075
+    },
+    {
+      "path": "app/build/audit143/android-assemble-debug.log",
+      "sha256": "4d871b3d83aa2a749365375a8093234c931682c6dfa291733cf5471753049037",
+      "bytes": 4562
+    },
+    {
+      "path": "app/build/audit143/android-build-source-hashes.json",
+      "sha256": "86ea438aa68c371b56a70cff9810d2e9989a49b2f030a853e0bed9d1efe60365",
+      "bytes": 1261
+    },
+    {
+      "path": "app/build/audit143/apk-lab-launch.json",
+      "sha256": "aa34a9bd695087848352e0309cd1ed9070e720c6e75dcb6bdc17b84f6f43e5e0",
+      "bytes": 648
+    },
+    {
+      "path": "app/build/audit143/apk-install.txt",
+      "sha256": "c4aa470acafcf8576c15b0f0b5ae7e852d1ec5413372d0e6a9272e788e1306d3",
+      "bytes": 38
+    },
+    {
+      "path": "app/build/audit143/apk-launch.txt",
+      "sha256": "e54d8fde820577566b45f26bcddadc3719baded5893b1f0e106ee6b48142e1df",
+      "bytes": 167
+    },
+    {
+      "path": "app/build/audit143/android-ide-smoke.png",
+      "sha256": "6f85dda4e8f254b4b36f01a53adf5c10a280ee93772121ef1b8e3b48c0482c7c",
+      "bytes": 118001
+    },
+    {
+      "path": "app/build/audit143/flutter-doctor-after.txt",
+      "sha256": "2e42278d89be522befe405abf39edad4ae0f906054d3a20586266217778178c8",
+      "bytes": 2213
+    },
+    {
+      "path": "app/build/audit143/emulator-acceleration.txt",
+      "sha256": "4f223762c995aa01277707396902676195cb522d3743805d0a6450dfad08897e",
+      "bytes": 61
+    },
+    {
+      "path": "app/build/audit143/Novvin-9.1.40-debug-180-IDE143-LAB-UNPUBLISHED141.apk",
+      "sha256": "56e3adb0048488add8aea1eaf56b677357b6351aa5c5ebf92a1a585dc8820e21",
+      "bytes": 270435298
+    }
+  ],
+  "server": {
+    "sampleSeconds": 15.0,
+    "cpuBusyPercent": 29.05,
+    "cores": 8,
+    "availableMemoryMiB": 11431,
+    "ethernetMbps": 100,
+    "trafficMbps": {
+      "rx_bytes": 0.0746,
+      "tx_bytes": 0.0802
+    },
+    "ttfbMedianMs": {
+      "localReady": 7.37,
+      "publicReady": 618.99,
+      "publicLogo": 314.95,
+      "directFunnelReady": 45.04
+    },
+    "speedSamples": [
+      {
+        "label": "Cloudflare 20 MB single HTTPS transfer",
+        "family": "-4",
+        "exitCode": 0,
+        "status": 200,
+        "dnsSeconds": 0.013178,
+        "connectSeconds": 0.109931,
+        "tlsSeconds": 0.218336,
+        "ttfbSeconds": 0.41256,
+        "totalSeconds": 8.32551,
+        "downloadBytes": 20000000,
+        "uploadBytes": 0,
+        "downloadMbps": 19.218,
+        "uploadMbps": 0.0,
+        "error": null
+      },
+      {
+        "label": "Cloudflare 4 MB single HTTPS transfer",
+        "family": "-4",
+        "exitCode": 0,
+        "status": 200,
+        "dnsSeconds": 0.000797,
+        "connectSeconds": 0.095514,
+        "tlsSeconds": 0.201733,
+        "ttfbSeconds": 0.297131,
+        "totalSeconds": 1.930193,
+        "downloadBytes": 0,
+        "uploadBytes": 4000000,
+        "downloadMbps": 0.0,
+        "uploadMbps": 16.579,
+        "error": null
+      },
+      {
+        "label": "Cloudflare 20 MB single HTTPS transfer",
+        "family": "-6",
+        "exitCode": 28,
+        "status": 0,
+        "dnsSeconds": 0.01431,
+        "connectSeconds": 0.167072,
+        "tlsSeconds": 0.330771,
+        "ttfbSeconds": 0.0,
+        "totalSeconds": 25.002569,
+        "downloadBytes": 0,
+        "uploadBytes": 0,
+        "downloadMbps": 0.0,
+        "uploadMbps": 0.0,
+        "error": "Operation timed out after 25002 milliseconds with 0 bytes received"
+      },
+      {
+        "label": "Cloudflare 4 MB single HTTPS transfer",
+        "family": "-6",
+        "exitCode": 0,
+        "status": 200,
+        "dnsSeconds": 0.001237,
+        "connectSeconds": 0.155837,
+        "tlsSeconds": 0.321707,
+        "ttfbSeconds": 0.475838,
+        "totalSeconds": 2.125837,
+        "downloadBytes": 0,
+        "uploadBytes": 4000000,
+        "downloadMbps": 0.0,
+        "uploadMbps": 15.053,
+        "error": null
+      }
+    ],
+    "maximumContractedBandwidthUnknown": true,
+    "concurrentUserCapacityNotEstablished": true
+  },
+  "ide": {
+    "profilesSdkAndAvdsPreserved": true,
+    "dart": "511.0.0",
+    "flutterPlugin": "98.0.0",
+    "flutterSdk": "3.44.0",
+    "jdk": 21,
+    "syncPassedSeconds": 85.517,
+    "gradleSingleJvmLimitMiB": 4096,
+    "compilePassed": "assembleDebug in 7m 55s",
+    "labLaunch": {
+      "apk": "app/build/outputs/apk/debug/app-debug.apk",
+      "sha256": "56e3adb0048488add8aea1eaf56b677357b6351aa5c5ebf92a1a585dc8820e21",
+      "bytes": 270435298,
+      "package": "conectate.com",
+      "versionName": "9.1.40-debug",
+      "versionCode": 180,
+      "activity": "conectate.com.MainActivity",
+      "avd": "NovvinIDE143",
+      "api": 35,
+      "nativeHardware": false,
+      "personalLoginPerformed": false,
+      "installationPassed": true,
+      "launcherPassed": true,
+      "labOnlyContainsUnpublished141": true,
+      "finalApkDelivery": false,
+      "uiRendered": true,
+      "visibleAuthenticationScreen": true,
+      "crashBufferEmpty": true,
+      "screenCaptured": true
+    },
+    "emulatorStoppedAfterSmoke": true,
+    "reopenBlockedByAutomaticReview": true,
+    "rejectionReasonProvided": "blocked by policy; no additional reason",
+    "currentlyOpenClaimed": false,
+    "unacceptedOptionalLicense": "microxr-sysimage-license; not required for Novvin; not accepted blindly",
+    "allMobileFrameworksValidated": false,
+    "archivedLabApk": {
+      "path": "app/build/audit143/Novvin-9.1.40-debug-180-IDE143-LAB-UNPUBLISHED141.apk",
+      "sha256": "56e3adb0048488add8aea1eaf56b677357b6351aa5c5ebf92a1a585dc8820e21",
+      "bytes": 270435298
+    }
+  },
+  "web": {
+    "reproducedRepeatedReadinessRequests": true,
+    "validRegressionBaseline": {
+      "tests": 4,
+      "assertionFailures": 1,
+      "controlsPassed": 3,
+      "productionSourceGitCommit": "19b641508b75ba4ed98e8a3dde249a273dcf0e0c",
+      "sourceSha256": "34920d6ee19fb6ec88cdb0d7ad70893b38fd0352ddb934aa2d8242c1c333f7e4",
+      "testSha256": "c63f60b25d675d028dba04bd6984505663a7982f78254b82037cff0011d6b84c"
+    },
+    "focusedAfter": {
+      "tests": 9,
+      "suites": 3,
+      "failures": 0
+    },
+    "fullAfter": {
+      "tests": 1268,
+      "suites": 199,
+      "failures": 0
+    },
+    "buildPassed": true,
+    "readinessReuseSeconds": 15,
+    "failedProbesCached": false,
+    "explicitRecoveryBypassesCache": true,
+    "production142DeploymentVerified": {
+      "id": "dpl_3SRa1x4H77j4eHoFn1CPc3wHtk1m",
+      "url": "red-social-android-copewf4kd-alvaro-s-projects1.vercel.app",
+      "readyState": "READY",
+      "source": "git",
+      "commit": "19b641508b75ba4ed98e8a3dde249a273dcf0e0c",
+      "ref": "main",
+      "productionAliasVerified": true,
+      "createdAt": 1794685620162
+    },
+    "realPublicColdAvatarMs": [
+      7408,
+      7921,
+      4520
+    ],
+    "controlledFrontendComparison": {
+      "beforeMedianMs": 2526,
+      "afterMedianMs": 2730,
+      "generalLatencyImprovement": "INCONCLUSIVE",
+      "warmAvatarExtraStorageRequests": 0
+    },
+    "serialModuleHarness": "INCONCLUSIVE: timeout before a completed run",
+    "delayedModuleHarness": "INCONCLUSIVE: IPv4 connection timeout before a completed run",
+    "fieldMetricsUnavailable": true
+  },
+  "publication": {
+    "143RemotePublicationNotYetPerformed": true,
+    "143ProductionDeploymentNotYetPerformed": true,
+    "unfinished141ExcludedFromStableSelection": true,
+    "finalApkDelivery": false
+  },
+  "openItems": [
+    "LIVE screen ownership has two remaining reproduced control/state failures",
+    "full mobile audit",
+    "full 20-control security audit including RLS",
+    "physical device and multi-account media tests",
+    "remaining production avatar latency",
+    "final identified validated APK"
+  ]
+}

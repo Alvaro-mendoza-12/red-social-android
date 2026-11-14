@@ -39,6 +39,8 @@ const discoveryPublicKey = String(import.meta.env.VITE_BACKEND_DISCOVERY_PUBLIC_
 let currentUrl = configuredUrl
 let currentExpiresAtEpochSeconds: number | null = null
 let initialization: Promise<string> | undefined
+const readinessReuseMillis = 15_000
+let recentReadiness: { url: string; checkedAt: number } | undefined
 const listeners = new Set<(url: string) => void>()
 
 function nowEpochSeconds(): number {
@@ -280,10 +282,21 @@ async function resolveRuntimeBackend(skippedUrl = ''): Promise<TrustedCandidate 
 }
 
 export function initializeRuntimeBackend(): Promise<string> {
+  // appEntry and a later guest entry can run serially during the same startup.
+  // Reuse only an actually compatible, recently probed origin; failed probes
+  // and an expired signed candidate never receive this short fast path.
+  const elapsed = recentReadiness ? performance.now() - recentReadiness.checkedAt : -1
+  if (recentReadiness?.url === activeUrl() && elapsed >= 0 && elapsed < readinessReuseMillis &&
+      (currentExpiresAtEpochSeconds === null || currentExpiresAtEpochSeconds > nowEpochSeconds())) {
+    return Promise.resolve(getRuntimeBackendUrl())
+  }
   if (!initialization) {
     const operation = (async () => {
       const candidate = await resolveRuntimeBackend()
-      if (candidate) updateRuntimeBackend(candidate)
+      if (candidate) {
+        updateRuntimeBackend(candidate)
+        recentReadiness = { url: candidate.url, checkedAt: performance.now() }
+      }
       return getRuntimeBackendUrl()
     })()
     initialization = operation
@@ -296,8 +309,12 @@ export function initializeRuntimeBackend(): Promise<string> {
 export async function refreshRuntimeBackend(failedUrl = ''): Promise<string> {
   const before = getRuntimeBackendUrl()
   if (failedUrl && before && !String(failedUrl).trim().startsWith(before)) return ''
+  recentReadiness = undefined
   const candidate = await resolveRuntimeBackend(activeUrl())
-  if (candidate) updateRuntimeBackend(candidate)
+  if (candidate) {
+    updateRuntimeBackend(candidate)
+    recentReadiness = { url: candidate.url, checkedAt: performance.now() }
+  }
   const after = getRuntimeBackendUrl()
   return after && after !== before ? after : ''
 }

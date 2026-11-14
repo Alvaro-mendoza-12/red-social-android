@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 14 de noviembre de 2026
 
+La [continuación 143](143-velocidad-servidor-y-entorno-android-2026-11-14.md) mide enlace Ethernet de 100 Mbps y una transferencia de 19,218/16,579 Mbps, distingue la latencia pública de la carga de Ubuntu y comprueba sincronización, compilación e inicio Android en emulador. Corrige una verificación web repetida, con 1.268 pruebas aprobadas; la mejora general de tiempo sigue inconclusa. Conserva 141 sin publicar, RLS y demás recorridos abiertos; la APK ensayada es de laboratorio y no representa una entrega final.
+
 La [continuación 142](142-ide-conectividad-stickers-y-seguridad-2026-11-14.md) repara la instalación incompleta de Android Studio, aísla el fallo de salida IPv4 local y corrige recuperación de medios y módulos web. Registra 1.264 pruebas web antes del último ajuste de botones, 29 pruebas relacionadas repetidas después y ensayos con datos ficticios en tres anchos. Los veinte controles de seguridad siguen abiertos con alcance explícito; PostgreSQL no tiene RLS. La continuación móvil 141 permanece local, sin publicar; no se entrega una APK ni se cierra la revisión integral.
 
 La [continuación 140](140-notificaciones-visitas-llamadas-2026-11-14.md) integra las acciones de notificación por visita de llamada, con identidad propia y comprobación al ejecutar Colgar o Silenciar. Registra cuatro fallos reproducidos, 37 pruebas focalizadas, 2879 pruebas JVM en 534 clases y Lint con cero errores y 342 advertencias. La propiedad global de medios/cuentas, los ensayos físicos y la APK final siguen pendientes; no cierra la revisión integral.

@@ -37,3 +37,8 @@ La [corrección de avisos de llamada](../oficial/140-notificaciones-visitas-llam
 ## Continuación 142 — 14 de noviembre de 2026
 
 La [reparación urgente de IDE y recuperación web](../oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md) separa el fallo IPv4 local de la salud de API/PostgreSQL y registra el alcance de veinte controles. RLS no está habilitado; las muestras de autorización y los escaneos limitados no cierran la seguridad. La sincronización completa del IDE, los recorridos reales de medios, 141 y la APK final siguen abiertos. Los recibos de Git y despliegue deben comprobarse por separado.
+
+
+## Continuación 143 — 14 de noviembre de 2026
+
+La [medición y preparación del entorno](../oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md) confirma sincronización/build y arranque en AVD, el enlace de 100 Mbps y las muestras de transferencia/latencia. La optimización de disponibilidad supera 1.268 pruebas web; la mejora de tiempo total no está demostrada. La reapertura final del IDE fue rechazada por revisión automática y no se afirma que siga abierto. La APK de laboratorio incluye 141 incompleto; no es entrega final. RLS, auditoría móvil, recorridos físicos y preparación integral siguen abiertos.
