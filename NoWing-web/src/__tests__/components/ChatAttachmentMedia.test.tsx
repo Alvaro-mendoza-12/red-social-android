@@ -116,8 +116,8 @@ test('retains authorized image on remount and revokes it on account invalidation
 test('shows retry without public fallback after authorization denial', async () => {
   readBlob.mockRejectedValue(new Error('MEDIA_READ_404'))
   const { container } = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto" />)
-  expect(await screen.findByText('No se pudo abrir el archivo')).toBeInTheDocument()
-  expect(container.querySelector('a,img')).toBeNull(); expect(screen.getByRole('button', { name: 'Volver a cargar' })).toBeInTheDocument()
+  expect(await screen.findByText('Archivo no disponible')).toBeInTheDocument()
+  expect(container.querySelector('a,img')).toBeNull(); expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
 })
 
 test('clears decoded images and revokes Blob synchronously on logout', async () => {
@@ -150,7 +150,7 @@ test('large videos stream through an authenticated opaque handle without downloa
 test('does not inline unexpected HTML as an image', async () => {
   readBlob.mockResolvedValue(new Blob(['<h1>test</h1>'], { type: 'text/html' }))
   const { container } = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Foto" />)
-  await screen.findByText('No se pudo abrir el archivo'); expect(container.querySelector('img,a')).toBeNull(); expect(createObjectURL).not.toHaveBeenCalled()
+  await screen.findByText('No pudimos mostrar este formato'); expect(container.querySelector('img,a')).toBeNull(); expect(createObjectURL).not.toHaveBeenCalled()
 })
 
 test('untrusted schemes never create media tags or links', () => {
@@ -206,7 +206,7 @@ test('a full read queue retries without showing a broken sticker', async () => {
   readBlob.mockRejectedValueOnce(new Error('MEDIA_READ_QUEUE_FULL')).mockResolvedValue(new Blob(['animated'], { type: 'image/webp' }))
   render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Sticker" preserveAnimation imageLink={false} allowRetry={false}/>)
   await screen.findByAltText('Sticker')
-  expect(screen.queryByText('No se pudo abrir el archivo')).toBeNull()
+  expect(screen.queryByText('No pudimos cargar la imagen')).toBeNull()
   expect(readBlob).toHaveBeenCalledTimes(2)
 })
 
@@ -215,4 +215,15 @@ test('animated PNG stickers use their original authorized bytes', async () => {
   render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Sticker animado" preserveAnimation imageLink={false}/>)
   await screen.findByAltText('Sticker animado')
   expect(createObjectURL.mock.calls[0][0].type).toBe('image/apng')
+})
+
+test('a failed sticker can retry safely and show the recovered original', async () => {
+  readBlob.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce(new Blob(['animated'], { type: 'image/webp' }))
+  const { container } = render(<ChatAttachmentMedia url={privateUrl} kind="image" title="Sticker" imageClassName="sticker-preview" preserveAnimation imageLink={false}/>)
+  await screen.findByText('No pudimos cargar el sticker')
+  expect(container.querySelector('img,a')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+  expect(await screen.findByAltText('Sticker')).toHaveAttribute('src', 'blob:private-preview')
+  expect(screen.queryByRole('status')).toBeNull()
+  expect(readBlob).toHaveBeenCalledTimes(2)
 })

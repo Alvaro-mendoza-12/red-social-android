@@ -49,10 +49,8 @@ export function MessageSticker({ url, title: rawTitle, onReply, onForward }: { u
     } catch { if (owner.current === user.id) setError('No se pudo guardar el cambio. Inténtalo de nuevo.') } finally { if (owner.current === user.id) setBusy(false) }
   }
   return <>
-    <div role="button" tabIndex={0} className="message-sticker-trigger" aria-label={'Opciones del sticker ' + title}
-      onClick={event => { if (!(event.target instanceof Element) || !event.target.closest('button')) setOpen(true) }}
-      onKeyDown={event => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setOpen(true) } }}>
-      <ChatAttachmentMedia url={url} kind="image" title={title} imageClassName="sticker-preview" imageLink={false} preserveAnimation />
+    <div className="message-sticker-trigger">
+      <ChatAttachmentMedia url={url} kind="image" title={title} imageClassName="sticker-preview" imageActionLabel={'Opciones del sticker ' + title} onImageOpen={() => setOpen(true)} inlineDownload={false} preserveAnimation />
     </div>
     {open ? <PublicationDialog title="Sticker" busy={busy} onClose={() => setOpen(false)} className="message-sticker-dialog">
       <ChatAttachmentMedia url={url} kind="image" title={title} imageClassName="sticker-preview" imageLink={false} preserveAnimation />

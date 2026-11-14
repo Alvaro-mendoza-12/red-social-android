@@ -5,6 +5,12 @@ export function isChunkLoadError(error:unknown){
 }
 let reloadBlocked=()=>false
 export function setChunkReloadGuard(guard:()=>boolean){reloadBlocked=guard}
+/** Explicit retries must also preserve ongoing calls, media and drafts. */
+export function reloadApplicationSafely(): boolean {
+  if (reloadBlocked()) return false
+  location.reload()
+  return true
+}
 /** One recovery in a five minute window; never loop or interrupt active media/drafts. */
 export function recoverChunkLoad(error:unknown,options:{now?:number;storage?:Storage;reload?:()=>void;online?:boolean;blocked?:boolean}={}){
   if(!isChunkLoadError(error)||(options.online??navigator.onLine)===false||(options.blocked??reloadBlocked()))return false

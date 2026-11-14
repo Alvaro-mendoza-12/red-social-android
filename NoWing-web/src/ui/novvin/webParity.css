@@ -491,8 +491,16 @@
 .contact-follow-list .safe-avatar { flex: 0 0 44px; width: 44px; height: 44px; object-fit: cover; }
 .contact-follow-list a { padding: 12px 4px; gap: 12px; border-radius: 8px; }
 .contact-follow-list a:hover { background: var(--surface-raised); }
-.bubble.sticker-bubble { width: 144px; max-width: 55%; }
-.bubble.sticker-bubble .sticker-preview { width: 136px; height: 136px; max-height: 136px; }
+.bubble.sticker-bubble { width: 128px; max-width: 55%; }
+.bubble.sticker-bubble .sticker-preview { width: 120px; height: 120px; max-height: 120px; }
+.bubble.sticker-bubble .sticker-image-frame { width: 120px; }
+.chat-attachment-image-frame .media-load-error,
+.chat-attachment-image-frame .chat-file-card-loading { flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px; padding: 10px; }
+.media-load-error strong { overflow-wrap: normal; word-break: normal; font-size: .78rem; line-height: 1.3; }
+.media-load-error small { font-size: .7rem; line-height: 1.3; }
+.media-load-error .mini-action-btn { flex-shrink: 0; white-space: nowrap; min-height: 32px; font-size: .75rem; }
+.sticker-image-frame:has(.media-load-error),
+.sticker-image-frame:has(.chat-file-card-loading) { aspect-ratio: auto; min-height: 120px; }
 .sticker-catalog .sticker-grid-compact::-webkit-scrollbar { display: none; }
 .social-header { display: flex; align-items: center; gap: 24px; border-bottom: 1px solid var(--divider); }
 .social-header .social-tab-bar { flex: 1; border-bottom: 0; background: transparent; }
