@@ -1,0 +1,104 @@
+[
+  {
+    "suite": "conectate.com.data.points.LivePointRedemptionJournalTest",
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      "accountRoundTripKeepsTheOriginalNonceButNeverSharesItWithTheOtherAccount",
+      "anOldConcurrentAcknowledgementCannotRemoveANewerPendingRedemption",
+      "cancellingAfterDispatchRetainsTheNonceForTheNextProcessInstance",
+      "aStorageFailureStopsDispatchBeforeAnyDebit",
+      "anUnreadablePendingCommandNeverDispatchesWithANewNonce",
+      "aLostAcknowledgementSurvivesReconstructingBothRepositoryAndJournal",
+      "anInterruptedAtomicWriteRecoversTheOriginalPendingCommand",
+      "overlappingStoreInstancesUseTheSameNonce"
+    ]
+  },
+  {
+    "suite": "conectate.com.data.repository.LiveDrawGuessAccountTest",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      "anOldActionCannotUseTheTokenReturnedAfterAba",
+      "leavingAndReturningToTheSameLiveInvalidatesAnOldSnapshot",
+      "rebindingTheSameLiveUnderAnotherAccountFetchesItsOwnState",
+      "aDrawAcknowledgementForThePreviousRoundCannotAppendToTheNextRound",
+      "aLateReadAfterAbaCannotPublishThePrivatePrompt",
+      "switchingAccountsClearsAnAlreadyDisplayedPrivatePromptWithoutAnotherRequest",
+      "anEventDuringTheInitialSnapshotIsObservedBeforeTheNextPollingInterval"
+    ]
+  },
+  {
+    "suite": "conectate.com.presentation.live.LiveDrawGuessVisitTest",
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      "cancellationClearsBusyAndTheSameVisitCanRetryTheAction",
+      "closingAnOlderViewModelDoesNotUnsubscribeTheCurrentViewModel",
+      "aChangedAccountCannotRenderTheOldPromptBeforeTheObserverRuns",
+      "aQueuedActionCannotUseTheNextAccountAfterReturningToTheSameIdentity",
+      "closingThePanelDropsALateFailureAndAllowsANewVisitImmediately",
+      "anOldLifecycleCleanupCannotCloseTheNewlyResumedPanel"
+    ]
+  },
+  {
+    "suite": "conectate.com.presentation.live.LiveChannelPointsAccountTest",
+    "tests": 11,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      "switchingAccountsClearsAlreadyDisplayedPointsWithoutAnotherRequest",
+      "aLateReadCannotOverwriteTheNewAccountsBalance",
+      "aQueuedRefreshCannotBorrowTheNextAccountsCredentials",
+      "ordinaryTokenRenewalPreservesTheDisplayedPoints",
+      "cancellationDoesNotLeaveThePanelBusy",
+      "losingTheRedemptionAcknowledgementKeepsTheNonceForRetry",
+      "aFailedRedemptionHistoryReadPreservesTheConfirmedList",
+      "aResponseAfterSwitchingAccountsCannotReturnAsCurrent",
+      "stoppingThePanelPreventsAnUntrackedReadFromPublishing",
+      "repeatedRedemptionWhileSendingDoesNotCreateAnotherDebit",
+      "aRenewedTokenAfterAbaCannotDispatchTheOldRead"
+    ]
+  },
+  {
+    "suite": "conectate.com.data.supabase.AuthSessionMutationGuardTest",
+    "tests": 25,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "cases": [
+      "anExplicitLogoutInvalidatesRollbackEvenWhenOnlyOneGenerationAdvanced",
+      "capturesShareOneVisitUntilAuthenticationAdvancesItsGeneration",
+      "accountLoginInvalidatesAnOlderStartupReadAtomically",
+      "delayedFailureCannotLogOutTheNewAccount",
+      "delayedRefreshCannotRestoreLoggedOutAccount",
+      "delayedSuccessCannotReplaceTheNewAccount",
+      "failedSessionMutationStillSignalsInvalidationButFailedSnapshotDoesNot",
+      "aForeignOrReadOnlyLeaseCannotAuthorizeAnotherGuardsWrites",
+      "closedAndForeignLeasesCannotChangeSessions",
+      "currentRefreshCanPersist",
+      "aChangedAccountOrLogoutCannotReadThroughAnOldAccountLease",
+      "accountObserversSeeTheNewOwnerAfterEachActualTransition",
+      "tokenReplacementRejectsRefreshEvenWithinTheSameGeneration",
+      "aFailedCommitDoesNotKeepTheGuardLocked",
+      "importAndThrottleAfterSwitchCannotKeepTheOutgoingSession",
+      "aTransitionCanAdvanceItsOwnLeaseAcrossPauseAndActivation",
+      "theOutgoingSnapshotIncludesTheLatestConfirmedBackgroundRefresh",
+      "aNewLoginToTheSameTargetAlsoInvalidatesTheOlderTransition",
+      "anAccountLeaseSurvivesBackgroundRenewalButNotAnExplicitLoginOfTheSameIdentity",
+      "anOlderObserverCannotOverwriteFreshCredentialsForTheSameAccount",
+      "loginCannotChangeTheOwnerBetweenCheckingItsLeaseAndClearingItsHints",
+      "logoutWaitsForFinalCommitAndThenWins",
+      "leaseMutationRejectsAnOldVisitEvenAfterReturningToTheSameAccount",
+      "savedCredentialsCannotMixAnAwaitedTokenWithTheNextAccountIdentity",
+      "failedSnapshotPersistenceLeavesTheOutgoingSessionAndGenerationUntouched"
+    ]
+  }
+]

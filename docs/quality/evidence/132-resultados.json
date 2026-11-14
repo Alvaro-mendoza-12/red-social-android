@@ -1,0 +1,260 @@
+{
+  "date": "2026-11-13",
+  "timezone": "America/Bogota",
+  "generatedAtUtc": "2026-11-14T01:18:10.001650+00:00",
+  "scope": "Continuación móvil 128, publicada como bloque 132: visitas de cuenta, juego y canjes LIVE; revisión integral abierta",
+  "implementationGitBlobs": {
+    "app/src/main/java/conectate/com/data/localfallback/LiveDrawGuessApi.kt": "f8e9d021e94c10ccf868f47f743456a5bd7b8711",
+    "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt": "5b421865567e66d9973412833e4927c4eff2f713",
+    "app/src/main/java/conectate/com/data/points/LiveChannelPointsApi.kt": "3ec1c4c009f4e303fc37ae8bb215532f10cb55aa",
+    "app/src/main/java/conectate/com/data/points/LiveChannelPointsApiClient.kt": "cd220f44a860eeb401cf87e0ad356a53c7901333",
+    "app/src/main/java/conectate/com/data/points/LivePointRedemptionJournal.kt": "7a6f66df7d963b9ab20b81811fa4b6b76ddcef81",
+    "app/src/main/java/conectate/com/data/repository/LiveChannelPointsRepository.kt": "dd064c0b4b759572909499366212b043fef132ae",
+    "app/src/main/java/conectate/com/data/repository/LiveDrawGuessRepository.kt": "a5a270270c14e3a6243514b34413666eb09e0b42",
+    "app/src/main/java/conectate/com/data/supabase/AuthService.kt": "9a4f0ae4c33f0b9af1858ee46046aeb0ce816e96",
+    "app/src/main/java/conectate/com/data/supabase/AuthSessionMutationGuard.kt": "d1bf3fbd1f96a8a9232344265e3f37c31baa5f85",
+    "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsController.kt": "c03c2ae605c839f1a92b3e565639b1d7a8539653",
+    "app/src/main/java/conectate/com/presentation/live/LiveDrawGuessDialog.kt": "a299c5aa5322e7fc351810e90a256c15d9db5795",
+    "app/src/main/java/conectate/com/presentation/live/LiveDrawGuessViewModel.kt": "a9b22b6b8b11f74dccb326267e80b9effd0477cb",
+    "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt": "ede38eb85413b93aa392ff4b7524f992b68692b5",
+    "app/src/test/java/conectate/com/data/points/LivePointRedemptionJournalTest.kt": "af89597a298d6a83894af630689c4ae212db59d5",
+    "app/src/test/java/conectate/com/data/repository/LiveAccountFixtures.kt": "c1fba2397ebdd0506a8483707a7173bc7185a2ed",
+    "app/src/test/java/conectate/com/data/repository/LiveDrawGuessAccountTest.kt": "4e2dd37d130c702ea70035941f0fd89b8b45192a",
+    "app/src/test/java/conectate/com/data/supabase/AuthSessionMutationGuardTest.kt": "498db79cb29ea006471874a37f1398226f0ec6e5",
+    "app/src/test/java/conectate/com/presentation/live/LiveChannelPointsAccountTest.kt": "2c0c7b7338915cc47259635e83617016c004d9a2",
+    "app/src/test/java/conectate/com/presentation/live/LiveDrawGuessVisitTest.kt": "e232efa412308d9c833a1253ba54460088c2f24d",
+    "app/src/androidTest/java/conectate/com/presentation/live/LiveDrawGuessLifecycleDeviceTest.kt": "1d2083f9d7d794f66cf03ec19651f524b722c028",
+    ".github/workflows/service-ci.yml": "64bcea18877376b7742275678081684b29eb9179",
+    "infrastructure/local-fallback/api/src/live-points-routes.js": "f50edcd7092222c1affd3e117a754c387911666a",
+    "infrastructure/local-fallback/api/tests/live-points-redemption.postgres.test.js": "030492d47e9a1fcfe7e132abd8a23b1aaebc1d03",
+    "tools/audit/update_review_coverage.py": "bc52c1b8fcecbb2f6f35468cfbb1a38845d87c56",
+    "tools/tests/test_review_coverage_index.py": "f98f4499fbbc64944fa326951dd90843d0b750fa"
+  },
+  "checks": {
+    "initialRegressions": {
+      "failed": 14,
+      "evidence": "132-regresiones-antes.json"
+    },
+    "jvmGeneral": {
+      "suites": 528,
+      "tests": 2817,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "evidence": "132-jvm-completo.json"
+    },
+    "jvmFinalFocused": {
+      "suites": 5,
+      "passed": 57,
+      "includesJournalTests": 8,
+      "overlapsGeneral": true,
+      "evidence": "132-jvm-focalizado.json"
+    },
+    "apiGeneral": {
+      "tests": 1131,
+      "pass": 1106,
+      "fail": 0,
+      "skipped": 25,
+      "newPostgresCaseSkippedHere": true
+    },
+    "apiHttpPostgres": {
+      "tests": 6,
+      "pass": 6,
+      "fail": 0,
+      "skipped": 0,
+      "meaningfulScenarios": 4,
+      "authentication": "Fixture seam; actual HTTP, routes, transactions and locks",
+      "evidence": "132-canjes-api-despues.tap"
+    },
+    "apiStandaloneCiSchema": {
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 0,
+      "hostedWorkflowRunVerified": false,
+      "evidence": "132-canjes-api-esquema-ci.tap"
+    },
+    "apiSyntaxAndSourceDependencies": {
+      "passed": true,
+      "missingDependencies": []
+    },
+    "auditTools": {
+      "passed": 12,
+      "newIndexCoverageTests": 4
+    },
+    "traceability": {
+      "rows": 368,
+      "sourceRegistrationPassed": true,
+      "implementationComplete": false
+    },
+    "device": {
+      "passed": 3,
+      "failed": 0,
+      "tests": [
+        "aLateInitialSnapshotCannotReappearAfterClosingTheDialog",
+        "pausingAndResumingRebindsTheGameAndDoesNotRestoreAnOldPrompt",
+        "switchingAccountsRemovesThePrivateWordFromTheVisibleDialog"
+      ],
+      "apiLevel": 35,
+      "androidVersion": "15",
+      "abi": "x86_64",
+      "emulator": "NovvinReview117",
+      "readOnlyAvd": true,
+      "physicalDevice": false,
+      "apiAndSocket": "Synthetic fixture; no authenticated Ubuntu or R2 integration claimed",
+      "seconds": 19.764
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 342,
+      "severityCounts": {
+        "Warning": 342
+      },
+      "uast": "K1",
+      "finalHeapGiB": 4,
+      "earlierAttempt": "Interrupted after heap exhaustion at 1.5 GiB; diagnostic retained locally",
+      "issuesById": {
+        "ApplySharedPref": 1,
+        "UnusedAttribute": 15,
+        "IntentFilterUniqueDataAttributes": 27,
+        "ConfigurationScreenWidthHeight": 1,
+        "ModifierParameter": 5,
+        "UseCompatTextViewDrawableXml": 6,
+        "Typos": 1,
+        "Untranslatable": 2,
+        "PluralsCandidate": 2,
+        "SetJavaScriptEnabled": 1,
+        "UnusedResources": 9,
+        "UsableSpace": 1,
+        "IconXmlAndPng": 2,
+        "UseKtx": 268,
+        "UseTomlInstead": 1
+      },
+      "advisoriesInModifiedFiles": [
+        {
+          "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+          "line": 200,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        },
+        {
+          "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+          "line": 334,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        },
+        {
+          "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+          "line": 405,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        },
+        {
+          "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+          "line": 1045,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        },
+        {
+          "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+          "line": 1237,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        },
+        {
+          "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+          "line": 1707,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        },
+        {
+          "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+          "line": 1724,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        },
+        {
+          "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+          "line": 1867,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        },
+        {
+          "file": "app/src/main/java/conectate/com/presentation/live/LiveDrawGuessDialog.kt",
+          "line": 339,
+          "id": "UseKtx",
+          "instructionUnchangedFromBase": true
+        }
+      ]
+    },
+    "debugAndInstrumentedBuild": {
+      "passed": true
+    }
+  },
+  "labApks": {
+    "purpose": "Laboratorio instrumental; no entrega de producción",
+    "baseCommit": "b58f05e87e06f96fc063c65202d27d241596f7b8",
+    "mobileSourceBlobs": {
+      "app/src/main/java/conectate/com/data/localfallback/LiveDrawGuessApi.kt": "f8e9d021e94c10ccf868f47f743456a5bd7b8711",
+      "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt": "5b421865567e66d9973412833e4927c4eff2f713",
+      "app/src/main/java/conectate/com/data/points/LiveChannelPointsApi.kt": "3ec1c4c009f4e303fc37ae8bb215532f10cb55aa",
+      "app/src/main/java/conectate/com/data/points/LiveChannelPointsApiClient.kt": "cd220f44a860eeb401cf87e0ad356a53c7901333",
+      "app/src/main/java/conectate/com/data/points/LivePointRedemptionJournal.kt": "7a6f66df7d963b9ab20b81811fa4b6b76ddcef81",
+      "app/src/main/java/conectate/com/data/repository/LiveChannelPointsRepository.kt": "dd064c0b4b759572909499366212b043fef132ae",
+      "app/src/main/java/conectate/com/data/repository/LiveDrawGuessRepository.kt": "a5a270270c14e3a6243514b34413666eb09e0b42",
+      "app/src/main/java/conectate/com/data/supabase/AuthService.kt": "9a4f0ae4c33f0b9af1858ee46046aeb0ce816e96",
+      "app/src/main/java/conectate/com/data/supabase/AuthSessionMutationGuard.kt": "d1bf3fbd1f96a8a9232344265e3f37c31baa5f85",
+      "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsController.kt": "c03c2ae605c839f1a92b3e565639b1d7a8539653",
+      "app/src/main/java/conectate/com/presentation/live/LiveDrawGuessDialog.kt": "a299c5aa5322e7fc351810e90a256c15d9db5795",
+      "app/src/main/java/conectate/com/presentation/live/LiveDrawGuessViewModel.kt": "a9b22b6b8b11f74dccb326267e80b9effd0477cb",
+      "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt": "ede38eb85413b93aa392ff4b7524f992b68692b5",
+      "app/src/test/java/conectate/com/data/points/LivePointRedemptionJournalTest.kt": "af89597a298d6a83894af630689c4ae212db59d5",
+      "app/src/test/java/conectate/com/data/repository/LiveAccountFixtures.kt": "c1fba2397ebdd0506a8483707a7173bc7185a2ed",
+      "app/src/test/java/conectate/com/data/repository/LiveDrawGuessAccountTest.kt": "4e2dd37d130c702ea70035941f0fd89b8b45192a",
+      "app/src/test/java/conectate/com/data/supabase/AuthSessionMutationGuardTest.kt": "498db79cb29ea006471874a37f1398226f0ec6e5",
+      "app/src/test/java/conectate/com/presentation/live/LiveChannelPointsAccountTest.kt": "2c0c7b7338915cc47259635e83617016c004d9a2",
+      "app/src/test/java/conectate/com/presentation/live/LiveDrawGuessVisitTest.kt": "e232efa412308d9c833a1253ba54460088c2f24d",
+      "app/src/androidTest/java/conectate/com/presentation/live/LiveDrawGuessLifecycleDeviceTest.kt": "1d2083f9d7d794f66cf03ec19651f524b722c028"
+    },
+    "packages": [
+      {
+        "file": "app/build/outputs/apk/debug/app-debug.apk",
+        "bytes": 270435578,
+        "sha256": "392bfe4a3404f159312bfeab584de720d790ffaad9ffb29a976df0cf37775798",
+        "applicationId": "conectate.com",
+        "variant": "debug",
+        "version": "9.1.40-debug",
+        "versionCode": 180
+      },
+      {
+        "file": "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+        "bytes": 3054959,
+        "sha256": "6b93b10f5951cc4c1946aa42f8a0a06964c170cf2f0bd42d5c484644d8801022",
+        "applicationId": "conectate.com.test",
+        "variant": "debugAndroidTest",
+        "version": "",
+        "versionCode": 0
+      }
+    ],
+    "debugApkSignatureVerified": true,
+    "finalApkDelivery": false
+  },
+  "earlierEvidenceEncoding": {
+    "textFieldsCorrected": 4,
+    "numericalResultsAndSourceBlobsUnchanged": true
+  },
+  "publicationTargets": [
+    "main",
+    "feature/live-gifts"
+  ],
+  "treeEqualityRequired": true,
+  "apiProductionDeployment": false,
+  "finalApkDelivery": false,
+  "remaining": [
+    "Validación física y de redes reales",
+    "Muerte real del proceso para recuperar canjes",
+    "Propiedad completa de sesión LIVE, formularios e invitados",
+    "Despliegue de API propia con respaldo y reversión",
+    "Resto de recorridos y requisitos de la revisión integral"
+  ]
+}

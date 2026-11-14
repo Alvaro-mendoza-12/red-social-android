@@ -562,6 +562,10 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
       if (access.isHost) return res.status(403).json({ error: 'LIVE_POINTS_VIEWER_REQUIRED' })
       client = await pool.connect()
       await client.query('BEGIN')
+      // Coordinate retries across API processes before checking an absent row.
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        `live-point-redemption:${liveId}:${requestNonce}`,
+      ])
       const existing = await client.query(
         `SELECT id::text, live_id::text, reward_id::text, viewer_id, cost, status,
                 request_nonce, refunded_at, created_at, updated_at
@@ -571,6 +575,11 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
         [liveId, requestNonce],
       )
       if (existing.rows[0]) {
+        if (!access.identity.ids.includes(normalizeId(existing.rows[0].viewer_id)) ||
+            normalizeId(existing.rows[0].reward_id) !== rewardId) {
+          await client.query('ROLLBACK')
+          return res.status(409).json({ error: 'LIVE_POINT_REDEMPTION_NONCE_CONFLICT' })
+        }
         await client.query('COMMIT')
         return res.json({ redemption: existing.rows[0], duplicate: true })
       }

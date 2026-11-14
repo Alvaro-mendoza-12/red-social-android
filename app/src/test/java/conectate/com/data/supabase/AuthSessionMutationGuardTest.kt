@@ -2,11 +2,37 @@ package conectate.com.data.supabase
 
 import org.junit.Assert.*
 import org.junit.Test
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.Executors
 
 class AuthSessionMutationGuardTest {
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test fun accountObserversSeeTheNewOwnerAfterEachActualTransition() = kotlinx.coroutines.test.runTest {
+        val guard = AuthSessionMutationGuard()
+        var account = "a"
+        val owners = mutableListOf<String>()
+        backgroundScope.launch(kotlinx.coroutines.test.UnconfinedTestDispatcher(testScheduler)) {
+            guard.accountVisitChanges.collect { owners += account }
+        }
+        guard.commitIfCurrent(guard.snapshot()) { /* token renewal is the same visit */ }
+        guard.invalidate { account = "b" }
+        val transition = guard.openTransition()
+        assertTrue(guard.advanceTransition(transition) { account = "a" })
+        assertEquals(listOf("a", "b", "a"), owners)
+    }
+
+    @Test fun failedSessionMutationStillSignalsInvalidationButFailedSnapshotDoesNot() {
+        val guard = AuthSessionMutationGuard()
+        val transition = guard.openTransition()
+        runCatching { guard.advanceTransition(transition, beforeMutation = { error("snapshot unavailable") }) {} }
+        assertEquals(0L, guard.accountVisitChanges.value)
+        runCatching { guard.invalidate { error("session write interrupted") } }
+        assertEquals(1L, guard.accountVisitChanges.value)
+    }
+
     @Test fun capturesShareOneVisitUntilAuthenticationAdvancesItsGeneration() {
         val guard = AuthSessionMutationGuard()
         val first = guard.captureAccountLease { "a" }

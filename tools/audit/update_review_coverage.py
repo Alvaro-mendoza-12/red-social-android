@@ -44,6 +44,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", default="docs/oficial/review-coverage.json")
     parser.add_argument("--import-mobile-catalog")
+    parser.add_argument("--from-index", action="store_true", help="Fingerprint the staged candidate, preserving unrelated working-tree edits")
     parser.add_argument("--mark-read-list", help="JSON paths actually read, never a search or test result")
     parser.add_argument("--mark-partial-list", help="JSON paths with only partial code review")
     parser.add_argument("--evidence", default="docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md")
@@ -60,7 +61,21 @@ def main() -> None:
             existing.setdefault(path, entry)
     reviewed = set(read_list(args.mark_read_list))
     partial = set(read_list(args.mark_partial_list))
-    paths = set(subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode("utf-8").split("\0"))
+    indexed: dict[str, str] = {}
+    if args.from_index:
+        for record in subprocess.check_output(["git", "ls-files", "--stage", "-z"], cwd=root).decode("utf-8").split("\0"):
+            if not record:
+                continue
+            metadata, path = record.split("\t", 1)
+            mode, blob, stage = metadata.split()
+            if stage != "0":
+                raise ValueError(f"Unmerged review target: {path}")
+            if mode != "160000":  # A gitlink is another repository, not a source blob.
+                indexed[path] = blob
+        missing = (reviewed | partial) - indexed.keys()
+        if missing:
+            raise ValueError(f"Review targets are absent from the candidate index: {sorted(missing)}")
+    paths = set(indexed) if args.from_index else set(subprocess.check_output(["git", "ls-files", "-z"], cwd=root).decode("utf-8").split("\0"))
     paths.update(reviewed | partial)
     paths.discard("")
     paths.discard(args.output)  # The generated manifest cannot include its own content hash.
@@ -69,11 +84,11 @@ def main() -> None:
         absolute = (root / path).resolve()
         if not absolute.is_relative_to(root):
             raise ValueError(f"Review target outside repository: {path}")
-        if absolute.is_file():
+        if args.from_index or absolute.is_file():
             files.append((path, absolute))
     # Let Git apply its own text/binary attributes and clean filters. Raw Windows
     # CRLF hashes would invalidate the same source after checkout in another worktree.
-    hashes = subprocess.run(
+    hashes = [indexed[path] for path, _ in files] if args.from_index else subprocess.run(
         ["git", "hash-object", "--stdin-paths"], cwd=root,
         input="".join(path + "\n" for path, _ in files), text=True, encoding="utf-8",
         capture_output=True, check=True,
@@ -86,8 +101,9 @@ def main() -> None:
         status = old.get("reviewStatus", "pending")
         same_content = old.get("gitBlobId") == current_hash
         if not same_content and "gitBlobId" not in old and old.get("sha256"):
-            # Import only a legacy review whose actual working bytes still match.
-            same_content = old["sha256"] == sha256(absolute)
+            # Import only a legacy review matching the selected source bytes.
+            fingerprint = hashlib.sha256(subprocess.check_output(["git", "cat-file", "blob", current_hash], cwd=root)).hexdigest() if args.from_index else sha256(absolute)
+            same_content = old["sha256"] == fingerprint
         if not same_content:
             status = "pending"
         if path in reviewed:
@@ -108,7 +124,7 @@ def main() -> None:
         "generatedAtUtc": datetime.now(timezone.utc).isoformat(),
         "baseCommit": git("rev-parse", "HEAD"),
         "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
-        "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
+        "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded." if args.from_index else "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
         "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
         "definitions": {
             "pending": "Not fully read at this exact file hash.",

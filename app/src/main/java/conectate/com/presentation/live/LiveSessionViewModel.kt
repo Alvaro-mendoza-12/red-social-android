@@ -45,18 +45,6 @@ private data class LiveConnectionRequest(
     val role: LiveRole
 )
 
-data class LiveChannelPointsUiState(
-    val available: Boolean? = null,
-    val sessionActive: Boolean = false,
-    val foreground: Boolean = true,
-    val balance: Int = 0,
-    val settings: LivePointsSettings? = null,
-    val rewards: List<LivePointReward> = emptyList(),
-    val redemptions: List<LivePointRedemption> = emptyList(),
-    val busy: Boolean = false,
-    val message: String? = null,
-)
-
 @HiltViewModel
 class LiveSessionViewModel @Inject constructor(
     private val liveRepository: LiveRepository,
@@ -108,8 +96,11 @@ class LiveSessionViewModel @Inject constructor(
     val liveKitRemoteParticipants = liveRepository.liveKitRemoteParticipants
     val liveMusic = liveRepository.liveMusic
 
-    private val _channelPoints = MutableStateFlow(LiveChannelPointsUiState())
-    val channelPoints: StateFlow<LiveChannelPointsUiState> = _channelPoints.asStateFlow()
+    private val pointsController = LiveChannelPointsController(
+        liveChannelPointsRepository, viewModelScope, authService::captureAccountLease, authService::commitForAccountLease,
+        accountVisitChanges = authService.accountVisitChanges,
+    )
+    val channelPoints = pointsController.state
 
     private val _isFollowingHost = MutableStateFlow<Boolean?>(null)
     val isFollowingHost: StateFlow<Boolean?> = _isFollowingHost.asStateFlow()
@@ -124,8 +115,6 @@ class LiveSessionViewModel @Inject constructor(
     private var hostPreparationJob: Job? = null
     private var collaborationPollingJob: Job? = null
     private var collaborationPollingLiveId: String? = null
-    private var channelPointsJob: Job? = null
-    private var channelPointsLiveId: String? = null
 
     init {
         viewModelScope.launch {
@@ -141,158 +130,18 @@ class LiveSessionViewModel @Inject constructor(
 
     fun getCurrentUserId(): String? = authService.getCurrentUserId()
 
-    fun startChannelPoints(liveId: String) {
-        val normalizedId = normalizeLiveSessionId(liveId) ?: return
-        if (channelPointsJob?.isActive == true && channelPointsLiveId == normalizedId) return
-        channelPointsJob?.cancel()
-        channelPointsLiveId = normalizedId
-        channelPointsJob = viewModelScope.launch(Dispatchers.IO) {
-            refreshChannelPointsInternal(normalizedId, includeRedemptions = false)
-            val session = liveChannelPointsRepository.startSession(normalizedId).getOrElse { error ->
-                handleChannelPointsError(error)
-                return@launch
-            }
-            _channelPoints.value = _channelPoints.value.copy(
-                available = true,
-                sessionActive = true,
-                message = "Gana ${session.pointsPerInterval} puntos cada ${session.intervalSeconds / 60} min mientras miras.",
-            )
-            while (true) {
-                delay(30_000L)
-                val foreground = _channelPoints.value.foreground
-                liveChannelPointsRepository.heartbeat(
-                    liveId = normalizedId,
-                    sessionToken = session.sessionToken,
-                    visible = foreground,
-                    foreground = foreground,
-                ).onSuccess { heartbeat ->
-                    val nextBalance = heartbeat.balance ?: _channelPoints.value.balance
-                    _channelPoints.value = _channelPoints.value.copy(
-                        balance = nextBalance,
-                        message = when {
-                            heartbeat.awardedPoints > 0 -> "+${heartbeat.awardedPoints} puntos por mirar"
-                            heartbeat.dailyCapReached -> "Alcanzaste el límite diario de puntos"
-                            else -> _channelPoints.value.message
-                        },
-                    )
-                }.onFailure(::handleChannelPointsError)
-            }
-        }
-    }
-
-    fun setChannelPointsForeground(foreground: Boolean) {
-        _channelPoints.value = _channelPoints.value.copy(foreground = foreground)
-    }
-
-    fun stopChannelPoints() {
-        channelPointsJob?.cancel()
-        channelPointsJob = null
-        channelPointsLiveId = null
-        _channelPoints.value = _channelPoints.value.copy(sessionActive = false)
-    }
-
-    fun refreshChannelPoints(liveId: String, includeRedemptions: Boolean = true) {
-        val normalizedId = normalizeLiveSessionId(liveId) ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            refreshChannelPointsInternal(normalizedId, includeRedemptions)
-        }
-    }
-
-    private suspend fun refreshChannelPointsInternal(liveId: String, includeRedemptions: Boolean) {
-        _channelPoints.value = _channelPoints.value.copy(busy = true)
-        val balance = liveChannelPointsRepository.balance(liveId)
-        if (balance.isFailure) {
-            handleChannelPointsError(balance.exceptionOrNull())
-            _channelPoints.value = _channelPoints.value.copy(busy = false)
-            return
-        }
-        val rewards = liveChannelPointsRepository.rewards(liveId)
-        if (rewards.isFailure) {
-            handleChannelPointsError(rewards.exceptionOrNull())
-            _channelPoints.value = _channelPoints.value.copy(busy = false)
-            return
-        }
-        val redemptions = if (includeRedemptions) {
-            liveChannelPointsRepository.redemptions(liveId).getOrElse { emptyListResponse() }.redemptions
-        } else {
-            _channelPoints.value.redemptions
-        }
-        val response = balance.getOrThrow()
-        _channelPoints.value = _channelPoints.value.copy(
-            available = true,
-            balance = response.balance.balance,
-            settings = response.settings,
-            rewards = rewards.getOrThrow().rewards,
-            redemptions = redemptions,
-            busy = false,
-        )
-    }
-
-    private fun emptyListResponse() = conectate.com.data.model.LivePointRedemptionsResponse()
-
-    fun redeemChannelPointReward(liveId: String, rewardId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            _channelPoints.value = _channelPoints.value.copy(busy = true)
-            liveChannelPointsRepository.redeem(liveId, rewardId)
-                .onSuccess { response ->
-                    _channelPoints.value = _channelPoints.value.copy(
-                        balance = response.balance ?: _channelPoints.value.balance,
-                        busy = false,
-                        message = "Recompensa solicitada al creador",
-                    )
-                    refreshChannelPointsInternal(liveId, includeRedemptions = false)
-                }
-                .onFailure { error ->
-                    handleChannelPointsError(error)
-                    _channelPoints.value = _channelPoints.value.copy(busy = false)
-                }
-        }
-    }
-
-    fun updateChannelPointSettings(liveId: String, enabled: Boolean, interval: Int, points: Int, cap: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            _channelPoints.value = _channelPoints.value.copy(busy = true)
-            liveChannelPointsRepository.updateSettings(liveId, enabled, interval, points, cap)
-                .onSuccess {
-                    _channelPoints.value = _channelPoints.value.copy(settings = it.settings, busy = false, message = "Puntos actualizados")
-                }
-                .onFailure { handleChannelPointsError(it); _channelPoints.value = _channelPoints.value.copy(busy = false) }
-        }
-    }
-
-    fun createChannelPointReward(liveId: String, title: String, description: String, cost: Int, stock: Int?, cooldown: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            _channelPoints.value = _channelPoints.value.copy(busy = true)
-            liveChannelPointsRepository.createReward(liveId, title, description, cost, stock, cooldown)
-                .onSuccess { refreshChannelPointsInternal(liveId, includeRedemptions = true) }
-                .onFailure { handleChannelPointsError(it); _channelPoints.value = _channelPoints.value.copy(busy = false) }
-        }
-    }
-
-    fun decideChannelPointRedemption(liveId: String, redemptionId: String, status: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            liveChannelPointsRepository.updateRedemption(liveId, redemptionId, status)
-                .onSuccess { refreshChannelPointsInternal(liveId, includeRedemptions = true) }
-                .onFailure(::handleChannelPointsError)
-        }
-    }
-
-    private fun handleChannelPointsError(error: Throwable?) {
-        val code = (error as? LiveChannelPointsApiException)?.code ?: error?.message.orEmpty()
-        if (code == "LIVE_CHANNEL_POINTS_DISABLED" || code == "LIVE_POINTS_DISABLED_FOR_LIVE") {
-            _channelPoints.value = _channelPoints.value.copy(available = false, sessionActive = false, message = null)
-            return
-        }
-        _channelPoints.value = _channelPoints.value.copy(
-            message = when (code) {
-                "LIVE_POINT_BALANCE_INSUFFICIENT" -> "No tienes puntos suficientes"
-                "LIVE_POINT_REWARD_COOLDOWN" -> "Esta recompensa todavía está en espera"
-                "LIVE_POINT_REWARD_UNAVAILABLE" -> "La recompensa ya no está disponible"
-                "LIVE_POINTS_NOT_CONFIGURED" -> "Los puntos aún no están configurados en el servidor"
-                else -> "No se pudieron actualizar los puntos del canal"
-            },
-        )
-    }
+    fun startChannelPoints(liveId: String) = pointsController.startChannelPoints(liveId)
+    fun setChannelPointsForeground(foreground: Boolean) = pointsController.setChannelPointsForeground(foreground)
+    fun stopChannelPoints() = pointsController.stopChannelPoints()
+    fun refreshChannelPoints(liveId: String, includeRedemptions: Boolean = true) =
+        pointsController.refreshChannelPoints(liveId, includeRedemptions)
+    fun redeemChannelPointReward(liveId: String, rewardId: String) = pointsController.redeemChannelPointReward(liveId, rewardId)
+    fun updateChannelPointSettings(liveId: String, enabled: Boolean, interval: Int, points: Int, cap: Int) =
+        pointsController.updateChannelPointSettings(liveId, enabled, interval, points, cap)
+    fun createChannelPointReward(liveId: String, title: String, description: String, cost: Int, stock: Int?, cooldown: Int) =
+        pointsController.createChannelPointReward(liveId, title, description, cost, stock, cooldown)
+    fun decideChannelPointRedemption(liveId: String, redemptionId: String, status: String) =
+        pointsController.decideChannelPointRedemption(liveId, redemptionId, status)
 
     fun startCollaborationPolling(liveId: String) {
         val normalizedId = normalizeLiveSessionId(liveId) ?: return

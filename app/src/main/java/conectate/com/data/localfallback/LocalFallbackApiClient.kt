@@ -1576,7 +1576,7 @@ data class LocalFallbackPasswordResetResponse(
 @Singleton
 class LocalFallbackApiClient @Inject constructor(
     private val supabaseConfig: SupabaseConfig
-) {
+) : LiveDrawGuessApi {
     val baseUrl: String
         get() = UbuntuStorageUrl.baseUrl
     val isConfigured: Boolean
@@ -4148,7 +4148,7 @@ class LocalFallbackApiClient @Inject constructor(
         requestJson<LiveGiftEventsResponse>("$baseUrl/v1/data/live/${urlEncode(liveId)}/gifts", accessToken)
             .map { it.items }
 
-    suspend fun loadCurrentLiveDrawGuess(
+    override suspend fun loadCurrentLiveDrawGuess(
         accessToken: String,
         liveId: String
     ): Result<LiveDrawGuessState?> {
@@ -4159,13 +4159,13 @@ class LocalFallbackApiClient @Inject constructor(
         ).map { it.state }
     }
 
-    suspend fun createLiveDrawGuess(
+    override suspend fun createLiveDrawGuess(
         accessToken: String,
         liveId: String,
         participantIds: List<String>,
-        totalRounds: Int = 3,
-        roundSeconds: Int = 75,
-        idempotencyKey: String = UUID.randomUUID().toString()
+        totalRounds: Int,
+        roundSeconds: Int,
+        idempotencyKey: String
     ): Result<LiveDrawGuessState> = postLiveDrawState(
         accessToken = accessToken,
         url = "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess",
@@ -4181,40 +4181,40 @@ class LocalFallbackApiClient @Inject constructor(
         }
     )
 
-    suspend fun acceptLiveDrawGuess(
+    override suspend fun acceptLiveDrawGuess(
         accessToken: String,
         liveId: String,
         gameId: String,
-        idempotencyKey: String = UUID.randomUUID().toString()
+        idempotencyKey: String
     ): Result<LiveDrawGuessState> = postLiveDrawState(
         accessToken,
         "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/accept",
         buildJsonObject { put("idempotencyKey", idempotencyKey) }
     )
 
-    suspend fun startLiveDrawGuess(
+    override suspend fun startLiveDrawGuess(
         accessToken: String,
         liveId: String,
         gameId: String,
-        idempotencyKey: String = UUID.randomUUID().toString()
+        idempotencyKey: String
     ): Result<LiveDrawGuessState> = postLiveDrawState(
         accessToken,
         "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/start",
         buildJsonObject { put("idempotencyKey", idempotencyKey) }
     )
 
-    suspend fun cancelLiveDrawGuess(
+    override suspend fun cancelLiveDrawGuess(
         accessToken: String,
         liveId: String,
         gameId: String,
-        idempotencyKey: String = UUID.randomUUID().toString()
+        idempotencyKey: String
     ): Result<LiveDrawGuessState> = postLiveDrawState(
         accessToken,
         "$baseUrl/v1/data/live/${urlEncode(liveId)}/games/draw-guess/${urlEncode(gameId)}/cancel",
         buildJsonObject { put("idempotencyKey", idempotencyKey) }
     )
 
-    suspend fun advanceLiveDrawGuess(
+    override suspend fun advanceLiveDrawGuess(
         accessToken: String,
         liveId: String,
         gameId: String
@@ -4234,7 +4234,7 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun sendLiveDrawPacket(
+    override suspend fun sendLiveDrawPacket(
         accessToken: String,
         liveId: String,
         gameId: String,
@@ -4255,12 +4255,12 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
-    suspend fun submitLiveDrawGuess(
+    override suspend fun submitLiveDrawGuess(
         accessToken: String,
         liveId: String,
         gameId: String,
         guess: String,
-        idempotencyKey: String = UUID.randomUUID().toString()
+        idempotencyKey: String
     ): Result<LiveDrawGuessGuessResult> {
         if (!isConfigured) return Result.failure(Exception("Servidor Ubuntu no configurado."))
         return runCatching {

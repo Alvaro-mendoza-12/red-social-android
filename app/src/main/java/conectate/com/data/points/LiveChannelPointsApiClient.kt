@@ -37,11 +37,11 @@ import kotlinx.serialization.json.put
 @Singleton
 class LiveChannelPointsApiClient @Inject constructor(
     private val supabaseConfig: SupabaseConfig,
-) {
-    suspend fun startSession(token: String, liveId: String): Result<LivePointsSession> =
+) : LiveChannelPointsApi {
+    override suspend fun startSession(token: String, liveId: String): Result<LivePointsSession> =
         post(token, "/v1/data/live/${encode(liveId)}/points/session", "{}")
 
-    suspend fun heartbeat(
+    override suspend fun heartbeat(
         token: String,
         liveId: String,
         sessionToken: String,
@@ -57,26 +57,26 @@ class LiveChannelPointsApiClient @Inject constructor(
         }.toString(),
     )
 
-    suspend fun balance(token: String, liveId: String): Result<LivePointsBalanceResponse> =
+    override suspend fun balance(token: String, liveId: String): Result<LivePointsBalanceResponse> =
         get(token, "/v1/data/live/${encode(liveId)}/points/balance")
 
-    suspend fun rewards(token: String, liveId: String): Result<LivePointRewardsResponse> =
+    override suspend fun rewards(token: String, liveId: String): Result<LivePointRewardsResponse> =
         get(token, "/v1/data/live/${encode(liveId)}/points/rewards")
 
-    suspend fun redemptions(token: String, liveId: String): Result<LivePointRedemptionsResponse> =
+    override suspend fun redemptions(token: String, liveId: String): Result<LivePointRedemptionsResponse> =
         get(token, "/v1/data/live/${encode(liveId)}/points/redemptions")
 
-    suspend fun redeem(token: String, liveId: String, rewardId: String): Result<LivePointRedemptionResponse> =
+    override suspend fun redeem(token: String, liveId: String, rewardId: String, requestNonce: String): Result<LivePointRedemptionResponse> =
         post(
             token,
             "/v1/data/live/${encode(liveId)}/points/redeem",
             buildJsonObject {
                 put("rewardId", rewardId)
-                put("requestNonce", UUID.randomUUID().toString())
+                put("requestNonce", requestNonce)
             }.toString(),
         )
 
-    suspend fun updateSettings(
+    override suspend fun updateSettings(
         token: String,
         liveId: String,
         enabled: Boolean,
@@ -96,7 +96,7 @@ class LiveChannelPointsApiClient @Inject constructor(
         }
     }
 
-    suspend fun createReward(
+    override suspend fun createReward(
         token: String,
         liveId: String,
         title: String,
@@ -116,7 +116,7 @@ class LiveChannelPointsApiClient @Inject constructor(
         }.toString(),
     )
 
-    suspend fun updateRedemption(
+    override suspend fun updateRedemption(
         token: String,
         liveId: String,
         redemptionId: String,

@@ -5,132 +5,182 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.LiveDrawPoint
 import conectate.com.data.model.LiveDrawGuessGuessResult
 import conectate.com.data.model.LiveDrawPacket
+import conectate.com.data.repository.LiveDrawGuessBinding
 import conectate.com.data.repository.LiveDrawGuessRepository
+import conectate.com.data.repository.normalizeLiveSessionId
 import conectate.com.presentation.common.toUserFacingMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 
 @HiltViewModel
-class LiveDrawGuessViewModel @Inject constructor(
-    private val repository: LiveDrawGuessRepository
+class LiveDrawGuessViewModel internal constructor(
+    private val repository: LiveDrawGuessRepository,
+    private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
+    @Inject constructor(repository: LiveDrawGuessRepository) : this(repository, Dispatchers.IO)
+
+    private class Visit(val binding: LiveDrawGuessBinding, val tasks: CoroutineScope)
+    private val lock = Any()
+    @Volatile private var visit: Visit? = null
     val gameState = repository.state
     val drawPackets = repository.drawPackets
-
+    val accountVisitGeneration = repository.accountVisitChanges.stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
     private val _busy = MutableStateFlow(false)
-    val busy: StateFlow<Boolean> = _busy.asStateFlow()
+    val busy = _busy.asStateFlow()
     private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
+    val error = _error.asStateFlow()
     private val _guessResult = MutableStateFlow<LiveDrawGuessGuessResult?>(null)
-    val guessResult: StateFlow<LiveDrawGuessGuessResult?> = _guessResult.asStateFlow()
+    val guessResult = _guessResult.asStateFlow()
     private val drawSequence = AtomicLong(0L)
-    private var boundLiveId: String? = null
 
-    fun bind(liveId: String) {
-        if (boundLiveId == liveId && liveId.isNotBlank()) return
-        boundLiveId = liveId
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.bind(liveId)
-            repository.state.value?.round?.lastDrawSequence?.let { current ->
-                drawSequence.updateAndGet { previous -> maxOf(previous, current + 1L) }
+    init {
+        viewModelScope.launch {
+            repository.accountVisitChanges.collect {
+                visit?.let { if (!it.binding.owner.isCurrent()) unbind(it.binding) }
             }
         }
     }
 
-    fun unbind() {
-        boundLiveId = null
-        viewModelScope.launch(Dispatchers.IO) { repository.unbind() }
+    internal fun bind(liveId: String): LiveDrawGuessBinding? {
+        val normalized = normalizeLiveSessionId(liveId) ?: return null
+        visit?.let { current ->
+            if (current.binding.liveId == normalized && commit(current) {}) return current.binding
+        }
+        unbind()
+        val binding = repository.prepareBinding(normalized, replace = true) ?: return null
+        val current = Visit(binding, CoroutineScope(SupervisorJob(viewModelScope.coroutineContext[Job]) + ioDispatcher))
+        if (!repository.commitForBinding(binding) {
+            synchronized(lock) { visit = current }
+        }) {
+            current.tasks.cancel()
+            repository.unbind(binding)
+            return null
+        }
+        current.tasks.launch {
+            try {
+                repository.bind(binding)
+                commit(current) {
+                    gameState.value?.round?.lastDrawSequence?.let { next -> drawSequence.updateAndGet { maxOf(it, next + 1L) } }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { commit(current) { _error.value = error.toLiveDrawGuessMessage("No se pudo cargar el juego.") } }
+        }
+        return binding
+    }
+
+    internal fun unbind(expected: LiveDrawGuessBinding? = visit?.binding) {
+        val previous = synchronized(lock) {
+            val current = visit ?: return
+            if (expected == null || current.binding !== expected) return
+            visit = null
+            _busy.value = false
+            _error.value = null
+            _guessResult.value = null
+            drawSequence.set(0L)
+            current
+        }
+        // Lock order is auth -> repository -> view model. Release this monitor
+        // before cancelling work or asking the repository to clear its binding.
+        previous.tasks.cancel()
+        repository.unbind(previous.binding)
+    }
+
+    private fun commit(current: Visit, update: () -> Unit): Boolean {
+        var applied = false
+        repository.commitForBinding(current.binding) {
+            synchronized(lock) {
+                if (visit === current) { update(); applied = true }
+            }
+        }
+        return applied
+    }
+
+    internal fun isCurrentVisit(liveId: String, accountId: String): Boolean {
+        val current = visit ?: return false
+        if (current.binding.liveId != liveId || !current.binding.owner.accountId.equals(accountId, ignoreCase = true)) return false
+        return commit(current) {}
     }
 
     fun create(participantIds: List<String>, totalRounds: Int = 3, roundSeconds: Int = 75) {
-        val liveId = boundLiveId ?: return
-        launchAction("No se pudo crear el juego.") {
-            repository.create(liveId, participantIds, totalRounds, roundSeconds)
+        val current = visit ?: return
+        launchAction(current, "No se pudo crear el juego.") {
+            repository.create(current.binding.liveId, participantIds, totalRounds, roundSeconds, current.binding)
         }
     }
 
-    fun accept() {
-        val liveId = boundLiveId ?: return
-        val gameId = gameState.value?.game?.id.orEmpty()
-        if (gameId.isBlank()) return
-        launchAction("No se pudo aceptar el juego.") { repository.accept(liveId, gameId) }
-    }
+    fun accept() = gameAction("No se pudo aceptar el juego.") { current, gameId -> repository.accept(current.liveId, gameId, current) }
+    fun start() = gameAction("No se pudo iniciar el juego.") { current, gameId -> repository.start(current.liveId, gameId, current) }
+    fun advance() = gameAction("La ronda todavía no puede avanzar.") { current, gameId -> repository.advance(current.liveId, gameId, current) }
+    fun cancel() = gameAction("No se pudo cancelar el juego.") { current, gameId -> repository.cancel(current.liveId, gameId, current) }
 
-    fun start() {
-        val liveId = boundLiveId ?: return
-        val gameId = gameState.value?.game?.id.orEmpty()
-        if (gameId.isBlank()) return
-        launchAction("No se pudo iniciar el juego.") { repository.start(liveId, gameId) }
-    }
-
-    fun advance() {
-        val liveId = boundLiveId ?: return
-        val gameId = gameState.value?.game?.id.orEmpty()
-        if (gameId.isBlank()) return
-        launchAction("La ronda todavía no puede avanzar.") { repository.advance(liveId, gameId) }
-    }
-
-    fun cancel() {
-        val liveId = boundLiveId ?: return
-        val gameId = gameState.value?.game?.id.orEmpty()
-        if (gameId.isBlank()) return
-        launchAction("No se pudo cancelar el juego.") { repository.cancel(liveId, gameId) }
+    private fun <T> gameAction(fallback: String, action: suspend (LiveDrawGuessBinding, String) -> Result<T>) {
+        val current = visit ?: return
+        val gameId = gameState.value?.game?.id?.takeIf(String::isNotBlank) ?: return
+        launchAction(current, fallback) { action(current.binding, gameId) }
     }
 
     fun submitGuess(value: String) {
-        val clean = value.trim()
-        val liveId = boundLiveId ?: return
-        val gameId = gameState.value?.game?.id.orEmpty()
-        if (gameId.isBlank() || clean.isBlank()) return
-        _error.value = null
-        _guessResult.value = null
-        _busy.value = true
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.guess(liveId, gameId, clean)
-                .onSuccess { _guessResult.value = it }
-                .onFailure { _error.value = it.toLiveDrawGuessMessage("No se pudo comprobar la respuesta.") }
-            _busy.value = false
-        }
+        val current = visit ?: return
+        val clean = value.trim().takeIf(String::isNotBlank) ?: return
+        val state = gameState.value ?: return
+        launchAction(current, "No se pudo comprobar la respuesta.", clearGuess = true, onSuccess = {
+            if (gameState.value?.round?.id == state.round?.id && it.state.round?.id == state.round?.id) _guessResult.value = it
+        }) { repository.guess(current.binding.liveId, state.game.id, clean, current.binding) }
     }
 
     fun sendStroke(points: List<LiveDrawPoint>) {
         if (points.isEmpty()) return
-        val liveId = boundLiveId ?: return
+        val current = visit ?: return
         val state = gameState.value ?: return
-        val gameId = state.game.id
-        if (gameId.isBlank() || state.round == null) return
-        val firstSequence = state.round.lastDrawSequence + 1L
-        drawSequence.updateAndGet { previous -> maxOf(previous, firstSequence) }
-        val packet = LiveDrawPacket(
-            sequence = drawSequence.getAndIncrement(),
-            points = points.take(64)
-        )
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.draw(liveId, gameId, packet)
-                .onFailure { _error.value = it.toLiveDrawGuessMessage("No se pudo enviar el trazo.") }
+        val round = state.round ?: return
+        if (state.game.id.isBlank()) return
+        var packet: LiveDrawPacket? = null
+        if (!commit(current) {
+            drawSequence.updateAndGet { maxOf(it, round.lastDrawSequence + 1L) }
+            packet = LiveDrawPacket(sequence = drawSequence.getAndIncrement(), points = points.take(64))
+        }) return
+        current.tasks.launch {
+            try {
+                repository.draw(current.binding.liveId, state.game.id, packet ?: return@launch, current.binding, round.id)
+                    .onFailure { error -> commit(current) {
+                        if (gameState.value?.round?.id == round.id) _error.value = error.toLiveDrawGuessMessage("No se pudo enviar el trazo.")
+                    } }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { commit(current) {
+                if (gameState.value?.round?.id == round.id) _error.value = error.toLiveDrawGuessMessage("No se pudo enviar el trazo.")
+            } }
         }
     }
 
     fun clearFeedback() {
-        _error.value = null
-        _guessResult.value = null
+        val current = visit ?: return
+        commit(current) { _error.value = null; _guessResult.value = null }
     }
 
-    private fun <T> launchAction(fallback: String, action: suspend () -> Result<T>) {
-        if (_busy.value) return
-        _error.value = null
-        _busy.value = true
-        viewModelScope.launch(Dispatchers.IO) {
-            action().onFailure { _error.value = it.toLiveDrawGuessMessage(fallback) }
-            _busy.value = false
+    private fun <T> launchAction(current: Visit, fallback: String, clearGuess: Boolean = false, onSuccess: (T) -> Unit = {}, action: suspend () -> Result<T>) {
+        var accepted = false
+        if (!commit(current) {
+            if (!_busy.value) {
+                _busy.value = true; _error.value = null
+                if (clearGuess) _guessResult.value = null
+                accepted = true
+            }
+        } || !accepted) return
+        current.tasks.launch {
+            try {
+                val result = action()
+                ensureActive()
+                commit(current) { result.onSuccess(onSuccess).onFailure { _error.value = it.toLiveDrawGuessMessage(fallback) } }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { commit(current) { _error.value = error.toLiveDrawGuessMessage(fallback) } }
+            finally { commit(current) { _busy.value = false } }
         }
     }
+
+    override fun onCleared() { unbind(); super.onCleared() }
 }
 
 internal fun Throwable?.toLiveDrawGuessMessage(fallback: String): String {
