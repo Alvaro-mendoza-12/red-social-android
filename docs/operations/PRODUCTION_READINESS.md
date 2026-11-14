@@ -27,3 +27,8 @@ La [integración de tonos y web](../oficial/138-tonos-android-y-web-desplegada-2
 ## Continuación 139 — 14 de noviembre de 2026
 
 La [corrección de visitas LIVE](../oficial/139-visitas-notificacion-y-cierre-live-2026-11-14.md) protege las notificaciones y el coordinador de cierre por instancia. La batería JVM aprobada se distingue de los ensayos físicos ausentes. A → B → A, credenciales actuales al cerrar, callbacks globales y salidas retenidas de pantalla siguen abiertos: no se declara preparación integral ni se entrega una APK nueva.
+
+
+## Continuación 140 — 14 de noviembre de 2026
+
+La [corrección de avisos de llamada](../oficial/140-notificaciones-visitas-llamadas-2026-11-14.md) impide que las acciones retenidas de una visita afecten al aviso de otra. La selección y el qualityGate aprobados no prueban la propiedad global de cuenta/medios ni las llamadas físicas. Las 342 advertencias de Lint permanecen abiertas. No se entrega una APK nueva ni se declara preparación integral.

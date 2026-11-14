@@ -36,6 +36,8 @@ import conectate.com.data.service.CallCancellationGuard
 import conectate.com.services.IncomingCallForegroundService
 import conectate.com.services.CallForegroundService
 import conectate.com.util.CallTonePlayer
+import conectate.com.domain.calls.CallForegroundSession
+import conectate.com.domain.calls.CallForegroundSessionController
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.realtime.RealtimeChannel
@@ -89,9 +91,10 @@ class CallRepository @Inject constructor(
     private val appMetrics: AppMetrics,
     private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val callControlClient: CallControlClient,
-) {
+) : CallForegroundSessionController {
     private val callCancellationGuard = CallCancellationGuard(context)
     private val callStartMutex = Mutex()
+    private var notificationVisit: CallNotificationVisit? = null
     @Volatile private var pendingCallLeaveJob: Job? = null
     @Serializable
     private data class CallInviteBroadcastPayload(
@@ -182,6 +185,32 @@ class CallRepository @Inject constructor(
     private val pendingInvitees = mutableSetOf<String>()
 
     fun getCurrentCallId(): String? = _activeCall.value?.callId
+
+    override fun currentForegroundSession(): CallForegroundSession? = synchronized(this) {
+        val call = _activeCall.value?.takeIf { canRefreshCallMedia(it) } ?: return@synchronized null
+        val visit = notificationVisit ?: return@synchronized null
+        if (!visit.matches(visit.target, call.callId)) return@synchronized null
+        CallForegroundSession(visit.target.visitId, call.callId, call.title, _isMuted.value, call.isVideo)
+    }
+
+    override suspend fun hangup(expectedSessionId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        synchronized(this@CallRepository) {
+            when {
+                expectedSessionId.isBlank() -> Result.failure(IllegalStateException("La acción no identifica una llamada."))
+                _activeCall.value == null -> Result.success(Unit)
+                currentForegroundSession()?.sessionId != expectedSessionId ->
+                    Result.failure(IllegalStateException("Esta acción pertenece a otra visita de llamada."))
+                else -> hangupCurrentCall()
+            }
+        }
+    }
+
+    override fun setMuted(expectedSessionId: String, muted: Boolean): Boolean = synchronized(this) {
+        if (expectedSessionId.isBlank() || currentForegroundSession()?.sessionId != expectedSessionId) return@synchronized false
+        toggleMute(muted)
+        true
+    }
+
     fun hasMicrophonePermission(): Boolean =
         ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
@@ -371,6 +400,7 @@ class CallRepository @Inject constructor(
     ): Result<String> = withContext(Dispatchers.IO) {
         callStartMutex.withLock {
         pendingCallLeaveJob?.join()
+        val notificationAccount = authService.captureAccountLease()
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
@@ -387,6 +417,8 @@ class CallRepository @Inject constructor(
         pendingInvitees.addAll(invitedUserIds.map { it.trim() }.filter { it.isNotBlank() }.distinct())
         callControlClient.prepare(callId, normalizedContextType, normalizedContextId, pendingInvitees.toList())
             .getOrElse { return@withContext Result.failure(it) }
+        val outgoingVisit = CallNotificationVisit.capture(callId, notificationAccount)
+            ?: return@withContext Result.failure(IllegalStateException("La cuenta cambió. Inicia la llamada de nuevo."))
         callEverHadRemoteParticipant = false
         hasConnectedMediaPath = false
         callSetupTiming = CallSetupTiming(android.os.SystemClock.elapsedRealtime(), CallSetupOrigin.OUTGOING)
@@ -397,18 +429,21 @@ class CallRepository @Inject constructor(
         val peerName = title.ifBlank { null }
         val peerAvatar: String? = null
 
-        _activeCall.value = ActiveCall(
-            callId = callId,
-            title = title.ifBlank { peerName ?: "Llamada" },
-            initiatorUserId = currentUserId,
-            connectionState = CallConnectionState.RINGING_OUTGOING,
-            contextType = normalizedContextType,
-            contextId = normalizedContextId,
-            peerUserId = peerUserId,
-            peerName = peerName ?: title,
-            peerAvatarUrl = peerAvatar,
-            isVideo = isVideo
-        )
+        synchronized(this@CallRepository) {
+            notificationVisit = outgoingVisit
+            _activeCall.value = ActiveCall(
+                callId = callId,
+                title = title.ifBlank { peerName ?: "Llamada" },
+                initiatorUserId = currentUserId,
+                connectionState = CallConnectionState.RINGING_OUTGOING,
+                contextType = normalizedContextType,
+                contextId = normalizedContextId,
+                peerUserId = peerUserId,
+                peerName = peerName ?: title,
+                peerAvatarUrl = peerAvatar,
+                isVideo = isVideo
+            )
+        }
         // Voice calls start on the earpiece, like a regular phone call. Keeping every
         // call on the loudspeaker was the largest avoidable source of acoustic echo.
         _isSpeaker.value = isVideo || normalizedContextType != "dm"
@@ -518,6 +553,7 @@ class CallRepository @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         callStartMutex.withLock {
         pendingCallLeaveJob?.join()
+        val notificationAccount = authService.captureAccountLease()
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
@@ -530,12 +566,6 @@ class CallRepository @Inject constructor(
             ?: "Usuario"
         var myAvatar = profile?.avatar_url
 
-        pendingInvitees.clear()
-        callEverHadRemoteParticipant = false
-        hasConnectedMediaPath = false
-        callSetupTiming = CallSetupTiming(android.os.SystemClock.elapsedRealtime(), CallSetupOrigin.JOINING)
-        callSetupMetricCallId = callId.trim()
-        clearEndedCallSummary()
         var normalizedContextType = contextType.trim().lowercase().ifBlank { "dm" }
         val peerProfile = if (normalizedContextType == "dm") {
             loadUserProfileQuick(initiatorUserId)
@@ -543,18 +573,29 @@ class CallRepository @Inject constructor(
             null
         }
 
-        _activeCall.value = ActiveCall(
-            callId = callId.trim(),
-            title = title.ifBlank { "Llamada" },
-            initiatorUserId = initiatorUserId.trim().ifBlank { initiatorUserId },
-            connectionState = CallConnectionState.CONNECTING,
-            contextType = normalizedContextType,
-            contextId = contextId?.trim()?.ifBlank { null },
-            peerUserId = if (normalizedContextType == "dm") initiatorUserId.trim().ifBlank { null } else null,
-            peerName = peerProfile?.displayName ?: peerProfile?.username,
-            peerAvatarUrl = peerProfile?.avatar_url,
-            isVideo = false
-        )
+        val joiningVisit = CallNotificationVisit.capture(callId, notificationAccount)
+            ?: return@withContext Result.failure(IllegalStateException("La cuenta cambió. Abre la llamada de nuevo."))
+        pendingInvitees.clear()
+        callEverHadRemoteParticipant = false
+        hasConnectedMediaPath = false
+        callSetupTiming = CallSetupTiming(android.os.SystemClock.elapsedRealtime(), CallSetupOrigin.JOINING)
+        callSetupMetricCallId = callId.trim()
+        clearEndedCallSummary()
+        synchronized(this@CallRepository) {
+            notificationVisit = joiningVisit
+            _activeCall.value = ActiveCall(
+                callId = callId.trim(),
+                title = title.ifBlank { "Llamada" },
+                initiatorUserId = initiatorUserId.trim().ifBlank { initiatorUserId },
+                connectionState = CallConnectionState.CONNECTING,
+                contextType = normalizedContextType,
+                contextId = contextId?.trim()?.ifBlank { null },
+                peerUserId = if (normalizedContextType == "dm") initiatorUserId.trim().ifBlank { null } else null,
+                peerName = peerProfile?.displayName ?: peerProfile?.username,
+                peerAvatarUrl = peerProfile?.avatar_url,
+                isVideo = false
+            )
+        }
         _isSpeaker.value = normalizedContextType != "dm"
         _participants.value = listOf(
             CallParticipant(
@@ -577,6 +618,7 @@ class CallRepository @Inject constructor(
     suspend fun acceptIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
         callStartMutex.withLock {
         pendingCallLeaveJob?.join()
+        val notificationAccount = authService.captureAccountLease()
         if (!hasMicrophonePermission() || (invite.isVideo &&
                 ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
             return@withContext Result.failure(IllegalStateException("Activa los permisos de la llamada antes de contestar."))
@@ -596,6 +638,8 @@ class CallRepository @Inject constructor(
 
         callControlClient.accept(invite.callId).getOrElse { return@withContext Result.failure(it) }
 
+        val incomingVisit = CallNotificationVisit.capture(invite.callId, notificationAccount)
+            ?: return@withContext Result.failure(IllegalStateException("La cuenta cambió. Contesta desde la cuenta correspondiente."))
         // Profile data is decorative for signaling. Waiting for a network
         // lookup here delayed cold-start answers and could make the offer time
         // out before WebRTC joined the call.
@@ -617,18 +661,21 @@ class CallRepository @Inject constructor(
             invite.title.ifBlank { "Llamada" }
         }
 
-        _activeCall.value = ActiveCall(
-            callId = invite.callId,
-            title = effectiveTitle,
-            initiatorUserId = invite.callerUserId,
-            connectionState = CallConnectionState.CONNECTING,
-            contextType = normalizedContextType,
-            contextId = invite.contextId?.trim()?.ifBlank { null },
-            peerUserId = invite.callerUserId,
-            peerName = invite.callerName,
-            peerAvatarUrl = invite.callerAvatarUrl,
-            isVideo = invite.isVideo
-        )
+        synchronized(this@CallRepository) {
+            notificationVisit = incomingVisit
+            _activeCall.value = ActiveCall(
+                callId = invite.callId,
+                title = effectiveTitle,
+                initiatorUserId = invite.callerUserId,
+                connectionState = CallConnectionState.CONNECTING,
+                contextType = normalizedContextType,
+                contextId = invite.contextId?.trim()?.ifBlank { null },
+                peerUserId = invite.callerUserId,
+                peerName = invite.callerName,
+                peerAvatarUrl = invite.callerAvatarUrl,
+                isVideo = invite.isVideo
+            )
+        }
         _isSpeaker.value = invite.isVideo || normalizedContextType != "dm"
         _participants.value = listOf(
             CallParticipant(
@@ -732,8 +779,12 @@ class CallRepository @Inject constructor(
     }
 
     suspend fun hangup(): Result<Unit> = withContext(Dispatchers.IO) {
+        synchronized(this@CallRepository) { hangupCurrentCall() }
+    }
+
+    private fun hangupCurrentCall(): Result<Unit> {
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
-        var call = _activeCall.value ?: return@withContext Result.success(Unit)
+        var call = _activeCall.value ?: return Result.success(Unit)
         callTonePlayer.stopRingback()
 
         if (call.connectionState == CallConnectionState.RINGING_OUTGOING) {
@@ -758,7 +809,7 @@ class CallRepository @Inject constructor(
                 }
             }
             endCallInternal(reason = "Llamada cancelada")
-            return@withContext Result.success(Unit)
+            return Result.success(Unit)
         }
 
         // Capture before endCallInternal clears the participant/invitation state.
@@ -783,10 +834,14 @@ class CallRepository @Inject constructor(
         }
 
         endCallInternal(reason = "Llamada finalizada")
-        Result.success(Unit)
+        return Result.success(Unit)
     }
 
+    @Synchronized
     fun toggleMute(muted: Boolean) {
+        val owner = notificationVisit
+        val callId = _activeCall.value?.callId
+        val callSocket = socket
         _isMuted.value = muted
         var myId = authService.getCurrentUserId()?.trim().orEmpty()
         if (myId.isNotBlank()) {
@@ -801,15 +856,19 @@ class CallRepository @Inject constructor(
         webRTCManager?.setAudioEnabled(!muted)
 
         scope.launch {
-            var callId = _activeCall.value?.callId ?: return@launch
-            socket?.emit(
-                "mute-state",
-                org.json.JSONObject().apply {
-                    put("callId", callId)
-                    put("userId", myId)
-                    put("isMuted", muted)
-                }
-            )
+            synchronized(this@CallRepository) {
+                if (owner == null || owner !== notificationVisit ||
+                    !owner.matches(owner.target, _activeCall.value?.callId) || callId == null ||
+                    callSocket !== socket) return@launch
+                callSocket?.emit(
+                    "mute-state",
+                    org.json.JSONObject().apply {
+                        put("callId", callId)
+                        put("userId", myId)
+                        put("isMuted", muted)
+                    }
+                )
+            }
         }
 
         updateServiceNotification()
@@ -1909,6 +1968,7 @@ class CallRepository @Inject constructor(
 
     @Synchronized
     private fun endCallInternal(reason: String, releaseServerSession: Boolean = true) {
+        val departingNotification = notificationVisit?.target
         discardPreparedIncomingSocket()
         var callSnapshot = _activeCall.value
         if (callSnapshot?.connectionState == CallConnectionState.ENDED) return
@@ -1983,9 +2043,10 @@ class CallRepository @Inject constructor(
         _participants.value = emptyList()
         _isMuted.value = false
 
-        stopService()
+        stopService(departingNotification)
 
         // Clear state immediately to avoid leaving "No hay llamada activa" screens/bars.
+        notificationVisit = null
         _activeCall.value = null
     }
 
@@ -2065,12 +2126,15 @@ class CallRepository @Inject constructor(
     }
 
     private fun startService() {
+        val session = currentForegroundSession() ?: return
         try {
             var intent = android.content.Intent(context, CallForegroundService::class.java).apply {
-                action = "START"
-                putExtra(CallForegroundService.EXTRA_CALL_TITLE, _activeCall.value?.title ?: "Llamada")
-                putExtra(CallForegroundService.EXTRA_IS_MUTED, _isMuted.value)
-                putExtra(CallForegroundService.EXTRA_IS_VIDEO, _activeCall.value?.isVideo == true)
+                action = CallForegroundService.ACTION_START
+                putExtra(CallForegroundService.EXTRA_CALL_ID, session.callId)
+                putExtra(CallForegroundService.EXTRA_SESSION_ID, session.sessionId)
+                putExtra(CallForegroundService.EXTRA_CALL_TITLE, session.title)
+                putExtra(CallForegroundService.EXTRA_IS_MUTED, session.isMuted)
+                putExtra(CallForegroundService.EXTRA_IS_VIDEO, session.isVideo)
             }
             ContextCompat.startForegroundService(context, intent)
         } catch (e: Exception) {
@@ -2079,12 +2143,15 @@ class CallRepository @Inject constructor(
     }
 
     private fun updateServiceNotification() {
+        val session = currentForegroundSession() ?: return
         try {
             var intent = android.content.Intent(context, CallForegroundService::class.java).apply {
-                action = "UPDATE"
-                putExtra(CallForegroundService.EXTRA_CALL_TITLE, _activeCall.value?.title ?: "Llamada")
-                putExtra(CallForegroundService.EXTRA_IS_MUTED, _isMuted.value)
-                putExtra(CallForegroundService.EXTRA_IS_VIDEO, _activeCall.value?.isVideo == true)
+                action = CallForegroundService.ACTION_UPDATE
+                putExtra(CallForegroundService.EXTRA_CALL_ID, session.callId)
+                putExtra(CallForegroundService.EXTRA_SESSION_ID, session.sessionId)
+                putExtra(CallForegroundService.EXTRA_CALL_TITLE, session.title)
+                putExtra(CallForegroundService.EXTRA_IS_MUTED, session.isMuted)
+                putExtra(CallForegroundService.EXTRA_IS_VIDEO, session.isVideo)
             }
             context.startService(intent)
         } catch (error: Exception) {
@@ -2096,10 +2163,13 @@ class CallRepository @Inject constructor(
         }
     }
 
-    private fun stopService() {
+    private fun stopService(owner: CallNotificationTarget?) {
+        if (owner == null) return
         try {
             var intent = android.content.Intent(context, CallForegroundService::class.java).apply {
                 action = CallForegroundService.ACTION_STOP
+                putExtra(CallForegroundService.EXTRA_CALL_ID, owner.callId)
+                putExtra(CallForegroundService.EXTRA_SESSION_ID, owner.visitId)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

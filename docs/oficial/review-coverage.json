@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T15:04:05.460307+00:00",
-  "baseCommit": "1b9e21bb3c76c34c907d33c5ee8ddc0e2800ccd2",
+  "generatedAtUtc": "2026-11-14T16:11:10.487854+00:00",
+  "baseCommit": "04f9cc50129abff3db086946be48acfc953a4f08",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,20 +10,20 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3635,
-    "partial": 239,
-    "code-read": 622
+    "pending": 3633,
+    "partial": 241,
+    "code-read": 630
   },
   "countsByPhase": {
     "android": {
-      "pending": 1500,
-      "partial": 102,
-      "code-read": 444
+      "pending": 1498,
+      "partial": 103,
+      "code-read": 451
     },
     "documentation": {
       "pending": 627,
-      "code-read": 45,
-      "partial": 14
+      "code-read": 46,
+      "partial": 15
     },
     "server": {
       "pending": 855,
@@ -7835,10 +7835,20 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/data/repository/CallNotificationVisit.kt",
+      "phase": "android",
+      "gitBlobId": "0a9e5787c381883adb852e9615155174889aeeef",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/repository/CallRepository.kt",
       "phase": "android",
-      "gitBlobId": "c823b9dda5f4f3fa6ca36306c456066903605d21",
-      "reviewStatus": "pending"
+      "gitBlobId": "a98f87477934a9ee4aedbbfa4f2058294b2138c5",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/CallSetupTiming.kt",
@@ -9075,6 +9085,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/di/CallForegroundModule.kt",
+      "phase": "android",
+      "gitBlobId": "5a7160fa166edf69c9c408e50ab304095d712944",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/di/CoreModule.kt",
       "phase": "android",
       "gitBlobId": "e6aa28699102a24983cbeec5cf98494396bf9e37",
@@ -9105,6 +9123,14 @@
       "phase": "android",
       "gitBlobId": "1bc72cc605c0da5db074c7bf4834cd91cccb3580",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/domain/calls/CallForegroundSessionController.kt",
+      "phase": "android",
+      "gitBlobId": "25a5890916625017f08d475c5d6feb54fb779924",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/domain/live/LiveForegroundSessionController.kt",
@@ -13019,8 +13045,10 @@
     {
       "file": "app/src/main/java/conectate/com/services/CallForegroundService.kt",
       "phase": "android",
-      "gitBlobId": "b6b1069f0432b47370d8631d540734e08c43e4cc",
-      "reviewStatus": "pending"
+      "gitBlobId": "639777d34bc48c36322fc60560d62485f53c3943",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/services/IncomingCallForegroundService.kt",
@@ -15273,6 +15301,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/CallNotificationVisitTest.kt",
+      "phase": "android",
+      "gitBlobId": "17c458b5cdffb8c624dbb6bba788e903fdd48240",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/CallSetupTimingTest.kt",
       "phase": "android",
       "gitBlobId": "bc28573d894cc093e2635f0360c26e4cfcbb7530",
@@ -17465,6 +17501,22 @@
       "phase": "android",
       "gitBlobId": "41b0b061cf0bf3f6cf049d3a65180ac8897e2006",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/services/CallForegroundSessionTest.kt",
+      "phase": "android",
+      "gitBlobId": "c0270f285c86553addde3b9365cbd94fe06b8146",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/services/CallNotificationIdentityTest.kt",
+      "phase": "android",
+      "gitBlobId": "a866dfa52d5796e52c25cd0d884fd691124c9021",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/services/LiveForegroundSessionTest.kt",
@@ -20311,7 +20363,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "efd52e10b18132db62c47d2f718ab21573f15ec5",
+      "gitBlobId": "aad9214ee5f7e1790d075af69e2f9c88686d033a",
       "reviewStatus": "pending"
     },
     {
@@ -20555,6 +20607,14 @@
       "phase": "documentation",
       "gitBlobId": "a701d51502fa3e1162437bdbf8bae8841b3a296a",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "cd6cef3e92dc79b5bcad7cc4ea969e0b0e66c3c2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/15-auditoria-extrema-2026-08-24.md",
@@ -21073,7 +21133,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "c4e9387754a8289ee80c691dd55bf20313d45fba",
+      "gitBlobId": "b3d3483441c6909a20c863ca356e4ff290f9b692",
       "reviewStatus": "pending"
     },
     {
@@ -21493,7 +21553,7 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "8408e1bad3100a529e771036785a716daef9c22b",
+      "gitBlobId": "1b7bd0a5d463110af3ed5067fcd0cd91cdea36b7",
       "reviewStatus": "pending"
     },
     {
@@ -21549,7 +21609,7 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "2fe1855d051f58e2f69d3be91704ada60c6c09cb",
+      "gitBlobId": "b64906e2a8a78bfc9e4cd810ee752da1d88d3a1f",
       "reviewStatus": "pending"
     },
     {
@@ -21913,6 +21973,14 @@
       "phase": "documentation",
       "gitBlobId": "e911490d2eb2af39466368d5f13236d338adace6",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/140-call-notification-visits.json",
+      "phase": "documentation",
+      "gitBlobId": "0aead88920c41add2497b56ca152fd7901541652",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/quality/evidence/2026-11-14-call-tone-race.json",
