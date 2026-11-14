@@ -151,14 +151,14 @@ test('notification entry renders cached nickname and avatar while the server is 
   let finish!: (value: typeof response) => void
   ;(loadFallbackChat as jest.Mock).mockImplementation(() => new Promise(resolve => { finish = resolve }))
   open('chat', { notificationParticipant: { id: 'friend', name: 'Nombre público', avatarUrl: '' } })
-  expect(screen.getByRole('button', { name: 'Ver perfil de Apodo privado' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Apodo privado Chat privado' })).toHaveAttribute('title', 'Ver perfil de Apodo privado')
   expect(screen.getByRole('img', { name: 'Apodo privado' })).toHaveAttribute('src', 'https://example.test/avatar.gif')
   expect(screen.getByRole('status')).toHaveTextContent('Cargando mensajes')
   expect(screen.queryByText('Todavía no hay mensajes en este chat.')).toBeNull()
   expect(screen.getByRole('button', { name: 'Enviar mensaje' })).toBeDisabled()
   await act(async () => { finish(response) })
   expect(await screen.findByText('Mensaje recibido')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Ver perfil de Apodo privado' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Apodo privado Chat privado' })).toHaveAttribute('title', 'Ver perfil de Apodo privado')
 })
 
 test('double click during editing returns to reply mode instead of editing the original message', async () => {
@@ -223,7 +223,7 @@ test('a private nickname is saved with the existing account-scoped endpoint and 
     fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Mi apodo' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
     await waitFor(() => expect(fallbackApiJson).toHaveBeenCalledWith('/v1/data/messages/nicknames/friend', { method: 'PUT', body: JSON.stringify({ nickname: 'Mi apodo' }), expectedAccountId: 'account-a', expectedIdentity: getStorageReadIdentity() }))
-    expect(await screen.findByRole('button', { name: 'Ver perfil de Mi apodo' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Mi apodo Chat privado' })).toHaveAttribute('title', 'Ver perfil de Mi apodo')
     expect(refresh).toHaveBeenCalledTimes(1)
   } finally { window.removeEventListener('novvin:conversation-preferences-changed', refresh) }
 })
@@ -422,7 +422,7 @@ test.each(['success', 'failure'])('a late nickname %s cannot change the next con
   await waitFor(() => expect(finish).toBeDefined())
   jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, chat: {}, title: 'Contacto B', otherParticipant: { ...response.otherParticipant, id: 'friend-b', name: 'Contacto B' } } as never)
   rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
-  await screen.findByRole('button', { name: 'Ver perfil de Contacto B' })
+  await screen.findByRole('button', { name: 'Contacto B Chat privado' })
   openNicknameEditor()
   fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Borrador B' } })
   const changed = jest.fn()
@@ -431,7 +431,7 @@ test.each(['success', 'failure'])('a late nickname %s cannot change the next con
     await act(async () => { finish() })
     expect(screen.getByRole('dialog', { name: 'Apodo privado' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Apodo' })).toHaveValue('Borrador B')
-    expect(screen.getByRole('button', { name: 'Ver perfil de Contacto B' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Contacto B Chat privado' })).toHaveAttribute('title', 'Ver perfil de Contacto B')
     expect(screen.queryByText('Privado A')).not.toBeInTheDocument()
     expect(screen.queryByText('Apodo privado de A falló')).not.toBeInTheDocument()
     expect(changed).not.toHaveBeenCalled()
@@ -474,7 +474,7 @@ test.each(['renewal', 'account switch'])('identity %s releases the old nickname 
   expect(screen.getByRole('textbox', { name: 'Apodo' })).toHaveValue('Nuevo')
   expect(screen.getByRole('button', { name: 'Guardando…' })).toBeDisabled()
   await act(async () => { pending[1]({}) })
-  expect(screen.getByRole('button', { name: 'Ver perfil de Nuevo' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Nuevo Chat privado' })).toHaveAttribute('title', 'Ver perfil de Nuevo')
   expect(screen.queryByRole('dialog', { name: 'Apodo privado' })).not.toBeInTheDocument()
 })
 

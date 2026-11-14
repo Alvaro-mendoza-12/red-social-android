@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T03:32:39.336840+00:00",
-  "baseCommit": "0f1e6e4abb97c47f09ecec4a6ddd2eb5a6117105",
+  "generatedAtUtc": "2026-11-14T04:53:45.600721+00:00",
+  "baseCommit": "922c11419bb1f13c01d2f2f2845eba3687478abd",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3613,
+    "pending": 3618,
     "partial": 239,
-    "code-read": 607
+    "code-read": 608
   },
   "countsByPhase": {
     "android": {
@@ -21,24 +21,24 @@
       "code-read": 438
     },
     "documentation": {
-      "pending": 599,
+      "pending": 605,
       "code-read": 44,
-      "partial": 17
+      "partial": 14
     },
     "server": {
-      "pending": 856,
-      "code-read": 56,
-      "partial": 28
+      "pending": 855,
+      "code-read": 57,
+      "partial": 29
     },
     "tooling-and-other": {
       "pending": 151,
-      "partial": 9,
-      "code-read": 17
+      "partial": 11,
+      "code-read": 15
     },
     "web": {
       "partial": 85,
       "pending": 503,
-      "code-read": 52
+      "code-read": 54
     }
   },
   "files": [
@@ -1493,6 +1493,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/messagePreview.test.ts",
+      "phase": "web",
+      "gitBlobId": "6889c1d37979d7a3e6aa5e57f5ac0eb6e276c790",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/messageVideoPolicy.test.ts",
       "phase": "web",
       "gitBlobId": "7b7f28a0b648f1fab1ee1974c1db991d42c33e7f",
@@ -1765,9 +1773,9 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "phase": "web",
-      "gitBlobId": "a14b34cf8fad44a78135b2bc2f1f5ae8cfbce214",
+      "gitBlobId": "7b2818ea12b176cff25033c425f70b418a0923b2",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -1787,9 +1795,9 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/messagesDiscovery.test.tsx",
       "phase": "web",
-      "gitBlobId": "08555af1a0757c37effc895db081573425fe6ec4",
+      "gitBlobId": "9fcc5be7b40ec2f7900cc2eecb64c740f3569350",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/120-contadores-bandeja-e-iconos-2026-11-12.md",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2839,9 +2847,9 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "456e99956a5bebbd66b9971c0b78719ee55b39f0",
+      "gitBlobId": "a92ab0c1aa3f9496e424a0950325eac489ab7fd2",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3021,6 +3029,14 @@
       "phase": "web",
       "gitBlobId": "f88b9af8cfee222bd150ddcf99136a260cd9525d",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/core/messagePreview.ts",
+      "phase": "web",
+      "gitBlobId": "d3fc053f909c6e3fb11b6626b8e7c339ccdccf1e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/messageVideoPolicy.ts",
@@ -3469,9 +3485,9 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "53854a9e81f7fe220295f788e6a2bed256ef0e9a",
+      "gitBlobId": "bb9c64d041d2c9c812ee4cd6b91a5b3173195f85",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3495,9 +3511,9 @@
     {
       "file": "NoWing-web/src/features/messages/MessagesPage.tsx",
       "phase": "web",
-      "gitBlobId": "3994e7fd543ffb5b69b7ce5f8ad7697f56279886",
+      "gitBlobId": "23de1405859dd9e4919f39df87fcb5bdc71d5881",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3917,9 +3933,9 @@
     {
       "file": "NoWing-web/src/layout/AppLayout.tsx",
       "phase": "web",
-      "gitBlobId": "3c638109b5c56035088ff76fb1fe865054a2cb9c",
+      "gitBlobId": "2affa660263c6afc7f400fbb22a1eeb6ab8aba7b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20221,10 +20237,8 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "94d1df4a495fc80f284a9dd6188d2366772817d4",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "b15e989e017a281412593269c897837aabc8271d",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
@@ -20425,6 +20439,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "a6cd4863ecded526b9f1e8c48d431b03f2f7627e",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/14-sistema-musical-legal.md",
@@ -20949,10 +20969,8 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "6e017101f58dad3d34f6042b9d0dcbc6122bf225",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "5cbd3820ef0efa038481e391ac0ddff2b62ae0a2",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/VALIDACION_ANDROID_E729365.json",
@@ -21423,10 +21441,8 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "511ff2affb0898f39504c2769c781a1028b85e08",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "8c5679447b7a4130a4d2095ec5dfbdc6583346c8",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/product/WEB_COMPACT_SHARE_REQUIREMENTS_2026-11-13.md",
@@ -21435,6 +21451,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/product/WEB_MESSAGES_RELIABILITY_REQUIREMENTS_2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "1821857191bd7e807cc24d27592fb79f044b2168",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/product/WEB_NAVIGATION_CALL_REQUIREMENTS_2026-11-13.md",
@@ -21679,6 +21701,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/134-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "4d35a19e7d0897a7581538febdd2c4c43f21fd80",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/research/COMPETITIVE_BENCHMARK.md",
@@ -22741,9 +22769,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "cd0d03778a91c604a6166310286f0b19a4731eee",
+      "gitBlobId": "509ee391b3f75e1d39eb5f95eb31857de5344c78",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22957,8 +22985,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/message-deletion-policy.js",
       "phase": "server",
-      "gitBlobId": "cd3d58bd0ee376c1f91d9a302306ba84a9ce8dec",
-      "reviewStatus": "pending"
+      "gitBlobId": "ea6431b0cce8d46b0a7e0538ee6f5b4343ba32db",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/message-insert-store.js",
@@ -24299,6 +24329,14 @@
       "phase": "server",
       "gitBlobId": "4f87f5ec59ba55b78ccaa07814508d397220e96e",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/message-preview-business.test.js",
+      "phase": "server",
+      "gitBlobId": "307b71616b4d2d3008561f5fc0d5d9fe6c689b61",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/message-push-limiter.test.js",
@@ -28197,9 +28235,9 @@
     {
       "file": "tools/audit/check_requirement_traceability.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "21f320464a2fafb3602ee6b7c79f3d9a0e54172d",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "gitBlobId": "1f2158780de0c3d444294a6b6372d42a2651876f",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28403,9 +28441,9 @@
     {
       "file": "tools/tests/test_requirement_traceability.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "ca78809798049fb6d729f3235ccb797a061fafaa",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "gitBlobId": "73a7a54f28fe6412b456f0361d5a3ead3b87643d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

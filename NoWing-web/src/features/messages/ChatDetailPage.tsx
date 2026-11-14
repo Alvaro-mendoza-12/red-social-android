@@ -2269,9 +2269,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
             </Link>
           ) : null}
           {otherParticipant ? (
-            <button type="button" className="identity-link compact" onClick={() => setProfilePanelOpen(value => !value)} aria-expanded={profilePanelOpen} aria-label={`Ver perfil de ${otherParticipant.name}`}>
+            <button type="button" className="identity-link compact" onClick={() => setProfilePanelOpen(value => !value)} aria-expanded={profilePanelOpen} aria-labelledby={`chat-contact-label-${cleanChatId}`} title={`Ver perfil de ${otherParticipant.name}`}>
               <FallbackAvatar url={otherParticipant.avatarUrl} name={otherParticipant.name} className="avatar-sm" />
-              <div className="col-stack-tight">
+              <div className="col-stack-tight" id={`chat-contact-label-${cleanChatId}`}>
                 <strong>{otherParticipant.name} <ProfileStatusBadges profileId={otherParticipant.id}/></strong>
                 <small>Chat privado</small>
               </div>

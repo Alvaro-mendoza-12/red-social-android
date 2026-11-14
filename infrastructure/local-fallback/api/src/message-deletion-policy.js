@@ -238,6 +238,7 @@ function messagePreview(row) {
   if (isDeletedForAll(row)) return 'Mensaje eliminado'
   if (row.content_type === 'birthday_card') return '🎂 Tarjeta de cumpleaños'
   if (row.content_type === 'contact') return 'Contacto'
+  if (String(row.content_type || '').trim().toLowerCase() === 'sticker') return 'Sticker'
   if (String(row.content || '').trim()) return String(row.content).trim()
   return ({ image: 'Imagen', video: 'Video', audio: 'Audio', sticker: 'Sticker', poll: 'Encuesta' })[row.content_type] ||
     (String(row.content_type || '').startsWith('view_once') ? 'View once' : 'Sin actividad reciente')
