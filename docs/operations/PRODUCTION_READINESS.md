@@ -42,3 +42,8 @@ La [reparación urgente de IDE y recuperación web](../oficial/142-ide-conectivi
 ## Continuación 143 — 14 de noviembre de 2026
 
 La [medición y preparación del entorno](../oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md) confirma sincronización/build y arranque en AVD, el enlace de 100 Mbps y las muestras de transferencia/latencia. La optimización de disponibilidad supera 1.268 pruebas web; la mejora de tiempo total no está demostrada. La reapertura final del IDE fue rechazada por revisión automática y no se afirma que siga abierto. La APK de laboratorio incluye 141 incompleto; no es entrega final. RLS, auditoría móvil, recorridos físicos y preparación integral siguen abiertos.
+
+
+## Continuación 141 retomada — 14 de noviembre de 2026
+
+La [corrección de propiedad LIVE](../oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md) aprueba 54 casos focalizados y 2927 pruebas JVM en 538 clases; Lint conserva 343 advertencias y cero errores. Los recibos de cuenta, motor y pantalla no cierran la barrera física global ni todos los RPC asíncronos. No contiene ensayo físico ni APK final. La publicación y el despliegue se acreditan con recibos propios; permanece abierta la preparación integral.

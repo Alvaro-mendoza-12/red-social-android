@@ -2,6 +2,8 @@
 
 package conectate.com.presentation.live
 
+import conectate.com.presentation.navigation.popLiveRoute
+
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -90,8 +92,12 @@ private sealed interface HostPermissionAction {
 fun LegacyLiveHostScreen(
     navController: NavController,
     liveId: String,
-    viewModel: LiveSessionViewModel = hiltViewModel()
+    viewModel: LiveSessionViewModel = hiltViewModel(),
+    routeEntryId: String? = null
 ) {
+    val ownedRouteEntryId = remember(viewModel, liveId, routeEntryId) {
+        routeEntryId ?: navController.currentBackStackEntry?.id
+    }
     val session by viewModel.activeSession.collectAsStateWithLifecycle()
     val viewerCount by viewModel.viewerCount.collectAsStateWithLifecycle()
     val comments by viewModel.comments.collectAsStateWithLifecycle()
@@ -269,7 +275,7 @@ fun LegacyLiveHostScreen(
         when (val preparation = hostPreparation) {
             is LiveHostPreparationState.Failed -> {
                 AppFeedbackBus.showError(preparation.message)
-                navController.popBackStack()
+                navController.popLiveRoute(ownedRouteEntryId)
             }
             is LiveHostPreparationState.Ready -> {
                 val requirements = preparation.requirements
@@ -387,7 +393,7 @@ fun LegacyLiveHostScreen(
         val error = uiError ?: return@LaunchedEffect
         AppFeedbackBus.showError(error)
         if (session == null) {
-            navController.popBackStack()
+            navController.popLiveRoute(ownedRouteEntryId)
         }
         viewModel.clearError()
     }
@@ -420,11 +426,11 @@ fun LegacyLiveHostScreen(
         } else {
             AppFeedbackBus.showError("El live se cerró en este dispositivo, pero no se pudo confirmar el cierre remoto.")
         }
-        navController.popBackStack()
+        navController.popLiveRoute(ownedRouteEntryId)
     }
 
     BackHandler {
-        navController.popBackStack()
+        navController.popLiveRoute(ownedRouteEntryId)
     }
 
     if (showOverlayPermissionDialog) {
@@ -929,7 +935,7 @@ fun LegacyLiveHostScreen(
             else -> null
         },
         leadingTopBarAction = {
-            IconButton(onClick = { navController.popBackStack() }) {
+            IconButton(onClick = { navController.popLiveRoute(ownedRouteEntryId) }) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Volver",

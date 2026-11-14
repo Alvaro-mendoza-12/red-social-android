@@ -1,5 +1,7 @@
 package conectate.com.presentation.live
 
+import conectate.com.presentation.navigation.popLiveRoute
+
 import android.Manifest
 import android.app.Activity
 import android.content.Context
@@ -88,8 +90,12 @@ private sealed interface FigmaHostPermissionAction {
 fun LiveHostScreen(
     navController: NavController,
     liveId: String,
-    viewModel: LiveSessionViewModel = hiltViewModel()
+    viewModel: LiveSessionViewModel = hiltViewModel(),
+    routeEntryId: String? = null
 ) {
+    val ownedRouteEntryId = remember(viewModel, liveId, routeEntryId) {
+        routeEntryId ?: navController.currentBackStackEntry?.id
+    }
     val session by viewModel.activeSession.collectAsStateWithLifecycle()
     val viewerCount by viewModel.viewerCount.collectAsStateWithLifecycle()
     val audienceStats by viewModel.audienceStats.collectAsStateWithLifecycle()
@@ -305,7 +311,7 @@ fun LiveHostScreen(
             is LiveHostPreparationState.Failed -> {
                 viewModel.releaseUnusedSetupPreview()
                 AppFeedbackBus.showError(preparation.message)
-                navController.popBackStack()
+                navController.popLiveRoute(ownedRouteEntryId)
             }
             is LiveHostPreparationState.Ready -> {
                 val requirements = preparation.requirements
@@ -396,7 +402,7 @@ fun LiveHostScreen(
         AppFeedbackBus.showError(error)
         if (session == null) {
             viewModel.releaseUnusedSetupPreview()
-            navController.popBackStack()
+            navController.popLiveRoute(ownedRouteEntryId)
         }
         viewModel.clearError()
     }
@@ -436,7 +442,7 @@ fun LiveHostScreen(
             },
             onClose = {
                 liveSummary = null
-                navController.popBackStack()
+                navController.popLiveRoute(ownedRouteEntryId)
             }
         )
         return

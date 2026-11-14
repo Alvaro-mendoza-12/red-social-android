@@ -16,9 +16,14 @@ internal class LiveToolAccountVisit(
     val key: LiveToolVisitKey,
     internal val owner: AuthSessionLease,
     private val commitOwner: (AuthSessionLease, () -> Unit) -> Boolean,
+    private val entryCurrent: () -> Boolean = { true },
 ) {
-    val isCurrent: Boolean get() = owner.isCurrent()
-    fun run(action: () -> Unit): Boolean = commitOwner(owner, action)
+    val isCurrent: Boolean get() = owner.isCurrent() && entryCurrent()
+    fun run(action: () -> Unit): Boolean {
+        var applied = false
+        commitOwner(owner) { if (entryCurrent()) { action(); applied = true } }
+        return applied
+    }
 }
 
 internal fun captureLiveToolAccountVisit(
@@ -26,12 +31,13 @@ internal fun captureLiveToolAccountVisit(
     captureOwner: () -> AuthSessionLease,
     currentGeneration: () -> Long,
     commitOwner: (AuthSessionLease, () -> Unit) -> Boolean,
+    entryCurrent: () -> Boolean = { true },
 ): LiveToolAccountVisit {
     val owner = captureOwner()
     // An invalid capture must never reuse the key of a later valid capture.
     var generation = Long.MIN_VALUE
     commitOwner(owner) { generation = currentGeneration() }
-    return LiveToolAccountVisit(LiveToolVisitKey(liveId, owner.accountId, generation), owner, commitOwner)
+    return LiveToolAccountVisit(LiveToolVisitKey(liveId, owner.accountId, generation), owner, commitOwner, entryCurrent)
 }
 
 @Composable

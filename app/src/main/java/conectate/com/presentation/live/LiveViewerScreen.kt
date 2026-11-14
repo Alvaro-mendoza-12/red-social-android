@@ -1,5 +1,7 @@
 package conectate.com.presentation.live
 
+import conectate.com.presentation.navigation.popLiveRoute
+
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -61,8 +63,12 @@ internal class LiveViewerExitGate {
 fun LegacyLiveViewerScreen(
     navController: NavController,
     liveId: String,
-    viewModel: LiveSessionViewModel = hiltViewModel()
+    viewModel: LiveSessionViewModel = hiltViewModel(),
+    routeEntryId: String? = null
 ) {
+    val ownedRouteEntryId = remember(viewModel, liveId, routeEntryId) {
+        routeEntryId ?: navController.currentBackStackEntry?.id
+    }
     val viewerCount by viewModel.viewerCount.collectAsStateWithLifecycle()
     val comments by viewModel.comments.collectAsStateWithLifecycle()
     val reactions by viewModel.reactions.collectAsStateWithLifecycle()
@@ -161,9 +167,7 @@ fun LegacyLiveViewerScreen(
         viewModel.leaveLiveAndAwait().onFailure { error ->
             android.util.Log.w("LiveViewerScreen", "Viewer cleanup did not finish cleanly", error)
         }
-        if (!navController.popBackStack()) {
-            navController.navigate(Screen.LiveDiscovery.route) { launchSingleTop = true }
-        }
+        navController.popLiveRoute(ownedRouteEntryId, Screen.LiveDiscovery.route)
     }
 
     DisposableEffect(liveId) {
@@ -181,7 +185,7 @@ fun LegacyLiveViewerScreen(
         } catch (e: Exception) {
             android.util.Log.e("LiveViewerScreen", "Error joining live", e)
             AppFeedbackBus.showError("Error al unirse al live: ${e.message}")
-            navController.popBackStack()
+            navController.popLiveRoute(ownedRouteEntryId)
         }
     }
 
@@ -240,7 +244,7 @@ fun LegacyLiveViewerScreen(
         if (wasConnectedToLive && session == null && !manualLeaveRequested) {
             AppFeedbackBus.show("Live finalizado")
             exitGate.runOnce { }
-            navController.popBackStack()
+            navController.popLiveRoute(ownedRouteEntryId)
         }
     }
 
@@ -256,7 +260,7 @@ fun LegacyLiveViewerScreen(
         AppFeedbackBus.showError(error)
         if (session == null) {
             exitGate.runOnce { }
-            navController.popBackStack()
+            navController.popLiveRoute(ownedRouteEntryId)
         }
         viewModel.clearError()
     }

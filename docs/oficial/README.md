@@ -4,6 +4,8 @@ Estado documental al 14 de noviembre de 2026. Esta es la entrada para desarrollo
 
 ## Estado vigente
 
+La [continuación 141 retomada](141-cuentas-motor-y-pantallas-live-2026-11-14.md) corrige la propiedad de cuenta/motor/pantalla LIVE, los controles retenidos, el replay de estado, la adopción del minimizado y las salidas por entrada. Aprueba 54 pruebas focalizadas y 2927 pruebas JVM en 538 clases; Lint registra cero errores y 343 advertencias. Siguen abiertos los RPC asíncronos restantes, la barrera física global de medios, el hardware, la seguridad integral y la APK final. Su numeración precede a las urgencias 142–143, pero este resultado es posterior.
+
 La [continuación 143](143-velocidad-servidor-y-entorno-android-2026-11-14.md) mide enlace Ethernet de 100 Mbps y una transferencia de 19,218/16,579 Mbps, distingue la latencia pública de la carga de Ubuntu y comprueba sincronización, compilación e inicio Android en emulador. Corrige una verificación web repetida, con 1.268 pruebas aprobadas; la mejora general de tiempo sigue inconclusa. Conserva 141 sin publicar, RLS y demás recorridos abiertos; la APK ensayada es de laboratorio y no representa una entrega final.
 
 La [continuación 142](142-ide-conectividad-stickers-y-seguridad-2026-11-14.md) repara la instalación incompleta de Android Studio, aísla el fallo de salida IPv4 local y corrige recuperación de medios y módulos web. Registra 1.264 pruebas web antes del último ajuste de botones, 29 pruebas relacionadas repetidas después y ensayos con datos ficticios en tres anchos. Los veinte controles de seguridad siguen abiertos con alcance explícito; PostgreSQL no tiene RLS. La continuación móvil 141 permanece local, sin publicar; no se entrega una APK ni se cierra la revisión integral.
