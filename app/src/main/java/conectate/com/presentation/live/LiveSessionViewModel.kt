@@ -130,6 +130,18 @@ class LiveSessionViewModel @Inject constructor(
 
     fun getCurrentUserId(): String? = authService.getCurrentUserId()
 
+    internal val accountVisitGeneration: StateFlow<Long> get() = authService.accountVisitChanges
+
+    internal fun captureToolVisit(liveId: String): LiveToolAccountVisit = captureLiveToolAccountVisit(
+        liveId, authService::captureAccountLease, { accountVisitGeneration.value }, authService::commitForAccountLease,
+    )
+
+    internal fun channelPointsFor(visit: LiveToolAccountVisit): LiveChannelPointsUiState =
+        pointsController.stateFor(visit.owner, visit.key.liveId)
+
+    internal fun stopChannelPoints(visit: LiveToolAccountVisit) =
+        pointsController.stopChannelPoints(visit.owner, visit.key.liveId)
+
     fun startChannelPoints(liveId: String) = pointsController.startChannelPoints(liveId)
     fun setChannelPointsForeground(foreground: Boolean) = pointsController.setChannelPointsForeground(foreground)
     fun stopChannelPoints() = pointsController.stopChannelPoints()

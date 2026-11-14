@@ -118,7 +118,9 @@ fun LegacyLiveHostScreen(
     val activeBattle by viewModel.activeBattle.collectAsStateWithLifecycle()
     val liveKitRemoteVideos by viewModel.liveKitRemoteVideos.collectAsStateWithLifecycle()
     val liveSupporters by viewModel.liveSupporters.collectAsStateWithLifecycle()
-    val channelPoints by viewModel.channelPoints.collectAsStateWithLifecycle()
+    val toolVisit = rememberLiveToolAccountVisit(liveId, viewModel)
+    val toolDialogs = rememberLiveToolDialogs(toolVisit)
+    val channelPoints = viewModel.channelPoints.collectAsStateWithLifecycle().value.let { viewModel.channelPointsFor(toolVisit) }
     val creatorLayoutStyle by viewModel.creatorLayoutStyle.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -131,8 +133,6 @@ fun LegacyLiveHostScreen(
     var showCollaborationDialog by remember { mutableStateOf(false) }
     var showHostToolsSheet by remember { mutableStateOf(false) }
     var showCreatorLayoutSheet by remember { mutableStateOf(false) }
-    var showDrawGuessDialog by remember { mutableStateOf(false) }
-    var showChannelPointsDialog by remember { mutableStateOf(false) }
     var showMomentDialog by remember { mutableStateOf(false) }
     var momentTitle by remember { mutableStateOf("") }
     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
@@ -145,7 +145,7 @@ fun LegacyLiveHostScreen(
     var permissionCheckEpoch by remember { mutableStateOf(0) }
 
     LaunchedEffect(session?.stream?.id) {
-        if (session?.stream?.id == liveId) {
+        if (session?.stream?.id == liveId) toolVisit.run {
             viewModel.refreshChannelPoints(liveId, includeRedemptions = true)
         }
     }
@@ -780,24 +780,25 @@ fun LegacyLiveHostScreen(
     var floatingChatMinimized by remember { mutableStateOf(false) }
     var floatingChatOffset by remember { mutableStateOf(initialFloatingOffset) }
 
-    if (showDrawGuessDialog && collaborationCapabilities.drawGuessEnabled) {
+    if (toolDialogs.gameVisible && collaborationCapabilities.drawGuessEnabled) {
         LiveDrawGuessDialog(
             liveId = liveId,
-            currentUserId = viewModel.getCurrentUserId().orEmpty(),
+            currentUserId = toolVisit.owner.accountId.orEmpty(),
             isHost = true,
             participantIds = guestInvitations
                 .filter { it.status == "accepted" }
                 .map { it.inviteeUserId }
                 .filter(String::isNotBlank),
-            onDismiss = { showDrawGuessDialog = false }
+            onDismiss = toolDialogs::closeGame
         )
     }
 
-    if (showChannelPointsDialog && channelPoints.available != false) {
+    if (toolDialogs.pointsVisible && channelPoints.available != false) {
         LiveChannelPointsDialog(
+            visit = toolVisit,
             state = channelPoints,
             isHost = true,
-            onDismiss = { showChannelPointsDialog = false },
+            onDismiss = toolDialogs::closePoints,
             onRedeem = {},
             onUpdateSettings = { enabled, interval, points, cap ->
                 viewModel.updateChannelPointSettings(liveId, enabled, interval, points, cap)
@@ -859,13 +860,15 @@ fun LegacyLiveHostScreen(
                 add(LiveSecondaryAction("guests", "Invitados y batallas", "Revisar solicitudes, invitar y administrar participantes.") { showCollaborationDialog = true })
                 openAudience?.let { action -> add(LiveSecondaryAction("audience", "Encuestas y preguntas", "Participa con el público del directo.", onClick = action)) }
                 if (collaborationCapabilities.drawGuessEnabled) {
-                    add(LiveSecondaryAction("game", "Dibujo y adivinanza", "Abrir el juego contextual dentro del live.") { showDrawGuessDialog = true })
+                    add(LiveSecondaryAction("game", "Dibujo y adivinanza", "Abrir el juego contextual dentro del live.", onClick = toolDialogs::openGame))
                 }
                 if (channelPoints.available != false) {
                     add(
                         LiveSecondaryAction("points", "Puntos del canal", "Configurar recompensas y revisar canjes.") {
-                            viewModel.refreshChannelPoints(liveId, includeRedemptions = true)
-                            showChannelPointsDialog = true
+                            toolVisit.run {
+                                viewModel.refreshChannelPoints(liveId, includeRedemptions = true)
+                                toolDialogs.openPoints()
+                            }
                         }
                     )
                 }

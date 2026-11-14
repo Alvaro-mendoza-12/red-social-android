@@ -1,0 +1,4771 @@
+{
+  "tests": 2828,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "classes": 529,
+  "seconds": 97.152,
+  "suites": [
+    {
+      "name": "conectate.com.core.cache.LocalAccountSnapshotTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.144,
+      "sha256": "3608cda3a4631b968db30e94a5b9b81bc1ecb94d20832037f6d91f056e31a577"
+    },
+    {
+      "name": "conectate.com.core.concurrency.DeferredRepositoryFlowTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.028,
+      "sha256": "825689108b622fe070efd836060ecaea3cf621ac911fc0c0b100837a051ab0ba"
+    },
+    {
+      "name": "conectate.com.core.feed.FeedNoveltyPriorityTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.032,
+      "sha256": "18f69e6fd079bc2c3f838a5d90829408aee5ee8600f35f7d3f0b92e4ff3a2beb"
+    },
+    {
+      "name": "conectate.com.core.feed.FeedRankingEngineTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.015,
+      "sha256": "d7cf80e1915b91562b4e4c5a8b665dd4ae26e42b71f5a62b027543164a134037"
+    },
+    {
+      "name": "conectate.com.core.feed.FeedSeenHistoryTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 6.238,
+      "sha256": "61872bcdc206994c85c15dddb955fb9e7416a732555f8c112aadf1a90aec5626"
+    },
+    {
+      "name": "conectate.com.core.feed.FeedSignalAccountIsolationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "8530848458cf609e67ae9eaa0675c9ecd551a283d101d2482f71c1523ac919e4"
+    },
+    {
+      "name": "conectate.com.core.media.BoundedMediaCopyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "f1d49a892d98c752bf2b3ff6b85b6aa57e8bd879c25e7474d3242340fe3a5c54"
+    },
+    {
+      "name": "conectate.com.core.media.BoundedMediaReadTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "fe20716992272f708c5db01e7461314a813b3e534d7f5575115366919bd296da"
+    },
+    {
+      "name": "conectate.com.core.media.ChatMediaExportTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.333,
+      "sha256": "96b1bc8d198ebbe127ce04c8912da54a6dcac6d599bc8ad263ac0708dc461dfd"
+    },
+    {
+      "name": "conectate.com.core.media.ChatMediaOfflineCacheTest",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.526,
+      "sha256": "72586a493d8684b72e62c3d599e807750de31aae1aefca03858a33d665307bc4"
+    },
+    {
+      "name": "conectate.com.core.media.CollectionIconContentTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 7.086,
+      "sha256": "8465e903d92cde397a754015f215b31eb0497fc0bf887a33dd8f480a9fb27fe9"
+    },
+    {
+      "name": "conectate.com.core.media.FileProviderPathContractTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.015,
+      "sha256": "b04d9f8b3366186a82ea369aed713493619a6e9222d5778d2f40526a407fe514"
+    },
+    {
+      "name": "conectate.com.core.media.GifMetadataTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "279fd5cf7a3555ca41414d619a982898d3a923094765660d39b9bb9d34957de2"
+    },
+    {
+      "name": "conectate.com.core.media.InteractiveMediaGateTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "86e8fa07935433c7431acaeb2f474b6dacccaec0bd679ab45b2730db1e47f273"
+    },
+    {
+      "name": "conectate.com.core.media.MediaUploadGuardTest",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "35d6b75f9e5b2cc8d36cb1ef648fe0c9867c585d6aab25d8877afd855b729908"
+    },
+    {
+      "name": "conectate.com.core.media.NotificationAvatarOptionalLookupTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.015,
+      "sha256": "b6aa8c89cabc41cfacb770a867ef5c1211481a960fbfcad2e76e28bd2dd88f3a"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileAvatarMediaTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 3.252,
+      "sha256": "f80d2a9f5ec174cdba3d0e764b8571f5ec359e4773e3ccdb279654ab89fce6e6"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileAvatarPlaybackTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.206,
+      "sha256": "1477173f41065697b827ca932edf7ce0805c11d5c6828efe0d31d00ed882b366"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileIdentityFilesTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 3.152,
+      "sha256": "92e2e9ef11bd1ec43da60d207a3a0853ce62a5f679714797e5393a7eed37cba4"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileIdentityImageStoreTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.015,
+      "sha256": "37adc6a0dd54d36cc17bd94c7e53f1bd17cdf6c23626220b6b9bcba4c6512b47"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileIdentityPersistenceTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.028,
+      "sha256": "489ca831ad1bb1969071d70e9e94b65e744b19d9a563f7be83fb1d6b15e674e8"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileIdentityRequestTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.088,
+      "sha256": "ef285ae745cc93a36bf02e8d52d20a7f00d99f08216cd11b18ef6c63400ae6b9"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileIdentityWarmupTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.048,
+      "sha256": "9ea603f27d7540e01e2f0cbc9d38da743255fbfc8acceb1e70791f519ccb1759"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileIdentityWriteFenceTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "e422cdf607654fcce3e554cac656bcec5948a00e76d9bdabdecd14e9762a418b"
+    },
+    {
+      "name": "conectate.com.core.media.ProfileMediaSyncTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.014,
+      "sha256": "2fecf94813df7abc16633bf480a41a6d829ed145b91b59d57024e2fbe8fc5b44"
+    },
+    {
+      "name": "conectate.com.core.media.ReceivedChatImagePolicyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "e6c18746cb2da1abd893ea59e778309e1c9cad61ae72acaf38106c4747b66d77"
+    },
+    {
+      "name": "conectate.com.core.media.StorageReadCoilOfflineTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.473,
+      "sha256": "0299f4d4f5d7fb72992084a6724c0cd0498519aa1e31b93c1431924dc5028a95"
+    },
+    {
+      "name": "conectate.com.core.media.StorageReadDownloadsTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.121,
+      "sha256": "5b79c5cc1c5a78be48f011c9f08ecbf4af089eb99fe89f929cae14066dd8d852"
+    },
+    {
+      "name": "conectate.com.core.media.StorageReadInterceptorsTest",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.07,
+      "sha256": "aa608aa12cf0fb3b879f9d02372f3d1632174c9b8e5f408bac2cf34367f664f2"
+    },
+    {
+      "name": "conectate.com.core.media.StorageReadPolicyTest",
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.037,
+      "sha256": "2d6f9929e2bbe7dee35fc4379af82793ad41443bc9f4beaaecca6f7834e3d348"
+    },
+    {
+      "name": "conectate.com.core.media.ViewOnceLeasePolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.075,
+      "sha256": "a0f2d51c5f6e715d9af659058d2ac152c6543fa114a09383a698a85199864e8c"
+    },
+    {
+      "name": "conectate.com.core.messaging.MessageReceiptStateTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "cfb07e993a413e054648a44bf514cda8498ac4f940993254a13d5ba1a7f516ea"
+    },
+    {
+      "name": "conectate.com.core.messaging.MessageSendConfirmationTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "baf7b929444b0348eaa9ef5a44f8fb2fdab1697a64f09a643fea0407af5bb395"
+    },
+    {
+      "name": "conectate.com.core.messaging.MessageTimelineOrderTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.007,
+      "sha256": "0ef457bdfd94e957294294cec205a4675eae6124e2b11a6fde1d775253019dca"
+    },
+    {
+      "name": "conectate.com.core.messaging.MessageUploadProgressTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "567ecab3842b34ce53a58b35706c11753114c4ead5fab09b850d4a19364b787a"
+    },
+    {
+      "name": "conectate.com.core.messaging.MessagingExtremesStressTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.046,
+      "sha256": "08b7ccaeb8931ac2fe178d7f9679a30c9e4f59fa8e4b404c05929be510ab89ad"
+    },
+    {
+      "name": "conectate.com.core.messaging.PendingMessageSyncPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "9c545b8105135ccdb7d2f5574dbf3ffbfc071f128f4ff7c8f8188334c31a27e5"
+    },
+    {
+      "name": "conectate.com.core.messaging.UnreadPolicyRegressionTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "7a4bced9d4c87492af53eecf03a4e609227342b5f586371bbd7bf1091bb9eb24"
+    },
+    {
+      "name": "conectate.com.core.moderation.ContentModerationServiceTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.082,
+      "sha256": "7ca2c4e793916087d31b607ed79ff25f883ceffb89b0b4ef3c0a76152b253f75"
+    },
+    {
+      "name": "conectate.com.core.network.AutomaticRetryPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "62041b0b8acd7ab8c0f6c12e198afd0c3fe44bf3529b6e8e60953a9fb5745160"
+    },
+    {
+      "name": "conectate.com.core.network.BackendAddressCacheTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.011,
+      "sha256": "527df8409cc1f632cb2a1bb4da20cbd29a809979bc1d0c27db62788a3538f64e"
+    },
+    {
+      "name": "conectate.com.core.network.BackendTrustPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.031,
+      "sha256": "1b90c7d3a1213d9c1a1aa00e39fe883cac97d81fa8c63b39bb31434671b320eb"
+    },
+    {
+      "name": "conectate.com.core.network.FirstSuccessfulDnsLookupTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.122,
+      "sha256": "8d5687e63feeb5ff78d5e3bfc5853ab83b33bfd1fbd7071a2c549ae562016a9e"
+    },
+    {
+      "name": "conectate.com.core.network.ObservedRefreshTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.062,
+      "sha256": "55e44bab211f8a55c32f0874f7d30fe9c02d15e310f0f65095e6bdf168da85c6"
+    },
+    {
+      "name": "conectate.com.core.network.ReadDeadlineTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.027,
+      "sha256": "5e875ef599b3f3cbaf696924db0d139c36f483027c4fad78b115f967dba9a0d8"
+    },
+    {
+      "name": "conectate.com.core.observability.InMemoryAppMetricsAlertingTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.199,
+      "sha256": "d0f0c0bc1a758d52814c0aac770879c2e9eedef6e31f3453d57a80fa18e83af1"
+    },
+    {
+      "name": "conectate.com.core.observability.MediaStartupTraceTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c30ed4f26908f9c02093102470b57a6d6cb9ec0aeaac1473c19f4b38bc804b71"
+    },
+    {
+      "name": "conectate.com.core.profile.ProfileSocialLinksTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "e50ce2e7c940a223ba5fe265d44d8ba6009c7100eb5f10d9e6341d67d0ca18e2"
+    },
+    {
+      "name": "conectate.com.core.repository.RepositoryCallHandlerTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.09,
+      "sha256": "c83063de5bd724a8ca8e761eb6e4e341e6e640ed5af6853aad00983a6f8f7633"
+    },
+    {
+      "name": "conectate.com.core.security.OperationGuardStressTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.276,
+      "sha256": "39b746b348ee7a4c4fd2141c72e99eb5ff154b37b95b7172e388c963bddd7224"
+    },
+    {
+      "name": "conectate.com.data.algorithm.AlgorithmApiPayloadTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.017,
+      "sha256": "953352699fabc2a61572e929b5383e9cc9d6f2f2ab7e18ff2d5f67fa87abd9ec"
+    },
+    {
+      "name": "conectate.com.data.algorithm.NaturalLanguageAlgorithmProposalTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.043,
+      "sha256": "f428b57008eef750d6ff7fd1baf0798b87dba72427305ebef474c767a2c1af72"
+    },
+    {
+      "name": "conectate.com.data.auth.AccountDeletionNoticeTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.128,
+      "sha256": "fe062b0230d2093501ea821d462e8c2d0723992ec079bfdf108291a120d9e8be"
+    },
+    {
+      "name": "conectate.com.data.auth.AccountLocalStorageGateTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.043,
+      "sha256": "7e37a3724efe948fe94073a0cc88d2954cf18874601c2563045dc1d32b3ab093"
+    },
+    {
+      "name": "conectate.com.data.auth.AccountSwitchCoordinatorTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.221,
+      "sha256": "4c467920ec5c23027fe48bed7b29acb78e92a7e1d64352edb1ecb3082973950e"
+    },
+    {
+      "name": "conectate.com.data.cache.PostFeedCacheTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.517,
+      "sha256": "d6aa63037606d1495488b1b0e397f6f8102f7012d1c04af7ea5238214c849be5"
+    },
+    {
+      "name": "conectate.com.data.documents.DocumentCatalogTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.01,
+      "sha256": "1c6d0b5fb98c001d2173c8bb5915a58bb5dab220a978f4cea708503e21cf4363"
+    },
+    {
+      "name": "conectate.com.data.livekit.LatestFrameDispatcherTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.035,
+      "sha256": "539cad31743bf81b6cb2ff3ef6a32251758e3dc5928ddbadbb8bda2e5d4472e7"
+    },
+    {
+      "name": "conectate.com.data.livekit.LiveCollaborationConnectionGateTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.035,
+      "sha256": "e9e66688c92188fc52954ec4f8bc3fc733bf3ddc39265b2861d3b6d1fca82fd5"
+    },
+    {
+      "name": "conectate.com.data.livekit.LiveCollaborationMediaTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.028,
+      "sha256": "b6c1d54bbae3b308a1612599ffffbfc425ed85b782d15985c993e1f4ed72f1c0"
+    },
+    {
+      "name": "conectate.com.data.livekit.LiveCollaborationParticipantCleanupTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "ca29204c501548cd959f0fa9a818ca13369e96220139803a7f6943354697e218"
+    },
+    {
+      "name": "conectate.com.data.livekit.LiveCollaborationQualityProfileTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "78e71f8d7c95b98376f1fdc0ff27c503edb58792e91d5ba0766e7728f6c397e9"
+    },
+    {
+      "name": "conectate.com.data.livekit.LiveHostMediaControlPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "3d5eb9425b9182c8f2bccf6c9d855c3240eee17ff9b82f15eec47c385ce286a9"
+    },
+    {
+      "name": "conectate.com.data.livekit.LiveRemoteVideoBindingsTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "572609d2756209dc4e90a2a23c42b1b64c1e6a52a35821b63d0076e9a240dd33"
+    },
+    {
+      "name": "conectate.com.data.livekit.LiveRendererRecoveryPolicyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.013,
+      "sha256": "624733170823060c1b473bbe4f4debeb7f7b4550075aea9f2a72f449e7118b1d"
+    },
+    {
+      "name": "conectate.com.data.local.AccountOutboxVaultTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.871,
+      "sha256": "c1fb4d141f9c556766a5effc65241f1b71d4f518081770c2ec722c902e43d886"
+    },
+    {
+      "name": "conectate.com.data.local.CollectionAccountVisibilityTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.361,
+      "sha256": "87275f35646190770595233a772b45a5c39861750dbceafe73748c8cead6ba30"
+    },
+    {
+      "name": "conectate.com.data.local.CollectionCreationTransactionTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.629,
+      "sha256": "7104300efe2e0e7ee1da2aa7c626727bf08a00dcf6267a8ff4f119be88c2b96b"
+    },
+    {
+      "name": "conectate.com.data.local.ConversationDraftStoreTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.394,
+      "sha256": "1ad4ab90a8b569fa8c0dba18e3fdeb8f14aac82135f61300bf7214c9b119789d"
+    },
+    {
+      "name": "conectate.com.data.local.ConversationDraftUnicodeTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.016,
+      "sha256": "c218ab5bc185355d07fba4f9e60e4f21c9c295566a2c9f87c0beadb11c9925b0"
+    },
+    {
+      "name": "conectate.com.data.local.DatabaseMigrationSchemaContractTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.013,
+      "sha256": "9f116ed05bfd7e7e7b8f1a97405ffe92753c534f3e61ebe3dada0c7ace92ef1e"
+    },
+    {
+      "name": "conectate.com.data.local.entity.ChatEntityTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.015,
+      "sha256": "8bc3e234cece19f39f1245a343c443e9e0416cfa80202b3813752956823e1648"
+    },
+    {
+      "name": "conectate.com.data.local.MessageDeletionMigrationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.481,
+      "sha256": "287ac1d89af855059018643c341e4f1f27eb5afcaafb36d37c3a2d27651f2231"
+    },
+    {
+      "name": "conectate.com.data.local.MessageReceiptPersistenceTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 6.847,
+      "sha256": "889b925dc492d8657e03f46391c1a368075052a0cca1156fda2a53dfa0ea3129"
+    },
+    {
+      "name": "conectate.com.data.local.OfflineMessageStorageTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.382,
+      "sha256": "fbac06da0f89afbbb0178fb3ea8848b527fb20352254d48f323f351a194c0e09"
+    },
+    {
+      "name": "conectate.com.data.local.OutgoingPreviewOrderTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.162,
+      "sha256": "6088630530aededcbd56f82f91d15d8354a7d6dd0f56bd7b6f2438ad5d3dbcba"
+    },
+    {
+      "name": "conectate.com.data.local.OwnedMessageTransactionTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.827,
+      "sha256": "4855ea7ae0806b23ece2725cfd02156a603bbd996e8d683e7acb9c64d1a6f4d9"
+    },
+    {
+      "name": "conectate.com.data.local.prefs.AppLocalePreferencesTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.271,
+      "sha256": "960e25630e6489b86f2a0f32399890d6ea38fe2ae95bb20568508eede9f01fde"
+    },
+    {
+      "name": "conectate.com.data.local.prefs.LivePreferencesTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "f89fe6bcf5e4ab3741bb2d10b2ba81a93d04ce9aff1bc1e712727bd88118f660"
+    },
+    {
+      "name": "conectate.com.data.local.prefs.SeenFriendRequestsPreferencesTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.134,
+      "sha256": "2cc9bd2c6588f545d55969ad329e11fdd3f3239b6e0ecb5f88f22ec8ff63ba24"
+    },
+    {
+      "name": "conectate.com.data.local.UserProfileCacheTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.193,
+      "sha256": "23d721b88c3226c0f010fab100b125a695603a798129b70edde4a909028a99ad"
+    },
+    {
+      "name": "conectate.com.data.localfallback.CollectionHistoryAccessTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.007,
+      "sha256": "c01b60fef2716672dd3c20d740895ec38d39e2d4246cb235d4f6786c4ee1a5bd"
+    },
+    {
+      "name": "conectate.com.data.localfallback.CollectionHistoryCachePolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "0a6d349a452f95bd86cee4081fab60a793934e3fdf597db0358e193cc7a34517"
+    },
+    {
+      "name": "conectate.com.data.localfallback.CollectionInviteQueryTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "1bebceb76fa883f43d8a07bbb1a0b662c411300bdfe2743bdac5cf209145f4d6"
+    },
+    {
+      "name": "conectate.com.data.localfallback.EndpointRefreshGateTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.043,
+      "sha256": "7f21dc2f2e8b6386b6f1e828e5ee576285bd52e6b5b47314992cb78b24e2ac31"
+    },
+    {
+      "name": "conectate.com.data.localfallback.GuestModeSessionTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.718,
+      "sha256": "e756fb03b452bc0db4207bc51170deb951e85b933985b35c835dabdb01bb72ab"
+    },
+    {
+      "name": "conectate.com.data.localfallback.LocalFallbackMomentMusicRequestTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "22d074dcf98050d914bac1a99291f70f4af38248a17b910f2f7cf17f18fc559a"
+    },
+    {
+      "name": "conectate.com.data.localfallback.LocalFallbackProfilePatchTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "21267f03fb66a45ae61f6952a1c7e9b723d85c69663e91468ab484ae0f6384fc"
+    },
+    {
+      "name": "conectate.com.data.localfallback.MessageSendHttpExceptionTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "35539efec0ed3dfb0fa9ae09500b743ec938193d4fb6dd049aca4e5361049763"
+    },
+    {
+      "name": "conectate.com.data.localfallback.PendingMessagePermissionPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "4a0f925457f02e4830338f09e57c1f4c6b3139356cb3a6adaeaf66eefefa446a"
+    },
+    {
+      "name": "conectate.com.data.localfallback.ProfileFollowCountMappingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "ce37529f25e3e6fb7270baa90355b4a997032b38e0b9ff05eb8d2ad3b196335f"
+    },
+    {
+      "name": "conectate.com.data.localfallback.PublicAuthorRoleMappingTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.323,
+      "sha256": "beffda8e6adf51fcac1f4082686806997010025463be0e52012db7288ea8f722"
+    },
+    {
+      "name": "conectate.com.data.localfallback.PublicFeedPagingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f22749690b2a661ad81fd579716605bb36d9504506b6e429e23b92a1170a1375"
+    },
+    {
+      "name": "conectate.com.data.localfallback.PublicProfileBirthdayMappingTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.076,
+      "sha256": "54d60d3bc95482ad96285a63859c861d9b671c162b7ba75aa28d9a56c0132d37"
+    },
+    {
+      "name": "conectate.com.data.localfallback.StorageUploadPolicyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.035,
+      "sha256": "842e537972a4c683e3c2a70b61cd4d09abfcb6d22bb3a7e73fa8572224e63677"
+    },
+    {
+      "name": "conectate.com.data.localfallback.SystemAnnouncementOrderingTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "966c5dc0c3f300b02655d52e8ea4a02e25551667ebbd10b5ea7e7dfae3427f58"
+    },
+    {
+      "name": "conectate.com.data.localfallback.SystemAnnouncementTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "9440e68ec2ea589bd4588e73b52ecf6a0e35b227ce0a4368f1e1d19859fc3d51"
+    },
+    {
+      "name": "conectate.com.data.localfallback.UbuntuRealtimeAdmissionTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.421,
+      "sha256": "925c6855d71deaa70e6aba790daff68b471c915819ccffed52e7313604d460a0"
+    },
+    {
+      "name": "conectate.com.data.localfallback.UbuntuRealtimeSubscriptionsTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.159,
+      "sha256": "607e1c6774dca6e1d6609ec7b041a7cce0147b68e4574de4cdd2556fcc316858"
+    },
+    {
+      "name": "conectate.com.data.localfallback.UbuntuStorageUrlTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "3adf69b6951290499053b0d12288f8a832189623f749af28892da75a47f389de"
+    },
+    {
+      "name": "conectate.com.data.model.AlgorithmModelsTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "91aa835542b3943ddd12c3f7de2819d6e4e92a614cf9d5f661cae1f937eaefd8"
+    },
+    {
+      "name": "conectate.com.data.model.BirthdayCardTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "383abbb34c692ebefd59bf6163c5ad639976e3e1dec0ed44ce3746fd2e21b7bf"
+    },
+    {
+      "name": "conectate.com.data.model.CommunityRoleCapabilitiesTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.007,
+      "sha256": "2598715965f9d932b4031a2a1cb7b987d4e6cda2164998fc8bb6e6675c814744"
+    },
+    {
+      "name": "conectate.com.data.model.ContentSensitivityStateTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "e8b8c441b1f3f2f29d16fdfc4f62808c96785f6f03553772feafc18701373090"
+    },
+    {
+      "name": "conectate.com.data.model.DirectMessageOfflineQueuePolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "03a15ab4b29c6c27ba0ecd2121ba34bc53d6f6bf3ad76227c6747d34a693abba"
+    },
+    {
+      "name": "conectate.com.data.model.DirectMessageRequestStateTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "47b7277718ff25e4432657ffa105c80afacdfba5eb72b486fa53993506977743"
+    },
+    {
+      "name": "conectate.com.data.model.DisplayNamePolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "7aef5a54c34fa0ea9a75e330323394f002a7753927eda415a9838c049bc9f8b9"
+    },
+    {
+      "name": "conectate.com.data.model.GiftCatalogTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.098,
+      "sha256": "768443ec126356926de4d273e94acc4beeed683a40d9698849484aa15dfd5593"
+    },
+    {
+      "name": "conectate.com.data.model.LiveAudienceStatsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "b6dc5b6f6e852032fc2d5f9a772d7f22341a696e235dfcabb32bf367313a5f8a"
+    },
+    {
+      "name": "conectate.com.data.model.LiveDrawGuessModelsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.014,
+      "sha256": "8830289acb5524f47230d7c1bd6479c483a4e0912e5ab96d17c4eb9e680a6e6c"
+    },
+    {
+      "name": "conectate.com.data.model.MentionDraftTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "a6f4b6f13aafb369d6f4975bfc23370cca8d9eebacf1011e88b8d7d89de5acd0"
+    },
+    {
+      "name": "conectate.com.data.model.MessageTimestampCacheTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.021,
+      "sha256": "820bab098668021fd71352e9df32806f7af9ba855a69eb4aa3f605b0bbdd6de4"
+    },
+    {
+      "name": "conectate.com.data.model.MomentHighlightExpiryTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "de082814ff096ad47bf215b7cd3edccb3a0539901180ccc2aba306838bc8a0ee"
+    },
+    {
+      "name": "conectate.com.data.model.MomentMusicPlaybackTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "370be22389a5c11aeec5a09d55d4c5037549059f73bf68974ec10591bffd6e2c"
+    },
+    {
+      "name": "conectate.com.data.model.MomentMusicPresentationTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "7e29a0157f8282f612e9b1a004d462539f625fd4942f622972bd10c0a37e88b6"
+    },
+    {
+      "name": "conectate.com.data.model.PlayMatchModelsTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.027,
+      "sha256": "739db168c784793cbc8a0b4d7d77ee28f822243542c97fda011944dbed04639e"
+    },
+    {
+      "name": "conectate.com.data.model.ProfileIdentityTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "43ec8184adb203980fba75f4c43b6d2f01941f3e006e604988139ffb38da6e55"
+    },
+    {
+      "name": "conectate.com.data.model.RegistrationAgePolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "89dfed3da91b2ab60a9071351ada2eb778aa058ef6a78c4eedd7ba3289e57f16"
+    },
+    {
+      "name": "conectate.com.data.model.RoomMentionCandidatesTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.01,
+      "sha256": "c2249348af9412207c40f9fdb6d9d8f3a33dce4a6a6948781ae0252ac6a5da00"
+    },
+    {
+      "name": "conectate.com.data.model.SharedVideoReferenceTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "e752001e84c296154cf7a30a3c3c989058da76dfc2fcff39809bb22c0f253a42"
+    },
+    {
+      "name": "conectate.com.data.model.SocialIdentityTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "89e261d693c1f395d75ea489b6b7f8597b7681b7a0fd5c806ad78689009ac140"
+    },
+    {
+      "name": "conectate.com.data.model.SocializationModelsTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "d2d8b8a3986134be9a3f9c3f4d07b642ab11c2a98438052e38e5fa55dcdc16b5"
+    },
+    {
+      "name": "conectate.com.data.model.UsernamePolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "b78353165753f46a47c0a1127be8ba2bb044d1863d525b503eb8a3a927733e50"
+    },
+    {
+      "name": "conectate.com.data.model.UserSerializationTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.038,
+      "sha256": "dc44424de14376ae0eb7b9d0a51ebc568c183545543a95960045c9b18d31272a"
+    },
+    {
+      "name": "conectate.com.data.model.VideoChapterPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "803ede1c39e4c61ef2a28695e8c709aeaf3252ec40edd94754e6e6d0bd89ca35"
+    },
+    {
+      "name": "conectate.com.data.model.VideoClipPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "5878eec5ac163c90c182b70bd46f8f2b322564a7f298b0063b782c03dc7ff97c"
+    },
+    {
+      "name": "conectate.com.data.model.VoiceStagePolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "fa592969d134b5776af5b3e39ef941a3e8858f1dc3ddd1269ac5dab7c4ab15d8"
+    },
+    {
+      "name": "conectate.com.data.music.CommunityMusicArtworkTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.478,
+      "sha256": "d091c468732d7ffd9bfd6d89acee456320e3aa06ed4ff2a018e32c4df406a006"
+    },
+    {
+      "name": "conectate.com.data.music.CommunityMusicPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.009,
+      "sha256": "ff75ff66d85c9b77f2d9c36eb6b95c3925286c5c01e98abfcbb2c1cad0c39a1b"
+    },
+    {
+      "name": "conectate.com.data.music.CommunityMusicTrackTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "f6cebd603a7ca62461450329134b6c3d045c42502bffc75a350d799cae55aa42"
+    },
+    {
+      "name": "conectate.com.data.music.CommunityMusicUploadCleanupTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.017,
+      "sha256": "66670852b1c0098385ab8c339d83583249f0fbaf7fe61ec1a0a50c8e99924504"
+    },
+    {
+      "name": "conectate.com.data.music.MomentMusicCompositionExporterTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "18ae752ca021ea3b78a7f1d79c83e1f5ceb0e48a051e7fedb1f707d72001fcfc"
+    },
+    {
+      "name": "conectate.com.data.music.MomentMusicPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "9de62903188726ad1895d618332f512b282660fcb2a355fd3950c5747746582f"
+    },
+    {
+      "name": "conectate.com.data.music.MusicLyricsImportTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "e40f4f5f38c2f5b4be4c3f90cb969f362ce4f586b9b1378596b32213e6dec6f7"
+    },
+    {
+      "name": "conectate.com.data.music.SyncedMusicLyricsTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "63f2b5e4aab7bef9394942e7f0e909e9b4d94a10251db0b50ff71c25c33c7fb2"
+    },
+    {
+      "name": "conectate.com.data.points.LivePointRedemptionJournalTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.541,
+      "sha256": "0b0488d9cb2027bd753e68764e9ca861255ed65304ffbe5481e73c8a26684bcf"
+    },
+    {
+      "name": "conectate.com.data.recommendations.AuthoritativeRecommendationMappingsTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.025,
+      "sha256": "e7d5f6918abf46c1cd116720bc5bc47864f89b31caf6d78ff98fba9048008c6b"
+    },
+    {
+      "name": "conectate.com.data.recommendations.AuthoritativeRecommendationPageJsonTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "542a62cd43600a5c2116663d980974a82e6c93282681428246f93fb6af88e1f5"
+    },
+    {
+      "name": "conectate.com.data.repository.AccountChatBackgroundStoreTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.124,
+      "sha256": "38c5f939a374765bb5ee3a605a87bab727bb024ba7e0f771e10dd7a565b262db"
+    },
+    {
+      "name": "conectate.com.data.repository.CallCollisionPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "f79b3e7173b07b1ffae1debd65415c3e9e9c577589a1708c29e30b3c6282a492"
+    },
+    {
+      "name": "conectate.com.data.repository.CallEndSignalTargetsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "2ccbcc2639dcd5feda239ce542ad3ef8bf5897dbde866a35e6d01ad18c26584e"
+    },
+    {
+      "name": "conectate.com.data.repository.CallHistoryAccountStorageTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "2d3c8abb171d099d0d20be59c769eae83708e73e09867a115a3ced47df95e692"
+    },
+    {
+      "name": "conectate.com.data.repository.CallMediaSessionPolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c1905d4905151802dd8ccf6e4583b78a63f27f1ee7b4cac5619601c3b2e47098"
+    },
+    {
+      "name": "conectate.com.data.repository.CallSetupTimingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "43cc84be8c95da36cfce232e0f5b247407320018193b8765110a44751083ed5c"
+    },
+    {
+      "name": "conectate.com.data.repository.CallSignalingTransportPlanTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "5b7fbfc57cbb1a0d7770ff4f6acd3c2cc022414d523a0993afcd6265eff155b2"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionCreationAccountTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.052,
+      "sha256": "db6fe3067e9264867c597f3207815486df89577def09fd185d9a3bd96dd479c1"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionCreationCacheTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.011,
+      "sha256": "cfd978af75cffa17ddd14edc3c7eb4518206ed9950938b4bab10309ff8f6b8ac"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionCreationJournalTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.574,
+      "sha256": "596cd15aaee15593ef1c5ee6dc1b9675d43cb658a328aa69c2487ec9565aaaf2"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionGovernanceSupportTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "10cb4572b339ec13a34bb5a3a453197700f1f46350b806cb4ebe96452d9da893"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionMediaFileNameTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "835140364bb2524a80e05442ff79d77f58c7b169af8540a8ffc6571f660e7b08"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionMessageDeletionTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.03,
+      "sha256": "7b51799126e2df59e867fdb69400451528b8626d79415624641366940e1f7e39"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionMessageForwardingSupportTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.016,
+      "sha256": "2d2af7b4e4f58569e1561b869f2e6686e9844432fde7fbfb61643275fd25392a"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionMessageSyncSupportTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "1c3dfc5104e02896d8f42085fc86d83dbd29a10532ea1326d01e1f82d77b266d"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionReadReceiptTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.018,
+      "sha256": "3aa95777c1c4de61f4b27dc2cdadde105135464f72dcb31cd3ff3d3c4a197f1c"
+    },
+    {
+      "name": "conectate.com.data.repository.collection.CollectionRetryCancellationTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.028,
+      "sha256": "9d7a5e55e978434aec55ef3eef87f44e115e8f8e9f1acf9bf17f2a48b595c856"
+    },
+    {
+      "name": "conectate.com.data.repository.ConversationPreviewOrderingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f619effad6b3f2bda3810ddbafb3ae835d855141f65695a3440390c68a19a9b1"
+    },
+    {
+      "name": "conectate.com.data.repository.ExplicitPreferenceUndoTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "2ed4ca63f38448ba9dff9f4172dbbd703adabfe6b47146a0138057f97baebc72"
+    },
+    {
+      "name": "conectate.com.data.repository.FriendMutationPolicyTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "d987398add92f7bdb08cd489048d015f7d483199745e6e22e839d532530420ab"
+    },
+    {
+      "name": "conectate.com.data.repository.GiftSendCoordinatorTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.031,
+      "sha256": "c3055d959781d897139ab15bd5ec0f9ddba3c6ffda9cb85056bef7ddf91eee2f"
+    },
+    {
+      "name": "conectate.com.data.repository.InboxPreferenceChangesTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.867,
+      "sha256": "e1f4bbe2f27975ff078d934ded75870acc6c8c5997450bd442f836b40a220d2a"
+    },
+    {
+      "name": "conectate.com.data.repository.InboxStateStoreTest",
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.198,
+      "sha256": "80fb7a1df2cb106e2690cb290183f763ed47aa4cef56a2a42a7bc358ac0d9b77"
+    },
+    {
+      "name": "conectate.com.data.repository.LinkPreviewRepositoryTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "3fb94d60004dd271116dfe3754d16f619ce48bb880c9c593dec23cfa19b0e052"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveDrawGuessAccountTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.305,
+      "sha256": "9e5d8c33d0270b641fedb310445da47a83908142c754f67fd6f8364142753013"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveDrawGuessRepositoryPolicyTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "2f4441488acc34e8b0713b501b8d7afdd11063c4cad38451d59dc61f8f2d2ea4"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveGiftEventStoreTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "e00ad1700331ac647cfe7cae59ee282990cb76c7d17531371b3f04f21a7d11ce"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveGuestCaptureProfileTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "c26ed79e40586000b76efbc2e777f315ac9ce81aa65f30a4bbb06fc33fea00ad"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveGuestMediaStartCoordinatorTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "7f1435ff4cd7c87c865d079447f0021b36dd8086c18e931c4e97e64511e4fce9"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveGuestRequestErrorTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "432ad784c415b422bd04f06fdd5f0aab0fae417361d031cc60635f2151e5d145"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveInitialCameraPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "bb34bc3b8b0a37eb47a562b603758df96f5634d9e8646a97f3b8f5e25423b0d9"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveInvitationUpdatesTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.015,
+      "sha256": "069d36e8bc9a11cab86b7988e76ed838393422db5ddc30814d5623a74d60390b"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveSessionLifecycleCoordinatorTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.021,
+      "sha256": "1eaa93425efd896bfdee8bd82c03237649064b3a0aa14ee0055195599ff7f0f6"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveSocketStartupTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.028,
+      "sha256": "b65eb4342bc59d27c9a6097baea980eeed21e050d0edc88778dbac036703564c"
+    },
+    {
+      "name": "conectate.com.data.repository.LiveStartupPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.02,
+      "sha256": "467170b7cf27b26aec6151fe42504591539e4c7552164cde86514d4f65e4aea1"
+    },
+    {
+      "name": "conectate.com.data.repository.LocalInboxNavigationRetentionTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.06,
+      "sha256": "d16eed87b110ea61ef3bfec241ac3c90bdd737b42578486b2b621629f86a5ff4"
+    },
+    {
+      "name": "conectate.com.data.repository.LocalInboxSnapshotTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "5bf901062679e8da768e040ac9440464ec6a247c0abc32b969c92b472e18f37a"
+    },
+    {
+      "name": "conectate.com.data.repository.message.AccountChatAccessTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.09,
+      "sha256": "e1f4ba4dd911c18afd690bc808c31ef7a3c1f4eab903bab6520304ba765bb570"
+    },
+    {
+      "name": "conectate.com.data.repository.message.ChatFolderStoreTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.77,
+      "sha256": "f77621116591208357d6ad5105d7a4bd5641015cc903de90f180534f5274deaa"
+    },
+    {
+      "name": "conectate.com.data.repository.message.ChatMediaPrefetchGateTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.024,
+      "sha256": "1c567ede896084e9ad09de8f007499429a604b9841f5eb9dbf6a2c8776322e16"
+    },
+    {
+      "name": "conectate.com.data.repository.message.ChatMediaPrefetchPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c39fe1f8ffb4e0e94fae37873d4c625ae5b621d6b2f23c7a113a7a263be73b8e"
+    },
+    {
+      "name": "conectate.com.data.repository.message.ConversationReadDeliveryNativeRoomTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 7.4,
+      "sha256": "a716793301c68d38fa4fd8f5694923e08e5599fb3b65d7a05d5cf5d78bef0015"
+    },
+    {
+      "name": "conectate.com.data.repository.message.ConversationReadDeliveryRoomTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.727,
+      "sha256": "2de68462fd9afa8d23fbf85c5b115fcea053cacb86d950efb200dcb92c69cfaa"
+    },
+    {
+      "name": "conectate.com.data.repository.message.DirectChatLookupPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "36d1e5682550dc95ee069ad2f75f856bc63b88e2c13d9391ea7d8854976771a1"
+    },
+    {
+      "name": "conectate.com.data.repository.message.InboxIdentityCacheTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.024,
+      "sha256": "34deb42f5eeaa41c83cfca002944d0c5107035bb905adcdf77de9cac31207872"
+    },
+    {
+      "name": "conectate.com.data.repository.message.InboxInitialPresentationTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f6275c5b1743ba37cfca11b5b0a1ec4052398f0bac45339b5d34a0d737455bd6"
+    },
+    {
+      "name": "conectate.com.data.repository.message.InboxPreviewNativeReaderTest",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 2.625,
+      "sha256": "1a9682803effba18f360b7dcfef86a86ac6ffb93779cf5cbc1012313824edd76"
+    },
+    {
+      "name": "conectate.com.data.repository.message.InboxPreviewReaderTest",
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 5.599,
+      "sha256": "95da2d9b3e1c647259303455d2841371c1e493271457da50cfe32697e2f1e628"
+    },
+    {
+      "name": "conectate.com.data.repository.message.InboxSyncPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "9fd6873eae28adeb43140b016a58009ca39215f0af2ffef4691220a4ca7eb549"
+    },
+    {
+      "name": "conectate.com.data.repository.message.IncomingInboxRecoveryTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.483,
+      "sha256": "f576d1f1f78e9cfba0dcc4fbfbaf7d3eec5762bf1c59842a42f635dbbadd6d19"
+    },
+    {
+      "name": "conectate.com.data.repository.message.MessageDeletionPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f6ed3ec595c2ebee0400ba016b9b5551063aa5c0fab992caf0249ab49cd0eb85"
+    },
+    {
+      "name": "conectate.com.data.repository.message.MessageDeletionQueueTest",
+      "tests": 17,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.536,
+      "sha256": "43b4aaf4944356db49615d048ea91852903baec2762054fe7a162f1b2ef52bde"
+    },
+    {
+      "name": "conectate.com.data.repository.message.MessageRealtimeAccountTransactionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.279,
+      "sha256": "0a1a6a8a2f3d624bd8656361581f3cf9362d7584c48b0c6fbcb6f8e55b64a116"
+    },
+    {
+      "name": "conectate.com.data.repository.message.MessageRealtimeLifecycleTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.27,
+      "sha256": "7f4ca23bca96dbfc2eaa8a27e96e4a2977c835a020d7d74c49f76a28571e0e1c"
+    },
+    {
+      "name": "conectate.com.data.repository.message.MessageSendCoordinatorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.034,
+      "sha256": "c5788d3cdca030f7a04e702816b54f4b815f35c1912d0af8832bb3843958c158"
+    },
+    {
+      "name": "conectate.com.data.repository.message.MessageSendExecutionTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.031,
+      "sha256": "4cb1863a8d76c2d4faa061108635863dbea20b561b33fac3ab121621ac4b1f11"
+    },
+    {
+      "name": "conectate.com.data.repository.message.OwnedMessageSendExecutionTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.071,
+      "sha256": "b6a4fa67779c5e2abd9e9b732b82d54531cbe0ab797e3d2975ca6d1996367bc7"
+    },
+    {
+      "name": "conectate.com.data.repository.message.PendingMessageBatchRunnerTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.05,
+      "sha256": "1cc409790e119d3a8f57360b211c46d66d37e8e390e61a287c214e426b8a390c"
+    },
+    {
+      "name": "conectate.com.data.repository.message.ScheduledMessagesReaderTest",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.962,
+      "sha256": "21c61d0a2ba7aeb296d7d0d578332035d5605529470b1576638c3c0f8dcec72f"
+    },
+    {
+      "name": "conectate.com.data.repository.message.SessionListenerBindingTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.047,
+      "sha256": "e7c0ce5e89b0c6e80c3461f7a9c7a638d62287e0022f67adf0f886e87b81bd5d"
+    },
+    {
+      "name": "conectate.com.data.repository.message.UploadedMessageRetryTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f50db0530d16ea2f01fd541c6398a256d02c5ce4ffa71f0c33e84962db8987e4"
+    },
+    {
+      "name": "conectate.com.data.repository.message.VisibleReadJournalTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.211,
+      "sha256": "f524095a56461760feb68614e0d9faa3c787d8ea5531173a258d2b41700b49ca"
+    },
+    {
+      "name": "conectate.com.data.repository.moment.MomentAudiencePolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "a8e4d6dab379e757dd1a43e04e81ad412d9138abf15460ae6533cb107d096f30"
+    },
+    {
+      "name": "conectate.com.data.repository.moment.MomentHighlightMapperTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "79879f91135c57524d7dc696cc12aafc607f7eeffdd1ca49d2a93a7cc4e4cf2a"
+    },
+    {
+      "name": "conectate.com.data.repository.MomentDeletionRollbackTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "9f3cd563d53aa0e133064a150310395943d5b62a708b9baf341cef699661a14f"
+    },
+    {
+      "name": "conectate.com.data.repository.MultiAccountInboxRepositoryTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "fe8745c2950d19fa5704a5b6ff14433d6761d18aebd140266e5762b640b94f39"
+    },
+    {
+      "name": "conectate.com.data.repository.NotificationAccountCallTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.054,
+      "sha256": "98133f60de0826fba260ed51c3c36d22c4468eccf986483e443258c34749d4b9"
+    },
+    {
+      "name": "conectate.com.data.repository.NotificationEventGateTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "77b09aa258836d671790ceffc7374f7ddb4811c1501fbcde342e2875080c5cc0"
+    },
+    {
+      "name": "conectate.com.data.repository.NotificationUnreadCounterTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "cc2616627db1b2647c950add4bc9630958773aca95e12411d1011020fa93ecda"
+    },
+    {
+      "name": "conectate.com.data.repository.OwnedChatHideTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.147,
+      "sha256": "1c345aab582d5e12dff544aab2201c11eb358ec3b3d54940baf515b239d8bb27"
+    },
+    {
+      "name": "conectate.com.data.repository.PostShareChangeTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "492907d53e9f0bd5f733b057059c3d8b7fbf4b998dfbc826c11ce43f30c42d02"
+    },
+    {
+      "name": "conectate.com.data.repository.PreparedCallSignalingContextTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "5ba4ca76a5b903a9a7820f37fdd2ae7a10cae760e1e2760ff5bafb99917d2cdc"
+    },
+    {
+      "name": "conectate.com.data.repository.ProfileReadPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f53b08473fe737e78fd4aa873bdf19435e5be9a7b29c37bb284f5e804ca9811f"
+    },
+    {
+      "name": "conectate.com.data.repository.ProfileVisitorsProfileJsonTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "2b092f6bbcd6a5857710f4b62e416f8d1fab4a2aa68eb42515b49c4ab078a1e3"
+    },
+    {
+      "name": "conectate.com.data.repository.SessionWriteGuardTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "1525c687bb8caad6605d0ad5567d4d348241e774ddfd4c2f2b6edb6906a94598"
+    },
+    {
+      "name": "conectate.com.data.repository.StickerCatalogPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "d10067bc728507810a1150f761dfa7a1b6cd294d322f66ef1dd16f9d113c3ce6"
+    },
+    {
+      "name": "conectate.com.data.repository.StickerFormatSupportTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "d37db41c3dcbb0f4f2b272ce703e076ee259564d3a22a4879c638c92dc421e96"
+    },
+    {
+      "name": "conectate.com.data.repository.StickerIdentityTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "5a89c437c33b77f7b28fb5d5f8cd2a996023ca294a0101fd125a529747142edb"
+    },
+    {
+      "name": "conectate.com.data.repository.StickerRefreshGateTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "d5cc443b2d267b0b6cd54d73e2864103ea19e58934de27be263ff127b86c1e1b"
+    },
+    {
+      "name": "conectate.com.data.repository.StoredAccountsStoreTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.113,
+      "sha256": "d9319c83e01b3b98d2a46303cd10db074e57313c6f883ea3f2c8139fe692d064"
+    },
+    {
+      "name": "conectate.com.data.repository.user.CachedProfileAvatarTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.328,
+      "sha256": "37d0999f80bb1a429a5926f88a5c2b488d236f35cdc3a6a29db902c7536493fd"
+    },
+    {
+      "name": "conectate.com.data.repository.user.ConfirmedBlockRelationshipTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.025,
+      "sha256": "0ab9d0b216fd5e9694ee297767c6645174b44a6fe4ed7dd836be434babfdab7f"
+    },
+    {
+      "name": "conectate.com.data.repository.user.LocalProfileIdentityTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "4263f19befb99efe59a9f1bd421fa0dddf81c49554647ce7f276d0bb11134b44"
+    },
+    {
+      "name": "conectate.com.data.repository.VideoAccountOrderingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c5662e74931893e2945e5e2ea14c4c8fdb2940d8aea90349b72c74ddf64c9933"
+    },
+    {
+      "name": "conectate.com.data.repository.VideoPublishRetryPolicyTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "3f160f22d2777585ab4951c195bea19b651cdf19e9892470085d0e031a8c0614"
+    },
+    {
+      "name": "conectate.com.data.repository.VideoViewSessionRegistryTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "10d249f0ae400b45e5c6419e3180eea55fe9ca3a7d28fb4dc904d438f0f8dfcf"
+    },
+    {
+      "name": "conectate.com.data.repository.VoiceRoomAdmissionStateTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "7d99635ad636884a54903862531391aaf0001dbba0cd8eaecd375261129d838b"
+    },
+    {
+      "name": "conectate.com.data.repository.VoiceRoomDeletionRollbackTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "d0d15d6cf6ef110a5ddf67ad6c154b80f1235aa67a1bda4ff7c5d72590ec6192"
+    },
+    {
+      "name": "conectate.com.data.service.CallCancellationGuardTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "6ad45546282bc8d320684c5a37ed89e25b75ecda742ce209585508cdadde5978"
+    },
+    {
+      "name": "conectate.com.data.service.IncomingCallAccountTargetTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.227,
+      "sha256": "ef8c96ad11daeda350f08fd6b654e9010fb5d8c7d08c1df237fad5040e6b6a4d"
+    },
+    {
+      "name": "conectate.com.data.service.IncomingCallRefreshPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c6f24e0c085199b6b762e98f2c70c5b86460332b5880485fccabcbd78090c2c1"
+    },
+    {
+      "name": "conectate.com.data.signaling.MediaSignalingTransportPlanTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "c5950a3081c4cc50873cee80d63ad55fa732e7ad2d0e92e34ac1d5610ed79947"
+    },
+    {
+      "name": "conectate.com.data.signaling.SocketAuthConfigTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.034,
+      "sha256": "c3c8a47db57b4535ae3e82123ceff44f33e0398ed5d03999e8a8e2311615dba1"
+    },
+    {
+      "name": "conectate.com.data.supabase.AuthMediaReadSnapshotPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.007,
+      "sha256": "18f5d21a48f95bd40b3f8a27e3726466ce7c15c87e85b0117de83aea5c4d40fa"
+    },
+    {
+      "name": "conectate.com.data.supabase.AuthSessionMutationGuardTest",
+      "tests": 25,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.144,
+      "sha256": "a138eef9cb65c0283f4b78729e91da81d3a886930ece647a6a05e357b85d1cb8"
+    },
+    {
+      "name": "conectate.com.data.supabase.OwnedUploadSessionTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.102,
+      "sha256": "85dae260c87635ff065d7ca445a8ceb7c5e80ec71405128da1fda99d391908a3"
+    },
+    {
+      "name": "conectate.com.data.supabase.ResumableUploadProtocolTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.01,
+      "sha256": "930c76250135be25b1937ac860ffd04197adac67cffe2e96abde1c318cc19aae"
+    },
+    {
+      "name": "conectate.com.data.supabase.StorageUploadCallTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.069,
+      "sha256": "eebda292cbe9c48e7438c732399e827d34e1659ead10746fc0e90e39e4943497"
+    },
+    {
+      "name": "conectate.com.data.supabase.StreamUploadTimingCalculatorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "d60879300fbb82a7a365db7dfaf4d3b4df3dec1a58067222b1b6a973fc8f91be"
+    },
+    {
+      "name": "conectate.com.data.sync.AccountSyncStageTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.042,
+      "sha256": "8b65900691895e4aa3b75b3804d9edc56c2ebe13e34842df96c6cde35e2686b6"
+    },
+    {
+      "name": "conectate.com.data.sync.PushRegistrationTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.026,
+      "sha256": "8a4d4bd026c624883f225cd601a50b0851a62263175fb538fdfea1f1d7af5788"
+    },
+    {
+      "name": "conectate.com.data.sync.SyncForegroundNotificationTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 5.546,
+      "sha256": "cd7da6eb69c876fd570ff15ab2d85e02ae810870d6312cf97e9d492a91d668d7"
+    },
+    {
+      "name": "conectate.com.data.voice.VoiceRoomCuePolicyTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "6f1cd2aa47baea03f44442eef31809d44b970e9c4e5ab11ae6c95673bcab4843"
+    },
+    {
+      "name": "conectate.com.data.webrtc.DeferredNativeDisposalsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "42f4d76ca04e88f41f5be31ac355be0eb4724f8732ae2eaa3bdd6160585359ce"
+    },
+    {
+      "name": "conectate.com.data.webrtc.LiveCameraFilterTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "a2ff1560430d2b8ac057cd1aaef8c86aff01756d383bf8e576e61c068291020a"
+    },
+    {
+      "name": "conectate.com.data.webrtc.LiveGuestPeerNegotiationPolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "7b188f1a2ea8029f89283c9f53fc0d787c45559d0698598ab7d9dd459a0de92d"
+    },
+    {
+      "name": "conectate.com.data.webrtc.LiveMusicAudioMixerSignalTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "e6f8da6f5d8a133698ab4f53e6aa2c1741b68acd43f07540036d0dba7984c91e"
+    },
+    {
+      "name": "conectate.com.data.webrtc.ManagedIceReadinessTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "9ef5cda497661669c2ae3b62b8df54856eb7f168ebaba870c6ae6dfb79ec485f"
+    },
+    {
+      "name": "conectate.com.data.webrtc.MediaSenderIdentityTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "5979db45dadbeedfe90199d31a3a3bee114ff4712a1a1205a509eefa96a7384c"
+    },
+    {
+      "name": "conectate.com.data.webrtc.MediaTaskExecutorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "72b4d9b4cdaf0abf948f6a194a2ecf961b205cbec339eb8cad42ad81c61b0643"
+    },
+    {
+      "name": "conectate.com.data.webrtc.NativeCameraProfileTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "6e0d2b0b23f0ae931fa5cff1d199306e76d6ee77c50cc2d72af6bf1211cffc3d"
+    },
+    {
+      "name": "conectate.com.data.webrtc.NetworkHandoffPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "b4b0ccac613bb00bfb27d63e6136ec805c67aacf60361e984917c1ea99966fa2"
+    },
+    {
+      "name": "conectate.com.data.webrtc.RtcAudioLevelBatchTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "cdc63e29ea8c74aa7521511da6536c90154ecd352d840d2eddd3d73eeea0a863"
+    },
+    {
+      "name": "conectate.com.data.webrtc.StableCameraFpsSelectorTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "0dfce919567365160e3c75330fe1692287f5aa36260828d565cbf9ba9a837312"
+    },
+    {
+      "name": "conectate.com.data.webrtc.WebRtcNegotiationPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "cd03b00b1b24a85ccbbf2a121694a06af0ebba0343ee4c97918d92c2f6e89607"
+    },
+    {
+      "name": "conectate.com.domain.sync.PendingSyncRetryExceptionTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "c5697a512ff7ec2c621964944afec678e038291c6118f4c493dced5cc457e9a0"
+    },
+    {
+      "name": "conectate.com.presentation.analytics.CreatorAnalyticsPeriodTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "4aaa8190f591d64de4836c8a8d4d8423b326e25e36900a86fee4d5e3c24caead"
+    },
+    {
+      "name": "conectate.com.presentation.analytics.CreatorAnalyticsPresentationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.011,
+      "sha256": "6df01fae58199fedc6ac1f8a7b1808b8e398e3a8c6684807e716d41adde467b5"
+    },
+    {
+      "name": "conectate.com.presentation.auth.AuthEntryFormCancellationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.024,
+      "sha256": "5e1fe3baef45458ee0f2cf315875914e0202c48361f22fab7fd738a4064ae4e5"
+    },
+    {
+      "name": "conectate.com.presentation.auth.AuthEntryOperationTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.025,
+      "sha256": "f3918dd432595dd22c483d34455ad00555696e82aafc40bec1494e3bd0bad771"
+    },
+    {
+      "name": "conectate.com.presentation.auth.GuestSocialSectionsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.034,
+      "sha256": "bfc5ff375984d6f3543ace939006ac54ba4fb6299e4b94d5eae3faeab548fd41"
+    },
+    {
+      "name": "conectate.com.presentation.auth.PasswordChangeValidationTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "1b504c8976909ae39eec1b3f3c8074645fc9ad54dcea9c219eef2019f4b3cae8"
+    },
+    {
+      "name": "conectate.com.presentation.auth.StartupDestinationPolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "729115cbab3d2a9ae761ae52b8cbec1a183dd5abae3614ef84b606f48ca86aaf"
+    },
+    {
+      "name": "conectate.com.presentation.auth.WebApprovalAccountIsolationTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.033,
+      "sha256": "ef5f6c521958f50c1678fba72838ee1f4784713398819abf181722ca0dc3f831"
+    },
+    {
+      "name": "conectate.com.presentation.auth.WebPairingApprovalPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "f8765871d82478c94963a1d3a01e7bdc395fd24e5e4c038978987bd0cd1779da"
+    },
+    {
+      "name": "conectate.com.presentation.calls.CallMediaVisibilityTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.007,
+      "sha256": "540489f5a5dd94056823b8f2deb5df4103b405a975d3cc7c0241b84899124532"
+    },
+    {
+      "name": "conectate.com.presentation.calls.IncomingCallAnswerControllerTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.097,
+      "sha256": "d54392cf39a07163aa9a3b040db4717e0374b1ac2f388eeddd39e1c394ff89af"
+    },
+    {
+      "name": "conectate.com.presentation.calls.IncomingCallAnswerPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "b540a740a7c057f086b4864b716763b39465154aa21d646c53e9cf22ff231311"
+    },
+    {
+      "name": "conectate.com.presentation.common.FeedRecoveryPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "1419bf60df5524323ffb8cd136a209989d84d52a078821dda5f6d60100994574"
+    },
+    {
+      "name": "conectate.com.presentation.common.ForcedSessionExitGateTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "73cce3676f5bad39b8c2f96222a560e959d9c9b358f7efdbf681d718005f90f7"
+    },
+    {
+      "name": "conectate.com.presentation.common.NotificationAccountOpeningTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.07,
+      "sha256": "4670633b342e5b55295a988522990583a131a3b776fceed043819eec15aafc19"
+    },
+    {
+      "name": "conectate.com.presentation.common.OfflineRoutePolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "a5b18e58aa46c7879f8db420fe36e1a81040e01bf6ab7c9d7ad0c0b9c62f23d6"
+    },
+    {
+      "name": "conectate.com.presentation.common.UserFacingErrorMessageTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "fb5fb385d604094c92099491dc19789cd383737aa7a0fcf021a80493ff069f02"
+    },
+    {
+      "name": "conectate.com.presentation.components.AvatarMomentIdentityTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "a1a19638aaacd90c9d8af3eaa107893015a1caa80e059f190c87e09c0955279b"
+    },
+    {
+      "name": "conectate.com.presentation.components.ChatSpellCheckerRegressionTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.138,
+      "sha256": "4910ce7cb08fe49531fa5da2a3e2dffa0c8b0014b851348a7f65a018a22726e9"
+    },
+    {
+      "name": "conectate.com.presentation.components.CircularProfileImageFallbackTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "083240ed69d2202563e123a5910c0bf5f7ef023cef88a9d53dd24c1b73a3d9db"
+    },
+    {
+      "name": "conectate.com.presentation.components.FullScreenMediaViewerTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.014,
+      "sha256": "29a0e9154fd97a26356f7178fba1fd6645258df8b4187fe3895dbe92b80340ec"
+    },
+    {
+      "name": "conectate.com.presentation.components.ImageCropGeometryTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "db4bc7573c624bc27adde18c96463cd64b1267f7f28de59f827fbcf6249768be"
+    },
+    {
+      "name": "conectate.com.presentation.components.LegacyStickerContentTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "a5567220c38b043ef8a59565ae7c0c023def02d1cff5869952f6ff0d793aa11a"
+    },
+    {
+      "name": "conectate.com.presentation.components.MediaViewerSourceTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.02,
+      "sha256": "f564c83270b6400f18a554efebf31547acb9e344a1074407faafc2bb9b69767d"
+    },
+    {
+      "name": "conectate.com.presentation.components.MessageTimeFormattingTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.009,
+      "sha256": "43a0add05504e3aca809e998180ba9c8f48480a6a634b4cfb1a70160dabf8e9f"
+    },
+    {
+      "name": "conectate.com.presentation.components.MyMomentComponentsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "3b3029c96943f4ba67f062a973b1169f8e8dc1cd591609f11bdf43e81d38cbb8"
+    },
+    {
+      "name": "conectate.com.presentation.components.PostMediaTypeTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "0f3682a5d49c5593334d488c15a070723ac77650b77ac2d9648890bbfc14c5a1"
+    },
+    {
+      "name": "conectate.com.presentation.components.ProfileAvatarVisibilityTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "086918153df4fa78cb3d063445bf9ff2b7c4b4fb5359c8288cabd25f8e4836fb"
+    },
+    {
+      "name": "conectate.com.presentation.components.ProfileMusicUrlTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "09c484f2cff761857bda81e5b0625aa5e5ea50301152ead357370f8d1db4d4b5"
+    },
+    {
+      "name": "conectate.com.presentation.components.ProfileSystemAnimationsTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 2.109,
+      "sha256": "9014eb9b10fc12abb98d097f6a83c8937b402b94cfbc71cb34784d2a4063a6c1"
+    },
+    {
+      "name": "conectate.com.presentation.components.QuotedMessageAuthorTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "8efa5d8ecd3656a2bfb6319594fc8f772ee5ec2f594cc4b98e89dad2ee11a91e"
+    },
+    {
+      "name": "conectate.com.presentation.components.ReportSubmissionTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.042,
+      "sha256": "632352c2c8e006f63b3b78b2a956a0acf72feacadd9a377bc3b9a54454b87cc8"
+    },
+    {
+      "name": "conectate.com.presentation.components.SharedPostLinkRegressionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "af6b2c608685b73bdb72d3ebb625c8f205a35ea5251884c49bb65549dec9f217"
+    },
+    {
+      "name": "conectate.com.presentation.components.VideoViewportTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "9056eaa3c5c97218850d5262eef4b6cdadc4ef39b3f70e486cfde2364a42742d"
+    },
+    {
+      "name": "conectate.com.presentation.components.WebTextLinksTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.181,
+      "sha256": "1567fbbb58b3c83369dfa0dfcb1615ed7e58aeffd180c8e9f4b4f54c7f5ae905"
+    },
+    {
+      "name": "conectate.com.presentation.documents.DocumentContentParserTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.357,
+      "sha256": "a619b8d88624b5a2446e8c30d70ad29714a6f5c3228083b4084c5aa1e18cd990"
+    },
+    {
+      "name": "conectate.com.presentation.documents.DocumentExportMimeTypeTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.034,
+      "sha256": "a826eb236334604652890e51817588e6604a0cc124b0c2784fa929e3bb40e5c0"
+    },
+    {
+      "name": "conectate.com.presentation.documents.PdfViewportTransformTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "d6f6ea74a98b1f107b098c6831651058600c5a30d5156a59d36f85fa727077f1"
+    },
+    {
+      "name": "conectate.com.presentation.gaming.PlayMatchAccountTasksTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "480064592fcf3ea057acf490f8e627bffd5445935573d3258bb4b084a7abdda7"
+    },
+    {
+      "name": "conectate.com.presentation.gaming.PlayMatchDiscoveryControllerTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.039,
+      "sha256": "4d0e7458d4c3e556872f8c89bca0e7b1e900a8627f076d5cef1e6746a6f566c4"
+    },
+    {
+      "name": "conectate.com.presentation.gaming.PlayMatchUiPolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "261308c2ae5a7cc712ab882d366ca61cc304092b5a1e855deeb0b714ba9bc7bf"
+    },
+    {
+      "name": "conectate.com.presentation.home.BottomNavigationGamesTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.05,
+      "sha256": "1012f8a237a9bf595bd7eb9cdaf3c65e9a9335191c2eca2a5aaf465e87968b10"
+    },
+    {
+      "name": "conectate.com.presentation.home.HomeGraphInitializationTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.016,
+      "sha256": "ceaa3c6c32ba65dae839a2a2eacc948263fe28b4dc4830a846c2dc100545bc9f"
+    },
+    {
+      "name": "conectate.com.presentation.home.HomeNoveltyPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "93cfd45adef7a00e1011c7e97bb3009024f13718d62a736e4d39b68668366813"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveAudienceSessionTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.334,
+      "sha256": "bbcbbabbbb15849237520865be156acd33c520c79145b9aea487a848bf4eed32"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveChannelPointsAccountTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.12,
+      "sha256": "e95d82412fb8e014cfd0605602dc55a038f1f064ec5dff520f71573b235a9cff"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveCollaborationPollingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.031,
+      "sha256": "30add388897e99aac72aa463bb69ca1a13feaaa00edab12b6b5558a4851de635"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveCollaborationRetryStateTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f8a6711181228a9731527944017f51219a875c9b11a79af85a8dfba48a92de34"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveDrawGuessErrorMessageTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c1d787df1b4d6fc528eeefd47c81e7f5867e1aba09ab40c0ac78b6a33fb43292"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveDrawGuessVisitTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.257,
+      "sha256": "18bcb956ebf49829608854873b9077452734a4c7fadd2082164152a774be7953"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveParticipantLayoutPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "3639e361f687da0d4de15a99560d04290c2e2957191bf19a79aa9b3f7c2344f5"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveReactionsOverlayTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "373ed2ffc7b8003f9465424b3ae1777432c0c4ed38ad454472a811c137c01bef"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveSessionScaffoldPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.009,
+      "sha256": "c44268ccafe954785600d9009c951d5e92b91936dd7472ab1f86d8b6faac5fa9"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveSetupPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "2b4729e58912104da3ac240e8ce5b0bcb48c1330700e274438d1705a26203b2d"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveToolAccountVisitTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.026,
+      "sha256": "d00f98996c380e378ad4cf075278616d3e25c25a3e9db312504de60205c22b52"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveViewerCollaborationPolicyTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "7ced7f71f7c4da6976b3fea3e791725ac71bc9bcc3c2eb6a9bcc8734d6ac8c2b"
+    },
+    {
+      "name": "conectate.com.presentation.live.LiveViewerExitGateTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "9a858ef66afc384cfbdce8a940c2bed336c6c6581f32a2abf6f9b815d704ff55"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ChatCameraCaptureSessionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "fd6c64e7a9391abcf6c8def2c9a1d52808ae8dfa8e83cc5ce3daec32fa6fb29c"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ChatCameraFlashTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f50b7dfb1933d06d44cac1fd737fe782ec4b6d4a97ea64f951126d4eda57fc52"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ChatComposerKeyboardTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.376,
+      "sha256": "bed6c81b2a77167e62fdb87824b5772b3a5b296e4225372fa97602c166324ed6"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ChatEmojiBackspaceTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.35,
+      "sha256": "4c142248aee55ca1bf5b8ce3cfe46a9b197f24aca68623f51e111fcc822369e2"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ChatWorkspaceTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.016,
+      "sha256": "3061c67328b7d3709326732907dcbb9ff4b2770e32af850b861f62c34940e609"
+    },
+    {
+      "name": "conectate.com.presentation.messages.CollectionActionRunnerTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.038,
+      "sha256": "97f924cebf8cebfe33c2a11d7e22bc7da7c9271d3f48d77f4a189cf9b7f47b70"
+    },
+    {
+      "name": "conectate.com.presentation.messages.CollectionCreationNavigationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.265,
+      "sha256": "186a1f59da91f41ca35d3fc0ac29abcd830152c1772c026f04109986d3a715ac"
+    },
+    {
+      "name": "conectate.com.presentation.messages.CollectionCreationRecoveryTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.032,
+      "sha256": "10561deba9e3fcdf92b2efce0d97f26ee4855d6390e1778b3caf8050a857d6d2"
+    },
+    {
+      "name": "conectate.com.presentation.messages.CollectionCreationSessionTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.037,
+      "sha256": "bb80b6fd8823bbbb83a4b889d897437453069291fce611a79bbcd5fb4acf45db"
+    },
+    {
+      "name": "conectate.com.presentation.messages.CollectionQrParserTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "4e4b3f7cfd388fee1083bfb6690fd450c79ef4cc9574ca3f22796249ed7be2b4"
+    },
+    {
+      "name": "conectate.com.presentation.messages.CommunityDetailSessionTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.022,
+      "sha256": "8507bdb031faecf18b53b3fab49e61c4246cc0d08c179f5982d6cfcf60738294"
+    },
+    {
+      "name": "conectate.com.presentation.messages.CommunityQuestionTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "cfbf7891f2963ac80bf8305fc8b19afbb7b81acec5ac5094f1caefa49dc99c8f"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ConversationDraftComposerTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "8567ec07f169d188aa84762435fb1347cc72d3268a2ec0c7afc1ba629facb05d"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ConversationMarkerFeedbackTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "d148f024d5208d73a530c32b152d67bb9efa037a5de3cafd301c946d1ca1c5d2"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ConversationMediaGroupingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "9dd49a5980949bbaf61d410d25462f851d5bbab5afec7707fbeeadc191b75c20"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ConversationScrollAnchorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "29be7a1b6a1adf81591b348e1922bdb0e703fa783674df698a3c77f867cc8192"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ForwardCoordinatorNavigationTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.017,
+      "sha256": "382db8f3b14bb22da4367ff0566e2bf6de78cf088de5a9b9faa40be4688cd6cb"
+    },
+    {
+      "name": "conectate.com.presentation.messages.InboxFilterCountsTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.007,
+      "sha256": "66bc5d54819b175f2b63789a63c9398267103b7c6afabe0fa68c6a0479e00490"
+    },
+    {
+      "name": "conectate.com.presentation.messages.InboxMessagePreviewTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "00a0d7cd1c34d464d73fd14ade6bccac04778a277036312d697b18a3f5fe4c9b"
+    },
+    {
+      "name": "conectate.com.presentation.messages.IncomingConversationVisibilityTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "e923966da263f9469c99d37a63980474d7fb276d58f1aeb07315e2136f46e5dd"
+    },
+    {
+      "name": "conectate.com.presentation.messages.IncomingShareCleanupQueueTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "45f55f5a6e01ed1c382b91c580f02b25698585d57b9b502ef2e59a50d5227e23"
+    },
+    {
+      "name": "conectate.com.presentation.messages.IncomingShareDeliveryTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "a7c5a5db8a8f54b332ae4861d6b75eeaa8365bc3885aba4206a9ded1ca50fca7"
+    },
+    {
+      "name": "conectate.com.presentation.messages.IncomingShareLaunchPolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "cdf0c24d057294ce3065d1141d8329e60306b6c1c38c2ede0db4a09d14b5fe53"
+    },
+    {
+      "name": "conectate.com.presentation.messages.IncomingShareParsingTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.328,
+      "sha256": "4af74b47cdb92cf7d858381e148487276f02affd27f903bede02cde138993ca9"
+    },
+    {
+      "name": "conectate.com.presentation.messages.IncomingSharePermissionTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.437,
+      "sha256": "4df88d3e70bef64c3c5dea5c871db921c1e05d408b06ff2813ce5ebc6670027c"
+    },
+    {
+      "name": "conectate.com.presentation.messages.IncomingShareSourcePolicyTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.308,
+      "sha256": "e9bc2db63b5a8550ee88d5ee0dbf26cef87defec061a411bd208f45cd02c1b87"
+    },
+    {
+      "name": "conectate.com.presentation.messages.MessageDeletionSelectionPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "2bae9c8b1d624f482b02ec30d747af02abcab7832d9e702ba71b83cd78e941c1"
+    },
+    {
+      "name": "conectate.com.presentation.messages.MessageDeliveryStateTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "9ff1928726e5ff205c7830b2a12ffb371d0ae2ed89de5cd3e59269f427975d23"
+    },
+    {
+      "name": "conectate.com.presentation.messages.MessageWebScannerTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "71770ce5fe28af5af98b16ca4fd81a7fdf1407bc4ec3a5ffef121ae4b3b275e9"
+    },
+    {
+      "name": "conectate.com.presentation.messages.MessagingInboxFocusFilterTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "ee55780f42f34d1333264d2fa336a8b6d5eb4ee65ebd783fffa6970f4b549b26"
+    },
+    {
+      "name": "conectate.com.presentation.messages.NovvinChatControllerTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.115,
+      "sha256": "5870d39f2369852d8d1630bdc6932e828bd0da11025ecf28cf6b90d30016299b"
+    },
+    {
+      "name": "conectate.com.presentation.messages.OptionalConversationDataTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.021,
+      "sha256": "aa8e2e464c417a2a8ac8a1c0fadc54bef20dc3781f09262131ce734780251adc"
+    },
+    {
+      "name": "conectate.com.presentation.messages.OwnedForwardCoordinatorTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "2e45ff0fccc319fa986ff7e7cbd1a4f4173ae769884b213874100ef4faac126e"
+    },
+    {
+      "name": "conectate.com.presentation.messages.PollVoteCountLabelTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "96088d4ebb3b06fe765b91e65bcbc450519fbb31921fbca9e11cc3cc3f2ce065"
+    },
+    {
+      "name": "conectate.com.presentation.messages.QuestionCloudMotionTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "bbb066ead83c0e533199d9fa02362e6da974ca30495740a5a03f39dd3756e212"
+    },
+    {
+      "name": "conectate.com.presentation.messages.QueuedMessageComposerTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.013,
+      "sha256": "c2dcfbebdff90be634ff56dcc7d6c4deb83f87bafea79fb0e49b0285b084bbb1"
+    },
+    {
+      "name": "conectate.com.presentation.messages.SavedInboxControllerTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.09,
+      "sha256": "5c90802518886392f798e05ce75e32d6962f381a184e93dfb88d9f4ea14596ed"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ScheduledMessagesControllerTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.078,
+      "sha256": "34c66e8de5414ca2132689a4eb4fc5e6b2a58b27e7441da875337c32146179a6"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ShareBatchDeliveryTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.098,
+      "sha256": "46546555d45c1d9da81288e12ee25b085c9a2c0ed53732adb66d310172c2f9b1"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ShareBatchJournalTest",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.553,
+      "sha256": "c6a99c501883cb4c5b58238322932090d6aadc4ed68bd66a4994b70f3ee7c567"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ShareBatchRecoveryTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.042,
+      "sha256": "a3cec08b245d2e555ba515b408ffd09a743d6186d0dd0dff1876331169c77337"
+    },
+    {
+      "name": "conectate.com.presentation.messages.SharedTextPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "ce68b4af70c04b2195d5f6c271e6f70a198e6f10bc70743ee033f1a47d7da347"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ShareFlowUtilsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "e1c1cf27824ccff2216be74ab1e8c31516a8b5299a2fbb25de5bf6fb54d1e592"
+    },
+    {
+      "name": "conectate.com.presentation.messages.ShareRequestSessionTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.085,
+      "sha256": "6c089bf65739800b1d7da0a7946853637ad0ed0bbf1ff85c6ad6f3a70add4a48"
+    },
+    {
+      "name": "conectate.com.presentation.messages.VisibleMessageLookupTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "9331e97094c1947d64f3a7a612a6d8f15e912ee91978de8ad110f0fa0e6dc5aa"
+    },
+    {
+      "name": "conectate.com.presentation.messages.VisiblePollRefreshControllerTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.034,
+      "sha256": "002f18c73d37e6f759e82c698fdb3c5c055073b285e6842269212b66ed34fd24"
+    },
+    {
+      "name": "conectate.com.presentation.messages.VoiceMessageManagerTest",
+      "tests": 24,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.171,
+      "sha256": "e2455481c60276299b3bb00f37da974b3db14515357bc5f07fcc4990c57b139a"
+    },
+    {
+      "name": "conectate.com.presentation.messages.VoiceNoteEnqueuerTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.062,
+      "sha256": "784e62f52ef95f3bc0d627f31f37af773c29e312acf922101d04b5ab5d8fa21f"
+    },
+    {
+      "name": "conectate.com.presentation.messages.VoiceRoomSearchControllerTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.029,
+      "sha256": "a57498dacb4e4c17fa8fd00fcc6abfb20500932bd75d0324a5a45d0d7c6ee1e6"
+    },
+    {
+      "name": "conectate.com.presentation.messages.WorkspaceCalendarExportTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.209,
+      "sha256": "41b92d3937705b28ec9afc9091772c390410379039a71c7f21a64e7b31735c0d"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.AuthenticationJourneyRestorationTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.229,
+      "sha256": "1d0faa4a5d59052fe712a2aec20368a2d33577b0bb463bd676713053e7cbaa5f"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.CallReturnRouteTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.067,
+      "sha256": "d293eda2e08bf0492d31439f5b5721c6c5c84e427e40aa3357c4042fa122e976"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.ExternalDeepLinkSecurityTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "0e3626edb7c5a20310e081b1aa8c97f087e0e478e8b1d14b35cbd5d56c649766"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.ExternalNavigationRejectionTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c2ba2990b25925c7bcd0be086fd1528499fa7b271514053713187fca55afdc57"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.LiveReturnRouteTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "a43d0a543705ed3481a4c34d173a1507ce1de2068905f0d47840dd272b38a267"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.LiveRouteEncodingTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "e5b63c982f97a8ab0b74d5b67d36390800c0be4aa1ca5c363c5bff23a0fdf278"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.LiveShareLinksTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c74b928135f731d64cd361ad4f98fa71bd6d235a94fbc61f58e2f52cc5b40853"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.LiveStartedRouteTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "91d528b6e376ebb78043f6fdfa23b140558dcac715217665f27f9fa809e7df99"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.NotificationAccountSignInTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.328,
+      "sha256": "9558dbd92d379c7fae46d9df70c0fa67101b9b2a7ff166770556efc775fd08e9"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.NotificationConversationDestinationTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.18,
+      "sha256": "505ef60c41aadf86336278dea03bc83593b4204bf9543cc55c558d5c492f4039"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.RegisteredDomainLinksTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.768,
+      "sha256": "91901aedea3f4f1a77f91c635110bb455adb27d31a3a39b509813e5e0dd70e9b"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.RootSettingsNavigationTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.035,
+      "sha256": "526f82e60988fc800c35dd2a78c55de9b88e0b6dc8d9c0c836c28cc8e9e9dc46"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.SharedContentDestinationTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.1,
+      "sha256": "a4509f4211edcc1d44e8111dcc136d88d3ecc14a2bc530947f65c0ecebc5758d"
+    },
+    {
+      "name": "conectate.com.presentation.navigation.VoiceRoomLinksTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.09,
+      "sha256": "691466f0fa20a4e43a2394ddcc9518f3be3893f9c183e1228174c82ea0246023"
+    },
+    {
+      "name": "conectate.com.presentation.posts.PostCommentDraftRevisionTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "6f39c69874e06f5e45638b20fb58b2b50b1c204e6efbcba428c1f83689ccd3a8"
+    },
+    {
+      "name": "conectate.com.presentation.posts.PostCommentReadTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.028,
+      "sha256": "32c842272277a656ad947d3d4f696c83e22bbe2d5a10f5c01d979c58dd366081"
+    },
+    {
+      "name": "conectate.com.presentation.posts.PostCommentThreadsTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.04,
+      "sha256": "f46466e1f63f167fd3e22b87c4bb29435abc993522ce799c08d2ff9a717c0c0b"
+    },
+    {
+      "name": "conectate.com.presentation.posts.PostCommentWindowTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "c454d620ec5149a1f95136264c2e1c8006d9556427e7f40ef17f21a8ef0899f1"
+    },
+    {
+      "name": "conectate.com.presentation.posts.PostReactionStateTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "d30fe5adfec7d5b46a0506e744f898768a3a9c73e4341a5074e7cb9ce83de587"
+    },
+    {
+      "name": "conectate.com.presentation.posts.PostReactionUsersLoaderTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.019,
+      "sha256": "3eb87392103dba37ac4ea6a3e78f576bff1b652b544d90cb46be143d91dc7033"
+    },
+    {
+      "name": "conectate.com.presentation.posts.PostReactionWriterTest",
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.126,
+      "sha256": "9f391b118ac5eb3d06f6db3d1905eb8c779c5ef498b20f0e602d5c0d719f7cd5"
+    },
+    {
+      "name": "conectate.com.presentation.profile.AdminAccessCheckTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.041,
+      "sha256": "66c9bfa02c6fb9716e61e8e31dafcc406c7859bc6b80cf0e24228678d6b3417a"
+    },
+    {
+      "name": "conectate.com.presentation.profile.AdminPanelNavigationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "4b8bcafcbb9750783b0c8de4bf3c6fd5d12752ee0696ef757c13d6f148b9c53f"
+    },
+    {
+      "name": "conectate.com.presentation.profile.AdminRecoveryAccountLookupTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.024,
+      "sha256": "f5665330b998a1ec01e7f1927a32d597329b982c2eaabe15a4d5db0a006a27ab"
+    },
+    {
+      "name": "conectate.com.presentation.profile.AnnouncementAdminMutationTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.024,
+      "sha256": "f6d4ee63415762c10ec16e302665953052b95c107bb9f4152129bbee8efb5557"
+    },
+    {
+      "name": "conectate.com.presentation.profile.FriendRequestsRefreshTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "fb5a07c4c04f599ec5af722d56c19e439763ef9ef8ef035feea46bf645864ac0"
+    },
+    {
+      "name": "conectate.com.presentation.profile.NotificationNavigationTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.15,
+      "sha256": "b661d5a2d07b5020ac19243031bc7bafeeb8eedf8b0c6ed00f757fd1296cd40a"
+    },
+    {
+      "name": "conectate.com.presentation.profile.NotificationRefreshTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.016,
+      "sha256": "0087d45a7205840da07b66fc3b5ce77783633379aeef3f4bb66742907a66690c"
+    },
+    {
+      "name": "conectate.com.presentation.profile.NotificationRequestsTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.073,
+      "sha256": "da53578235d8f7652d554a616fe752fc1ed3a148dc103a3a82a5641a7ac608c8"
+    },
+    {
+      "name": "conectate.com.presentation.profile.NotificationTextSupportTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.046,
+      "sha256": "446f7ed624a77600047f7366f21b04cab24a1050b8fd0f1da1d8f285cd0d878c"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileBirthdayTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "0eef7f4b168853c53bb6517001b89d172d7e2f5ecfee993ae4947c793de0a929"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileContentSubscriptionsTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.019,
+      "sha256": "2f874ff6d82426d0c3cdc0180a6876592fbfdd8b120be05de100f261548b05b7"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileMusicWriterTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.021,
+      "sha256": "44132ab3ed937ece089d19241744c5e9201e52a15393350f6fe6f6bd0b3faf47"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileReadScopeTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "f186d97050585b9340c689c1e16ed32ebf5ce5945def21830f320ac97937dea4"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileScopedActionTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.023,
+      "sha256": "8c834066a6fc24153677cf421a3341f2833224e3414237315303505fb77944ed"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileShareContentTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.009,
+      "sha256": "89ad17f560347f276a58e78df787c5c515ae2a42ca322c283a0594c721db4a82"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileSharedPostsPagerTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.015,
+      "sha256": "69bd8ae6c858901649326b05e40f3941e3f74316d441166067aa7579ce60bbd4"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileSocialDraftTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "e3a7edb17151159f2cc2693b979761f28df7cb566cd46230460adf399b290ffa"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileVisitorsLoaderTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.031,
+      "sha256": "d1cf8a858e5b4d3b710bd17ba0e9f843d4192abb0fc486c3b49068186c1b978c"
+    },
+    {
+      "name": "conectate.com.presentation.profile.ProfileVisitRecorderTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.022,
+      "sha256": "9cad73f34ba075f42d33fe710ac1df5b6af212010efe452e6d7a806611be4535"
+    },
+    {
+      "name": "conectate.com.presentation.profile.SettingsDirectoryTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "1858d4476f9c504d46b19e4d9739abd3cd81b1674fdf99280cf59710e9205208"
+    },
+    {
+      "name": "conectate.com.presentation.proximity.AnonymousSendPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "0e8cdb0653072cab7f0ba7c08434581c22fe7a903c9fc0c7dbab7767fad20def"
+    },
+    {
+      "name": "conectate.com.presentation.raffles.RaffleDrawPresentationStateTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "6e7890533ea953d9d3ea5afaddf5872e25ecd452a2cd9d93587f41ae3f7482f4"
+    },
+    {
+      "name": "conectate.com.presentation.raffles.RaffleListWindowTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "5e974c554070b1fbb1bbf50385d52d4adb89318dbf5c5e12af3a59c5855ab0c5"
+    },
+    {
+      "name": "conectate.com.presentation.raffles.RaffleStateTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.033,
+      "sha256": "105ea7bb199fa1e1f5be89bb1f3204a75ece84909c23656ca6b4ef061fabefe5"
+    },
+    {
+      "name": "conectate.com.presentation.search.SearchDiscoveryTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "fbe639d9d95571c2875ce350513090b3cc183ffa9eb534cc7cd33381f1ac6f13"
+    },
+    {
+      "name": "conectate.com.presentation.search.UnifiedSearchControllerTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.098,
+      "sha256": "512da01983dfbba2614d92800ff7c6f87cacdbb1cce57924ec0e320d70489cc0"
+    },
+    {
+      "name": "conectate.com.presentation.social.ChallengeControllerTest",
+      "tests": 21,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.195,
+      "sha256": "57262dbb1668d0db3fdc6373f0facfcb715573a8aeeb503f94babd4ddf8ff9e7"
+    },
+    {
+      "name": "conectate.com.presentation.social.ChallengeMediaKindTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "7768e0700728c7792afc676e714b992ea59e8446e2224b9ba2e1a3480afd551a"
+    },
+    {
+      "name": "conectate.com.presentation.social.ChallengeNavigationTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.079,
+      "sha256": "e88f3fe1691f4f8edaefe667199b439e53080dae591f543a713f7de94806ffe2"
+    },
+    {
+      "name": "conectate.com.presentation.social.components.RoundRemainingSecondsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "2d0060bbaf605ac5061e9bf1bdcb3d741f4ecf52294ae8e42946a1b210843f85"
+    },
+    {
+      "name": "conectate.com.presentation.social.HighlightPlaybackSessionTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "485d17d0922f176fd32d2b80982970fae3a511ac9b4430c4eb3492b7411254e3"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentDownloadPolicyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "b02fcad0581f7940c28b9dfe5a4e361a6c71945ea6f7295061242e607191b78c"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentHighlightLoaderTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.042,
+      "sha256": "ea5324822f9c41572ffcb0d1e2bfcfbd650c4dfc3396dd45fddcde28da26b7d1"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentImageLoadStateTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "ea5f1dd65d313c2c32571dea7a640df52eca3f99ca3879db367699979f6beb8c"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentLocalMusicDurationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "74988d5bfa09c4ddaf8f336a9cb922cc86037414d25bb4e7cccd5bf78003f141"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentMusicCanvasGeometryTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "ef51d341c8251747ee022eabc2aff63c0eeb1cef4fb59f566709634a5f83b8aa"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentMusicCatalogErrorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "41fe34d560ef8676f9cba1563d242f05ce38d8c718007b28b0d33016e4966dc7"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentMusicCatalogLoaderTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.069,
+      "sha256": "e6587cda3e8b04fbf8228e62890c0347558255296be52bad1e9c41d046e184b3"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentMusicClipOptionsTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "0579c7f28b455623d8c43637d77d839223c6fe66ff4fb3c86a91093fcb18f249"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentMusicDurationTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.01,
+      "sha256": "35793efa3e95f26cf49fcaa72cb100ab1d3280602ccd710fef1684d0ded895b5"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentMusicPickerPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "5d0aa5c1fc0f90d99f217ada5d03a76b91b68fa7c56d767a481a31ea8666bdd7"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentMusicTrimPolicyTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "818b1d0e10702dcceabc7d6837b60167698bd083e29f319afe358d184abddba1"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentPlaybackPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "6a8a4004b5fbcde7c05ff6ff641b963b5c8608654c23c2ce99e439eb54362506"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentSoundtrackClockTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "36923b9b017d3d0626bebe51c862fe8803e65d238296521c1ce6ce81d7f5db38"
+    },
+    {
+      "name": "conectate.com.presentation.social.MomentTimestampTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "6ff2001dd353e5b84565fc09d47a84327682f94efde78fc6828b803b1cfab3d0"
+    },
+    {
+      "name": "conectate.com.presentation.social.RankingReadTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.015,
+      "sha256": "468c10ad5aef75b8283d5d2c6482e149c98df8b437cf08d3e8100f431109b8c8"
+    },
+    {
+      "name": "conectate.com.presentation.social.RecommendedVideoNavigationTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "3c8f44f729d292661cf05fa7548fb9022ab0d65c4964aa00375bd921e611f301"
+    },
+    {
+      "name": "conectate.com.presentation.social.SocialAuthorHydratorTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.017,
+      "sha256": "10ff1f397edf484024d648dd5ad2778e010bbb82de1f6f2c1ad661f98a7bdd79"
+    },
+    {
+      "name": "conectate.com.presentation.social.SocialCurrentUserLoaderTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.014,
+      "sha256": "625843e211391cffe2d3ce8458095ed6568f76205c83885d524df1e7d4a5f058"
+    },
+    {
+      "name": "conectate.com.presentation.social.SocialDiscoveryContinuationTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "3766a82b3f41233ce107acee5317d76f4b02e4c7f709c884b1fd7249d8385c19"
+    },
+    {
+      "name": "conectate.com.presentation.social.SocialFeedPagingPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "b3972e467bfdde17eaa125c2b4404ed8fc051e6a4e4c68314a96cd4623f875c0"
+    },
+    {
+      "name": "conectate.com.presentation.social.SocialFeedSnapshotTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "e34009ab855a80982000bf0dab4c683002e59c4396e9d1b8d45f3665f53fc973"
+    },
+    {
+      "name": "conectate.com.presentation.social.SocialReadingPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "18e0e9ba3e1cd90a38ffee0543de696eb81ee59b2c889093f8f18860f3fd5e4b"
+    },
+    {
+      "name": "conectate.com.presentation.social.SocialRefreshOrderTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.011,
+      "sha256": "203ce9bf1a1e8528562b7dd1a1fe0ba1ed8b7b1242b2b51735d83191894a6ce4"
+    },
+    {
+      "name": "conectate.com.presentation.surveys.SurveyApiErrorsTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "e54ed09f589b3148ed9a960b589d9cf44dc35553e3f5e7bbfb7ebba0dac146f2"
+    },
+    {
+      "name": "conectate.com.presentation.theme.AppThemesTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.049,
+      "sha256": "209c4cb82af3134595f9fc7d971fe923ec4dda8b325ca12b0b3b6dec43930138"
+    },
+    {
+      "name": "conectate.com.presentation.theme.ChatAppearanceTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "86d6df778b0b5fee8e1a1506c60e65d5cca7d1c65a6d186b384adf17e619a481"
+    },
+    {
+      "name": "conectate.com.presentation.theme.ReadableLinkColorsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "dd442a0312faa941dc5b8ea71dece08ab137940c9ea975568d40645eec1844e3"
+    },
+    {
+      "name": "conectate.com.presentation.video.FeedPlaybackPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "d1dc793f59f60fe06768ce20b51972eecab3debb859cfc9291da42a5bf6bbc8d"
+    },
+    {
+      "name": "conectate.com.presentation.video.FocusedVideoFeedTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "44c848996b1f8531edd641e0046a3a339ae06abef494e84fb94290771e4bb667"
+    },
+    {
+      "name": "conectate.com.presentation.video.FocusedVideoReadTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.019,
+      "sha256": "15b227958e9e849953d7615592adc00a420259162aa5a5b67640ef31c8c2ac49"
+    },
+    {
+      "name": "conectate.com.presentation.video.LightweightRenderingPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "d665d359a7b34dcda71793ea7b9e8532190c085633c9dd3086dba955a081fb3a"
+    },
+    {
+      "name": "conectate.com.presentation.video.ProfileVideoFeedPagingTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "7d6813698d3c40076a13aa6d0cab8479ad84f5f6ea54f436149b0d7a04a0e033"
+    },
+    {
+      "name": "conectate.com.presentation.video.RealPlaybackViewTrackerTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c062f54b771ecbecd9054e31fedd203932aa7bb4aac2229385921ca3d54722d3"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoAlgorithmFeedbackPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "b5f7cd7d23ff976566b77f49cbdd87499d28feb989ad7611bae8c72a6d69763e"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoCommentSessionTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "d8cc591cf0aa9db65bc6e528dbff30429507907b0e7b78887a6fff5644886c2f"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoDiscoveryTopicsTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "d09f2f5117caa4700e8cdc580064e56bf5118c87c2b1763352906e21e3e4fbae"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoEntryPlaybackTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "98060e8551d71c80b24f3735244d43f086d571d65c7da241cf72a09741ba06b0"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoFeedAuthoritativeEmptyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "22515e9e70d9e4aadc8ab969110aa0422016715995d7da3df703be34faf406b4"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoFeedContinuationTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "c208f90609776a58d65938d4bddb90ff7cbc11f0857408906a6d9a0690d215f4"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoFeedCyclePolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "61b23dcc2e37372cda09e4e5659e16340666cf70f4fa4c5b073352752dce510b"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoFeedEntriesTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.016,
+      "sha256": "7c7db1b82f1a189533322e64de8232769b7e374d43ace55b756b5e9802c67a86"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoFeedOrderingTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "24600f400cfa5a283a6303f418caaf0425e9f13f7db235684e9ba1d7e3cfe64b"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoFeedPageStoreTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "adc2e16914f0320154ad848984634082c6b2018033b18707730162d1602afb53"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoFollowStateTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "85cded6120822d95181b9a08457b75d18b288badbdd14c672f6f0a7a3cf80ab9"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoLikeWriterTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.039,
+      "sha256": "bc0e3c4255352444e359f289acdeb11d18a3dd3f82949094725a78fd7b1166da"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoPersonalMarkerStoreTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 2.612,
+      "sha256": "18dbbdd2b2f7745592778261c86709764917671c4950466450001930196fe6fa"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoPlaybackRecoveryPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "f76f37d1047b1652449b744e9e027ceafea4cd0f589e8ecd80738f6551083382"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoPlaybackRecoveryRunnerTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.03,
+      "sha256": "ed9e5ded19f9a67e002d6229d4757beb4720f0219d118046501593bdaa03232c"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoPlaylistReconciliationTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "a65758d50e2acbb58318f759fc63a29160706f95a2be56e7057da071b7730a6f"
+    },
+    {
+      "name": "conectate.com.presentation.video.VideoPreloadPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c8d83c5e8395e08364f2ab2cfd08ab00fca52094a9b9bccb4bf04d834efa0fe8"
+    },
+    {
+      "name": "conectate.com.presentation.videos.CommentSheetThreadingTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "8f92b1698f145bf9ab71cdbfe999a7a1e82af4fe9336409aa9496ac02ac2cb2b"
+    },
+    {
+      "name": "conectate.com.presentation.videos.CubeColorLutTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.008,
+      "sha256": "d0dc9d709132d5034ff167b26259a41e7d7038b0b10caffd9aa60bd179cbc759"
+    },
+    {
+      "name": "conectate.com.presentation.videos.EditorDraftStateTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.122,
+      "sha256": "0d58a39f493feae5072a3ca918247c5c54373a57d9087f700a15ab53622eb5d8"
+    },
+    {
+      "name": "conectate.com.presentation.videos.EditorEntityIdsTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.031,
+      "sha256": "630b93a5911cabb5b72cce8adc5ba478d61de94a162893149de530fcbdc40479"
+    },
+    {
+      "name": "conectate.com.presentation.videos.EditorOverlayGeometryTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "ecb2273ca73b83dbbe0451a4e6bcc90cfd4edd6524dd2782f96884c240b075d7"
+    },
+    {
+      "name": "conectate.com.presentation.videos.VideoColorResetTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "ab39ec9ab681f76a37875f57117e627e2eb3eef73c481c75d4dd8e90e83cecdb"
+    },
+    {
+      "name": "conectate.com.presentation.videos.VideoCommentFiltersTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.006,
+      "sha256": "11c540a81acc6e14bf70f9fe9448ee8191c855f2e8c8e9181f88a4ffd73900d0"
+    },
+    {
+      "name": "conectate.com.presentation.videos.VideoCommentStateTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "900d989539bff1da299900b3ce7088ad290c177e86bfddeed2330bffd86c2ba7"
+    },
+    {
+      "name": "conectate.com.presentation.videos.VideoDescriptionTextTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "b9008f9c574bc4990938ff45eecf4aa412ac066f9d22bc21cd640d9e4c4652c0"
+    },
+    {
+      "name": "conectate.com.presentation.videos.VideoDocumentAccessTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.063,
+      "sha256": "68668f46d74d745aa218734134c883a817555953cb1a900a41a93ceadd196a12"
+    },
+    {
+      "name": "conectate.com.presentation.videos.VideoEditorTimelineTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.014,
+      "sha256": "01ae457171ab3ab8aadfd31f92db45eac20d3373473a465258e544234ea38554"
+    },
+    {
+      "name": "conectate.com.presentation.videos.VideoUploadPolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "81571d7db1b41418bdca3584ebfc86cf656b5c5a51af1562fb58a26970f006a8"
+    },
+    {
+      "name": "conectate.com.presentation.voicerooms.CinemaSourcePolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "0f5f7c32584b0272734287408d7147e2cde4676542b040e075a8e5fc24055481"
+    },
+    {
+      "name": "conectate.com.presentation.voicerooms.ParticipantMediaVisibilityTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.013,
+      "sha256": "59ed11b077d71489fb52a844c65a44ead5aa0c2b90edfe8315b19e2edc8047f0"
+    },
+    {
+      "name": "conectate.com.presentation.voicerooms.RoomChatPhotoTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.321,
+      "sha256": "35a35f5385fb4349cfbd7343684a30103b4c1b2ce20cc94e735a51ec13f5927d"
+    },
+    {
+      "name": "conectate.com.presentation.voicerooms.VoiceRoomWebLinkTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.054,
+      "sha256": "3c0bbc515ddee333f3a08f329456d59f1fd03d8a30dbfaecd9f86be1e62113a3"
+    },
+    {
+      "name": "conectate.com.presentation.wallet.GiftAnimatedArtworkTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.005,
+      "sha256": "0e1a748ca254aba3ce3f958ff4069e5f203818eb1189f5445d5da9c36c9b6527"
+    },
+    {
+      "name": "conectate.com.presentation.wallet.GiftAnimationTierTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.027,
+      "sha256": "a8096545a3fac9fecd5faf8528bc0ec0711589e17f8a7fba12a10451dab693aa"
+    },
+    {
+      "name": "conectate.com.presentation.wallet.GiftCelebrationLayoutTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "875424c3e2d18e131b692549043ac734aa29a7a08e04e6466b1ede987f1cfe5e"
+    },
+    {
+      "name": "conectate.com.presentation.wallet.PlayBillingPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "5ccd145e5301c9b54a9fccf41a3f7509d1cc7950b8e2eb7ac7d350e385bbe671"
+    },
+    {
+      "name": "conectate.com.presentation.wallet.PlayPurchaseQueueTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.012,
+      "sha256": "e0948de9f459f3c43d4601a7649351f3e4242b4d6933efe30fd8395522e7828e"
+    },
+    {
+      "name": "conectate.com.presentation.wallet.WalletPresentationPolicyTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.024,
+      "sha256": "d8af2d3714e2b4135f8ab3a436ad1e40df9e45070c019202b64913193180b579"
+    },
+    {
+      "name": "conectate.com.services.VoiceRoomReturnIntentTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.046,
+      "sha256": "40aab08b9f5984ff900ea38f00eaf28f09d234e82675f27e8ba2d5359341e851"
+    },
+    {
+      "name": "conectate.com.util.AccountNotificationEligibilityTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "253db1a7540fd9e843b1b225e3670aba85867889211d1b82f8899d591f77551d"
+    },
+    {
+      "name": "conectate.com.util.ActivityNotificationDeliveryTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 1.016,
+      "sha256": "c31442a0c42a18b9a1141e41f0704000c839521b00a2d66f3c3aa03e8dfb034b"
+    },
+    {
+      "name": "conectate.com.util.AudioContentTypeTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "b631f8ef03c9e89599c3c2d9063c47da9f53594439a2b8c54284eb540b56e7d5"
+    },
+    {
+      "name": "conectate.com.util.AudioProgressTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "2848c9920380bda0102ba26582adb66a6ff8db34a11376bb6d2f50846b70a515"
+    },
+    {
+      "name": "conectate.com.util.ChatAudioPlaybackCacheTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.089,
+      "sha256": "745b020d796c7887b9f83a929622328c016e2957f910d6e06ae5151715b7475e"
+    },
+    {
+      "name": "conectate.com.util.CollectionMembershipNoticePolicyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "e41260e02ce40fca446dee26108b0c47965ddaac747c97d3c16c205c0ff8f113"
+    },
+    {
+      "name": "conectate.com.util.CommentDateLabelTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.013,
+      "sha256": "d344ae0804aab4f66d94bb17dcac977c95141b17b4367c9447b314e45f328482"
+    },
+    {
+      "name": "conectate.com.util.ConversationNotificationIdentityTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "8726410369c3a464af9ec325628b9f988da31082004d08797dc1f43fd1e26285"
+    },
+    {
+      "name": "conectate.com.util.ConversationNotificationPrefsTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.6,
+      "sha256": "d05110fdbbaa1eaba5eabe437bb73ea43caadd560981138a34e3eedabe60058e"
+    },
+    {
+      "name": "conectate.com.util.ConversationReadSyncTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.465,
+      "sha256": "5feb5d91b8f99ade4ea2d139f49955e193fc2e9b45dee1cb2e7a2f9744ce4de1"
+    },
+    {
+      "name": "conectate.com.util.CoreFormattingTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "8e723f712ff1fa0262117114b319c686f2382ba88056de1251b6de45e82f1d2a"
+    },
+    {
+      "name": "conectate.com.util.DeletedMessageNotificationCompatibilityTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.42,
+      "sha256": "72796459f90c03341020bf7a107f0f1e8aa4ce2e69777a4dbe3b375b900be2ab"
+    },
+    {
+      "name": "conectate.com.util.DocumentMessageLabelTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "a8a4cee1f9eeb3a940225c522d325c0c26992a878eadcbd1c92964a7b5c42207"
+    },
+    {
+      "name": "conectate.com.util.FeedPlaybackCacheAdmissionTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.279,
+      "sha256": "138ac3fe32ec255d5ff36f353839677b03c85119a880fdb5d00c20b1dc4802a2"
+    },
+    {
+      "name": "conectate.com.util.InteractiveAudioBufferTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "c6314b6f2d99a2a1a603db36e063597c851d9f6426c93bef2f59c48d775df305"
+    },
+    {
+      "name": "conectate.com.util.LocalNotificationHelperTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.789,
+      "sha256": "fb76d2526bb52ac18bd339fc5777dde2f96dc8dc585c058a298df703d76a923f"
+    },
+    {
+      "name": "conectate.com.util.MediaMimeResolverTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "287dd4e39653dd04d4f6cbe1cb442c9385f52333e1e3206506667576d15d059f"
+    },
+    {
+      "name": "conectate.com.util.MediaNetworkTraceTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.037,
+      "sha256": "2d56e02f60a85f6bb48c2009e3e534be38e2fdcd4ee4f15808b2b0c4f0212994"
+    },
+    {
+      "name": "conectate.com.util.MediaPlaybackDataSourcesTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.01,
+      "sha256": "3a9f1c8b252ed2046e03cdf87b66a2bd8e6bbf28bb7d95874b65c4e080679f20"
+    },
+    {
+      "name": "conectate.com.util.MentionNotificationPreviewTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "af7d055152fcd90c0140d2acff1f3d65c49cff5c901492806cd3a516fe0f8819"
+    },
+    {
+      "name": "conectate.com.util.MessageNotificationPreviewTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "2f7c4a91962aedddffe79e64773db559f03942eb02a9100b7acc053576894d56"
+    },
+    {
+      "name": "conectate.com.util.NotificationAccountTargetTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "6b8b302c442b3ac95dc9ab806bb31bce7e385b662f13b37df4dcf6e80eab902c"
+    },
+    {
+      "name": "conectate.com.util.NotificationMetadataTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "2aca84eea9650925d9d4cad7733479dd2716b00e6262542045d866137ccaac26"
+    },
+    {
+      "name": "conectate.com.util.PcmRecordingSessionTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.042,
+      "sha256": "df96a31072be3a59a9bbed33655af687a1524fe91cc6d52770dde45de872e8fa"
+    },
+    {
+      "name": "conectate.com.util.PendingOutgoingMediaStoreTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.577,
+      "sha256": "e3e72a0c8bb995ee24de5cf068fc990d31cd3c1ff879f0ee7c1e2ec175d53f06"
+    },
+    {
+      "name": "conectate.com.util.PlaybackCacheAdmissionTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.003,
+      "sha256": "70ee8077bef6bc027be7d60988bee0bc487cf8ace7241a3758fde986a0287e35"
+    },
+    {
+      "name": "conectate.com.util.ProtobufRuntimeSecurityTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.053,
+      "sha256": "2d5dbc08ca3e82527cc22930275fcd6481d61a7b48ba4779bba2366dcc52c512"
+    },
+    {
+      "name": "conectate.com.util.PushMessagePolicyTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "67364e26964c3210b4ad9fddb13b2f0441bbb5d5b2c001beb991f802fc206c0f"
+    },
+    {
+      "name": "conectate.com.util.QuotedMessagePreviewTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "07041be9f11d88b0f867337acf3ca291c63a8eb421315a4f86b5155bfdd0451f"
+    },
+    {
+      "name": "conectate.com.util.RetiredNotificationPolicyTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "274baafb66468c06f7123afe29b74a957e9320b738f668ddd2e68da28dbda56e"
+    },
+    {
+      "name": "conectate.com.util.ShortAudioSeekDataSourceTest",
+      "tests": 11,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.275,
+      "sha256": "c5605426747e6ee07ca850df9eff155d26b85576a3db923de80459707cfd2717"
+    },
+    {
+      "name": "conectate.com.util.SocialNotificationCopyTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.001,
+      "sha256": "57d4a446de6ad324041bd730c992101747c0ce3c6dc1b8f29126e39f0701b22f"
+    },
+    {
+      "name": "conectate.com.util.SoundPreviewPlaybackTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.054,
+      "sha256": "ba64562cf918a6cdbb2af714f9ec88ef9d377e314e4a3cc1dac1714f6c1e8dac"
+    },
+    {
+      "name": "conectate.com.util.StorageReadAdmittedCacheTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.254,
+      "sha256": "2792cd16bc331a09fe9e0c8f5360231035e71221fb8ac73eb40119f62c7e77c5"
+    },
+    {
+      "name": "conectate.com.util.StorageReadHttpDataSourceTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.134,
+      "sha256": "6e374706d2e507e95e0adddd44f5ecc5bf29249f763699724cca9fb0d2049ed1"
+    },
+    {
+      "name": "conectate.com.util.TrustedLiveNotificationIntentTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.028,
+      "sha256": "08b92ee9f91207cbdc46c11e62832b674c1ef8d531e963e1810e747b8648bfe7"
+    },
+    {
+      "name": "conectate.com.util.TrustedNotificationBoundaryTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.328,
+      "sha256": "b2f7890684ee483bffb6e35fe84859ae234cbd094392f66dda8916ada1306e42"
+    },
+    {
+      "name": "conectate.com.util.UnreadPushPolicyTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.0,
+      "sha256": "56616c51a7ecc143068f1fc3fc1d251b6057eea7c7427506462fe97036655766"
+    },
+    {
+      "name": "conectate.com.util.VideoCacheLocalPlaybackTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.143,
+      "sha256": "5e787919ce840e3bc38f22d2346418147992d3d1eafdf340fd8ca7f069e742b2"
+    },
+    {
+      "name": "conectate.com.util.VideoCacheResourceKeysTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.004,
+      "sha256": "43f1083c5b4a08c404f1486976d514be96a1a02c3ba4101d5c5bec2e95872e9c"
+    },
+    {
+      "name": "conectate.com.util.VideoPrefetchBudgetTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.024,
+      "sha256": "d8f19fd3fb38243043fce49ae2d9c6047e615c932a1ccdefa17aae2263da4299"
+    },
+    {
+      "name": "conectate.com.widgets.NovvinWidgetIntentTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.068,
+      "sha256": "edbab7a11830dfd4c280f4e05cb2f848ea9770a2def6c2447ed1b5bfb4624642"
+    },
+    {
+      "name": "conectate.com.widgets.NovvinWidgetLayoutPolicyTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 0.002,
+      "sha256": "778d40f630f8a56aeb9a70e86e8c87b34277553e5dc3070ece266f71b6837065"
+    }
+  ]
+}

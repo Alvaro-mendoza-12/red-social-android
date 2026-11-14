@@ -1,8 +1,10 @@
-# Preparación de los candidatos locales 124–125
+# Preparación local y revisión móvil en curso
 
-**APTO PARA STAGING. La decisión de publicación sigue pendiente.** Los resultados corresponden a código y servicios locales de las ramas estables, a la compilación Android de depuración y a tráfico sintético. El ámbito con evidencia incluye mensajería web, documentos, stickers, llamadas locales, privacidad de listas y un recorrido de juego sobre API.
+**No se acredita preparación integral para producción ni para marketing masivo.** La revisión móvil y la decisión de salida siguen abiertas. Los ensayos 124–125 corresponden a código y servicios locales de las ramas estables, a la compilación Android de depuración y a tráfico sintético. Su ámbito incluye mensajería web, documentos, stickers, llamadas locales, privacidad de listas y un recorrido de juego sobre API. Las continuaciones posteriores conservan su propia evidencia y sus límites.
 
 La [continuación 125](../oficial/125-live-participacion-y-recuperacion-2026-11-13.md) añade participación de LIVE y recuperación de suscripciones Android. Se comprobaron votos, preguntas, permisos y fallos de confirmación contra servicios locales con Node 22.23.4. Su recorrido autenticado Android–web y la revocación física de medios siguen pendientes.
+
+La [continuación móvil 133](../oficial/133-formularios-de-herramientas-live-2026-11-13.md) protege formularios de puntos y herramientas por visita. Sigue pendiente reproducir y corregir la propiedad global de entrada, medios y cierre de LIVE al cambiar de cuenta, incluida la acción de una notificación antigua. Estos hallazgos de lectura parcial impiden afirmar preparación integral para producción o marketing masivo. Las pruebas de herramientas de 132–133 no certifican ese ciclo ni una APK final.
 
 | Antes de producción | Evidencia necesaria |
 | --- | --- |

@@ -34,6 +34,7 @@ data class LiveChannelPointsUiState(
     val rewards: List<LivePointReward> = emptyList(),
     val redemptions: List<LivePointRedemption> = emptyList(),
     val busy: Boolean = false,
+    val rewardCreationVersion: Int = 0,
     val message: String? = null,
 )
 
@@ -61,6 +62,18 @@ internal class LiveChannelPointsController(
     @Volatile private var previousVisit: Visit? = null
 
     init { scope.launch(ioDispatcher) { accountVisitChanges.collect { invalidateAccount() } } }
+
+    internal fun stateFor(owner: AuthSessionLease, liveId: String): LiveChannelPointsUiState {
+        val normalized = normalizeLiveSessionId(liveId) ?: return LiveChannelPointsUiState()
+        var snapshot = LiveChannelPointsUiState()
+        commitOwner(owner) {
+            synchronized(lock) {
+                val current = visit ?: previousVisit
+                if (current?.liveId == normalized && current.owner.sameVisit(owner)) snapshot = _state.value
+            }
+        }
+        return snapshot
+    }
 
     private fun invalidateAccount() {
         val old = visit ?: previousVisit ?: return
@@ -129,6 +142,14 @@ internal class LiveChannelPointsController(
     }
 
     fun stopChannelPoints() = stop()
+
+    internal fun stopChannelPoints(owner: AuthSessionLease, liveId: String) {
+        val normalized = normalizeLiveSessionId(liveId) ?: return
+        val expected = synchronized(lock) {
+            (visit ?: previousVisit)?.takeIf { it.liveId == normalized && it.owner.sameVisit(owner) }
+        } ?: return
+        stop(expected)
+    }
 
     fun setChannelPointsForeground(foreground: Boolean) {
         val current = visit ?: previousVisit
@@ -295,6 +316,8 @@ internal class LiveChannelPointsController(
         val current = prepare(liveId) ?: return
         request(current) {
             repository.createReward(current.liveId, title, description, cost, stock, cooldown, current.owner).getOrThrow()
+            ensureCurrent(current)
+            commit(current) { _state.value = _state.value.copy(rewardCreationVersion = _state.value.rewardCreationVersion + 1) }
             refreshState(current, true)
         }
     }

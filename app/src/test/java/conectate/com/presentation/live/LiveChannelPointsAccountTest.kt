@@ -12,12 +12,11 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class LiveChannelPointsAccountTest {
-    private class Fixture(scope: CoroutineScope, dispatcher: CoroutineDispatcher) {
+    private class Fixture(scope: CoroutineScope, dispatcher: CoroutineDispatcher, val api: RecordingLivePointsApi = RecordingLivePointsApi()) {
         val live = "7245c3f0-3a6a-4d9d-93c1-e20236506111"
         val guard = AuthSessionMutationGuard()
         var account: String? = "a"
         var token: suspend (String) -> String? = { "token-$it" }
-        val api = RecordingLivePointsApi()
         val repository = LiveChannelPointsRepository(api, { guard.captureAccountLease { account } }, { token(it) }, MemoryLivePointRedemptions())
         val controller = LiveChannelPointsController(repository, scope, { guard.captureAccountLease { account } }, guard::commitForLease, dispatcher, guard.accountVisitChanges)
         fun aba() { guard.invalidate { account = "b" }; guard.invalidate { account = "a" } }
@@ -50,6 +49,76 @@ class LiveChannelPointsAccountTest {
         f.controller.refreshChannelPoints(f.live); runCurrent()
         f.guard.commitIfCurrent(f.guard.snapshot()) { }; runCurrent()
         assertEquals(31, f.controller.state.value.balance)
+    }
+
+    @Test fun snapshotsRejectOldAndNewOwnersBeforeTheAccountObserverRuns() = runTest {
+        val f = Fixture(backgroundScope, StandardTestDispatcher(testScheduler))
+        f.api.readBalance = { Result.success(f.api.balance(31)) }
+        val old = f.guard.captureAccountLease { f.account }
+        f.controller.refreshChannelPoints(f.live); runCurrent()
+        assertEquals(31, f.controller.stateFor(old, f.live).balance)
+        assertEquals(31, f.controller.stateFor(old, "  ${f.live}  ").balance)
+        assertEquals(0, f.controller.stateFor(old, "other-live").balance)
+        f.aba() // Deliberately do not drain the generation collector.
+        assertEquals(31, f.controller.state.value.balance)
+        assertEquals(0, f.controller.stateFor(old, f.live).balance)
+        assertEquals(0, f.controller.stateFor(f.guard.captureAccountLease { f.account }, f.live).balance)
+    }
+
+    @Test fun anOldPanelsDisposalCannotCancelTheNewAccountsRead() = runTest {
+        val f = Fixture(backgroundScope, StandardTestDispatcher(testScheduler))
+        val old = f.guard.captureAccountLease { f.account }
+        f.controller.refreshChannelPoints(f.live); runCurrent()
+        f.aba()
+        val response = CompletableDeferred<Result<LivePointsBalanceResponse>>()
+        f.api.readBalance = { response.await() }
+        f.controller.refreshChannelPoints(f.live); runCurrent()
+        f.controller.stopChannelPoints(old, f.live)
+        response.complete(Result.success(f.api.balance(20))); runCurrent()
+        assertEquals(20, f.controller.state.value.balance)
+        assertFalse(f.controller.state.value.busy)
+    }
+
+    @Test fun scopedDisposalAcceptsTheSameNormalizedLiveIdAsTheStart() = runTest {
+        val f = Fixture(backgroundScope, StandardTestDispatcher(testScheduler))
+        val owner = f.guard.captureAccountLease { f.account }
+        f.controller.startChannelPoints("  ${f.live}  "); runCurrent()
+        assertTrue(f.controller.state.value.sessionActive)
+        f.controller.stopChannelPoints(owner, "  ${f.live}  "); runCurrent()
+        assertFalse(f.controller.state.value.sessionActive)
+    }
+
+    @Test fun rewardCreationIsAcknowledgedOnlyAfterSuccessEvenIfTheFollowingReadFails() = runTest {
+        var fail = true
+        val api = object : RecordingLivePointsApi() {
+            override suspend fun createReward(token: String, liveId: String, title: String, description: String, cost: Int, stock: Int?, cooldownSeconds: Int): Result<LivePointRewardResponse> =
+                if (fail) Result.failure(IllegalStateException("Offline")) else super.createReward(token, liveId, title, description, cost, stock, cooldownSeconds)
+        }
+        val f = Fixture(backgroundScope, StandardTestDispatcher(testScheduler), api)
+        f.controller.createChannelPointReward(f.live, "Título", "Texto", 10, null, 0); runCurrent()
+        assertEquals(0, f.controller.state.value.rewardCreationVersion)
+        fail = false
+        api.readBalance = { Result.failure(IllegalStateException("Refresh unavailable")) }
+        f.controller.createChannelPointReward(f.live, "Título", "Texto", 10, null, 0); runCurrent()
+        assertEquals(1, f.controller.state.value.rewardCreationVersion)
+        assertNotNull(f.controller.state.value.message)
+        assertFalse(f.controller.state.value.busy)
+    }
+
+    @Test fun aLateCreationAcknowledgementCannotClearAnotherVisitsDraft() = runTest {
+        val response = CompletableDeferred<Result<LivePointRewardResponse>>()
+        val api = object : RecordingLivePointsApi() {
+            override suspend fun createReward(token: String, liveId: String, title: String, description: String, cost: Int, stock: Int?, cooldownSeconds: Int) =
+                withContext(NonCancellable) { response.await() }
+        }
+        val f = Fixture(backgroundScope, StandardTestDispatcher(testScheduler), api)
+        f.controller.createChannelPointReward(f.live, "Viejo", "", 10, null, 0); runCurrent()
+        f.aba()
+        f.controller.refreshChannelPoints(f.live); runCurrent()
+        response.complete(Result.success(LivePointRewardResponse(LivePointReward("reward", f.live, "a", "Viejo", cost = 10))))
+        runCurrent()
+        assertEquals(0, f.controller.state.value.rewardCreationVersion)
+        assertFalse(f.controller.state.value.busy)
     }
 
     @Test fun aResponseAfterSwitchingAccountsCannotReturnAsCurrent() = runTest {

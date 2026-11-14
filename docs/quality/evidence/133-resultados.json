@@ -1,0 +1,195 @@
+{
+  "block": 133,
+  "date": "2026-11-13",
+  "timezone": "America/Bogota",
+  "baseCommit": "0f1e6e4abb97c47f09ecec4a6ddd2eb5a6117105",
+  "scope": "Account-owned LIVE tools and points forms; whole media session ownership remains open",
+  "implementationGitBlobs": {
+    "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsController.kt": "958235fe23c23b23fe51addf333d85075b16ce35",
+    "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsDialog.kt": "f4166285901a1b8aef47c987677858dbab4f9925",
+    "app/src/main/java/conectate/com/presentation/live/LiveExtraTools.kt": "f550f465742742e77ff5926927817d9f16191acf",
+    "app/src/main/java/conectate/com/presentation/live/LiveHostScreen.kt": "9f1fb66d6a0b405311f14b8e9c0e225818aa1776",
+    "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt": "b3d46d6356d9ea8b4a71ce7e0099ba551d89a8f4",
+    "app/src/main/java/conectate/com/presentation/live/LiveViewerScreen.kt": "1b874b3e8c3753bd9d36d54da497fd9071a270f3",
+    "app/src/main/java/conectate/com/presentation/live/LiveToolAccountVisit.kt": "70cb55b8426d94a6aa030c7533d39e8f8c509fbc",
+    "app/src/test/java/conectate/com/presentation/live/LiveChannelPointsAccountTest.kt": "6eeab3375d921adbcaf59aeb9c3e1d92dc8d0150",
+    "app/src/test/java/conectate/com/presentation/live/LiveToolAccountVisitTest.kt": "e8c23455cff3c78b2d4a03d403bd7e044f07283b",
+    "app/src/androidTest/java/conectate/com/presentation/live/LiveChannelPointsDialogDeviceTest.kt": "f90df7055223b4b9d388377026856b0e9c64310e"
+  },
+  "checks": {
+    "jvmGeneral": {
+      "tests": 2828,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "classes": 529,
+      "seconds": 97.152
+    },
+    "focusedIncludedInGeneral": [
+      {
+        "class": "conectate.com.presentation.live.LiveChannelPointsAccountTest",
+        "tests": [
+          "aLateCreationAcknowledgementCannotClearAnotherVisitsDraft",
+          "switchingAccountsClearsAlreadyDisplayedPointsWithoutAnotherRequest",
+          "aLateReadCannotOverwriteTheNewAccountsBalance",
+          "aQueuedRefreshCannotBorrowTheNextAccountsCredentials",
+          "ordinaryTokenRenewalPreservesTheDisplayedPoints",
+          "snapshotsRejectOldAndNewOwnersBeforeTheAccountObserverRuns",
+          "cancellationDoesNotLeaveThePanelBusy",
+          "losingTheRedemptionAcknowledgementKeepsTheNonceForRetry",
+          "anOldPanelsDisposalCannotCancelTheNewAccountsRead",
+          "aFailedRedemptionHistoryReadPreservesTheConfirmedList",
+          "aResponseAfterSwitchingAccountsCannotReturnAsCurrent",
+          "stoppingThePanelPreventsAnUntrackedReadFromPublishing",
+          "repeatedRedemptionWhileSendingDoesNotCreateAnotherDebit",
+          "scopedDisposalAcceptsTheSameNormalizedLiveIdAsTheStart",
+          "rewardCreationIsAcknowledgedOnlyAfterSuccessEvenIfTheFollowingReadFails",
+          "aRenewedTokenAfterAbaCannotDispatchTheOldRead"
+        ]
+      },
+      {
+        "class": "conectate.com.presentation.live.LiveToolAccountVisitTest",
+        "tests": [
+          "queuedOpenAndSubmitCannotBorrowTheReturningAccountsVisit",
+          "accountChangeHidesOpenToolsBeforeAnyRecomposition",
+          "lateDismissalCannotCloseTheNewVisitsPanel",
+          "aSignedOutUserCannotOpenTools",
+          "invalidationDuringCaptureCannotPoisonTheReturningVisitsKey",
+          "tokenRenewalKeepsTheVisitAndOpenPanel"
+        ]
+      }
+    ],
+    "device": {
+      "passed": 8,
+      "failed": 0,
+      "tests": [
+        "aLateInitialSnapshotCannotReappearAfterClosingTheDialog",
+        "pausingAndResumingRebindsTheGameAndDoesNotRestoreAnOldPrompt",
+        "switchingAccountsRemovesThePrivateWordFromTheVisibleDialog",
+        "anotherLiveDoesNotInheritTheRewardDraft",
+        "aSameFrameAccountReturnClearsTheWholeRewardDraft",
+        "tokenRenewalAndRecompositionKeepTheDraft",
+        "aRetainedButtonActionCannotDispatchAfterAnAccountReturn",
+        "aFailedCreateKeepsTheDraftUntilCreationIsConfirmed"
+      ],
+      "seconds": 45.309,
+      "emulator": "NovvinReview117",
+      "apiLevel": 35,
+      "androidVersion": "15",
+      "abi": "x86_64",
+      "readOnlyAvd": true,
+      "physicalDevice": false,
+      "transport": "Synthetic state/API/socket; no production authentication or media network assertion"
+    },
+    "build": {
+      "assembleDebug": true,
+      "assembleDebugAndroidTest": true,
+      "sourceFingerprintVerified": true
+    },
+    "startup": {
+      "requiredClassesDefined": 4,
+      "totalClasses": 86352,
+      "passed": true
+    },
+    "signature": {
+      "debug": true,
+      "v2Verified": true,
+      "productionSignature": false
+    },
+    "qualityGateDebug": {
+      "passed": true,
+      "unitSuitePassed": true
+    },
+    "lint": {
+      "errors": 0,
+      "warnings": 342,
+      "engine": "K1 UAST",
+      "heapMiB": 4096,
+      "reportSha256": "a4228ff35824d264adff36f1f2bf3e56e6e605b19d1cd81e3de567d0b9891bcc",
+      "issuesById": {
+        "ApplySharedPref": 1,
+        "UnusedAttribute": 15,
+        "IntentFilterUniqueDataAttributes": 27,
+        "ConfigurationScreenWidthHeight": 1,
+        "ModifierParameter": 5,
+        "UseCompatTextViewDrawableXml": 6,
+        "Typos": 1,
+        "Untranslatable": 2,
+        "PluralsCandidate": 2,
+        "SetJavaScriptEnabled": 1,
+        "UnusedResources": 9,
+        "UsableSpace": 1,
+        "IconXmlAndPng": 2,
+        "UseKtx": 268,
+        "UseTomlInstead": 1
+      },
+      "advisoriesInModifiedFiles": [
+        {
+          "file": "app/src/main/java/conectate/com/presentation/live/LiveHostScreen.kt",
+          "line": 443,
+          "id": "UseKtx",
+          "severity": "Warning"
+        },
+        {
+          "file": "app/src/main/java/conectate/com/presentation/live/LiveHostScreen.kt",
+          "line": 479,
+          "id": "UseKtx",
+          "severity": "Warning"
+        }
+      ],
+      "globalWarningsReviewed": false
+    },
+    "auditTools": {
+      "tests": 12,
+      "passed": 12,
+      "failed": 0
+    },
+    "traceability": {
+      "rows": 368,
+      "UX-19": "EN_CURSO",
+      "sourceRegistrationOnly": true
+    }
+  },
+  "packages": {
+    "purpose": "Laboratorio; no entrega final de producción",
+    "baseCommit": "0f1e6e4abb97c47f09ecec4a6ddd2eb5a6117105",
+    "version": "9.1.40-debug",
+    "versionCode": 180,
+    "applicationId": "conectate.com",
+    "packages": [
+      {
+        "file": "app/build/audit128/apks133-final/app-debug.apk",
+        "bytes": 270435667,
+        "sha256": "ccd0a2fcb9440782660e18530077dfe6c1a9b98980e829c49e7b59e1d2aa4cc4"
+      },
+      {
+        "file": "app/build/audit128/apks133-final/app-debug-androidTest.apk",
+        "bytes": 3055010,
+        "sha256": "8de12ffa738eac1a3c0e8b975a90a0d8b81e37a4739cf1b6a9f9263523bd381b"
+      }
+    ]
+  },
+  "publication": {
+    "branches": [
+      "main",
+      "feature/live-gifts"
+    ],
+    "identicalTreesRequired": true
+  },
+  "notClaimed": [
+    "Ubuntu deployment",
+    "Physical device or network acceptance",
+    "Final signed APK delivery",
+    "Complete LIVE media/service account ownership",
+    "All requirement implementation",
+    "Full production or mass marketing readiness"
+  ],
+  "verificationLimits": [
+    "The 22 focused tests overlap the 2828 general tests.",
+    "No before-patch execution is claimed for this block; initial defects were found by source inspection.",
+    "An initial Gradle invocation rejected the placement of --tests; the next compile found the unconverted legacy viewer caller. Lint then rejected a direct StateFlow.value read in composition; it was removed in favor of the collected generation, without suppressing the rule. Logs and intermediate APKs were retained; final tests, packages, device checks and quality gate were repeated after corrections.",
+    "Lost create-reward acknowledgements are not covered by the redemption idempotency journal.",
+    "Draft restoration after process death or recreation is not covered.",
+    "The points device fixture drives visit changes, not the real AuthRepository or native LIVE media engine."
+  ]
+}

@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 13 de noviembre de 2026
 
+La [continuación 133](133-formularios-de-herramientas-live-2026-11-13.md) separa los borradores y las acciones de juego y puntos por visita de cuenta, protege la lectura del saldo y conserva la recompensa hasta confirmar su creación. Identifica las pruebas de interfaz y los límites del bloque. La propiedad global del motor y del servicio LIVE, otros formularios, las pruebas físicas y la APK final siguen pendientes; no cierra la revisión integral.
+
 La [continuación 132](132-cuentas-juego-y-canjes-live-2026-11-13.md) corrige las visitas de cuenta del juego y de puntos LIVE, conserva los canjes ante confirmaciones perdidas y rechaza reintentos de otra cuenta o recompensa. Documenta 2817 pruebas JVM aprobadas, las transacciones PostgreSQL y los resultados instrumentales del bloque. Sustituye el pendiente local 128; no representa una APK final ni un despliegue productivo y mantiene abierta la revisión integral.
 
 Las continuaciones [130](130-web-compacta-asistente-y-portada-2026-11-13.md) y [131](131-compartidos-publicos-por-contenido-2026-11-13.md) compactan la navegación y el chat, renombran el asistente a Novvin, simplifican la portada con capturas reales y corrigen las vistas previas públicas por objeto. Identifican sus ensayos locales, la paridad parcial del menú y los despliegues pendientes. El bloque móvil 128 sigue sin publicar; no se entrega una APK nueva ni se cierra la revisión integral.

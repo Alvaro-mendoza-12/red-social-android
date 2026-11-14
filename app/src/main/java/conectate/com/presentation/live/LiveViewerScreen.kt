@@ -85,7 +85,9 @@ fun LegacyLiveViewerScreen(
     val liveKitState by viewModel.liveKitState.collectAsStateWithLifecycle()
     val activeBattle by viewModel.activeBattle.collectAsStateWithLifecycle()
     val liveSupporters by viewModel.liveSupporters.collectAsStateWithLifecycle()
-    val channelPoints by viewModel.channelPoints.collectAsStateWithLifecycle()
+    val toolVisit = rememberLiveToolAccountVisit(liveId, viewModel)
+    val toolDialogs = rememberLiveToolDialogs(toolVisit)
+    val channelPoints = viewModel.channelPoints.collectAsStateWithLifecycle().value.let { viewModel.channelPointsFor(toolVisit) }
 
     val context = LocalContext.current
     val hostTrack = remoteTracks.values.firstOrNull()
@@ -100,8 +102,6 @@ fun LegacyLiveViewerScreen(
     var rechargeMinimumCoins by remember(liveId) { mutableIntStateOf(0) }
     var permissionAction by remember(liveId) { mutableStateOf<String?>(null) }
     var showJoinRequestDialog by remember(liveId) { mutableStateOf(false) }
-    var showDrawGuessDialog by remember(liveId) { mutableStateOf(false) }
-    var showChannelPointsDialog by remember(liveId) { mutableStateOf(false) }
     var requestedCamera by remember(liveId) { mutableStateOf(false) }
     val exitGate = remember(liveId) { LiveViewerExitGate() }
     val currentUserId = viewModel.getCurrentUserId().orEmpty()
@@ -189,16 +189,16 @@ fun LegacyLiveViewerScreen(
     DisposableEffect(lifecycleOwner, liveId) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> viewModel.setChannelPointsForeground(true)
-                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> viewModel.setChannelPointsForeground(false)
+                Lifecycle.Event.ON_START, Lifecycle.Event.ON_RESUME -> toolVisit.run { viewModel.setChannelPointsForeground(true) }
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> toolVisit.run { viewModel.setChannelPointsForeground(false) }
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        viewModel.startChannelPoints(liveId)
+        toolVisit.run { viewModel.startChannelPoints(liveId) }
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            viewModel.stopChannelPoints()
+            viewModel.stopChannelPoints(toolVisit)
         }
     }
 
@@ -371,21 +371,22 @@ fun LegacyLiveViewerScreen(
         else -> null
     }
 
-    if (showDrawGuessDialog && collaborationCapabilities.drawGuessEnabled) {
+    if (toolDialogs.gameVisible && collaborationCapabilities.drawGuessEnabled) {
         LiveDrawGuessDialog(
             liveId = liveId,
-            currentUserId = currentUserId,
+            currentUserId = toolVisit.owner.accountId.orEmpty(),
             isHost = false,
             participantIds = emptyList(),
-            onDismiss = { showDrawGuessDialog = false }
+            onDismiss = toolDialogs::closeGame
         )
     }
 
-    if (showChannelPointsDialog && channelPoints.available != false) {
+    if (toolDialogs.pointsVisible && channelPoints.available != false) {
         LiveChannelPointsDialog(
+            visit = toolVisit,
             state = channelPoints,
             isHost = false,
-            onDismiss = { showChannelPointsDialog = false },
+            onDismiss = toolDialogs::closePoints,
             onRedeem = { viewModel.redeemChannelPointReward(liveId, it) },
             onUpdateSettings = { _, _, _, _ -> },
             onCreateReward = { _, _, _, _, _ -> },
@@ -430,13 +431,15 @@ fun LegacyLiveViewerScreen(
                 }
                 openAudience?.let { action -> add(LiveSecondaryAction("audience", "Encuestas y preguntas", "Participa con el público del directo.", onClick = action)) }
                 if (collaborationCapabilities.drawGuessEnabled) {
-                    add(LiveSecondaryAction("game", "Jugar", "Abrir dibujo y adivinanza dentro del live.") { showDrawGuessDialog = true })
+                    add(LiveSecondaryAction("game", "Jugar", "Abrir dibujo y adivinanza dentro del live.", onClick = toolDialogs::openGame))
                 }
                 if (channelPoints.available != false) {
                     add(
                         LiveSecondaryAction("points", "Puntos del canal · ${channelPoints.balance}", "Consultar saldo, recompensas y canjes gratuitos.") {
-                            viewModel.refreshChannelPoints(liveId, includeRedemptions = false)
-                            showChannelPointsDialog = true
+                            toolVisit.run {
+                                viewModel.refreshChannelPoints(liveId, includeRedemptions = false)
+                                toolDialogs.openPoints()
+                            }
                         }
                     )
                 }

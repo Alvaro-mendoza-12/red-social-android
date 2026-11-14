@@ -23,62 +23,61 @@ internal fun liveExtraTools(
 ): LiveExtraToolActions {
     val session by viewModel.activeSession.collectAsStateWithLifecycle()
     val capabilities by viewModel.collaborationCapabilities.collectAsStateWithLifecycle()
-    val points by viewModel.channelPoints.collectAsStateWithLifecycle()
+    val visit = rememberLiveToolAccountVisit(liveId, viewModel)
+    val dialogs = rememberLiveToolDialogs(visit)
+    val points = viewModel.channelPoints.collectAsStateWithLifecycle().value.let { viewModel.channelPointsFor(visit) }
     val moderation by viewModel.moderationState.collectAsStateWithLifecycle()
-    val joined = session?.stream?.id == liveId
+    val joined = visit.isCurrent && session?.stream?.id == liveId
     val audience = liveAudienceTool(liveId, viewModel.getCurrentUserId().orEmpty(), joined && capabilities.audienceToolsEnabled)
-    var showGame by remember(liveId) { mutableStateOf(false) }
-    var showPoints by remember(liveId) { mutableStateOf(false) }
-    var selectedComment by remember(liveId) { mutableStateOf<LiveComment?>(null) }
     LaunchedEffect(joined, moderation.canModerate) {
-        if (!joined) { showGame = false; showPoints = false }
-        if (!joined || !moderation.canModerate) selectedComment = null
+        if (!joined) dialogs.closeAll()
+        if (!joined || !moderation.canModerate) dialogs.clearComment()
     }
 
     LifecycleResumeEffect(Triple(liveId, joined, isHost)) {
-        if (joined && !isHost) {
+        if (joined && !isHost) visit.run {
             viewModel.setChannelPointsForeground(true)
             viewModel.startChannelPoints(liveId)
         }
         onPauseOrDispose {
             if (!isHost) {
-                viewModel.setChannelPointsForeground(false)
-                viewModel.stopChannelPoints()
+                visit.run { viewModel.setChannelPointsForeground(false) }
+                viewModel.stopChannelPoints(visit)
             }
         }
     }
 
-    if (showGame && joined && capabilities.drawGuessEnabled) LiveDrawGuessDialog(
-        liveId = liveId, currentUserId = viewModel.getCurrentUserId().orEmpty(), isHost = isHost,
-        participantIds = participantIds, onDismiss = { showGame = false },
+    if (dialogs.gameVisible && joined && capabilities.drawGuessEnabled) LiveDrawGuessDialog(
+        liveId = liveId, currentUserId = visit.owner.accountId.orEmpty(), isHost = isHost,
+        participantIds = participantIds, onDismiss = dialogs::closeGame,
     )
-    if (showPoints && joined && points.available != false) LiveChannelPointsDialog(
-        state = points, isHost = isHost, onDismiss = { showPoints = false },
+    if (dialogs.pointsVisible && joined && points.available != false) LiveChannelPointsDialog(
+        visit = visit, state = points, isHost = isHost, onDismiss = dialogs::closePoints,
         onRedeem = { viewModel.redeemChannelPointReward(liveId, it) },
         onUpdateSettings = { enabled, interval, value, cap -> viewModel.updateChannelPointSettings(liveId, enabled, interval, value, cap) },
         onCreateReward = { title, description, cost, stock, cooldown -> viewModel.createChannelPointReward(liveId, title, description, cost, stock, cooldown) },
         onUpdateRedemption = { id, status -> viewModel.decideChannelPointRedemption(liveId, id, status) },
     )
-    selectedComment?.takeIf { joined && moderation.canModerate }?.let { comment ->
+    dialogs.selectedComment?.takeIf { joined && moderation.canModerate }?.let { comment ->
         val protectedUser = comment.userId == viewModel.getCurrentUserId() || comment.userId == session?.stream?.hostUserId
-        AlertDialog(onDismissRequest = { selectedComment = null }, title = { Text(comment.userName.ifBlank { "Comentario" }) },
+        AlertDialog(onDismissRequest = dialogs::clearComment, title = { Text(comment.userName.ifBlank { "Comentario" }) },
             text = { Text("Puedes expulsar a esta persona del directo o bloquear su acceso a la transmisión.") },
             confirmButton = { TextButton(enabled = !protectedUser, onClick = {
-                viewModel.moderateViewer(comment.userId, ban = true); selectedComment = null
+                visit.run { viewModel.moderateViewer(comment.userId, ban = true); dialogs.clearComment() }
             }) { Text("Bloquear") } },
             dismissButton = {
                 TextButton(enabled = !protectedUser, onClick = {
-                    viewModel.moderateViewer(comment.userId, ban = false); selectedComment = null
+                    visit.run { viewModel.moderateViewer(comment.userId, ban = false); dialogs.clearComment() }
                 }) { Text("Expulsar") }
-                TextButton(onClick = { selectedComment = null }) { Text("Cancelar") }
+                TextButton(onClick = dialogs::clearComment) { Text("Cancelar") }
             })
     }
     return LiveExtraToolActions(
         audience = audience,
-        drawGuess = if (joined && capabilities.drawGuessEnabled) ({ showGame = true }) else null,
+        drawGuess = if (joined && capabilities.drawGuessEnabled) (dialogs::openGame) else null,
         channelPoints = if (joined && points.available != false) ({
-            viewModel.refreshChannelPoints(liveId, includeRedemptions = isHost); showPoints = true
+            visit.run { viewModel.refreshChannelPoints(liveId, includeRedemptions = isHost); dialogs.openPoints() }
         }) else null,
-        commentOptions = if (joined && moderation.canModerate) ({ selectedComment = it }) else null,
+        commentOptions = if (joined && moderation.canModerate) (dialogs::selectComment) else null,
     )
 }
