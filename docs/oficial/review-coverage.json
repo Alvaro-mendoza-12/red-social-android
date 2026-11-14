@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T04:53:45.600721+00:00",
-  "baseCommit": "922c11419bb1f13c01d2f2f2845eba3687478abd",
+  "generatedAtUtc": "2026-11-14T05:29:11.250017+00:00",
+  "baseCommit": "a5064e6e612d435f7c0efb6081f3f509eca46a3a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3618,
+    "pending": 3620,
     "partial": 239,
     "code-read": 608
   },
@@ -21,7 +21,7 @@
       "code-read": 438
     },
     "documentation": {
-      "pending": 605,
+      "pending": 607,
       "code-read": 44,
       "partial": 14
     },
@@ -20237,7 +20237,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "b15e989e017a281412593269c897837aabc8271d",
+      "gitBlobId": "89f99f4e9d0c7ae25341152dc8ebc69bd03ffe67",
       "reviewStatus": "pending"
     },
     {
@@ -20443,7 +20443,13 @@
     {
       "file": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
       "phase": "documentation",
-      "gitBlobId": "a6cd4863ecded526b9f1e8c48d431b03f2f7627e",
+      "gitBlobId": "c07c4dfa70a26156caef7b02c6beeb90554216c8",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/135-api-bandeja-y-candidata-web-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "f3e3fe4674d1615f8ec298629cb54bc001228a31",
       "reviewStatus": "pending"
     },
     {
@@ -20969,7 +20975,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "5cbd3820ef0efa038481e391ac0ddff2b62ae0a2",
+      "gitBlobId": "4dc074feba7b52142eaab7842d9580355574f575",
       "reviewStatus": "pending"
     },
     {
@@ -21706,6 +21712,12 @@
       "file": "docs/quality/evidence/134-resultados.json",
       "phase": "documentation",
       "gitBlobId": "4d35a19e7d0897a7581538febdd2c4c43f21fd80",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/135-operacion.json",
+      "phase": "documentation",
+      "gitBlobId": "c927da83818089d0d9d689fdc21781560bc9fc0f",
       "reviewStatus": "pending"
     },
     {

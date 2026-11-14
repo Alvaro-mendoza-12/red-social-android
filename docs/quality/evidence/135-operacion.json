@@ -1,0 +1,152 @@
+{
+  "block": 135,
+  "date": "2026-11-14",
+  "timezone": "America/Bogota",
+  "sourceCorrection": {
+    "feature/live-gifts": "a5064e6e612d435f7c0efb6081f3f509eca46a3a",
+    "main": "4a2801326a96d752a8fd6c34e830791bec53addb"
+  },
+  "publishedSourceTree": "215f5b7a943fbb3be9357c62d2802f3111e573c6",
+  "api": {
+    "firstAttempt": {
+      "startedAtUtc": "2026-11-14T05:12:03.936764+00:00",
+      "committedDelta": "4a2801326a96d752a8fd6c34e830791bec53addb",
+      "candidateImageId": "sha256:a2d746a6f748568bf09d415f549e445c7b4df472602aab0169e954ea1ec700c4",
+      "sourceDigest": "c6ff0627a9b914250bc38a293262be3c833c7449091fe146ce4199aab35cc557",
+      "success": false,
+      "rollback": {
+        "imageId": "sha256:564f4bdc8165cf99fd38ffe067490bef2482a49bbf166a99ae731c4922ad46cc",
+        "ready": true,
+        "databaseRestored": false
+      },
+      "failureType": "AssertionError",
+      "failure": "",
+      "finishedAtUtc": "2026-11-14T05:12:59.641166+00:00"
+    },
+    "firstAttemptFailureExplained": "The unauthenticated probe used the nonexistent /v1/messages/inbox (404); the correct /v1/data/messages/inbox returns 401. Source, health and configuration checks had already passed.",
+    "finalAttempt": {
+      "startedAtUtc": "2026-11-14T05:14:46.079899+00:00",
+      "committedDelta": "4a2801326a96d752a8fd6c34e830791bec53addb",
+      "candidateImageId": "sha256:a2d746a6f748568bf09d415f549e445c7b4df472602aab0169e954ea1ec700c4",
+      "sourceDigest": "c6ff0627a9b914250bc38a293262be3c833c7449091fe146ce4199aab35cc557",
+      "success": true,
+      "rollback": null,
+      "activeImageId": "sha256:a2d746a6f748568bf09d415f549e445c7b4df472602aab0169e954ea1ec700c4",
+      "activeContainerId": "441f0652d45bc5de92ca4006aa90aebf3b07855b9701f27117b65778dddd6094",
+      "capabilitiesPreserved": 25,
+      "environmentPreserved": true,
+      "runtimeConfigurationPreserved": true,
+      "otherContainerIdsPreserved": 14,
+      "sourceProof": {
+        "sourceFilesVerified": 2,
+        "workerUid": 10001,
+        "syntheticStickerPreview": "Sticker",
+        "productionMessageRead": false
+      },
+      "edgeReady": true,
+      "publicHttpsReady": true,
+      "unauthenticatedInboxStatus": 401,
+      "databaseMigrationRun": false,
+      "userHistoryModified": false,
+      "files": [
+        {
+          "name": "data-routes.js",
+          "beforeSha256": "e34d882092518216b0c4b3b8590e175002aaadb8444c62e95420af1b45cb6603",
+          "afterSha256": "b299955fa8741e24c266acd48c8ff852b36cbabd2d39f2f02c3680586928e3bb",
+          "hunks": 9
+        },
+        {
+          "name": "message-deletion-policy.js",
+          "beforeSha256": "fc4f4199eaf9963e5eec89c6477bcd2055fdef602ba82f9c36ccf6fdc0e2b920",
+          "afterSha256": "487db6c2eb0c76b978ae15d3e19ee76d5b30c2711ed8eebdbb915220f11a2351",
+          "hunks": 1
+        }
+      ],
+      "backupImageAndDumpVerified": true,
+      "experimentalFlagsPreserved": {
+        "NOVVIN_EXPERIMENTAL_PURPOSES": true,
+        "NOVVIN_EXPERIMENTAL_AGREEMENTS": true
+      },
+      "finishedAtUtc": "2026-11-14T05:14:59.453550+00:00"
+    },
+    "liveHealthRechecked": {
+      "release": {
+        "release": "novvin-api-review134",
+        "commit": "4a2801326a96d752a8fd6c34e830791bec53addb",
+        "sourceDigest": "c6ff0627a9b914250bc38a293262be3c833c7449091fe146ce4199aab35cc557",
+        "deployedAtUtc": "2026-11-14T05:14:45.807726+00:00",
+        "environment": "production"
+      },
+      "capabilities": 25,
+      "ok": true
+    },
+    "backup": {
+      "privateArtifactsRemainOnServer": true,
+      "ociImageArchiveVerified": true,
+      "ociBlobsVerified": 73,
+      "postgresDumpCatalogVerified": true,
+      "jointAtomicStorageSnapshot": false,
+      "databaseRestored": false
+    }
+  },
+  "web": {
+    "candidate": {
+      "id": "dpl_J9ZtQdutvopvpSfDSgLqAa4CjS3U",
+      "url": "https://red-social-android-ge5ry09wc-alvaro-s-projects1.vercel.app",
+      "inspectorUrl": "https://vercel.com/alvaro-s-projects1/red-social-android/J9ZtQdutvopvpSfDSgLqAa4CjS3U",
+      "readyState": "READY",
+      "target": "production",
+      "deploymentApiUrl": "https://api.vercel.com/v13/deployments/dpl_J9ZtQdutvopvpSfDSgLqAa4CjS3U"
+    },
+    "sourcePackage": {
+      "commit": "4a2801326a96d752a8fd6c34e830791bec53addb",
+      "tree": "215f5b7a943fbb3be9357c62d2802f3111e573c6",
+      "archiveSha256": "896d7e878bf1263d81e6aaa358826fcf76b26a990b993872110e1762990f5d10",
+      "destination": "D:\\red social - live-gifts\\app\\build\\audit128\\web134-production-candidate",
+      "source": "Git archive of published main; existing project link only; no local dotenv or modified CORS files copied",
+      "archiveTextEolNormalizationVerified": true
+    },
+    "domainDeploymentBefore": "dpl_7SAVGakXwAS6YZ8BXV3FhkBug5s5",
+    "domainDeploymentAfterCandidate": "dpl_7SAVGakXwAS6YZ8BXV3FhkBug5s5",
+    "domainPromoted": false,
+    "candidateHomeVerifiedViaOwnerCli": true,
+    "candidateSocialAccountLoginPerformed": false,
+    "pendingRuntimeContracts": {
+      "files": [
+        {
+          "name": "guest-mode-routes.js",
+          "exists": true,
+          "sha256": "a0e57d27033468f4ebb672a3c4629aeb444fdbca1ace607b0fcb59d0ef2b20af"
+        },
+        {
+          "name": "public-profile-share.js",
+          "exists": true,
+          "sha256": "4d027e9e875eb57b9fbfffea4d9596d946137b6578a81d63a0ec17a1aa351bf3"
+        },
+        {
+          "name": "public-content-share.js",
+          "exists": false
+        },
+        {
+          "name": "public-share-image.js",
+          "exists": false
+        },
+        {
+          "name": "public-share-policy.js",
+          "exists": false
+        },
+        {
+          "name": "server.js",
+          "exists": true,
+          "sha256": "bfd049c06451969b23d076b844bd24ace14d7c54fa43d771043c559e2460f486"
+        }
+      ],
+      "contentShareRoutesRegistered": false,
+      "sharpVersion": "0.35.5",
+      "readOnly": true,
+      "productionMessagesRead": false
+    }
+  },
+  "scope": "Operational evidence; no new automated code-test count, no final APK and no full production-readiness claim",
+  "fullProjectAuditComplete": false
+}
