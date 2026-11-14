@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T01:22:20.782944+00:00",
-  "baseCommit": "b58f05e87e06f96fc063c65202d27d241596f7b8",
+  "generatedAtUtc": "2026-11-14T03:32:39.336840+00:00",
+  "baseCommit": "0f1e6e4abb97c47f09ecec4a6ddd2eb5a6117105",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,20 +10,20 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3617,
-    "partial": 234,
-    "code-read": 601
+    "pending": 3613,
+    "partial": 239,
+    "code-read": 607
   },
   "countsByPhase": {
     "android": {
-      "pending": 1507,
-      "partial": 97,
-      "code-read": 435
+      "pending": 1504,
+      "partial": 100,
+      "code-read": 438
     },
     "documentation": {
-      "pending": 600,
-      "code-read": 41,
-      "partial": 15
+      "pending": 599,
+      "code-read": 44,
+      "partial": 17
     },
     "server": {
       "pending": 856,
@@ -4909,6 +4909,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/androidTest/java/conectate/com/presentation/live/LiveChannelPointsDialogDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "f90df7055223b4b9d388377026856b0e9c64310e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/androidTest/java/conectate/com/presentation/live/LiveDrawGuessLifecycleDeviceTest.kt",
       "phase": "android",
       "gitBlobId": "1d2083f9d7d794f66cf03ec19651f524b722c028",
@@ -7981,14 +7989,16 @@
       "phase": "android",
       "gitBlobId": "b8adfa70a6375d96a292b33f11b545b6a86b1401",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveSessionLifecycleCoordinator.kt",
       "phase": "android",
       "gitBlobId": "0abe0e48fdc142ecbfbf851ad004ffbbc3c8a573",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveSocketStartup.kt",
@@ -10103,16 +10113,18 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsController.kt",
       "phase": "android",
-      "gitBlobId": "c03c2ae605c839f1a92b3e565639b1d7a8539653",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "gitBlobId": "958235fe23c23b23fe51addf333d85075b16ce35",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsDialog.kt",
       "phase": "android",
-      "gitBlobId": "b5b01074cce9d9a7ee0f8dd8bc68f67416d70732",
-      "reviewStatus": "pending"
+      "gitBlobId": "f4166285901a1b8aef47c987677858dbab4f9925",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveCollaborationPolling.kt",
@@ -10171,9 +10183,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveExtraTools.kt",
       "phase": "android",
-      "gitBlobId": "b61d28fd1847d50e4d833b3ab893952dd337ba38",
+      "gitBlobId": "f550f465742742e77ff5926927817d9f16191acf",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10197,9 +10209,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveHostScreen.kt",
       "phase": "android",
-      "gitBlobId": "baf54072d62de982758319a56028bb60a96b6055",
+      "gitBlobId": "9f1fb66d6a0b405311f14b8e9c0e225818aa1776",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10259,9 +10271,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt",
       "phase": "android",
-      "gitBlobId": "ede38eb85413b93aa392ff4b7524f992b68692b5",
+      "gitBlobId": "b3d46d6356d9ea8b4a71ce7e0099ba551d89a8f4",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10287,6 +10299,14 @@
       "phase": "android",
       "gitBlobId": "d675c8d2e2ef0f0800b7e51e071a4c676a3a5941",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/live/LiveToolAccountVisit.kt",
+      "phase": "android",
+      "gitBlobId": "70cb55b8426d94a6aa030c7533d39e8f8c509fbc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveViewModel.kt",
@@ -10315,9 +10335,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveViewerScreen.kt",
       "phase": "android",
-      "gitBlobId": "eaf489c5f4b092dcca7e676c751764734377ec24",
+      "gitBlobId": "1b874b3e8c3753bd9d36d54da497fd9071a270f3",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12948,7 +12968,9 @@
       "file": "app/src/main/java/conectate/com/services/LiveForegroundService.kt",
       "phase": "android",
       "gitBlobId": "9b355b91100eb0874ed54a3c4e7e9257d4c49b9a",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/services/VoiceForegroundService.kt",
@@ -16163,9 +16185,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/live/LiveChannelPointsAccountTest.kt",
       "phase": "android",
-      "gitBlobId": "2c0c7b7338915cc47259635e83617016c004d9a2",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "gitBlobId": "6eeab3375d921adbcaf59aeb9c3e1d92dc8d0150",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16217,6 +16239,14 @@
       "phase": "android",
       "gitBlobId": "b4f562cc5e52fcad41a8091befbe6e0db4deee7a",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/live/LiveToolAccountVisitTest.kt",
+      "phase": "android",
+      "gitBlobId": "e8c23455cff3c78b2d4a03d403bd7e044f07283b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/live/LiveViewerCollaborationPolicyTest.kt",
@@ -20191,9 +20221,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "03ae2da5eb2f9c0b2a2c0f1dbc961ae17a045825",
+      "gitBlobId": "94d1df4a495fc80f284a9dd6188d2366772817d4",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20386,6 +20416,14 @@
       "gitBlobId": "44f04a21b4f249c55212df9fd56438d3752fc98e",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "b56d76553ef1ccca05f4a3a91011793575e343ae",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20911,9 +20949,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "0a3984ed910da4058a086beeb97c1d5c8d87c8ce",
+      "gitBlobId": "6e017101f58dad3d34f6042b9d0dcbc6122bf225",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21333,9 +21371,9 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "b2d3402017ebdf49fdbe1d3a717f6edb0615edab",
+      "gitBlobId": "82a2d041a5892448c2524a54419fbe32e6aa8dbc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21385,8 +21423,10 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "63a1cf0cd194361715a18ebbd51e79c0e0972923",
-      "reviewStatus": "pending"
+      "gitBlobId": "511ff2affb0898f39504c2769c781a1028b85e08",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/product/WEB_COMPACT_SHARE_REQUIREMENTS_2026-11-13.md",
@@ -21615,6 +21655,30 @@
       "phase": "documentation",
       "gitBlobId": "a3f2ce053f784e9ea229ea82358b59d4c178ff66",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/133-emulador.txt",
+      "phase": "documentation",
+      "gitBlobId": "959e1535a041a1e61b8528d6a22b7591c7f6c937",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/133-jvm.json",
+      "phase": "documentation",
+      "gitBlobId": "cb1d35f088ee569fffe07b4dbff9a0ec193da8fc",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/133-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "d96baba6dbb1d858abb2a0ad018674655fe931cf",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/research/COMPETITIVE_BENCHMARK.md",
