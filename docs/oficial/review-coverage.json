@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T18:17:15.848541+00:00",
-  "baseCommit": "93c5af20ddea03af95dfdff89c050222eddd54d3",
+  "generatedAtUtc": "2026-11-14T20:30:32.322843+00:00",
+  "baseCommit": "96c7188ea78e7f58f27e91ca4078ff4363547ee7",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -12,7 +12,7 @@
   "counts": {
     "pending": 3624,
     "partial": 246,
-    "code-read": 640
+    "code-read": 643
   },
   "countsByPhase": {
     "android": {
@@ -22,8 +22,8 @@
     },
     "documentation": {
       "pending": 623,
-      "code-read": 47,
-      "partial": 20
+      "code-read": 48,
+      "partial": 21
     },
     "server": {
       "pending": 855,
@@ -36,9 +36,9 @@
       "code-read": 15
     },
     "web": {
-      "partial": 82,
+      "partial": 81,
       "pending": 497,
-      "code-read": 71
+      "code-read": 73
     }
   },
   "files": [
@@ -1637,6 +1637,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/runtimeBackendHealthCache.test.ts",
+      "phase": "web",
+      "gitBlobId": "d78c2368164415441900d73a2e9c4385ad3d01f5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/runtimeBackendInitialization.test.ts",
       "phase": "web",
       "gitBlobId": "3ed53d51a86c426de638426d0976027ff92ef9b5",
@@ -3225,9 +3233,9 @@
     {
       "file": "NoWing-web/src/core/runtimeBackend.ts",
       "phase": "web",
-      "gitBlobId": "26c1f66e497276be2e52f884778ea455856d00df",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "gitBlobId": "39fefa318678e99b80d25a26f51ed350a9d6da33",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20405,9 +20413,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "0274002e9167501352fc83fed80470615b154eba",
+      "gitBlobId": "2313bf9a7449eade623342a41de1b19b379d1042",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20666,6 +20674,14 @@
       "gitBlobId": "5f1ce05e51fd7fc1b21635744de3bb14ec0dc9c4",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "d3a28e77eddb4216f7c19fd571a0b5cfabdda398",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21185,9 +21201,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "42e8c9f28e5ea2091cdc98d39dae9655256f6721",
+      "gitBlobId": "76d138195e893b13f683979b52d17b04fa81890f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21607,9 +21623,9 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "ed83df4198d968d4dc910dbe95b9434f75219782",
+      "gitBlobId": "d5d58dba891d28771cbc65357e5d2fb060b1dd60",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21665,9 +21681,9 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "e5e1e88a5b974bdbe96a856141ce954cf549cc35",
+      "gitBlobId": "cbb82e50713f60ef750b19096bb078fc8ee6404c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22049,6 +22065,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "docs/quality/evidence/143-ide-server-performance.json",
+      "phase": "documentation",
+      "gitBlobId": "f8d3addf3e1a4c85e5168dc1c8d8ae472fade984",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/quality/evidence/2026-11-14-call-tone-race.json",
       "phase": "documentation",
       "gitBlobId": "dbd52d9d79cef7050b76d06b032b156ba6de36a1",
@@ -22111,9 +22135,9 @@
     {
       "file": "gradle.properties",
       "phase": "android",
-      "gitBlobId": "0a98c3206d3dd62d54f43d2b2c32d1919b6d7920",
+      "gitBlobId": "43246dae01babf1015fddb89b8d0e3bb066efbef",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
