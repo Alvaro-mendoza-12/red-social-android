@@ -1,0 +1,285 @@
+{
+  "source": {
+    "baseFeatureCommit": "25de8daef46db6c8cf17cca917b94ce2f9dd6dfc",
+    "baseMainCommit": "ed8a91f1e33d5b98e267de2a0e0b4ec274ad85a2",
+    "implementationGitBlobs": {
+      "NoWing-web/src/components/ChatOptionsMenu.tsx": "fb562aa250e2501bec383d879592e55e7a377852",
+      "NoWing-web/src/components/ContactFollowList.tsx": "6e304fcacd97eeb7cdddfcd6f3eb8735882b55cd",
+      "NoWing-web/src/components/AssistantAnswer.tsx": "bf486cd81250fe987911c29f000ddb2f3aed9e73",
+      "NoWing-web/src/features/assistant/AssistantPage.tsx": "ae629b044ecac3555aebedf87049b760fcc05103",
+      "NoWing-web/src/features/assistant/assistant.css": "1c613b274677d9eb8ebf5c98896e8517bb852560",
+      "NoWing-web/src/features/social/FollowsPage.tsx": "3cdb65704d5536861021dcff857d2a3628c9930b",
+      "NoWing-web/src/features/social/SocialPage.tsx": "6ee01b513b315be4c8047ae136ca837f55acf6f0",
+      "NoWing-web/src/pages/feed/FeedPage.tsx": "8d88a416920d3b15f16ed45f7df826772254fcc1",
+      "NoWing-web/src/ui/novvin/webParity.css": "c269c1d13f501c44848db33e6d3799a915b8cde6",
+      "NoWing-web/src/__tests__/components/ChatOptionsMenu.test.tsx": "c3784eae133f803e4efc1213c3beb9bcf6d4e49e",
+      "NoWing-web/src/__tests__/components/AssistantAnswer.test.tsx": "3e3b503f92375a4f6ff5195e71b5ab9b58de7e58",
+      "NoWing-web/src/__tests__/components/ContactFollowList.test.tsx": "541aad7fd1f18f2a444ac5b426b64634a4e44736",
+      "NoWing-web/src/__tests__/pages/AssistantPage.test.tsx": "b114228b098a0cf1aa60b13bfadcbce11a248c58",
+      "NoWing-web/src/__tests__/pages/FollowsPage.test.tsx": "2f610659d2efab7133f6536da9c23caaf3368505",
+      "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx": "d75b210228871384b50fb5273964b5a1fdf5a65f"
+    },
+    "implementationSha256": {
+      "NoWing-web/src/components/ChatOptionsMenu.tsx": "f637a8c76645aeac0b957d2016245218acb4b0563148cc1d11a67bedbc276bcc",
+      "NoWing-web/src/components/ContactFollowList.tsx": "0ffdd3d69f0b9f7f97a74b300b9398a472fa836bb6f29c2b6dedb948c405f70d",
+      "NoWing-web/src/components/AssistantAnswer.tsx": "4d3e16f52ec8a65bfb9632d20c46293bd9d1f5868f54ead0142aabe5bac1e7bc",
+      "NoWing-web/src/features/assistant/AssistantPage.tsx": "bfa39b09cd7654f6bccd592167acc41237f80480ba3401a20c94b06d4d189f7d",
+      "NoWing-web/src/features/assistant/assistant.css": "1b0f32dd390a2db660d8db0fecc12e97d8ed0f030b91faae96fdef8724b714dd",
+      "NoWing-web/src/features/social/FollowsPage.tsx": "7577276246edb8f78e5253f2869775b9e5726fadf9f58f7020fe517d949865e4",
+      "NoWing-web/src/features/social/SocialPage.tsx": "487099b691a64efeea027fc84e357862e50dd32953b4cb6ac6f6dc99cd88cd2d",
+      "NoWing-web/src/pages/feed/FeedPage.tsx": "ef12ff65c4b7712b64c5288229b2cf1164631cdc26fcc74844dccb3f937582fd",
+      "NoWing-web/src/ui/novvin/webParity.css": "1ccb75afc8493614184cd076fd71697f16b41c5e05b70a2c6980c978e6a70403",
+      "NoWing-web/src/__tests__/components/ChatOptionsMenu.test.tsx": "87bd70883c4ba4b31b9fa165475fbac38f3a2383ee6e3d035a8b77cb49e3cc0c",
+      "NoWing-web/src/__tests__/components/AssistantAnswer.test.tsx": "e7815608971e26f7e31917836b21f93fc1b9f0578af41f10989909d35724a464",
+      "NoWing-web/src/__tests__/components/ContactFollowList.test.tsx": "fbe648cb61d0f18a78e66115ec18e7ed92d1451c3eb4b0427e6e6f6964343bd6",
+      "NoWing-web/src/__tests__/pages/AssistantPage.test.tsx": "4badd606321c2d2ec8b6b6dd6ef9be3af9a173b16da6a731a8a253e6b4183220",
+      "NoWing-web/src/__tests__/pages/FollowsPage.test.tsx": "88f97438bad35beeaf91de75e29665522821e91a905d3291cfa9c6dfe42c4b03",
+      "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx": "3dca480cec4eecfa00ed963013949457ab53f4fc58c603d32106186d82f61a38"
+    }
+  },
+  "jest": {
+    "success": true,
+    "numPassedTests": 1249,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numPassedTestSuites": 196,
+    "numFailedTestSuites": 0
+  },
+  "eslint": {
+    "files": 7,
+    "errors": 0,
+    "warnings": 0
+  },
+  "typeScriptBuildPassed": true,
+  "viteBuildPassed": true,
+  "publicSeoPages": 21,
+  "browser": {
+    "fixture": true,
+    "productionRequestsSent": false,
+    "visualRegression": "INCONCLUSIVE: no committed screenshot baseline for this fixture",
+    "viewports": [
+      {
+        "width": 1440,
+        "screens": [
+          {
+            "name": "followers",
+            "documentWidth": 1440,
+            "viewport": 1440,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "assistant",
+            "documentWidth": 1440,
+            "viewport": 1440,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "social",
+            "documentWidth": 1440,
+            "viewport": 1440,
+            "violations": [],
+            "brokenImages": []
+          }
+        ],
+        "images": [
+          {
+            "fit": "contain",
+            "width": 392,
+            "height": 392
+          },
+          {
+            "fit": "contain",
+            "width": 392,
+            "height": 392
+          }
+        ],
+        "socialLayout": {
+          "width": 1072,
+          "momentsLeft": 1124,
+          "feedRight": 1100
+        },
+        "ownStickerPreview": true,
+        "incomingStickerPreview": true,
+        "legacyOwnTextPreview": true,
+        "menuEscape": true,
+        "geometry": {
+          "viewport": 1440,
+          "documentWidth": 1440,
+          "headerHeight": 58,
+          "composerHeight": 52,
+          "threadHeight": 778,
+          "threadScrollHeight": 1080,
+          "scrollable": true,
+          "scrollbarWidth": "none",
+          "brokenImages": []
+        },
+        "accessibility": {
+          "version": "4.14.0",
+          "labels": [
+            {
+              "text": "Contacto QA Sticker 09:01Tú: Sticker",
+              "inner": "Contacto QA Sticker\n09:01\n\nTú: Sticker",
+              "html": "<img class=\"avatar-md safe-avatar conversation-avatar\" alt=\"Contacto QA Sticker\" title=\"Contacto QA Sticker\" loading=\"lazy\" referrerpolicy=\"no-referrer\" decoding=\"async\" aria-busy=\"false\" src=\"blob:http://127.0.0.1:43734/65547ef8-e580-4e98-804f-f73ce0af435a\"><div class=\"conversation-copy\"><div class=\"row-between\"><h3>Contacto QA Sticker </h3><small class=\"timestamp\">09:01</small></div><p>Tú: Sticker</p></div><div class=\"conversation-status-col\"></div>"
+            },
+            {
+              "text": "Contacto QA Entrante 09:01Sticker",
+              "inner": "Contacto QA Entrante\n09:01\n\nSticker",
+              "html": "<img class=\"avatar-md safe-avatar conversation-avatar\" alt=\"Contacto QA Entrante\" title=\"Contacto QA Entrante\" loading=\"lazy\" referrerpolicy=\"no-referrer\" decoding=\"async\" aria-busy=\"false\" src=\"blob:http://127.0.0.1:43734/65547ef8-e580-4e98-804f-f73ce0af435a\"><div class=\"conversation-copy\"><div class=\"row-between\"><h3>Contacto QA Entrante </h3><small class=\"timestamp\">09:01</small></div><p>Sticker</p></div><div class=\"conversation-status-col\"></div>"
+            },
+            {
+              "text": "Contacto QA Texto 09:01Tú: Texto de prueba",
+              "inner": "Contacto QA Texto\n09:01\n\nTú: Texto de prueba",
+              "html": "<img class=\"avatar-md safe-avatar conversation-avatar\" alt=\"Contacto QA Texto\" title=\"Contacto QA Texto\" loading=\"lazy\" referrerpolicy=\"no-referrer\" decoding=\"async\" aria-busy=\"false\" src=\"blob:http://127.0.0.1:43734/65547ef8-e580-4e98-804f-f73ce0af435a\"><div class=\"conversation-copy\"><div class=\"row-between\"><h3>Contacto QA Texto </h3><small class=\"timestamp\">09:01</small></div><p>Tú: Texto de prueba</p></div><div class=\"conversation-status-col\"></div>"
+            }
+          ],
+          "violations": []
+        }
+      },
+      {
+        "width": 768,
+        "screens": [
+          {
+            "name": "followers",
+            "documentWidth": 768,
+            "viewport": 768,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "assistant",
+            "documentWidth": 768,
+            "viewport": 768,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "social",
+            "documentWidth": 768,
+            "viewport": 768,
+            "violations": [],
+            "brokenImages": []
+          }
+        ],
+        "images": [
+          {
+            "fit": "contain",
+            "width": 362,
+            "height": 362
+          },
+          {
+            "fit": "contain",
+            "width": 362,
+            "height": 362
+          }
+        ],
+        "socialLayout": {
+          "width": 728,
+          "momentsLeft": 20,
+          "feedRight": 748
+        },
+        "ownStickerPreview": true,
+        "incomingStickerPreview": true,
+        "legacyOwnTextPreview": true,
+        "menuEscape": true,
+        "geometry": {
+          "viewport": 768,
+          "documentWidth": 768,
+          "headerHeight": 58,
+          "composerHeight": 52,
+          "threadHeight": 778,
+          "threadScrollHeight": 1080,
+          "scrollable": true,
+          "scrollbarWidth": "none",
+          "brokenImages": []
+        },
+        "accessibility": {
+          "version": "4.14.0",
+          "labels": [],
+          "violations": []
+        }
+      },
+      {
+        "width": 375,
+        "screens": [
+          {
+            "name": "followers",
+            "documentWidth": 375,
+            "viewport": 375,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "assistant",
+            "documentWidth": 375,
+            "viewport": 375,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "social",
+            "documentWidth": 375,
+            "viewport": 375,
+            "violations": [],
+            "brokenImages": []
+          }
+        ],
+        "images": [
+          {
+            "fit": "contain",
+            "width": 186,
+            "height": 186
+          },
+          {
+            "fit": "contain",
+            "width": 186,
+            "height": 186
+          }
+        ],
+        "socialLayout": {
+          "width": 375,
+          "momentsLeft": 0,
+          "feedRight": 375
+        },
+        "ownStickerPreview": true,
+        "incomingStickerPreview": true,
+        "legacyOwnTextPreview": true,
+        "menuEscape": true,
+        "geometry": {
+          "viewport": 375,
+          "documentWidth": 375,
+          "headerHeight": 58,
+          "composerHeight": 52,
+          "threadHeight": 778,
+          "threadScrollHeight": 1080,
+          "scrollable": true,
+          "scrollbarWidth": "none",
+          "brokenImages": []
+        },
+        "accessibility": {
+          "version": "4.14.0",
+          "labels": [],
+          "violations": []
+        }
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "blockedExternalRequests": [],
+    "engine": "Playwright bundled Chromium with an isolated profile",
+    "browser": "158.0.8127.18",
+    "functionalPassed": true
+  },
+  "browserBusinessData": "synthetic only; all APIs, images and WebSockets intercepted",
+  "visualBaseline": "INCONCLUSIVE: no committed reference fixture for automated visual comparison",
+  "productionDeployment137Verified": false,
+  "androidIncluded": false,
+  "newApk": false,
+  "localEvidenceSha256": {
+    "web137-jest-final.json": "9bf64f892f9a0cc7b9f4338d510cd64a6088be0d2b767bd96925be273c1d55d9",
+    "web137-eslint-final.json": "682d5a30369b4730906540667d97e0a141fe7fa89723a54a3781bb5ddcb25f50",
+    "web137-build-final.log": "f450a16c4e23c1d9e2186e35140ccb87ab64c20437b5838043357b2c8aaf8b7f",
+    "browser137-result.json": "7948b93d46ee5560b0e95d397ce8298b5f2b2a4d6d824c853df1fac0d64c3bdc"
+  }
+}

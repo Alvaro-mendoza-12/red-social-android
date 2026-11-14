@@ -17,13 +17,23 @@
 .assistant-page .assistant-answer { min-width: 0; overflow-wrap: anywhere; }
 .assistant-page .assistant-answer p { margin: 0 0 12px; white-space: pre-wrap; }
 .assistant-page .assistant-answer p:last-child { margin-bottom: 0; }
+.assistant-answer h4 { margin: 20px 0 10px; font-size: 1rem; line-height: 1.5; }
+.assistant-answer h4:first-child { margin-top: 0; }
+.assistant-answer ul, .assistant-answer ol { margin: 12px 0; padding-left: 24px; }
+.assistant-answer li + li { margin-top: 7px; }
+.assistant-answer code { padding: 2px 5px; border-radius: 5px; background: var(--surface-raised); font-size: .87em; }
+.assistant-answer pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; border: 1px solid var(--outline); border-radius: 12px; background: var(--surface); }
+.assistant-answer pre code { padding: 0; background: transparent; }
+.assistant-page > header .assistant-new-conversation { display: flex; gap: 8px; width: auto; min-height: 40px; padding: 8px 12px; border-radius: 12px; color: var(--secondary-text); font-size: .8rem; }
+.assistant-new-conversation svg { flex-shrink: 0; }
 .assistant-message-copy { display: flex; align-items: center; gap: 6px; color: var(--secondary-text); font-size: .75rem; padding: 8px 0 0; min-height: 36px; }
 .assistant-page .assistant-welcome { margin: auto; max-width: 590px; padding: 28px 8px; text-align: center; background: transparent; border: 0; }
 .assistant-welcome > svg { color: var(--primary); margin-inline: auto; }
 .assistant-welcome h3 { margin-top: 18px; font-size: clamp(1.5rem, 3vw, 2rem); letter-spacing: -.04em; }
 .assistant-welcome p { margin-block: 12px 24px; color: var(--secondary-text); }
-.assistant-welcome > div { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.assistant-welcome > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .assistant-welcome .ghost-btn { padding: 11px 14px; border: 1px solid var(--outline); border-radius: 14px; font-size: .8rem; line-height: 1.4; white-space: normal; }
+.assistant-welcome .ghost-btn { text-align: left; min-height: 80px; background: var(--surface); }
 .assistant-page > form { display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; padding: 8px; background: var(--surface-raised); border: 1px solid var(--outline); border-radius: 22px; }
 .assistant-page > form textarea { flex: 1; width: 100%; min-width: 0; min-height: 44px; max-height: 160px; height: 44px; padding: 11px 12px; border: 0; background: transparent; resize: none; font-size: .92rem; }
 .assistant-page > form > .icon-btn { flex-shrink: 0; width: 44px; height: 44px; border-radius: 14px; background: var(--primary); color: var(--on-primary); }
@@ -45,9 +55,12 @@
 @media (max-width: 520px) {
   .assistant-page { gap: 8px; }
   .assistant-page > header h2 { font-size: 1.05rem; }
+  .assistant-page > header .assistant-new-conversation { width: 40px; padding: 8px; }
+  .assistant-new-conversation span { display: none; }
   .assistant-page .assistant-message.user { max-width: 92%; }
   .assistant-page .assistant-welcome { padding: 16px 4px; }
-  .assistant-welcome > div { flex-direction: column; }
+  .assistant-welcome > div { grid-template-columns: 1fr; }
+  .assistant-welcome .ghost-btn { min-height: 48px; }
   .assistant-welcome .ghost-btn { text-align: left; }
   .assistant-footnote { font-size: .63rem; }
 }

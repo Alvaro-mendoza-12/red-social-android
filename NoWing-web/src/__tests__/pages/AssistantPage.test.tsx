@@ -37,7 +37,7 @@ test('history uses the mobile protocol and cannot promote an answer into a user 
 test('an unsent assistant draft survives remount and clearing removes it',async()=>{
   const first=render(<AssistantPage/>);fireEvent.change(screen.getByRole('textbox'),{target:{value:'Mi pregunta pendiente'}});first.unmount()
   render(<AssistantPage/>);expect(screen.getByRole('textbox')).toHaveValue('Mi pregunta pendiente')
-  fireEvent.click(screen.getByRole('button',{name:'Borrar conversación con el asistente'}))
+  fireEvent.click(screen.getByRole('button',{name:'Nueva conversación con el asistente'}))
   expect(screen.getByRole('textbox')).toHaveValue('')
 })
 
