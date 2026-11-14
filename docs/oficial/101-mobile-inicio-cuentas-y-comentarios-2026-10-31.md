@@ -2,7 +2,9 @@
 
 Este es un avance de correcciones comprobadas, no el cierre de la revisión integral ni una declaración de que toda la aplicación esté lista. Se continúa primero en Android. La revisión 100 ya registró la reparación de documentos de la web y la comprobación de 20 formatos; ese recorrido y el historial con personas y grupos se revalidarán en la fase web, después del móvil.
 
-## Estado vigente — 13 de noviembre de 2026
+## Estado vigente — 14 de noviembre de 2026
+
+La [continuación 135](135-api-bandeja-y-candidata-web-2026-11-14.md) confirma la activación de la corrección de bandeja en Ubuntu, su respaldo, una reversión del ensayo y la comprobación final por HTTPS. La candidata web está compilada sin asignación del dominio: faltan los contratos de API de compartidos y su integración. El diagnóstico de chats vacíos y los demás recorridos siguen abiertos; no entrega una APK ni cierra la revisión integral.
 
 La [continuación 134](134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md) corrige el resumen de stickers, la autoría «Tú:» y la precisión temporal de la bandeja. Registra el contraste de solo lectura de chats vacíos, la regresión de crecimiento todavía abierta y las comprobaciones de navegador. El parche de API está preparado y probado sobre su imagen vigente; su activación y las demás correcciones solicitadas siguen pendientes. No entrega una APK ni cierra la revisión integral.
 
