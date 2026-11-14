@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 14 de noviembre de 2026
 
+La [continuación 140](140-notificaciones-visitas-llamadas-2026-11-14.md) integra las acciones de notificación por visita de llamada, con identidad propia y comprobación al ejecutar Colgar o Silenciar. Registra cuatro fallos reproducidos, 37 pruebas focalizadas, 2879 pruebas JVM en 534 clases y Lint con cero errores y 342 advertencias. La propiedad global de medios/cuentas, los ensayos físicos y la APK final siguen pendientes; no cierra la revisión integral.
+
 La [continuación 139](139-visitas-notificacion-y-cierre-live-2026-11-14.md) corrige la identidad de notificaciones y cierres de una instancia LIVE, conserva los avisos nuevos frente a órdenes antiguas y separa los resultados del coordinador por propietario. Registra dos fallos reproducidos, 23 pruebas focalizadas y 2850 pruebas JVM en 531 clases. La propiedad completa de cuenta y medios, los consumidores de pantalla retenidos, las pruebas físicas y la APK final siguen pendientes.
 
 La [continuación 138](138-tonos-android-y-web-desplegada-2026-11-14.md) integra la corrección Android de cancelación de tonos entregada por el asistente de escritorio, revisa sus cuatro archivos y repite ocho pruebas focalizadas. Confirma el despliegue Git de la web 137 en novvinapp.com, los recorridos con datos sintéticos y 97 controles HTTP. Las llamadas físicas, los historiales vacíos, LIVE y la APK final siguen pendientes; no cierra la revisión integral.
