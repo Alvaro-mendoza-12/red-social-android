@@ -4,6 +4,8 @@ Estado documental al 14 de noviembre de 2026. Esta es la entrada para desarrollo
 
 ## Estado vigente
 
+La [continuación 138](138-tonos-android-y-web-desplegada-2026-11-14.md) integra la corrección Android de cancelación de tonos entregada por el asistente de escritorio, revisa sus cuatro archivos y repite ocho pruebas focalizadas. Confirma el despliegue Git de la web 137 en novvinapp.com, los recorridos con datos sintéticos y 97 controles HTTP. Las llamadas físicas, los historiales vacíos, LIVE y la APK final siguen pendientes; no cierra la revisión integral.
+
 La [continuación 137](137-seguidores-social-asistente-y-menu-web-2026-11-14.md) corrige la lista web de seguidores con avatares e identidad, organiza Social para escritorio y móvil, estructura las respuestas del asistente Novvin y reduce el menú del chat a seis entradas principales y los stickers a 136 píxeles. Registra 1.249 pruebas web y los recorridos de navegador con datos ficticios. La revisión móvil se coordina con el otro asistente; los historiales vacíos, la actualización de tarjetas externas y la APK final siguen pendientes.
 
 La [continuación 136](136-integracion-api-compartidos-y-mandato-word-2026-11-14.md) confirma la API integrada en Ubuntu, los recorridos HTTP de compartidos e invitaciones y las comprobaciones del sitio efectivo. Vercel ya servía el código web de 134 desde main; se conserva ese despliegue y se rectifica la interpretación anterior del paquete local. Se contrasta el mandato Word con Markdown. La revisión móvil, los historiales vacíos, los tonos y la APK final siguen pendientes.

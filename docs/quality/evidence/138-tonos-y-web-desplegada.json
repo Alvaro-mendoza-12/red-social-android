@@ -1,0 +1,313 @@
+{
+  "source": {
+    "baseFeatureCommit": "71292c1afc5a8bd6eb623d0067e718fc28206308",
+    "baseMainCommit": "d79c80c891cca7818e055d7f915a523afebbd664",
+    "implementationGitBlobs": {
+      "app/src/main/java/conectate/com/util/CallTonePlayer.kt": "34732c1c3e0d3b0556721ddc6ae6318de6d81e9a",
+      "app/src/test/java/conectate/com/util/CallTonePlayerTest.kt": "58f4b5c8f06f7c141b15a9164b2cc921748ef43c",
+      "docs/quality/CALL_TONE_RACE_2026-11-14.md": "46155bdb971003636fce90f07671e23a2e854dbb",
+      "docs/quality/evidence/2026-11-14-call-tone-race.json": "dbd52d9d79cef7050b76d06b032b156ba6de36a1"
+    },
+    "webSourceCommit": "d79c80c891cca7818e055d7f915a523afebbd664",
+    "webTree": "8c106a6c43500a47f71422cdf08fe4bae2423246"
+  },
+  "toneOriginalEvidence": {
+    "files": [
+      "app/src/main/java/conectate/com/util/CallTonePlayer.kt",
+      "app/src/test/java/conectate/com/util/CallTonePlayerTest.kt",
+      "docs/quality/CALL_TONE_RACE_2026-11-14.md",
+      "docs/quality/evidence/2026-11-14-call-tone-race.json"
+    ],
+    "artifactXmlVerified": {
+      "baseline": {
+        "tests": "2",
+        "failures": "2",
+        "errors": "0",
+        "skipped": "0",
+        "time": "9.545"
+      },
+      "final": {
+        "tests": "8",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "8.745"
+      }
+    },
+    "blobs": {
+      "app/src/main/java/conectate/com/util/CallTonePlayer.kt": "34732c1c3e0d3b0556721ddc6ae6318de6d81e9a",
+      "app/src/test/java/conectate/com/util/CallTonePlayerTest.kt": "58f4b5c8f06f7c141b15a9164b2cc921748ef43c",
+      "docs/quality/CALL_TONE_RACE_2026-11-14.md": "46155bdb971003636fce90f07671e23a2e854dbb",
+      "docs/quality/evidence/2026-11-14-call-tone-race.json": "dbd52d9d79cef7050b76d06b032b156ba6de36a1"
+    }
+  },
+  "integrationToneTests": {
+    "tests": "8",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0",
+    "time": "9.103",
+    "timestamp": "2026-11-14T14:15:57.490Z"
+  },
+  "integrationToneXmlSha256": "7450f0b76e59cbdb6e5f2bc789fd055ea7e0c78fe0181470a7a1d15b65430062",
+  "integrationToneLogSha256": "d50df5ceb7c99b3db48ebfd9b564913b2b73c24e2bcf21ab64a4713631873158",
+  "webDeployment": {
+    "id": "dpl_9tZhPhRPj2FFJoCMH4QZvQGF8yhS",
+    "url": "red-social-android-ghejo3esz-alvaro-s-projects1.vercel.app",
+    "readyState": "READY",
+    "source": "git",
+    "target": "production",
+    "createdAt": 1794665129633,
+    "meta": {
+      "githubCommitSha": "d79c80c891cca7818e055d7f915a523afebbd664",
+      "githubCommitRef": "main",
+      "githubCommitMessage": "fix(web): restore follower avatars and organize social and chat controls"
+    },
+    "domainVerified": "novvinapp.com"
+  },
+  "productionHttp": {
+    "passed": true,
+    "checks": 97,
+    "reportSha256": "50a69c0569d9ac4c78aeb9c1911ae5b7045d4040a862cacb7bd0351771c3257b"
+  },
+  "deployedBrowser": {
+    "fixture": true,
+    "productionRequestsSent": false,
+    "visualRegression": "INCONCLUSIVE: no committed screenshot baseline for this fixture",
+    "viewports": [
+      {
+        "width": 1440,
+        "screens": [
+          {
+            "name": "followers",
+            "documentWidth": 1440,
+            "viewport": 1440,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "assistant",
+            "documentWidth": 1440,
+            "viewport": 1440,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "social",
+            "documentWidth": 1440,
+            "viewport": 1440,
+            "violations": [],
+            "brokenImages": []
+          }
+        ],
+        "images": [
+          {
+            "fit": "contain",
+            "width": 392,
+            "height": 392
+          },
+          {
+            "fit": "contain",
+            "width": 392,
+            "height": 392
+          }
+        ],
+        "socialLayout": {
+          "width": 1072,
+          "momentsLeft": 1124,
+          "feedRight": 1100
+        },
+        "ownStickerPreview": true,
+        "incomingStickerPreview": true,
+        "legacyOwnTextPreview": true,
+        "menuEscape": true,
+        "geometry": {
+          "viewport": 1440,
+          "documentWidth": 1440,
+          "headerHeight": 58,
+          "composerHeight": 52,
+          "threadHeight": 778,
+          "threadScrollHeight": 1080,
+          "scrollable": true,
+          "scrollbarWidth": "none",
+          "brokenImages": []
+        },
+        "accessibility": {
+          "version": "4.14.0",
+          "labels": [
+            {
+              "text": "Contacto QA Sticker 09:07Tú: Sticker",
+              "inner": "Contacto QA Sticker\n09:07\n\nTú: Sticker",
+              "html": "<img class=\"avatar-md safe-avatar conversation-avatar\" alt=\"Contacto QA Sticker\" title=\"Contacto QA Sticker\" loading=\"lazy\" referrerpolicy=\"no-referrer\" decoding=\"async\" aria-busy=\"false\" src=\"blob:https://novvinapp.com/2c00a887-b1e4-4d53-9373-08fe7359ec42\"><div class=\"conversation-copy\"><div class=\"row-between\"><h3>Contacto QA Sticker </h3><small class=\"timestamp\">09:07</small></div><p>Tú: Sticker</p></div><div class=\"conversation-status-col\"></div>"
+            },
+            {
+              "text": "Contacto QA Entrante 09:07Sticker",
+              "inner": "Contacto QA Entrante\n09:07\n\nSticker",
+              "html": "<img class=\"avatar-md safe-avatar conversation-avatar\" alt=\"Contacto QA Entrante\" title=\"Contacto QA Entrante\" loading=\"lazy\" referrerpolicy=\"no-referrer\" decoding=\"async\" aria-busy=\"false\" src=\"blob:https://novvinapp.com/2c00a887-b1e4-4d53-9373-08fe7359ec42\"><div class=\"conversation-copy\"><div class=\"row-between\"><h3>Contacto QA Entrante </h3><small class=\"timestamp\">09:07</small></div><p>Sticker</p></div><div class=\"conversation-status-col\"></div>"
+            },
+            {
+              "text": "Contacto QA Texto 09:07Tú: Texto de prueba",
+              "inner": "Contacto QA Texto\n09:07\n\nTú: Texto de prueba",
+              "html": "<img class=\"avatar-md safe-avatar conversation-avatar\" alt=\"Contacto QA Texto\" title=\"Contacto QA Texto\" loading=\"lazy\" referrerpolicy=\"no-referrer\" decoding=\"async\" aria-busy=\"false\" src=\"blob:https://novvinapp.com/2c00a887-b1e4-4d53-9373-08fe7359ec42\"><div class=\"conversation-copy\"><div class=\"row-between\"><h3>Contacto QA Texto </h3><small class=\"timestamp\">09:07</small></div><p>Tú: Texto de prueba</p></div><div class=\"conversation-status-col\"></div>"
+            }
+          ],
+          "violations": []
+        }
+      },
+      {
+        "width": 768,
+        "screens": [
+          {
+            "name": "followers",
+            "documentWidth": 768,
+            "viewport": 768,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "assistant",
+            "documentWidth": 768,
+            "viewport": 768,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "social",
+            "documentWidth": 768,
+            "viewport": 768,
+            "violations": [],
+            "brokenImages": []
+          }
+        ],
+        "images": [
+          {
+            "fit": "contain",
+            "width": 362,
+            "height": 362
+          },
+          {
+            "fit": "contain",
+            "width": 362,
+            "height": 362
+          }
+        ],
+        "socialLayout": {
+          "width": 728,
+          "momentsLeft": 20,
+          "feedRight": 748
+        },
+        "ownStickerPreview": true,
+        "incomingStickerPreview": true,
+        "legacyOwnTextPreview": true,
+        "menuEscape": true,
+        "geometry": {
+          "viewport": 768,
+          "documentWidth": 768,
+          "headerHeight": 58,
+          "composerHeight": 52,
+          "threadHeight": 778,
+          "threadScrollHeight": 1080,
+          "scrollable": true,
+          "scrollbarWidth": "none",
+          "brokenImages": []
+        },
+        "accessibility": {
+          "version": "4.14.0",
+          "labels": [],
+          "violations": []
+        }
+      },
+      {
+        "width": 375,
+        "screens": [
+          {
+            "name": "followers",
+            "documentWidth": 375,
+            "viewport": 375,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "assistant",
+            "documentWidth": 375,
+            "viewport": 375,
+            "violations": [],
+            "brokenImages": []
+          },
+          {
+            "name": "social",
+            "documentWidth": 375,
+            "viewport": 375,
+            "violations": [],
+            "brokenImages": []
+          }
+        ],
+        "images": [
+          {
+            "fit": "contain",
+            "width": 186,
+            "height": 186
+          },
+          {
+            "fit": "contain",
+            "width": 186,
+            "height": 186
+          }
+        ],
+        "socialLayout": {
+          "width": 375,
+          "momentsLeft": 0,
+          "feedRight": 375
+        },
+        "ownStickerPreview": true,
+        "incomingStickerPreview": true,
+        "legacyOwnTextPreview": true,
+        "menuEscape": true,
+        "geometry": {
+          "viewport": 375,
+          "documentWidth": 375,
+          "headerHeight": 58,
+          "composerHeight": 52,
+          "threadHeight": 778,
+          "threadScrollHeight": 1080,
+          "scrollable": true,
+          "scrollbarWidth": "none",
+          "brokenImages": []
+        },
+        "accessibility": {
+          "version": "4.14.0",
+          "labels": [],
+          "violations": []
+        }
+      }
+    ],
+    "consoleErrors": [],
+    "pageErrors": [],
+    "blockedExternalRequests": [],
+    "apiPaths": [
+      "GET /v1/system/announcements",
+      "POST /v1/auth/web-session/upgrade",
+      "GET /v1/data/notifications",
+      "GET /v1/data/messages/inbox",
+      "GET /v1/auth/me",
+      "GET /rest/v1/profiles",
+      "POST /v1/data/messages/chats/20000000-0000-4000-8000-000000000001/read",
+      "GET /v1/data/messages/chats/20000000-0000-4000-8000-000000000001/request",
+      "GET /v1/data/messages/chats/20000000-0000-4000-8000-000000000001",
+      "POST /rest/v1/rpc/secure_get_chat_scheduled_jobs",
+      "GET /v1/data/follows",
+      "POST /v1/ai/chat",
+      "GET /v1/data/feed",
+      "GET /v1/data/social/promotions",
+      "GET /v1/data/moments/feed"
+    ],
+    "engine": "Playwright bundled Chromium with an isolated profile",
+    "browser": "158.0.8127.18",
+    "functionalPassed": true
+  },
+  "deployedBrowserSha256": "4c5bd0cc18caa44448c7a869893d9f2efc408920358fcd25f28063d6a1244eba",
+  "browserData": "Synthetic APIs, images and WebSockets; actual production HTML, JS and CSS; no personal social session or business requests sent",
+  "physicalCallsVerified": false,
+  "fullAndroidJvmSuiteRepeated": false,
+  "newApk": false
+}
