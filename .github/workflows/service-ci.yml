@@ -53,6 +53,39 @@ jobs:
         working-directory: ${{ matrix.directory }}
         run: npm audit --audit-level=moderate
 
+  points-idempotency:
+    name: Channel point redemption transactions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: novvin_qa
+          POSTGRES_PASSWORD: synthetic_ci_password
+          POSTGRES_DB: novvin_points_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U novvin_qa -d novvin_points_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: infrastructure/local-fallback/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: infrastructure/local-fallback/api/package-lock.json
+      - run: npm ci
+      - name: Verify owner isolation and concurrent replay on PostgreSQL
+        env:
+          NOVVIN_POINTS_TEST_DATABASE_URL: postgresql://novvin_qa:synthetic_ci_password@127.0.0.1:5432/novvin_points_test
+          NOVVIN_POINTS_TEST_BOOTSTRAP: 'true'
+        run: node --test tests/live-points-redemption.postgres.test.js
+
   web:
     runs-on: ubuntu-latest
     timeout-minutes: 30

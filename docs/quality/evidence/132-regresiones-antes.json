@@ -1,0 +1,83 @@
+{
+  "results": [
+    {
+      "suite": "conectate.com.presentation.live.LiveChannelPointsAccountTest",
+      "tests": 9,
+      "failures": 9,
+      "errors": 0,
+      "cases": [
+        {
+          "name": "aLateReadCannotOverwriteTheNewAccountsBalance",
+          "failure": "java.lang.AssertionError: expected:<20> but was:<99>"
+        },
+        {
+          "name": "aQueuedRefreshCannotBorrowTheNextAccountsCredentials",
+          "failure": "java.lang.AssertionError"
+        },
+        {
+          "name": "cancellationDoesNotLeaveThePanelBusy",
+          "failure": "java.lang.AssertionError"
+        },
+        {
+          "name": "losingTheRedemptionAcknowledgementKeepsTheNonceForRetry",
+          "failure": "org.junit.ComparisonFailure: expected:<[6a91793d-64ea-4821-a4ca-6c3a16ee0cee]> but was:<[aacf3651-bdd6-4daf-b6ba-b52ee1037c89]>"
+        },
+        {
+          "name": "aFailedRedemptionHistoryReadPreservesTheConfirmedList",
+          "failure": "java.lang.AssertionError: expected:<[LivePointRedemption(id=redemption, liveId=live, rewardId=reward, viewerId=a, cost=3, status=pending, rewardTitle=null, createdAt=null)]> but was:<[]>"
+        },
+        {
+          "name": "aResponseAfterSwitchingAccountsCannotReturnAsCurrent",
+          "failure": "java.lang.AssertionError"
+        },
+        {
+          "name": "stoppingThePanelPreventsAnUntrackedReadFromPublishing",
+          "failure": "java.lang.AssertionError: expected:<0> but was:<99>"
+        },
+        {
+          "name": "repeatedRedemptionWhileSendingDoesNotCreateAnotherDebit",
+          "failure": "java.lang.AssertionError: expected:<1> but was:<2>"
+        },
+        {
+          "name": "aRenewedTokenAfterAbaCannotDispatchTheOldRead",
+          "failure": "java.lang.AssertionError"
+        }
+      ]
+    },
+    {
+      "suite": "conectate.com.data.repository.LiveDrawGuessAccountTest",
+      "tests": 5,
+      "failures": 5,
+      "errors": 0,
+      "cases": [
+        {
+          "name": "anOldActionCannotUseTheTokenReturnedAfterAba",
+          "failure": "java.lang.AssertionError"
+        },
+        {
+          "name": "leavingAndReturningToTheSameLiveInvalidatesAnOldSnapshot",
+          "failure": "java.lang.AssertionError"
+        },
+        {
+          "name": "rebindingTheSameLiveUnderAnotherAccountFetchesItsOwnState",
+          "failure": "java.lang.AssertionError: expected:<[token-a, token-b]> but was:<[token-a]>"
+        },
+        {
+          "name": "aDrawAcknowledgementForThePreviousRoundCannotAppendToTheNextRound",
+          "failure": "java.lang.AssertionError"
+        },
+        {
+          "name": "aLateReadAfterAbaCannotPublishThePrivatePrompt",
+          "failure": "java.lang.AssertionError: expected null, but was:<LiveDrawGuessState(game=LiveDrawGuessGame(id=game, liveId=7245c3f0-3a6a-4d9d-93c1-e20236506111, hostUserId=, status=lobby, maxPlayers=8, totalRounds=3, roundSeconds=75, currentRoundNumber=0, startedAt=null, completedAt=null), players=[], round=LiveDrawGuessRound(id=old, gameId=game, roundNumber=0, drawerUserId=, status=active, lastDrawSequence=-1, startedAt=null, endsAt=null, completedAt=null), privatePrompt=LiveDrawGuessPrompt(key=private, label=Old private word, version=1), idempotentReplay=false)>"
+        }
+      ]
+    }
+  ],
+  "trackedSourceSha256": {
+    "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt": "8d4dafaa6211cff225f84ca9a0235eb7422a29f41a9b348c8bc7ad2a35afe67f",
+    "app/src/main/java/conectate/com/data/points/LiveChannelPointsApiClient.kt": "2782e3f97f5d7c4e46d8b962661f92cbd98cbcb21c33fd421d8139b4b85e3db7",
+    "app/src/main/java/conectate/com/data/repository/LiveChannelPointsRepository.kt": "79adf21e70ce4d494c14e9bf3462af26f103693607adf053e2022703eaf5defe",
+    "app/src/main/java/conectate/com/data/repository/LiveDrawGuessRepository.kt": "1affb918a854ad75487656591d6c9aff48c59810371d63f56ed9b7709a25bf24",
+    "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt": "2836b848d7e873a44165e095fd64be7f24537afb966b0cc414f0923d76b511f2"
+  }
+}

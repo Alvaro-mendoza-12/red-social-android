@@ -207,6 +207,8 @@ class AuthService @Inject constructor(
 
     internal fun captureAccountLease(): AuthSessionLease = localSessionMutationGuard.captureAccountLease(::getCurrentUserId)
 
+    internal val accountVisitChanges: StateFlow<Long> get() = localSessionMutationGuard.accountVisitChanges
+
     internal fun commitForAccountLease(lease: AuthSessionLease, mutation: () -> Unit): Boolean =
         localSessionMutationGuard.commitForLease(lease, mutation)
 

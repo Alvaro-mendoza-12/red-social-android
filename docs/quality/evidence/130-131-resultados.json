@@ -1,7 +1,7 @@
 {
   "date": "2026-11-13",
   "timezone": "America/Bogota",
-  "scope": "Correcciones web 130 y compartidos pÃƒÂºblicos 131; revisiÃƒÂ³n integral abierta",
+  "scope": "Correcciones web 130 y compartidos públicos 131; revisión integral abierta",
   "implementationGitBlobs": {
     "NoWing-web/middleware.ts": "3b84f29ecf1f8a16c616fbe921e6ea4d1deb087e",
     "NoWing-web/public/images/novvin-chat-web-demo.png": "6ed91290aab9cdf091336d674808e493df3fac73",
@@ -100,10 +100,10 @@
   },
   "limits": [
     "No despliegue de Ubuntu/Vercel",
-    "No comprobaciÃƒÂ³n fÃƒÂ­sica de WhatsApp ni teclado mÃƒÂ³vil",
+    "No comprobación física de WhatsApp ni teclado móvil",
     "No APK nueva",
-    "Paridad del menÃƒÂº Android parcial",
-    "Bloque mÃƒÂ³vil 128 local sin publicar",
+    "Paridad del menú Android parcial",
+    "Bloque móvil 128 local sin publicar",
     "Sin prueba de carga masiva ni cierre integral"
   ],
   "skills": [

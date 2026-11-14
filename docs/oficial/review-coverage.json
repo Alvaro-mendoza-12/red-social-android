@@ -1,8 +1,8 @@
 {
-  "generatedAtUtc": "2026-11-13T20:39:37.669579+00:00",
-  "baseCommit": "0d9684c815d903fb21d836b8391305644fa99d08",
+  "generatedAtUtc": "2026-11-14T01:22:20.782944+00:00",
+  "baseCommit": "b58f05e87e06f96fc063c65202d27d241596f7b8",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
-  "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
+  "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
   "definitions": {
     "pending": "Not fully read at this exact file hash.",
@@ -10,30 +10,30 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3613,
-    "partial": 231,
-    "code-read": 587
+    "pending": 3617,
+    "partial": 234,
+    "code-read": 601
   },
   "countsByPhase": {
     "android": {
-      "pending": 1509,
-      "partial": 95,
-      "code-read": 425
+      "pending": 1507,
+      "partial": 97,
+      "code-read": 435
     },
     "documentation": {
-      "pending": 592,
-      "code-read": 40,
+      "pending": 600,
+      "code-read": 41,
       "partial": 15
     },
     "server": {
-      "pending": 857,
-      "code-read": 55,
-      "partial": 27
+      "pending": 856,
+      "code-read": 56,
+      "partial": 28
     },
     "tooling-and-other": {
-      "pending": 152,
+      "pending": 151,
       "partial": 9,
-      "code-read": 15
+      "code-read": 17
     },
     "web": {
       "partial": 85,
@@ -91,8 +91,10 @@
     {
       "file": ".github/workflows/service-ci.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "84e386a099c8b5d3244ebfe87e2269208bf5731f",
-      "reviewStatus": "pending"
+      "gitBlobId": "64bcea18877376b7742275678081684b29eb9179",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": ".gitignore",
@@ -737,7 +739,7 @@
     {
       "file": "NoWing-web/scripts/update-public-seo-policy.mjs",
       "phase": "web",
-      "gitBlobId": "546b62fd4e448051b3a19cf27818b79a34e1f079",
+      "gitBlobId": "e27933c86b90418093c40dbb271996eb61923786",
       "reviewStatus": "pending"
     },
     {
@@ -4245,7 +4247,7 @@
     {
       "file": "NoWing-web/tests/public-http.test.mjs",
       "phase": "web",
-      "gitBlobId": "6abceb8f3d524e59c7c7ff6c919c5fd2dfdefd90",
+      "gitBlobId": "da16bcb8ef6c2457094988b6642138661f4e8676",
       "reviewStatus": "pending"
     },
     {
@@ -4297,7 +4299,7 @@
     {
       "file": "NoWing-web/vercel.json",
       "phase": "web",
-      "gitBlobId": "1a05d0ed5dce221bfcf5992c4d7d01c540df9dc0",
+      "gitBlobId": "a0da242502d3d830163d540b326380d70fe867d9",
       "reviewStatus": "pending"
     },
     {
@@ -4905,6 +4907,14 @@
       "phase": "android",
       "gitBlobId": "7afb07b95cd858b43b4b5f2c0a6ce60985c68a15",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/live/LiveDrawGuessLifecycleDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "1d2083f9d7d794f66cf03ec19651f524b722c028",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/live/LiveParticipantGridDeviceTest.kt",
@@ -7047,6 +7057,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/data/localfallback/LiveDrawGuessApi.kt",
+      "phase": "android",
+      "gitBlobId": "f8e9d021e94c10ccf868f47f743456a5bd7b8711",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/localfallback/LiveGiftEventsResponse.kt",
       "phase": "android",
       "gitBlobId": "3bdb161c5433fbc050f692fb8030f5d8c74eca4a",
@@ -7055,9 +7073,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt",
       "phase": "android",
-      "gitBlobId": "a83ca11ad0a25b72a7bc1d0b6155b86a593906db",
+      "gitBlobId": "5b421865567e66d9973412833e4927c4eff2f713",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7631,10 +7649,28 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/data/points/LiveChannelPointsApi.kt",
+      "phase": "android",
+      "gitBlobId": "3ec1c4c009f4e303fc37ae8bb215532f10cb55aa",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/points/LiveChannelPointsApiClient.kt",
       "phase": "android",
-      "gitBlobId": "7ca1fab9eae145fcb6d3563c7e6d290a652f17d4",
-      "reviewStatus": "pending"
+      "gitBlobId": "cd220f44a860eeb401cf87e0ad356a53c7901333",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/points/LivePointRedemptionJournal.kt",
+      "phase": "android",
+      "gitBlobId": "7a6f66df7d963b9ab20b81811fa4b6b76ddcef81",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/raffles/RaffleModels.kt",
@@ -7895,17 +7931,17 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveChannelPointsRepository.kt",
       "phase": "android",
-      "gitBlobId": "d4bacf6699cda72cccb4d8092af0788b751656e9",
+      "gitBlobId": "dd064c0b4b759572909499366212b043fef132ae",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/LiveDrawGuessRepository.kt",
       "phase": "android",
-      "gitBlobId": "a153a1b777729fce146404c185274c1f6f55d236",
+      "gitBlobId": "a5a270270c14e3a6243514b34413666eb09e0b42",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8767,17 +8803,17 @@
     {
       "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
       "phase": "android",
-      "gitBlobId": "23124847beac979f6cadded9bf8c97dfbd9e047d",
+      "gitBlobId": "9a4f0ae4c33f0b9af1858ee46046aeb0ce816e96",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/supabase/AuthSessionMutationGuard.kt",
       "phase": "android",
-      "gitBlobId": "4f4ad3a0f090172ebf4a44a43590d1d5451ee6ee",
+      "gitBlobId": "d1bf3fbd1f96a8a9232344265e3f37c31baa5f85",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10065,6 +10101,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsController.kt",
+      "phase": "android",
+      "gitBlobId": "c03c2ae605c839f1a92b3e565639b1d7a8539653",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveChannelPointsDialog.kt",
       "phase": "android",
       "gitBlobId": "b5b01074cce9d9a7ee0f8dd8bc68f67416d70732",
@@ -10103,15 +10147,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveDrawGuessDialog.kt",
       "phase": "android",
-      "gitBlobId": "a520e6f97d5eb77b75aa741713cbac240e07c31f",
-      "reviewStatus": "pending"
+      "gitBlobId": "a299c5aa5322e7fc351810e90a256c15d9db5795",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveDrawGuessViewModel.kt",
       "phase": "android",
-      "gitBlobId": "5f351e4c351a6bb9cff6841934e4a6cbee206927",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "gitBlobId": "a9b22b6b8b11f74dccb326267e80b9effd0477cb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10213,9 +10259,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt",
       "phase": "android",
-      "gitBlobId": "5af27eb1e2939e66e472b6eda17fb8051ec1ebac",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "gitBlobId": "ede38eb85413b93aa392ff4b7524f992b68692b5",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15083,6 +15129,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/points/LivePointRedemptionJournalTest.kt",
+      "phase": "android",
+      "gitBlobId": "af89597a298d6a83894af630689c4ae212db59d5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/recommendations/AuthoritativeRecommendationMappingsTest.kt",
       "phase": "android",
       "gitBlobId": "bcae17d5791c9e88fab7893596a14cbe9bcae379",
@@ -15181,6 +15235,22 @@
       "phase": "android",
       "gitBlobId": "40f47a2ef8bfb5d306c907c892e8ddca66ba46cc",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/LiveAccountFixtures.kt",
+      "phase": "android",
+      "gitBlobId": "c1fba2397ebdd0506a8483707a7173bc7185a2ed",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/LiveDrawGuessAccountTest.kt",
+      "phase": "android",
+      "gitBlobId": "4e2dd37d130c702ea70035941f0fd89b8b45192a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/LiveDrawGuessRepositoryPolicyTest.kt",
@@ -15685,9 +15755,9 @@
     {
       "file": "app/src/test/java/conectate/com/data/supabase/AuthSessionMutationGuardTest.kt",
       "phase": "android",
-      "gitBlobId": "ce09d4659a2544b0508ecd11b4320a1e706a5b01",
+      "gitBlobId": "498db79cb29ea006471874a37f1398226f0ec6e5",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16091,6 +16161,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/live/LiveChannelPointsAccountTest.kt",
+      "phase": "android",
+      "gitBlobId": "2c0c7b7338915cc47259635e83617016c004d9a2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/live/LiveCollaborationPollingTest.kt",
       "phase": "android",
       "gitBlobId": "1a78038b4c07cd5b72fbd8809f9d49377be21a0a",
@@ -16107,6 +16185,14 @@
       "phase": "android",
       "gitBlobId": "91368fe84f151b40c43165c90e34a2c5b05d55df",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/live/LiveDrawGuessVisitTest.kt",
+      "phase": "android",
+      "gitBlobId": "e232efa412308d9c833a1253ba54460088c2f24d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/live/LiveParticipantLayoutPolicyTest.kt",
@@ -20105,9 +20191,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "25d728ca5cb06e0ff1fd371203d89a3e8a3caae7",
+      "gitBlobId": "03ae2da5eb2f9c0b2a2c0f1dbc961ae17a045825",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20292,6 +20378,14 @@
       "gitBlobId": "dd6d3f799e84f6c5a310f5d4d0a0f9ee1b874c3f",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "phase": "documentation",
+      "gitBlobId": "44f04a21b4f249c55212df9fd56438d3752fc98e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20817,9 +20911,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "0f89e3cc9101b21797a4cce24e292324f8383b17",
+      "gitBlobId": "0a3984ed910da4058a086beeb97c1d5c8d87c8ce",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21291,7 +21385,7 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "6afff305560b5aff8c7f833ce97b7fa0b52173b6",
+      "gitBlobId": "63a1cf0cd194361715a18ebbd51e79c0e0972923",
       "reviewStatus": "pending"
     },
     {
@@ -21423,7 +21517,7 @@
     {
       "file": "docs/quality/evidence/130-131-resultados.json",
       "phase": "documentation",
-      "gitBlobId": "ad972ec6002b33dc424022545dc014ef79c73cc4",
+      "gitBlobId": "26212a04c98a1d38edc54ab362ee036b11ab0c56",
       "reviewStatus": "pending"
     },
     {
@@ -21472,6 +21566,54 @@
       "file": "docs/quality/evidence/131-publicacion.jpg",
       "phase": "documentation",
       "gitBlobId": "c744933d3ecb94e9a0ee55e22fd3de654aa2c53e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/132-canjes-api-antes.tap",
+      "phase": "documentation",
+      "gitBlobId": "ceeda9f8ee8662b9a4ea1f2175309605e4d7013c",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/132-canjes-api-despues.tap",
+      "phase": "documentation",
+      "gitBlobId": "a8c94b38297aed00a8d1218954847580dc693e9e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/132-canjes-api-esquema-ci.tap",
+      "phase": "documentation",
+      "gitBlobId": "1d1b438c00b6a0516fb1f30ee4dc91c370993e26",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/132-emulador.txt",
+      "phase": "documentation",
+      "gitBlobId": "e2ec388b9b2fce0c5c0fd9021924b363aa51fd14",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/132-jvm-completo.json",
+      "phase": "documentation",
+      "gitBlobId": "e8868d71e69c17e011fa0404320b07bd73836295",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/132-jvm-focalizado.json",
+      "phase": "documentation",
+      "gitBlobId": "357098cabc496680076ffb0bc132fced34b8a23a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/132-regresiones-antes.json",
+      "phase": "documentation",
+      "gitBlobId": "9921ee95c78dd9f42fdfdeb975b93ee07f2cd577",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/132-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "a3f2ce053f784e9ea229ea82358b59d4c178ff66",
       "reviewStatus": "pending"
     },
     {
@@ -22725,8 +22867,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/live-points-routes.js",
       "phase": "server",
-      "gitBlobId": "4f8f732c7cb4eb61f7b393a605f6fb21cd0d20d8",
-      "reviewStatus": "pending"
+      "gitBlobId": "f50edcd7092222c1affd3e117a754c387911666a",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/live-routes.js",
@@ -24023,6 +24167,14 @@
       "phase": "server",
       "gitBlobId": "5282b925815cf903154007df078cd38f0bacf271",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/live-points-redemption.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "030492d47e9a1fcfe7e132abd8a23b1aaebc1d03",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/live-points-routes.test.js",
@@ -27997,9 +28149,9 @@
     {
       "file": "tools/audit/update_review_coverage.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "920add6d8a49fb162cfbeb1369882038072a5748",
+      "gitBlobId": "bc52c1b8fcecbb2f6f35468cfbb1a38845d87c56",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28193,6 +28345,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "tools/tests/test_review_coverage_index.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "f98f4499fbbc64944fa326951dd90843d0b750fa",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "tools/tests/test_security_sql_audit_effective.py",
       "phase": "tooling-and-other",
       "gitBlobId": "5f467e3db42fc755f193f5ad520aa752fc80f4aa",
@@ -28261,7 +28421,7 @@
     {
       "file": "vercel.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "8a49daab57c7d7e59401661602f4833e9ce31ba5",
+      "gitBlobId": "90fb4c01f1d51163b0edb2bb24ff75bc7266d22d",
       "reviewStatus": "pending"
     }
   ]

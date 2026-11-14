@@ -30,7 +30,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -48,6 +47,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import conectate.com.data.model.LiveDrawPoint
 import conectate.com.data.model.LiveDrawPacket
 import java.time.Instant
@@ -62,19 +62,26 @@ fun LiveDrawGuessDialog(
     onDismiss: () -> Unit,
     viewModel: LiveDrawGuessViewModel = hiltViewModel()
 ) {
-    val state by viewModel.gameState.collectAsStateWithLifecycle()
-    val packets by viewModel.drawPackets.collectAsStateWithLifecycle()
-    val busy by viewModel.busy.collectAsStateWithLifecycle()
-    val error by viewModel.error.collectAsStateWithLifecycle()
-    val guessResult by viewModel.guessResult.collectAsStateWithLifecycle()
-    var guess by remember(liveId) { mutableStateOf("") }
-    var remainingSeconds by remember { mutableIntStateOf(0) }
+    val snapshot by viewModel.gameState.collectAsStateWithLifecycle()
+    val drawing by viewModel.drawPackets.collectAsStateWithLifecycle()
+    val sending by viewModel.busy.collectAsStateWithLifecycle()
+    val failure by viewModel.error.collectAsStateWithLifecycle()
+    val answer by viewModel.guessResult.collectAsStateWithLifecycle()
+    val accountVisitGeneration by viewModel.accountVisitGeneration.collectAsStateWithLifecycle()
+    val ownsVisit = viewModel.isCurrentVisit(liveId, currentUserId)
+    val state = snapshot.takeIf { ownsVisit }
+    val packets = if (ownsVisit) drawing else emptyList()
+    val busy = ownsVisit && sending
+    val error = failure.takeIf { ownsVisit }
+    val guessResult = answer.takeIf { ownsVisit && it?.state?.round?.id == state?.round?.id }
+    var guess by remember(liveId, currentUserId, accountVisitGeneration) { mutableStateOf("") }
+    var remainingSeconds by remember(liveId, currentUserId, accountVisitGeneration) { mutableIntStateOf(0) }
 
-    LaunchedEffect(liveId) { viewModel.bind(liveId) }
-    DisposableEffect(liveId) {
-        onDispose { viewModel.unbind() }
+    LifecycleResumeEffect(liveId, currentUserId, accountVisitGeneration) {
+        val binding = viewModel.bind(liveId)
+        onPauseOrDispose { viewModel.unbind(binding) }
     }
-    LaunchedEffect(state?.round?.endsAt) {
+    LaunchedEffect(state?.round?.endsAt, accountVisitGeneration) {
         val deadline = runCatching { Instant.parse(state?.round?.endsAt).toEpochMilli() }.getOrNull()
         if (deadline == null) {
             remainingSeconds = 0

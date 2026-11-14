@@ -1,5 +1,7 @@
 package conectate.com.data.supabase
 
+import kotlinx.coroutines.flow.asStateFlow
+
 internal class AuthSessionLease internal constructor(
     val accountId: String?,
     private val ownerGuard: AuthSessionMutationGuard? = null,
@@ -20,6 +22,8 @@ internal class AuthSessionLease internal constructor(
 internal class AuthSessionMutationGuard {
     private val lock = Any()
     private var generation = 0L
+    private val visitGeneration = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val accountVisitChanges = visitGeneration.asStateFlow()
 
     fun captureAccountLease(currentAccount: () -> String?): AuthSessionLease = synchronized(lock) {
         val expected = generation
@@ -58,8 +62,10 @@ internal class AuthSessionMutationGuard {
         beforeMutation() // A failed durable snapshot must leave the outgoing account active.
         generation += 1
         transition.generation = generation
-        mutation()
-        true
+        try {
+            mutation()
+            true
+        } finally { visitGeneration.value = generation }
     }
 
     fun closeTransition(transition: Transition) = synchronized(lock) {
@@ -72,7 +78,7 @@ internal class AuthSessionMutationGuard {
 
     fun invalidate(mutation: () -> Unit) = synchronized(lock) {
         generation += 1
-        mutation()
+        try { mutation() } finally { visitGeneration.value = generation }
     }
 
     fun commitIfCurrent(

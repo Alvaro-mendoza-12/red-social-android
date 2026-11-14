@@ -1,0 +1,98 @@
+TAP version 13
+# Subtest: redemption ownership and concurrent retries with real PostgreSQL
+    # Subtest: a replay belongs to its viewer and cannot reveal that viewers redemption to another account
+    not ok 1 - a replay belongs to its viewer and cannot reveal that viewers redemption to another account
+      ---
+      duration_ms: 256.5983
+      type: 'test'
+      location: 'D:\\red social - live-gifts\\infrastructure\\local-fallback\\api\\tests\\live-points-redemption.postgres.test.js:50:13'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+
+        200 !== 409
+
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 409
+      actual: 200
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (D:\red social - live-gifts\infrastructure\local-fallback\api\tests\live-points-redemption.postgres.test.js:54:14)
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async TestContext.<anonymous> (D:\red social - live-gifts\infrastructure\local-fallback\api\tests\live-points-redemption.postgres.test.js:50:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+      ...
+    # Subtest: a replay cannot silently change the requested reward
+    not ok 2 - a replay cannot silently change the requested reward
+      ---
+      duration_ms: 40.8061
+      type: 'test'
+      location: 'D:\\red social - live-gifts\\infrastructure\\local-fallback\\api\\tests\\live-points-redemption.postgres.test.js:59:13'
+      failureType: 'testCodeFailure'
+      error: |-
+        Expected values to be strictly equal:
+
+        200 !== 409
+
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: 409
+      actual: 200
+      operator: 'strictEqual'
+      stack: |-
+        TestContext.<anonymous> (D:\red social - live-gifts\infrastructure\local-fallback\api\tests\live-points-redemption.postgres.test.js:63:14)
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async TestContext.<anonymous> (D:\red social - live-gifts\infrastructure\local-fallback\api\tests\live-points-redemption.postgres.test.js:59:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+      ...
+    # Subtest: the same account and its verified identity alias recover a lost acknowledgement
+    ok 3 - the same account and its verified identity alias recover a lost acknowledgement
+      ---
+      duration_ms: 47.0145
+      type: 'test'
+      ...
+    # Subtest: five concurrent retries all resolve to one redemption, debit and stock decrement
+    not ok 4 - five concurrent retries all resolve to one redemption, debit and stock decrement
+      ---
+      duration_ms: 333.0758
+      type: 'test'
+      location: 'D:\\red social - live-gifts\\infrastructure\\local-fallback\\api\\tests\\live-points-redemption.postgres.test.js:76:13'
+      failureType: 'testCodeFailure'
+      error: '[201,409,409,409,409]'
+      code: 'ERR_ASSERTION'
+      name: 'AssertionError'
+      expected: true
+      actual: false
+      operator: '=='
+      stack: |-
+        TestContext.<anonymous> (D:\red social - live-gifts\infrastructure\local-fallback\api\tests\live-points-redemption.postgres.test.js:96:7)
+        process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async TestContext.<anonymous> (D:\red social - live-gifts\infrastructure\local-fallback\api\tests\live-points-redemption.postgres.test.js:76:5)
+        async Test.run (node:internal/test_runner/test:1054:7)
+        async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+      ...
+    1..4
+not ok 1 - redemption ownership and concurrent retries with real PostgreSQL
+  ---
+  duration_ms: 887.9888
+  type: 'test'
+  location: 'D:\\red social - live-gifts\\infrastructure\\local-fallback\\api\\tests\\live-points-redemption.postgres.test.js:10:1'
+  failureType: 'subtestsFailed'
+  error: '3 subtests failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..1
+# tests 5
+# suites 0
+# pass 1
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2473.9239

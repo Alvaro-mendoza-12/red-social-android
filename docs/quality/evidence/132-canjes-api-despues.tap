@@ -1,0 +1,48 @@
+TAP version 13
+# Subtest: redemption ownership and concurrent retries with real PostgreSQL
+    # Subtest: a replay belongs to its viewer and cannot reveal that viewers redemption to another account
+    ok 1 - a replay belongs to its viewer and cannot reveal that viewers redemption to another account
+      ---
+      duration_ms: 118.8969
+      type: 'test'
+      ...
+    # Subtest: a replay cannot silently change the requested reward
+    ok 2 - a replay cannot silently change the requested reward
+      ---
+      duration_ms: 21.2855
+      type: 'test'
+      ...
+    # Subtest: the same account and its verified identity alias recover a lost acknowledgement
+    ok 3 - the same account and its verified identity alias recover a lost acknowledgement
+      ---
+      duration_ms: 22.7364
+      type: 'test'
+      ...
+    # Subtest: five concurrent retries all resolve to one redemption, debit and stock decrement
+    ok 4 - five concurrent retries all resolve to one redemption, debit and stock decrement
+      ---
+      duration_ms: 151.472
+      type: 'test'
+      ...
+    1..4
+ok 1 - redemption ownership and concurrent retries with real PostgreSQL
+  ---
+  duration_ms: 393.2277
+  type: 'test'
+  ...
+# live points route tests passed
+# Subtest: infrastructure\\local-fallback\\api\\tests\\live-points-routes.test.js
+ok 2 - infrastructure\\local-fallback\\api\\tests\\live-points-routes.test.js
+  ---
+  duration_ms: 193.1085
+  type: 'test'
+  ...
+1..2
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 872.6745
