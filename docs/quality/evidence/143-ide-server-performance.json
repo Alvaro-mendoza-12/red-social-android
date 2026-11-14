@@ -133,6 +133,66 @@
       "path": "app/build/audit143/Novvin-9.1.40-debug-180-IDE143-LAB-UNPUBLISHED141.apk",
       "sha256": "56e3adb0048488add8aea1eaf56b677357b6351aa5c5ebf92a1a585dc8820e21",
       "bytes": 270435298
+    },
+    {
+      "path": "app/build/audit143/server-link-detail.txt",
+      "sha256": "157e0b5ea61b91d3a76b4805dc24d320b7239b71d25b6387e2a4463098c40db7",
+      "bytes": 1202
+    },
+    {
+      "path": "app/build/audit143/flutter-environment-result.json",
+      "sha256": "e1a06ac0d253032b8f529131a8aa7d462a6eea535275fe48987303d3937d5f08",
+      "bytes": 1387
+    },
+    {
+      "path": "app/build/audit143/flutter-android-build-retry.log",
+      "sha256": "484392d5e707a66672ad24fb5b90313d812277cbeddb0ed5b4c9df96152576c8",
+      "bytes": 3889
+    },
+    {
+      "path": "app/build/audit143/flutter-first-attempt-preserved.log",
+      "sha256": "7c1b07df47d74bea85cc6d4951d27d871ea3ba3c51aa5dd646869f31e04f10f1",
+      "bytes": 4202
+    },
+    {
+      "path": "app/build/audit143/flutter-apk-install.txt",
+      "sha256": "c4aa470acafcf8576c15b0f0b5ae7e852d1ec5413372d0e6a9272e788e1306d3",
+      "bytes": 38
+    },
+    {
+      "path": "app/build/audit143/flutter-apk-launch.txt",
+      "sha256": "47f18999c84f86c83993094cab46a5bdfdff42ad716f284a91f4de70d83236c1",
+      "bytes": 213
+    },
+    {
+      "path": "app/build/audit143/flutter-crash-log-private.txt",
+      "sha256": "7730392262331203fe12934ada8a52b49c1b588dcbfa53b4ce8447a8cf8e8db3",
+      "bytes": 13130
+    },
+    {
+      "path": "app/build/audit143/flutter-application-log-private.txt",
+      "sha256": "fb54610e3b7d1c39f6d770542db14399c6c081081f5178f098dacd71b2cba3fa",
+      "bytes": 5531
+    },
+    {
+      "path": "app/build/audit143/flutter-foreground-selected.txt",
+      "sha256": "2a4343e8af877689e9fdda405b224689e361894c83e191f651b20c4a394d0b86",
+      "bytes": 100
+    },
+    {
+      "path": "app/build/audit143/flutter-environment-smoke.png",
+      "sha256": "b2f660b8392baec07289635bf9cd41ed54cfde8fd28e72054342c6b6799a49c1",
+      "bytes": 37079
+    },
+    {
+      "path": "app/build/audit143/flutter-emulator-window.xml",
+      "sha256": "b24a53b332e623a460a675dfb8ddf4dd4fe401e42da1e7ceed9802c5033e4eb2",
+      "bytes": 3568
+    },
+    {
+      "path": "app/build/audit143/finalize_flutter_launch.py",
+      "sha256": "b46cd6c4baa413264f2c995392f03044888ced3c787cbe1a47ae276078df362b",
+      "bytes": 2472
     }
   ],
   "server": {
@@ -218,7 +278,14 @@
       }
     ],
     "maximumContractedBandwidthUnknown": true,
-    "concurrentUserCapacityNotEstablished": true
+    "concurrentUserCapacityNotEstablished": true,
+    "linkDetail": {
+      "nicAdvertisesGigabit": true,
+      "linkPartnerAdvertisesGigabit": false,
+      "negotiatedMbps": 100,
+      "duplex": "Full",
+      "routerConfigurationChanged": false
+    }
   },
   "ide": {
     "profilesSdkAndAvdsPreserved": true,
@@ -260,6 +327,41 @@
       "path": "app/build/audit143/Novvin-9.1.40-debug-180-IDE143-LAB-UNPUBLISHED141.apk",
       "sha256": "56e3adb0048488add8aea1eaf56b677357b6351aa5c5ebf92a1a585dc8820e21",
       "bytes": 270435298
+    },
+    "flutterSample": {
+      "framework": "Flutter",
+      "sdkVersion": "3.44.0",
+      "dartVersion": "3.12.0",
+      "jdk": 21,
+      "gradle": "9.1.0",
+      "compilePassed": true,
+      "seconds": 538.7,
+      "sampleOutsideUserProjects": true,
+      "apkPath": "D:\\Novvin-IDE-Repair-20261114\\flutter-environment-check\\build\\app\\outputs\\flutter-apk\\app-debug.apk",
+      "apkBytes": 146077540,
+      "apkSha256": "5b45f657230f56c4c117fa1eb4ad045434aed4998a941a01b64a933c5385d5c0",
+      "sampleJvmLimitMiB": 4096,
+      "sampleIpv6Preference": true,
+      "originalAttemptPreserved": true,
+      "originalAttemptAgentCancelledAfterMeasuredIpv4Stalls": true,
+      "launcherVerified": true,
+      "novvinFinalApk": false,
+      "package": "com.example.novvin_environment_check",
+      "activity": ".MainActivity",
+      "installationPassed": true,
+      "visibleContentManuallyInspected": "Hello World!",
+      "foregroundProcessVerified": true,
+      "applicationCrashObserved": false,
+      "crashBufferEmpty": false,
+      "emulatorSystemCrashProcesses": [
+        "com.android.bluetooth",
+        "com.android.bluetooth"
+      ],
+      "emulatorSystemIssue": "Bluetooth service aborted while starting the emulator; retained original crash log. Bluetooth functionality not validated.",
+      "emulatorApi": 35,
+      "physicalDevice": false,
+      "scope": "Separate Flutter Android sample built, installed and displayed. No claim that all projects/frameworks or hardware features work.",
+      "firstLauncherAssertionFailedOnSystemBluetoothCrash": true
     }
   },
   "web": {
@@ -315,7 +417,15 @@
     "143RemotePublicationNotYetPerformed": true,
     "143ProductionDeploymentNotYetPerformed": true,
     "unfinished141ExcludedFromStableSelection": true,
-    "finalApkDelivery": false
+    "finalApkDelivery": false,
+    "143LocalIntegrationVerified": {
+      "heads": {
+        "feature/live-gifts": "d820e1dfa927147c05d641c05184ae20ea7ad6b3",
+        "main": "b191a65a554f187ca42da6c5b2221ea87f32997e"
+      },
+      "tree": "d34670005606bdb69c996b6a3238c04ef82276f2",
+      "remoteConfirmed": false
+    }
   },
   "openItems": [
     "LIVE screen ownership has two remaining reproduced control/state failures",
@@ -324,5 +434,6 @@
     "physical device and multi-account media tests",
     "remaining production avatar latency",
     "final identified validated APK"
-  ]
+  ],
+  "followupAtUtc": "2026-11-14T20:58:16.402205+00:00"
 }
