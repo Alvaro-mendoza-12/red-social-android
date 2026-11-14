@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T05:29:11.250017+00:00",
-  "baseCommit": "a5064e6e612d435f7c0efb6081f3f509eca46a3a",
+  "generatedAtUtc": "2026-11-14T07:01:08.271062+00:00",
+  "baseCommit": "991cacb997234e78d325110244d2ba180625b794",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3620,
-    "partial": 239,
-    "code-read": 608
+    "pending": 3628,
+    "partial": 240,
+    "code-read": 606
   },
   "countsByPhase": {
     "android": {
@@ -21,14 +21,14 @@
       "code-read": 438
     },
     "documentation": {
-      "pending": 607,
-      "code-read": 44,
+      "pending": 615,
+      "code-read": 43,
       "partial": 14
     },
     "server": {
       "pending": 855,
-      "code-read": 57,
-      "partial": 29
+      "code-read": 56,
+      "partial": 30
     },
     "tooling-and-other": {
       "pending": 151,
@@ -4375,7 +4375,7 @@
       "phase": "tooling-and-other",
       "gitBlobId": "37dd9e951ef15a857a2d6415afdfc01afa7f0d81",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "evidence": "docs/oficial/136-integracion-api-compartidos-y-mandato-word-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20237,7 +20237,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "89f99f4e9d0c7ae25341152dc8ebc69bd03ffe67",
+      "gitBlobId": "fbd1588d7adbbeaedd42d664400150b724cd2be6",
       "reviewStatus": "pending"
     },
     {
@@ -20449,7 +20449,13 @@
     {
       "file": "docs/oficial/135-api-bandeja-y-candidata-web-2026-11-14.md",
       "phase": "documentation",
-      "gitBlobId": "f3e3fe4674d1615f8ec298629cb54bc001228a31",
+      "gitBlobId": "242783f607d1a1b79fecd7259a88f8a7b5917082",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/136-integracion-api-compartidos-y-mandato-word-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "9c6ea6a177e4fafe6b802a01444e69fe4a165405",
       "reviewStatus": "pending"
     },
     {
@@ -20975,7 +20981,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "4dc074feba7b52142eaab7842d9580355574f575",
+      "gitBlobId": "ffa44ff2622c7c7c9c4000fd466a13a87d7cb310",
       "reviewStatus": "pending"
     },
     {
@@ -21395,10 +21401,8 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "82a2d041a5892448c2524a54419fbe32e6aa8dbc",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/133-formularios-de-herramientas-live-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "8d0497de3ecb04edc568226b740fa4a8e33065d2",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/product/ECOSYSTEM_IMPLEMENTATION_PLAN.md",
@@ -21447,7 +21451,7 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "8c5679447b7a4130a4d2095ec5dfbdc6583346c8",
+      "gitBlobId": "c185b7de4d32ddb173479f0c8820bad58ae76a55",
       "reviewStatus": "pending"
     },
     {
@@ -21718,6 +21722,42 @@
       "file": "docs/quality/evidence/135-operacion.json",
       "phase": "documentation",
       "gitBlobId": "c927da83818089d0d9d689fdc21781560bc9fc0f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/136-api-overlay.json",
+      "phase": "documentation",
+      "gitBlobId": "19f89004b380a7dfec09b9d4d8b7567e947f3b6a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/136-perfil-linux.jpg",
+      "phase": "documentation",
+      "gitBlobId": "2adc69eae30f672a094c1957b4d5b63e1ca845dc",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/136-publicacion-linux.jpg",
+      "phase": "documentation",
+      "gitBlobId": "a5a1b48a04b0eca7a4e2a5239a093fe706e954f8",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/136-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "574cc896c72f7532974d1533014b0fe615a867fd",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/136-video-linux.jpg",
+      "phase": "documentation",
+      "gitBlobId": "6faeb1fa13857fece270dfda6b6370de7d338170",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/136-word-parity.json",
+      "phase": "documentation",
+      "gitBlobId": "beb9370e75e28152ad9c133e57e9f22fb04206b3",
       "reviewStatus": "pending"
     },
     {
@@ -22177,9 +22217,9 @@
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-call-expansion-local.js",
       "phase": "server",
-      "gitBlobId": "23f404289a79fbfbbff8a80f224fc6702c83ff18",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "gitBlobId": "0e1df3a5f553f82d4a9d7ceec6b8ef56b7c50ed3",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/136-integracion-api-compartidos-y-mandato-word-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
