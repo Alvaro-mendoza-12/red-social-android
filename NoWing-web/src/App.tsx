@@ -1,5 +1,6 @@
 import { PageMetadata } from './ui/novvin/PageMetadata'
 import { AppErrorBoundary } from './components/AppErrorBoundary'
+import { RouteLoadingStatus } from './components/RouteLoadingStatus'
 import './ui/novvin/webParity.css'
 import { NotFoundPage } from './ui/novvin/NotFoundPage'
 import { PublicHome } from './ui/novvin/PublicHome'
@@ -170,7 +171,7 @@ const AdminModerationPage = lazy(() =>
 function RouteSuspense({ children }: { children: ReactNode }) {
   const {pathname}=useLocation()
   return (
-    <AppErrorBoundary key={pathname}><Suspense fallback={<StatusView title="Cargando módulo..." description="Espera un momento." />}>
+    <AppErrorBoundary key={pathname}><Suspense fallback={<RouteLoadingStatus />}>
       {children}
     </Suspense></AppErrorBoundary>
   )

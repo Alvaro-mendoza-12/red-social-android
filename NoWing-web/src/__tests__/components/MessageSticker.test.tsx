@@ -8,7 +8,7 @@ jest.mock('../../core/auth/fallbackAuth', () => ({ fallbackApiJson: jest.fn() })
 jest.mock('../../core/ubuntuBackend', () => ({shouldUseUbuntuBackend:()=>true}))
 jest.mock('../../core/runtimeBackend', () => ({rewriteRuntimeStorageUrl:(url:string)=>url}))
 jest.mock('../../core/supabase', () => ({supabase:null}))
-jest.mock('../../components/ChatAttachmentMedia', () => ({ ChatAttachmentMedia: ({title}:{title:string}) => <img alt={title}/> }))
+jest.mock('../../components/ChatAttachmentMedia', () => ({ ChatAttachmentMedia: ({title,imageActionLabel,onImageOpen}:{title:string;imageActionLabel?:string;onImageOpen?:()=>void}) => imageActionLabel ? <button aria-label={imageActionLabel} onClick={onImageOpen}><img alt={title}/></button> : <img alt={title}/> }))
 jest.mock('../../components/MediaDownloadButton', () => ({MediaDownloadButton:()=> <button>Descargar</button>}))
 const api=jest.mocked(fallbackApiJson)
 const show=HTMLDialogElement.prototype.showModal,close=HTMLDialogElement.prototype.close

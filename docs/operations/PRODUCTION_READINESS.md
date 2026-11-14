@@ -32,3 +32,8 @@ La [corrección de visitas LIVE](../oficial/139-visitas-notificacion-y-cierre-li
 ## Continuación 140 — 14 de noviembre de 2026
 
 La [corrección de avisos de llamada](../oficial/140-notificaciones-visitas-llamadas-2026-11-14.md) impide que las acciones retenidas de una visita afecten al aviso de otra. La selección y el qualityGate aprobados no prueban la propiedad global de cuenta/medios ni las llamadas físicas. Las 342 advertencias de Lint permanecen abiertas. No se entrega una APK nueva ni se declara preparación integral.
+
+
+## Continuación 142 — 14 de noviembre de 2026
+
+La [reparación urgente de IDE y recuperación web](../oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md) separa el fallo IPv4 local de la salud de API/PostgreSQL y registra el alcance de veinte controles. RLS no está habilitado; las muestras de autorización y los escaneos limitados no cierran la seguridad. La sincronización completa del IDE, los recorridos reales de medios, 141 y la APK final siguen abiertos. Los recibos de Git y despliegue deben comprobarse por separado.

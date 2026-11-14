@@ -4,6 +4,8 @@ Estado documental al 14 de noviembre de 2026. Esta es la entrada para desarrollo
 
 ## Estado vigente
 
+La [continuación 142](142-ide-conectividad-stickers-y-seguridad-2026-11-14.md) repara la instalación incompleta de Android Studio, aísla el fallo de salida IPv4 local y corrige recuperación de medios y módulos web. Registra 1.264 pruebas web antes del último ajuste de botones, 29 pruebas relacionadas repetidas después y ensayos con datos ficticios en tres anchos. Los veinte controles de seguridad siguen abiertos con alcance explícito; PostgreSQL no tiene RLS. La continuación móvil 141 permanece local, sin publicar; no se entrega una APK ni se cierra la revisión integral.
+
 La [continuación 140](140-notificaciones-visitas-llamadas-2026-11-14.md) integra las acciones de notificación por visita de llamada, con identidad propia y comprobación al ejecutar Colgar o Silenciar. Registra cuatro fallos reproducidos, 37 pruebas focalizadas, 2879 pruebas JVM en 534 clases y Lint con cero errores y 342 advertencias. La propiedad global de medios/cuentas, los ensayos físicos y la APK final siguen pendientes; no cierra la revisión integral.
 
 La [continuación 139](139-visitas-notificacion-y-cierre-live-2026-11-14.md) corrige la identidad de notificaciones y cierres de una instancia LIVE, conserva los avisos nuevos frente a órdenes antiguas y separa los resultados del coordinador por propietario. Registra dos fallos reproducidos, 23 pruebas focalizadas y 2850 pruebas JVM en 531 clases. La propiedad completa de cuenta y medios, los consumidores de pantalla retenidos, las pruebas físicas y la APK final siguen pendientes.

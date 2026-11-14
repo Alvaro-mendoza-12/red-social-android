@@ -1,4 +1,4 @@
-import {isChunkLoadError,recoverChunkLoad} from '../../core/chunkRecovery'
+import {isChunkLoadError,recoverChunkLoad,reloadApplicationSafely,setChunkReloadGuard} from '../../core/chunkRecovery'
 beforeEach(()=>sessionStorage.clear())
 test('a stale module refreshes once and cannot cause a reload loop',()=>{
  const reload=jest.fn(),error=new TypeError('Failed to fetch dynamically imported module: https://example.test/js/Old.js')
@@ -12,4 +12,9 @@ test('offline users, active media, and ordinary application errors never trigger
  expect(recoverChunkLoad(error,{reload,online:true,blocked:true})).toBe(false)
  expect(recoverChunkLoad(new Error('Unexpected data'),{reload,online:true,blocked:false})).toBe(false)
  expect(reload).not.toHaveBeenCalled()
+})
+
+test('an explicit retry also preserves active media and drafts',()=>{
+ setChunkReloadGuard(()=>true)
+ try{expect(reloadApplicationSafely()).toBe(false)}finally{setChunkReloadGuard(()=>false)}
 })

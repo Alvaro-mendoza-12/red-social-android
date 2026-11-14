@@ -11,6 +11,7 @@ import {
   readBoundedStorageBlob, STORAGE_PREVIEW_MAX_BYTES, STORAGE_SHORT_MEDIA_MAX_BYTES,
 } from '../core/media/boundedStorageRead'
 import { cachedStorageImagePreview, readCachedStorageImage } from '../core/media/imagePreviewCache'
+import { attachmentFailureCode, attachmentFailureText } from '../core/media/attachmentFailure'
 import {
   getStorageReadIdentity, onStorageReadInvalidated, requireStorageReadIdentity,
   subscribeStorageReadIdentity, type StorageReadIdentity,
@@ -43,9 +44,9 @@ function acceptsInline(kind: ChatAttachmentKind, mime: string): boolean {
 
 
 export function ChatAttachmentMedia({
-  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, preserveAnimation = false, previewWidth, allowRetry = true, inlineDownload = true, tilePreview = false, overlay,
+  url, kind, title = 'Archivo', size = 0, imageClassName = 'chat-media-image', imageLink = true, onImageOpen, imageActionLabel, preserveAnimation = false, previewWidth, allowRetry = true, inlineDownload = true, tilePreview = false, overlay,
 }: {
-  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; preserveAnimation?: boolean; previewWidth?: number; allowRetry?: boolean; inlineDownload?: boolean; tilePreview?: boolean; overlay?: ReactNode
+  url: string; kind: ChatAttachmentKind; title?: string; size?: number; imageClassName?: string; imageLink?: boolean; onImageOpen?: () => void; imageActionLabel?: string; preserveAnimation?: boolean; previewWidth?: number; allowRetry?: boolean; inlineDownload?: boolean; tilePreview?: boolean; overlay?: ReactNode
 }) {
   const identity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
   const rewritten = rewriteRuntimeStorageUrl(url)
@@ -121,7 +122,7 @@ export function ChatAttachmentMedia({
           contentionRetry = setTimeout(() => { if (active) setAttempt(value => value + 1) }, Math.min(1200, 250 * (attempt + 1)))
           return
         }
-        const code = error instanceof Error && error.message === 'MEDIA_TOO_LARGE' ? 'MEDIA_TOO_LARGE' : 'MEDIA_UNAVAILABLE'
+        const code = attachmentFailureCode(error)
         setFailure({ source, identity, code })
       })
     }
@@ -141,14 +142,14 @@ export function ChatAttachmentMedia({
   const currentFailure = failure?.source === source && failure.identity === identity ? failure : null
   const playbackUrl = isOwnedOutboxPreview(source,identity) ? source : ownStorage ? ready?.url ?? '' : safeExternalUrl(source)
   const retry = () => { setFailure(null); setPreview(null); setAttempt((value) => value + 1) }
-  const decodingFailed = () => setFailure({ source, identity, code: 'MEDIA_UNAVAILABLE' })
+  const decodingFailed = () => setFailure({ source, identity, code: attachmentFailureCode(new Error('MEDIA_UNAVAILABLE')) })
   const extension = attachmentName(rewritten,title).split('.').at(-1)?.toUpperCase().slice(0,5) || 'DOC'
   async function downloadOriginal() {
     if (downloadPreparing) return
     setDownloadPreparing(true)
     try {
       await downloadMedia(rewritten,attachmentName(rewritten,title))
-    } catch { setFailure({ source, identity, code: 'MEDIA_UNAVAILABLE' }) } finally { setDownloadPreparing(false) }
+    } catch (error) { setFailure({ source, identity, code: attachmentFailureCode(error) }) } finally { setDownloadPreparing(false) }
   }
 
   if (kind === 'video' || kind === 'audio') {
@@ -166,9 +167,10 @@ export function ChatAttachmentMedia({
     content = <p className="muted-line">Inicia sesión para abrir este archivo.</p>
   } else if (currentFailure || !playbackUrl && !ownStorage) {
     const large = currentFailure?.code === 'MEDIA_TOO_LARGE'
+    const details = attachmentFailureText(currentFailure?.code ?? 'MEDIA_UNAVAILABLE', kind, imageClassName === 'sticker-preview')
     content = <div className="chat-file-card media-load-error" role="status">
-      <span><strong>{large ? 'Archivo demasiado grande para la vista web' : 'No se pudo abrir el archivo'}</strong><small>{title}</small></span>
-      {!large && allowRetry ? <button className="mini-action-btn" type="button" onClick={retry}>{kind==='file'||kind==='pdf'?'Cargar vista previa':'Volver a cargar'}</button> : null}
+      <span><strong>{details.title}</strong><small>{details.description}</small></span>
+      {!large && allowRetry ? <button className="mini-action-btn" type="button" onClick={retry}>Reintentar</button> : null}
       {kind === 'file' || kind === 'pdf' ? <button type="button" className="mini-action-btn" disabled={downloadPreparing} onClick={() => void downloadOriginal()}>{downloadPreparing ? 'Preparando…' : 'Descargar original'}</button> : null}
     </div>
   } else if ((kind === 'file' || kind === 'pdf') && !viewerOpen) {
@@ -192,7 +194,7 @@ export function ChatAttachmentMedia({
     // The observer already controls which private images are fetched. Once the
     // Blob is ready, a second lazy gate only delays decoding an on-screen photo.
     const image = <img className={imageClassName} src={playbackUrl} alt={title} loading={visible ? 'eager' : 'lazy'} decoding="async" onError={decodingFailed} />
-    content = <div className="chat-image-preview">{imageLink ? <button type="button" className="chat-media-card" aria-label={`Ampliar ${title}`} onClick={()=>onImageOpen ? onImageOpen() : setViewerOpen(true)}>{image}</button> : image}{overlay ? <div className="chat-media-overlay">{overlay}</div> : null}</div>
+    content = <div className="chat-image-preview">{imageLink ? <button type="button" className="chat-media-card" aria-label={imageActionLabel ?? `Ampliar ${title}`} onClick={()=>onImageOpen ? onImageOpen() : setViewerOpen(true)}>{image}</button> : image}{overlay ? <div className="chat-media-overlay">{overlay}</div> : null}</div>
   } else if (kind === 'pdf') {
     content = <div className="chat-file-card"><strong>{title}</strong></div>
   } else {

@@ -1,0 +1,231 @@
+{
+  "checkedAtUtc": "2026-11-14",
+  "scope": "Urgent IDE repair, local connectivity diagnosis and web recovery; full audit remains open",
+  "sources": [
+    {
+      "path": "NoWing-web/src/App.tsx",
+      "sha256": "e025d1c51a0bf088418fa1bc078d795bdaba3b55fc51fe5240978dfc94c8ac30",
+      "bytes": 15913
+    },
+    {
+      "path": "NoWing-web/src/components/AppErrorBoundary.tsx",
+      "sha256": "15a039bf836ff88785d92989f53211f788d6b7bb42ce6cc0275579fd616c11e9",
+      "bytes": 2125
+    },
+    {
+      "path": "NoWing-web/src/components/ChatAttachmentMedia.tsx",
+      "sha256": "17cb61390b448e9285076f3b82e1b8d9139e27b6c1a2986d8b135a5e6cab710d",
+      "bytes": 15346
+    },
+    {
+      "path": "NoWing-web/src/components/MessageSticker.tsx",
+      "sha256": "5580e00ae3a1db490637af6ae2577c2e6c93552a3c6a14fa83f69d0e22c17ab0",
+      "bytes": 4856
+    },
+    {
+      "path": "NoWing-web/src/components/RouteLoadingStatus.tsx",
+      "sha256": "51c96582ac7f74c344b7d3c2901d822bc6f83873d516805566cdec44270fb169",
+      "bytes": 1434
+    },
+    {
+      "path": "NoWing-web/src/core/chunkRecovery.ts",
+      "sha256": "652c0a76fc751851dd1d7063ff14db756f248553b9402efa560b8ca35bc0d324",
+      "bytes": 2145
+    },
+    {
+      "path": "NoWing-web/src/core/media/attachmentFailure.ts",
+      "sha256": "73ba922f0bf5c7d5ee46b09ae9b7371b99460b8bf9c1ab51fb403285a193bc76",
+      "bytes": 2226
+    },
+    {
+      "path": "NoWing-web/src/ui/novvin/webParity.css",
+      "sha256": "9176755eb52602a77d32ee394098bfaec0dca99a2fe2ea47bc9dea7ec4e55304",
+      "bytes": 55074
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/ChatAttachmentMedia.test.tsx",
+      "sha256": "fa3b9a4c8943d4a5b725ace13832bc1877b359f00a3790e7f3118d1d2fb5844b",
+      "bytes": 15532
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/MessageSticker.test.tsx",
+      "sha256": "15de88ba512729e99f7475c7a6d560bab970217c5716d50fe408bebe405d751d",
+      "bytes": 3350
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/RouteLoadingStatus.test.tsx",
+      "sha256": "fd050c3c8b30f541dbc45fa49e693d15abb9d090e8557a542824a54c97ccc324",
+      "bytes": 1673
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/attachmentFailure.test.ts",
+      "sha256": "4271d7a19b170f11ee9ac0f542cc31fb36c63b538c4d7c722ff5e71f41c8239d",
+      "bytes": 1511
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/chunkRecovery.test.ts",
+      "sha256": "5bd7239892e4aebc4d46fe408a765170f17c2948dadce48b8b8b1eb9b4edea6a",
+      "bytes": 1309
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/audit142/web-tests-full.log",
+      "sha256": "f65a9d083e2f7fc0940b5d489481a1153ba92d97542d219893f3b9da8a8a7007",
+      "bytes": 58329
+    },
+    {
+      "path": "app/build/audit142/sticker-native-controls-tests.log",
+      "sha256": "fa177273b2e46b8fe439d7e9b4628dc8686d6ff1fcf1527abbcd0c22c33638a4",
+      "bytes": 540
+    },
+    {
+      "path": "app/build/audit142/web-build-final.log",
+      "sha256": "fddeb0b00f773cd1d46f49489f8bdb7f2907f611a793bdd49c1f30512416cff1",
+      "bytes": 9299
+    },
+    {
+      "path": "app/build/audit142/browser142-result.json",
+      "sha256": "bbee068e3424a42f6a2ca9df15973c03297ab83bcde512def3851cdd59c8f937",
+      "bytes": 8752
+    },
+    {
+      "path": "app/build/audit142/git-secret-summary.json",
+      "sha256": "5d1e3c0af37d42767b20b4f1420e73de2c9b78525e34acd393253217db54530b",
+      "bytes": 358
+    },
+    {
+      "path": "app/build/audit142/runtime-security.md",
+      "sha256": "b6874271db47876435ebdea9b22ac1c88e488c6f6de102acd28756c7799af6cf",
+      "bytes": 202
+    },
+    {
+      "path": "app/build/audit142/npm-audit-production.json",
+      "sha256": "b4f1e635426026371d7999bd85e4c69f47e1f3fd6eceedcd3a3ac2c5c83ce9a9",
+      "bytes": 388
+    },
+    {
+      "path": "app/build/audit142/server-security-readonly.json",
+      "sha256": "bb645743dbbda43fe7de8264c2562a3d7102039ee2da3da627238f2b85d51b97",
+      "bytes": 339
+    },
+    {
+      "path": "app/build/audit142/api-auth-probes.jsonl",
+      "sha256": "77aaa258aafaf5f0154e7074f45e237fb4cdb353e6459e33de8febeac3ef50b4",
+      "bytes": 884
+    },
+    {
+      "path": "app/build/audit142/windows-connectivity.jsonl",
+      "sha256": "3d9c1d46d7f4cef80c8680ab3e2178ccc54380f636efeb130452325eb96afcbf",
+      "bytes": 967
+    },
+    {
+      "path": "app/build/audit142/ubuntu-connectivity.jsonl",
+      "sha256": "8be3df43b77fe46816e872f07d76d6869a814a886a22a3c07d2d5fc6f0e83f9f",
+      "bytes": 966
+    },
+    {
+      "path": "app/build/audit142/gradle-version-after-ide-repair.log",
+      "sha256": "5ca4591709c5444593c59c82446139a1f39227286eb55570ecd94815bc91e809",
+      "bytes": 2085
+    },
+    {
+      "path": "app/build/audit142/gradle-help-offline.log",
+      "sha256": "31a4d937607357abe3b54d5e21fb758558ff29184f0dff6ef80860845292a2bc",
+      "bytes": 2601
+    },
+    {
+      "path": "app/build/audit142/browser142-sticker-error-1440.png",
+      "sha256": "7159303f8d499fa80f0258e1e8e7a63e4e651a54cf8d223f680379e355fe8e6f",
+      "bytes": 155426
+    },
+    {
+      "path": "app/build/audit142/browser142-sticker-error-768.png",
+      "sha256": "17b4de01f1a9d080681e2695f70bb0e8345e23a147251f67556ba615bbf32fa3",
+      "bytes": 101924
+    },
+    {
+      "path": "app/build/audit142/browser142-sticker-error-375.png",
+      "sha256": "2573cdc3240680379fabc03afbdd3a81374e0ab6555573daa530ac86fee297e0",
+      "bytes": 82793
+    }
+  ],
+  "webTests": {
+    "fullBeforeFinalNativeButtonRefinement": {
+      "tests": 1264,
+      "suites": 198,
+      "failures": 0
+    },
+    "finalAffectedMediaComponents": {
+      "tests": 29,
+      "suites": 2,
+      "failures": 0
+    },
+    "finalBuild": true,
+    "publicPages": 21
+  },
+  "browser": {
+    "synthetic": true,
+    "productionRequestsSent": false,
+    "widths": [
+      1440,
+      768,
+      375
+    ],
+    "stickerPixels": 120,
+    "forced403RecoveryPassed": true,
+    "javascriptErrors": 0,
+    "expected403ConsoleWarnings": 3,
+    "axeViolationsInTestedScreens": 0,
+    "visualBaselineComparison": "INCONCLUSIVE: no committed screenshot baseline"
+  },
+  "androidStudio": {
+    "distribution": "Rabbit 2 | 2026.2.2 Patch 1",
+    "build": "262.10968.63.2622.16840690",
+    "archiveSha256": "6813b0ce669844b87c5d56b9c5f661362bd3bebff55327415496bd7457a7b917",
+    "archiveBytes": 1546594374,
+    "launcherSignature": "Valid: Google LLC",
+    "completeDistributionInstalled": true,
+    "projectOpenedAndResponsiveObserved": true,
+    "projectGradleJdk": 21,
+    "gradleOfflineHelpPassed": true,
+    "ideSync": "Cancelled from UI according to IDE log; complete sync not claimed",
+    "backupPreserved": true,
+    "newApk": false
+  },
+  "network": {
+    "windowsAndUbuntuIPv4HttpsTimeouts": true,
+    "ipv6ControlSucceeded": true,
+    "localApiReady": true,
+    "databaseResponding": true,
+    "ownerConfirmedDomainWorksOnMobileData": true,
+    "routerOrProviderRootCauseUnconfirmed": true,
+    "dnsModified": false
+  },
+  "security": {
+    "runtimeStaticFindings": 0,
+    "gitHistoryScanLimited": true,
+    "gitTextBlobsScanned": 12856,
+    "gitHighConfidenceCandidates": 0,
+    "webProductionDependencyAdvisories": 0,
+    "anonymousProtectedRouteStatuses": [
+      401,
+      401,
+      401
+    ],
+    "databaseRole": {
+      "rolsuper": false,
+      "rolbypassrls": false
+    },
+    "rlsTablesEnabled": 0,
+    "rlsTablesExamined": 265,
+    "twentyControlAuditComplete": false
+  },
+  "publication": {
+    "localCommitsCapturedSeparately": true,
+    "remotePublished": false,
+    "productionDeploymentPerformed": false,
+    "unfinished141Excluded": true,
+    "foreignChangesMustBePreserved": true
+  }
+}

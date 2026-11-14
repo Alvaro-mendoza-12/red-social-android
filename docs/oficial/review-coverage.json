@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T16:11:10.487854+00:00",
-  "baseCommit": "04f9cc50129abff3db086946be48acfc953a4f08",
+  "generatedAtUtc": "2026-11-14T18:17:15.848541+00:00",
+  "baseCommit": "93c5af20ddea03af95dfdff89c050222eddd54d3",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3633,
-    "partial": 241,
-    "code-read": 630
+    "pending": 3624,
+    "partial": 246,
+    "code-read": 640
   },
   "countsByPhase": {
     "android": {
@@ -21,9 +21,9 @@
       "code-read": 451
     },
     "documentation": {
-      "pending": 627,
-      "code-read": 46,
-      "partial": 15
+      "pending": 623,
+      "code-read": 47,
+      "partial": 20
     },
     "server": {
       "pending": 855,
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 82,
-      "pending": 502,
-      "code-read": 62
+      "pending": 497,
+      "code-read": 71
     }
   },
   "files": [
@@ -767,9 +767,9 @@
     {
       "file": "NoWing-web/src/App.tsx",
       "phase": "web",
-      "gitBlobId": "eb81600a96e24c8db5db0ebe7e684005ece5dc61",
+      "gitBlobId": "5f1eaef1a9223ad999ba340dfcee8395a62b81d1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -807,8 +807,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/ChatAttachmentMedia.test.tsx",
       "phase": "web",
-      "gitBlobId": "59f245d7d00f97b388e25e69992ed8014e9cd561",
-      "reviewStatus": "pending"
+      "gitBlobId": "a05e7b33a8c452cf043a5ae5f3cbba59264f7ea4",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/ChatAttachmentPreview.test.tsx",
@@ -953,8 +955,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/MessageSticker.test.tsx",
       "phase": "web",
-      "gitBlobId": "46fa18ebe28f4f0c246b45baa6f8988a172667f4",
-      "reviewStatus": "pending"
+      "gitBlobId": "182621014817b856a1dbb16074463107cf87d494",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/MessageText.test.tsx",
@@ -1077,6 +1081,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/components/RouteLoadingStatus.test.tsx",
+      "phase": "web",
+      "gitBlobId": "8179ef56e2755e83f620b25844c534d12bfe5989",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/components/SafeAvatar.test.tsx",
       "phase": "web",
       "gitBlobId": "49beedf7c784f165c3ddb7c30b0391bf73392a4e",
@@ -1155,6 +1167,14 @@
       "phase": "web",
       "gitBlobId": "c0c7512ff33c8aa7b5e53ee0edfa13d56b3a1c31",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/attachmentFailure.test.ts",
+      "phase": "web",
+      "gitBlobId": "2fd6145753dfe94379c1082a51205b91abb3fd30",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/attachmentJobs.test.ts",
@@ -1245,8 +1265,10 @@
     {
       "file": "NoWing-web/src/__tests__/core/chunkRecovery.test.ts",
       "phase": "web",
-      "gitBlobId": "ed295aafd6af394cbf75e62f3eb707341e5fa122",
-      "reviewStatus": "pending"
+      "gitBlobId": "677de6cb7f20831ad01a2054e47f295ff0291790",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/collectionInvitation.test.ts",
@@ -2033,9 +2055,9 @@
     {
       "file": "NoWing-web/src/components/AppErrorBoundary.tsx",
       "phase": "web",
-      "gitBlobId": "7a4e711c5f4c0c0f7dad5674a12ec6e343270c2f",
+      "gitBlobId": "c09a3681bd324f35a8e3f5029d818fc0f7e0307d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2075,9 +2097,9 @@
     {
       "file": "NoWing-web/src/components/ChatAttachmentMedia.tsx",
       "phase": "web",
-      "gitBlobId": "e5315000d8ad9beda10ba611184c8b1bc6aeafbe",
-      "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "gitBlobId": "23a24f03d5575ec4c8ec36e5ba5b09eccdc05f20",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2289,8 +2311,10 @@
     {
       "file": "NoWing-web/src/components/MessageSticker.tsx",
       "phase": "web",
-      "gitBlobId": "e3bd0fc1d9ba0217419ad5719b1b804e48024d2c",
-      "reviewStatus": "pending"
+      "gitBlobId": "b0f715809492c512e2a589d5ddd666195601e8f8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/MessageText.tsx",
@@ -2411,6 +2435,14 @@
       "phase": "web",
       "gitBlobId": "5999dbc785fd8b93168e9061670b3a2ed5101d16",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/components/RouteLoadingStatus.tsx",
+      "phase": "web",
+      "gitBlobId": "0810186395f42ae1dc3a67dac91b00b3b1365ba3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/SafeAvatar.tsx",
@@ -2795,8 +2827,10 @@
     {
       "file": "NoWing-web/src/core/chunkRecovery.ts",
       "phase": "web",
-      "gitBlobId": "19e4257cfe40fd90f356aa304073c7acffae3fbe",
-      "reviewStatus": "pending"
+      "gitBlobId": "c01954a233f8b5dc53b4242acb7004116aed60b9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/collectionInvitation.ts",
@@ -2959,6 +2993,14 @@
       "phase": "web",
       "gitBlobId": "7ee40d9b1a5cd535aee24c7ed42143a2b1c211ce",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/core/media/attachmentFailure.ts",
+      "phase": "web",
+      "gitBlobId": "392f5c143b44fafbb42aca1b195deea1da9b2098",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/media/boundedStorageRead.ts",
@@ -4253,9 +4295,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
       "phase": "web",
-      "gitBlobId": "c269c1d13f501c44848db33e6d3799a915b8cde6",
+      "gitBlobId": "17a9d5e2424e701d0be7c3bf696fdf77b5d4ed85",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20363,8 +20405,10 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "aad9214ee5f7e1790d075af69e2f9c88686d033a",
-      "reviewStatus": "pending"
+      "gitBlobId": "0274002e9167501352fc83fed80470615b154eba",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
@@ -20614,6 +20658,14 @@
       "gitBlobId": "cd6cef3e92dc79b5bcad7cc4ea969e0b0e66c3c2",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "5f1ce05e51fd7fc1b21635744de3bb14ec0dc9c4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21133,8 +21185,10 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "b3d3483441c6909a20c863ca356e4ff290f9b692",
-      "reviewStatus": "pending"
+      "gitBlobId": "42e8c9f28e5ea2091cdc98d39dae9655256f6721",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/VALIDACION_ANDROID_E729365.json",
@@ -21553,8 +21607,10 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "1b7bd0a5d463110af3ed5067fcd0cd91cdea36b7",
-      "reviewStatus": "pending"
+      "gitBlobId": "ed83df4198d968d4dc910dbe95b9434f75219782",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/product/COMPARTIDOS_PUBLICOS_REFERENCIAS_2026-11-14.md",
@@ -21609,8 +21665,10 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "b64906e2a8a78bfc9e4cd810ee752da1d88d3a1f",
-      "reviewStatus": "pending"
+      "gitBlobId": "e5e1e88a5b974bdbe96a856141ce954cf549cc35",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/product/WEB_COMPACT_SHARE_REQUIREMENTS_2026-11-13.md",
@@ -21980,6 +22038,14 @@
       "gitBlobId": "0aead88920c41add2497b56ca152fd7901541652",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/142-web-ide-network.json",
+      "phase": "documentation",
+      "gitBlobId": "d00942d37a6bb3da7124c7d169f88e504a0adbfc",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
