@@ -29,3 +29,5 @@ El siguiente trabajo es preparar y probar la superposición de los cambios de AP
 ## Alcance abierto
 
 Las pruebas generales de código de 134 —1237 web y 1111 API, con sus omisiones identificadas— y las veinte pruebas de la imagen candidata no se vuelven a sumar como pruebas nuevas de 135. Esta continuación añade evidencia operativa. El diagnóstico de chats vacíos, la proyección importada limitada globalmente, la precisión optimista, seguidores y seguidos, imágenes, grupos/comunidades, menú, asistente, archivos, tonos y densidad siguen en la matriz. No se entrega una APK nueva, no se cierra la revisión móvil ni se declara preparación integral para marketing.
+
+La [continuación 136](136-integracion-api-compartidos-y-mandato-word-2026-11-14.md) identifica la API finalmente integrada y rectifica el pendiente atribuido al código web: Vercel ya lo había publicado desde main.

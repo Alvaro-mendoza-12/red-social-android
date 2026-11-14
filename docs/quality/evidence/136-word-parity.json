@@ -1,0 +1,30 @@
+{
+  "docxSha256": "15a55c95d27b762d3f9c26d9896416e7765c232a39d36d188800bd7f178efbe6",
+  "markdownSha256": "0262b6adefb60396d67dbb3f6afeaf582c81362cc6a582557d3f9f2c0671e476",
+  "parts": [
+    {
+      "part": "word/document.xml",
+      "sha256": "27a2560929de2ead086ac6c7a6460f208c69c565d79b8720f123b1b7510de4db",
+      "paragraphs": 218,
+      "tables": 0,
+      "insertions": 0,
+      "deletions": 0
+    }
+  ],
+  "textLines": 218,
+  "textChars": 14229,
+  "textSha256": "08e2e0cdf98cd49deb1285795a2761e786035fda515b44945b790fb1548160df",
+  "media": [],
+  "orderedNormalizedBodyMatchesMarkdown": true,
+  "markdownBodyParagraphs": 214,
+  "docxCoverParagraphs": [
+    "NOVVIN",
+    "Auditoría de producto, análisis competitivo y evolución del ecosistema social",
+    "Android · Web · Backend · Directos · Live Play · Regalos interactivos · Seguridad · Producción",
+    "Documento editable — 12 de noviembre de 2026"
+  ],
+  "externalRelationships": 0,
+  "normalization": "Trim line-leading Markdown heading/list numbering and bold/backtick markers; collapse whitespace. Compare every body paragraph in order. No visual layout equivalence claim.",
+  "scope": "Read Word text and verify this exact file body against the registered Markdown mandate; not implementation completion",
+  "implementedByReading": false
+}

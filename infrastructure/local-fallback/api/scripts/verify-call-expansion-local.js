@@ -7,7 +7,9 @@ const { Pool } = require('pg');
 const base = process.env.QA_API_URL || 'http://127.0.0.1:55731';
 const database = process.env.QA_DATABASE_URL;
 if (new URL(base).hostname !== '127.0.0.1' || !database || new URL(database).hostname !== '127.0.0.1') throw Error('LOOPBACK_QA_REQUIRED');
+if (!/^novvin_.*(?:qa|124|test)/.test(new URL(database).pathname.slice(1))) throw Error('ISOLATED_QA_DATABASE_REQUIRED');
 const accounts = JSON.parse(fs.readFileSync(process.env.QA_ACCOUNT_FILE, 'utf8'));
+if (![accounts.a, accounts.b, accounts.c].every(account => account?.email?.endsWith('@example.invalid'))) throw Error('SYNTHETIC_QA_ACCOUNTS_REQUIRED');
 const pool = new Pool({ connectionString: database });
 const checks = [];
 async function request(path, token, body, expected = 200, method = 'POST') {

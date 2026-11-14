@@ -6,6 +6,8 @@ La [continuación 125](../oficial/125-live-participacion-y-recuperacion-2026-11-
 
 La [continuación móvil 133](../oficial/133-formularios-de-herramientas-live-2026-11-13.md) protege formularios de puntos y herramientas por visita. Sigue pendiente reproducir y corregir la propiedad global de entrada, medios y cierre de LIVE al cambiar de cuenta, incluida la acción de una notificación antigua. Estos hallazgos de lectura parcial impiden afirmar preparación integral para producción o marketing masivo. Las pruebas de herramientas de 132–133 no certifican ese ciclo ni una APK final.
 
+La [integración 136](../oficial/136-integracion-api-compartidos-y-mandato-word-2026-11-14.md) está activa en Ubuntu y conserva el despliegue web Git que ya incluía 134. Verifica invitaciones de llamada y compartidos por HTTP/PostgreSQL aislados, ocho resultados nativos de concurrencia, 97 controles HTTP públicos y las tarjetas de los enlaces proporcionados. Se comprobaron respaldo, configuración y las adiciones de esquema; no se restauraron historiales. Los medios físicos, las cachés de WhatsApp, la revisión móvil integral y la APK final siguen pendientes.
+
 | Antes de producción | Evidencia necesaria |
 | --- | --- |
 | Llamadas y LIVE | Dos dispositivos, Android–web, Wi-Fi y datos, TURN seleccionado correctamente, medios visibles/audibles y salida de un invitado sin interrumpir al anfitrión. |
@@ -14,4 +16,4 @@ La [continuación móvil 133](../oficial/133-formularios-de-herramientas-live-20
 | Operación | Restablecer una copia en destino aislado, medir recuperación y ensayar reversión de clientes/servicios compatibles. |
 | Entrega | Revisar la [matriz](../quality/ACCEPTANCE_MATRIX.csv), la [cobertura vigente](../oficial/review-coverage.json) y los cambios locales de otros colaboradores antes de decidir la publicación. |
 
-**Cambio reversible.** Los commits agrupan privacidad, servicios de tiempo real, web y documentación. El bloque 125 añade dos tablas de participación e índices al inicializar la API, únicamente ensayados en laboratorio. Una reversión de código conserva esos datos y no requiere retirar las tablas. No se modificaron datos productivos. La publicación requiere autorización y la verificación previa del respaldo. Las capturas y los informes históricos del proyecto conservan su fecha y alcance.
+**Cambio reversible.** Los commits agrupan privacidad, servicios de tiempo real, web y documentación. El bloque 125 añadió dos tablas de participación e índices, ensayados inicialmente en laboratorio y activados en 136 junto con la columna de expansión de llamadas. Una reversión de código conserva esas adiciones y no restaura ni borra historiales. La operación 136 identifica el respaldo, las guardas previas y el resultado efectivo. Las capturas y los informes históricos conservan su fecha y alcance; no son certificados de todo el proyecto.
