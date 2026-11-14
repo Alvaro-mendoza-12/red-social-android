@@ -1,201 +1,148 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { ArrowLeft, Search, UserCheck, UserPlus } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
+import { SafeAvatar } from '../../components/SafeAvatar'
 import { supabase } from '../../core/supabase'
 import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { loadFallbackFollows, setFallbackProfileFollow } from '../../core/fallbackData'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
+import { avatarMediaTypeSource, profileAvatarSource } from '../../core/profileMediaFields'
+import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 
 type FollowTab = 'following' | 'followers'
-
-type ProfileItem = {
-  id: string
-  name: string
-  username: string
-  following: boolean
-}
-
+type ProfileItem = { id: string; name: string; username: string; avatar: string; mediaType: string; following: boolean }
 function mapProfile(row: GenericRow): ProfileItem {
+  const avatar = profileAvatarSource(row)
   return {
-    id: textOf(row, ['id'], ''),
-    name: textOf(row, ['displayName', 'display_name', 'full_name'], 'Usuario'),
-    username: textOf(row, ['username'], ''),
+    id: textOf(row, ['supabase_user_id', 'id', 'user_id']),
+    name: textOf(row, ['displayName', 'display_name', 'full_name', 'username'], 'Usuario'),
+    username: textOf(row, ['username']), avatar, mediaType: avatarMediaTypeSource(row, avatar),
     following: row.is_following === true,
   }
 }
-
 export function FollowsPage() {
   const { user, isFallbackSession } = useAuth()
   const [params, setParams] = useSearchParams()
   const activeTab: FollowTab = params.get('tab') === 'followers' ? 'followers' : 'following'
-  const setActiveTab = (tab: FollowTab) => setParams({ tab }, { replace: true })
-  return <FollowTabContent key={`${user?.id}/${activeTab}/${isFallbackSession}`} activeTab={activeTab} setActiveTab={setActiveTab}/>
+  return <FollowTabContent key={`${user?.id}/${activeTab}/${isFallbackSession}`} activeTab={activeTab}
+    setActiveTab={tab => setParams({ tab }, { replace: true })}/>
 }
-
 function FollowTabContent({ activeTab, setActiveTab }: { activeTab: FollowTab; setActiveTab: (tab: FollowTab) => void }) {
   const { user, isFallbackSession } = useAuth()
+  const accountId = user?.id
+  const useFallback = shouldUseUbuntuBackend(isFallbackSession)
   const [items, setItems] = useState<ProfileItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
-  const useFallback = shouldUseUbuntuBackend(isFallbackSession)
-
+  const [pending, setPending] = useState<Set<string>>(new Set())
+  const request = useRef<AbortController | null>(null)
+  const mounted = useRef(false)
+  const mutations = useRef(new Set<string>())
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return items
-    return items.filter((item) => {
-      return item.name.toLowerCase().includes(q) || item.username.toLowerCase().includes(q)
-    })
+    const q = search.trim().toLocaleLowerCase()
+    return items.filter(item => !q || `${item.name} ${item.username}`.toLocaleLowerCase().includes(q))
   }, [items, search])
-
-  const load = useCallback(async () => {
-    if (useFallback) {
-      setLoading(true)
-      setError(null)
-      try {
-        const response = await loadFallbackFollows(activeTab)
-        setItems(response.items.map(mapProfile))
-      } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo cargar la lista.'))
-      } finally {
-        setLoading(false)
-      }
-      return
-    }
-
-    if (!supabase || !user) {
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    setError(null)
+  const load = useCallback(async (silent = false) => {
+    request.current?.abort()
+    const controller = new AbortController(); request.current = controller
+    if (!silent) setLoading(true)
+    setError('')
     try {
-      const idField = activeTab === 'following' ? 'following_id' : 'follower_id'
-      const filterField = activeTab === 'following' ? 'follower_id' : 'following_id'
-      const { data: followRows, error: followError } = await supabase
-        .from('follows')
-        .select('*')
-        .eq(filterField, user.id)
-      if (followError) throw followError
-
-      const ids = ((followRows ?? []) as GenericRow[])
-        .map((row) => textOf(row, [idField], ''))
-        .filter((id) => id.length > 0)
-      if (ids.length === 0) {
-        setItems([])
-        setLoading(false)
-        return
+      let rows: GenericRow[] = []
+      if (useFallback && accountId) {
+        rows = (await loadFallbackFollows(activeTab, undefined, controller.signal)).items
+      } else if (supabase && accountId) {
+        const idField = activeTab === 'following' ? 'following_id' : 'follower_id'
+        const filterField = activeTab === 'following' ? 'follower_id' : 'following_id'
+        const edges = await supabase.from('follows').select('*').eq(filterField, accountId).abortSignal(controller.signal)
+        if (edges.error) throw edges.error
+        const ids = ((edges.data ?? []) as GenericRow[]).map(row => textOf(row, [idField])).filter(Boolean)
+        if (ids.length) {
+          const profiles = await supabase.from('profiles').select('*').in('id', ids).abortSignal(controller.signal)
+          if (profiles.error) throw profiles.error
+          let followingIds = new Set(ids)
+          if (activeTab === 'followers') {
+            const outgoing = await supabase.from('follows').select('following_id').eq('follower_id', accountId).abortSignal(controller.signal)
+            if (outgoing.error) throw outgoing.error
+            followingIds = new Set(((outgoing.data ?? []) as GenericRow[]).map(row => textOf(row, ['following_id'])))
+          }
+          rows = ((profiles.data ?? []) as GenericRow[]).map(row => ({ ...row, is_following: followingIds.has(textOf(row, ['id'])) }))
+        }
       }
-      const { data: profileRows, error: profileError } = await supabase
-        .from('profiles')
-        .select('*')
-        .in('id', ids)
-      if (profileError) throw profileError
-      setItems(((profileRows ?? []) as GenericRow[]).map(mapProfile))
+      if (!controller.signal.aborted && mounted.current) {
+        const unique = new Map(rows.map(mapProfile).filter(item => item.id).map(item => [item.id, item]))
+        setItems([...unique.values()])
+      }
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar la lista.'))
+      if (!controller.signal.aborted && mounted.current) setError(friendlyError(caught, 'No se pudo cargar la lista.'))
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted && mounted.current) setLoading(false)
     }
-  }, [activeTab, user, useFallback])
-
+  }, [accountId, activeTab, useFallback])
   useEffect(() => {
+    mounted.current = true
     void load()
-  }, [load])
-
-  async function toggleFollow(targetUserId: string, following: boolean) {
-    if (!user) return
-    if (useFallback) {
-      try {
-        await setFallbackProfileFollow(targetUserId, !following)
-        await load()
-      } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo actualizar el seguimiento.'))
-      }
-      return
+    let debounce: ReturnType<typeof setTimeout> | undefined
+    const refresh = () => {
+      if (document.hidden) return
+      clearTimeout(debounce)
+      debounce = setTimeout(() => void load(true), 200)
     }
-
-    if (!supabase) return
-    if (activeTab === 'following') {
-      const { error: deleteError } = await supabase
-        .from('follows')
-        .delete()
-        .eq('follower_id', user.id)
-        .eq('following_id', targetUserId)
-      if (deleteError) {
-        setError(friendlyError(deleteError, 'No se pudo dejar de seguir'))
-        return
-      }
-    } else {
-      const { error: insertError } = await supabase.from('follows').insert({
-        follower_id: user.id,
-        following_id: targetUserId,
-      })
-      if (insertError) {
-        setError(friendlyError(insertError, 'No se pudo seguir al usuario'))
-        return
-      }
+    const unsubscribe = useFallback && accountId
+      ? subscribeUbuntuRealtime({ channel: `profile-counts:${accountId}`, onEvent: refresh }) : () => {}
+    const interval = window.setInterval(refresh, 30000)
+    window.addEventListener('focus', refresh)
+    window.addEventListener('online', refresh)
+    window.addEventListener('novvin:realtime-ready', refresh)
+    document.addEventListener('visibilitychange', refresh)
+    return () => {
+      mounted.current = false; request.current?.abort(); unsubscribe()
+      clearTimeout(debounce); window.clearInterval(interval)
+      window.removeEventListener('focus', refresh); window.removeEventListener('online', refresh)
+      window.removeEventListener('novvin:realtime-ready', refresh); document.removeEventListener('visibilitychange', refresh)
     }
-    await load()
+  }, [load, accountId, useFallback])
+  async function toggleFollow(profile: ProfileItem) {
+    if (!accountId || mutations.current.has(profile.id)) return
+    mutations.current.add(profile.id); setPending(new Set(mutations.current)); setError('')
+    try {
+      if (useFallback) await setFallbackProfileFollow(profile.id, !profile.following)
+      else if (supabase) {
+        const result = profile.following
+          ? await supabase.from('follows').delete().eq('follower_id', accountId).eq('following_id', profile.id)
+          : await supabase.from('follows').insert({ follower_id: accountId, following_id: profile.id })
+        if (result.error) throw result.error
+      }
+      if (mounted.current) await load(true)
+    } catch (caught) {
+      if (mounted.current) setError(friendlyError(caught, 'No se pudo actualizar el seguimiento.'))
+    } finally {
+      mutations.current.delete(profile.id)
+      if (mounted.current) setPending(new Set(mutations.current))
+    }
   }
-
-  if (!supabase && !useFallback) {
-    return <StatusView title="Lista no disponible" description="Inténtalo de nuevo más tarde." />
-  }
-  if (loading) return <StatusView title="Cargando red social" description="Espera un momento..." />
-  if (error) return <StatusView title="Lista no disponible" description={error} action={<button className="ghost-btn" type="button" onClick={() => void load()}>Reintentar</button>} />
-
-  return (
-    <section className="section-stack">
-      <header className="section-header">
-        <h2>Seguidores y siguiendo</h2>
-      </header>
-      <div className="chip-row">
-        <button
-          type="button"
-          className={activeTab === 'following' ? 'chip-btn active' : 'chip-btn'}
-          onClick={() => setActiveTab('following')}
-        >
-          Siguiendo
+  if (!supabase && !useFallback) return <StatusView title="Lista no disponible" description="Inténtalo de nuevo más tarde."/>
+  return <section className="follows-page section-stack">
+    <header className="follows-header"><Link className="icon-btn" to="/app/profile" aria-label="Volver a mi perfil"><ArrowLeft aria-hidden="true"/></Link><div><h2>Tu comunidad</h2><p>Personas con las que conectas en Novvin</p></div></header>
+    <nav className="follows-tabs" aria-label="Listas de tu comunidad">
+      {(['following', 'followers'] as const).map(tab => <button key={tab} type="button" className={activeTab === tab ? 'chip-btn active' : 'chip-btn'} aria-pressed={activeTab === tab} onClick={() => setActiveTab(tab)}>{tab === 'following' ? 'Siguiendo' : 'Seguidores'}</button>)}
+    </nav>
+    <label className="follows-search"><Search size={19} aria-hidden="true"/><span className="sr-only">Buscar en esta lista</span><input className="text-input" placeholder="Buscar por nombre o usuario" value={search} onChange={event => setSearch(event.target.value)}/></label>
+    {error ? <p role="status" className="follows-notice">{error} <button className="ghost-btn" type="button" onClick={() => void load(items.length > 0)}>Reintentar</button></p> : null}
+    {loading ? <p className="follows-empty" role="status">Cargando personas…</p> : !filtered.length ? !error && <p className="follows-empty" role="status">{search ? 'No encontramos personas con ese nombre.' : activeTab === 'following' ? 'Aquí aparecerán las personas que sigas.' : 'Aquí aparecerán tus seguidores.'}</p> : <>
+      <p className="follows-count" role="status">{filtered.length} {filtered.length === 1 ? 'persona' : 'personas'}{search ? ' en esta búsqueda' : ''}</p>
+      <ul className="follows-list">{filtered.map(profile => <li key={profile.id}>
+        <Link className="follows-person" to={`/app/profile/${encodeURIComponent(profile.id)}`}>
+          <SafeAvatar size="md" name={profile.name} url={profile.avatar} mediaType={profile.mediaType}/>
+          <span><strong>{profile.name}</strong>{profile.username ? <small>@{profile.username}</small> : null}</span>
+        </Link>
+        <button className={profile.following ? 'ghost-btn follows-action' : 'primary-btn follows-action'} type="button" disabled={pending.has(profile.id)} title={profile.following ? `Dejar de seguir a ${profile.name}` : undefined} aria-label={pending.has(profile.id) ? `Guardando seguimiento de ${profile.name}` : profile.following ? `Siguiendo a ${profile.name}. Dejar de seguir` : `Seguir a ${profile.name}`} onClick={() => void toggleFollow(profile)}>
+          {profile.following ? <UserCheck size={17} aria-hidden="true"/> : <UserPlus size={17} aria-hidden="true"/>}<span>{pending.has(profile.id) ? 'Guardando…' : profile.following ? 'Siguiendo' : 'Seguir'}</span>
         </button>
-        <button
-          type="button"
-          className={activeTab === 'followers' ? 'chip-btn active' : 'chip-btn'}
-          onClick={() => setActiveTab('followers')}
-        >
-          Seguidores
-        </button>
-      </div>
-      <input
-        className="text-input"
-        placeholder="Filtrar por nombre o usuario"
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-      />
-
-      {filtered.length === 0 ? (
-        <StatusView title="Sin resultados" description="No hay usuarios en esta vista." />
-      ) : (
-        <div className="list-stack">
-          {filtered.map((profile) => (
-            <article key={profile.id} className="surface-card list-item">
-              <div>
-                <h3>{profile.name}</h3>
-                <p>{profile.username ? `@${profile.username}` : '@usuario'}</p>
-              </div>
-              <div className="row-actions">
-                <Link className="ghost-btn" to={`/app/profile/${profile.id}`}>
-                  Ver perfil
-                </Link>
-                <button className="ghost-btn" type="button" onClick={() => void toggleFollow(profile.id, activeTab === 'following' || profile.following)}>
-                  {activeTab === 'following' || profile.following ? 'Dejar de seguir' : 'Seguir'}
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  )
+      </li>)}</ul>
+    </>}
+  </section>
 }

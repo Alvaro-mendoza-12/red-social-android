@@ -623,7 +623,7 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
           if (file) { setAttachedFile(file); onOpenComposer?.() }
         }} />
       </div>
-      <SocialMoments />
+      <aside className="social-moments-panel" aria-label="Momentos de tu comunidad"><h3>Momentos</h3><SocialMoments /></aside>
       <SocialPromotion showAd={false} manageOpen={promotionManager || promotionsOpen} onClose={()=>{setPromotionManager(false);onClosePromotions?.()}} onManageAccess={setCanManagePromotions}/>
       {composerOpen ? (
         <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCloseComposer}>

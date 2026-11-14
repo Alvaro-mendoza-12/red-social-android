@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T07:01:08.271062+00:00",
-  "baseCommit": "991cacb997234e78d325110244d2ba180625b794",
+  "generatedAtUtc": "2026-11-14T14:05:04.562765+00:00",
+  "baseCommit": "25de8daef46db6c8cf17cca917b94ce2f9dd6dfc",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3628,
-    "partial": 240,
-    "code-read": 606
+    "pending": 3635,
+    "partial": 237,
+    "code-read": 614
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 438
     },
     "documentation": {
-      "pending": 615,
+      "pending": 623,
       "code-read": 43,
       "partial": 14
     },
@@ -36,9 +36,9 @@
       "code-read": 15
     },
     "web": {
-      "partial": 85,
-      "pending": 503,
-      "code-read": 54
+      "partial": 82,
+      "pending": 502,
+      "code-read": 62
     }
   },
   "files": [
@@ -797,6 +797,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/components/AssistantAnswer.test.tsx",
+      "phase": "web",
+      "gitBlobId": "3e3b503f92375a4f6ff5195e71b5ab9b58de7e58",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/components/ChatAttachmentMedia.test.tsx",
       "phase": "web",
       "gitBlobId": "59f245d7d00f97b388e25e69992ed8014e9cd561",
@@ -817,9 +825,9 @@
     {
       "file": "NoWing-web/src/__tests__/components/ChatOptionsMenu.test.tsx",
       "phase": "web",
-      "gitBlobId": "dbd7e650296fb6dc9418daf1534425749ca822e6",
+      "gitBlobId": "c3784eae133f803e4efc1213c3beb9bcf6d4e49e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -845,6 +853,14 @@
       "phase": "web",
       "gitBlobId": "58f75d1de0ba8c4cd23fb609c762cd17d3d20441",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/ContactFollowList.test.tsx",
+      "phase": "web",
+      "gitBlobId": "541aad7fd1f18f2a444ac5b426b64634a4e44736",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/DirectMessageRequestNotice.test.tsx",
@@ -1773,9 +1789,9 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "phase": "web",
-      "gitBlobId": "7b2818ea12b176cff25033c425f70b418a0923b2",
+      "gitBlobId": "d75b210228871384b50fb5273964b5a1fdf5a65f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -1909,8 +1925,10 @@
     {
       "file": "NoWing-web/src/__tests__/pages/AssistantPage.test.tsx",
       "phase": "web",
-      "gitBlobId": "ad9f5546e6c2afde691a887aabffee705459a4cd",
-      "reviewStatus": "pending"
+      "gitBlobId": "b114228b098a0cf1aa60b13bfadcbce11a248c58",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/pages/AuthLogoPersistence.test.tsx",
@@ -1931,6 +1949,14 @@
       "phase": "web",
       "gitBlobId": "1ab13fd4ff60a985297882fb671260efd7f77968",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/pages/FollowsPage.test.tsx",
+      "phase": "web",
+      "gitBlobId": "2f610659d2efab7133f6536da9c23caaf3368505",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/pages/ForgotPasswordPage.test.tsx",
@@ -2013,6 +2039,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "NoWing-web/src/components/AssistantAnswer.tsx",
+      "phase": "web",
+      "gitBlobId": "bf486cd81250fe987911c29f000ddb2f3aed9e73",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/components/AttachmentJobsStatus.tsx",
       "phase": "web",
       "gitBlobId": "1f8cfcdbc90cc3b3ae6e506d5d45c4ea8c6bb7fa",
@@ -2067,9 +2101,9 @@
     {
       "file": "NoWing-web/src/components/ChatOptionsMenu.tsx",
       "phase": "web",
-      "gitBlobId": "c95e4d041550b00a6722cd84e908136e9898225c",
+      "gitBlobId": "fb562aa250e2501bec383d879592e55e7a377852",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2131,9 +2165,9 @@
     {
       "file": "NoWing-web/src/components/ContactFollowList.tsx",
       "phase": "web",
-      "gitBlobId": "84b38f1c46dc8e7b44f1aefd039fd1579d5f1211",
+      "gitBlobId": "6e304fcacd97eeb7cdddfcd6f3eb8735882b55cd",
       "reviewStatus": "code-read",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3301,17 +3335,17 @@
     {
       "file": "NoWing-web/src/features/assistant/AssistantPage.tsx",
       "phase": "web",
-      "gitBlobId": "79e71565e01aebc73f15c075de93dc4a26f89b56",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "gitBlobId": "ae629b044ecac3555aebedf87049b760fcc05103",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/assistant/assistant.css",
       "phase": "web",
-      "gitBlobId": "89f22359aefc09c2eee2896f115affc26f2918a4",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "gitBlobId": "1c613b274677d9eb8ebf5c98896e8517bb852560",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3777,9 +3811,9 @@
     {
       "file": "NoWing-web/src/features/social/FollowsPage.tsx",
       "phase": "web",
-      "gitBlobId": "fececa6115a76eaf801300162c3a2fe0278dfbe7",
-      "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "gitBlobId": "3cdb65704d5536861021dcff857d2a3628c9930b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3805,9 +3839,9 @@
     {
       "file": "NoWing-web/src/features/social/SocialPage.tsx",
       "phase": "web",
-      "gitBlobId": "a9fdcd935f91d278928a0e3811e3056f02fcdb3c",
+      "gitBlobId": "6ee01b513b315be4c8047ae136ca837f55acf6f0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4029,9 +4063,9 @@
     {
       "file": "NoWing-web/src/pages/feed/FeedPage.tsx",
       "phase": "web",
-      "gitBlobId": "0f250aca6b48e637d91338fa5efbbe9d1adc2ca6",
+      "gitBlobId": "8d88a416920d3b15f16ed45f7df826772254fcc1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4219,9 +4253,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
       "phase": "web",
-      "gitBlobId": "e5064d2e0f98b14b8d674594ecc72fb79d8350cc",
+      "gitBlobId": "c269c1d13f501c44848db33e6d3799a915b8cde6",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20237,7 +20271,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "fbd1588d7adbbeaedd42d664400150b724cd2be6",
+      "gitBlobId": "d461a9a9789a0a6faa122f9a910ac7690776f03e",
       "reviewStatus": "pending"
     },
     {
@@ -20456,6 +20490,12 @@
       "file": "docs/oficial/136-integracion-api-compartidos-y-mandato-word-2026-11-14.md",
       "phase": "documentation",
       "gitBlobId": "9c6ea6a177e4fafe6b802a01444e69fe4a165405",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "27647ac136f0634b867b8da7afd88d7abcf38d30",
       "reviewStatus": "pending"
     },
     {
@@ -20981,7 +21021,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "ffa44ff2622c7c7c9c4000fd466a13a87d7cb310",
+      "gitBlobId": "6f6ecfb78f88bad9f3466ad6f56b20ccac210bdb",
       "reviewStatus": "pending"
     },
     {
@@ -21405,6 +21445,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/product/COMPARTIDOS_PUBLICOS_REFERENCIAS_2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "9260f029a24b0fb4aae8b6f9a989e13ba4cf6adb",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/product/ECOSYSTEM_IMPLEMENTATION_PLAN.md",
       "phase": "documentation",
       "gitBlobId": "dbb7905599cc2319f4378aab6bc93108fab79b8a",
@@ -21451,7 +21497,7 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "c185b7de4d32ddb173479f0c8820bad58ae76a55",
+      "gitBlobId": "440892da9421d236c79b02c966396d3cbbcc3463",
       "reviewStatus": "pending"
     },
     {
@@ -21758,6 +21804,42 @@
       "file": "docs/quality/evidence/136-word-parity.json",
       "phase": "documentation",
       "gitBlobId": "beb9370e75e28152ad9c133e57e9f22fb04206b3",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/137-assistant-1440.png",
+      "phase": "documentation",
+      "gitBlobId": "862fbde0cf0977fd66a654a23ca8695ae3dbca83",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/137-assistant-375.png",
+      "phase": "documentation",
+      "gitBlobId": "3fdbd590f3f295c6d7a034fc82b4b573868349ae",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/137-followers-1440.png",
+      "phase": "documentation",
+      "gitBlobId": "49391027e377b01bcff97c169cd0008fb6d4d705",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/137-followers-375.png",
+      "phase": "documentation",
+      "gitBlobId": "e2de426ee2fae3a9c7f4f15d58c78871f29a9447",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/137-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "08008c323e1947f5ff65b3b3c43fbf5d2eff8f0a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/137-social-1440.png",
+      "phase": "documentation",
+      "gitBlobId": "7c1ddc85803d530e1c679eda441246283eb95b50",
       "reviewStatus": "pending"
     },
     {

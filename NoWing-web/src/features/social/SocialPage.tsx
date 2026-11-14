@@ -25,7 +25,7 @@ export function SocialPage() {
 
   return (
     <section className="social-page">
-      <div className="social-tab-bar">
+      <header className="social-header"><nav className="social-tab-bar" aria-label="Secciones de Social">
         <button
           type="button"
           className={activeTab === 'posts' ? 'chip-btn active' : 'chip-btn'}
@@ -50,7 +50,7 @@ export function SocialPage() {
         >
           Rondas
         </button>
-      </div>
+      </nav></header>
 
       <div className="social-shell">
         {activeTab === 'posts' ? (

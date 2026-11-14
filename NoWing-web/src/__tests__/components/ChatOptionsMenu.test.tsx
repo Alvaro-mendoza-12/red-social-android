@@ -9,12 +9,14 @@ function setup(overrides = {}) {
 test('shows readable chat actions and saves the correct preference', () => {
   const handlers = setup()
   expect(screen.queryByText(/Herramientas de Chat|Pinear/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fijar chat' }))
   expect(handlers.onPreference).toHaveBeenCalledWith({ isPinned: true })
   expect(handlers.onClose).toHaveBeenCalledTimes(1)
 })
 test('opens the private nickname editor action', () => {
   const handlers = setup()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' }))
   expect(handlers.onNickname).toHaveBeenCalledTimes(1)
 })
@@ -22,7 +24,7 @@ test('keyboard moves through the menu and Escape closes it', () => {
   const handlers = setup()
   expect(screen.getByRole('menuitem', { name: 'Información del contacto' })).toHaveFocus()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowDown' })
-  expect(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' })).toHaveFocus()
+  expect(screen.getByRole('menuitem', { name: 'Buscar mensajes' })).toHaveFocus()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'End' })
   expect(screen.getByRole('menuitem', { name: 'Cerrar chat' })).toHaveFocus()
   fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
@@ -30,6 +32,7 @@ test('keyboard moves through the menu and Escape closes it', () => {
 })
 test('click outside closes; disabled preference cannot mutate', () => {
   const handlers = setup({ busy: true })
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   expect(screen.getByRole('menuitem', { name: 'Archivar chat' })).toBeDisabled()
   fireEvent.pointerDown(document.body)
   expect(handlers.onClose).toHaveBeenCalledTimes(1)
@@ -37,9 +40,24 @@ test('click outside closes; disabled preference cannot mutate', () => {
 test('scheduling, translation and polls open their own chat tools', () => {
   const onSchedule = jest.fn(), onTranslation = jest.fn(), onPoll = jest.fn()
   const handlers = setup({ onSchedule, onTranslation, onPoll })
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   for (const [name, action] of [['Programar mensaje', onSchedule], ['Traducción', onTranslation], ['Crear encuesta', onPoll]] as const) {
     fireEvent.click(screen.getByRole('menuitem', { name, exact: true }))
     expect(action).toHaveBeenCalledTimes(1)
   }
   expect(handlers.onClose).toHaveBeenCalledTimes(3)
+})
+
+test('six primary actions keep infrequent tools behind More and keyboard Back restores focus', () => {
+  const handlers = setup({ onSchedule: jest.fn(), onTranslation: jest.fn(), onPoll: jest.fn() })
+  expect(screen.getAllByRole('menuitem')).toHaveLength(6)
+  expect(screen.queryByRole('menuitem', { name: 'Traducción' })).not.toBeInTheDocument()
+  const more = screen.getByRole('menuitem', { name: 'Más opciones' }); more.focus()
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'ArrowRight' })
+  expect(screen.getByRole('menuitem', { name: 'Volver a opciones del chat' })).toHaveFocus()
+  expect(handlers.onClose).not.toHaveBeenCalled()
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+  expect(screen.getByRole('menuitem', { name: 'Más opciones' })).toHaveFocus()
+  expect(screen.getAllByRole('menuitem')).toHaveLength(6)
+  expect(handlers.onClose).not.toHaveBeenCalled()
 })

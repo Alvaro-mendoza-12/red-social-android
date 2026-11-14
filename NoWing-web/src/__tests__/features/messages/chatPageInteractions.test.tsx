@@ -76,6 +76,7 @@ test('a conversation without saved preferences still opens its options', async (
   open('chat')
   await screen.findByText('Mensaje recibido')
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  if (screen.queryByRole('menuitem', { name: 'Más opciones' })) fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   expect(await screen.findByRole('menuitem', { name: 'Fijar chat' })).toBeVisible()
 })
 
@@ -219,6 +220,7 @@ test('a private nickname is saved with the existing account-scoped endpoint and 
     open()
     await screen.findByText('Mensaje recibido')
     fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+    if (screen.queryByRole('menuitem', { name: 'Más opciones' })) fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' }))
     fireEvent.change(screen.getByRole('textbox', { name: 'Apodo' }), { target: { value: 'Mi apodo' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar apodo' }))
@@ -235,12 +237,14 @@ test('a late pin response cannot change preferences of the next conversation', a
   const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
   await screen.findByText('Mensaje recibido')
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  if (screen.queryByRole('menuitem', { name: 'Más opciones' })) fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   fireEvent.click(screen.getByRole('menuitem', { name: /Fijar/ }))
   jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, title: 'Nuevo contacto', chat: { nickname: '' }, otherParticipant: { ...response.otherParticipant, name: 'Nuevo contacto' } } as never)
   rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
   await screen.findByText('Nuevo contacto')
   await act(async () => { finish({ ok: true }) })
-  if (!screen.queryByRole('menu', { name: 'Opciones del chat' })) fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  if (!screen.queryByRole('menu')) fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  if (screen.queryByRole('menuitem', { name: 'Más opciones' })) fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   expect(screen.getByRole('menuitem', { name: /^Fijar/ })).toBeEnabled()
 })
 
@@ -255,16 +259,19 @@ test.each(['success', 'failure'])('an old preference %s cannot release the next 
   const { rerender } = render(<MemoryRouter><ChatDetailPage chatIdOverride="room-a"/></MemoryRouter>)
   await screen.findByText('Mensaje recibido')
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  if (screen.queryByRole('menuitem', { name: 'Más opciones' })) fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fijar chat' }))
   jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, title: 'Nuevo contacto', chat: { nickname: '' }, otherParticipant: { ...response.otherParticipant, name: 'Nuevo contacto' } } as never)
   rerender(<MemoryRouter><ChatDetailPage chatIdOverride="room-b"/></MemoryRouter>)
   await screen.findByText('Nuevo contacto')
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  if (screen.queryByRole('menuitem', { name: 'Más opciones' })) fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   expect(screen.getByRole('menuitem', { name: 'Fijar chat' })).toBeEnabled()
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fijar chat' }))
   await act(async () => { finishOld() })
   expect(screen.queryByText('Error del chat anterior')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  if (screen.queryByRole('menuitem', { name: 'Más opciones' })) fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   expect(screen.getByRole('menuitem', { name: 'Fijar chat' })).toBeDisabled()
   await act(async () => { finishNew({ ok: true }) })
   expect(screen.getByRole('menuitem', { name: 'Desfijar chat' })).toBeEnabled()
@@ -281,6 +288,7 @@ test('an old scheduled message acknowledgement cannot erase the next conversatio
   const showTools = () => {
     fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Herramientas del chat' }))
   }
   showTools()
   fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
@@ -316,6 +324,7 @@ test.each(['success', 'failure'])('an old schedule %s cannot release a new accou
   const showTools = () => {
     fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Herramientas del chat' }))
     fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
   }
   showTools()
@@ -354,6 +363,7 @@ test('a late scheduled list cannot expose the previous conversation jobs', async
   await act(async () => { finish([{ id: 'old-job', content: 'Privado del chat A', status: 'pending' }]) })
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Herramientas del chat' }))
   fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
   expect(screen.queryByText(/Privado del chat A/)).not.toBeInTheDocument()
   expect(screen.getByText('Sin mensajes programados')).toBeInTheDocument()
@@ -372,6 +382,7 @@ test('a late cancellation failure cannot show an error in the next conversation'
   await act(async () => { finishList([{ id: 'old-job', content: 'Programado A', status: 'pending' }]) })
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Herramientas del chat' }))
   fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
   const card = screen.getByText(/Programado A/).closest('.surface-subcard')!
   fireEvent.click(card.querySelector('button')!)
@@ -392,6 +403,7 @@ test('renewing the same account identity resets the old scheduling lock', async 
   await screen.findByText('Mensaje recibido')
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Herramientas del chat' }))
   fireEvent.click(screen.getByRole('button', { name: 'Programar mensaje' }))
   fireEvent.change(screen.getByPlaceholderText('Mensaje programado...'), { target: { value: 'Sesión anterior' } })
   fireEvent.click(screen.getByRole('button', { name: 'Programar', exact: true }))
@@ -405,6 +417,7 @@ test('renewing the same account identity resets the old scheduling lock', async 
 
 function openNicknameEditor() {
   fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
+  if (screen.queryByRole('menuitem', { name: 'Más opciones' })) fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
   fireEvent.click(screen.getByRole('menuitem', { name: 'Cambiar apodo privado' }))
 }
 
@@ -637,6 +650,7 @@ function openPollEditor(scope: 'chat' | 'group' | 'community') {
   if (scope === 'chat') {
     fireEvent.click(screen.getByRole('button', { name: 'Opciones del chat' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Más opciones' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Herramientas del chat' }))
     const create = screen.queryByRole('button', { name: 'Nueva encuesta' })
     if (create) fireEvent.click(create)
   } else if (!screen.queryByPlaceholderText('Pregunta')) fireEvent.click(screen.getByTitle('Nueva encuesta'))
