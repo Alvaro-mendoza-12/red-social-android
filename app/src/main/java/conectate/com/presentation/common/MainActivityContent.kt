@@ -371,7 +371,7 @@ fun MainActivityContent(
                                 navController.navigate(route) { launchSingleTop = true }
                             },
                             onClose = {
-                                activityScope.launch { liveRepository?.endLive() }
+                                activityScope.launch { liveRepository?.endLive(liveSession.sessionId) }
                             },
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)

@@ -111,9 +111,7 @@ class LiveViewModel @Inject constructor(
     }
 
     fun endLive() {
-        viewModelScope.launch {
-            liveRepository.endLive()
-        }
+        liveRepository.endLiveAsync()
     }
 
     fun clearError() {

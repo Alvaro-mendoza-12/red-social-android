@@ -12,20 +12,26 @@ import kotlinx.coroutines.withContext
  * but only the first request is allowed to release WebRTC resources.
  */
 internal class LiveSessionCloseCoordinator {
-    private val closeResult = AtomicReference<CompletableDeferred<Result<Unit>>?>(null)
+    private data class CloseRequest(val ownerId: String?, val result: CompletableDeferred<Result<Unit>>)
+    private val closeResult = AtomicReference<CloseRequest?>(null)
 
-    suspend fun closeOnce(block: suspend () -> Result<Unit>): Result<Unit> {
+    suspend fun closeOnce(ownerId: String? = null, block: suspend () -> Result<Unit>): Result<Unit> {
         while (true) {
-            closeResult.get()?.let { active -> return active.await() }
+            val current = closeResult.get()
+            if (current?.ownerId == ownerId && current != null) return current.result.await()
+            if (current != null && !current.result.isCompleted) {
+                current.result.await()
+                continue
+            }
 
-            val candidate = CompletableDeferred<Result<Unit>>()
-            if (closeResult.compareAndSet(null, candidate)) {
+            val candidate = CloseRequest(ownerId, CompletableDeferred())
+            if (closeResult.compareAndSet(current, candidate)) {
                 val result = withContext(NonCancellable) {
                     runCatching { block() }
                         .getOrElse { error -> Result.failure(error) }
                 }
-                candidate.complete(result)
-                return candidate.await()
+                candidate.result.complete(result)
+                return candidate.result.await()
             }
         }
     }
@@ -33,7 +39,7 @@ internal class LiveSessionCloseCoordinator {
     fun resetForNewSession(): Boolean {
         while (true) {
             val current = closeResult.get() ?: return true
-            if (!current.isCompleted) return false
+            if (!current.result.isCompleted) return false
             if (closeResult.compareAndSet(current, null)) return true
         }
     }

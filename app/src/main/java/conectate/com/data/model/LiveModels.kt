@@ -168,7 +168,8 @@ data class LiveModerationState(
 data class ActiveLiveSession(
     val stream: LiveStream,
     val role: LiveRole,
-    val viewerCount: Int = 0
+    val viewerCount: Int = 0,
+    val sessionId: String = UUID.randomUUID().toString()
 )
 
 data class LiveMusicPlaybackState(

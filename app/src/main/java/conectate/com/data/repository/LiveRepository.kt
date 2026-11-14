@@ -109,6 +109,8 @@ import java.time.Instant
 import java.net.HttpURLConnection
 import java.net.URL
 import conectate.com.util.VideoUtils
+import conectate.com.domain.live.LiveForegroundSession
+import conectate.com.domain.live.LiveForegroundSessionController
 
 internal fun resolvedInitialHostVideoEnabled(
     source: LiveSource,
@@ -128,7 +130,7 @@ class LiveRepository @Inject constructor(
     private val livePreferences: LivePreferences,
     private val appMetrics: AppMetrics,
     private val interactiveMediaGate: conectate.com.core.media.InteractiveMediaGate
-) {
+) : LiveForegroundSessionController {
     private companion object {
         private const val SOCKET_RECONNECT_ATTEMPTS = 10
         private const val SOCKET_RECONNECT_DELAY_MS = 1_000L
@@ -1794,6 +1796,7 @@ class LiveRepository @Inject constructor(
             try {
                 val started = startScreenCaptureWhenForegroundReady(
                     sessionId = sessionId,
+                    mediaSessionId = session.sessionId,
                     manager = manager,
                     projectionIntent = oneShotProjectionIntent,
                     width = boundW,
@@ -2815,60 +2818,75 @@ class LiveRepository @Inject constructor(
 
 
 
-    fun endLiveAsync() {
+    override fun currentForegroundSession(): LiveForegroundSession? = _activeSession.value?.let {
+        LiveForegroundSession(it.sessionId, it.stream.id, it.role == LiveRole.HOST)
+    }
+
+    fun endLiveAsync(expectedSessionId: String? = _activeSession.value?.sessionId) {
+        val sessionId = expectedSessionId?.takeIf(String::isNotBlank) ?: return
         scope.launch {
-            endLive().onFailure { error ->
+            endLive(sessionId).onFailure { error ->
                 android.util.Log.w("LiveRepository", "Unable to finish live cleanly", error)
             }
         }
     }
 
-    suspend fun endLive(): Result<Unit> = closeCoordinator.closeOnce {
-        sessionEndMutex.withLock {
-            sessionStartupMutex.withLock {
-                withContext(Dispatchers.IO) {
-                    val session = _activeSession.value
-                    val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
-                    val isHost = session?.role == LiveRole.HOST
-                    val guestExitToken = if (session?.role == LiveRole.VIEWER && usesUbuntuPersistence()) localAccessToken() else ""
-                    val peak = maxOf(_audienceStats.value.peakConcurrent, _viewerCount.value).coerceAtLeast(0)
-                    val totalComments = sessionCommentCount.coerceAtLeast(0)
-                    val totalReactions = sessionReactionCount.coerceAtLeast(0)
+    suspend fun endLive(): Result<Unit> {
+        val sessionId = _activeSession.value?.sessionId ?: return Result.success(Unit)
+        return endLive(sessionId)
+    }
 
-                    // Only the signaling server knows which host socket is
-                    // authoritative after a same-account device replacement.
-                    // Never let a stale device mark the shared live inactive.
-                    val serverConfirmedEnd = if (
-                        session != null && isHost && currentUserId.isNotBlank()
-                    ) {
-                        requestLiveEndConfirmation(session.stream.id, currentUserId)
-                    } else {
-                        !isHost
-                    }
+    override suspend fun endLive(expectedSessionId: String): Result<Unit> {
+        if (expectedSessionId.isBlank() || _activeSession.value?.sessionId != expectedSessionId) return Result.success(Unit)
+        return closeCoordinator.closeOnce(expectedSessionId) {
+            sessionEndMutex.withLock {
+                sessionStartupMutex.withLock {
+                    withContext(Dispatchers.IO) {
+                        val session = _activeSession.value
+                        // The request may have waited for startup or another teardown.
+                        if (session?.sessionId != expectedSessionId) return@withContext Result.success(Unit)
+                        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+                        val isHost = session.role == LiveRole.HOST
+                        val guestExitToken = if (session.role == LiveRole.VIEWER && usesUbuntuPersistence()) localAccessToken() else ""
+                        val peak = maxOf(_audienceStats.value.peakConcurrent, _viewerCount.value).coerceAtLeast(0)
+                        val totalComments = sessionCommentCount.coerceAtLeast(0)
+                        val totalReactions = sessionReactionCount.coerceAtLeast(0)
 
-                    disconnectAndClear()
-                    if (session != null && guestExitToken.isNotBlank()) withTimeoutOrNull(3_000L) {
-                        localFallbackApiClient.leaveLiveGuest(guestExitToken, session.stream.id)
-                    }
+                        // Only the signaling server knows which host socket is
+                        // authoritative after a same-account device replacement.
+                        // Never let a stale device mark the shared live inactive.
+                        val serverConfirmedEnd = if (
+                            isHost && currentUserId.isNotBlank()
+                        ) {
+                            requestLiveEndConfirmation(session.stream.id, currentUserId)
+                        } else {
+                            !isHost
+                        }
 
-                    val remoteConfirmed = if (session != null && isHost) {
-                        serverConfirmedEnd && currentUserId.isNotBlank() && withTimeoutOrNull(8_000L) {
-                            persistEndedLiveSnapshot(
-                                session = session,
-                                currentUserId = currentUserId,
-                                peak = peak,
-                                totalComments = totalComments,
-                                totalReactions = totalReactions
-                            )
-                        } == true
-                    } else {
-                        true
-                    }
-                    runCatching { refreshActiveStreams() }
-                    if (remoteConfirmed) {
-                        Result.success(Unit)
-                    } else {
-                        Result.failure(Exception("El live se cerró localmente, pero el servidor no confirmó el cierre."))
+                        disconnectAndClear()
+                        if (guestExitToken.isNotBlank()) withTimeoutOrNull(3_000L) {
+                            localFallbackApiClient.leaveLiveGuest(guestExitToken, session.stream.id)
+                        }
+
+                        val remoteConfirmed = if (isHost) {
+                            serverConfirmedEnd && currentUserId.isNotBlank() && withTimeoutOrNull(8_000L) {
+                                persistEndedLiveSnapshot(
+                                    session = session,
+                                    currentUserId = currentUserId,
+                                    peak = peak,
+                                    totalComments = totalComments,
+                                    totalReactions = totalReactions
+                                )
+                            } == true
+                        } else {
+                            true
+                        }
+                        runCatching { refreshActiveStreams() }
+                        if (remoteConfirmed) {
+                            Result.success(Unit)
+                        } else {
+                            Result.failure(Exception("El live se cerró localmente, pero el servidor no confirmó el cierre."))
+                        }
                     }
                 }
             }
@@ -4067,6 +4085,7 @@ class LiveRepository @Inject constructor(
     }
 
     private suspend fun disconnectAndClear() = withContext(NonCancellable) {
+        val departingSessionId = _activeSession.value?.sessionId
         pendingViewerSocketStartup?.cancel()
         pendingViewerSocketStartup = null
         guestMediaStartCoordinator.withLock { guestMediaStartCoordinator.invalidate() }
@@ -4084,7 +4103,7 @@ class LiveRepository @Inject constructor(
         _localVideoTrack.value = null
         _remoteVideoTracks.value = emptyMap()
 
-        stopService()
+        stopService(departingSessionId)
         socketEndpointRecoveryJob?.cancel()
         socketEndpointRecoveryJob = null
         mediaConnectionTimeoutJob?.cancel()
@@ -4278,6 +4297,7 @@ class LiveRepository @Inject constructor(
     ) {
         if (role != LiveRole.HOST) return
         val liveId = normalizeLiveSessionId(stream.id) ?: return
+        val owner = _activeSession.value?.takeIf { it.role == role && it.stream.id.equals(liveId, ignoreCase = true) } ?: return
         val type = computeForegroundType(
             role = role,
             source = stream.source,
@@ -4295,6 +4315,7 @@ class LiveRepository @Inject constructor(
                 putExtra(LiveForegroundService.EXTRA_LIVE_ID, liveId)
                 putExtra(LiveForegroundService.EXTRA_LIVE_TITLE, stream.title.ifBlank { stream.hostName.ifBlank { "Live" } })
                 putExtra(LiveForegroundService.EXTRA_LIVE_ROLE, role.name.lowercase())
+                putExtra(LiveForegroundService.EXTRA_SESSION_ID, owner.sessionId)
                 putExtra(LiveForegroundService.EXTRA_TYPE, type)
             }
             ContextCompat.startForegroundService(context, intent)
@@ -4326,9 +4347,14 @@ class LiveRepository @Inject constructor(
         )
     }
 
-    private fun stopService() {
+    private fun stopService(expectedSessionId: String? = _activeSession.value?.sessionId) {
+        val sessionId = expectedSessionId?.takeIf(String::isNotBlank) ?: return
+        if (LiveForegroundService.foregroundState.value.sessionId != sessionId) return
         try {
-            context.stopService(Intent(context, LiveForegroundService::class.java))
+            context.startService(Intent(context, LiveForegroundService::class.java).apply {
+                action = LiveForegroundService.ACTION_STOP
+                putExtra(LiveForegroundService.EXTRA_SESSION_ID, sessionId)
+            })
         } catch (_: Exception) { }
     }
 
@@ -4385,6 +4411,7 @@ class LiveRepository @Inject constructor(
 
     private suspend fun startScreenCaptureWhenForegroundReady(
         sessionId: String,
+        mediaSessionId: String,
         manager: WebRTCManager,
         projectionIntent: Intent,
         width: Int,
@@ -4397,6 +4424,7 @@ class LiveRepository @Inject constructor(
             withTimeoutOrNull(5_000L) {
                 LiveForegroundService.foregroundState.first { state ->
                     state.liveId.equals(sessionId, ignoreCase = true) &&
+                        state.sessionId == mediaSessionId &&
                         state.types and android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION != 0
                 }
             } != null
@@ -4405,6 +4433,7 @@ class LiveRepository @Inject constructor(
         val currentSession = _activeSession.value
         val requestStillCurrent =
             currentSession?.role == LiveRole.HOST &&
+                currentSession.sessionId == mediaSessionId &&
                 currentSession.stream.id.equals(sessionId, ignoreCase = true) &&
                 screenCaptureActive &&
                 mediaTransitionGate.isTransitioning()

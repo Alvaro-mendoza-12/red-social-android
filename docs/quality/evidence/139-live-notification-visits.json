@@ -1,0 +1,116 @@
+{
+  "source": {
+    "baseFeatureCommit": "1b9e21bb3c76c34c907d33c5ee8ddc0e2800ccd2",
+    "baseMainCommit": "0d6066661ed462c645613c5dbefa9fdc1a423dec",
+    "implementationGitBlobs": {
+      "app/src/main/java/conectate/com/domain/live/LiveForegroundSessionController.kt": "83b359af18e88539a426b8a8fb09fa3d251b62c7",
+      "app/src/main/java/conectate/com/di/LiveForegroundModule.kt": "496e76883596ba1a4630b4bb82a24c85dbcbc682",
+      "app/src/main/java/conectate/com/data/model/LiveModels.kt": "9f5f1af1d7a981a5fb510cca8e5f39957a1682f6",
+      "app/src/main/java/conectate/com/data/repository/LiveRepository.kt": "9b1308b73c780dea05177d4ab510fd842c6e3260",
+      "app/src/main/java/conectate/com/data/repository/LiveSessionLifecycleCoordinator.kt": "eed215a9460e97b93baaf370c73bfe9b3bb01e7a",
+      "app/src/main/java/conectate/com/services/LiveForegroundService.kt": "ded3307427dbe227b616873b30fae5b958d3caff",
+      "app/src/main/java/conectate/com/presentation/common/MainActivityContent.kt": "ddfbaccad235199362b5a5ac88f7f0c14a65fd68",
+      "app/src/main/java/conectate/com/presentation/live/LiveViewModel.kt": "54d5ebd4cd6aab308bc2205c0e4b6448a2fdffbb",
+      "app/src/test/java/conectate/com/services/LiveForegroundSessionTest.kt": "bdecd4aa3b48d26edb3521d93ac1926d99005c4d",
+      "app/src/test/java/conectate/com/data/repository/LiveSessionLifecycleCoordinatorTest.kt": "d60ea89efc89d50dc3bc9f4c36f850ea3794a41b"
+    },
+    "implementationSha256": {
+      "app/src/main/java/conectate/com/domain/live/LiveForegroundSessionController.kt": "c6ea06a0862ce17552ddd7b9a54de5e115cdd5ba49d7fd012e74ffca1672dd82",
+      "app/src/main/java/conectate/com/di/LiveForegroundModule.kt": "11ca425de19d67c5254530f0d622f71a484e05bd90ceac7162d3f40a189facb4",
+      "app/src/main/java/conectate/com/data/model/LiveModels.kt": "ef1e0180388b79119b49c255e23def0596360ede5ee4b87ce842a88b910cc1b4",
+      "app/src/main/java/conectate/com/data/repository/LiveRepository.kt": "e24ba2e22bd3516a612dae283681801619396c99b1a4feb50d4858dde0147272",
+      "app/src/main/java/conectate/com/data/repository/LiveSessionLifecycleCoordinator.kt": "31e7c45efa46f1e92699f2f7998ffcdff7d327b75f9db59e1c8b5fb0beafaec0",
+      "app/src/main/java/conectate/com/services/LiveForegroundService.kt": "2cce6eb2dc51de33a6558489295b5f87dda4a14c7093e2e25b7f18d19e9b8a8b",
+      "app/src/main/java/conectate/com/presentation/common/MainActivityContent.kt": "90baa6304623821263d20bbc0963a69f9f8d0443d060ab5c29c786ad203245c3",
+      "app/src/main/java/conectate/com/presentation/live/LiveViewModel.kt": "658f692a9bbd2a8c863cd7a0b9703bc5881b17407b569922b694e10dc86ca177",
+      "app/src/test/java/conectate/com/services/LiveForegroundSessionTest.kt": "ce3fbb96dc5658b6a5881c1b1872206e70457ea7f0d06ae3744b1c0171c5a2f5",
+      "app/src/test/java/conectate/com/data/repository/LiveSessionLifecycleCoordinatorTest.kt": "85ae796e611ce7b23c7077c472a278ae7e43f9107b5cffe9a31569bbab518ec7"
+    }
+  },
+  "baseline": {
+    "head": "1b9e21bb3c76c34c907d33c5ee8ddc0e2800ccd2",
+    "blobs": {
+      "app/src/main/java/conectate/com/services/LiveForegroundService.kt": "9b355b91100eb0874ed54a3c4e7e9257d4c49b9a",
+      "app/src/main/java/conectate/com/data/repository/LiveRepository.kt": "b8adfa70a6375d96a292b33f11b545b6a86b1401",
+      "app/src/main/java/conectate/com/data/model/LiveModels.kt": "6003e9cd02713a6bda75c1c4f355fd4f66d49548",
+      "app/src/test/java/conectate/com/services/LiveForegroundSessionTest.kt": "44a84d5431fe7409ca9af41c9aac85fd951fa17c"
+    },
+    "tests": "2",
+    "failures": "2",
+    "reportSha256": "e52e4f4949bf060034b8f0e9f44e9b4585d785ae20b6594ea8ad4f2d01c4e15f",
+    "logSha256": "99f7b4a571841d642b31f698a6ecf05fd1af5dca870e45d48318a15690910d92"
+  },
+  "focused": {
+    "reports": [
+      {
+        "class": "conectate.com.services.LiveForegroundSessionTest",
+        "tests": "12",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "10.204",
+        "sha256": "d859a675d1bb4aec3c11b0b5fadce19966e6b3d7debb296707c35128ced3cf4c"
+      },
+      {
+        "class": "conectate.com.data.repository.LiveSessionLifecycleCoordinatorTest",
+        "tests": "6",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.218",
+        "sha256": "6e235b5cb5ef9e4b638acf008857f3613972c205f05e5cbd7a94fc53ec6fcaa7"
+      },
+      {
+        "class": "conectate.com.data.repository.LiveStartupPolicyTest",
+        "tests": "5",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.053",
+        "sha256": "ebe6a6806ba82c1a0d3f862cac5e37d19003788174366748e306e4558a6a0c92"
+      }
+    ],
+    "tests": 23,
+    "sourceBlobs": {
+      "app/src/main/java/conectate/com/domain/live/LiveForegroundSessionController.kt": "83b359af18e88539a426b8a8fb09fa3d251b62c7",
+      "app/src/main/java/conectate/com/di/LiveForegroundModule.kt": "496e76883596ba1a4630b4bb82a24c85dbcbc682",
+      "app/src/main/java/conectate/com/data/model/LiveModels.kt": "9f5f1af1d7a981a5fb510cca8e5f39957a1682f6",
+      "app/src/main/java/conectate/com/data/repository/LiveRepository.kt": "9b1308b73c780dea05177d4ab510fd842c6e3260",
+      "app/src/main/java/conectate/com/data/repository/LiveSessionLifecycleCoordinator.kt": "eed215a9460e97b93baaf370c73bfe9b3bb01e7a",
+      "app/src/main/java/conectate/com/services/LiveForegroundService.kt": "ded3307427dbe227b616873b30fae5b958d3caff",
+      "app/src/main/java/conectate/com/presentation/common/MainActivityContent.kt": "ddfbaccad235199362b5a5ac88f7f0c14a65fd68",
+      "app/src/main/java/conectate/com/presentation/live/LiveViewModel.kt": "54d5ebd4cd6aab308bc2205c0e4b6448a2fdffbb",
+      "app/src/test/java/conectate/com/services/LiveForegroundSessionTest.kt": "bdecd4aa3b48d26edb3521d93ac1926d99005c4d",
+      "app/src/test/java/conectate/com/data/repository/LiveSessionLifecycleCoordinatorTest.kt": "d60ea89efc89d50dc3bc9f4c36f850ea3794a41b"
+    },
+    "logSha256": "5b99f94e34165677fc57a00a4be8bf62b84abe4d7af49229b6e54e083641fa75",
+    "fullJvmSuitePending": true
+  },
+  "fullJvm": {
+    "totals": {
+      "tests": 2850,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "classes": 531,
+    "logSha256": "5b5a4f2c249d1984dc392e011919d2262152fa79b6104d18e328976f2e126636",
+    "manifestSha256": "77a2c6fb10345ae88f7352436084e92121c97ae916009ebcc3925a3b7e2fb475"
+  },
+  "initialBuildFailure": {
+    "phase": "transformDebugClassesWithAsm; tests did not execute",
+    "message": "Cannot hash generated SyncManager.class",
+    "logSha256": "8bc2d5e9d58014dce5539b0a984bc260f184187c41e2d33aaf4c0a9c5e9fb64c",
+    "deletedOutputs": false,
+    "retry": "same worktree after readable-file check; max-workers=1; stacktrace; passed"
+  },
+  "limits": [
+    "Service tests use the real Service onStartCommand/notification code with a controlled controller and Robolectric API 34; no physical foreground/notification proof",
+    "Hilt graph compiles and binds the singleton LiveRepository, but service tests bypass Hilt onCreate",
+    "Actual repository teardown/network is not executed by the fake controller",
+    "Account lease, credential capture, all global callbacks and retained screen actions remain open",
+    "No emulator, physical LIVE, new signed APK or production server change"
+  ],
+  "newApk": false,
+  "wholeGoalComplete": false
+}
