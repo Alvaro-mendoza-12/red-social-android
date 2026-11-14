@@ -36,62 +36,72 @@ class CallTonePlayer @Inject constructor(
     private var incomingRingtone: Ringtone? = null
 
     fun startRingback() {
-        if (!shouldPlay() || ringbackJob?.isActive == true) return
-        stopIncomingRingtone()
+        synchronized(lock) {
+            if (!shouldPlay() || ringbackJob?.isActive == true) return
+            stopIncomingRingtone()
 
-        ringbackJob = scope.launch {
-            while (isActive) {
-                synchronized(lock) {
-                    runCatching {
-                        toneGenerator.startTone(ToneGenerator.TONE_SUP_RINGTONE, 1400)
+            ringbackJob = scope.launch {
+                while (isActive) {
+                    synchronized(lock) {
+                        // Cancellation can occur while this task waits for the audio lock.
+                        if (!isActive) return@launch
+                        runCatching {
+                            toneGenerator.startTone(ToneGenerator.TONE_SUP_RINGTONE, 1400)
+                        }
                     }
+                    delay(1700)
                 }
-                delay(1700)
             }
         }
     }
 
     fun startIncomingRingtone() {
-        if (!shouldPlay() || incomingRingtoneJob?.isActive == true) return
-        stopRingback()
+        synchronized(lock) {
+            if (!shouldPlay() || incomingRingtoneJob?.isActive == true) return
+            stopRingback()
 
-        incomingRingtoneJob = scope.launch {
-            val ringtone = synchronized(lock) {
-                incomingRingtone ?: createIncomingRingtone().also { incomingRingtone = it }
-            } ?: return@launch
+            incomingRingtoneJob = scope.launch {
+                val ringtone = synchronized(lock) {
+                    if (!isActive) return@launch
+                    incomingRingtone ?: createIncomingRingtone().also { incomingRingtone = it }
+                } ?: return@launch
 
-            while (isActive) {
-                synchronized(lock) {
-                    runCatching {
-                        if (!ringtone.isPlaying) ringtone.play()
+                while (isActive) {
+                    synchronized(lock) {
+                        if (!isActive) return@launch
+                        runCatching {
+                            if (!ringtone.isPlaying) ringtone.play()
+                        }
                     }
+                    // Android 9+ loops natively. On older devices this also restarts
+                    // non-looping manufacturer ringtones without busy-waiting.
+                    delay(3_000L)
                 }
-                // Android 9+ loops natively. On older devices this also restarts
-                // non-looping manufacturer ringtones without busy-waiting.
-                delay(3_000L)
             }
         }
     }
 
     fun stopIncomingRingtone() {
-        incomingRingtoneJob?.cancel()
-        incomingRingtoneJob = null
         synchronized(lock) {
+            incomingRingtoneJob?.cancel()
+            incomingRingtoneJob = null
             runCatching { incomingRingtone?.stop() }
         }
     }
 
     fun stopRingback() {
-        ringbackJob?.cancel()
-        ringbackJob = null
         synchronized(lock) {
+            ringbackJob?.cancel()
+            ringbackJob = null
             runCatching { toneGenerator.stopTone() }
         }
     }
 
     fun stopAll() {
-        stopRingback()
-        stopIncomingRingtone()
+        synchronized(lock) {
+            stopRingback()
+            stopIncomingRingtone()
+        }
     }
 
     private fun createIncomingRingtone(): Ringtone? {

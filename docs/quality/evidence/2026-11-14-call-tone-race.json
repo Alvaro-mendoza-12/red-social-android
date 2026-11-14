@@ -1,0 +1,50 @@
+{
+  "date": "2026-11-14",
+  "timezone": "America/Bogota",
+  "scope": "Android CallTonePlayer cancellation",
+  "baseCommit": "d79c80c891cca7818e055d7f915a523afebbd664",
+  "baseline": {
+    "skipped": 0,
+    "testBlob": "b4288bb418a46e8a08c7b1c34f24167cf334fe75",
+    "errors": 0,
+    "failures": 2,
+    "logSha256": "5135336b1927cc8f7ffaef45fe0546fbe43baa40abe02cd3bf83e6687e7a4968",
+    "tests": 2,
+    "failure": "A stopped call must not play a late ringback",
+    "reportSha256": "bae740b2bd14da963c934ae72423dff92aaa6e4cd00045af05b31e3b49ac9315",
+    "sourceBlob": "f1d35a37f5cd8265d184d346907f470cb1510cb7"
+  },
+  "final": {
+    "skipped": 0,
+    "testBlob": "58f4b5c8f06f7c141b15a9164b2cc921748ef43c",
+    "errors": 0,
+    "failures": 0,
+    "logSha256": "cbc3fca7fad0d497cd776ad5668c679e067c30cdeae0e6f50a60f62e7f05de86",
+    "tests": 8,
+    "cases": [
+      "aNewCallCanRingAfterThePreviousCallWasStopped",
+      "endingTheCallRejectsPlaybackAlreadyWaitingOnTheMonitor",
+      "incomingToneStopsAndCannotRestartFromItsOldTimer",
+      "repeatedStartsKeepOnlyOneOutgoingLoop",
+      "silentAndVibrateModesDoNotStartCallAudio",
+      "switchingToneDirectionCancelsThePreviousLoop",
+      "stoppingQueuedTonesPreventsTheirFirstPlayback",
+      "stoppingRingbackRejectsPlaybackAlreadyWaitingOnTheMonitor"
+    ],
+    "reportSha256": "13c7f786a3991fb07d0b281e0439f97ae9630352d95eb203191797794feae2e4",
+    "sourceBlob": "34732c1c3e0d3b0556721ddc6ae6318de6d81e9a",
+    "seconds": 8.745
+  },
+  "environment": {
+    "framework": "Robolectric",
+    "java": 21,
+    "execution": "Local JVM; controlled ringtone shadow and coroutine scheduler; real executor for the two cancellation races",
+    "androidApi": 34
+  },
+  "limits": [
+    "No physical audio or device validation",
+    "No CallRepository end-to-end or account-switch proof",
+    "No full JVM suite or lint run",
+    "No new signed APK or server deployment"
+  ]
+}

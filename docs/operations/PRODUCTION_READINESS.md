@@ -17,3 +17,8 @@ La [integración 136](../oficial/136-integracion-api-compartidos-y-mandato-word-
 | Entrega | Revisar la [matriz](../quality/ACCEPTANCE_MATRIX.csv), la [cobertura vigente](../oficial/review-coverage.json) y los cambios locales de otros colaboradores antes de decidir la publicación. |
 
 **Cambio reversible.** Los commits agrupan privacidad, servicios de tiempo real, web y documentación. El bloque 125 añadió dos tablas de participación e índices, ensayados inicialmente en laboratorio y activados en 136 junto con la columna de expansión de llamadas. Una reversión de código conserva esas adiciones y no restaura ni borra historiales. La operación 136 identifica el respaldo, las guardas previas y el resultado efectivo. Las capturas y los informes históricos conservan su fecha y alcance; no son certificados de todo el proyecto.
+
+
+## Continuación 138 — 14 de noviembre de 2026
+
+La [integración de tonos y web](../oficial/138-tonos-android-y-web-desplegada-2026-11-14.md) registra ocho pruebas focalizadas Android y la comprobación del despliegue web con 97 controles HTTP. No certifica audio físico, todos los datos de producción ni una APK nueva. Los historiales vacíos, las tarjetas externas, LIVE y la revisión móvil integral siguen abiertos.

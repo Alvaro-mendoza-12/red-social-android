@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T14:05:04.562765+00:00",
-  "baseCommit": "25de8daef46db6c8cf17cca917b94ce2f9dd6dfc",
+  "generatedAtUtc": "2026-11-14T14:16:41.278084+00:00",
+  "baseCommit": "71292c1afc5a8bd6eb623d0067e718fc28206308",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3635,
+    "pending": 3636,
     "partial": 237,
-    "code-read": 614
+    "code-read": 618
   },
   "countsByPhase": {
     "android": {
-      "pending": 1504,
+      "pending": 1503,
       "partial": 100,
-      "code-read": 438
+      "code-read": 440
     },
     "documentation": {
-      "pending": 623,
-      "code-read": 43,
+      "pending": 625,
+      "code-read": 45,
       "partial": 14
     },
     "server": {
@@ -13113,8 +13113,10 @@
     {
       "file": "app/src/main/java/conectate/com/util/CallTonePlayer.kt",
       "phase": "android",
-      "gitBlobId": "f1d35a37f5cd8265d184d346907f470cb1510cb7",
-      "reviewStatus": "pending"
+      "gitBlobId": "34732c1c3e0d3b0556721ddc6ae6318de6d81e9a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/138-tonos-android-y-web-desplegada-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/ChatAudioPlaybackCache.kt",
@@ -17485,6 +17487,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/util/CallTonePlayerTest.kt",
+      "phase": "android",
+      "gitBlobId": "58f4b5c8f06f7c141b15a9164b2cc921748ef43c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/138-tonos-android-y-web-desplegada-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/util/ChatAudioPlaybackCacheTest.kt",
       "phase": "android",
       "gitBlobId": "792ee1e744de16a2fac2c02e08854f2be0000e8f",
@@ -20271,7 +20281,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "d461a9a9789a0a6faa122f9a910ac7690776f03e",
+      "gitBlobId": "3f35132a3f012c2b9ef318a51e4091b78b114e39",
       "reviewStatus": "pending"
     },
     {
@@ -20496,6 +20506,12 @@
       "file": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
       "phase": "documentation",
       "gitBlobId": "27647ac136f0634b867b8da7afd88d7abcf38d30",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/138-tonos-android-y-web-desplegada-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "c7e201c617fa68726de229d3ec7ccd508f68e1c7",
       "reviewStatus": "pending"
     },
     {
@@ -21021,7 +21037,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "6f6ecfb78f88bad9f3466ad6f56b20ccac210bdb",
+      "gitBlobId": "cfc0dc1ab84953eb781321505c11ac6e3d4e6bc5",
       "reviewStatus": "pending"
     },
     {
@@ -21441,7 +21457,7 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "8d0497de3ecb04edc568226b740fa4a8e33065d2",
+      "gitBlobId": "beaf5cb8c50f7a7beb86b108edd86c22a0a6f74b",
       "reviewStatus": "pending"
     },
     {
@@ -21497,7 +21513,7 @@
     {
       "file": "docs/product/REQUIREMENT_TRACEABILITY.csv",
       "phase": "documentation",
-      "gitBlobId": "440892da9421d236c79b02c966396d3cbbcc3463",
+      "gitBlobId": "38a0be36ac7762a60450240735cbda47ffd612c7",
       "reviewStatus": "pending"
     },
     {
@@ -21541,6 +21557,14 @@
       "phase": "documentation",
       "gitBlobId": "48c318dfeefe343dfc1cd22b3979a6b0b221f388",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/CALL_TONE_RACE_2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "46155bdb971003636fce90f07671e23a2e854dbb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/138-tonos-android-y-web-desplegada-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/quality/TEST_STRATEGY.md",
@@ -21841,6 +21865,20 @@
       "phase": "documentation",
       "gitBlobId": "7c1ddc85803d530e1c679eda441246283eb95b50",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/138-tonos-y-web-desplegada.json",
+      "phase": "documentation",
+      "gitBlobId": "16608c24b623d0ddc2b9943ec0b14d85562e4d25",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/2026-11-14-call-tone-race.json",
+      "phase": "documentation",
+      "gitBlobId": "dbd52d9d79cef7050b76d06b032b156ba6de36a1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/138-tonos-android-y-web-desplegada-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/research/COMPETITIVE_BENCHMARK.md",
