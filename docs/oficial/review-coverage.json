@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T19:38:41.166444+00:00",
-  "baseCommit": "2555f2c10c6e9691bdad362e264f1eb452a5ca34",
+  "generatedAtUtc": "2026-11-15T20:25:04.375757+00:00",
+  "baseCommit": "049aee838cf02bbffb5ff90878f4c79f81f0ad9a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3609,
-    "partial": 250,
-    "code-read": 697
+    "pending": 3604,
+    "partial": 252,
+    "code-read": 706
   },
   "countsByPhase": {
     "android": {
-      "pending": 1482,
-      "partial": 103,
-      "code-read": 482
+      "pending": 1478,
+      "partial": 105,
+      "code-read": 487
     },
     "documentation": {
-      "pending": 639,
+      "pending": 640,
       "code-read": 57,
       "partial": 20
     },
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 86,
-      "pending": 486,
-      "code-read": 81
+      "pending": 484,
+      "code-read": 85
     }
   },
   "files": [
@@ -899,8 +899,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/GameCatalog.test.tsx",
       "phase": "web",
-      "gitBlobId": "be261fe571b90fca83859ff5bf8cb31b550677b8",
-      "reviewStatus": "pending"
+      "gitBlobId": "d785e6688e8ef5557937f487dcb3a9d4ad4f8dba",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/LegacyCallBroadcast.test.tsx",
@@ -1815,6 +1817,14 @@
       "phase": "web",
       "gitBlobId": "4bf376bf91669e608558b3a5d95dc304da519077",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/features/games/GamesWorkspace.test.tsx",
+      "phase": "web",
+      "gitBlobId": "b8a0721590aa5136afd20cc8c1eb83eeb185fa2a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/features/live/LiveSessionPage.test.tsx",
@@ -3511,17 +3521,17 @@
     {
       "file": "NoWing-web/src/features/games/GameCatalog.tsx",
       "phase": "web",
-      "gitBlobId": "4aaa945caf20980ff2773f5c0c4ffe1336326724",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "gitBlobId": "193c904affed42e0dfeaf6717478a66fe355e3fa",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/games/GamesPage.tsx",
       "phase": "web",
-      "gitBlobId": "c252023a5da5d1163e913609dc5d6845c3d0f2bb",
+      "gitBlobId": "4ac0b3bdb2fa47cd6c367375d9ed2b8af71f12dc",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3533,8 +3543,18 @@
     {
       "file": "NoWing-web/src/features/games/games.css",
       "phase": "web",
-      "gitBlobId": "73787a78dfae9932836ebd82f5bb5cdb806d9b06",
-      "reviewStatus": "pending"
+      "gitBlobId": "fbde8311e7b403afdb5604e1c9ffa61bb88e5f2e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/games/playMatchWorkspace.ts",
+      "phase": "web",
+      "gitBlobId": "5e80a3b6fdef458c87ea996b0ab6200d478943e7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/help/HelpPage.tsx",
@@ -10227,14 +10247,34 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchDiscoveryController.kt",
       "phase": "android",
-      "gitBlobId": "cf2802e2c737df24b929a43cfc02ba375013ac79",
-      "reviewStatus": "pending"
+      "gitBlobId": "f9cfaa3b85ce34b965ba84bf1325f23c9e693d6b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchHubPolicy.kt",
+      "phase": "android",
+      "gitBlobId": "d9a11c71fe52b87747eefdba53245b08c56bcea2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchSavedGames.kt",
+      "phase": "android",
+      "gitBlobId": "47bbf5243c108209a85bc5758d223156b7959378",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchScreens.kt",
       "phase": "android",
-      "gitBlobId": "ce6c7e0a1211a5f7b9b11d3b1f2d34af4d514161",
-      "reviewStatus": "pending"
+      "gitBlobId": "7e2ad47f47e27371e3bbbb4838fab4997423939f",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchUiPolicy.kt",
@@ -10245,8 +10285,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchViewModel.kt",
       "phase": "android",
-      "gitBlobId": "d54e830977b7c1b4924be6673b2b987c0b7ca51e",
-      "reviewStatus": "pending"
+      "gitBlobId": "aed41cfc9c780baeacc65d299c8ae697a09b99ed",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/home/HomeNoveltyPolicy.kt",
@@ -16477,8 +16519,18 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/gaming/PlayMatchDiscoveryControllerTest.kt",
       "phase": "android",
-      "gitBlobId": "9ee01be15eb57ca65bc717e4e5642a3607549363",
-      "reviewStatus": "pending"
+      "gitBlobId": "2a21d0b837b7b682467b9ab35f060c349f264874",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/gaming/PlayMatchHubPolicyTest.kt",
+      "phase": "android",
+      "gitBlobId": "e5637a58dc1f62e992603426aaddf180a98ee2e3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/gaming/PlayMatchUiPolicyTest.kt",
@@ -20973,6 +21025,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "ed9c416bea6678f75bcd0273a570c620ca83595c",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/16-recuperacion-tunel-y-feed-2026-09-09.md",

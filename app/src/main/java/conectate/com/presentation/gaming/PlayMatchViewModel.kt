@@ -27,6 +27,8 @@ data class PlayMatchUiState(
     val isLoading: Boolean = true,
     val isWorking: Boolean = false,
     val isSearchingPlayers: Boolean = false,
+    val hasSearchedPlayers: Boolean = false,
+    val playerSearchError: String? = null,
     val availableNowOnly: Boolean = false,
     val capabilities: PlayMatchCapabilities = PlayMatchCapabilities(),
     val catalog: List<PlayMatchGameCatalogItem> = emptyList(),
@@ -52,6 +54,9 @@ data class PlayMatchUiState(
     val regionFilter: String? = null,
     val error: String? = null,
     val message: String? = null,
+    val isHomeCatalogLoading: Boolean = false,
+    val homeCatalogError: String? = null,
+    val isHomeProfileLoading: Boolean = false,
 )
 
 @HiltViewModel
@@ -95,26 +100,33 @@ class PlayMatchViewModel @Inject constructor(
     fun refreshHome() {
         if (homeJob?.isActive == true) return
         homeJob = accountTasks.scope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _state.update { it.copy(isLoading = !it.capabilities.enabled, error = null) }
             val capabilities = boundedRequest { repository.capabilities() }.getOrElse {
                 fail(it)
                 return@launch
             }
-            _state.update { it.copy(capabilities = capabilities, isLoading = false) }
+            _state.update { it.copy(
+                capabilities = capabilities,
+                isLoading = false,
+                isHomeCatalogLoading = capabilities.enabled,
+                homeCatalogError = null,
+                isHomeProfileLoading = capabilities.enabled,
+            ) }
             if (!capabilities.enabled) return@launch
             // Independent typed requests hydrate as soon as each response arrives.
             // A successful empty response clears old rows; a failed refresh preserves them.
-            search()
             coroutineScope {
                 launch {
-                    boundedRequest { repository.popularGames() }.onSuccess { response ->
-                        _state.update { it.copy(catalog = response.items) }
-                    }
+                    boundedRequest { repository.popularGames() }.fold(
+                        onSuccess = { response -> _state.update { it.copy(catalog = response.items, isHomeCatalogLoading = false) } },
+                        onFailure = { error -> _state.update { it.copy(isHomeCatalogLoading = false, homeCatalogError = PlayMatchUiPolicy.safeError(error)) } },
+                    )
                 }
                 launch {
-                    boundedRequest { repository.profile() }.onSuccess { response ->
-                        _state.update { it.copy(profile = response.profile, preferences = response.preferences) }
-                    }
+                    boundedRequest { repository.profile() }.fold(
+                        onSuccess = { response -> _state.update { it.copy(profile = response.profile, preferences = response.preferences, isHomeProfileLoading = false) } },
+                        onFailure = { _state.update { it.copy(isHomeProfileLoading = false) } },
+                    )
                 }
                 launch {
                     boundedRequest { repository.connections() }.onSuccess { response ->
@@ -133,6 +145,10 @@ class PlayMatchViewModel @Inject constructor(
 
     fun search(query: String = _state.value.query, gameId: String? = _state.value.gameFilter, platform: String? = _state.value.platformFilter) {
         discovery.search(query, gameId, platform)
+    }
+
+    fun preparePlayerSearch() {
+        if (!_state.value.hasSearchedPlayers) search()
     }
 
     fun setQuery(query: String) {
@@ -232,7 +248,9 @@ class PlayMatchViewModel @Inject constructor(
     })
 
     fun prepareCatalogSearch() {
-        if (_state.value.catalogResults.isNotEmpty() || _state.value.isCatalogLoading) return
+        val current = _state.value
+        if (current.catalogResults.isNotEmpty() || current.isCatalogLoading ||
+            current.catalogQuery.isNotEmpty() || current.catalogError != null) return
         updateCatalogQuery("")
     }
 

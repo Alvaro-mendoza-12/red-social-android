@@ -9,6 +9,9 @@ jest.mock('../../core/auth/AuthProvider', () => ({ useAuth: () => ({ user: { id:
 jest.mock('../../core/fallbackData', () => ({ uploadFallbackFile: jest.fn() }))
 const request = jest.fn()
 const game = (id: string, name: string) => ({ id, name, platforms: ['PC'], ranks: [], roles: [] })
+async function openCatalog() {
+  fireEvent.click(await screen.findByRole('button', { name: 'Catálogo', exact: true }))
+}
 beforeEach(() => {
   request.mockReset()
   ;(fallbackApiJson as jest.Mock).mockImplementation((url: string) => {
@@ -23,10 +26,11 @@ beforeEach(() => {
 test('searches the server beyond the first page and distinguishes no matches from an empty catalog', async () => {
   request.mockImplementation(async (url: string) => url.includes('q=Zelda') ? { items: [game('zelda', 'Zelda')], nextCursor: null } : url.includes('q=missing') ? { items: [], nextCursor: null } : { items: [game('first', 'Primer juego')], nextCursor: 'page-two' })
   render(<MemoryRouter><GamesPage /></MemoryRouter>)
-  await screen.findByRole('button', { name: /Primer juego/ })
+  await openCatalog()
+  await screen.findByRole('button', { name: /^Primer juego/ })
   expect(screen.getByRole('status')).toHaveTextContent('1 juego mostrado')
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Zelda' } })
-  await screen.findByRole('button', { name: /Zelda/ })
+  await screen.findByRole('button', { name: /^Zelda/ })
   expect(screen.queryByText('Primer juego')).not.toBeInTheDocument()
   fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'missing' } })
   await screen.findByText(/No encontramos juegos/)
@@ -42,6 +46,7 @@ test('loads more results using the server cursor and ignores a late old search',
     return Promise.resolve(url.includes('cursor=page-two') ? { items: [game('second', 'Segundo juego')], nextCursor: null } : { items: [game('first', 'Primer juego')], nextCursor: 'page-two' })
   })
   render(<MemoryRouter><GamesPage /></MemoryRouter>)
+  await openCatalog()
   fireEvent.click(await screen.findByRole('button', { name: 'Ver más juegos' }))
   await screen.findByText('Segundo juego')
   expect(screen.getByRole('status')).toHaveTextContent('2 juegos mostrados')
@@ -56,25 +61,30 @@ test('loads more results using the server cursor and ignores a late old search',
 test('a failed search provides retry without claiming there are no games', async () => {
   request.mockRejectedValueOnce(new Error('NETWORK_ERROR')).mockResolvedValue({ items: [game('one', 'Recuperado')], nextCursor: null })
   render(<MemoryRouter><GamesPage /></MemoryRouter>)
+  await openCatalog()
   await screen.findByRole('alert')
   expect(screen.queryByText(/No hay juegos/)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
   await screen.findByText('Recuperado')
 })
 
-test('cannot switch to another game while a discovery request is pending', async () => {
+test('switching games starts a new discovery while the old result is pending', async () => {
   request.mockResolvedValue({ items: [game('first', 'Primer juego'), game('second', 'Segundo juego')], nextCursor: null })
   const original = (fallbackApiJson as jest.Mock).getMockImplementation()!
   let finish!: (value: unknown) => void
   ;(fallbackApiJson as jest.Mock).mockImplementation((url: string) => {
     if (url.includes('/players?') && url.includes('gameId=first')) return new Promise(resolve => { finish = resolve })
+    if (url.includes('/players?') && url.includes('gameId=second')) return Promise.resolve({ items: [{ userId: 'next', displayName: 'Segundo equipo', games: [] }] })
     return original(url)
   })
   render(<MemoryRouter><GamesPage /></MemoryRouter>)
-  fireEvent.click(await screen.findByRole('button', { name: /Primer juego/ }))
+  await openCatalog()
+  fireEvent.click(await screen.findByRole('button', { name: /^Primer juego/ }))
   await waitFor(() => expect(finish).toBeDefined())
-  fireEvent.click(screen.getByRole('button', { name: 'Juegos', exact: true }))
-  expect(await screen.findByRole('button', { name: /Segundo juego/ })).toBeDisabled()
-  await act(async () => finish({ items: [] }))
-  expect(screen.getByRole('button', { name: /Segundo juego/ })).toBeEnabled()
+  await openCatalog()
+  fireEvent.click(await screen.findByRole('button', { name: /^Segundo juego/ }))
+  await screen.findByText('Segundo equipo')
+  await act(async () => finish({ items: [{ userId: 'old', displayName: 'Equipo anterior', games: [] }] }))
+  expect(screen.queryByText('Equipo anterior')).not.toBeInTheDocument()
+  expect(screen.getByText('Segundo equipo')).toBeInTheDocument()
 })

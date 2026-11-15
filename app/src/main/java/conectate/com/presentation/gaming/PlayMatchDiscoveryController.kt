@@ -37,7 +37,8 @@ internal class PlayMatchDiscoveryController(
         val clean = text.take(120).trim()
         val query = PlayMatchPlayerQuery(clean, game, platform, state.value.regionFilter, availableNow = state.value.availableNowOnly)
         state.update { it.copy(query = text.take(120), gameFilter = game, platformFilter = platform,
-            players = emptyList(), nextCursor = null, isSearchingPlayers = true, error = null) }
+            players = emptyList(), nextCursor = null, isSearchingPlayers = true,
+            hasSearchedPlayers = true, playerSearchError = null) }
         job = scope.launch {
             if (debounce) delay(if (clean.isBlank()) 150 else 400)
             val result = request(query)
@@ -45,7 +46,7 @@ internal class PlayMatchDiscoveryController(
             result.fold(
                 onSuccess = { response -> state.update { it.copy(players = response.items.distinctBy { player -> player.userId },
                     nextCursor = response.nextCursor, isSearchingPlayers = false) } },
-                onFailure = { error -> state.update { it.copy(isSearchingPlayers = false, error = PlayMatchUiPolicy.safeError(error)) } },
+                onFailure = { error -> state.update { it.copy(isSearchingPlayers = false, playerSearchError = PlayMatchUiPolicy.safeError(error)) } },
             )
         }
     }
@@ -57,7 +58,7 @@ internal class PlayMatchDiscoveryController(
         val version = generation
         val query = PlayMatchPlayerQuery(snapshot.query.trim(), snapshot.gameFilter, snapshot.platformFilter,
             snapshot.regionFilter, cursor, snapshot.availableNowOnly)
-        state.update { it.copy(isSearchingPlayers = true) }
+        state.update { it.copy(isSearchingPlayers = true, playerSearchError = null) }
         paging = scope.launch {
             val result = request(query)
             if (version != generation) return@launch
@@ -65,7 +66,7 @@ internal class PlayMatchDiscoveryController(
                 onSuccess = { response -> state.update { it.copy(
                     players = (it.players + response.items).distinctBy { player -> player.userId },
                     nextCursor = response.nextCursor?.takeUnless { next -> next == cursor }, isSearchingPlayers = false) } },
-                onFailure = { error -> state.update { it.copy(isSearchingPlayers = false, error = PlayMatchUiPolicy.safeError(error)) } },
+                onFailure = { error -> state.update { it.copy(isSearchingPlayers = false, playerSearchError = PlayMatchUiPolicy.safeError(error)) } },
             )
         }
     }
