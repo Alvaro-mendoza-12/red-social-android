@@ -23,6 +23,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import conectate.com.presentation.auth.EmailRecoveryDraft
 import conectate.com.presentation.auth.EmailRecoveryDraftStore
 import conectate.com.presentation.auth.EmailRecoverySteps
+import conectate.com.presentation.auth.EmailRecoveryCleanupDialog
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -62,10 +63,10 @@ class EmailRecoveryUiAuditTest {
         }
     }
 
-    private fun screenshot(name: String) {
+    private fun screenshot(name: String, tag: String? = null) {
         val folder = context.getExternalFilesDir("communication-qa")!!.apply { mkdirs() }
         File(folder, name).outputStream().use {
-            val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+            val bitmap = (if (tag == null) compose.onRoot() else compose.onNodeWithTag(tag)).captureToImage().asAndroidBitmap()
             assertTrue(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it))
         }
     }
@@ -146,5 +147,53 @@ class EmailRecoveryUiAuditTest {
         } finally {
             context.deleteSharedPreferences(name)
         }
+    }
+
+    private fun showCleanup(working: Boolean = false, requiresTwoFactor: Boolean = false,
+        onRetry: () -> Unit = {}, onContinue: () -> Unit = {}) {
+        val configuration = android.content.res.Configuration(context.resources.configuration)
+            .apply { setLocale(Locale.forLanguageTag("es")) }
+        val localized = context.createConfigurationContext(configuration)
+        compose.setContent {
+            CompositionLocalProvider(LocalContext provides localized, LocalConfiguration provides configuration) {
+                MaterialTheme {
+                    EmailRecoveryCleanupDialog(requiresTwoFactor, working, onRetry, onContinue)
+                }
+            }
+        }
+    }
+
+    @Test fun cleanupNoticeExplainsThatThePasswordAlreadyChanged() {
+        showCleanup()
+        compose.onNodeWithText("Tu contraseña ya cambió").assertIsDisplayed()
+        compose.onNodeWithTag("email_recovery_cleanup_retry").assertIsEnabled().assertIsDisplayed()
+        compose.onNodeWithTag("email_recovery_cleanup_continue").assertIsEnabled().assertIsDisplayed()
+        compose.onNodeWithTag("email_recovery_password").assertDoesNotExist()
+        screenshot("email-recovery-cleanup-es.png", "email_recovery_cleanup_notice")
+    }
+
+    @Test fun cleanupActionsRemainSeparate() {
+        var retries = 0
+        var continuations = 0
+        showCleanup(onRetry = { retries++ }, onContinue = { continuations++ })
+        compose.onNodeWithTag("email_recovery_cleanup_retry").performClick()
+        assertEquals(1, retries)
+        assertEquals(0, continuations)
+        compose.onNodeWithTag("email_recovery_cleanup_continue").performClick()
+        assertEquals(1, retries)
+        assertEquals(1, continuations)
+    }
+
+    @Test fun cleanupProgressDisablesBothActions() {
+        showCleanup(working = true)
+        compose.onNodeWithTag("email_recovery_cleanup_retry").assertIsNotEnabled()
+        compose.onNodeWithTag("email_recovery_cleanup_continue").assertIsNotEnabled()
+        compose.onNodeWithTag("email_recovery_cleanup_progress").assertIsDisplayed()
+    }
+
+    @Test fun cleanupNoticeKeepsTheTwoFactorRequirementVisible() {
+        showCleanup(requiresTwoFactor = true)
+        compose.onNodeWithText("Al continuar tendrás que iniciar sesión y completar la verificación en dos pasos.").assertIsDisplayed()
+        compose.onNodeWithTag("email_recovery_cleanup_continue").assertIsEnabled()
     }
 }

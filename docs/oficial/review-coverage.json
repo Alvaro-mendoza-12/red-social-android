@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T21:17:18.870231+00:00",
-  "baseCommit": "f5c9f647fc39c82a6cb87144f21797432e13970b",
+  "generatedAtUtc": "2026-11-15T22:45:01.815883+00:00",
+  "baseCommit": "0dfaf95844ea0c8577aac30aacc300b03954f17a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3605,
-    "partial": 252,
-    "code-read": 706
+    "pending": 3602,
+    "partial": 256,
+    "code-read": 709
   },
   "countsByPhase": {
     "android": {
-      "pending": 1478,
-      "partial": 105,
-      "code-read": 487
+      "pending": 1474,
+      "partial": 109,
+      "code-read": 489
     },
     "documentation": {
-      "pending": 641,
-      "code-read": 57,
+      "pending": 642,
+      "code-read": 58,
       "partial": 20
     },
     "server": {
@@ -5679,8 +5679,10 @@
     {
       "file": "app/src/communicationValidationTest/java/conectate/com/EmailRecoveryUiAuditTest.kt",
       "phase": "android",
-      "gitBlobId": "2c4ad6718eb58d92614280008a90aa245aec4865",
-      "reviewStatus": "pending"
+      "gitBlobId": "137ea2efa94b5c64600da068697c4c69f0765a07",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/communicationValidationTest/java/conectate/com/LiveCameraSwitchDeviceAuditTest.kt",
@@ -9379,9 +9381,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
       "phase": "android",
-      "gitBlobId": "c1875ddaec97b9cd1260915dc28eab62cb9d35cc",
+      "gitBlobId": "01f79ccc8912303c8bccf168322d0e422a7b1921",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9391,11 +9393,19 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryCleanupDialog.kt",
+      "phase": "android",
+      "gitBlobId": "fb62e65a342ee58360d4c3054eaa665e9c55682a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
       "phase": "android",
-      "gitBlobId": "27595ef77de7e1113f2e6e9ea13a502a1bcb7340",
+      "gitBlobId": "ced9b3a5533087c7c9b9493201959002766fba82",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9425,9 +9435,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
       "phase": "android",
-      "gitBlobId": "e988a66fdb050ca307fbb256c84113a684b06604",
+      "gitBlobId": "82b57d92565365cdf88491e128db523300c74fa8",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11575,9 +11585,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/AuthNavigationRoutes.kt",
       "phase": "android",
-      "gitBlobId": "5b7222089f9409bd7d9366a37711c0fb9c92037d",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
+      "gitBlobId": "fa78630b7ac6d876f23d3874ac6e021e4ecc3336",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -14389,8 +14399,10 @@
     {
       "file": "app/src/main/res/values-en/strings.xml",
       "phase": "android",
-      "gitBlobId": "ab6dac8227834e8212b5ecb94e196bae984d0ca0",
-      "reviewStatus": "pending"
+      "gitBlobId": "d21a5189805403beb62cd2e1fb8df8fe7e307ec7",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/res/values-es/audit_strings.xml",
@@ -14403,8 +14415,10 @@
     {
       "file": "app/src/main/res/values-es/strings.xml",
       "phase": "android",
-      "gitBlobId": "01f2ad531725f3a67f710ee4e7cb1b104994516f",
-      "reviewStatus": "pending"
+      "gitBlobId": "1f00583a575f520a8c79c8726704cddf42702766",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/res/values-fr/audit_strings.xml",
@@ -14483,8 +14497,10 @@
     {
       "file": "app/src/main/res/values/strings.xml",
       "phase": "android",
-      "gitBlobId": "cbcd79fefc37ef43c04f433f7e0eb5eb9adb4bc3",
-      "reviewStatus": "pending"
+      "gitBlobId": "391155c34ae18373ed99b3b73c5f0ceb53bbb20f",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/res/values/themes.xml",
@@ -16276,6 +16292,14 @@
       "gitBlobId": "54b08a3446237d8eec86d456a27a94efa67a7db8",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelConfirmedRecoveryCleanupTest.kt",
+      "phase": "android",
+      "gitBlobId": "01fb097727ee0d34d31c36ed8af14456264d6cc9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20653,7 +20677,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "0935a6a08ac1d448e356cd6e857a111db5e196cc",
+      "gitBlobId": "e8fc3e0b04635b82ed051f7282301592500b84e7",
       "reviewStatus": "pending"
     },
     {
@@ -21024,6 +21048,14 @@
       "gitBlobId": "f67174b20d32fce5f5cd697a005360f3113796db",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "a613d03fd329af1aa91509ed174539a9a77065b2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21549,7 +21581,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "fb26022feee52b336abb8e4eec39b17edaae01d5",
+      "gitBlobId": "44fb780ab809b33cc09fcf46f605d97a8bcdf52b",
       "reviewStatus": "pending"
     },
     {
@@ -21969,7 +22001,7 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "3dfae6c9110a57433c5ec33c2d8714cb4a1a820c",
+      "gitBlobId": "158a3d88943a87218e4717470943933c9185bd8b",
       "reviewStatus": "pending"
     },
     {
@@ -22482,6 +22514,12 @@
       "file": "docs/quality/evidence/156-email-recovery-shared-store.json",
       "phase": "documentation",
       "gitBlobId": "dcce6f7bde1bf700b5af50bf423120dd372eddbd",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/157-confirmed-recovery-cleanup.json",
+      "phase": "documentation",
+      "gitBlobId": "89b0e87fc6d1a6f6198303703581ae0961f70eb6",
       "reviewStatus": "pending"
     },
     {

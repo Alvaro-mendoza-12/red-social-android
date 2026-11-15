@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.util.WeakHashMap
+import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,6 +39,27 @@ internal class EmailRecoveryVisitGuard {
     private val writes = Any()
     private data class Writer(val generation: Long, val owner: Any?)
     @Volatile private var writer = Writer(0L, null)
+    // UI recovery suppression only; server-side single use is authoritative.
+    // Keep the most recent 64 acknowledgements in this process without raw tokens.
+    private val consumedTokenHashes = LinkedHashSet<String>()
+    private fun tokenHash(token: String) = MessageDigest.getInstance("SHA-256")
+        .digest(token.trim().toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+
+    fun tokenWasConsumed(token: String): Boolean = token.isNotBlank() && synchronized(admissionLock) {
+        tokenHash(token) in consumedTokenHashes
+    }
+
+    fun retireConfirmedToken(expected: EmailRecoveryVisit, owner: Any, token: String,
+        install: (EmailRecoveryVisit) -> Unit): EmailRecoveryVisit = synchronized(admissionLock) {
+        requireCurrent(expected)
+        if (token.isNotBlank()) {
+            consumedTokenHashes.add(tokenHash(token))
+            if (consumedTokenHashes.size > 64) consumedTokenHashes.remove(consumedTokenHashes.first())
+        }
+        // Retire all earlier readers/writers, including another screen on the same flow.
+        begin(owner, install)
+    }
+
     private val changes = MutableStateFlow(0L)
     val visits: StateFlow<Long> = changes.asStateFlow()
 
@@ -103,16 +125,24 @@ class EmailRecoveryDraftStore(context: Context) {
     fun resumeWriteVisit(expected: EmailRecoveryVisit, install: (EmailRecoveryVisit) -> Unit = {}): EmailRecoveryVisit =
         guard.resume(expected, writer, install)
 
+    fun retireConfirmedResetToken(token: String, expected: EmailRecoveryVisit,
+        install: (EmailRecoveryVisit) -> Unit = {}): EmailRecoveryVisit =
+        guard.retireConfirmedToken(expected, writer, token, install)
+
+    fun wasResetTokenConsumed(token: String): Boolean = guard.tokenWasConsumed(token)
+
     fun read(): EmailRecoveryDraft? = runCatching {
         val raw = preferences.getString("draft", null) ?: return@runCatching null
         val draft = decode(raw)
+        if (guard.tokenWasConsumed(draft.resetToken)) return@runCatching null
         if (draft.expiresAt > System.currentTimeMillis()) return@runCatching draft
         guard.pruneExpired {
             // The first read can precede another writer. Re-read under the
             // shared write lock, retaining a newer valid replacement.
             val latestRaw = preferences.getString("draft", null) ?: return@pruneExpired null
             val latest = if (latestRaw == raw) draft else decode(latestRaw)
-            if (latest.expiresAt > System.currentTimeMillis()) latest
+            if (guard.tokenWasConsumed(latest.resetToken)) null
+            else if (latest.expiresAt > System.currentTimeMillis()) latest
             else { clearRaw(); null }
         }
     }.getOrNull()
