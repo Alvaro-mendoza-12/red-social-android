@@ -1,0 +1,816 @@
+{
+  "date": "2026-11-15",
+  "scope": "Measured transfers and isolated checks. Android scroll, physical performance of147 and capacity remain open.",
+  "transport": {
+    "publicOriginIp": "199.38.181.54",
+    "feed": {
+      "status": 200,
+      "ms": 385
+    },
+    "measures": [
+      {
+        "route": "ubuntu-public",
+        "iteration": 0,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 949,
+        "totalMs": 3545,
+        "source": "ubuntu",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      },
+      {
+        "route": "ubuntu-public",
+        "iteration": 1,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 297,
+        "totalMs": 2924,
+        "source": "ubuntu",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      },
+      {
+        "route": "ubuntu-public",
+        "iteration": 2,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 273,
+        "totalMs": 2891,
+        "source": "ubuntu",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      },
+      {
+        "route": "r2-edge",
+        "iteration": 0,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 2153,
+        "totalMs": 2846,
+        "source": "r2",
+        "timing": "app;dur=38.2, novvin_r2, novvin_origin;dur=1468, novvin_bucket;dur=145",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      },
+      {
+        "route": "r2-edge",
+        "iteration": 1,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 610,
+        "totalMs": 763,
+        "source": "r2",
+        "timing": "app;dur=46.2, novvin_r2, novvin_origin;dur=290, novvin_bucket;dur=146",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      },
+      {
+        "route": "r2-edge",
+        "iteration": 2,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 624,
+        "totalMs": 678,
+        "source": "r2",
+        "timing": "app;dur=53.6, novvin_r2, novvin_origin;dur=296, novvin_bucket;dur=159",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      },
+      {
+        "route": "web-gateway",
+        "iteration": 0,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 727,
+        "totalMs": 2104,
+        "source": "ubuntu",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      },
+      {
+        "route": "web-gateway",
+        "iteration": 1,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 447,
+        "totalMs": 1511,
+        "source": "ubuntu",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      },
+      {
+        "route": "web-gateway",
+        "iteration": 2,
+        "status": 206,
+        "bytes": 1048576,
+        "ttfbMs": 477,
+        "totalMs": 1468,
+        "source": "ubuntu",
+        "sha256": "e2d42c8b48d4a7cbe5994fb56a1fbf2b286e586af2c69015c850c959a8c3f110"
+      }
+    ]
+  },
+  "authorMediaPrefix": {
+    "publicOriginIp": "199.38.181.54",
+    "feed": {
+      "status": 200,
+      "ms": 456
+    },
+    "measures": [
+      {
+        "route": "ubuntu-public",
+        "iteration": 0,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 1914,
+        "totalMs": 2693,
+        "source": "ubuntu",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      },
+      {
+        "route": "ubuntu-public",
+        "iteration": 1,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 319,
+        "totalMs": 854,
+        "source": "ubuntu",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      },
+      {
+        "route": "ubuntu-public",
+        "iteration": 2,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 317,
+        "totalMs": 5535,
+        "source": "ubuntu",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      },
+      {
+        "route": "r2-edge",
+        "iteration": 0,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 2493,
+        "totalMs": 2871,
+        "source": "r2",
+        "timing": "app;dur=54.8, novvin_r2, novvin_origin;dur=1808, novvin_bucket;dur=162",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      },
+      {
+        "route": "r2-edge",
+        "iteration": 1,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 664,
+        "totalMs": 821,
+        "source": "r2",
+        "timing": "app;dur=78.1, novvin_r2, novvin_origin;dur=336, novvin_bucket;dur=154",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      },
+      {
+        "route": "r2-edge",
+        "iteration": 2,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 620,
+        "totalMs": 671,
+        "source": "r2",
+        "timing": "app;dur=53.4, novvin_r2, novvin_origin;dur=297, novvin_bucket;dur=150",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      },
+      {
+        "route": "web-gateway",
+        "iteration": 0,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 433,
+        "totalMs": 1094,
+        "source": "ubuntu",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      },
+      {
+        "route": "web-gateway",
+        "iteration": 1,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 1086,
+        "totalMs": 1700,
+        "source": "ubuntu",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      },
+      {
+        "route": "web-gateway",
+        "iteration": 2,
+        "status": 206,
+        "bytes": 262144,
+        "ttfbMs": 1115,
+        "totalMs": 1876,
+        "source": "ubuntu",
+        "sha256": "c4f777c2a92615581888fd6ec5aba5604f3c58caa8645b69032c7a781d80d587"
+      }
+    ]
+  },
+  "browser": {
+    "before": [
+      {
+        "width": 1440,
+        "thumbnailRequests": 0,
+        "animatedOriginalRequests": 32,
+        "loadedCatalogImages": 32,
+        "catalogSize": 80,
+        "messageTransfers": 1,
+        "pageErrors": 0
+      },
+      {
+        "width": 768,
+        "thumbnailRequests": 0,
+        "animatedOriginalRequests": 32,
+        "loadedCatalogImages": 28,
+        "catalogSize": 80,
+        "messageTransfers": 1,
+        "pageErrors": 0
+      },
+      {
+        "width": 375,
+        "thumbnailRequests": 0,
+        "animatedOriginalRequests": 25,
+        "loadedCatalogImages": 25,
+        "catalogSize": 80,
+        "messageTransfers": 1,
+        "pageErrors": 0
+      }
+    ],
+    "after": [
+      {
+        "width": 1440,
+        "thumbnailRequests": 17,
+        "animatedOriginalRequests": 16,
+        "loadedCatalogImages": 32,
+        "catalogSize": 80,
+        "messageTransfers": 1,
+        "pageErrors": 0
+      },
+      {
+        "width": 768,
+        "thumbnailRequests": 18,
+        "animatedOriginalRequests": 17,
+        "loadedCatalogImages": 32,
+        "catalogSize": 80,
+        "messageTransfers": 1,
+        "pageErrors": 0
+      },
+      {
+        "width": 375,
+        "thumbnailRequests": 13,
+        "animatedOriginalRequests": 12,
+        "loadedCatalogImages": 25,
+        "catalogSize": 80,
+        "messageTransfers": 1,
+        "pageErrors": 0
+      }
+    ],
+    "synthetic": true,
+    "networkDelayPerImageMs": 100
+  },
+  "api": {
+    "image": "novvin-api:media147-deps-20261115",
+    "imageId": "sha256:19354f261e64d364ec8e99ba82c914fa9b43e9b74a7ba4384ab59723b840e0cf",
+    "sourceSha256": "2053104eafc622323f938664ba797e5c89c586c46a14573b25f0e5812e2ff918",
+    "sourceUnchanged": true,
+    "previousAudit": {
+      "low": 2,
+      "moderate": 6,
+      "high": 0,
+      "critical": 0
+    },
+    "audit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "http": {
+      "ok": true,
+      "cleanupVerified": true,
+      "scope": "Forced public HTTPS/SNI, HTTP/1.1 reads with one isolated account; not every UI option or capacity certification",
+      "checks": [
+        {
+          "name": "isolated-registration",
+          "status": 201,
+          "expected": 201,
+          "ms": 1076,
+          "ok": true,
+          "appMs": 276.5
+        },
+        {
+          "name": "health",
+          "status": 200,
+          "expected": 200,
+          "ms": 417,
+          "ok": true,
+          "appMs": 0.5
+        },
+        {
+          "name": "ready",
+          "status": 200,
+          "expected": 200,
+          "ms": 426,
+          "ok": true,
+          "appMs": 5.3
+        },
+        {
+          "name": "account",
+          "status": 200,
+          "expected": 200,
+          "ms": 396,
+          "ok": true,
+          "appMs": 8.6
+        },
+        {
+          "name": "profile",
+          "status": 200,
+          "expected": 200,
+          "ms": 522,
+          "ok": true,
+          "appMs": 148.5
+        },
+        {
+          "name": "profile-search",
+          "status": 200,
+          "expected": 200,
+          "ms": 603,
+          "ok": true,
+          "appMs": 219.3
+        },
+        {
+          "name": "notifications",
+          "status": 200,
+          "expected": 200,
+          "ms": 403,
+          "ok": true,
+          "appMs": 13.6
+        },
+        {
+          "name": "friends",
+          "status": 200,
+          "expected": 200,
+          "ms": 470,
+          "ok": true,
+          "appMs": 77.7
+        },
+        {
+          "name": "messages-inbox",
+          "status": 200,
+          "expected": 200,
+          "ms": 539,
+          "ok": true,
+          "appMs": 159.4
+        },
+        {
+          "name": "saved-messages",
+          "status": 200,
+          "expected": 200,
+          "ms": 497,
+          "ok": true,
+          "appMs": 78.7
+        },
+        {
+          "name": "communities",
+          "status": 200,
+          "expected": 200,
+          "ms": 430,
+          "ok": true,
+          "appMs": 9.8
+        },
+        {
+          "name": "social-feed",
+          "status": 200,
+          "expected": 200,
+          "ms": 540,
+          "ok": true,
+          "appMs": 115.7
+        },
+        {
+          "name": "moments",
+          "status": 200,
+          "expected": 200,
+          "ms": 631,
+          "ok": true,
+          "appMs": 192.4
+        },
+        {
+          "name": "saved-collections",
+          "status": 200,
+          "expected": 200,
+          "ms": 664,
+          "ok": true,
+          "appMs": 79.8
+        },
+        {
+          "name": "videos",
+          "status": 200,
+          "expected": 200,
+          "ms": 644,
+          "ok": true,
+          "appMs": 217.5
+        },
+        {
+          "name": "video-collections",
+          "status": 200,
+          "expected": 200,
+          "ms": 469,
+          "ok": true,
+          "appMs": 54.9
+        },
+        {
+          "name": "video-comment-search",
+          "status": 200,
+          "expected": 200,
+          "ms": 601,
+          "ok": true,
+          "appMs": 185.9
+        },
+        {
+          "name": "ranking-followers",
+          "status": 200,
+          "expected": 200,
+          "ms": 1248,
+          "ok": true,
+          "appMs": 632.9
+        },
+        {
+          "name": "ranking-posts",
+          "status": 200,
+          "expected": 200,
+          "ms": 833,
+          "ok": true,
+          "appMs": 146.6
+        },
+        {
+          "name": "watch-later",
+          "status": 200,
+          "expected": 200,
+          "ms": 428,
+          "ok": true,
+          "appMs": 40.6
+        },
+        {
+          "name": "video-history",
+          "status": 200,
+          "expected": 200,
+          "ms": 513,
+          "ok": true,
+          "appMs": 47.4
+        },
+        {
+          "name": "voice-rooms",
+          "status": 200,
+          "expected": 200,
+          "ms": 465,
+          "ok": true,
+          "appMs": 49.3
+        },
+        {
+          "name": "live-capabilities",
+          "status": 200,
+          "expected": 200,
+          "ms": 369,
+          "ok": true,
+          "appMs": 8.6
+        },
+        {
+          "name": "live-directory",
+          "status": 200,
+          "expected": 200,
+          "ms": 427,
+          "ok": true,
+          "appMs": 18.7
+        },
+        {
+          "name": "live-replays",
+          "status": 200,
+          "expected": 200,
+          "ms": 437,
+          "ok": true,
+          "appMs": 12.8
+        },
+        {
+          "name": "challenge-directory",
+          "status": 200,
+          "expected": 200,
+          "ms": 502,
+          "ok": true,
+          "appMs": 39.3
+        },
+        {
+          "name": "owned-challenges",
+          "status": 200,
+          "expected": 200,
+          "ms": 379,
+          "ok": true,
+          "appMs": 8.5
+        },
+        {
+          "name": "games-capabilities",
+          "status": 200,
+          "expected": 200,
+          "ms": 447,
+          "ok": true,
+          "appMs": 10.4
+        },
+        {
+          "name": "games-catalog",
+          "status": 200,
+          "expected": 200,
+          "ms": 610,
+          "ok": true,
+          "appMs": 107.6
+        },
+        {
+          "name": "games-connections",
+          "status": 200,
+          "expected": 200,
+          "ms": 472,
+          "ok": true,
+          "appMs": 13.3
+        },
+        {
+          "name": "games-matches",
+          "status": 200,
+          "expected": 200,
+          "ms": 381,
+          "ok": true,
+          "appMs": 11.2
+        },
+        {
+          "name": "socialization-capabilities",
+          "status": 200,
+          "expected": 200,
+          "ms": 445,
+          "ok": true,
+          "appMs": 12.6
+        },
+        {
+          "name": "algorithm-capabilities",
+          "status": 200,
+          "expected": 200,
+          "ms": 398,
+          "ok": true,
+          "appMs": 8.8
+        },
+        {
+          "name": "algorithm-profiles",
+          "status": 200,
+          "expected": 200,
+          "ms": 438,
+          "ok": true,
+          "appMs": 32.6
+        },
+        {
+          "name": "creator-analytics",
+          "status": 200,
+          "expected": 200,
+          "ms": 438,
+          "ok": true,
+          "appMs": 11
+        },
+        {
+          "name": "music-categories",
+          "status": 200,
+          "expected": 200,
+          "ms": 537,
+          "ok": true,
+          "appMs": 7.4
+        },
+        {
+          "name": "music-library",
+          "status": 200,
+          "expected": 200,
+          "ms": 403,
+          "ok": true,
+          "appMs": 14.4
+        },
+        {
+          "name": "notification-digest",
+          "status": 200,
+          "expected": 200,
+          "ms": 433,
+          "ok": true,
+          "appMs": 9.1
+        },
+        {
+          "name": "ranking-own-position",
+          "status": 200,
+          "expected": 200,
+          "ms": 780,
+          "ok": true,
+          "appMs": 21.9
+        },
+        {
+          "name": "socialization-feature-state",
+          "status": 200,
+          "expected": 200,
+          "ms": 585,
+          "ok": true,
+          "appMs": 10.5
+        },
+        {
+          "name": "socialization-disabled-as-configured",
+          "status": 404,
+          "expected": 404,
+          "ms": 650,
+          "ok": true,
+          "appMs": 7.9,
+          "errorCode": "SOCIALIZATION_DISABLED"
+        },
+        {
+          "name": "admin-access-denied",
+          "status": 403,
+          "expected": 403,
+          "ms": 441,
+          "ok": true,
+          "appMs": 7.1,
+          "errorCode": "ADMIN_REQUIRED"
+        },
+        {
+          "name": "messages-require-auth",
+          "status": 401,
+          "expected": 401,
+          "ms": 406,
+          "ok": true,
+          "appMs": 1.3,
+          "errorCode": "AUTH_REQUIRED"
+        },
+        {
+          "name": "live-gifts-require-auth",
+          "status": 401,
+          "expected": 401,
+          "ms": 365,
+          "ok": true,
+          "appMs": 0.8,
+          "errorCode": "AUTH_REQUIRED"
+        },
+        {
+          "name": "unknown-email-recovery",
+          "status": 200,
+          "expected": 200,
+          "ms": 563,
+          "ok": true,
+          "appMs": 124
+        },
+        {
+          "name": "invalid-email-recovery",
+          "status": 200,
+          "expected": 200,
+          "ms": 543,
+          "ok": true,
+          "appMs": 125.8
+        },
+        {
+          "name": "fixture-delete",
+          "status": 200,
+          "expected": 200,
+          "ms": 1225,
+          "ok": true,
+          "appMs": 823.6
+        },
+        {
+          "name": "deleted-session-invalid",
+          "status": 401,
+          "expected": 401,
+          "ms": 384,
+          "ok": true,
+          "appMs": 2,
+          "errorCode": "ACCOUNT_DELETED"
+        }
+      ],
+      "p95Ms": 833,
+      "overOneSecond": [
+        {
+          "name": "isolated-registration",
+          "ms": 1076
+        },
+        {
+          "name": "ranking-followers",
+          "ms": 1248
+        },
+        {
+          "name": "fixture-delete",
+          "ms": 1225
+        }
+      ],
+      "actualRecoveryEmailsSent": 0
+    }
+  },
+  "web": {
+    "jest": {
+      "suites": 200,
+      "tests": 1271,
+      "failures": 0
+    },
+    "build": {
+      "passed": true,
+      "publicPages": 21
+    },
+    "productionAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "allDependenciesAudit": {
+      "info": 0,
+      "low": 7,
+      "moderate": 9,
+      "high": 0,
+      "critical": 0,
+      "total": 16
+    }
+  },
+  "android": {
+    "jvm147": {
+      "suites": 5,
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "classes": [
+        {
+          "class": "conectate.com.util.FeedPlaybackCacheAdmissionTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "timestamp": "2026-11-15T06:03:32.712Z"
+        },
+        {
+          "class": "conectate.com.util.StorageReadAdmittedCacheTest",
+          "tests": 9,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "timestamp": "2026-11-15T06:03:41.126Z"
+        },
+        {
+          "class": "conectate.com.util.PlaybackCacheAdmissionTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "timestamp": "2026-11-15T06:03:40.884Z"
+        },
+        {
+          "class": "conectate.com.util.VideoCacheLocalPlaybackTest",
+          "tests": 3,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "timestamp": "2026-11-15T06:03:45.414Z"
+        },
+        {
+          "class": "conectate.com.util.StorageReadHttpDataSourceTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0,
+          "timestamp": "2026-11-15T06:03:45.060Z"
+        }
+      ]
+    },
+    "physical147": "pending",
+    "prior146": {
+      "tests": 26,
+      "failures": 0,
+      "errors": 0
+    }
+  },
+  "host": {
+    "availableMiB": 11449,
+    "totalMiB": 14915,
+    "swapUsedMiB": 0,
+    "rootUsedPercent": 54,
+    "ethernetMbps": 1000,
+    "failedSystemdUnits": 0,
+    "apiRestarts": 0,
+    "apiOomKilled": false,
+    "postgres": {
+      "deadlocks": 0,
+      "tempBytes": 0,
+      "blockHits": 21840852,
+      "blockReads": 12455
+    },
+    "redis": {
+      "usedMemoryMiB": 11.69,
+      "maxMemoryMiB": 256,
+      "policy": "noeviction",
+      "evictedKeys": 0,
+      "rejectedConnections": 0,
+      "keyspaceHits": 26758,
+      "keyspaceMisses": 32039
+    },
+    "r2": {
+      "ready": 1025,
+      "deleted": 4
+    },
+    "packageUpdatesPending": 12
+  }
+}

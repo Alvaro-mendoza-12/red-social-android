@@ -2,6 +2,7 @@ package conectate.com.util
 
 import android.net.Uri
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSink
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import conectate.com.core.media.StorageReadIdentity
@@ -13,6 +14,7 @@ internal class StorageReadDataSource(
     private val upstream: DataSource.Factory,
     private val cached: DataSource.Factory,
     private val requireStorageCacheAdmission: Boolean = false,
+    private val cacheNetworkRead: ((DataSpec, Map<String, List<String>>) -> DataSink?)? = null,
     private val admitCachedRead: ((DataSpec) -> String?)? = null,
 ) : DataSource {
     private val listeners = mutableListOf<TransferListener>()
@@ -20,6 +22,7 @@ internal class StorageReadDataSource(
     private var guarded = false
     private var identity: StorageReadIdentity? = null
     private var pendingBytes = ByteArray(0)
+    private var cacheSink: DataSink? = null
 
     override fun addTransferListener(transferListener: TransferListener) {
         listeners += transferListener
@@ -40,7 +43,10 @@ internal class StorageReadDataSource(
         delegate = selected
         return try {
             if (guarded) StorageReadSession.requireCurrent(identity)
-            selected.open(if (admittedKey == null) dataSpec else dataSpec.buildUpon().setKey(admittedKey).build()).also { if (guarded) StorageReadSession.requireCurrent(identity) }
+            selected.open(if (admittedKey == null) dataSpec else dataSpec.buildUpon().setKey(admittedKey).build()).also {
+                if (guarded) StorageReadSession.requireCurrent(identity)
+                if (guarded && admittedKey == null) cacheSink = cacheNetworkRead?.invoke(dataSpec, selected.responseHeaders)
+            }
         } catch (error: Exception) { close(); throw error }
     }
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
@@ -54,7 +60,12 @@ internal class StorageReadDataSource(
         val pending = pendingBytes
         val count = checkNotNull(delegate).read(pending, 0, readLength)
         StorageReadSession.requireCurrent(expectedIdentity)
-        if (count > 0) pending.copyInto(buffer, offset, 0, count)
+        if (count > 0) {
+            try { cacheSink?.write(pending, 0, count) }
+            catch (_: java.io.IOException) { closeCacheSink() }
+            StorageReadSession.requireCurrent(expectedIdentity)
+            pending.copyInto(buffer, offset, 0, count)
+        }
         return count
     }
     override fun getUri(): Uri? = delegate?.uri
@@ -65,6 +76,13 @@ internal class StorageReadDataSource(
         guarded = false
         identity = null
         pendingBytes = ByteArray(0)
+        closeCacheSink()
         closing?.close()
+    }
+
+    private fun closeCacheSink() {
+        val sink = cacheSink
+        cacheSink = null
+        runCatching { sink?.close() }
     }
 }

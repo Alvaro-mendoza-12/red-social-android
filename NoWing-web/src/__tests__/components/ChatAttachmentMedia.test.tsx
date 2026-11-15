@@ -19,6 +19,16 @@ jest.mock('../../core/media/boundedStorageRead', () => ({
 const privateUrl = 'https://backend.test/storage/v1/object/public/chat-media/a/file.png'
 const readBlob = readBoundedStorageBlob as jest.MockedFunction<typeof readBoundedStorageBlob>
 
+test('a chat sticker enters the priority queue while a catalog tile uses normal priority', async () => {
+  readBlob.mockResolvedValue(new Blob(['sticker'], { type: 'image/webp' }))
+  render(<ChatAttachmentMedia url={privateUrl} kind="image" title="En el chat" imageClassName="sticker-preview" preserveAnimation />)
+  await screen.findByAltText('En el chat')
+  expect(readBlob).toHaveBeenCalledWith(expect.objectContaining({ priority: true }))
+  render(<ChatAttachmentMedia url={privateUrl + '?tile=1'} kind="image" title="En catálogo" tilePreview preserveAnimation />)
+  await screen.findByAltText('En catálogo')
+  expect(readBlob).toHaveBeenCalledWith(expect.objectContaining({ priority: false }))
+})
+
 test('small static sticker tiles use a thumbnail while animated stickers retain the exact original',async()=>{
  readBlob.mockResolvedValue(new Blob(['sticker'],{type:'image/webp'}))
  render(<ChatAttachmentMedia url={privateUrl.replace('.png','.webp')} kind="image" title="Estático" previewWidth={160} imageLink={false}/>)

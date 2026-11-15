@@ -2,7 +2,9 @@
 
 Este es un avance de correcciones comprobadas, no el cierre de la revisión integral ni una declaración de que toda la aplicación esté lista. Se continúa primero en Android. La revisión 100 ya registró la reparación de documentos de la web y la comprobación de 20 formatos; ese recorrido y el historial con personas y grupos se revalidarán en la fase web, después del móvil.
 
-## Estado vigente — 14 de noviembre de 2026
+## Estado vigente — 15 de noviembre de 2026
+
+La [continuación 147](147-carga-multimedia-cache-y-servidor-2026-11-15.md) retiene los bytes autorizados de la primera reproducción Android, prioriza stickers del chat y reduce sus vistas estáticas a 160 px en web. Aprueba 26 pruebas JVM focalizadas y 1.271 pruebas web. Compara Ubuntu/R2 y activa dependencias de API con cero avisos npm de producción. Los doce paquetes actualizables del host y los ensayos físicos de esta caché siguen pendientes. La [continuación 146](146-conectividad-rondas-y-asistente-2026-11-14.md) ya estaba publicada en ambas ramas y desplegada en novvinapp.com, con sus 26 pruebas Android pendientes posteriormente aprobadas. La revisión integral continúa abierta.
 
 La [continuación 144](144-qa-medios-y-sincronizacion-2026-11-14.md) corrige la subida de mapas de Crashlytics en QA y comprueba el empaquetado optimizado separado. Registra una sincronización IDE aprobada, un build posterior fallido por recursos y las demoras de la ruta pública de avatares. Distingue las APK de laboratorio de los ensayos físicos y de la entrega final; la revisión móvil integral permanece abierta.
 
