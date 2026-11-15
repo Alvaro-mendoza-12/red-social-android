@@ -87,3 +87,8 @@ La [corrección de recuperación por correo](../oficial/155-recuperacion-correo-
 ## Continuación 156 — 15 de noviembre de 2026
 
 La [corrección del borrador compartido](../oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md) retira escritores de pantallas anteriores y protege el predecesor ante fallos de persistencia. Aprueba 71 casos JVM en ocho clases tras reproducir seis fallos en diez casos distintos. Tres controles de la misma recuperación se añadieron después del parche. JSON/preferencias reales de Robolectric, apertura criptográfica y transporte controlados; no acredita Keystore, SMTP, proceso/navegación físicos ni una APK156. A03–A05 y la limpieza fallida tras contraseña confirmada siguen abiertos.
+
+
+## Continuación 157 — 15 de noviembre de 2026
+
+La [recuperación confirmada y limpieza local](../oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md) conserva el resultado del repositorio y permite reintentar el borrado sin reenviar la contraseña. Aprueba 90 casos JVM en nueve clases tras reproducir ocho fallos en diez casos; nueve controles propios se añadieron después. La supresión de permisos consumidos conserva 64 huellas solo durante el proceso y continuar no equivale a borrado durable. Cuatro pruebas instrumentales del aviso están preparadas, sin ejecución. No acredita los efectos reales de sesión del repositorio/servicio, sus fallos intermedios después del ACK, Keystore/SMTP/proceso/navegación físicos ni una APK157. A03–A05 y el cierre integral siguen abiertos.

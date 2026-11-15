@@ -1,0 +1,871 @@
+{
+  "continuation": 157,
+  "recordedAtUtc": "2026-11-15T22:44:10.048388+00:00",
+  "initialBaseline": {
+    "startedAtUtc": "2026-11-15T19:29:16.361013+00:00",
+    "finishedAtUtc": "2026-11-15T19:44:25.897109+00:00",
+    "exitCode": 1,
+    "sourceCommitAtStart": "2555f2c10c6e9691bdad362e264f1eb452a5ca34",
+    "sourceCommitAtEnd": "049aee838cf02bbffb5ff90878f4c79f81f0ad9a",
+    "sourceTreeAtStart": "fb3e77553921fc5466c1f2525b8f85ec16aed37a",
+    "sourcesUnchanged": true,
+    "changedInputs": [],
+    "committedAndroidInputsChanged": false,
+    "generatedDebugBuildCommit": "2555f2c10c6e",
+    "commitMarkerOverride": null,
+    "productionPatchApplied": false,
+    "counts": {
+      "tests": 8,
+      "failures": 6,
+      "errors": 0,
+      "skipped": 0
+    },
+    "cases": [
+      {
+        "name": "retryingAfterAConfirmedChangeCannotSubmitThePasswordAgain",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aConfirmedPasswordChangeExposesTheLocalCleanupFailure",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aRejectedChangeRetainsTheExistingPermission",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aConfirmedChangeWithSuccessfulCleanupStillCompletes",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "anotherReaderCannotRestoreTheConfirmedChangesConsumedGrant",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aConfirmedTwoFactorHandoffExposesTheLocalCleanupFailure",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "retryingAfterAConfirmedTwoFactorChangeCannotSubmitThePasswordAgain",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "anotherReaderCannotRestoreTheTwoFactorChangesConsumedGrant",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      }
+    ],
+    "physicalValidation": false,
+    "moduleClosed": false,
+    "fullProjectGoalComplete": false
+  },
+  "expandedBaseline": {
+    "startedAtUtc": "2026-11-15T19:45:21.418014+00:00",
+    "finishedAtUtc": "2026-11-15T20:03:18.794157+00:00",
+    "exitCode": 1,
+    "sourceCommitAtStart": "049aee838cf02bbffb5ff90878f4c79f81f0ad9a",
+    "sourceCommitAtEnd": "049aee838cf02bbffb5ff90878f4c79f81f0ad9a",
+    "sourceTreeAtStart": "ff3b064fc5827f852947b5a43ee8f22ab80e3deb",
+    "sourcesUnchanged": true,
+    "changedInputs": [],
+    "committedAndroidInputsChanged": false,
+    "generatedDebugBuildCommit": "049aee838cf0",
+    "commitMarkerOverride": null,
+    "productionPatchApplied": false,
+    "counts": {
+      "tests": 10,
+      "failures": 8,
+      "errors": 0,
+      "skipped": 0
+    },
+    "cases": [
+      {
+        "name": "repositoryCancellationBeforeAClassifiedResponseDoesNotLeaveProgressRunning",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancellationDuringCleanupStillExplainsTheConfirmedChange",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "retryingAfterAConfirmedChangeCannotSubmitThePasswordAgain",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aConfirmedPasswordChangeExposesTheLocalCleanupFailure",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aRejectedChangeRetainsTheExistingPermission",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aConfirmedChangeWithSuccessfulCleanupStillCompletes",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "anotherReaderCannotRestoreTheConfirmedChangesConsumedGrant",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aConfirmedTwoFactorHandoffExposesTheLocalCleanupFailure",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "retryingAfterAConfirmedTwoFactorChangeCannotSubmitThePasswordAgain",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "anotherReaderCannotRestoreTheTwoFactorChangesConsumedGrant",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      }
+    ],
+    "physicalValidation": false,
+    "moduleClosed": false,
+    "fullProjectGoalComplete": false
+  },
+  "postBaselineSourceDrift": {
+    "baselineCommit": "049aee838cf02bbffb5ff90878f4c79f81f0ad9a",
+    "currentCommit": "ba9cc10c61d78f7203cdc607463af0449ff7c5bd",
+    "changedPreviousInputs": [
+      "app/src/main/java/conectate/com/presentation/gaming/PlayMatchDiscoveryController.kt",
+      "app/src/main/java/conectate/com/presentation/gaming/PlayMatchScreens.kt",
+      "app/src/main/java/conectate/com/presentation/gaming/PlayMatchViewModel.kt",
+      "app/src/test/java/conectate/com/presentation/gaming/PlayMatchDiscoveryControllerTest.kt"
+    ],
+    "committedAndroidDelta": [
+      "app/src/main/java/conectate/com/presentation/gaming/PlayMatchDiscoveryController.kt",
+      "app/src/main/java/conectate/com/presentation/gaming/PlayMatchHubPolicy.kt",
+      "app/src/main/java/conectate/com/presentation/gaming/PlayMatchSavedGames.kt",
+      "app/src/main/java/conectate/com/presentation/gaming/PlayMatchScreens.kt",
+      "app/src/main/java/conectate/com/presentation/gaming/PlayMatchViewModel.kt",
+      "app/src/test/java/conectate/com/presentation/gaming/PlayMatchDiscoveryControllerTest.kt",
+      "app/src/test/java/conectate/com/presentation/gaming/PlayMatchHubPolicyTest.kt"
+    ],
+    "allDeltaConfinedToOtherAssistantsGaming": true,
+    "ownedAuthUiAndResourcesUnchangedSinceBaseline": true,
+    "privateInputsUnchanged": true,
+    "baselineReceiptRewritten": false
+  },
+  "finalRepair": {
+    "startedAtUtc": "2026-11-15T22:21:45.165240+00:00",
+    "finishedAtUtc": "2026-11-15T22:42:46.939851+00:00",
+    "exitCode": 0,
+    "sourceCommitAtStart": "ba9cc10c61d78f7203cdc607463af0449ff7c5bd",
+    "sourceCommitAtEnd": "ba9cc10c61d78f7203cdc607463af0449ff7c5bd",
+    "sourceTreeAtStart": "a7a93cbef81e2e21e6dca7d1e18e0d8573ca64cf",
+    "sourcesUnchanged": true,
+    "changedInputs": [],
+    "committedAndroidInputsChanged": false,
+    "generatedDebugBuildCommit": "ba9cc10c61d7",
+    "commitMarkerOverride": null,
+    "productionPatchApplied": true,
+    "productionPatchSha256": "454f5cbf0d28ce77113bdb4e654a083dcce6ff06ae6c9dbfa3d51da7afa1afe8",
+    "counts": {
+      "tests": 90,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "class": "conectate.com.presentation.auth.AuthViewModelConfirmedRecoveryCleanupTest",
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.EmailRecoverySharedStoreRaceTest",
+        "tests": 13,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthViewModelEmailRecoveryPersistenceTest",
+        "tests": 24,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthViewModelAccountPreparationTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthViewModelRecoveryOwnershipTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthEntryOperationTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthEntryFormCancellationTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.PasswordChangeValidationTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.navigation.AuthenticationJourneyRestorationTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "focusedPassed": true,
+    "privateCandidateIndexUsed": true,
+    "sharedIndexesChangedByRunner": false,
+    "instrumentationCompiledOrExecuted": false,
+    "physicalValidation": false,
+    "moduleClosed": false,
+    "finalApkDelivered": false,
+    "fullProjectGoalComplete": false
+  },
+  "distinctBaselineCases": 10,
+  "distinctFinalOwnCases": 19,
+  "baselineAssertionFailures": 8,
+  "baselineControlsPassed": 2,
+  "postPatchOnlyCases": 9,
+  "expandedBaselineRepeatsInitialCases": 8,
+  "baselineCasesMustNotBeSummed": true,
+  "enumeratedSourceFiles": {
+    "initial": 2046,
+    "expanded": 2046,
+    "repair": 2050
+  },
+  "selectedPrivateConfigurationPaths": [
+    "local.properties",
+    "keystore.properties",
+    "secrets.properties",
+    "app/google-services.json"
+  ],
+  "providedEnvironmentAggregateHashRecorded": true,
+  "plaintextEnvironmentRecorded": false,
+  "externalDependencyBinariesFullyFrozen": false,
+  "sharedIndexClaimScope": "No candidate entries staged by the runner; stat-cache byte identity is not asserted",
+  "realViewModelStoreJsonAndRobolectricPreferencesExecuted": true,
+  "draftStoreMethodsMocked": false,
+  "cryptoOpeningControlled": true,
+  "authRepositoryAndLocalApiClientControlled": true,
+  "realRepositorySessionSideEffectsExecuted": false,
+  "controlledSessionSignalAndRealViewModelCollectorTested": true,
+  "commitFalseOrCancellationAfterActualPreferenceMutationControlled": true,
+  "physicalDiskFailureTested": false,
+  "confirmedRepositoryResultCleanupFailureHandled": true,
+  "intermediateAuthServiceOrRepositoryPostAckFailuresHandled": false,
+  "readOnlyServerContractInspection": true,
+  "serverContractExecutedInThisBlock": false,
+  "consumedTokenUiSuppression": {
+    "scope": "application context in current process",
+    "maxHashes": 64,
+    "rawTokensRetainedInCache": false,
+    "durable": false,
+    "securityAuthority": "server transaction"
+  },
+  "continuationAfterWarningImpliesDurableDeletion": false,
+  "realKeystoreWritesTested": false,
+  "smtpOrRealEmailDeliveryTested": false,
+  "processDeathTested": false,
+  "navigationGraphInstrumented": false,
+  "newInstrumentationCasesPrepared": 4,
+  "newInstrumentationCasesPassed": 0,
+  "twoFactorNavigationScope": "classified email password reset confirmation; other migration and saved-code paths remain open",
+  "productionFilesChanged": [
+    "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+    "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
+    "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+    "app/src/main/java/conectate/com/presentation/navigation/AuthNavigationRoutes.kt",
+    "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryCleanupDialog.kt",
+    "app/src/main/res/values/strings.xml",
+    "app/src/main/res/values-es/strings.xml",
+    "app/src/main/res/values-en/strings.xml"
+  ],
+  "codeRead": [
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+      "sha256": "4bf5733641ec82723abeb3cb3e04c89325e94fad307df6307175703b36b10c59"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
+      "sha256": "f296a2a608241c9da132e6421b1fc0d248767cf2b84d4640c722c8f7e6f344bd"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryCleanupDialog.kt",
+      "sha256": "ef2e9d9952a3795cd44ed876a9b4abed8b4729953fb2a82146f0f407d980cb5c"
+    },
+    {
+      "path": "app/src/communicationValidationTest/java/conectate/com/EmailRecoveryUiAuditTest.kt",
+      "sha256": "6692bd3adb4a933ca10966740b3ebd58f470cc3507cdc7a726a516ebf5ef96af"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelConfirmedRecoveryCleanupTest.kt",
+      "sha256": "84db4f61a59b9751a3ae4ef4a6e17c45170efdf90b8fe6dd9e1502cbc3613353"
+    }
+  ],
+  "partialRead": [
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+      "sha256": "7626702b64ce56fe1095b0cbbb6c6d2eb42bd236655a16f263f93de642b58b01",
+      "mainReviewedSourceSha256": "8dca1c17608279b5bbb874952f6341d5d18c2bc5f8f46cab50a5c66cd6cff119",
+      "normalizedSourceIdentity": true
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/navigation/AuthNavigationRoutes.kt",
+      "sha256": "bf2d4896496a7e330148ba0feab5a99c4df489c96bd2cccf3747a6e0bf2603a7",
+      "mainReviewedSourceSha256": "11a06ac5934bda9ba01b556324f365ea1ea743bc1ab37d5819a8eb717cba098a",
+      "normalizedSourceIdentity": true
+    },
+    {
+      "path": "app/src/main/res/values/strings.xml",
+      "sha256": "d10b9f8bec96a354e51dea0b3262f9bf6d98d587e5c043c1c866e71dd671a507",
+      "mainReviewedSourceSha256": "86524a6621e4fc999455982480acc5162d8906b5f688e4199e08798f50da8a9c",
+      "normalizedSourceIdentity": true
+    },
+    {
+      "path": "app/src/main/res/values-es/strings.xml",
+      "sha256": "9f028c19b60bdc2587fe948fdbdbba08d1f9345c322654f0a486c7ce056183b3",
+      "mainReviewedSourceSha256": "d339eed3b388346d3b89bac46aea1dcfa431c3469c969df0c213f3207a871553",
+      "normalizedSourceIdentity": true
+    },
+    {
+      "path": "app/src/main/res/values-en/strings.xml",
+      "sha256": "cc07dc40eb3961ad3c4e7b1917664f9b7a1df9c310c9d52f2e2e862303c30346",
+      "mainReviewedSourceSha256": "50f2ba252b767cf9cd94207ab692525d3e9dc0a46c05dce6c6912506f0b9422a",
+      "normalizedSourceIdentity": true
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/AuthRepository.kt",
+      "sha256": "c55421630eae40367a0b2904efe1352245c71db18480399939ff8226141fe1ec",
+      "mainReviewedSourceSha256": "dd25315e002ae4c050b1deeeabebcf9e0e133edd890144cd9693a07f0b2e3108",
+      "normalizedSourceIdentity": true
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+      "sha256": "0c93810fadd92b03a6592bb9fe0b1cdd09b6c8b4e7457b1d1711e1284861df45",
+      "mainReviewedSourceSha256": "90f65ec42034f485cd34417ed4bb2cfb590cf6b9366d8ac71336af9e60b86992",
+      "normalizedSourceIdentity": true
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt",
+      "sha256": "8d4dafaa6211cff225f84ca9a0235eb7422a29f41a9b348c8bc7ad2a35afe67f",
+      "mainReviewedSourceSha256": "8d4dafaa6211cff225f84ca9a0235eb7422a29f41a9b348c8bc7ad2a35afe67f",
+      "normalizedSourceIdentity": true
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/server.js",
+      "sha256": "33716fa3f53202f595d5f151bd5051d4e01d880de5ad01c2391034ffa381f672",
+      "mainReviewedSourceSha256": "32581e7ad505c9f62d08570b199ed4b4eacb6d2611b5b3bdbeff209923ad9449",
+      "normalizedSourceIdentity": true
+    }
+  ],
+  "worktreeSourceIdentity": {
+    "normalizedEqual": true,
+    "main": [
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+        "sha256": "343b5de324adabb0bafbe69b82226a1465e98e5be8ecd7343693ff04be3179f1"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
+        "sha256": "82ae6a73971b77e35e7cd63b76649dc9f63b85739a9daec74a32bc6f19e30066"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+        "sha256": "8dca1c17608279b5bbb874952f6341d5d18c2bc5f8f46cab50a5c66cd6cff119"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/navigation/AuthNavigationRoutes.kt",
+        "sha256": "11a06ac5934bda9ba01b556324f365ea1ea743bc1ab37d5819a8eb717cba098a"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryCleanupDialog.kt",
+        "sha256": "ef2e9d9952a3795cd44ed876a9b4abed8b4729953fb2a82146f0f407d980cb5c"
+      },
+      {
+        "path": "app/src/main/res/values/strings.xml",
+        "sha256": "86524a6621e4fc999455982480acc5162d8906b5f688e4199e08798f50da8a9c"
+      },
+      {
+        "path": "app/src/main/res/values-es/strings.xml",
+        "sha256": "d339eed3b388346d3b89bac46aea1dcfa431c3469c969df0c213f3207a871553"
+      },
+      {
+        "path": "app/src/main/res/values-en/strings.xml",
+        "sha256": "50f2ba252b767cf9cd94207ab692525d3e9dc0a46c05dce6c6912506f0b9422a"
+      },
+      {
+        "path": "app/src/communicationValidationTest/java/conectate/com/EmailRecoveryUiAuditTest.kt",
+        "sha256": "0995114094cb3db9092abef05d6af107a88a33f6736e108bebc98a21ba091ab3"
+      },
+      {
+        "path": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelConfirmedRecoveryCleanupTest.kt",
+        "sha256": "7418e60b8202fed479e089e78865e52afa7251150f7de84a83cdb72d8b36b66d"
+      }
+    ],
+    "feature": [
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+        "sha256": "4bf5733641ec82723abeb3cb3e04c89325e94fad307df6307175703b36b10c59"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
+        "sha256": "f296a2a608241c9da132e6421b1fc0d248767cf2b84d4640c722c8f7e6f344bd"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+        "sha256": "7626702b64ce56fe1095b0cbbb6c6d2eb42bd236655a16f263f93de642b58b01"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/navigation/AuthNavigationRoutes.kt",
+        "sha256": "bf2d4896496a7e330148ba0feab5a99c4df489c96bd2cccf3747a6e0bf2603a7"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryCleanupDialog.kt",
+        "sha256": "ef2e9d9952a3795cd44ed876a9b4abed8b4729953fb2a82146f0f407d980cb5c"
+      },
+      {
+        "path": "app/src/main/res/values/strings.xml",
+        "sha256": "d10b9f8bec96a354e51dea0b3262f9bf6d98d587e5c043c1c866e71dd671a507"
+      },
+      {
+        "path": "app/src/main/res/values-es/strings.xml",
+        "sha256": "9f028c19b60bdc2587fe948fdbdbba08d1f9345c322654f0a486c7ce056183b3"
+      },
+      {
+        "path": "app/src/main/res/values-en/strings.xml",
+        "sha256": "cc07dc40eb3961ad3c4e7b1917664f9b7a1df9c310c9d52f2e2e862303c30346"
+      },
+      {
+        "path": "app/src/communicationValidationTest/java/conectate/com/EmailRecoveryUiAuditTest.kt",
+        "sha256": "6692bd3adb4a933ca10966740b3ebd58f470cc3507cdc7a726a516ebf5ef96af"
+      },
+      {
+        "path": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelConfirmedRecoveryCleanupTest.kt",
+        "sha256": "84db4f61a59b9751a3ae4ef4a6e17c45170efdf90b8fe6dd9e1502cbc3613353"
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "app/build/audit157/baseline/AuthViewModel.kt",
+      "sha256": "42b73d75cef81f0cebb6095aaf086158698d8172ff8f6383abff5f829adc38c3"
+    },
+    {
+      "path": "app/build/audit157/baseline/EmailRecoveryDraftStore.kt",
+      "sha256": "b6ba6a8af111ce4f59d0249f55a2aa924519e65dd68668e697455bbf39c0dda6"
+    },
+    {
+      "path": "app/build/audit157/baseline/gradle.log",
+      "sha256": "56d491552bf43b1a8cbacc02e9153c7335b76563671154480b98429679fcdf4d"
+    },
+    {
+      "path": "app/build/audit157/baseline/private-configuration-fingerprints.json",
+      "sha256": "e01e8692e980b76f5fe665a8e17d12945d10cb8a7bdfe8e82c59cfaa4ac47347"
+    },
+    {
+      "path": "app/build/audit157/baseline/provided-environment-fingerprint.json",
+      "sha256": "711b92313d3108debecffd707ba9edc70d5960774b62c37aaedeaaf4783f6996"
+    },
+    {
+      "path": "app/build/audit157/baseline/result.json",
+      "sha256": "b79690314fa84812e917ff57f25b63b05220288f4a785b725780b1dd43f3bd50"
+    },
+    {
+      "path": "app/build/audit157/baseline/sources.json",
+      "sha256": "8be874a4057e46429f8d32c8386cde743cb618f41dce3c23b28125eecd49ffad"
+    },
+    {
+      "path": "app/build/audit157/baseline/started.json",
+      "sha256": "cc77228889912cae3c45f71796d1e88d065d9eb431d36506035ed372af385781"
+    },
+    {
+      "path": "app/build/audit157/baseline/TEST-conectate.com.presentation.auth.AuthViewModelConfirmedRecoveryCleanupTest.xml",
+      "sha256": "1a1c51d1f1d07ca78c45fb79a5e7d447cef96d04e1cf91ef901410252c501554"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/AuthViewModel.kt",
+      "sha256": "42b73d75cef81f0cebb6095aaf086158698d8172ff8f6383abff5f829adc38c3"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/EmailRecoveryDraftStore.kt",
+      "sha256": "b6ba6a8af111ce4f59d0249f55a2aa924519e65dd68668e697455bbf39c0dda6"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/gradle.log",
+      "sha256": "406ecf990fe0646d1ee91d857dfbf7b2c13c658f21218f8e561fbe6b189b32aa"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/private-configuration-fingerprints.json",
+      "sha256": "e01e8692e980b76f5fe665a8e17d12945d10cb8a7bdfe8e82c59cfaa4ac47347"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/provided-environment-fingerprint.json",
+      "sha256": "78747158d5870bf8a632961b0cb4d1fe540caed4abb87b6da6153554b8834862"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/result.json",
+      "sha256": "756a6f0fd998434a9a3658d45d6d8c88a98de13171d8c668d081579deba9edee"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/sources.json",
+      "sha256": "4900054f3968a2d690dd3410f2e9c90500e363ddab831ec1f1194ceb3372f0f4"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/started.json",
+      "sha256": "8271f48615d47f62e67cde1b6076382e3b34aebd600480dcfe8229105aa91b2b"
+    },
+    {
+      "path": "app/build/audit157/extended-baseline/TEST-conectate.com.presentation.auth.AuthViewModelConfirmedRecoveryCleanupTest.xml",
+      "sha256": "21583f79d7a5e3982699443273e73dcec1a07705ba111196e5364bfa0ace7d3f"
+    },
+    {
+      "path": "app/build/audit157/repair/candidate.index",
+      "sha256": "4219de284a5dd9e743a24dcc95a34c3d0af67997126675f1c4b35d6ab5fd1d55"
+    },
+    {
+      "path": "app/build/audit157/repair/email-recovery-fix.patch",
+      "sha256": "454f5cbf0d28ce77113bdb4e654a083dcce6ff06ae6c9dbfa3d51da7afa1afe8"
+    },
+    {
+      "path": "app/build/audit157/repair/gradle.log",
+      "sha256": "eee0b0afd3ca327d117b168f2d20eea38fc7022edce3ee37476f1955ee83e5b1"
+    },
+    {
+      "path": "app/build/audit157/repair/private-configuration-fingerprints.json",
+      "sha256": "e01e8692e980b76f5fe665a8e17d12945d10cb8a7bdfe8e82c59cfaa4ac47347"
+    },
+    {
+      "path": "app/build/audit157/repair/provided-environment-fingerprint.json",
+      "sha256": "0764c62aa5a726b1f8ce661930e9e143a83c2414a0a001e56ec370374d346e78"
+    },
+    {
+      "path": "app/build/audit157/repair/result.json",
+      "sha256": "bb27793ebe5fe6a3996561dbb78dbf95376919ea1ec94d8132898526db3498a6"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/communicationValidationTest/java/conectate/com/EmailRecoveryUiAuditTest.kt",
+      "sha256": "0995114094cb3db9092abef05d6af107a88a33f6736e108bebc98a21ba091ab3"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+      "sha256": "343b5de324adabb0bafbe69b82226a1465e98e5be8ecd7343693ff04be3179f1"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/main/java/conectate/com/presentation/auth/EmailRecoveryCleanupDialog.kt",
+      "sha256": "ef2e9d9952a3795cd44ed876a9b4abed8b4729953fb2a82146f0f407d980cb5c"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
+      "sha256": "82ae6a73971b77e35e7cd63b76649dc9f63b85739a9daec74a32bc6f19e30066"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+      "sha256": "8dca1c17608279b5bbb874952f6341d5d18c2bc5f8f46cab50a5c66cd6cff119"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/main/java/conectate/com/presentation/navigation/AuthNavigationRoutes.kt",
+      "sha256": "11a06ac5934bda9ba01b556324f365ea1ea743bc1ab37d5819a8eb717cba098a"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/main/res/values/strings.xml",
+      "sha256": "86524a6621e4fc999455982480acc5162d8906b5f688e4199e08798f50da8a9c"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/main/res/values-en/strings.xml",
+      "sha256": "50f2ba252b767cf9cd94207ab692525d3e9dc0a46c05dce6c6912506f0b9422a"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/main/res/values-es/strings.xml",
+      "sha256": "d339eed3b388346d3b89bac46aea1dcfa431c3469c969df0c213f3207a871553"
+    },
+    {
+      "path": "app/build/audit157/repair/source-snapshots/app/src/test/java/conectate/com/presentation/auth/AuthViewModelConfirmedRecoveryCleanupTest.kt",
+      "sha256": "7418e60b8202fed479e089e78865e52afa7251150f7de84a83cdb72d8b36b66d"
+    },
+    {
+      "path": "app/build/audit157/repair/sources.json",
+      "sha256": "a79881f2020fb202b9ace27059b0d601a578ca45b55129a13a2b402f1e1866cf"
+    },
+    {
+      "path": "app/build/audit157/repair/started.json",
+      "sha256": "cec5b6a471095e24d6ede138136cc4e246d401c6784843d0a9f023767387ae8e"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.auth.AuthEntryFormCancellationTest.xml",
+      "sha256": "0d4dca31b4b0e95f456432eadebc2b51a53f30ebe9c623b1d9a88d0d7335edc8"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.auth.AuthEntryOperationTest.xml",
+      "sha256": "8ab33230b3d7604f14fd3a68f00e471e3d15ad961961620c56677a0c55b9bf8f"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.auth.AuthViewModelAccountPreparationTest.xml",
+      "sha256": "d05eeb827258bdd1724892208064b0128704a32638cb5fa6cd8b05509d913a0e"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.auth.AuthViewModelConfirmedRecoveryCleanupTest.xml",
+      "sha256": "454adccd44b687ccdecf843ee960a2422df478755fea9ddc4f0faece481b594a"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.auth.AuthViewModelEmailRecoveryPersistenceTest.xml",
+      "sha256": "5804d3775a27bca207ab9ce0a1cfdd60304e1dfbfe7672312458d6b574478ebd"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.auth.AuthViewModelRecoveryOwnershipTest.xml",
+      "sha256": "ab88d5c04660d7da2bdd0bee384c0bde141474f8df8a29dabe93eb27ef464762"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.auth.EmailRecoverySharedStoreRaceTest.xml",
+      "sha256": "48d633d3021475073d29555dff466ed20b5f35cc3313a661503dd44691aa523c"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.auth.PasswordChangeValidationTest.xml",
+      "sha256": "2cd37e123287a412c4516a61514a0a3c793739ced10922f2cbc87bcf70f55a97"
+    },
+    {
+      "path": "app/build/audit157/repair/TEST-conectate.com.presentation.navigation.AuthenticationJourneyRestorationTest.xml",
+      "sha256": "a0f70aeed36c3d1499519cc56b0c44c984b4a3581d08814afa21a1314195f4df"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/communicationValidationTest/java/conectate/com/EmailRecoveryUiAuditTest.kt",
+      "sha256": "1f68c6a0c08c9bbe5fa7c6addf02ed604ee92592e98ac1ef5225cfcab24a6cca"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+      "sha256": "42b73d75cef81f0cebb6095aaf086158698d8172ff8f6383abff5f829adc38c3"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
+      "sha256": "b6ba6a8af111ce4f59d0249f55a2aa924519e65dd68668e697455bbf39c0dda6"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+      "sha256": "1e7c10ef383f3e1d96da021a1748b74819d37c5fc3013da49bb5c0253f395d1d"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/main/java/conectate/com/presentation/navigation/AuthNavigationRoutes.kt",
+      "sha256": "898cafb98e942b8aff433a834f79eda9c293f171a0fa81109eb61ad7afe13750"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/main/res/values/strings.xml",
+      "sha256": "01076f77cbe3bdf1ab9e5832bbc813e9ea1882d9660f5e2a9bd97f4de5944de5"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/main/res/values-en/strings.xml",
+      "sha256": "398dfb00ff2b25bc08492c09caee3288e1855a80a71f28251e0f9b1884b73cb5"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/main/res/values-es/strings.xml",
+      "sha256": "3f8098fb6cc86ceb349d4ebd46ac04e9b61e4c17527b00e51561a88f529c399a"
+    },
+    {
+      "path": "app/build/audit157/before-patch/app/src/test/java/conectate/com/presentation/auth/AuthViewModelConfirmedRecoveryCleanupTest.kt",
+      "sha256": "9a75860669adf54a13627a2427b3b7e3f5c7cf883b3aa6ad9fd269ce285781e6"
+    },
+    {
+      "path": "app/build/audit157/add_post_patch_cases.py",
+      "sha256": "756116dbf62522330ebc861f0b2681b66e5c6a981ad736991f6a0eb6e132f1d5"
+    },
+    {
+      "path": "app/build/audit157/apply_candidates.py",
+      "sha256": "47999e0b0c7dfa5bbc77760a12a3060f53ad52308495e47e3781ba09718a7c35"
+    },
+    {
+      "path": "app/build/audit157/AuthNavigationRoutes.candidate.kt",
+      "sha256": "11a06ac5934bda9ba01b556324f365ea1ea743bc1ab37d5819a8eb717cba098a"
+    },
+    {
+      "path": "app/build/audit157/AuthViewModel.candidate.kt",
+      "sha256": "343b5de324adabb0bafbe69b82226a1465e98e5be8ecd7343693ff04be3179f1"
+    },
+    {
+      "path": "app/build/audit157/eight-case-test.kt",
+      "sha256": "1d168e325e78abb0933f27c7b9a4109b456399cfae00a9096ff7d2bfe6b18c71"
+    },
+    {
+      "path": "app/build/audit157/EmailRecoveryCleanupDialog.candidate.kt",
+      "sha256": "6c8f8cd926976f577190377c5678bc7da4bca1f66bff4755be9106459a243d1a"
+    },
+    {
+      "path": "app/build/audit157/EmailRecoveryDraftStore.candidate.kt",
+      "sha256": "82ae6a73971b77e35e7cd63b76649dc9f63b85739a9daec74a32bc6f19e30066"
+    },
+    {
+      "path": "app/build/audit157/EmailRecoveryUiAuditTest.candidate.kt",
+      "sha256": "0995114094cb3db9092abef05d6af107a88a33f6736e108bebc98a21ba091ab3"
+    },
+    {
+      "path": "app/build/audit157/extend_baseline.py",
+      "sha256": "6f5a29e0f5589ae7b105746a088d311fa9fe342b89681b7c02e719e99855877d"
+    },
+    {
+      "path": "app/build/audit157/integrate157.py",
+      "sha256": "2fb143f3aee584ddf2d5caae33ebbf4245ad501e223a474fc64431fa192885ff"
+    },
+    {
+      "path": "app/build/audit157/LoginScreen.candidate.kt",
+      "sha256": "8dca1c17608279b5bbb874952f6341d5d18c2bc5f8f46cab50a5c66cd6cff119"
+    },
+    {
+      "path": "app/build/audit157/post-baseline-drift.json",
+      "sha256": "09a71b058fb1ca4be185b1ddb909510f5ee605ba8ee92372a2e19813dd8b463f"
+    },
+    {
+      "path": "app/build/audit157/prepare_baseline.py",
+      "sha256": "c4b1c43d8646a945fa67a005f96b0ee7682612f6bd40c4712ddfba4228f9c1ef"
+    },
+    {
+      "path": "app/build/audit157/prepare_integration_tools.py",
+      "sha256": "3ca1e34d289c7257c60e03e9a1d8ad76dfa67a306b84d0db389ee049a2760612"
+    },
+    {
+      "path": "app/build/audit157/prepare_publication.py",
+      "sha256": "baca6a0b628153b8f50556095556a8fdb30d4f105e836c13ad87b835b6c3f5d2"
+    },
+    {
+      "path": "app/build/audit157/prepare_repair.py",
+      "sha256": "debc5b1b037bfdaa951e64f1c19e47fd1f56127933307338641b045110bf960b"
+    },
+    {
+      "path": "app/build/audit157/prepare_store_candidate.py",
+      "sha256": "c3b1aa0d291b90c4fecc8e01b04f0b506699d0517170eeb44bc22ac222d37896"
+    },
+    {
+      "path": "app/build/audit157/prepare_ui_candidates.py",
+      "sha256": "00347f3fd1c314a89fd7a8e7f49a77d597adcb99e849056162c07de82b90d418"
+    },
+    {
+      "path": "app/build/audit157/prepare_ui_test_candidate.py",
+      "sha256": "d4940cdb2457f9c96a679107ed00ca69a0edba83ad0e98c66e6791f32df26be9"
+    },
+    {
+      "path": "app/build/audit157/prepare_viewmodel_candidate.py",
+      "sha256": "85d67b92d0a7af88a04ceb6a47ce6a8915ae2b306e8b4a198499f974eb890a05"
+    },
+    {
+      "path": "app/build/audit157/publish157.py",
+      "sha256": "03f52999ae608e9c474d9b55eafb4297910adbec571875cde93bc669624ab53e"
+    },
+    {
+      "path": "app/build/audit157/run_baseline.py",
+      "sha256": "c928c7b06c86ccc1061dbf4837cfeda90fd13039740eb62ff4a54934206812bb"
+    },
+    {
+      "path": "app/build/audit157/run_extended_baseline.py",
+      "sha256": "31bf4306238222e48662401498698183585686392d7d8e54c21d2c35eedb303a"
+    },
+    {
+      "path": "app/build/audit157/run_repair.py",
+      "sha256": "f87011c0ccbafbe0d00efced8a6e6463d2844c0f04a089055c59e0e30ec5238e"
+    },
+    {
+      "path": "app/build/audit157/ten-case-test.kt",
+      "sha256": "9a75860669adf54a13627a2427b3b7e3f5c7cf883b3aa6ad9fd269ce285781e6"
+    },
+    {
+      "path": "app/build/audit157/values-en-strings.candidate.xml",
+      "sha256": "50f2ba252b767cf9cd94207ab692525d3e9dc0a46c05dce6c6912506f0b9422a"
+    },
+    {
+      "path": "app/build/audit157/values-es-strings.candidate.xml",
+      "sha256": "d339eed3b388346d3b89bac46aea1dcfa431c3469c969df0c213f3207a871553"
+    },
+    {
+      "path": "app/build/audit157/values-strings.candidate.xml",
+      "sha256": "86524a6621e4fc999455982480acc5162d8906b5f688e4199e08798f50da8a9c"
+    }
+  ],
+  "physicalValidation": false,
+  "newApkGenerated": false,
+  "newApkInstalled": false,
+  "qa145ContainsThisChange": false,
+  "otherAssistantsApk158159ContainsThisChange": false,
+  "accessModuleClosed": false,
+  "r2DeliveryPolicyChanged": false,
+  "hostPackagesChanged": false,
+  "productionDeploymentVerified": false,
+  "fullProjectGoalComplete": false
+}

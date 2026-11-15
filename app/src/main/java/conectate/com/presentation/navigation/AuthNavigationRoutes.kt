@@ -1,6 +1,8 @@
 package conectate.com.presentation.navigation
 
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
 import conectate.com.presentation.auth.EmailRecoveryDraftStore
 import conectate.com.presentation.auth.StartupDestination
@@ -89,12 +91,17 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
     }
 
     composable(Screen.Login.route) {
-        if (isLoggedIn) {
-            LaunchedEffect(isLoggedIn) {
+        val authViewModel: conectate.com.presentation.auth.AuthViewModel = hiltViewModel()
+        val finishingRecovery by authViewModel.finishingEmailRecovery.collectAsStateWithLifecycle()
+        if (isLoggedIn && !finishingRecovery) {
+            LaunchedEffect(isLoggedIn, finishingRecovery) {
+                if (authViewModel.finishingEmailRecovery.value) return@LaunchedEffect
                 // A link can replace this entry while the authentication update is queued.
                 if (navController.currentDestination?.route != Screen.Login.route) return@LaunchedEffect
                 if (navController.openPendingSharedContent()) return@LaunchedEffect
                 withContext(Dispatchers.Main.immediate) {
+                    if (authViewModel.finishingEmailRecovery.value || navController.currentDestination?.route != Screen.Login.route)
+                        return@withContext
                     navController.navigate(PendingVoiceRoomDestination.consume(navController) ?: conectate.com.presentation.surveys.PendingSurveyDestination.consume(navController) ?: Screen.Home.createRoute()) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                         launchSingleTop = true
@@ -102,7 +109,7 @@ internal fun androidx.navigation.NavGraphBuilder.addAuthRoutes(
                 }
             }
         } else {
-            NovvinAuthTheme { LoginScreen(navController = navController) }
+            NovvinAuthTheme { LoginScreen(navController = navController, viewModel = authViewModel) }
         }
     }
 

@@ -123,4 +123,11 @@
     <string name="room_link_error">No se pudo abrir el enlace</string>
     <string name="room_link_error_hint">Comprueba tu conexión o vuelve a intentarlo. Puedes cerrar esta ventana y seguir en la sala.</string>
     <string name="auth_email_delivery_unknown_hint">No pudimos confirmar el envío. Si recibes un código de seis dígitos, escríbelo aquí o vuelve a solicitarlo.</string>
+    <string name="auth_email_cleanup_title">Tu contraseña ya cambió</string>
+    <string name="auth_email_cleanup_failed">Tu contraseña ya cambió, pero no pudimos borrar el avance de recuperación guardado en este dispositivo. Puedes reintentar la limpieza o continuar; no volveremos a cambiar tu contraseña.</string>
+    <string name="auth_email_cleanup_two_factor">Al continuar tendrás que iniciar sesión y completar la verificación en dos pasos.</string>
+    <string name="auth_email_cleanup_retry">Reintentar limpieza</string>
+    <string name="auth_email_cleanup_continue">Continuar</string>
+    <string name="auth_email_cleanup_working">Limpiando el avance…</string>
+    <string name="auth_email_operation_interrupted">No pudimos confirmar el resultado de la operación. Revisa el estado antes de volver a intentarlo.</string>
 </resources>

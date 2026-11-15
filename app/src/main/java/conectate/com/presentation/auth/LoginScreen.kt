@@ -107,6 +107,17 @@ fun LoginScreen(
     val recoveryEmailSentMessage = stringResource(R.string.auth_recovery_email_sent,
         (authState as? AuthState.MigrationPasswordCodeSent)?.expiresInMinutes ?: 30)
     val emailRecovery by viewModel.emailRecovery.collectAsStateWithLifecycle()
+    val cleanupNotice by viewModel.emailRecoveryCleanupNotice.collectAsStateWithLifecycle()
+    LaunchedEffect(cleanupNotice) {
+        if (cleanupNotice != null) {
+            // A confirmed change never needs these secrets for a local retry.
+            migrationNewPassword = ""
+            migrationConfirmPassword = ""
+            migrationToken = ""
+            password = ""
+        }
+    }
+
     LaunchedEffect(emailRecovery?.email) {
         emailRecovery?.takeUnless { initialAssistedRecovery }?.let {
             loginType = "recovery"
@@ -250,6 +261,15 @@ fun LoginScreen(
                 launchSingleTop = true
             }
         }
+    }
+
+    cleanupNotice?.let { notice ->
+        EmailRecoveryCleanupDialog(
+            requiresTwoFactor = notice.requiresTwoFactor,
+            working = authState is AuthState.Loading,
+            onRetry = { viewModel.retryEmailRecoveryCleanup(notice) },
+            onContinue = { viewModel.continueAfterEmailRecoveryCleanup(notice) },
+        )
     }
 
     if (showLocalTwoFactorResetNotice && !isSuspensionError) {
