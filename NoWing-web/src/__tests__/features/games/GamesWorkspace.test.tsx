@@ -74,9 +74,13 @@ test('discards an earlier player lookup and paginates using the applied filters'
   fireEvent.change(screen.getByLabelText('Plataforma'), { target: { value: 'PC' } })
   fireEvent.click(screen.getByRole('button', { name: 'Buscar', exact: true }))
   expect(await screen.findByRole('heading', { name: 'Jugador actualizado' })).toBeInTheDocument()
+  const applied = screen.getByRole('list', { name: 'Filtros aplicados' })
+  expect(applied).toHaveTextContent('Álvaro')
+  expect(applied).toHaveTextContent('PC')
   await act(async () => finishOld())
   expect(screen.queryByText('Resultado anterior')).not.toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Plataforma'), { target: { value: '' } })
+  expect(applied).toHaveTextContent('PC')
   fireEvent.click(screen.getByRole('button', { name: 'Ver más jugadores' }))
   expect(await screen.findByRole('heading', { name: 'Jugador de la segunda página' })).toBeInTheDocument()
   expect(api).toHaveBeenCalledWith(expect.stringContaining('platform=PC&cursor=cursor'), expect.objectContaining({ expectedAccountId: 'owner' }))
@@ -105,4 +109,30 @@ test('keeps matchmaking active while another player has yet to confirm', async (
   expect(await screen.findByText('Esperando confirmación')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Cancelar búsqueda' })).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Buscar compañero' })).not.toBeInTheDocument()
+})
+
+test('activity waits for the inbox before showing its counts and moves an accepted request to chat', async () => {
+  const incoming = { id: 'incoming', status: 'PENDING', direction: 'INCOMING', otherUserId: 'teammate', otherName: 'Teresa' }
+  const sent = { id: 'sent', status: 'PENDING', direction: 'OUTGOING', otherUserId: 'other', otherName: 'Gabriel' }
+  let complete = () => {}
+  const initial = new Promise(resolve => { complete = () => resolve({ items: [incoming, sent] }) })
+  let accepted = false
+  api.mockImplementation(path => {
+    if (path.endsWith('/connections/incoming/decision')) {
+      accepted = true
+      return Promise.resolve({ status: 'ACCEPTED' })
+    }
+    if (path.endsWith('/connections')) return accepted ? Promise.resolve({ items: [{ ...incoming, status: 'ACCEPTED' }, sent] }) : initial
+    return Promise.resolve(baseResponse(path))
+  })
+  showGames()
+  await screen.findByRole('heading', { name: 'Encuentra tu equipo' })
+  fireEvent.click(tab('Actividad'))
+  expect(screen.getByRole('status')).toHaveTextContent('Cargando actividad…')
+  await act(async () => complete())
+  expect(screen.getByRole('heading', { name: 'Solicitudes recibidas 1' })).toBeInTheDocument()
+  expect(screen.getByText('Gabriel')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Aceptar' }))
+  expect(await screen.findByRole('link', { name: 'Abrir chat' })).toHaveAttribute('href', '/chat/teammate')
+  expect(screen.getByText('Aún no tienes solicitudes recibidas.')).toBeInTheDocument()
 })
