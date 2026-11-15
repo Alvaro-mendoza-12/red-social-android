@@ -49,3 +49,33 @@ test('an unavailable shared post keeps its return link without reporting a conne
   expect(screen.getByRole('link', { name: 'Iniciar sesión' })).toHaveAttribute('href', `/login?next=${encodeURIComponent(post)}`)
   expect(screen.queryByText('No pudimos cargar el contenido')).not.toBeInTheDocument()
 })
+
+test('cards by one author share a profile lookup and release it when leaving Explore', async () => {
+  Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: randomUUID })
+  const author = randomUUID()
+  let authorSignal: AbortSignal | undefined
+  let finishProfile: (rows: { display_name: string }[]) => void = () => {}
+  const profile = new Promise<{ display_name: string }[]>(resolve => { finishProfile = resolve })
+  jest.mocked(loadGuestContent).mockImplementation(async (kind, id, signal) => {
+    if (kind === 'profiles' && id === author) {
+      authorSignal = signal
+      return profile
+    }
+    return [
+      { id: randomUUID(), user_id: author, content: 'Primera publicación' },
+      { id: randomUUID(), user_id: author, content: 'Segunda publicación' },
+    ]
+  })
+  try {
+    render(<MemoryRouter initialEntries={['/explore/posts']}><ExploreRoutes /></MemoryRouter>)
+    await screen.findByText('Segunda publicación')
+    await waitFor(() => expect(loadGuestContent).toHaveBeenCalledWith('profiles', author, expect.any(AbortSignal)))
+    expect(jest.mocked(loadGuestContent).mock.calls.filter(([kind, id]) => kind === 'profiles' && id === author)).toHaveLength(1)
+    finishProfile([{ display_name: 'Autora de ambas publicaciones' }])
+    expect(await screen.findAllByText('Autora de ambas publicaciones')).toHaveLength(2)
+    fireEvent.click(screen.getByRole('link', { name: 'Iniciar sesión', exact: true }))
+    expect(authorSignal?.aborted).toBe(true)
+  } finally {
+    jest.mocked(loadGuestContent).mockReset().mockResolvedValue([])
+  }
+})
