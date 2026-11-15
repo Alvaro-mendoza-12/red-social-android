@@ -2816,91 +2816,32 @@ fun ChallengeSection(
             .padding(horizontal = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Spacer(Modifier.height(8.dp)) // ELIMINADO PARA "APEGADITO"
-        
-        // Fase de Reto / Votación / Ganadores
         val isVoting = activeChallenge?.status == "voting"
         val isCompleted = activeChallenge?.status == "completed"
-
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.secondaryContainer,
-            shape = RoundedCornerShape(20.dp),
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("✨", fontSize = 28.sp)
-                Spacer(Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Rondas Novvin",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Black,
-                    )
-                    Text(
-                        "Una consigna compartida: participa, descubre respuestas y pásala a un amigo.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                }
-            }
+        val remaining = when {
+            isVoting -> votingCountdown
+            isCompleted -> winnersCountdown
+            else -> activeCountdown
+        }
+        val expired = activeChallenge != null && remaining == 0
+        LaunchedEffect(activeChallenge?.id, activeChallenge?.status, expired) {
+            if (expired) onRefresh()
         }
 
-        // Timer dinámico
         if (loading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         error?.let { message ->
             Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
-            TextButton(onClick = onRefresh) { Text("Reintentar") }
         }
 
-        if (isCompleted) {
-            // Header de Ganadores con cuenta regresiva interna
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "¡TENEMOS GANADORES!",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                if (winnersCountdown > 0) {
-                    Spacer(Modifier.width(8.dp))
-                    Surface(
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = CircleShape
-                    ) {
-                        Text(
-                            "$winnersCountdown",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        } else if (!isVoting) {
-            conectate.com.presentation.social.components.ChallengeTimer(
-                durationSeconds = activeCountdown,
-                onTimerFinished = { onRefresh() }
+        if (activeChallenge != null) {
+            conectate.com.presentation.social.components.RoundStatusCard(
+                title = activeChallenge.challenge.title,
+                status = activeChallenge.status,
+                remainingSeconds = remaining,
+                onRefresh = onRefresh,
             )
-        } else if (votingCountdown == 0 || (isCompleted && winnersCountdown == 0)) {
-            // Disparador automático para cuando termina la votación o el podio
-            LaunchedEffect(activeChallenge?.status, votingCountdown, winnersCountdown) { onRefresh() }
+            Spacer(Modifier.height(16.dp))
         }
-
-        Spacer(Modifier.height(12.dp))
-
-        conectate.com.presentation.social.components.RoundStatusCard(
-            title = activeChallenge?.challenge?.title ?: "Preparando la próxima ronda…",
-            status = activeChallenge?.status,
-            votingCountdown = votingCountdown,
-            onRefresh = onRefresh
-        )
-
-        Spacer(Modifier.height(24.dp))
 
         if (isCompleted) {
             // Pantalla de Ganadores (Bonita) - Ordenados según winnerIds del servidor
@@ -2928,30 +2869,19 @@ fun ChallengeSection(
                 WinnerPodium(winners)
             }
         } else if (activeChallenge == null) {
-            // Estado de "No hay retos" o "Cargando" profesional
             Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.fillMaxWidth().padding(vertical = 36.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Icon(Icons.Default.AccessTime, null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
-                Spacer(Modifier.height(16.dp))
-                Text("Preparando la próxima ronda…", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(24.dp))
-                Button(
-                    onClick = onRefresh,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("💥 ACTIVAR RONDA COMUNITARIA", fontWeight = FontWeight.Black)
+                Text(
+                    if (loading) "Buscando la ronda actual…" else "Ronda actual",
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                if (!loading) Button(onClick = onRefresh) {
+                    Text(if (error != null) "Reintentar" else "Buscar ronda")
                 }
-            Text(
-                "¡Sé el primero en activar la ronda de hoy!",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        }
+            }
         } else if (hasParticipated) {
             // Lista de respuestas para los que participaron (Votación o Active)
             // Lista de respuestas para votar o ver

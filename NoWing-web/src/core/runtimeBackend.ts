@@ -39,6 +39,7 @@ const discoveryPublicKey = String(import.meta.env.VITE_BACKEND_DISCOVERY_PUBLIC_
 let currentUrl = configuredUrl
 let currentExpiresAtEpochSeconds: number | null = null
 let initialization: Promise<string> | undefined
+let recovery: { url: string; operation: Promise<string> } | undefined
 const readinessReuseMillis = 15_000
 let recentReadiness: { url: string; checkedAt: number } | undefined
 const listeners = new Set<(url: string) => void>()
@@ -309,14 +310,24 @@ export function initializeRuntimeBackend(): Promise<string> {
 export async function refreshRuntimeBackend(failedUrl = ''): Promise<string> {
   const before = getRuntimeBackendUrl()
   if (failedUrl && before && !String(failedUrl).trim().startsWith(before)) return ''
+  if (recovery?.url === before) return recovery.operation
   recentReadiness = undefined
-  const candidate = await resolveRuntimeBackend(activeUrl())
-  if (candidate) {
-    updateRuntimeBackend(candidate)
-    recentReadiness = { url: candidate.url, checkedAt: performance.now() }
+  const failedCandidate = activeUrl()
+  const operation = (async () => {
+    const candidate = await resolveRuntimeBackend(failedCandidate)
+    if (candidate && activeUrl() === failedCandidate) {
+      updateRuntimeBackend(candidate)
+      recentReadiness = { url: candidate.url, checkedAt: performance.now() }
+    }
+    const after = getRuntimeBackendUrl()
+    return after && after !== before ? after : ''
+  })()
+  recovery = { url: before, operation }
+  try {
+    return await operation
+  } finally {
+    if (recovery?.operation === operation) recovery = undefined
   }
-  const after = getRuntimeBackendUrl()
-  return after && after !== before ? after : ''
 }
 
 export const backendDiscoveryTrustConfigured = discoveryPublicKey.length > 0

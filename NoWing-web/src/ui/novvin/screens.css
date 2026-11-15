@@ -1192,6 +1192,11 @@
   scrollbar-width: none;
   overscroll-behavior: contain;
 }
+.reel-feed-loading {
+  display: grid;
+  place-items: center;
+  color: var(--secondary-text);
+}
 .reel-feed-item {
   position: relative;
   height: 100%;

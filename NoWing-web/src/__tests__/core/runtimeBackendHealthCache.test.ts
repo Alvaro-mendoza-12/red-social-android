@@ -55,3 +55,23 @@ test('explicit endpoint recovery bypasses an earlier successful readiness probe'
   await backend.refreshRuntimeBackend('https://healthy.example.test/v1/data')
   expect(fetcher).toHaveBeenCalled()
 })
+
+test('concurrent failures share one recovery, and a later failure can try again', async () => {
+  let finish!: (response: unknown) => void
+  let requested!: () => void
+  const started = new Promise<void>(resolve => { requested = resolve })
+  const emptyConfig = { ok: true, json: async () => ({}) }
+  fetcher.mockImplementationOnce(() => {
+    requested()
+    return new Promise(resolve => { finish = resolve })
+  }).mockResolvedValue(emptyConfig)
+  const backend = await import('../../core/runtimeBackend')
+  const first = backend.refreshRuntimeBackend('https://healthy.example.test/v1/data/videos')
+  const second = backend.refreshRuntimeBackend('https://healthy.example.test/v1/data/groups')
+  await started
+  finish(emptyConfig)
+  await expect(Promise.all([first, second])).resolves.toEqual(['', ''])
+  expect(fetcher).toHaveBeenCalledTimes(1)
+  await expect(backend.refreshRuntimeBackend('https://healthy.example.test/v1/data/videos')).resolves.toBe('')
+  expect(fetcher).toHaveBeenCalledTimes(2)
+})

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T01:47:18.048777+00:00",
-  "baseCommit": "1b0a6ad48e4f7876da94cce594e1fb05dfb50bbc",
+  "generatedAtUtc": "2026-11-15T04:21:53.947468+00:00",
+  "baseCommit": "382cbd6cd95390e6d15acc0cfbd58372a5ef1575",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3615,
-    "partial": 248,
-    "code-read": 663
+    "pending": 3611,
+    "partial": 249,
+    "code-read": 668
   },
   "countsByPhase": {
     "android": {
-      "pending": 1490,
-      "code-read": 468,
+      "pending": 1488,
+      "code-read": 470,
       "partial": 103
     },
     "documentation": {
-      "pending": 623,
+      "pending": 624,
       "code-read": 50,
       "partial": 23
     },
@@ -36,9 +36,9 @@
       "code-read": 15
     },
     "web": {
-      "partial": 81,
-      "pending": 497,
-      "code-read": 73
+      "partial": 82,
+      "pending": 494,
+      "code-read": 76
     }
   },
   "files": [
@@ -1239,6 +1239,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/challengesUbuntu.test.ts",
+      "phase": "web",
+      "gitBlobId": "02ed42de4d2c1994ae58d08e67e5fb229bf047be",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/chatClipboard.test.ts",
       "phase": "web",
       "gitBlobId": "7c55bf7f3220cf64cb579c40aadac2d76409790d",
@@ -1639,9 +1647,9 @@
     {
       "file": "NoWing-web/src/__tests__/core/runtimeBackendHealthCache.test.ts",
       "phase": "web",
-      "gitBlobId": "d78c2368164415441900d73a2e9c4385ad3d01f5",
+      "gitBlobId": "ac7a09c8b23f48476dd0cc19cbec7998bafd4711",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2805,8 +2813,10 @@
     {
       "file": "NoWing-web/src/core/challengesUbuntu.ts",
       "phase": "web",
-      "gitBlobId": "a8992d22a63a9efed96b5e99f1ad7836761eb1ad",
-      "reviewStatus": "pending"
+      "gitBlobId": "a8805653a165e486880775eda414ace6848b1050",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/chatClipboard.ts",
@@ -3233,9 +3243,9 @@
     {
       "file": "NoWing-web/src/core/runtimeBackend.ts",
       "phase": "web",
-      "gitBlobId": "39fefa318678e99b80d25a26f51ed350a9d6da33",
+      "gitBlobId": "0df66b8895c35346dffaef68f4feedb9466c9fa5",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/143-velocidad-servidor-y-entorno-android-2026-11-14.md",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3385,17 +3395,17 @@
     {
       "file": "NoWing-web/src/features/assistant/AssistantPage.tsx",
       "phase": "web",
-      "gitBlobId": "ae629b044ecac3555aebedf87049b760fcc05103",
+      "gitBlobId": "19497d74a93d621bf9a46072490f8e1b06b337dd",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/assistant/assistant.css",
       "phase": "web",
-      "gitBlobId": "1c613b274677d9eb8ebf5c98896e8517bb852560",
+      "gitBlobId": "0b6befe8e410ff5b314d30c1f9beba99b4826679",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3813,9 +3823,9 @@
     {
       "file": "NoWing-web/src/features/reels/ReelsPage.tsx",
       "phase": "web",
-      "gitBlobId": "33544ba6b16517354d69af7fb202df4c7cced0b9",
+      "gitBlobId": "b9f1589655784578254aabdc74c2ee85e39a7d44",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4089,8 +4099,10 @@
     {
       "file": "NoWing-web/src/pages/challenges/ChallengesPage.tsx",
       "phase": "web",
-      "gitBlobId": "bb17239ff41af3271b24455bf7b27f1cc029571f",
-      "reviewStatus": "pending"
+      "gitBlobId": "cc544974af380467e35a444e7c003e097cac4761",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/pages/challenges/ChallengesRankingPage.tsx",
@@ -4101,8 +4113,10 @@
     {
       "file": "NoWing-web/src/pages/challenges/challenges.css",
       "phase": "web",
-      "gitBlobId": "37ed79f94fec9fe2c58160cebccdecc9b74d3b0b",
-      "reviewStatus": "pending"
+      "gitBlobId": "dc4bfc5e597c893dd5ce13d9d7b98b540d8339e3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/pages/explore.css",
@@ -4279,9 +4293,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
       "phase": "web",
-      "gitBlobId": "4f91b17759c6d28fc9b31b4acdbafb6f855f4d52",
+      "gitBlobId": "ab3840fd4b6fb8cc1a3df4cd38a8f7f9725f463a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4303,9 +4317,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/webParity.css",
       "phase": "web",
-      "gitBlobId": "17a9d5e2424e701d0be7c3bf696fdf77b5d4ed85",
+      "gitBlobId": "f6cc72f0194e40c35b2f36eed1450c44508a27f0",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10013,8 +10027,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/StickerArtwork.kt",
       "phase": "android",
-      "gitBlobId": "466a526842f9712e1b7043c1c599f40265644f20",
-      "reviewStatus": "pending"
+      "gitBlobId": "c821edb5f02c6557468cab12b8688c35bc96d6c7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/ThreadedComments.kt",
@@ -12459,9 +12475,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/SocialScreen.kt",
       "phase": "android",
-      "gitBlobId": "13202a77d88bfd25b6987a03fa813253e5e6a1e7",
+      "gitBlobId": "d20639208d70560b8e6c54dd986e006cd43106fc",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12483,8 +12499,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/components/RoundStatusCard.kt",
       "phase": "android",
-      "gitBlobId": "40428b08bf3e7551c12a6221975b18aae64991be",
-      "reviewStatus": "pending"
+      "gitBlobId": "06b450048b035f96e1ecf0eaa623875f2c09c5d4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/socialization/SocializationSettingsScreen.kt",
@@ -20785,6 +20803,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "b4696ef15f042f4185b6964390bdcca4e63427cc",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/15-auditoria-extrema-2026-08-24.md",
