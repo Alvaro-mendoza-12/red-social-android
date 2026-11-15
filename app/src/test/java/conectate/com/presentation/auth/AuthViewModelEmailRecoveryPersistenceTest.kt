@@ -91,8 +91,8 @@ class AuthViewModelEmailRecoveryPersistenceTest {
 
         init {
             every { anyConstructed<EmailRecoveryDraftStore>().read() } answers { read(); initial }
-            every { anyConstructed<EmailRecoveryDraftStore>().save(any()) } answers { save(firstArg()) }
-            every { anyConstructed<EmailRecoveryDraftStore>().clear() } answers { clear() }
+            every { anyConstructed<EmailRecoveryDraftStore>().saveForVisit(any(), any()) } answers { save(firstArg()) }
+            every { anyConstructed<EmailRecoveryDraftStore>().clearForVisit(any()) } answers { clear() }
             every { repository.getCurrentUserId() } returns null
             every { repository.isUserLoggedIn } returns false
             every { repository.forceLocalLogout() } returns Unit
@@ -109,15 +109,22 @@ class AuthViewModelEmailRecoveryPersistenceTest {
 
         // Await the launched clear even when it must suppress its callback. The
         // other new children are the replacement AccountTasks supervisor jobs.
+        private fun jobs(parent: Job = root): List<Job> = parent.children.flatMap { child ->
+            sequenceOf(child) + jobs(child).asSequence()
+        }.toList()
+
         fun beginClear(onCleared: () -> Unit): Job {
-            val before = root.children.toSet()
+            val before = roots()
             model.clearEmailRecovery(onCleared)
-            return root.children.single { it !in before && it !is CompletableJob }
+            return clearJobSince(before)
         }
 
-        fun roots(): Set<Job> = root.children.toSet()
+        fun roots(): Set<Job> = jobs().toSet()
         fun entryJob(): Job = root.children.filter { it is CompletableJob }.flatMap { it.children }.single()
-        fun clearJobSince(before: Set<Job>): Job = root.children.single { it !in before && it !is CompletableJob }
+        fun clearJobSince(before: Set<Job>): Job {
+            val candidates = jobs().filter { it !in before && it !is CompletableJob }
+            return candidates.firstOrNull { it.children.any() } ?: candidates.first()
+        }
 
         // The first ordinary launch in AuthViewModel is its draft restoration.
         // The queued-start test awaits that actual Job, rather than sleeping and
@@ -230,7 +237,7 @@ class AuthViewModelEmailRecoveryPersistenceTest {
         var navigations = 0
         // Block once to obtain the live operation before the failing write is released.
         val gate = Gate()
-        every { anyConstructed<EmailRecoveryDraftStore>().clear() } answers {
+        every { anyConstructed<EmailRecoveryDraftStore>().clearForVisit(any()) } answers {
             gate.hold()
             throw IOException("QA local write failed")
         }
@@ -516,9 +523,9 @@ class AuthViewModelEmailRecoveryPersistenceTest {
         } finally { gate.release() }
     }
 
-    @Test fun cancelledEarlyFailureCleanupCannotOverwriteTheNextForm() = runBlocking {
+    @Test fun cancelledInitialStorageCannotOverwriteTheNextForm() = runBlocking {
         val gate = Gate()
-        val current = Fixture(null, save = { throw IOException("QA pending write failed") }, clear = gate::hold).also { fixture = it }
+        val current = Fixture(null, save = { gate.hold(); throw IOException("QA pending write failed") }).also { fixture = it }
         try {
             current.model.requestMigratedPasswordCode("qa.mail@example.invalid")
             gate.awaitEntry()
@@ -551,7 +558,7 @@ class AuthViewModelEmailRecoveryPersistenceTest {
 
     @Test fun aFailureBeforeSendingDoesNotRequestAnEmail() = runBlocking {
         val gate = Gate()
-        val current = Fixture(null, save = { throw IOException("QA pending write failed") }, clear = gate::hold).also { fixture = it }
+        val current = Fixture(null, save = { gate.hold(); throw IOException("QA pending write failed") }).also { fixture = it }
         try {
             current.model.requestMigratedPasswordCode("qa.mail@example.invalid")
             gate.awaitEntry()
@@ -559,6 +566,7 @@ class AuthViewModelEmailRecoveryPersistenceTest {
             gate.release()
             request.join()
             assertTrue(current.model.authState.value is AuthState.Error)
+            assertTrue((current.model.authState.value as AuthState.Error).message.contains("guardar el avance"))
             assertNull(current.model.emailRecovery.value)
             coVerify(exactly = 0) { current.repository.requestLocalFallbackPasswordReset(any()) }
         } finally { gate.release() }

@@ -82,3 +82,8 @@ La [corrección de cuentas y Ajustes](../oficial/152-cuentas-guardadas-y-salida-
 ## Continuación 155 — 15 de noviembre de 2026
 
 La [corrección de recuperación por correo](../oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md) protege la restauración/limpieza, los callbacks y el estado posterior a E/S cancelada; conserva el borrador y muestra fallos locales. Aprueba 58 casos JVM en siete clases tras reproducir 14 fallos en 24 casos distintos. El transporte y el almacén se controlan: no acredita SMTP, Keystore, proceso o navegación físicos ni una APK155. A03–A05 y los demás recorridos siguen abiertos; se conserva el pendiente de limpieza fallida tras una contraseña ya confirmada.
+
+
+## Continuación 156 — 15 de noviembre de 2026
+
+La [corrección del borrador compartido](../oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md) retira escritores de pantallas anteriores y protege el predecesor ante fallos de persistencia. Aprueba 71 casos JVM en ocho clases tras reproducir seis fallos en diez casos distintos. Tres controles de la misma recuperación se añadieron después del parche. JSON/preferencias reales de Robolectric, apertura criptográfica y transporte controlados; no acredita Keystore, SMTP, proceso/navegación físicos ni una APK156. A03–A05 y la limpieza fallida tras contraseña confirmada siguen abiertos.
