@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T16:28:10.457858+00:00",
-  "baseCommit": "3239f5523219cf75058d7e1251e1c967a0a20b62",
+  "generatedAtUtc": "2026-11-15T16:47:51.402334+00:00",
+  "baseCommit": "cda21aa1a0a7946719fb9ab4509454e8a430a299",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3604,
+    "pending": 3606,
     "partial": 250,
     "code-read": 691
   },
@@ -21,7 +21,7 @@
       "code-read": 479
     },
     "documentation": {
-      "pending": 634,
+      "pending": 636,
       "code-read": 54,
       "partial": 20
     },
@@ -20577,7 +20577,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "3637c596fa3f5b9b8f1f5a2c1717bd7d68543f22",
+      "gitBlobId": "a349865ce78db38bf06fcceb96f3a7879494fa6d",
       "reviewStatus": "pending"
     },
     {
@@ -20893,7 +20893,7 @@
     {
       "file": "docs/oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md",
       "phase": "documentation",
-      "gitBlobId": "ccc1a9743384a84a64d9f0b0c33b63acb247b259",
+      "gitBlobId": "b4e79142c4427a8542db8630fe4550822d92752d",
       "reviewStatus": "pending"
     },
     {
@@ -20918,6 +20918,12 @@
       "file": "docs/oficial/153-entrega-de-botellas-2026-11-15.md",
       "phase": "documentation",
       "gitBlobId": "48d8a4b7b1539847e357a65691bb47cd07cb8e14",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/154-plan-host-vigente-tras-api153-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "8c23b3fdbdd79f5fbc47e7f39d708942046b6142",
       "reviewStatus": "pending"
     },
     {
@@ -21431,7 +21437,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "99c800d92aacf11417efd305e43dd4729e177606",
+      "gitBlobId": "d7c4e7d147114b861ef9cb5e3ce821685c09ec35",
       "reviewStatus": "pending"
     },
     {
@@ -21851,7 +21857,7 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "891091d71d599fe5efca4fd85020d5955e1b6553",
+      "gitBlobId": "661b75ee3e4e2a7029e4022c956f3a95c892cef9",
       "reviewStatus": "pending"
     },
     {
@@ -22340,6 +22346,12 @@
       "file": "docs/quality/evidence/149-host-maintenance.json",
       "phase": "documentation",
       "gitBlobId": "84e373a0632773aea8bfa2eb436f4341524c613a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/154-host-plan-refresh.json",
+      "phase": "documentation",
+      "gitBlobId": "7c84f5b90b2056cc40529cd39d028780ae7b82d3",
       "reviewStatus": "pending"
     },
     {

@@ -67,3 +67,8 @@ El [mantenimiento preparado del host](../oficial/149-host-respaldo-y-mantenimien
 ## Continuación 145 retomada — 15 de noviembre de 2026
 
 La [medición móvil actual](../oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md) corrige los bloqueos de runtime/ABI de la instrumentación QA con R8. Aprueban cinco casos físicos Moto/API 34 y tres de avatares repetidos en emulador/API 35. La APK es de laboratorio 9.1.40 / 180, fuente 148 con parche QA145; no sustituye la instalación principal. Las tres aperturas producen primer cuadro en 3.054, 1.417 y 894 ms y registran buffering al capturarlo; la reproducción sostenida y el desplazamiento no quedan validados. La caché autenticada, acceso/ayuda, Mensajes y demás módulos conservan sus pendientes. No es una entrega final ni una certificación de fluidez integral.
+
+
+## Continuación 154 — 15 de noviembre de 2026
+
+El [plan administrativo vigente](../oficial/154-plan-host-vigente-tras-api153-2026-11-15.md) sustituye la candidata149 después de activar API153. La herramienta y las nueve versiones no cambian; se repiten dieciocho pruebas Linux y preflight contra la imagen nueva, con éxito. Los paquetes del host aún no se han instalado y falta autenticación administrativa real. La restauración de propietarios/ACL, la comprobación posterior del upgrade, los módulos móviles y la entrega final siguen pendientes.

@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 15 de noviembre de 2026
 
+La [continuación 154](154-plan-host-vigente-tras-api153-2026-11-15.md) renueva el plan de mantenimiento tras la activación independiente de API153. Conserva la herramienta y las nueve versiones de 149, con dieciocho pruebas Linux y preflight aprobados contra la imagen vigente. El comando anterior es histórico; la instalación sigue pendiente de autenticación administrativa. La corrección móvil152 permanece en validación separada y la revisión integral continúa abierta.
+
 La [continuación 145 retomada](145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md) repara la ABI de instrumentación QA optimizada y aprueba cinco casos en el Moto g04, además de tres casos de avatares en emulador. La APK de laboratorio 9.1.40/180 incluye el código Android de 148; la instalación principal quedó igual. El primer cuadro tarda 3.054, 1.417 y 894 ms, sin acreditar reproducción continua ni desplazamiento. La caché autenticada, el acceso/ayuda, los demás módulos y la APK final siguen pendientes.
 
 La [continuación 149](149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md) comprueba el estado de Ubuntu y restaura 265 tablas del respaldo actual en aislamiento. Prepara el mantenimiento acotado de nueve paquetes con dieciocho pruebas Linux y preflight aprobado. La instalación del host requiere autenticación administrativa real y sigue pendiente; el ensayo no restaura propietarios/ACL ni cierra los recorridos móviles.
