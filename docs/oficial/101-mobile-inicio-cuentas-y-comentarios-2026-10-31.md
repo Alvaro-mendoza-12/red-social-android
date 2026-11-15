@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 15 de noviembre de 2026
 
+La [continuación 148](148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md) corrige el bloqueo de recuperación asistida al cancelar una operación en cola y protege su estado frente a respuestas anteriores. Reproduce tres fallos del ViewModel y aprueba veinte casos JVM en cinco clases después del parche. Organiza la validación de acceso, ayuda y Mensajes por recorrido; el módulo completo, el ensayo físico, la entrega de correo y la APK nueva siguen pendientes.
+
 La [continuación 147](147-carga-multimedia-cache-y-servidor-2026-11-15.md) retiene los bytes autorizados de la primera reproducción Android, prioriza stickers del chat y reduce sus vistas estáticas a 160 px en web. Aprueba 26 pruebas JVM focalizadas y 1.271 pruebas web. Compara Ubuntu/R2 y activa dependencias de API con cero avisos npm de producción. Los doce paquetes actualizables del host y los ensayos físicos de esta caché siguen pendientes. La [continuación 146](146-conectividad-rondas-y-asistente-2026-11-14.md) ya estaba publicada en ambas ramas y desplegada en novvinapp.com, con sus 26 pruebas Android pendientes posteriormente aprobadas. La revisión integral continúa abierta.
 
 La [continuación 144](144-qa-medios-y-sincronizacion-2026-11-14.md) corrige la subida de mapas de Crashlytics en QA y comprueba el empaquetado optimizado separado. Registra una sincronización IDE aprobada, un build posterior fallido por recursos y las demoras de la ruta pública de avatares. Distingue las APK de laboratorio de los ensayos físicos y de la entrega final; la revisión móvil integral permanece abierta.
