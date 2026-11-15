@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-15T16:45:52.166481+00:00",
+  "scope": "refresh the prepared host package plan after the separately deployed API153; no administrative apply",
+  "sourceCommit": "cda21aa1a0a7946719fb9ab4509454e8a430a299",
+  "supersededPlanSha256": "b750de69eeb74a0ff56a5f3cdd16a1f6340d2d9c5505dccfda58e133d9c93d08",
+  "currentPlan": {
+    "createdAtUtc": "2026-11-15T16:40:23.283233+00:00",
+    "stage": "/home/alvaro/novvin-host149-20261115T164023Z",
+    "planSha256": "7785d47187dbb25f1f9e110e111c84a84a4f54fc198e33e323b4e8519ec957cf",
+    "sourceFiles": [
+      {
+        "path": "infrastructure/local-fallback/scripts/host-maintenance149.py",
+        "sha256": "8d2b14a633fcd7d6425711668da5ae8414e8b8a2c9242bffb0f5eab8b84a8da1"
+      },
+      {
+        "path": "scripts/tests/test_host_maintenance149.py",
+        "sha256": "f8fc4d397404f1e520259f881f172c9d4c088dbcce1a43382abff7994314253a"
+      },
+      {
+        "path": "plan149.json",
+        "sha256": "7785d47187dbb25f1f9e110e111c84a84a4f54fc198e33e323b4e8519ec957cf"
+      }
+    ],
+    "hostPackagesChanged": false,
+    "rootApplyExecuted": false
+  },
+  "apiObserved": {
+    "Status": "running",
+    "Running": true,
+    "OOMKilled": false,
+    "StartedAt": "2026-11-15T16:30:29.709045214Z",
+    "id": "08f3b71d5b33226877969be72b77c4a9974b5686efe6142130a07a65082378c7",
+    "imageId": "sha256:449f2a78d302bf39e1dc6acf529d97f87468ca25f3a3b2f83c0ba21b9ebaab6a",
+    "image": "novvin-api:bottle153-1a09dbda",
+    "health": "healthy",
+    "restarts": 0,
+    "restartPolicy": "unless-stopped"
+  },
+  "observedAtUtc": "2026-11-15T16:40:16.441529+00:00",
+  "memoryKiB": {
+    "MemTotal": 15273340,
+    "MemAvailable": 11618804,
+    "SwapTotal": 4194300,
+    "SwapFree": 4192764
+  },
+  "rootDiskBytes": {
+    "total": 234039422976,
+    "used": 113507205120,
+    "free": 108569067520
+  },
+  "failedUnits": "",
+  "sudoNoninteractive": {
+    "exitCode": 1,
+    "stdout": "",
+    "stderr": "sudo: a password is required"
+  },
+  "sameNinePackageVersionsAs149": true,
+  "reviewedPackageVersions": {
+    "containerd.io": {
+      "before": "2.4.2-3~ubuntu.24.04~noble",
+      "target": "2.4.2-4~ubuntu.24.04~noble"
+    },
+    "docker-buildx-plugin": {
+      "before": "0.38.1-1~ubuntu.24.04~noble",
+      "target": "0.39.0-1~ubuntu.24.04~noble"
+    },
+    "docker-ce": {
+      "before": "5:29.9.2-1~ubuntu.24.04~noble",
+      "target": "5:29.9.3-1~ubuntu.24.04~noble"
+    },
+    "docker-ce-cli": {
+      "before": "5:29.9.2-1~ubuntu.24.04~noble",
+      "target": "5:29.9.3-1~ubuntu.24.04~noble"
+    },
+    "docker-ce-rootless-extras": {
+      "before": "5:29.9.2-1~ubuntu.24.04~noble",
+      "target": "5:29.9.3-1~ubuntu.24.04~noble"
+    },
+    "docker-compose-plugin": {
+      "before": "5.6.1-1~ubuntu.24.04~noble",
+      "target": "5.7.1-1~ubuntu.24.04~noble"
+    },
+    "libsqlite3-0": {
+      "before": "3.45.1-1ubuntu2.8",
+      "target": "3.45.1-1ubuntu2.9"
+    },
+    "nodejs": {
+      "before": "22.23.4-1nodesource1",
+      "target": "22.23.5-1nodesource1"
+    },
+    "tailscale": {
+      "before": "1.104.6",
+      "target": "1.104.7"
+    }
+  },
+  "sameMaintenanceToolAndTests": true,
+  "linuxTests": {
+    "tests": 18,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "readOnlyPreflightPassed": true,
+  "sameVerifiedBackupDumpAs149": true,
+  "backupRestoreScope": "149 schema/data restoration, no owners/ACL, storage restoration or application startup",
+  "artifacts": [
+    {
+      "path": "app/build/audit154/host-observation-20261115/host.json",
+      "sha256": "6e8516a817d7bd061db965a016c4a5909fa40927b68ac90cb70fdf1e5d084c1a"
+    },
+    {
+      "path": "app/build/audit154/host-observation-20261115/manifest.json",
+      "sha256": "def78e751420351c8c5c645d650f051519c66dc9e68560d9a8bee9889891a1a6"
+    },
+    {
+      "path": "app/build/audit154/prepared-candidate/manifest.json",
+      "sha256": "a89746462a3d5b549bd7d8eb6093895ceab0a4d962301d3d0bb2a5c470a7edcd"
+    },
+    {
+      "path": "app/build/audit154/prepared-candidate/plan149.json",
+      "sha256": "7785d47187dbb25f1f9e110e111c84a84a4f54fc198e33e323b4e8519ec957cf"
+    },
+    {
+      "path": "app/build/audit154/prepared-candidate/validation.json",
+      "sha256": "55ce8bdbc15a1ebc7fe2b0878d22b9295190accdd7444ba02fde984dc594b215"
+    },
+    {
+      "path": "app/build/audit154/prepared-candidate/unit-linux.log",
+      "sha256": "97d936582c59437d8f522b7717a56b92864129769a96e283c3a0e0eee6c53e2f"
+    },
+    {
+      "path": "app/build/audit154/prepared-candidate/preflight.log",
+      "sha256": "bcc83c6be3d6f0c3ad94cdec896d8d09b84b76276b906ed643791c55eb83863b"
+    }
+  ],
+  "rootApplyExecuted": false,
+  "hostPackagesChanged": false,
+  "daemonOrNetworkConfigurationChanged": false,
+  "oldCandidatePreserved": true,
+  "mobile152Included": false,
+  "fullProjectGoalComplete": false,
+  "pending": [
+    "real administrative authentication",
+    "package installation and independent post-update checks",
+    "remaining mobile modules and production delivery"
+  ]
+}

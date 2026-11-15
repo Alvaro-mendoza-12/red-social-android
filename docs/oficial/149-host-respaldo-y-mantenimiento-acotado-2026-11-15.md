@@ -1,5 +1,10 @@
 # 149 · Host, respaldo y mantenimiento acotado
 
+**Comando vigente:** la API cambió después de preparar este bloque. Utiliza la
+[candidata renovada 154](154-plan-host-vigente-tras-api153-2026-11-15.md#comando-vigente).
+El comando de 149 que aparece abajo queda como histórico; su comprobación de
+imagen lo detiene antes de instalar contra la API nueva.
+
 Estado del 15 de noviembre de 2026: mantenimiento preparado, **paquetes del host
 todavía sin actualizar**. La revisión Android continúa primero. Este bloque no
 cierra los módulos móviles ni acredita capacidad de marketing masivo.
