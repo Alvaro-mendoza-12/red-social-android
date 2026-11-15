@@ -3,7 +3,7 @@ import { SafeAvatar } from '../../components/SafeAvatar'
 import { friendlyError } from '../../core/utils'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Bookmark, CalendarDays, Gamepad2, LayoutGrid, Search, UserRound, UsersRound } from 'lucide-react'
+import { ArrowRight, Bookmark, CalendarDays, Gamepad2, Inbox, LayoutGrid, MessageCircle, Search, Send, UserRound, UsersRound } from 'lucide-react'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { uploadFallbackFile } from '../../core/fallbackData'
@@ -75,6 +75,7 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
   const [popularGames, setPopularGames] = useState<Game[]>([])
   const [popularLoading, setPopularLoading] = useState(true)
   const [connections, setConnections] = useState<Connection[]>([])
+  const [activityLoading, setActivityLoading] = useState(true)
   const [matches, setMatches] = useState<Match[]>([])
   const [acceptedMatches, setAcceptedMatches] = useState<string[]>([])
   const [session, setSession] = useState<Session | null>(null)
@@ -165,6 +166,7 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
       void loadProfile().catch(caught => { if (active) setError(errorText(caught)) })
         .finally(() => { if (active) setProfileLoading(false) })
       void loadConnections().catch(caught => { if (active) setError(errorText(caught)) })
+        .finally(() => { if (active) setActivityLoading(false) })
       try {
         const games = await request<{ items: Game[] }>('/catalog?limit=12')
         if (active) {
@@ -326,6 +328,16 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
   const ownedCount = profile?.games.length || 0
   const platforms = [...new Set(catalog.flatMap(item => item.platforms))]
   const activeSession = Boolean(session && ['SEARCHING', 'MATCH_FOUND'].includes(session.status))
+  const applied = discovery.applied
+  const appliedFilters = applied ? [
+    applied.query.trim(), catalog.find(item => item.id === applied.gameId)?.name,
+    applied.platform, applied.region.trim(), applied.availableNow && 'Disponibles ahora',
+  ].filter(Boolean) : []
+  const matchGame = catalog.find(item => item.id === filters.gameId)?.name
+  const matchCriteria = [matchGame, filters.platform].filter(Boolean)
+  const profilesToReview = [...new Map([
+    ...pendingMatches, ...(session?.match && activeSession ? [session.match] : []),
+  ].map(item => [item.id, item])).values()]
   function openLibrary(next: Library) { setLibrary(next); selectSection('catalog') }
   function updateFilter<K extends keyof PlayerFilters>(key: K, value: PlayerFilters[K]) {
     setFilters(current => ({ ...current, [key]: value }))
@@ -448,8 +460,9 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
       </section>}
     </section>}
     {tab === 'discover' && <section className="games-section">
+      <div className="games-section-heading"><Search aria-hidden="true" /><div><h3>Jugadores</h3><p>Encuentra compañeros por juego, plataforma o disponibilidad.</p></div></div>
       <form className="games-filters surface-card" onSubmit={submitSearch}>
-        <label>Buscar jugador<input className="text-input" type="search" value={filters.query} maxLength={100} onChange={event => updateFilter('query', event.target.value)} placeholder="Nombre o juego" /></label>
+        <label className="games-filter-query">Buscar jugador<input className="text-input" type="search" value={filters.query} maxLength={100} onChange={event => updateFilter('query', event.target.value)} placeholder="Nombre o juego" /></label>
         <label>Juego<select className="text-input" value={filters.gameId} onChange={event => updateFilter('gameId', event.target.value)}><option value="">Todos</option>{catalog.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label>Plataforma<select className="text-input" value={filters.platform} onChange={event => updateFilter('platform', event.target.value)}><option value="">Todas</option>{platforms.map(item => <option key={item} value={item}>{item}</option>)}</select></label>
         <label>Región<input className="text-input" value={filters.region} maxLength={40} onChange={event => updateFilter('region', event.target.value)} placeholder="Ej. CO" /></label>
@@ -459,7 +472,13 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
           <button className="primary-btn" type="submit">Buscar</button>
         </div>
       </form>
-      <div className="row-between"><h3>Jugadores</h3><small role="status">{discovery.loading ? 'Buscando…' : `${discovery.players.length} mostrados`}</small></div>
+      <div className="games-results-bar">
+        <h4>Resultados</h4>
+        <small role="status">{discovery.loading ? 'Buscando…' : `${discovery.players.length} mostrados`}</small>
+        {appliedFilters.length > 0 && <ul className="games-applied-filters" aria-label="Filtros aplicados">
+          {appliedFilters.map((value, index) => <li key={index}>{value}</li>)}
+        </ul>}
+      </div>
       {discovery.error && <div className="games-alert error" role="alert">{discovery.error} <button className="ghost-btn" type="button" onClick={() => void discovery.load(discovery.applied || filters, discovery.cursor || undefined)}>Reintentar</button></div>}
       <div className="games-grid" aria-busy={discovery.loading}>{discovery.players.map(player => {
         const relation = connectionsByPlayer.get(player.userId)
@@ -489,41 +508,47 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
       <form className="surface-card games-form" onSubmit={savePreferences}><h3>Preferencias de partida</h3><label>Tolerancia de rango: {rankTolerance}<input type="range" min="0" max="5" step="1" value={rankTolerance} onChange={(event) => setRankTolerance(Number(event.target.value))} /></label><label>Nivel de exploración: {discoveryLevel}%<input type="range" min="0" max="100" step="10" value={discoveryLevel} onChange={(event) => setDiscoveryLevel(Number(event.target.value))} /></label><label className="games-check"><input type="checkbox" checked={voiceRequired} onChange={(event) => setVoiceRequired(event.target.checked)} /> Solo jugadores con voz</label><button className="primary-btn" type="submit" disabled={busy || !profile}>Guardar preferencias</button></form>
       <section className="surface-card games-form"><h3>Disponibilidad semanal</h3><p>Comparte solo horarios aproximados; nunca tu ubicación exacta.</p><form className="games-availability-form" onSubmit={(event) => { event.preventDefault(); if (availability.length >= 28) { setError('Puedes guardar hasta 28 horarios.'); return } saveAvailability([...availability, { dayOfWeek: availableDay, startMinute: minutesOf(availableStart), endMinute: minutesOf(availableEnd), timezone: profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }]) }}><label>Día<select className="text-input" value={availableDay} onChange={(event) => setAvailableDay(Number(event.target.value))}>{weekdays.map((name, index) => <option key={name} value={index}>{name}</option>)}</select></label><label>Desde<input className="text-input" type="time" value={availableStart} onChange={(event) => setAvailableStart(event.target.value)} /></label><label>Hasta<input className="text-input" type="time" value={availableEnd} onChange={(event) => setAvailableEnd(event.target.value)} /></label><button className="primary-btn" type="submit" disabled={busy}>Agregar horario</button></form><div className="games-list">{availability.map((entry, index) => <div className="games-list-row" key={`${entry.dayOfWeek}-${entry.startMinute}-${index}`}><span><strong>{weekdays[entry.dayOfWeek]}</strong><small>{timeOf(entry.startMinute)}–{timeOf(entry.endMinute)} · {entry.timezone}</small></span><button className="ghost-btn" type="button" disabled={busy} onClick={() => saveAvailability(availability.filter((_, position) => position !== index))}>Quitar</button></div>)}{availability.length === 0 && <p>Sin horarios configurados.</p>}</div></section>
     </div>}
-    {tab === 'connections' && <div className="games-activity-grid">
-      <section className="surface-card games-form">
-        <div className="row-between"><h3>Solicitudes recibidas</h3><button className="ghost-btn" type="button" disabled={busy} onClick={() => void act(loadConnections, 'Actividad actualizada.')}>Actualizar</button></div>
+    {tab === 'connections' && <section className="games-section" aria-labelledby="games-activity-title">
+      <div className="games-section-heading games-section-heading-actions">
+        <Inbox aria-hidden="true" /><div><h3 id="games-activity-title">Actividad</h3><p>Solicitudes, coincidencias y conversaciones.</p></div>
+        <button className="ghost-btn" type="button" disabled={busy || activityLoading} onClick={() => void act(loadConnections, 'Actividad actualizada.')}>Actualizar</button>
+      </div>
+      {activityLoading ? <p className="surface-card games-empty" role="status">Cargando actividad…</p> : <div className="games-activity-grid">
+      <section className="surface-card games-form games-activity-card">
+        <h4><Inbox size={19} aria-hidden="true" />Solicitudes recibidas {incoming.length > 0 && <span className="games-count">{incoming.length}</span>}</h4>
         {!incoming.length && <p className="games-empty">Aún no tienes solicitudes recibidas.</p>}
         {incoming.map(connection => <div className="games-list-row" key={connection.id}>
-          <span><strong>{connection.otherName}</strong>{connection.message && <small>{connection.message}</small>}</span>
+          <div className="games-activity-person"><SafeAvatar name={connection.otherName} /><span><strong>{connection.otherName}</strong>{connection.message && <small>{connection.message}</small>}</span></div>
           <div className="games-row-actions"><button className="primary-btn" type="button" disabled={busy} onClick={() => decideConnection(connection, 'ACCEPT')}>Aceptar</button><button className="ghost-btn" type="button" disabled={busy} onClick={() => decideConnection(connection, 'REJECT')}>Rechazar</button></div>
         </div>)}
       </section>
-      <section className="surface-card games-form">
-        <h3>Solicitudes enviadas</h3>
+      <section className="surface-card games-form games-activity-card">
+        <h4><Send size={18} aria-hidden="true" />Solicitudes enviadas</h4>
         {!outgoing.length && <p className="games-empty">Aún no tienes solicitudes pendientes.</p>}
         {outgoing.map(connection => <div className="games-list-row" key={connection.id}><span><strong>{connection.otherName}</strong><small>Pendiente de respuesta</small></span></div>)}
       </section>
-      <section className="surface-card games-form">
-        <h3>Conversaciones de juego</h3>
+      <section className="surface-card games-form games-activity-card">
+        <h4><MessageCircle size={18} aria-hidden="true" />Conversaciones de juego</h4>
         {!chats.length && <p className="games-empty">Al aceptar una solicitud, podrás abrir un chat aquí.</p>}
         {chats.map(connection => <div className="games-list-row" key={connection.id}><strong>{connection.otherName}</strong><Link className="ghost-btn" to={`/chat/${encodeURIComponent(connection.otherUserId)}`}>Abrir chat</Link></div>)}
       </section>
-      {pendingMatches.length > 0 && <section className="surface-card games-form"><h3>Coincidencias por revisar</h3><p>{pendingMatches.length} pendientes.</p><button className="primary-btn" type="button" onClick={() => selectSection('matches')}>Revisar partidas</button></section>}
-    </div>}
+      {pendingMatches.length > 0 && <section className="surface-card games-form games-activity-card"><h4><CalendarDays size={18} aria-hidden="true" />Coincidencias por revisar <span className="games-count">{pendingMatches.length}</span></h4><button className="ghost-btn" type="button" onClick={() => selectSection('matches')}>Revisar partidas</button></section>}
+      </div>}
+    </section>}
     {tab === 'matches' && <section className="games-section">
       <article className="surface-card games-form games-match-setup">
-        <h3>Buscar partida</h3>
+        <div className="games-section-heading"><CalendarDays aria-hidden="true" /><div><h3>Buscar partida</h3><p>{activeSession ? 'Sesión activa' : 'Emparejamiento de PlayMatch'}</p></div></div>
         <p>{session?.status === 'SEARCHING' ? 'Estamos buscando compañeros compatibles.' : session?.status === 'MATCH_FOUND' ? 'Encontramos una coincidencia. Puedes revisar el perfil antes de decidir.' : readiness.message}</p>
         {session?.status === 'SEARCHING' && <progress aria-label="Búsqueda en curso" />}
-        {readiness.ready && !activeSession && <div className="games-row-actions"><button className="primary-btn" disabled={busy} type="button" onClick={startMatch}>Buscar compañero</button><button className="ghost-btn" type="button" onClick={() => selectSection('discover')}>Ajustar criterios</button></div>}
+        {readiness.ready && !activeSession && <><div className="games-match-criteria"><span>Se buscará con</span><strong>{matchCriteria.length ? matchCriteria.join(' · ') : 'Tus juegos registrados'}</strong></div><div className="games-row-actions"><button className="primary-btn" disabled={busy} type="button" onClick={startMatch}>Buscar compañero</button><button className="ghost-btn" type="button" onClick={() => selectSection('discover')}>Ajustar criterios</button></div></>}
         {!readiness.ready && !readiness.loading && !activeSession && <button className="primary-btn" type="button" onClick={() => selectSection('profile')}>Abrir perfil gamer</button>}
         {activeSession && <button className="ghost-btn" disabled={busy} type="button" onClick={cancelMatch}>Cancelar búsqueda</button>}
       </article>
-      <section className="surface-card games-form">
-        <h3>Coincidencias por decidir</h3>
-        {!(pendingMatches.length || session?.match && activeSession) && <p className="games-empty">Las coincidencias aparecerán cuando alguien cumpla tus criterios.</p>}
-        {[...new Map([...pendingMatches, ...(session?.match && activeSession ? [session.match] : [])].map(item => [item.id, item])).values()].map(match => <div className="games-list-row" key={match.id}>
-          <span><strong>{match.player?.displayName || 'Jugador'}</strong><small>{match.score}% compatible</small></span>
+      <section className="surface-card games-form games-activity-card">
+        <h4><UsersRound size={19} aria-hidden="true" />Coincidencias por decidir {profilesToReview.length > 0 && <span className="games-count">{profilesToReview.length}</span>}</h4>
+        {!profilesToReview.length && <p className="games-empty">Las coincidencias aparecerán cuando alguien cumpla tus criterios.</p>}
+        {profilesToReview.map(match => <div className="games-list-row" key={match.id}>
+          <div className="games-activity-person"><SafeAvatar url={match.player?.avatarUrl} name={match.player?.displayName || 'Jugador'} /><span><strong>{match.player?.displayName || 'Jugador'}</strong><small>{match.score}% compatible</small></span></div>
           <div className="games-row-actions">
             {match.player?.userId && <Link className="ghost-btn" to={`/app/games/player/${encodeURIComponent(match.player.userId)}`}>Ver perfil</Link>}
             {match.status === 'PENDING' && acceptedMatches.includes(match.id) && <small>Esperando confirmación</small>}
