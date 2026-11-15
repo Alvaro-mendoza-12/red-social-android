@@ -72,3 +72,8 @@ La [medición móvil actual](../oficial/145-medicion-movil-avatares-y-rutas-de-v
 ## Continuación 154 — 15 de noviembre de 2026
 
 El [plan administrativo vigente](../oficial/154-plan-host-vigente-tras-api153-2026-11-15.md) sustituye la candidata149 después de activar API153. La herramienta y las nueve versiones no cambian; se repiten dieciocho pruebas Linux y preflight contra la imagen nueva, con éxito. Los paquetes del host aún no se han instalado y falta autenticación administrativa real. La restauración de propietarios/ACL, la comprobación posterior del upgrade, los módulos móviles y la entrega final siguen pendientes.
+
+
+## Continuación 152 retomada — 15 de noviembre de 2026
+
+La [corrección de cuentas y Ajustes](../oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md) rechaza respuestas de visitas anteriores, conserva las operaciones de una pantalla nueva y libera la preparación cancelada. Aprueba 34 casos JVM en seis clases. No representa un ensayo físico de A08 ni contiene una APK nueva; la QA145 ensayada incluye 148 y carece de 152. La revisión de acceso y los demás módulos siguen abiertos.

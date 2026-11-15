@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T16:47:51.402334+00:00",
-  "baseCommit": "cda21aa1a0a7946719fb9ab4509454e8a430a299",
+  "generatedAtUtc": "2026-11-15T17:20:26.894863+00:00",
+  "baseCommit": "278535a38f5480afd8e2f63b3b4500863b95b9fa",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3606,
+    "pending": 3607,
     "partial": 250,
-    "code-read": 691
+    "code-read": 693
   },
   "countsByPhase": {
     "android": {
       "pending": 1482,
       "partial": 103,
-      "code-read": 479
+      "code-read": 480
     },
     "documentation": {
-      "pending": 636,
-      "code-read": 54,
+      "pending": 637,
+      "code-read": 55,
       "partial": 20
     },
     "server": {
@@ -6057,7 +6057,7 @@
       "phase": "android",
       "gitBlobId": "b94b045ee77b4c199becce0fccf41eaf740b593c",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
+      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9011,7 +9011,7 @@
       "phase": "android",
       "gitBlobId": "d1bf3fbd1f96a8a9232344265e3f37c31baa5f85",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9353,15 +9353,15 @@
       "phase": "android",
       "gitBlobId": "fa8129be856ce73d094917f8b307e422082ffddc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
+      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
       "phase": "android",
-      "gitBlobId": "96fe9a6f0562f57650a172dd711d9f8736355a37",
+      "gitBlobId": "c33ca5b661f145e9e1a8abaa5f7ade9428019f86",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
+      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11995,9 +11995,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/SettingsScreen.kt",
       "phase": "android",
-      "gitBlobId": "cd9e531a1b3aa01b8aef87de00e69de27f09052d",
+      "gitBlobId": "3e71e4b8a031cfda6ecb2c96f982885d1d8e31ef",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
+      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16226,6 +16226,14 @@
       "gitBlobId": "b61a9388ccc16f35e5e5b433471c2a3e9c514149",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelAccountPreparationTest.kt",
+      "phase": "android",
+      "gitBlobId": "54b08a3446237d8eec86d456a27a94efa67a7db8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20577,7 +20585,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "a349865ce78db38bf06fcceb96f3a7879494fa6d",
+      "gitBlobId": "476fe6b6b83d5ca44930654059d52492aa2ddbe3",
       "reviewStatus": "pending"
     },
     {
@@ -20913,6 +20921,14 @@
       "phase": "documentation",
       "gitBlobId": "41dda52927b0ba2187cfa4da4ccec5a9516965c7",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "28a30d359f8cd0ee9ce6d744b4d23e69da87c28b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/153-entrega-de-botellas-2026-11-15.md",
@@ -21437,7 +21453,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "d7c4e7d147114b861ef9cb5e3ce821685c09ec35",
+      "gitBlobId": "6ea5d04154afd0073f17de82cfe754a0b62b8f7b",
       "reviewStatus": "pending"
     },
     {
@@ -21857,7 +21873,7 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "661b75ee3e4e2a7029e4022c956f3a95c892cef9",
+      "gitBlobId": "a31140f1e3e07dd5a776cf15b279bd26fcbaf376",
       "reviewStatus": "pending"
     },
     {
@@ -22346,6 +22362,12 @@
       "file": "docs/quality/evidence/149-host-maintenance.json",
       "phase": "documentation",
       "gitBlobId": "84e373a0632773aea8bfa2eb436f4341524c613a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/152-account-entry-ownership.json",
+      "phase": "documentation",
+      "gitBlobId": "30bea7b3f6efc1473dac87f08da3aa4af6486672",
       "reviewStatus": "pending"
     },
     {
