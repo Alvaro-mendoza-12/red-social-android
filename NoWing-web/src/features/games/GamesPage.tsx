@@ -76,6 +76,7 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
   const [popularLoading, setPopularLoading] = useState(true)
   const [connections, setConnections] = useState<Connection[]>([])
   const [activityLoading, setActivityLoading] = useState(true)
+  const [activityError, setActivityError] = useState('')
   const [matches, setMatches] = useState<Match[]>([])
   const [acceptedMatches, setAcceptedMatches] = useState<string[]>([])
   const [session, setSession] = useState<Session | null>(null)
@@ -145,12 +146,18 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
     }
   }, [request])
   const loadConnections = useCallback(async () => {
-    const [connectionsData, matchesData] = await Promise.all([
-      request<{ items: Connection[] }>('/connections'),
-      request<{ items: Match[] }>('/matches'),
-    ])
-    setConnections(connectionsData.items)
-    setMatches(matchesData.items)
+    try {
+      const [connectionsData, matchesData] = await Promise.all([
+        request<{ items: Connection[] }>('/connections'),
+        request<{ items: Match[] }>('/matches'),
+      ])
+      setConnections(connectionsData.items)
+      setMatches(matchesData.items)
+      setActivityError('')
+    } catch (caught) {
+      setActivityError(errorText(caught))
+      throw caught
+    }
   }, [request])
   useEffect(() => {
     let active = true
@@ -165,7 +172,7 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
       if (!capabilities.enabled) return
       void loadProfile().catch(caught => { if (active) setError(errorText(caught)) })
         .finally(() => { if (active) setProfileLoading(false) })
-      void loadConnections().catch(caught => { if (active) setError(errorText(caught)) })
+      void loadConnections().catch(() => {})
         .finally(() => { if (active) setActivityLoading(false) })
       try {
         const games = await request<{ items: Game[] }>('/catalog?limit=12')
@@ -243,6 +250,13 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
   function submitSearch(event: FormEvent) {
     event.preventDefault()
     void discovery.load(filters)
+  }
+
+  async function refreshActivity() {
+    if (busy || activityLoading) return
+    setActivityLoading(true)
+    try { await loadConnections() } catch { /* The activity panel reports the load error. */ }
+    finally { setActivityLoading(false) }
   }
   function saveProfile(event: FormEvent) {
     event.preventDefault()
@@ -511,9 +525,14 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
     {tab === 'connections' && <section className="games-section" aria-labelledby="games-activity-title">
       <div className="games-section-heading games-section-heading-actions">
         <Inbox aria-hidden="true" /><div><h3 id="games-activity-title">Actividad</h3><p>Solicitudes, coincidencias y conversaciones.</p></div>
-        <button className="ghost-btn" type="button" disabled={busy || activityLoading} onClick={() => void act(loadConnections, 'Actividad actualizada.')}>Actualizar</button>
+        <button className="ghost-btn" type="button" disabled={busy || activityLoading} onClick={() => void refreshActivity()}>Actualizar</button>
       </div>
-      {activityLoading ? <p className="surface-card games-empty" role="status">Cargando actividad…</p> : <div className="games-activity-grid">
+      {activityLoading && <p className="surface-card games-empty" role="status">Cargando actividad…</p>}
+      {!activityLoading && activityError && <div className="games-alert error" role="alert">
+        <strong>No se pudo cargar la actividad. </strong>{activityError}{' '}
+        <button type="button" className="ghost-btn" disabled={busy} onClick={() => void refreshActivity()}>Reintentar</button>
+      </div>}
+      {!activityLoading && (!activityError || connections.length > 0 || matches.length > 0) && <div className="games-activity-grid">
       <section className="surface-card games-form games-activity-card">
         <h4><Inbox size={19} aria-hidden="true" />Solicitudes recibidas {incoming.length > 0 && <span className="games-count">{incoming.length}</span>}</h4>
         {!incoming.length && <p className="games-empty">Aún no tienes solicitudes recibidas.</p>}
