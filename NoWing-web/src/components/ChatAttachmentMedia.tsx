@@ -70,10 +70,10 @@ export function ChatAttachmentMedia({
       const nearby = entries.some((entry) => entry.isIntersecting)
       if (kind === 'image') setVisible(nearby)
       else if (nearby) { setVisible(true); observer.disconnect() }
-    }, { rootMargin: preserveAnimation ? '360px' : '1000px' })
+    }, { rootMargin: tilePreview ? '80px' : preserveAnimation ? '160px' : '1000px' })
     observer.observe(target)
     return () => observer.disconnect()
-  }, [kind, preserveAnimation])
+  }, [kind, preserveAnimation, tilePreview])
 
   useEffect(() => {
     if (!ownStorage || !visible || !identity.accountId || kind === 'video' || kind === 'audio' || ((kind === 'file' || kind === 'pdf') && !readRequested)) return
@@ -102,6 +102,7 @@ export function ChatAttachmentMedia({
       if (cachedImage) setPreview(cachedImage)
       else void read({
         url: source, backendBase, identity, maxBytes, signal: controller.signal,
+        priority: imageClassName === 'sticker-preview' && !tilePreview,
         getAccessToken: () => prepareStorageReadAccessToken(identity),
       }).then((blob) => {
         requireStorageReadIdentity(identity)
@@ -134,7 +135,7 @@ export function ChatAttachmentMedia({
       // correctly sees the next render's source as unchanged. Identity
       // invalidation still removes delivered pixels synchronously above.
     }
-  }, [backendBase, identity, kind, maxBytes, ownStorage, size, source, visible, attempt, readRequested])
+  }, [backendBase, identity, kind, maxBytes, ownStorage, size, source, visible, attempt, readRequested, imageClassName, tilePreview])
 
   useEffect(()=>onStorageReadInvalidated(()=>{setViewerOpen(false);setReadRequested(false);container.current?.querySelectorAll('img').forEach(image=>image.removeAttribute('src'))}),[])
   const ready = preview?.source === source && preview.identity === identity ? preview

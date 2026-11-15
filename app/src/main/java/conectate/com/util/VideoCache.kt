@@ -85,7 +85,14 @@ object VideoCache {
         // Cache reuse checks current permissions and ETag. Prefetch can still
         // populate the cache after admission so the next video can reuse it.
         return DataSource.Factory {
-            StorageReadDataSource(upstreamDataSourceFactory, cachedFactory, requireStorageCacheAdmission) { spec ->
+            val cacheNetworkRead = if (preferDirectOnMiss) {
+                { spec: DataSpec, headers: Map<String, List<String>> ->
+                    try {
+                        getOrCreateCache(context.applicationContext)?.let { admittedVideoCacheSink(it, spec, headers) }
+                    } catch (_: java.io.IOException) { null }
+                }
+            } else null
+            StorageReadDataSource(upstreamDataSourceFactory, cachedFactory, requireStorageCacheAdmission, cacheNetworkRead) { spec ->
                 PlaybackCacheAdmission.key(spec, sourceFactory = upstreamDataSourceFactory, existingCache = existingCache)
             }
         }

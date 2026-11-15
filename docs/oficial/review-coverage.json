@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T04:21:53.947468+00:00",
-  "baseCommit": "382cbd6cd95390e6d15acc0cfbd58372a5ef1575",
+  "generatedAtUtc": "2026-11-15T06:05:53.520571+00:00",
+  "baseCommit": "0b84d80769980327ce6e00faaf2ab44a7bd00a55",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3611,
-    "partial": 249,
-    "code-read": 668
+    "pending": 3608,
+    "partial": 252,
+    "code-read": 671
   },
   "countsByPhase": {
     "android": {
       "pending": 1488,
-      "code-read": 470,
-      "partial": 103
+      "code-read": 472,
+      "partial": 102
     },
     "documentation": {
       "pending": 624,
-      "code-read": 50,
+      "code-read": 52,
       "partial": 23
     },
     "server": {
@@ -36,9 +36,9 @@
       "code-read": 15
     },
     "web": {
-      "partial": 82,
-      "pending": 494,
-      "code-read": 76
+      "partial": 86,
+      "pending": 491,
+      "code-read": 75
     }
   },
   "files": [
@@ -271,14 +271,18 @@
     {
       "file": "NoWing-web/package-lock.json",
       "phase": "web",
-      "gitBlobId": "fa3db8100e746d18109a20bd9f3300a585f6c66f",
-      "reviewStatus": "pending"
+      "gitBlobId": "524da223bf48a4451142c27e3cb427312cb93e7e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/package.json",
       "phase": "web",
-      "gitBlobId": "20d76a55eb3fb5fa6dd1d33f0aed04ee69777a55",
-      "reviewStatus": "pending"
+      "gitBlobId": "ea5cfd812839d20cc868c4506da556b103a17d22",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/.well-known/assetlinks.json",
@@ -807,9 +811,9 @@
     {
       "file": "NoWing-web/src/__tests__/components/ChatAttachmentMedia.test.tsx",
       "phase": "web",
-      "gitBlobId": "a05e7b33a8c452cf043a5ae5f3cbba59264f7ea4",
+      "gitBlobId": "7971cad3b7b52cafddf1d148bb15594717d7f922",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -1111,8 +1115,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/StickerPicker.test.tsx",
       "phase": "web",
-      "gitBlobId": "6f468f9c267cc9895ba7dccf0f091c582516fa6b",
-      "reviewStatus": "pending"
+      "gitBlobId": "7d1c076641598497a65f2c3b87e95e66fb6aa458",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/StorageReadAuthBoundary.test.tsx",
@@ -2113,9 +2119,9 @@
     {
       "file": "NoWing-web/src/components/ChatAttachmentMedia.tsx",
       "phase": "web",
-      "gitBlobId": "23a24f03d5575ec4c8ec36e5ba5b09eccdc05f20",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "gitBlobId": "bcaa4380f616343ad4aac46319c888b7f49f897c",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2503,9 +2509,9 @@
     {
       "file": "NoWing-web/src/components/StickerPicker.tsx",
       "phase": "web",
-      "gitBlobId": "6c219f09257c880a48b4ee1bc652c657ca066c6b",
+      "gitBlobId": "d804d3d803866c824909d48340de19adcccae799",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13225,6 +13231,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/util/AdmittedVideoCacheSink.kt",
+      "phase": "android",
+      "gitBlobId": "553aa8195935aefae3445355ccdb92b2717956a1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/util/AgoraConfig.kt",
       "phase": "android",
       "gitBlobId": "eab673f149d8a661ec18b8ab977c46f4e992d0b6",
@@ -13581,9 +13595,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/StorageReadDataSource.kt",
       "phase": "android",
-      "gitBlobId": "201e74c4dffbc01af4b75b2fd9850eb12fc0b742",
+      "gitBlobId": "ff592be647c19036cfda6af5fb9c3a3e9537c657",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13627,9 +13641,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/VideoCache.kt",
       "phase": "android",
-      "gitBlobId": "af5925ea988abdd838bf418d8065e2ee43466ebf",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "gitBlobId": "e57f69b4d575633ba16469d846e31ceb711c2ae1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17787,9 +17801,9 @@
     {
       "file": "app/src/test/java/conectate/com/util/FeedPlaybackCacheAdmissionTest.kt",
       "phase": "android",
-      "gitBlobId": "899b9207fff812f9ce49eaf330321f01355a2d64",
+      "gitBlobId": "be85b5146a01acf7a6dede11917eccd52218630d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20517,9 +20531,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "b086690fc02ef7bdb76aaa62e50ebe3aff2738d7",
+      "gitBlobId": "a1c7415e4ddd74747bab65f9c5499475ce736122",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20809,6 +20823,14 @@
       "phase": "documentation",
       "gitBlobId": "b4696ef15f042f4185b6964390bdcca4e63427cc",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "b13c49705db4f68bf5fa7a99ae61cb53f2695ae1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/15-auditoria-extrema-2026-08-24.md",
@@ -21327,9 +21349,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "35af42be5294da2df1fd8b00dc00b5d3d5f1b723",
+      "gitBlobId": "b8a859eed6c0cd6438be423152ccae9bdbd29e51",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22212,6 +22234,14 @@
       "gitBlobId": "bb6b52fa33984ae2d68a85165da7918b30fb7ccc",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/147-media-delivery.json",
+      "phase": "documentation",
+      "gitBlobId": "e1089066f7a473b346900c68ac37a22d3c6ba009",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

@@ -80,7 +80,9 @@ class FeedPlaybackCacheAdmissionTest {
 
     private fun playback(preferDirect: Boolean = true): DataSource {
         val existingCache = if (preferDirect) ({ cache }) else null
-        return StorageReadDataSource(upstream, cached(upstream)) { spec ->
+        return StorageReadDataSource(upstream, cached(upstream), cacheNetworkRead = { spec, headers ->
+            admittedVideoCacheSink(cache, spec, headers)
+        }) { spec ->
             PlaybackCacheAdmission.key(spec, sourceFactory = upstream, existingCache = existingCache)
         }
     }
@@ -109,12 +111,41 @@ class FeedPlaybackCacheAdmissionTest {
         }
     }
 
-    @Test fun emptyCacheStartsWithGetWhileOrdinaryAdmissionOpensHeadThenGet() {
+    @Test fun coldGetRetainsItsBytesAndASecondOpenOnlyChecksFreshAdmission() {
         assertArrayEquals(remote.copyOf(4), read(playback(), spec(0)))
         assertEquals(listOf(DataSpec.HTTP_METHOD_GET), requests)
         requests.clear()
         assertArrayEquals(remote.copyOf(4), read(playback(preferDirect = false), spec(0)))
-        assertEquals(listOf(DataSpec.HTTP_METHOD_HEAD, DataSpec.HTTP_METHOD_GET), requests)
+        assertEquals(listOf(DataSpec.HTTP_METHOD_HEAD), requests)
+    }
+
+    @Test fun failedOrUnadvertisedAdmissionCannotCreateAReusableCacheEntry() {
+        val readSpec = spec(0)
+        val unsupported = mapOf("ETag" to listOf("one"), "Content-Type" to listOf("video/mp4"))
+        assertNull(admittedVideoCacheSink(cache, readSpec, unsupported))
+        assertTrue(cache.keys.isEmpty())
+        val permitted = unsupported + ("X-Novvin-Playback-Cache" to listOf("permission-check-v1"))
+        assertNull(admittedVideoCacheSink(cache, readSpec.buildUpon().setUri("$url?lease=single-view").build(), permitted))
+        StorageReadSession.install { credential("guest_probe", 2) }
+        assertNull(admittedVideoCacheSink(cache, readSpec, permitted))
+        assertTrue(cache.keys.isEmpty())
+    }
+
+    @Test fun aWriterStopsAtTheNextCachedSpanAndAlwaysReleasesItsLock() {
+        seed(position = 4)
+        val headers = upstream.createDataSource().responseHeaders
+        val sink = requireNotNull(admittedVideoCacheSink(cache, spec(0).buildUpon().setLength(8).build(), headers))
+        sink.write(remote, 0, 8)
+        sink.close()
+        val key = requireNotNull(PlaybackCacheAdmission.revisionKey(url, originalKey,
+            "permission-check-v1", revision, "video/mp4", false))
+        assertTrue(cache.isCached(key, 0, 8))
+        assertArrayEquals(remote.copyOf(4), read(playback(), spec(0)))
+        assertArrayEquals(stored.copyOf(4), read(playback(), spec(4)))
+        // The writer must release its hole even after normal playback closes.
+        val later = requireNotNull(admittedVideoCacheSink(cache, spec(8), headers))
+        later.close()
+        requireNotNull(admittedVideoCacheSink(cache, spec(8), headers)).close()
     }
 
     @Test fun warmBytesStillRequireFreshPermissionAndRevisionOnEveryOpen() {
