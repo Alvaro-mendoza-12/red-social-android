@@ -136,3 +136,22 @@ test('activity waits for the inbox before showing its counts and moves an accept
   expect(await screen.findByRole('link', { name: 'Abrir chat' })).toHaveAttribute('href', '/chat/teammate')
   expect(screen.getByText('Aún no tienes solicitudes recibidas.')).toBeInTheDocument()
 })
+
+test('activity offers a retry when its first load fails before the tab opens', async () => {
+  let attempts = 0
+  api.mockImplementation(path => {
+    if (path.endsWith('/connections')) {
+      attempts += 1
+      return attempts === 1 ? Promise.reject(new Error('NETWORK_ERROR')) : Promise.resolve({ items: [] })
+    }
+    return Promise.resolve(baseResponse(path))
+  })
+  showGames()
+  await screen.findByRole('heading', { name: 'Encuentra tu equipo' })
+  fireEvent.click(tab('Actividad'))
+  const error = await screen.findByRole('alert')
+  expect(screen.queryByText('Aún no tienes solicitudes recibidas.')).not.toBeInTheDocument()
+  fireEvent.click(within(error).getByRole('button', { name: 'Reintentar' }))
+  expect(await screen.findByText('Aún no tienes solicitudes recibidas.')).toBeInTheDocument()
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+})
