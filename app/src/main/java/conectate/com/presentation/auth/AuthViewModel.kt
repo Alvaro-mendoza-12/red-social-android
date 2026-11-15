@@ -102,6 +102,7 @@ class AuthViewModel @Inject constructor(
     private val _appealMessage = MutableStateFlow<String?>(null)
     val appealMessage: StateFlow<String?> = _appealMessage.asStateFlow()
     private val _assistedRecoverySubmitting = MutableStateFlow(false)
+    private var assistedRecoveryGeneration = 0L
     val assistedRecoverySubmitting: StateFlow<Boolean> = _assistedRecoverySubmitting.asStateFlow()
     private val _assistedRecoveryMessage = MutableStateFlow<String?>(null)
     val assistedRecoveryMessage: StateFlow<String?> = _assistedRecoveryMessage.asStateFlow()
@@ -109,6 +110,14 @@ class AuthViewModel @Inject constructor(
         context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE).getString("case_id", null)
     )
     val assistedRecoveryCaseId: StateFlow<String?> = _assistedRecoveryCaseId.asStateFlow()
+
+    private fun resetEntryOperations() {
+        // Invalidate old completions before cancelling. A queued coroutine may
+        // never enter its finally; publish idle only after its scope is replaced.
+        assistedRecoveryGeneration += 1
+        authEntryTasks.reset()
+        _assistedRecoverySubmitting.value = false
+    }
 
     private fun suspendedState(error: AccountSuspendedException) = AuthState.Suspended(
         suspensionEndDate = error.suspensionEndDate,
@@ -259,7 +268,7 @@ class AuthViewModel @Inject constructor(
     }
 
     suspend fun signOut() {
-        authEntryTasks.reset()
+        resetEntryOperations()
         authRepository.signOut()
         _isUserLoggedIn.value = false
         _currentUserId.value = null
@@ -271,7 +280,7 @@ class AuthViewModel @Inject constructor(
      * Ensures we flip the app to "logged out" state before any navigation happens.
      */
     fun forceLocalLogout() {
-        authEntryTasks.reset()
+        resetEntryOperations()
         runCatching { authRepository.forceLocalLogout() }
             .onFailure { android.util.Log.e("AuthViewModel", "forceLocalLogout failed", it) }
         _isUserLoggedIn.value = false
@@ -357,7 +366,7 @@ class AuthViewModel @Inject constructor(
     }
 
     fun resetAuthState() {
-        authEntryTasks.reset()
+        resetEntryOperations()
         emailRecoveryGeneration += 1
         appealGeneration += 1
         _authState.value = AuthState.Idle
@@ -429,7 +438,7 @@ class AuthViewModel @Inject constructor(
     }
 
     fun clearEmailRecovery(onCleared: () -> Unit = {}) {
-        authEntryTasks.reset()
+        resetEntryOperations()
         if (_authState.value is AuthState.Loading) _authState.value = AuthState.Idle
         emailRecoveryGeneration += 1
         _emailRecovery.value = null
@@ -525,20 +534,28 @@ class AuthViewModel @Inject constructor(
         if (_assistedRecoverySubmitting.value) return
         val nextUris = (_recoveryEvidence.value.map { it.uri } + uris).distinct()
         if (nextUris.size > 5) { _assistedRecoveryMessage.value = "Adjunta como máximo cinco archivos."; return }
+        val operation = ++assistedRecoveryGeneration
         _assistedRecoverySubmitting.value = true
         authEntryTasks.scope.launch {
             try {
-                _recoveryEvidence.value = withContext(Dispatchers.IO) { nextUris.map { readRecoveryEvidenceMetadata(context, it) } }
+                val selection = withContext(Dispatchers.IO) { nextUris.map { readRecoveryEvidenceMetadata(context, it) } }
+                if (operation != assistedRecoveryGeneration) return@launch
+                _recoveryEvidence.value = selection
                 _assistedRecoveryMessage.value = null
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-            catch (error: Exception) { _assistedRecoveryMessage.value = "No pudimos leer el archivo. Selecciona una copia disponible en este dispositivo." }
-            finally { _assistedRecoverySubmitting.value = false }
+            catch (error: Exception) {
+                if (operation == assistedRecoveryGeneration)
+                    _assistedRecoveryMessage.value = "No pudimos leer el archivo. Selecciona una copia disponible en este dispositivo."
+            } finally {
+                if (operation == assistedRecoveryGeneration) _assistedRecoverySubmitting.value = false
+            }
         }
     }
     fun removeRecoveryEvidence(uri: Uri) { if (!_assistedRecoverySubmitting.value) _recoveryEvidence.value = _recoveryEvidence.value.filterNot { it.uri == uri } }
 
     fun requestAssistedRecovery(identifier: String, alternateContact: String, description: String, contactType: String, profileHint: String) {
         if (_assistedRecoverySubmitting.value) return
+        val operation = ++assistedRecoveryGeneration
         _assistedRecoverySubmitting.value = true
         _assistedRecoveryMessage.value = null
         authEntryTasks.scope.launch {
@@ -549,6 +566,7 @@ class AuthViewModel @Inject constructor(
                         identifier.trim(), alternateContact.trim(), description.trim(), contactType, profileHint.trim(), files
                     )
                 }
+                if (operation != assistedRecoveryGeneration) return@launch
                 _assistedRecoveryMessage.value = result.fold(
                 onSuccess = {
                     _assistedRecoveryCaseId.value = it.caseId
@@ -559,22 +577,29 @@ class AuthViewModel @Inject constructor(
                 },
                 onFailure = { mapAuthError(it) }
             )
-            } finally { _assistedRecoverySubmitting.value = false }
+            } finally {
+                if (operation == assistedRecoveryGeneration) _assistedRecoverySubmitting.value = false
+            }
         }
     }
 
     fun confirmAssistedContact(caseId: String, code: String) {
         if (_assistedRecoverySubmitting.value) return
+        val operation = ++assistedRecoveryGeneration
         _assistedRecoverySubmitting.value = true
         authEntryTasks.scope.launch {
             try {
-                _assistedRecoveryMessage.value = authEntryOperation {
+                val result = authEntryOperation {
                     localFallbackApiClient.confirmAssistedRecoveryContact(caseId.trim(), code.trim())
-                }.fold(
+                }
+                if (operation != assistedRecoveryGeneration) return@launch
+                _assistedRecoveryMessage.value = result.fold(
                     onSuccess = { "Contacto confirmado. Un administrador revisará ahora las pruebas de propiedad de tu cuenta." },
                     onFailure = { mapAuthError(it) },
                 )
-            } finally { _assistedRecoverySubmitting.value = false }
+            } finally {
+                if (operation == assistedRecoveryGeneration) _assistedRecoverySubmitting.value = false
+            }
         }
     }
 

@@ -52,3 +52,8 @@ La [corrección de propiedad LIVE](../oficial/141-cuentas-motor-y-pantallas-live
 ## Continuación 144 — 14 de noviembre de 2026
 
 La [continuación 144](../oficial/144-qa-medios-y-sincronizacion-2026-11-14.md) corrige la subida de mapas de Crashlytics en QA y comprueba el empaquetado optimizado separado. Registra una sincronización IDE aprobada, un build posterior fallido por recursos y las demoras de la ruta pública de avatares. Distingue las APK de laboratorio de los ensayos físicos y de la entrega final; la revisión móvil integral permanece abierta.
+
+
+## Continuación 148 — 15 de noviembre de 2026
+
+La [continuación 148](../oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md) corrige el bloqueo de recuperación asistida al cancelar una operación en cola y protege su estado frente a respuestas anteriores. Reproduce tres fallos del ViewModel y aprueba veinte casos JVM en cinco clases después del parche. Organiza la validación de acceso, ayuda y Mensajes por recorrido; el módulo completo, el ensayo físico, la entrega de correo y la APK nueva siguen pendientes.
