@@ -3,10 +3,12 @@ import { SafeAvatar } from '../../components/SafeAvatar'
 import { friendlyError } from '../../core/utils'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { ArrowRight, Bookmark, CalendarDays, Gamepad2, LayoutGrid, Search, UserRound, UsersRound } from 'lucide-react'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { uploadFallbackFile } from '../../core/fallbackData'
 import './games.css'
+import { emptyPlayerFilters, matchReadiness, readSavedGames, useGamePlayers, writeSavedGames, type PlayerFilters, type SavedGame } from './playMatchWorkspace'
 import { GameCatalog } from './GameCatalog'
 
 type Game = { id: string; name: string; imageUrl?: string; iconUrl?: string; coverUrl?: string; platforms: string[]; ranks: string[]; roles: string[]; rankSchemas?: { ranks: { key: string; displayName: string }[] }[]; roleDefinitions?: { key: string; displayName: string }[] }
@@ -18,9 +20,16 @@ type Match = { id: string; status: string; score: number; player?: Player }
 type Session = { id: string; status: string; match?: Match }
 type Availability = { dayOfWeek: number; startMinute: number; endMinute: number; timezone: string }
 type Preferences = { version: number; rank_tolerance?: number; voice_required?: boolean; discovery_level?: number; rankTolerance?: number; voiceRequired?: boolean; discoveryLevel?: number }
-type Tab = 'catalog' | 'discover' | 'profile' | 'connections' | 'matches'
+type Tab = 'home' | 'catalog' | 'discover' | 'matches' | 'connections' | 'profile'
+type Library = 'all' | 'owned' | 'saved'
+const tabs = [
+  { id: 'home', label: 'Inicio', icon: LayoutGrid },
+  { id: 'catalog', label: 'Catálogo', icon: Gamepad2 },
+  { id: 'discover', label: 'Jugadores', icon: Search },
+  { id: 'matches', label: 'Partidas', icon: CalendarDays },
+  { id: 'connections', label: 'Actividad', icon: UsersRound },
+] as const
 const root = '/v1/data/playmatch'
-const request = <T,>(path: string, method = 'GET', body?: unknown) => fallbackApiJson<T>(`${root}${path}`, body === undefined ? { method } : { method, body: JSON.stringify(body) })
 const errorText = (error: unknown) => {
   const code = error instanceof Error ? error.message : ''
   const messages: Record<string, string> = {
@@ -38,7 +47,22 @@ const errorText = (error: unknown) => {
 
 export function GamesPage() {
   const { isFallbackSession, user } = useAuth()
-  const [tab, setTab] = useState<Tab>('catalog')
+  if (!isFallbackSession || !user) {
+    return <section className="surface-card games-state"><h2>Juegos</h2><p>Inicia sesión con Novvin para abrir PlayMatch.</p></section>
+  }
+  return <GamesWorkspace key={user.id} accountId={user.id} />
+}
+
+function GamesWorkspace({ accountId }: { accountId: string }) {
+  const [tab, setTab] = useState<Tab>('home')
+  const [library, setLibrary] = useState<Library>('all')
+  const [catalogOpened, setCatalogOpened] = useState(false)
+  const [savedGames, setSavedGames] = useState(() => readSavedGames(accountId))
+  const request = useCallback(<T,>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal) =>
+    fallbackApiJson<T>(`${root}${path}`, {
+      method, expectedAccountId: accountId, signal,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }), [accountId])
   const [enabled, setEnabled] = useState<boolean | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [photosEnabled, setPhotosEnabled] = useState(false)
@@ -48,13 +72,16 @@ export function GamesPage() {
   const [preferences, setPreferences] = useState<Preferences | null>(null)
   const [availability, setAvailability] = useState<Availability[]>([])
   const [catalog, setCatalog] = useState<Game[]>([])
-  const [players, setPlayers] = useState<Player[]>([])
+  const [popularGames, setPopularGames] = useState<Game[]>([])
+  const [popularLoading, setPopularLoading] = useState(true)
   const [connections, setConnections] = useState<Connection[]>([])
   const [matches, setMatches] = useState<Match[]>([])
+  const [acceptedMatches, setAcceptedMatches] = useState<string[]>([])
   const [session, setSession] = useState<Session | null>(null)
-  const [query, setQuery] = useState('')
-  const [gameFilter, setGameFilter] = useState('')
-  const [availableNow, setAvailableNow] = useState(false)
+  const [filters, setFilters] = useState<PlayerFilters>(emptyPlayerFilters)
+  const discovery = useGamePlayers<Player>(accountId)
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [revision, setRevision] = useState(0)
   const [selectedGame, setSelectedGame] = useState('')
   const [selectedPlatform, setSelectedPlatform] = useState('')
   const [catalogQuery, setCatalogQuery] = useState('')
@@ -82,7 +109,13 @@ export function GamesPage() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const mediaDraftRef = useRef(false)
-  const pendingConnectionIds = new Set(connections.filter((item) => item.status === 'PENDING' || item.status === 'ACCEPTED').map((item) => item.otherUserId))
+  const mutation = useRef(false)
+  const sessionWrite = useRef(false)
+  const connectionsByPlayer = new Map(connections.map(item => [item.otherUserId, item]))
+
+  useEffect(() => {
+    if (tab === 'catalog' && library === 'all') setCatalogOpened(true)
+  }, [tab, library])
 
   const loadProfile = useCallback(async (preserveDraft = false) => {
     const data = await request<{ profile: Profile; preferences?: Preferences }>('/profile')
@@ -109,7 +142,7 @@ export function GamesPage() {
       setAdultConfirmed(data.profile.adultConfirmed)
       setDiscoverable(data.profile.discoverable)
     }
-  }, [])
+  }, [request])
   const loadConnections = useCallback(async () => {
     const [connectionsData, matchesData] = await Promise.all([
       request<{ items: Connection[] }>('/connections'),
@@ -117,51 +150,97 @@ export function GamesPage() {
     ])
     setConnections(connectionsData.items)
     setMatches(matchesData.items)
-  }, [])
-  const loadPlayers = useCallback(async (search: string, gameId: string, now: boolean) => {
-    const params = new URLSearchParams({ limit: '20' })
-    if (search.trim()) params.set('q', search.trim())
-    if (gameId) params.set('gameId', gameId)
-    if (now) params.set('availableNow', 'true')
-    const data = await request<{ items: Player[] }>(`/players?${params}`)
-    setPlayers(data.items)
-  }, [])
-
+  }, [request])
   useEffect(() => {
-    if (!isFallbackSession) { setLoading(false); return }
     let active = true
-    request<{ capabilities: { enabled: boolean; photosEnabled: boolean } }>('/capabilities').then(async (capabilities) => {
+    setLoading(true)
+    setProfileLoading(true)
+    setError('')
+    request<{ capabilities: { enabled: boolean; photosEnabled: boolean } }>('/capabilities').then(async ({ capabilities }) => {
       if (!active) return
-      setEnabled(capabilities.capabilities.enabled)
-      setPhotosEnabled(capabilities.capabilities.photosEnabled)
-      if (!capabilities.capabilities.enabled) return
-      const games = await request<{ items: Game[] }>('/catalog?limit=50')
-      if (!active) return
-      setCatalog(games.items)
-      await Promise.all([loadProfile(), loadPlayers('', '', false), loadConnections()])
-    }).catch((caught) => { if (active) setError(errorText(caught)) })
+      setEnabled(capabilities.enabled)
+      setPhotosEnabled(capabilities.photosEnabled)
+      setLoading(false)
+      if (!capabilities.enabled) return
+      void loadProfile().catch(caught => { if (active) setError(errorText(caught)) })
+        .finally(() => { if (active) setProfileLoading(false) })
+      void loadConnections().catch(caught => { if (active) setError(errorText(caught)) })
+      try {
+        const games = await request<{ items: Game[] }>('/catalog?limit=12')
+        if (active) {
+          setPopularGames(games.items)
+          setCatalog(current => [...new Map([...current, ...games.items].map(game => [game.id, game])).values()])
+        }
+      } finally { if (active) setPopularLoading(false) }
+    }).catch(caught => { if (active) setError(errorText(caught)) })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [isFallbackSession, loadConnections, loadPlayers, loadProfile])
+  }, [request, loadConnections, loadProfile, revision])
 
+  const sessionId = session?.id
+  const sessionStatus = session?.status
   useEffect(() => {
-    if (!session || !['SEARCHING', 'MATCH_FOUND'].includes(session.status)) return
-    const timer = window.setInterval(() => {
-      void request<{ session: Session }>(`/matchmaking/sessions/${encodeURIComponent(session.id)}`)
-        .then((result) => setSession(result.session))
-        .catch((caught) => setError(errorText(caught)))
-    }, 5000)
-    return () => window.clearInterval(timer)
-  }, [session])
+    if (!sessionId || !['SEARCHING', 'MATCH_FOUND'].includes(sessionStatus || '')) return
+    const controller = new AbortController()
+    let timer: number | undefined
+    async function poll() {
+      if (controller.signal.aborted) return
+      try {
+        if (!document.hidden && !sessionWrite.current) {
+          const result = await request<{ session: Session }>(`/matchmaking/sessions/${encodeURIComponent(sessionId!)}`, 'GET', undefined, controller.signal)
+          if (!controller.signal.aborted && !sessionWrite.current) {
+            setSession(current => current && current.id === sessionId && current.status === sessionStatus ? result.session : current)
+            if (result.session.status === 'ACCEPTED') await loadConnections()
+          }
+        }
+      } catch (caught) {
+        if (!controller.signal.aborted) setError(errorText(caught))
+      } finally {
+        if (!controller.signal.aborted) timer = window.setTimeout(poll, 5_000)
+      }
+    }
+    timer = window.setTimeout(poll, 5_000)
+    return () => { controller.abort(); window.clearTimeout(timer) }
+  }, [request, loadConnections, sessionId, sessionStatus])
 
   async function act(action: () => Promise<void>, success: string) {
-    if (busy) return
-    setBusy(true); setError(''); setNotice('')
-    try { await action(); setNotice(success) } catch (caught) { setError(errorText(caught)) } finally { setBusy(false) }
+    if (mutation.current) return
+    mutation.current = true
+    setBusy(true)
+    setError('')
+    setNotice('')
+    try { await action(); setNotice(success) } catch (caught) { setError(errorText(caught)) } finally {
+      mutation.current = false
+      setBusy(false)
+    }
   }
+
+  function selectSection(next: Tab) {
+    setTab(next)
+    setError('')
+    setNotice('')
+    if (next === 'discover' && !discovery.applied && !discovery.loading) void discovery.load(filters)
+  }
+
+  function discoverGame(game: SavedGame) {
+    setCatalog(current => current.some(item => item.id === game.id) ? current : [...current, { ranks: [], roles: [], ...game }])
+    const next = { ...emptyPlayerFilters, gameId: game.id }
+    setFilters(next)
+    setTab('discover')
+    void discovery.load(next)
+  }
+
+  function toggleSave(game: SavedGame) {
+    const next = savedGames.some(item => item.id === game.id)
+      ? savedGames.filter(item => item.id !== game.id)
+      : [{ id: game.id, name: game.name, platforms: game.platforms }, ...savedGames]
+    if (writeSavedGames(accountId, next)) setSavedGames(next)
+    else setError('Este navegador no permitió guardar el juego en el dispositivo.')
+  }
+
   function submitSearch(event: FormEvent) {
     event.preventDefault()
-    void act(() => loadPlayers(query, gameFilter, availableNow), 'Resultados actualizados.')
+    void discovery.load(filters)
   }
   function saveProfile(event: FormEvent) {
     event.preventDefault()
@@ -216,7 +295,7 @@ export function GamesPage() {
     if (kind === 'photo' && photos.length >= 4) { setError('Puedes agregar hasta cuatro capturas.'); return }
     void act(async () => {
       const extension = file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg'
-      const path = `${user?.id || 'me'}/${crypto.randomUUID()}_gamer_${kind}.${extension}`
+      const path = `${accountId}/${crypto.randomUUID()}_gamer_${kind}.${extension}`
       const uploaded = await uploadFallbackFile('avatars', file, path)
       mediaDraftRef.current = true
       if (kind === 'avatar') { setAvatarUrl(uploaded.publicUrl); setAvatarMediaType('image') }
@@ -233,33 +312,176 @@ export function GamesPage() {
   const rankOptions = game?.rankSchemas?.flatMap((schema) => schema.ranks.map((rank) => [rank.key, rank.displayName] as const)) || game?.ranks.map((rank) => [rank, rank] as const) || []
   const roleOptions = game?.roleDefinitions?.map((role) => [role.key, role.displayName] as const) || game?.roles.map((role) => [role, role] as const) || []
 
-  if (!isFallbackSession) return <section className="surface-card games-state"><h2>Juegos</h2><p>Inicia sesión con el servidor Novvin para usar el perfil de juegos y buscar jugadores.</p></section>
   if (loading) return <section className="surface-card games-state" role="status">Cargando juegos...</section>
-  if (enabled === null) return <section className="surface-card games-state" role="alert"><h2>No se pudieron cargar los juegos</h2><p>{error || 'Revisa tu conexión e inténtalo de nuevo.'}</p><button className="ghost-btn" type="button" onClick={() => window.location.reload()}>Reintentar</button></section>
+  if (enabled === null) return <section className="surface-card games-state" role="alert"><h2>No se pudieron cargar los juegos</h2><p>{error || 'Revisa tu conexión e inténtalo de nuevo.'}</p><button className="ghost-btn" type="button" onClick={() => setRevision(value => value + 1)}>Reintentar</button></section>
   if (enabled === false) return <section className="surface-card games-state"><h2>Juegos no disponible</h2><p>El servidor aún no habilitó PlayMatch para esta cuenta. Tus otros espacios siguen disponibles.</p><Link className="ghost-btn" to="/app/social">Ir a Social</Link></section>
+  const pendingMatches = matches.filter(item => item.status === 'PENDING')
+  const incoming = connections.filter(item => item.status === 'PENDING' && item.direction === 'INCOMING')
+  const outgoing = connections.filter(item => item.status === 'PENDING' && item.direction === 'OUTGOING')
+  const chats = connections.filter(item => item.status === 'ACCEPTED' && item.otherUserId)
+  const pendingCount = incoming.length + pendingMatches.length
+  const featured = popularGames[0]
+  const featuredImage = featured && (featured.coverUrl || featured.imageUrl || featured.iconUrl)
+  const readiness = matchReadiness(profile, profileLoading)
+  const ownedCount = profile?.games.length || 0
+  const platforms = [...new Set(catalog.flatMap(item => item.platforms))]
+  const activeSession = Boolean(session && ['SEARCHING', 'MATCH_FOUND'].includes(session.status))
+  function openLibrary(next: Library) { setLibrary(next); selectSection('catalog') }
+  function updateFilter<K extends keyof PlayerFilters>(key: K, value: PlayerFilters[K]) {
+    setFilters(current => ({ ...current, [key]: value }))
+  }
+  function decideConnection(connection: Connection, decision: 'ACCEPT' | 'REJECT') {
+    void act(async () => {
+      await request(`/connections/${encodeURIComponent(connection.id)}/decision`, 'POST', { decision })
+      await loadConnections()
+    }, decision === 'ACCEPT' ? 'Solicitud aceptada.' : 'Solicitud rechazada.')
+  }
+  function decideMatch(match: Match, decision: 'ACCEPT' | 'SKIP') {
+    void act(async () => {
+      sessionWrite.current = true
+      try {
+        const result = await request<{ status: string }>(`/matches/${encodeURIComponent(match.id)}/decision`, 'POST', { decision })
+        if (decision === 'ACCEPT') setAcceptedMatches(current => [...current, match.id])
+        if (session?.match?.id === match.id && (decision === 'SKIP' || result.status === 'ACCEPTED')) {
+          setSession(current => current?.id === session.id
+            ? decision === 'SKIP' ? { ...current, status: 'SEARCHING', match: undefined } : { ...current, status: 'ACCEPTED' }
+            : current)
+        }
+        await loadConnections()
+      } finally { sessionWrite.current = false }
+    }, decision === 'ACCEPT' ? 'Aceptación enviada.' : 'Coincidencia omitida.')
+  }
+  function startMatch() {
+    if (!readiness.ready || activeSession || !profile) return
+    void act(async () => {
+      sessionWrite.current = true
+      try {
+        const result = await request<{ session: Session }>('/matchmaking/sessions', 'POST', {
+          idempotencyKey: crypto.randomUUID(),
+          gameIds: filters.gameId ? [filters.gameId] : [...new Set(profile.games.map(item => item.gameId))],
+          platforms: filters.platform ? [filters.platform] : [],
+        })
+        setSession(result.session)
+        if (result.session.status === 'MATCH_FOUND') await loadConnections()
+      } finally { sessionWrite.current = false }
+    }, 'Búsqueda iniciada.')
+  }
+  function cancelMatch() {
+    if (!session || !activeSession) return
+    void act(async () => {
+      sessionWrite.current = true
+      try {
+        const result = await request<{ session: Session }>(`/matchmaking/sessions/${encodeURIComponent(session.id)}/cancel`, 'POST')
+        setSession(result.session)
+        await loadConnections()
+      } finally { sessionWrite.current = false }
+    }, 'Búsqueda cancelada.')
+  }
+
   return <div className="games-page">
-    <div className="games-intro surface-card"><div><span className="games-eyebrow">PLAYMATCH</span><h2>Tu espacio para jugar en compañía</h2><p>Encuentra personas por juego y plataforma. Decide qué datos compartes desde tu perfil.</p></div><button className="ghost-btn" type="button" onClick={() => { void act(async () => { await Promise.all([loadProfile(true), loadPlayers(query, gameFilter, availableNow), loadConnections()]) }, 'Información actualizada.') }} disabled={busy}>Actualizar</button></div>
+    <header className="games-page-header">
+      <div className="games-page-identity"><Gamepad2 aria-hidden="true" /><h2>PlayMatch</h2></div>
+      <button className="ghost-btn" type="button" onClick={() => selectSection('profile')}><UserRound size={18} aria-hidden="true" />Mi perfil gamer</button>
+    </header>
     <nav className="games-tabs" aria-label="Secciones de juegos">
-      {([['catalog', 'Juegos'], ['discover', 'Descubrir'], ['profile', 'Mi perfil'], ['connections', 'Conexiones'], ['matches', 'Partidas']] as const).map(([id, label]) => <button key={id} type="button" className={tab === id ? 'games-tab active' : 'games-tab'} aria-pressed={tab === id} onClick={() => { setTab(id); setError(''); setNotice('') }}>{label}</button>)}
+      {tabs.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`games-tab${tab === id ? ' active' : ''}`} aria-pressed={tab === id} onClick={() => selectSection(id)}>
+        <Icon size={17} aria-hidden="true" />{label}
+        {id === 'connections' && pendingCount > 0 && <span className="games-pending" aria-label={`${pendingCount} pendientes`}>{pendingCount}</span>}
+      </button>)}
     </nav>
-    {error && <p className="games-alert error" role="alert">{error}</p>}{notice && <p className="games-alert" role="status">{notice}</p>}
-    {tab === 'catalog' && <GameCatalog disabled={busy} onSelect={game => {
-      setCatalog(current => current.some(item => item.id === game.id) ? current : [...current, game])
-      setGameFilter(game.id); setTab('discover')
-      void act(() => loadPlayers(query, game.id, availableNow), '')
-    }} />}
+    {error && <p className="games-alert error" role="alert">{error}</p>}
+    {notice && <p className="games-alert" role="status">{notice}</p>}
+    {tab === 'home' && <>
+      <section className="games-hero surface-card" aria-labelledby="playmatch-home-title">
+        {featuredImage && <StreamingImage className="games-hero-art" src={featuredImage} alt="" fetchPriority="high" />}
+        <div className="games-hero-copy">
+          <h3 id="playmatch-home-title">Encuentra tu equipo</h3>
+          <p>Explora por juego y plataforma, o abre una búsqueda para encontrar una partida.</p>
+          <div className="games-row-actions">
+            <button className="primary-btn" type="button" onClick={() => selectSection('matches')}>{activeSession ? 'Ver búsqueda activa' : 'Buscar partida'}<ArrowRight size={16} aria-hidden="true" /></button>
+            <button className="games-hero-secondary" type="button" onClick={() => selectSection('discover')}>Ver jugadores</button>
+          </div>
+        </div>
+      </section>
+      <div className="games-home-grid">
+        <button className="games-shortcut surface-card" type="button" onClick={() => openLibrary('owned')}>
+          <Gamepad2 aria-hidden="true" /><span><strong>Mis juegos</strong><small>{profileLoading ? 'Cargando perfil…' : `${ownedCount} ${ownedCount === 1 ? 'configurado' : 'configurados'}`}</small></span><ArrowRight size={17} aria-hidden="true" />
+        </button>
+        <button className="games-shortcut surface-card" type="button" onClick={() => openLibrary('saved')}>
+          <Bookmark aria-hidden="true" /><span><strong>Guardados</strong><small>{savedGames.length} en este dispositivo</small></span><ArrowRight size={17} aria-hidden="true" />
+        </button>
+        <button className="games-shortcut surface-card" type="button" onClick={() => selectSection('connections')}>
+          <UsersRound aria-hidden="true" /><span><strong>Actividad</strong><small>{pendingCount ? `${pendingCount} por revisar` : 'Solicitudes y chats'}</small></span><ArrowRight size={17} aria-hidden="true" />
+        </button>
+      </div>
+      <section className="games-popular section-stack" aria-labelledby="playmatch-popular">
+        <div className="row-between"><h3 id="playmatch-popular">Juegos populares</h3><button className="ghost-btn" type="button" onClick={() => openLibrary('all')}>Ver catálogo</button></div>
+        {popularGames.length ? <div className="games-popular-list">
+          {popularGames.slice(0, 8).map(game => <button key={game.id} className="games-popular-card" type="button" onClick={() => discoverGame(game)}>
+            {game.coverUrl || game.imageUrl || game.iconUrl ? <StreamingImage src={game.coverUrl || game.imageUrl || game.iconUrl} alt="" loading="lazy" /> : null}
+            <strong>{game.name}</strong>
+          </button>)}
+        </div> : popularLoading ? <p className="surface-card games-empty" role="status">Cargando juegos populares…</p>
+          : <p className="surface-card games-empty">Puedes buscar juegos directamente en el catálogo.</p>}
+      </section>
+    </>}
+    {(tab === 'catalog' || catalogOpened) && <section className="games-section" hidden={tab !== 'catalog'}>
+      <nav className="games-library-tabs" aria-label="Biblioteca de juegos">
+        {([['all', 'Explorar'], ['owned', 'Mis juegos'], ['saved', 'Guardados']] as const).map(([id, label]) =>
+          <button key={id} className="ghost-btn" type="button" aria-pressed={library === id} onClick={() => setLibrary(id)}>{label}</button>)}
+      </nav>
+      {catalogOpened && <div hidden={library !== 'all'}><GameCatalog disabled={busy} onSelect={discoverGame} savedIds={new Set(savedGames.map(game => game.id))} onSave={toggleSave} accountId={accountId} /></div>}
+      {library === 'owned' && <section className="surface-card games-form">
+        <div className="row-between"><h3>Mis juegos</h3><button type="button" className="ghost-btn" onClick={() => selectSection('profile')}>Editar juegos</button></div>
+        {profileLoading ? <p role="status">Cargando tus juegos…</p> : !profile?.games.length ? <p>Añade un juego a tu perfil para buscar partida.</p> : profile.games.map(game => <div className="games-list-row" key={game.id}>
+          <span><strong>{game.gameName}</strong><small>{game.platform}{game.rank ? ` · ${game.rank}` : ''}</small></span>
+          <button className="ghost-btn" type="button" onClick={() => discoverGame({ id: game.gameId, name: game.gameName, platforms: [game.platform] })}>Ver jugadores</button>
+        </div>)}
+      </section>}
+      {library === 'saved' && <section className="surface-card games-form">
+        <h3>Juegos guardados</h3>
+        {!savedGames.length ? <p>Guarda juegos desde el catálogo para volver a buscarlos aquí.</p> : savedGames.map(game => <div className="games-list-row" key={game.id}>
+          <span><strong>{game.name}</strong><small>{game.platforms.join(' · ')}</small></span>
+          <div className="games-row-actions"><button type="button" className="ghost-btn" onClick={() => discoverGame(game)}>Ver jugadores</button>
+            <button type="button" className="ghost-btn" onClick={() => toggleSave(game)} aria-label={`Quitar ${game.name} de guardados`}>Quitar</button></div>
+        </div>)}
+      </section>}
+    </section>}
     {tab === 'discover' && <section className="games-section">
       <form className="games-filters surface-card" onSubmit={submitSearch}>
-        <label>Buscar jugador<input className="text-input" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nombre o juego" /></label>
-        <label>Juego<select className="text-input" value={gameFilter} onChange={(event) => setGameFilter(event.target.value)}><option value="">Todos los juegos</option>{catalog.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-        <label className="games-check"><input type="checkbox" checked={availableNow} onChange={(event) => setAvailableNow(event.target.checked)} /> Disponible ahora</label>
-        <button className="primary-btn" type="submit" disabled={busy}>Buscar</button>
+        <label>Buscar jugador<input className="text-input" type="search" value={filters.query} maxLength={100} onChange={event => updateFilter('query', event.target.value)} placeholder="Nombre o juego" /></label>
+        <label>Juego<select className="text-input" value={filters.gameId} onChange={event => updateFilter('gameId', event.target.value)}><option value="">Todos</option>{catalog.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+        <label>Plataforma<select className="text-input" value={filters.platform} onChange={event => updateFilter('platform', event.target.value)}><option value="">Todas</option>{platforms.map(item => <option key={item} value={item}>{item}</option>)}</select></label>
+        <label>Región<input className="text-input" value={filters.region} maxLength={40} onChange={event => updateFilter('region', event.target.value)} placeholder="Ej. CO" /></label>
+        <div className="games-filter-actions">
+          <label className="games-check"><input type="checkbox" checked={filters.availableNow} onChange={event => updateFilter('availableNow', event.target.checked)} /> Disponibles ahora</label>
+          <button className="ghost-btn" type="button" onClick={() => { setFilters(emptyPlayerFilters); void discovery.load(emptyPlayerFilters) }}>Limpiar filtros</button>
+          <button className="primary-btn" type="submit">Buscar</button>
+        </div>
       </form>
-      <div className="games-grid">{players.map((player) => <article className="surface-card games-player" key={player.userId}>
-        <div className="games-player-head"><SafeAvatar url={player.avatarUrl} name={player.displayName} size="lg" /><div><h3>{player.displayName}</h3><small>{player.regionCode || 'Región sin especificar'} · {player.playStyle}</small></div></div>
-        <p>{player.gamerBio || 'Este jugador aún no escribió una presentación.'}</p><div className="games-tags">{player.games.slice(0, 4).map((item) => <span key={item.id}>{item.gameName} · {item.platform}</span>)}</div>
-        <div className="games-player-actions"><span>{player.compatibilityScore ?? 0}% compatible</span><div className="games-row-actions"><Link className="ghost-btn" to={`/app/games/player/${encodeURIComponent(player.userId)}`}>Ver perfil</Link><button className="ghost-btn" type="button" disabled={busy || player.connected || pendingConnectionIds.has(player.userId)} onClick={() => void act(async () => { await request('/connections', 'POST', { playerId: player.userId, message: '', idempotencyKey: crypto.randomUUID() }); await loadConnections() }, 'Solicitud de conexión enviada.')}>{player.connected ? 'Conectados' : pendingConnectionIds.has(player.userId) ? 'Solicitud enviada' : 'Conectar'}</button></div></div>
-      </article>)}</div>{players.length === 0 && <p className="games-empty surface-card">No hay jugadores para estos filtros. Prueba otro juego o amplía la búsqueda.</p>}
+      <div className="row-between"><h3>Jugadores</h3><small role="status">{discovery.loading ? 'Buscando…' : `${discovery.players.length} mostrados`}</small></div>
+      {discovery.error && <div className="games-alert error" role="alert">{discovery.error} <button className="ghost-btn" type="button" onClick={() => void discovery.load(discovery.applied || filters, discovery.cursor || undefined)}>Reintentar</button></div>}
+      <div className="games-grid" aria-busy={discovery.loading}>{discovery.players.map(player => {
+        const relation = connectionsByPlayer.get(player.userId)
+        const connected = player.connected || relation?.status === 'ACCEPTED'
+        return <article className="surface-card games-player" key={player.userId}>
+          <div className="games-player-head"><SafeAvatar url={player.avatarUrl} name={player.displayName} size="lg" /><div><h3>{player.displayName}</h3><small>{[player.regionCode, player.playStyle].filter(Boolean).join(' · ')}</small></div></div>
+          {player.gamerBio && <p>{player.gamerBio}</p>}
+          <div className="games-tags">{player.games.slice(0, 4).map(item => <span key={item.id}>{item.gameName} · {item.platform}</span>)}</div>
+          <div className="games-player-actions">
+            {typeof player.compatibilityScore === 'number' && <span>{player.compatibilityScore}% compatible</span>}
+            <div className="games-row-actions">
+              <Link className="ghost-btn" to={`/app/games/player/${encodeURIComponent(player.userId)}`}>Ver perfil</Link>
+              {connected ? <Link className="primary-btn" to={`/chat/${encodeURIComponent(player.userId)}`}>Abrir chat</Link>
+              : <button className="primary-btn" type="button" disabled={busy || relation?.status === 'PENDING'} onClick={() => void act(async () => {
+                await request('/connections', 'POST', { playerId: player.userId, message: '', idempotencyKey: crypto.randomUUID() }); await loadConnections()
+              }, 'Solicitud enviada.')}>{relation?.status === 'PENDING' ? 'Pendiente' : 'Conectar'}</button>}
+            </div>
+          </div>
+        </article>
+      })}</div>
+      {!discovery.loading && !discovery.error && !discovery.players.length && <p className="surface-card games-empty">No hay jugadores con estos filtros. Prueba otro juego o plataforma.</p>}
+      {discovery.cursor && discovery.applied && <button className="ghost-btn" type="button" disabled={discovery.loading} onClick={() => void discovery.load(discovery.applied!, discovery.cursor!)}>Ver más jugadores</button>}
     </section>}
     {tab === 'profile' && <div className="games-profile-grid">
       <form className="surface-card games-form games-player-profile" onSubmit={saveProfile}><h3>Perfil de jugador</h3><fieldset className="games-profile-fieldset"><legend>Tu identidad</legend><label>Foto de perfil (JPG, PNG o WEBP)<input className="text-input" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => { uploadPhoto(event.target.files?.[0], 'avatar'); event.target.value = '' }} /></label>{avatarUrl && <SafeAvatar className="games-profile-avatar" url={avatarUrl} mediaType={avatarMediaType} name={displayName || "Tu perfil"} size="lg" />}<label>Nombre de jugador<input className="text-input" required maxLength={40} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label><label>Presentación<textarea className="text-input" maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} /></label></fieldset><fieldset className="games-profile-fieldset"><legend>Cómo juegas</legend><label>Región<input className="text-input" maxLength={40} value={region} onChange={(event) => setRegion(event.target.value)} /></label><label>Idiomas, separados por coma<input className="text-input" value={languages} onChange={(event) => setLanguages(event.target.value)} placeholder="Español, inglés" /></label><label>Estilo de juego<select className="text-input" value={playStyle} onChange={(event) => setPlayStyle(event.target.value)}><option value="casual">Casual</option><option value="competitive">Competitivo</option><option value="mixed">Ambos</option></select></label><label className="games-check"><input type="checkbox" checked={voicePreference} onChange={(event) => setVoicePreference(event.target.checked)} /> Me gusta usar voz</label></fieldset><fieldset className="games-profile-fieldset"><legend>Privacidad y visibilidad</legend><label className="games-check"><input type="checkbox" checked={adultConfirmed} onChange={(event) => setAdultConfirmed(event.target.checked)} /> Confirmo que soy mayor de edad</label><label className="games-check"><input type="checkbox" checked={discoverable} disabled={!adultConfirmed} onChange={(event) => setDiscoverable(event.target.checked)} /> Mostrar mi perfil en la búsqueda</label><label>Visibilidad del ID de juego<select className="text-input" value={gameIdVisibility} onChange={(event) => setGameIdVisibility(event.target.value)}><option value="private">Solo yo</option><option value="connections">Conexiones</option><option value="public">Todos</option></select></label><label>Visibilidad de horarios<select className="text-input" value={availabilityVisibility} onChange={(event) => setAvailabilityVisibility(event.target.value)}><option value="private">Solo yo</option><option value="connections">Conexiones</option><option value="public">Todos</option></select></label></fieldset>{photosEnabled && <div className="games-form"><label>Capturas de juego (máximo 4)<input className="text-input" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || photos.length >= 4} onChange={(event) => { uploadPhoto(event.target.files?.[0], 'photo'); event.target.value = '' }} /></label><div className="games-photo-grid">{photos.map((url, index) => <div className="games-photo" key={`${url}-${index}`}><StreamingImage src={url} alt={`Captura de juego ${index + 1}`} /><button className="ghost-btn" type="button" disabled={busy} onClick={() => { mediaDraftRef.current = true; setPhotos((current) => current.filter((_, position) => position !== index)) }}>Quitar</button></div>)}</div></div>}<button className="primary-btn" disabled={busy || !profile} type="submit">Guardar perfil</button></form>
@@ -267,7 +489,50 @@ export function GamesPage() {
       <form className="surface-card games-form" onSubmit={savePreferences}><h3>Preferencias de partida</h3><label>Tolerancia de rango: {rankTolerance}<input type="range" min="0" max="5" step="1" value={rankTolerance} onChange={(event) => setRankTolerance(Number(event.target.value))} /></label><label>Nivel de exploración: {discoveryLevel}%<input type="range" min="0" max="100" step="10" value={discoveryLevel} onChange={(event) => setDiscoveryLevel(Number(event.target.value))} /></label><label className="games-check"><input type="checkbox" checked={voiceRequired} onChange={(event) => setVoiceRequired(event.target.checked)} /> Solo jugadores con voz</label><button className="primary-btn" type="submit" disabled={busy || !profile}>Guardar preferencias</button></form>
       <section className="surface-card games-form"><h3>Disponibilidad semanal</h3><p>Comparte solo horarios aproximados; nunca tu ubicación exacta.</p><form className="games-availability-form" onSubmit={(event) => { event.preventDefault(); if (availability.length >= 28) { setError('Puedes guardar hasta 28 horarios.'); return } saveAvailability([...availability, { dayOfWeek: availableDay, startMinute: minutesOf(availableStart), endMinute: minutesOf(availableEnd), timezone: profile?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }]) }}><label>Día<select className="text-input" value={availableDay} onChange={(event) => setAvailableDay(Number(event.target.value))}>{weekdays.map((name, index) => <option key={name} value={index}>{name}</option>)}</select></label><label>Desde<input className="text-input" type="time" value={availableStart} onChange={(event) => setAvailableStart(event.target.value)} /></label><label>Hasta<input className="text-input" type="time" value={availableEnd} onChange={(event) => setAvailableEnd(event.target.value)} /></label><button className="primary-btn" type="submit" disabled={busy}>Agregar horario</button></form><div className="games-list">{availability.map((entry, index) => <div className="games-list-row" key={`${entry.dayOfWeek}-${entry.startMinute}-${index}`}><span><strong>{weekdays[entry.dayOfWeek]}</strong><small>{timeOf(entry.startMinute)}–{timeOf(entry.endMinute)} · {entry.timezone}</small></span><button className="ghost-btn" type="button" disabled={busy} onClick={() => saveAvailability(availability.filter((_, position) => position !== index))}>Quitar</button></div>)}{availability.length === 0 && <p>Sin horarios configurados.</p>}</div></section>
     </div>}
-    {tab === 'connections' && <section className="surface-card games-form"><h3>Solicitudes y conexiones</h3>{connections.map((connection) => <div className="games-list-row" key={connection.id}><span><strong>{connection.otherName}</strong><small>{connection.status === 'PENDING' ? 'Pendiente' : connection.status === 'ACCEPTED' ? 'Conectados' : connection.status}</small></span>{connection.status === 'PENDING' && connection.direction === 'INCOMING' && <div className="games-row-actions"><button className="primary-btn" disabled={busy} onClick={() => void act(async () => { await request(`/connections/${encodeURIComponent(connection.id)}/decision`, 'POST', { decision: 'ACCEPT' }); await loadConnections() }, 'Solicitud aceptada.')}>Aceptar</button><button className="ghost-btn" disabled={busy} onClick={() => void act(async () => { await request(`/connections/${encodeURIComponent(connection.id)}/decision`, 'POST', { decision: 'REJECT' }); await loadConnections() }, 'Solicitud rechazada.')}>Rechazar</button></div>}</div>)}{connections.length === 0 && <p className="games-empty">Todavía no hay solicitudes. Descubre jugadores para empezar.</p>}</section>}
-    {tab === 'matches' && <section className="surface-card games-form"><h3>Buscar partida</h3><p>La búsqueda usa tus juegos y preferencias. Tu perfil debe ser visible para otros jugadores.</p><div className="games-row-actions"><button className="primary-btn" disabled={busy || !profile?.discoverable || !profile.games.length || session?.status === 'SEARCHING'} onClick={() => void act(async () => { const data = await request<{ session: Session }>('/matchmaking/sessions', 'POST', { idempotencyKey: crypto.randomUUID(), gameIds: profile?.games.map((item) => item.gameId) || [] }); setSession(data.session) }, 'Búsqueda iniciada.')}>Buscar compañero</button>{session && ['SEARCHING', 'MATCH_FOUND'].includes(session.status) && <button className="ghost-btn" disabled={busy} onClick={() => void act(async () => { const data = await request<{ session: Session }>(`/matchmaking/sessions/${encodeURIComponent(session.id)}/cancel`, 'POST'); setSession(data.session) }, 'Búsqueda cancelada.')}>Cancelar</button>}</div>{!profile?.discoverable && <p className="games-hint">Activa “Mostrar mi perfil en la búsqueda” en Mi perfil.</p>}{session && <p role="status">Estado: {session.status === 'SEARCHING' ? 'Buscando jugadores...' : session.status === 'MATCH_FOUND' ? 'Se encontró una coincidencia' : session.status}</p>}{session?.match?.player && <p>Coincidencia con {session.match.player.displayName} · {session.match.score}%</p>}<h3>Coincidencias</h3>{matches.map((match) => <div className="games-list-row" key={match.id}><span><strong>{match.player?.displayName || 'Jugador'}</strong><small>{match.score}% · {match.status}</small></span>{match.status === 'PENDING' && <div className="games-row-actions"><button className="primary-btn" disabled={busy} onClick={() => void act(async () => { await request(`/matches/${encodeURIComponent(match.id)}/decision`, 'POST', { decision: 'ACCEPT' }); await loadConnections() }, 'Coincidencia aceptada.')}>Aceptar</button><button className="ghost-btn" disabled={busy} onClick={() => void act(async () => { await request(`/matches/${encodeURIComponent(match.id)}/decision`, 'POST', { decision: 'SKIP' }); await loadConnections() }, 'Coincidencia omitida.')}>Omitir</button></div>}</div>)}{matches.length === 0 && <p className="games-empty">Aún no hay coincidencias.</p>}</section>}
+    {tab === 'connections' && <div className="games-activity-grid">
+      <section className="surface-card games-form">
+        <div className="row-between"><h3>Solicitudes recibidas</h3><button className="ghost-btn" type="button" disabled={busy} onClick={() => void act(loadConnections, 'Actividad actualizada.')}>Actualizar</button></div>
+        {!incoming.length && <p className="games-empty">Aún no tienes solicitudes recibidas.</p>}
+        {incoming.map(connection => <div className="games-list-row" key={connection.id}>
+          <span><strong>{connection.otherName}</strong>{connection.message && <small>{connection.message}</small>}</span>
+          <div className="games-row-actions"><button className="primary-btn" type="button" disabled={busy} onClick={() => decideConnection(connection, 'ACCEPT')}>Aceptar</button><button className="ghost-btn" type="button" disabled={busy} onClick={() => decideConnection(connection, 'REJECT')}>Rechazar</button></div>
+        </div>)}
+      </section>
+      <section className="surface-card games-form">
+        <h3>Solicitudes enviadas</h3>
+        {!outgoing.length && <p className="games-empty">Aún no tienes solicitudes pendientes.</p>}
+        {outgoing.map(connection => <div className="games-list-row" key={connection.id}><span><strong>{connection.otherName}</strong><small>Pendiente de respuesta</small></span></div>)}
+      </section>
+      <section className="surface-card games-form">
+        <h3>Conversaciones de juego</h3>
+        {!chats.length && <p className="games-empty">Al aceptar una solicitud, podrás abrir un chat aquí.</p>}
+        {chats.map(connection => <div className="games-list-row" key={connection.id}><strong>{connection.otherName}</strong><Link className="ghost-btn" to={`/chat/${encodeURIComponent(connection.otherUserId)}`}>Abrir chat</Link></div>)}
+      </section>
+      {pendingMatches.length > 0 && <section className="surface-card games-form"><h3>Coincidencias por revisar</h3><p>{pendingMatches.length} pendientes.</p><button className="primary-btn" type="button" onClick={() => selectSection('matches')}>Revisar partidas</button></section>}
+    </div>}
+    {tab === 'matches' && <section className="games-section">
+      <article className="surface-card games-form games-match-setup">
+        <h3>Buscar partida</h3>
+        <p>{session?.status === 'SEARCHING' ? 'Estamos buscando compañeros compatibles.' : session?.status === 'MATCH_FOUND' ? 'Encontramos una coincidencia. Puedes revisar el perfil antes de decidir.' : readiness.message}</p>
+        {session?.status === 'SEARCHING' && <progress aria-label="Búsqueda en curso" />}
+        {readiness.ready && !activeSession && <div className="games-row-actions"><button className="primary-btn" disabled={busy} type="button" onClick={startMatch}>Buscar compañero</button><button className="ghost-btn" type="button" onClick={() => selectSection('discover')}>Ajustar criterios</button></div>}
+        {!readiness.ready && !readiness.loading && !activeSession && <button className="primary-btn" type="button" onClick={() => selectSection('profile')}>Abrir perfil gamer</button>}
+        {activeSession && <button className="ghost-btn" disabled={busy} type="button" onClick={cancelMatch}>Cancelar búsqueda</button>}
+      </article>
+      <section className="surface-card games-form">
+        <h3>Coincidencias por decidir</h3>
+        {!(pendingMatches.length || session?.match && activeSession) && <p className="games-empty">Las coincidencias aparecerán cuando alguien cumpla tus criterios.</p>}
+        {[...new Map([...pendingMatches, ...(session?.match && activeSession ? [session.match] : [])].map(item => [item.id, item])).values()].map(match => <div className="games-list-row" key={match.id}>
+          <span><strong>{match.player?.displayName || 'Jugador'}</strong><small>{match.score}% compatible</small></span>
+          <div className="games-row-actions">
+            {match.player?.userId && <Link className="ghost-btn" to={`/app/games/player/${encodeURIComponent(match.player.userId)}`}>Ver perfil</Link>}
+            {match.status === 'PENDING' && acceptedMatches.includes(match.id) && <small>Esperando confirmación</small>}
+            {match.status === 'PENDING' && <>{!acceptedMatches.includes(match.id) && <button className="primary-btn" type="button" disabled={busy} onClick={() => decideMatch(match, 'ACCEPT')}>Aceptar</button>}
+              <button className="ghost-btn" type="button" disabled={busy} onClick={() => decideMatch(match, 'SKIP')}>Omitir</button></>}
+          </div>
+        </div>)}
+      </section>
+    </section>}
+
   </div>
 }

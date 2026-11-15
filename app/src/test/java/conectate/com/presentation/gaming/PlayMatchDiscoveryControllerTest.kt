@@ -77,7 +77,7 @@ class PlayMatchDiscoveryControllerTest {
         controller.search("ana", null, null)
         advanceUntilIdle()
         assertFalse(state.value.isSearchingPlayers)
-        assertNotNull(state.value.error)
+        assertNotNull(state.value.playerSearchError)
     }
 
     @Test fun pastedLongQueryAndItsNextPageUseTheSameSearchWhileInputKeepsSpaces() = runTest {

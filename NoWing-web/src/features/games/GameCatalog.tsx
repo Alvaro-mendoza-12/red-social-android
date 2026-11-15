@@ -2,11 +2,18 @@ import { useEffect, useRef, useState } from 'react'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { friendlyError } from '../../core/utils'
 import { StreamingImage } from '../../components/StreamingMedia'
+import { Bookmark } from 'lucide-react'
 
 export type CatalogGame = { id: string; name: string; imageUrl?: string; iconUrl?: string; coverUrl?: string; platforms: string[]; ranks: string[]; roles: string[] }
 type CatalogPage = { items: CatalogGame[]; nextCursor?: string | null }
 
-export function GameCatalog({ onSelect, disabled = false }: { onSelect: (game: CatalogGame) => void; disabled?: boolean }) {
+export function GameCatalog({ onSelect, disabled = false, savedIds, onSave, accountId }: {
+  onSelect: (game: CatalogGame) => void
+  disabled?: boolean
+  savedIds?: ReadonlySet<string>
+  onSave?: (game: CatalogGame) => void
+  accountId?: string
+}) {
   const [query, setQuery] = useState(''), [items, setItems] = useState<CatalogGame[]>([])
   const [cursor, setCursor] = useState<string | null>(null), [loading, setLoading] = useState(true)
   const [error, setError] = useState(''), [reload, setReload] = useState(0)
@@ -15,7 +22,7 @@ export function GameCatalog({ onSelect, disabled = false }: { onSelect: (game: C
   async function search(searchQuery: string, signal: AbortSignal, nextCursor?: string) {
     const params = new URLSearchParams({ q: searchQuery.trim(), limit: '50' })
     if (nextCursor) params.set('cursor', nextCursor)
-    return fallbackApiJson<CatalogPage>(`/v1/data/playmatch/games/search?${params}`, { signal })
+    return fallbackApiJson<CatalogPage>(`/v1/data/playmatch/games/search?${params}`, { signal, expectedAccountId: accountId })
   }
 
   useEffect(() => {
@@ -29,9 +36,9 @@ export function GameCatalog({ onSelect, disabled = false }: { onSelect: (game: C
       }).catch(caught => {
         if (!controller.signal.aborted) setError(friendlyError(caught, 'No se pudo cargar el catálogo.'))
       }).finally(() => { if (!controller.signal.aborted) setLoading(false) })
-    }, 250)
+    }, query.trim() ? 250 : 0)
     return () => { clearTimeout(timer); controller.abort(); moreRequest.current?.abort(); sequence.current++ }
-  }, [query, reload])
+  }, [accountId, query, reload])
 
   async function more() {
     if (loading || !cursor) return
@@ -52,10 +59,19 @@ export function GameCatalog({ onSelect, disabled = false }: { onSelect: (game: C
     <div className="row-between"><h3>Encuentra tu juego</h3><small role="status">{loading ? 'Buscando juegos…' : error ? 'Catálogo sin actualizar' : `${items.length} ${items.length === 1 ? 'juego mostrado' : 'juegos mostrados'}${cursor ? ' · Hay más resultados' : ''}`}</small></div>
     <input className="text-input" type="search" aria-label="Buscar juego en catálogo" placeholder="Buscar juego…" maxLength={100} value={query} onChange={event => setQuery(event.target.value)} />
     {error ? <p role="alert">{error} <button type="button" className="ghost-btn" disabled={loading} onClick={() => cursor ? void more() : setReload(value => value + 1)}>Reintentar</button></p> : null}
-    <div className="games-catalog-grid" aria-busy={loading}>{items.map(game => <button className="games-catalog-card" type="button" key={game.id} disabled={disabled} onClick={() => onSelect(game)}>
-      {game.imageUrl || game.coverUrl || game.iconUrl ? <StreamingImage src={game.imageUrl || game.coverUrl || game.iconUrl} alt="" /> : <span className="games-catalog-initials" aria-hidden="true">{game.name.slice(0, 2)}</span>}
-      <strong>{game.name}</strong><small>{game.platforms?.join(' · ')}</small><span>Buscar jugadores →</span>
-    </button>)}</div>
+    <div className="games-catalog-grid" aria-busy={loading}>{items.map(game => {
+      const isSaved = Boolean(savedIds?.has(game.id))
+      return <article className="games-catalog-tile" key={game.id}>
+        <button className="games-catalog-card" type="button" disabled={disabled} onClick={() => onSelect(game)}>
+          {game.imageUrl || game.coverUrl || game.iconUrl ? <StreamingImage src={game.imageUrl || game.coverUrl || game.iconUrl} alt="" loading="lazy" />
+            : <span className="games-catalog-initials" aria-hidden="true">{game.name.slice(0, 2)}</span>}
+          <strong>{game.name}</strong><small>{game.platforms?.join(' · ')}</small><span>Buscar jugadores →</span>
+        </button>
+        {onSave && <button className="games-save-game" type="button" aria-pressed={isSaved}
+          aria-label={isSaved ? `Quitar ${game.name} de guardados` : `Guardar ${game.name}`}
+          onClick={() => onSave(game)}><Bookmark size={18} aria-hidden="true" /></button>}
+      </article>
+    })}</div>
     {!loading && !error && !items.length ? <p>{query.trim() ? `No encontramos juegos para “${query.trim()}”. Prueba otro nombre.` : 'No hay juegos disponibles por ahora.'}</p> : null}
     {cursor ? <button className="ghost-btn" type="button" disabled={loading} onClick={() => void more()}>Ver más juegos</button> : null}
   </section>
