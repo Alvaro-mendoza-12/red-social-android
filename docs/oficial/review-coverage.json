@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T18:13:30.518945+00:00",
-  "baseCommit": "e43075db77315301d5602671f19f10164098875d",
+  "generatedAtUtc": "2026-11-15T19:21:42.370563+00:00",
+  "baseCommit": "b95a76712a287ee6f58b17263bf5870261355bab",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3608,
+    "pending": 3609,
     "partial": 250,
-    "code-read": 695
+    "code-read": 697
   },
   "countsByPhase": {
     "android": {
       "pending": 1482,
       "partial": 103,
-      "code-read": 481
+      "code-read": 482
     },
     "documentation": {
-      "pending": 638,
-      "code-read": 56,
+      "pending": 639,
+      "code-read": 57,
       "partial": 20
     },
     "server": {
@@ -6057,7 +6057,7 @@
       "phase": "android",
       "gitBlobId": "b94b045ee77b4c199becce0fccf41eaf740b593c",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md",
+      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9353,15 +9353,15 @@
       "phase": "android",
       "gitBlobId": "fa8129be856ce73d094917f8b307e422082ffddc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md",
+      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
       "phase": "android",
-      "gitBlobId": "1ae6be4afb679f0940bc4b06908bb57c5ebaad8c",
+      "gitBlobId": "c1875ddaec97b9cd1260915dc28eab62cb9d35cc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md",
+      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9373,9 +9373,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
       "phase": "android",
-      "gitBlobId": "3a95d23c4a1be667a3d8cca76ed9030cb2cca141",
+      "gitBlobId": "27595ef77de7e1113f2e6e9ea13a502a1bcb7340",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md",
+      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16239,9 +16239,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelEmailRecoveryPersistenceTest.kt",
       "phase": "android",
-      "gitBlobId": "77a1b25a0cb995780ff497b1f9d2e3ab0506af0b",
+      "gitBlobId": "940ea1fd61c5e3461b9b8cae3a8500ce1d2a1e81",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md",
+      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16250,6 +16250,14 @@
       "gitBlobId": "6f7c5b1eb713eefdc106d3f34528789bef77408c",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/auth/EmailRecoverySharedStoreRaceTest.kt",
+      "phase": "android",
+      "gitBlobId": "a3b27f12e7c04cccaa3467b13c6428b218cc0b6a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20593,7 +20601,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "4f8dc345e1b0b2b5b93069386ec87f375d72c9da",
+      "gitBlobId": "0935a6a08ac1d448e356cd6e857a111db5e196cc",
       "reviewStatus": "pending"
     },
     {
@@ -20956,6 +20964,14 @@
       "gitBlobId": "85a8367d6024072271aff9640b9b885046628df6",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "f67174b20d32fce5f5cd697a005360f3113796db",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21469,7 +21485,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "bff470a187eefc7daecde72876a32b9bf6e9a530",
+      "gitBlobId": "fb26022feee52b336abb8e4eec39b17edaae01d5",
       "reviewStatus": "pending"
     },
     {
@@ -21889,7 +21905,7 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "f04ab315c882c8711466e33aba020df22fd94b5d",
+      "gitBlobId": "3dfae6c9110a57433c5ec33c2d8714cb4a1a820c",
       "reviewStatus": "pending"
     },
     {
@@ -22396,6 +22412,12 @@
       "file": "docs/quality/evidence/155-email-recovery-persistence.json",
       "phase": "documentation",
       "gitBlobId": "41b9795d7749f83cf339d20d06fedfb99a4c8a64",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/156-email-recovery-shared-store.json",
+      "phase": "documentation",
+      "gitBlobId": "dcce6f7bde1bf700b5af50bf423120dd372eddbd",
       "reviewStatus": "pending"
     },
     {
