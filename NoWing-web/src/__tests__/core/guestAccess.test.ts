@@ -145,10 +145,25 @@ test('protected same-origin previews retain deployment access but still request 
   })
   try {
     await expect(loadGuestContent('videos')).resolves.toEqual([{ id: content }])
+    expect(mockInitialize).not.toHaveBeenCalled()
     expect(getStorageReadIdentity().provider).toBe('guest')
     expect(fetcher.mock.calls[0][1].headers).toEqual({ Accept: 'application/json' })
     expect(fetcher.mock.calls[1][1].headers.Authorization).toBe(`Bearer ${token}`)
     expect(fetcher.mock.calls[1][1].redirect).toBe('error')
+  } finally { Reflect.deleteProperty(globalThis, 'window') }
+})
+
+test('an official gateway failure retries only after discovery selects another backend', async () => {
+  mockBackend = 'https://novvinapp.com'
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { location: { origin: mockBackend } } })
+  mockInitialize.mockImplementation(async () => { mockBackend = 'https://trusted-recovery.test'; return mockBackend })
+  fetcher.mockResolvedValueOnce(response({}, 503)).mockResolvedValueOnce(response(session(), 201))
+  try {
+    await startGuestBrowsing()
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      'https://novvinapp.com/v1/guest/session', 'https://trusted-recovery.test/v1/guest/session',
+    ])
+    expect(guestStorageToken(getStorageReadIdentity())).toBe(token)
   } finally { Reflect.deleteProperty(globalThis, 'window') }
 })
 

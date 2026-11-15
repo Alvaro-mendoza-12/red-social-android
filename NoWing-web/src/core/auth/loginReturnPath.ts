@@ -18,3 +18,11 @@ export function loginReturnPath(pathname: string, search = '', hash = ''): strin
   const next = `${pathname}${search}${hash}`
   return authReturnPath('/login', next)
 }
+
+export function publicSharedContentPath(pathname: string, search = '', hash = ''): string | null {
+  const match = /^\/app\/(reels|feed\/post)\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\/?$/i.exec(pathname)
+  if (!match) return null
+  const kind = match[1].toLowerCase() === 'reels' ? 'videos' : 'posts'
+  const next = safeAuthDestination(pathname + search + hash)
+  return `/explore/${kind}/${match[2]}?next=${encodeURIComponent(next)}`
+}

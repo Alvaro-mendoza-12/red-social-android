@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T06:48:49.758322+00:00",
-  "baseCommit": "358b5e3eb7f96023707c3a9497c2267cb130bd27",
+  "generatedAtUtc": "2026-11-15T14:53:00.217022+00:00",
+  "baseCommit": "fc6e7a9197eec29e55cb89dc192298b247eee51f",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3603,
+    "pending": 3600,
     "partial": 252,
-    "code-read": 679
+    "code-read": 683
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "partial": 102
     },
     "documentation": {
-      "pending": 624,
+      "pending": 625,
       "code-read": 54,
       "partial": 23
     },
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 86,
-      "pending": 491,
-      "code-read": 75
+      "pending": 487,
+      "code-read": 79
     }
   },
   "files": [
@@ -771,9 +771,9 @@
     {
       "file": "NoWing-web/src/App.tsx",
       "phase": "web",
-      "gitBlobId": "5f1eaef1a9223ad999ba340dfcee8395a62b81d1",
+      "gitBlobId": "92dbb3bea8c653cc2ae293ef87312c62c7fd3aed",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/142-ide-conectividad-stickers-y-seguridad-2026-11-14.md",
+      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -1469,8 +1469,10 @@
     {
       "file": "NoWing-web/src/__tests__/core/guestAccess.test.ts",
       "phase": "web",
-      "gitBlobId": "85dc3e7177e84ff6332bfeb52edb9e4f714a7bea",
-      "reviewStatus": "pending"
+      "gitBlobId": "7c850f0b67cf04e9cde5a3119c79246087c64bd6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/imageCrop.test.ts",
@@ -1529,8 +1531,10 @@
     {
       "file": "NoWing-web/src/__tests__/core/loginReturnPath.test.ts",
       "phase": "web",
-      "gitBlobId": "a83e0a977c1f97044ddd17bc7aa35967208ea073",
-      "reviewStatus": "pending"
+      "gitBlobId": "37df622818fee043970c57722ee1f521256e87a1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/mediaPeerRole.test.ts",
@@ -1983,9 +1987,9 @@
     {
       "file": "NoWing-web/src/__tests__/pages/ExploreSession.test.tsx",
       "phase": "web",
-      "gitBlobId": "dc98184b5e31c164407161c514434e5ecf901522",
+      "gitBlobId": "5c71e7f15e32231d0f99062bc6ddc17d698569ba",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2713,8 +2717,10 @@
     {
       "file": "NoWing-web/src/core/auth/AuthProvider.tsx",
       "phase": "web",
-      "gitBlobId": "0bdf834166a2993c54d74f1527c232ea6db37ef2",
-      "reviewStatus": "pending"
+      "gitBlobId": "9cc9f4ed963bbe74af96a6de2188ba1156418b8b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/auth/GuestBrowsingSession.tsx",
@@ -2755,16 +2761,18 @@
     {
       "file": "NoWing-web/src/core/auth/guestAccess.ts",
       "phase": "web",
-      "gitBlobId": "a708949f034b13625c67e65be8f0ed72ee0155e3",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "gitBlobId": "1945dbc325fb3ec9e0565022764d3809e5733da5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/auth/loginReturnPath.ts",
       "phase": "web",
-      "gitBlobId": "560e4f930c5699ede595d9cc20496056ce613122",
-      "reviewStatus": "pending"
+      "gitBlobId": "f418cef639883750ed7376a39fa24c245d225bff",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/auth/recoverySession.ts",
@@ -4053,9 +4061,9 @@
     {
       "file": "NoWing-web/src/pages/ExplorePage.tsx",
       "phase": "web",
-      "gitBlobId": "a8eb64d5b6537e8a5334d55058e1d06df5fea5c7",
+      "gitBlobId": "4fc650d70dd0b432174fae06ae1bf0ae113fd910",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20862,6 +20870,12 @@
       "file": "docs/oficial/15-auditoria-extrema-2026-08-24.md",
       "phase": "documentation",
       "gitBlobId": "45c248c8ac6fe739315a26f3f14e446d209fdb3f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "005a4c882ff8d945548539eaf773c1ee25bf9c7e",
       "reviewStatus": "pending"
     },
     {

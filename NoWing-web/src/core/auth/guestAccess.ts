@@ -36,6 +36,29 @@ async function request(path: string, token: string, signal?: AbortSignal, method
   }
 }
 
+async function requestGuestSession(capturedEpoch: number, backend: string) {
+  const path = '/v1/guest/session'
+  // The official same-origin gateway can issue a guest session while appEntry
+  // checks readiness. Other origins still wait for trusted discovery.
+  const useGateway = isolatedBackendRequestCredentials(`${backend}${path}`) === 'same-origin'
+  if (useGateway) {
+    try {
+      return await request(path, '', undefined, 'POST')
+    } catch (error) {
+      const transportFailure = error instanceof TypeError ||
+        (error instanceof Error && (error.name === 'AbortError' || /^GUEST_READ_50[234]$/.test(error.message)))
+      if (!transportFailure) throw error
+      await initializeRuntimeBackend()
+      if (getRuntimeBackendUrl() === backend) throw error
+    }
+  } else {
+    await initializeRuntimeBackend()
+  }
+  assertNoAccount()
+  if (epoch !== capturedEpoch) throw new Error('GUEST_ACCOUNT_CHANGED')
+  return request(path, '', undefined, 'POST')
+}
+
 export async function startGuestBrowsing(): Promise<void> {
   assertNoAccount()
   if (active && active.backend === getRuntimeBackendUrl() && active.expiresAt > Date.now() + 60_000) {
@@ -45,11 +68,7 @@ export async function startGuestBrowsing(): Promise<void> {
   if (!pending) {
     const capturedEpoch = epoch, backend = getRuntimeBackendUrl()
     const operation = (async () => {
-      // Direct entry can render before discovery restores or replaces the trusted origin.
-      await initializeRuntimeBackend()
-      assertNoAccount()
-      if (epoch !== capturedEpoch) throw new Error('GUEST_ACCOUNT_CHANGED')
-      const payload = await request('/v1/guest/session', '', undefined, 'POST')
+      const payload = await requestGuestSession(capturedEpoch, backend)
       assertNoAccount()
       if (epoch !== capturedEpoch) throw new Error('GUEST_ACCOUNT_CHANGED')
       if (payload.role !== 'guest' || !/^guest_[0-9a-f-]{36}$/i.test(String(payload.id)) ||

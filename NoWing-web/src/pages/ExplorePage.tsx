@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { StreamingImage, StreamingVideo } from '../components/StreamingMedia'
 import { SafeAvatar } from '../components/SafeAvatar'
 import { StatusView } from '../components/StatusView'
 import { loadGuestContent, type GuestKind } from '../core/auth/guestAccess'
+import { authReturnPath } from '../core/auth/loginReturnPath'
 import { resolveSupabasePublicUrl } from '../core/supabase'
 import { textOf, type GenericRow } from '../core/utils'
 import { mixBasicVideoSession } from '../core/videoRecommendations'
@@ -59,6 +60,10 @@ export function ExplorePage() {
 }
 function ExploreContent() {
   const params = useParams(), kind: GuestKind = ['posts', 'moments', 'profiles'].includes(params.kind || '') ? params.kind as GuestKind : 'videos'
+  const [searchParams] = useSearchParams()
+  const sharedTarget = params.id ? searchParams.get('next') : null
+  const signIn = sharedTarget ? authReturnPath('/login', sharedTarget) : '/login'
+  const register = sharedTarget ? authReturnPath('/register', sharedTarget) : '/register'
   const [items, setItems] = useState<GenericRow[]>([]), [loading, setLoading] = useState(true), [failed, setFailed] = useState(false)
   const [retry, setRetry] = useState(0), [limit, setLimit] = useState(10)
   useEffect(() => {
@@ -66,7 +71,9 @@ function ExploreContent() {
     const entrySession = crypto.randomUUID()
     void loadGuestContent(kind, params.id, controller.signal).then(rows => {
       if (!controller.signal.aborted) setItems(kind === 'videos' && !params.id ? mixBasicVideoSession(rows, 'guest', entrySession) : rows)
-    }).catch(() => { if (!controller.signal.aborted) setFailed(true) })
+    }).catch(error => {
+      if (!controller.signal.aborted && !(params.id && error instanceof Error && error.message === 'GUEST_READ_404')) setFailed(true)
+    })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [kind, params.id, retry])
@@ -75,7 +82,7 @@ function ExploreContent() {
   return <main className="explore-page explore-shell">
     <header className="explore-header">
       <Link className="explore-brand" to="/"><img src="/novvin-logo.png" alt="" />Novvin</Link>
-      <nav aria-label="Cuenta"><Link to="/login">Iniciar sesión</Link><Link className="primary-btn" to="/register">Crear cuenta</Link></nav>
+      <nav aria-label="Cuenta"><Link to={signIn}>Iniciar sesión</Link><Link className="primary-btn" to={register}>Crear cuenta</Link></nav>
     </header>
     <div className="explore-intro"><h1>{heading}</h1><p>Explora contenido público. Inicia sesión para conversar, seguir y compartir.</p></div>
     <nav className="explore-tabs" aria-label="Explorar">
@@ -101,7 +108,7 @@ function ExploreContent() {
                 <GuestVideo key={url} src={resolveSupabasePublicUrl(kind === 'moments' ? 'moments' : 'posts', url)} title={title || 'Video'} /> :
                 <StreamingImage key={url} className="explore-image" src={resolveSupabasePublicUrl(kind === 'moments' ? 'moments' : 'posts', url)} alt={title ? `${title} (${index + 1})` : 'Publicación'} loading="lazy" />)}
             </>}
-            <footer><Link to={`/login?next=${encodeURIComponent(kind === 'profiles' ? `/u/${id}` : kind === 'videos' ? `/app/reels/${id}` : kind === 'posts' ? `/app/feed/post/${id}` : '/app/social?tab=moments')}`}>Inicia sesión para participar</Link></footer>
+            <footer><Link to={sharedTarget ? signIn : `/login?next=${encodeURIComponent(kind === 'profiles' ? `/u/${id}` : kind === 'videos' ? `/app/reels/${id}` : kind === 'posts' ? `/app/feed/post/${id}` : '/app/social?tab=moments')}`}>Inicia sesión para participar</Link></footer>
           </article>
         })}
         {items.length > limit ? <button className="ghost-btn" onClick={() => setLimit(value => value + 10)}>Ver más</button> : <button className="ghost-btn" onClick={() => { setLoading(true); setFailed(false); setItems([]); setLimit(10); setRetry(value => value + 1) }}>Actualizar</button>}

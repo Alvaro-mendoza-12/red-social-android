@@ -20,7 +20,7 @@ import {
   upgradeFallbackWebSession,
 } from './fallbackAuth'
 import { bootstrapSessionProfile } from './sessionBootstrap'
-import { loginReturnPath, safeAuthDestination } from './loginReturnPath'
+import { loginReturnPath, publicSharedContentPath, safeAuthDestination } from './loginReturnPath'
 import { retainUnchangedAuthUser } from './stableAuthUser'
 import { getStorageReadIdentity, invalidateStorageReadIdentity, updateStorageReadIdentity } from '../media/storageReadSession'
 import { subscribeUbuntuRealtime } from '../ubuntuRealtime'
@@ -333,7 +333,7 @@ export function useAuth() {
   return context
 }
 
-export function RequireAuth({ children }: PropsWithChildren) {
+export function RequireAuth({ children, allowPublicContent = false }: PropsWithChildren<{ allowPublicContent?: boolean }>) {
   const location = useLocation()
   const { configured, loading, user, suspension, suspensionLoading, signOut } = useAuth()
   if (!configured) {
@@ -348,7 +348,9 @@ export function RequireAuth({ children }: PropsWithChildren) {
     return <StatusView title="Cargando sesión" description="Espera un momento..." />
   }
   if (!user) {
-    return <Navigate to={loginReturnPath(location.pathname, location.search, location.hash)} replace />
+    const { pathname, search, hash } = location
+    const publicContent = allowPublicContent ? publicSharedContentPath(pathname, search, hash) : null
+    return <Navigate to={publicContent ?? loginReturnPath(pathname, search, hash)} replace />
   }
   if (suspensionLoading) {
     return <StatusView title="Verificando estado de cuenta" description="Espera un momento..." />
