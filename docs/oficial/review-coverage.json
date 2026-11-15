@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T19:21:42.370563+00:00",
-  "baseCommit": "b95a76712a287ee6f58b17263bf5870261355bab",
+  "generatedAtUtc": "2026-11-15T19:38:41.166444+00:00",
+  "baseCommit": "2555f2c10c6e9691bdad362e264f1eb452a5ca34",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -20949,7 +20949,7 @@
     {
       "file": "docs/oficial/153-entrega-de-botellas-2026-11-15.md",
       "phase": "documentation",
-      "gitBlobId": "48d8a4b7b1539847e357a65691bb47cd07cb8e14",
+      "gitBlobId": "a79b5e3fe859e0caa43cc4ed15c00e252540a6aa",
       "reviewStatus": "pending"
     },
     {
