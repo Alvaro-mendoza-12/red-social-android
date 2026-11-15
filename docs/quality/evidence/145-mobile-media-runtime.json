@@ -1,0 +1,615 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-15T15:24:05.582229+00:00",
+  "scope": "optimized QA instrumentation ABI, guest first decoded frame and bounded transport reads; controlled avatar pixels/GIF",
+  "sourceCommit": "e7e2131b1a2ce9de49de0d64760a8c28d1010b35",
+  "sourceTree": "df7a3ec9f96f223c078dd6eba6b2fd6e72e1fe96",
+  "observedWorktreeCommitAtPhysicalStart": "38b0274fa1303a7b065eb25a4f1f140aa56292f6",
+  "artifactIncludesUncommittedQa145Fix": true,
+  "buildFixDiffSha256": "a8b53976c1ffdb72f877a50277472e38c93c47e62d2d9fc8b814a4b965a12df1",
+  "build": {
+    "exitCode": 0,
+    "startedAtUtc": "2026-11-15T14:20:06.927168+00:00",
+    "finishedAtUtc": "2026-11-15T14:53:07.888694+00:00",
+    "elapsedSeconds": 1980.961526,
+    "sourcesUnchanged": true,
+    "frozenFiles": 2035,
+    "tasks": 91,
+    "executed": 28,
+    "upToDate": 63,
+    "r8Enabled": true,
+    "qaOnlyRuntimeRules": true,
+    "unexpectedTraceReferencesPermitted": false,
+    "sdkOrOptionalTraceDiagnostics": 43,
+    "commitMarkerOverride": null,
+    "releaseOrDebugApkBuilt": false
+  },
+  "apks": [
+    {
+      "package": "conectate.com.qa",
+      "versionName": "9.1.40-qa-optimized",
+      "versionCode": "180",
+      "bytes": 223939764,
+      "sha256": "d736798b74ae105e1d619308fefc7d191171471a2f2c0f18daaf7355a2c7f1dc",
+      "archivedPath": "D:\\red social - live-gifts\\app\\build\\audit145\\current-after148-resume20261115\\Novvin-9.1.40-180-qa-optimized-145-147-148-LAB.apk",
+      "originalPath": "D:\\red social - live-gifts\\app\\build\\outputs\\apk\\auditRelease\\app-auditRelease.apk"
+    },
+    {
+      "package": "conectate.com.qa.test",
+      "versionName": "",
+      "versionCode": "",
+      "bytes": 2404139,
+      "sha256": "48d9db37724aa5a1bc30b7715f5c988b8c461a104eb5abb0ef78514759d09c65",
+      "archivedPath": "D:\\red social - live-gifts\\app\\build\\audit145\\current-after148-resume20261115\\Novvin-145-148-QA-INSTRUMENTATION-LAB.apk",
+      "originalPath": "D:\\red social - live-gifts\\app\\build\\outputs\\apk\\androidTest\\auditRelease\\app-auditRelease-androidTest.apk"
+    }
+  ],
+  "apkVerification": {
+    "verifiedAtUtc": "2026-11-15T14:54:26.190549+00:00",
+    "artifactHashesMatch": true,
+    "signaturesValid": true,
+    "certificatesMatchArchivedQa": {
+      "conectate.com.qa": [
+        "36d82212584fbfe06adcb38f99590e45bca492c52e8432aab42eb9f0fbf290f9"
+      ],
+      "conectate.com.qa.test": [
+        "36d82212584fbfe06adcb38f99590e45bca492c52e8432aab42eb9f0fbf290f9"
+      ]
+    },
+    "appVersionCode": 180,
+    "appVersionName": "9.1.40-qa-optimized",
+    "instrumentationTargetsQaOnly": true,
+    "expectedTestClassesDefined": {
+      "conectate/com/performance/PublicVideoFrameTimingDeviceTest": true,
+      "conectate/com/performance/PublicMediaTransferDeviceTest": true,
+      "conectate/com/presentation/components/ProfileAvatarContinuityDeviceTest": true,
+      "conectate/com/presentation/components/ProfileAnimatedAvatarDeviceTest": true
+    },
+    "junitRunListenerDefined": true,
+    "definedAppClasses": 46720,
+    "definedTestClasses": 3445,
+    "installed": false,
+    "deviceTestsPassed": false,
+    "finalDelivery": false
+  },
+  "earlierPhoneAttempt": {
+    "sourceCommit": "db06dc8aeead9cf30d8f7130d71d10a47369ff48",
+    "passedClasses": 2,
+    "totalClasses": 4,
+    "avatarRuntimeBlockedBeforePixelAssertions": true,
+    "includes147Or148": false,
+    "productionAvatarPixelDefectProvenByThisFailure": false
+  },
+  "physical": {
+    "before": {
+      "atUtc": "2026-11-15T15:09:59.974294+00:00",
+      "model": "moto g04",
+      "sdk": "34",
+      "activeTransport": "WIFI",
+      "batteryPercent": 28,
+      "batteryTemperatureC": 31.5,
+      "thermalStatus": 0
+    },
+    "after": {
+      "atUtc": "2026-11-15T15:11:09.228300+00:00",
+      "model": "moto g04",
+      "sdk": "34",
+      "activeTransport": "WIFI",
+      "batteryPercent": 28,
+      "batteryTemperatureC": 32.1,
+      "thermalStatus": 0
+    },
+    "tests": [
+      {
+        "class": "PublicVideoFrameTimingDeviceTest",
+        "tests": 1,
+        "passed": true,
+        "startedAtUtc": "2026-11-15T15:10:19.884095+00:00",
+        "finishedAtUtc": "2026-11-15T15:10:32.557162+00:00",
+        "logSha256": "342a9a5e767db5359b20000275fd77465eeed5caea937367de33e8b24fe87505"
+      },
+      {
+        "class": "PublicMediaTransferDeviceTest",
+        "tests": 1,
+        "passed": true,
+        "startedAtUtc": "2026-11-15T15:10:32.558451+00:00",
+        "finishedAtUtc": "2026-11-15T15:10:47.901594+00:00",
+        "logSha256": "b587493a5c8a346591f9b94df615271cc469b4632c68ab16f5f78286eee3093e"
+      },
+      {
+        "class": "ProfileAvatarContinuityDeviceTest",
+        "tests": 2,
+        "passed": true,
+        "startedAtUtc": "2026-11-15T15:10:47.901594+00:00",
+        "finishedAtUtc": "2026-11-15T15:10:59.691278+00:00",
+        "logSha256": "0b83bbbc79586b3dc429a4489c830c732905d56efb1c8f40d1a4f52701542f61"
+      },
+      {
+        "class": "ProfileAnimatedAvatarDeviceTest",
+        "tests": 1,
+        "passed": true,
+        "startedAtUtc": "2026-11-15T15:10:59.692670+00:00",
+        "finishedAtUtc": "2026-11-15T15:11:08.762314+00:00",
+        "logSha256": "a30582e98db3e09c0fd3cf27c4d4e10eac5989d5f3c9a825b883615f509eccb5"
+      }
+    ],
+    "counts": {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "primaryPackageMetadataUnchanged": true,
+    "primaryPackageInstalled": false,
+    "qaAppDataCleared": false,
+    "temporaryStayAwakeRestored": true,
+    "screenCredentialOrUsbAuthorizationChanged": false,
+    "sourceFreezeVerifiedBeforeInstall": true
+  },
+  "emulator": {
+    "startedAtUtc": "2026-11-15T15:07:51.992009+00:00",
+    "sourceCommit": "e7e2131b1a2ce9de49de0d64760a8c28d1010b35",
+    "sourceTree": "df7a3ec9f96f223c078dd6eba6b2fd6e72e1fe96",
+    "observedWorktreeCommit": "38b0274fa1303a7b065eb25a4f1f140aa56292f6",
+    "emulator": true,
+    "avd": "NovvinIDE143",
+    "sdk": "35",
+    "physicalDevice": false,
+    "performanceMeasurement": false,
+    "primaryPackageInstalled": false,
+    "appDataCleared": false,
+    "finalDelivery": false,
+    "fullProjectGoalComplete": false,
+    "finishedAtUtc": "2026-11-15T15:08:54.896443+00:00",
+    "tests": [
+      {
+        "class": "ProfileAvatarContinuityDeviceTest",
+        "expectedTests": 2,
+        "passed": true,
+        "adbExitCode": 0,
+        "startedAtUtc": "2026-11-15T15:08:36.206664+00:00",
+        "finishedAtUtc": "2026-11-15T15:08:47.442069+00:00",
+        "logSha256": "56aebde3e949cda774d1b8b380435cd11ae77cad11b3e97673ac578a2cf4e32a"
+      },
+      {
+        "class": "ProfileAnimatedAvatarDeviceTest",
+        "expectedTests": 1,
+        "passed": true,
+        "adbExitCode": 0,
+        "startedAtUtc": "2026-11-15T15:08:47.443582+00:00",
+        "finishedAtUtc": "2026-11-15T15:08:54.430739+00:00",
+        "logSha256": "deee5d17c8819f8bb2bec366904292f37cd9ba87267d9ada0984120ba451e051"
+      }
+    ],
+    "primaryMetadataUnchanged": true,
+    "passed": true,
+    "ownedEmulatorStopRequested": true
+  },
+  "guestFeed": {
+    "publicObjectDigest": "9d3b3af7b388018192be7e1d821e004defc71ad507426bf4e5853ebe638863c2",
+    "guestSocialHttpMs": 1171,
+    "guestSocialRows": 30,
+    "guestVideoHttpMs": 262,
+    "guestVideoRows": 13
+  },
+  "firstDecodedFrames": [
+    {
+      "firstByteMs": 1762,
+      "firstFrameMs": 3054,
+      "networkBytesObserved": 1193367,
+      "r2": true,
+      "deviceTier": "LOW",
+      "playbackState": 2,
+      "bufferedMs": 3066,
+      "errorCode": 0
+    },
+    {
+      "firstByteMs": 1117,
+      "firstFrameMs": 1417,
+      "networkBytesObserved": 1058111,
+      "r2": true,
+      "deviceTier": "LOW",
+      "playbackState": 2,
+      "bufferedMs": 2800,
+      "errorCode": 0
+    },
+    {
+      "firstByteMs": 432,
+      "firstFrameMs": 894,
+      "networkBytesObserved": 986690,
+      "r2": true,
+      "deviceTier": "LOW",
+      "playbackState": 2,
+      "bufferedMs": 2466,
+      "errorCode": 0
+    }
+  ],
+  "transportPrefixReads": [
+    {
+      "route": "r2",
+      "requestedRange": false,
+      "http1Only": false,
+      "dnsMs": 29,
+      "connectMs": 216,
+      "tlsMs": 134,
+      "dnsAttempts": 1,
+      "dnsFailures": 0,
+      "connectionAttempts": 1,
+      "connectionFailures": 0,
+      "protocol": "h2",
+      "headerMs": 1508,
+      "status": 200,
+      "sourceR2": true,
+      "bytes": 65536,
+      "firstByteMs": 1511,
+      "elapsedMs": 1569,
+      "prefixSha256": "2117b38523e6244ae80169e783e51545a47b47ab87a03aea489c2441ec14228d"
+    },
+    {
+      "route": "r2",
+      "requestedRange": true,
+      "http1Only": false,
+      "dnsMs": 0,
+      "connectMs": 0,
+      "tlsMs": 0,
+      "dnsAttempts": 0,
+      "dnsFailures": 0,
+      "connectionAttempts": 0,
+      "connectionFailures": 0,
+      "protocol": "h2",
+      "headerMs": 1076,
+      "status": 206,
+      "sourceR2": true,
+      "bytes": 65536,
+      "firstByteMs": 1079,
+      "elapsedMs": 1094,
+      "prefixSha256": "2117b38523e6244ae80169e783e51545a47b47ab87a03aea489c2441ec14228d"
+    },
+    {
+      "route": "r2",
+      "requestedRange": false,
+      "http1Only": true,
+      "dnsMs": 0,
+      "connectMs": 177,
+      "tlsMs": 97,
+      "dnsAttempts": 1,
+      "dnsFailures": 0,
+      "connectionAttempts": 1,
+      "connectionFailures": 0,
+      "protocol": "http/1.1",
+      "headerMs": 711,
+      "status": 200,
+      "sourceR2": true,
+      "bytes": 65536,
+      "firstByteMs": 713,
+      "elapsedMs": 882,
+      "prefixSha256": "2117b38523e6244ae80169e783e51545a47b47ab87a03aea489c2441ec14228d"
+    },
+    {
+      "route": "ubuntu",
+      "requestedRange": false,
+      "http1Only": false,
+      "dnsMs": 0,
+      "connectMs": 632,
+      "tlsMs": 524,
+      "dnsAttempts": 1,
+      "dnsFailures": 0,
+      "connectionAttempts": 1,
+      "connectionFailures": 0,
+      "protocol": "h2",
+      "headerMs": 1022,
+      "status": 200,
+      "sourceR2": false,
+      "bytes": 65536,
+      "firstByteMs": 1024,
+      "elapsedMs": 1274,
+      "prefixSha256": "2117b38523e6244ae80169e783e51545a47b47ab87a03aea489c2441ec14228d"
+    },
+    {
+      "route": "ubuntu",
+      "requestedRange": true,
+      "http1Only": false,
+      "dnsMs": 0,
+      "connectMs": 0,
+      "tlsMs": 0,
+      "dnsAttempts": 0,
+      "dnsFailures": 0,
+      "connectionAttempts": 0,
+      "connectionFailures": 0,
+      "protocol": "h2",
+      "headerMs": 698,
+      "status": 206,
+      "sourceR2": false,
+      "bytes": 65536,
+      "firstByteMs": 700,
+      "elapsedMs": 704,
+      "prefixSha256": "2117b38523e6244ae80169e783e51545a47b47ab87a03aea489c2441ec14228d"
+    },
+    {
+      "route": "ubuntu",
+      "requestedRange": false,
+      "http1Only": true,
+      "dnsMs": 0,
+      "connectMs": 643,
+      "tlsMs": 536,
+      "dnsAttempts": 1,
+      "dnsFailures": 0,
+      "connectionAttempts": 1,
+      "connectionFailures": 0,
+      "protocol": "http/1.1",
+      "headerMs": 1012,
+      "status": 200,
+      "sourceR2": false,
+      "bytes": 65536,
+      "firstByteMs": 1015,
+      "elapsedMs": 1373,
+      "prefixSha256": "2117b38523e6244ae80169e783e51545a47b47ab87a03aea489c2441ec14228d"
+    }
+  ],
+  "continuousPlaybackValidated": false,
+  "playingStartMeasured": false,
+  "frameStateAtObservation": [
+    2,
+    2,
+    2
+  ],
+  "authenticatedDiskCachePhysicallyValidated": false,
+  "frameTimingOrScrollBenchmark": false,
+  "routeOrProtocolPolicyChanged": false,
+  "downloadUploadCapacityMeasured": false,
+  "codeRead": [
+    {
+      "path": "app/proguard-audit.pro",
+      "gitBlob": "120e050e6973fd02fc85bd93aae550df6e9ef198",
+      "sha256": "ac7fb328b5f1cc1cb7fd8c1a7787f86dd304c912a25b48c35ca66d3c9fe68ae2"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/performance/PublicMediaTransferDeviceTest.kt",
+      "gitBlob": "74d958edcd204a492ff0737e47de419c6f181e34",
+      "sha256": "3a52facfff86cf2a05cf1e578ff578e0864dde9c7839f939863478e49e4338a7"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/performance/PublicVideoFrameTimingDeviceTest.kt",
+      "gitBlob": "5a7ccc329b309d8f179d94b051910e3f0114c906",
+      "sha256": "fd57e6a61ac2bb0d866746478f47c798748718bd3ee28decfa9a54fef0183aa1"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/presentation/components/ProfileAvatarContinuityDeviceTest.kt",
+      "gitBlob": "5f0936144f701defaa66328be201398ff4fb1c40",
+      "sha256": "dd6d8d41b673b5d8ac13a451d41003ee23da7d629797264ec102fb111b6fdd7d"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/presentation/components/ProfileAnimatedAvatarDeviceTest.kt",
+      "gitBlob": "074adbd45b8abb1849056d4a1d1e922c6efad57a",
+      "sha256": "b1b04766ace5ba70ed14ff11db9d3a0a494415aebcdd72bec2ef75be142756b2"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/util/VideoCache.kt",
+      "gitBlob": "e57f69b4d575633ba16469d846e31ceb711c2ae1",
+      "sha256": "5bbe14bf6751313e093a0834ce33df26b2f86e750e1bc5328c6d270fefa6510d"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/util/MediaPlaybackDataSources.kt",
+      "gitBlob": "dfdf0716f6343d97033d378fae1b4a9f18f466ca",
+      "sha256": "5c3e737c9d6b793c890f48577c3d3f489bccf9feaf8adda788b3ab20dc33f2b0"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/util/StorageReadDataSource.kt",
+      "gitBlob": "ff592be647c19036cfda6af5fb9c3a3e9537c657",
+      "sha256": "76374f26f925490e294831fe15eeb542f1bd2e6bb41eaeeb5067d73ac0726505"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/util/AdmittedVideoCacheSink.kt",
+      "gitBlob": "553aa8195935aefae3445355ccdb92b2717956a1",
+      "sha256": "ffb9fbb930e8064433698e8f348c1a62693bc64f0fd2b502f2f39d33c5642a32"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/util/PlaybackCacheAdmission.kt",
+      "gitBlob": "9d48bd4d12ba3f341ccbe371ca3c09e1ce24a8bf",
+      "sha256": "9590e4dac74cbe1db18a28009c6b7101e13b4f5f7229b62b515d695dad81c686"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/media/StorageReadInterceptors.kt",
+      "gitBlob": "f7429fe9858db02ffa6777c6748646169504b3f6",
+      "sha256": "cf256369cc50d8ebf4218883a6645ed9d86a18efa8abe6c8879c5f4d1fa17272"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/localfallback/UbuntuStorageUrl.kt",
+      "gitBlob": "ed163a1ce6ef6a26ca9bb6bb4b1e21bceee38d32",
+      "sha256": "3fc6dec5f8c80a79867bf89f3cbcc83c8178598d4279806397f73c95277ada28"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/util/VideoPerformanceProfile.kt",
+      "gitBlob": "224e42d9ab52e6d9608139353203a3f020ac2f4e",
+      "sha256": "4d7b897807d9c43e0b04b2833041be156819104fdeb0a1ead27d7e8114641044"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/network/PublicBackendDns.kt",
+      "gitBlob": "27772db6360afe9826501551b3ac913b3f4175b4",
+      "sha256": "66df6921dbd72a499b81243eb760b774fb0e51eead3003e154a378de2a0dd4a6"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/network/FirstSuccessfulDnsLookup.kt",
+      "gitBlob": "69cce1bc03b7d8a5e9e385e96fc3975d7689ab9d",
+      "sha256": "812e7bb6c5623622a18503a2cb3d725eb14d4c4d2e80a4ea9eaa7176dcc2cca4"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/network/BackendAddressCache.kt",
+      "gitBlob": "ae7e651634ff6599ac5391bf8f2d739ee6244a17",
+      "sha256": "7c826a1fb57824b29824d9be636f428d9fc43d4b5545ad41cde1c8c0a91a9b56"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/video/VideoPreloadPolicy.kt",
+      "gitBlob": "b0aec6c21be73564ec518e356dbb1dc627e60725",
+      "sha256": "fd02ff8bc16ced61959e97476fa60dbd9b9ac7b34309e28d95c979620e4db040"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/video/VideoPlaybackRecoveryPolicy.kt",
+      "gitBlob": "de1faa1d15e48606a3d2ca542e71b12caf3603f1",
+      "sha256": "2433df6fb5bbbbb70bcd1c99c6d70d6accf85fa7b610e0d8891f0c7f37d2c0f7"
+    }
+  ],
+  "partialRead": [
+    {
+      "path": "app/build.gradle.kts",
+      "gitBlob": "9db7125314b322323792725c5f54e9dfadd09d5c",
+      "sha256": "7699176d049fdd2dc3014559431d34c4bc428c86fa48651aeb47757f739580ea"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
+      "gitBlob": "00b367c07ff616ed20233ebd16be5d86c241fe0b",
+      "sha256": "6b1eb0be3b71573f35d6a36217f362258f54b3f8659dc54bea5f0687f11317f5"
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+      "gitBlob": "de92a88808eb414be380e5a494faf5582086129e",
+      "sha256": "b20bd9e5a76ac934348cfb8d7c63e485bf673424a1396578cd34cead7828ef56"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/audit145/current-after148/interruption-observation.json",
+      "sha256": "e148127fa6cb7b92dbb21f2a39b13e548b73722cb6b089d2c1ab59e9e814c917"
+    },
+    {
+      "path": "app/build/audit145/current-after148/assemble-audit.log",
+      "sha256": "7ecab043a34dad0b993422b277a6b33ef50564d9e93b2727c5a212e058346d5f"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/build-start.json",
+      "sha256": "16e7c120142cdcf740486d8f135e80bda01ef963966b6f96ea116a10e3f6ac7a"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/build-result.json",
+      "sha256": "83bc39bbdded28fea47d91f0f475eef28e1fc9068d8b8f88172b2f00fb4b1fad"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/build-sources.json",
+      "sha256": "8166b6b1b7f81da2499c6ce4db1e80478f7e52b8c4d606b649eebe5a2bb42da6"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/build-fix.patch",
+      "sha256": "a8b53976c1ffdb72f877a50277472e38c93c47e62d2d9fc8b814a4b965a12df1"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/apk-verification.json",
+      "sha256": "4dd9fa4ff11cf35a9b6bb5ba6ffea2b7b8e92a2ec6b368a0b35b86e518c790ee"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/assemble-audit.log",
+      "sha256": "58826a449df6505e90ba509c20e0fdfd89c8526b823da5376cc44afa917f53fb"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/verified-instrumentation-manifest.txt",
+      "sha256": "18901445dc7e2ae9fa4ae7c896c4c23eeca3d62aebab5d12ab075bc5ad968bd7"
+    },
+    {
+      "path": "app/build/audit145/phone-public-media-traced/result.json",
+      "sha256": "40682069b1918c8c42e443a97661ee4e5e1d8cb797ace586499686f0cbd4decc"
+    },
+    {
+      "path": "app/build/audit145/phone-public-media-current148/result.json",
+      "sha256": "6375be06d778b02beeeb8100450e06388729802b336fa68d4149b37af4d00973"
+    },
+    {
+      "path": "app/build/audit145/phone-power-current148/result.json",
+      "sha256": "5eb7d3ea918dc50345d40499f1541c53465bce980612fd27e84da89673f7a21a"
+    },
+    {
+      "path": "app/build/audit145/phone-power-current148-retry/result.json",
+      "sha256": "ab0cde5a2b46f925f39e8957bcf23400831a097b383194ff4efe159b5336b309"
+    },
+    {
+      "path": "app/build/audit145/emulator-ABI-current148/result.json",
+      "sha256": "fed46e66a6e6f1d96e0621fb79ee9857ddec1b438e428c5e0826f4542d138924"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/mapping-preserved/app-mapping.txt",
+      "sha256": "83951bc07aa445a96cbc17192b89d53d6fe01d6f7e550eb95d69bce301603031"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/mapping-preserved/app-usage.txt",
+      "sha256": "373e79033acdd304f7b6679da0911c45c4d20fc66daa563db30111f71a361173"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/mapping-preserved/app-configuration.txt",
+      "sha256": "33ec38a8acda97f740fb172a3f8b81613fddbe18ac117720cd043987fd318c12"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/mapping-preserved/test-mapping.txt",
+      "sha256": "537cd737f30c05c99769f15eb08ee2aaa11c684870ed722ee1d664f082cb8995"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/mapping-preserved/generated-qa-rules.pro",
+      "sha256": "df95897b6df10b4ea2a44dee8a4ee803e7094ef7cc7df2466e2aedb17b7b43b4"
+    },
+    {
+      "path": "app/build/audit145/current-after148-resume20261115/mapping-preserved/trace-diagnostics.txt",
+      "sha256": "726d35390c7ee001ac4824cca3d7b7fe5eb17dc0a295ff8033d597d184ed0f57"
+    },
+    {
+      "path": "app/build/audit145/phone-public-media-current148/PublicVideoFrameTimingDeviceTest.txt",
+      "sha256": "342a9a5e767db5359b20000275fd77465eeed5caea937367de33e8b24fe87505"
+    },
+    {
+      "path": "app/build/audit145/phone-public-media-current148/PublicMediaTransferDeviceTest.txt",
+      "sha256": "b587493a5c8a346591f9b94df615271cc469b4632c68ab16f5f78286eee3093e"
+    },
+    {
+      "path": "app/build/audit145/phone-public-media-current148/ProfileAvatarContinuityDeviceTest.txt",
+      "sha256": "0b83bbbc79586b3dc429a4489c830c732905d56efb1c8f40d1a4f52701542f61"
+    },
+    {
+      "path": "app/build/audit145/phone-public-media-current148/ProfileAnimatedAvatarDeviceTest.txt",
+      "sha256": "a30582e98db3e09c0fd3cf27c4d4e10eac5989d5f3c9a825b883615f509eccb5"
+    },
+    {
+      "path": "app/build/audit145/emulator-ABI-current148/ProfileAvatarContinuityDeviceTest.txt",
+      "sha256": "56aebde3e949cda774d1b8b380435cd11ae77cad11b3e97673ac578a2cf4e32a"
+    },
+    {
+      "path": "app/build/audit145/emulator-ABI-current148/ProfileAnimatedAvatarDeviceTest.txt",
+      "sha256": "deee5d17c8819f8bb2bec366904292f37cd9ba87267d9ada0984120ba451e051"
+    },
+    {
+      "path": "app/build/audit145/measure_phone_current148.py",
+      "sha256": "f47eb3766a7128bcf391c52bcb4080602b62c15ee33f267d2ff1dd7fd844063c"
+    },
+    {
+      "path": "app/build/audit145/run_current148_phone.py",
+      "sha256": "080bfa77ec76e3ce067c5b022995410a5a1b7e513e5cad4abb550c24c30df2e1"
+    },
+    {
+      "path": "app/build/audit145/retry_current148_phone.py",
+      "sha256": "850312861967712c0429beb8d6f2a1ec8aa82bec8d8a25075570c8573f3b1d58"
+    },
+    {
+      "path": "app/build/audit145/verify_current148_apks.py",
+      "sha256": "a6abda8ffff9af4bb2801d381d1029d719e6c5e75fec112dc3c5e2a08b9c5fc2"
+    },
+    {
+      "path": "app/build/audit145/probe_current148_emulator.py",
+      "sha256": "f9d81e07374ce5d26a47154de6c8f86e8c8aa96e36ca204394dcadaf8ff61503"
+    },
+    {
+      "path": "app/build/audit145/build_current148_resumed.py",
+      "sha256": "2d3a094748231c1346a51b627b41f641e6c11d0b7a9bf0127f5ccd3aa5a792cc"
+    },
+    {
+      "path": "app/build/audit145/dex_definitions.py",
+      "sha256": "7a66a3829e773398edb493aa93d831511fcc87de29d1f3983899ac186a9ed60c"
+    }
+  ],
+  "physicalFiveCaseSelectionPassed": true,
+  "moduleClosed": false,
+  "finalApkDelivered": false,
+  "fullProjectGoalComplete": false,
+  "pending": [
+    "time to playing and sustained feed/rebuffer/scrolling metrics",
+    "paired first-frame comparison across routes and multiple objects",
+    "authenticated cache and account/network transitions",
+    "real profile/follower/sticker/error scenarios",
+    "access/recovery/help A01-A09, then Messages and subsequent mobile modules",
+    "host149 real administrative update and post-check"
+  ]
+}

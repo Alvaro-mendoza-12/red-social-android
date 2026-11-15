@@ -9,13 +9,118 @@ plugins {
     alias(libs.plugins.firebase.crashlytics)
 }
 
+
 import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
+import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.variant.ScopedArtifacts
 import java.io.FileInputStream
+import java.io.ByteArrayOutputStream
 import java.net.URI
 import java.security.KeyFactory
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 import java.util.Properties
+import java.util.zip.ZipFile
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import javax.inject.Inject
+import org.gradle.process.ExecOperations
+
+/** Keep only the app ABI used across the separate instrumentation APK boundary. */
+abstract class TraceQaInstrumentationReferences @Inject constructor(
+    private val execOperations: ExecOperations,
+) : DefaultTask() {
+    @get:Classpath abstract val targetJars: ListProperty<RegularFile>
+    @get:Classpath abstract val targetDirectories: ListProperty<Directory>
+    @get:Classpath abstract val sourceJars: ListProperty<RegularFile>
+    @get:Classpath abstract val sourceDirectories: ListProperty<Directory>
+    @get:Classpath abstract val bootClasspath: ConfigurableFileCollection
+    @get:Classpath abstract val traceTool: ConfigurableFileCollection
+    @get:OutputFile abstract val rules: RegularFileProperty
+
+    @TaskAction fun trace() {
+        val targets = targetJars.get().map { it.asFile } + targetDirectories.get().map { it.asFile }
+        fun visitClasses(file: File, visit: (String, () -> ByteArray) -> Unit) {
+            if (file.isDirectory) {
+                file.walkTopDown().filter { it.isFile && it.extension == "class" }.forEach {
+                    visit(it.relativeTo(file).invariantSeparatorsPath) { it.readBytes() }
+                }
+            } else ZipFile(file).use { zip ->
+                zip.entries().asSequence().filter { !it.isDirectory && it.name.endsWith(".class") }.forEach { entry ->
+                    visit(entry.name) { zip.getInputStream(entry).use { it.readBytes() } }
+                }
+            }
+        }
+        val targetNames = mutableSetOf<String>()
+        targets.forEach { visitClasses(it) { name, _ -> targetNames.add(name) } }
+        val targetArchive = temporaryDir.resolve("app-classes.jar")
+        val packedTargets = mutableSetOf<String>()
+        ZipOutputStream(targetArchive.outputStream().buffered()).use { zip ->
+            targets.forEach { visitClasses(it) { name, bytes ->
+                if (packedTargets.add(name)) {
+                    zip.putNextEntry(ZipEntry(name).apply { time = 0 })
+                    zip.write(bytes())
+                    zip.closeEntry()
+                }
+            } }
+        }
+        // Scope.ALL may also expose the tested app. Remove shared definitions
+        // from the sources, so they are traced as targets rather than duplicates.
+        val sourceArchive = temporaryDir.resolve("instrumentation-classes.jar")
+        val seen = mutableSetOf<String>()
+        ZipOutputStream(sourceArchive.outputStream().buffered()).use { zip ->
+            (sourceJars.get().map { it.asFile } + sourceDirectories.get().map { it.asFile }).forEach {
+                visitClasses(it) { name, bytes ->
+                    if (name !in targetNames && seen.add(name)) {
+                        zip.putNextEntry(ZipEntry(name).apply { time = 0 })
+                        zip.write(bytes())
+                        zip.closeEntry()
+                    }
+                }
+            }
+        }
+        check(seen.isNotEmpty()) { "No instrumentation classes to trace" }
+        val output = rules.get().asFile.apply { parentFile.mkdirs() }
+        val diagnostics = ByteArrayOutputStream()
+        execOperations.javaexec {
+            classpath = traceTool
+            mainClass.set("com.android.tools.r8.tracereferences.TraceReferences")
+            maxHeapSize = "2g"
+            // Keep this cross-APK ABI stable, including Kotlin default-method
+            // helpers synthesized after tracing. Applying only a name mapping
+            // to the test APK cannot repair every synthesized helper call.
+            args("--keep-rules", "--source", sourceArchive.absolutePath)
+            // The Android SDK stubs omit hidden APIs and optional desktop/mock
+            // adapters in the test runner. Review those diagnostics below;
+            // unresolved application/test APIs must still fail this task.
+            args("--map-diagnostics:MissingDefinitionsDiagnostic", "error", "warning")
+            errorOutput = diagnostics
+            bootClasspath.files.sortedBy { it.path }.forEach { args("--lib", it.absolutePath) }
+            args("--target", targetArchive.absolutePath)
+            args("--output", output.absolutePath)
+        }.assertNormalExitValue()
+        val diagnosticText = diagnostics.toString(Charsets.UTF_8)
+        temporaryDir.resolve("trace-diagnostics.txt").writeText(diagnosticText)
+        val sdkOrOptionalApis = listOf(
+            "android.test.AndroidTestCase", "android.test.InstrumentationTestCase",
+            "androidx.test.internal.runner.hidden.ExposedInstrumentationApi.execStartActivity",
+            "java.beans.", "java.lang.invoke.StringConcatFactory",
+            "javax.lang.model.element.Modifier", "org.easymock.", "org.jmock.core.Constraint", "sun.misc.Unsafe",
+        )
+        val missing = diagnosticText.lineSequence().map { it.removePrefix("Warning: ") }
+            .filter { it.startsWith("Missing ") }.toList()
+        val unexpected = missing.filter { line ->
+            val declaration = line.substringBefore(" (referenced from:")
+            val symbol = if (declaration.startsWith("Missing class ")) declaration.removePrefix("Missing class ")
+                else declaration.removePrefix("Missing method ").removePrefix("Missing field ").substringAfter(' ')
+            sdkOrOptionalApis.none { symbol.startsWith(it) }
+        }
+        check(unexpected.isEmpty()) { "Unresolved instrumentation references:\n${unexpected.joinToString("\n")}" }
+        if (missing.isNotEmpty()) logger.lifecycle("QA tracing: {} SDK/optional adapter diagnostics; see {}",
+            missing.size, temporaryDir.resolve("trace-diagnostics.txt"))
+        check(output.isFile && output.length() > 0) { "Missing instrumentation keep rules" }
+    }
+}
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("keystore.properties")
@@ -253,6 +358,9 @@ android {
         // Same optimizer as release, installed separately for repeatable startup QA.
         create("auditRelease") {
             initWith(getByName("release"))
+            // Instrumentation shares runtime dependencies with the tested APK.
+            // Retain its JUnit runtime only in QA while keeping app optimization.
+            proguardFiles("proguard-audit.pro")
             // The handset audit may preserve its existing account and database.
             // The default remains an independently installed QA application.
             if (providers.gradleProperty("startupAuditPrimaryPackage").orNull != "true") {
@@ -383,6 +491,30 @@ tasks.matching { it.name.startsWith("uploadCrashlyticsMappingFile") }.configureE
         !isAuditBuild && providers.environmentVariable("NOVVIN_CI_FIXTURE").orNull != "true"
     }
 }
+
+androidComponents.onVariants(androidComponents.selector().withBuildType("auditRelease")) { variant ->
+    variant.androidTest?.let { instrumentation ->
+        val trace = tasks.register<TraceQaInstrumentationReferences>("traceAuditReleaseInstrumentationReferences") {
+            bootClasspath.from(androidComponents.sdkComponents.bootClasspath)
+            // Use the exact R8 distribution bundled with the active AGP.
+            traceTool.from(File(Class.forName("com.android.tools.r8.tracereferences.TraceReferences")
+                .protectionDomain.codeSource.location.toURI()))
+            rules.set(layout.buildDirectory.file("intermediates/qa_instrumentation/keep-rules.pro"))
+        }
+        variant.artifacts.forScope(ScopedArtifacts.Scope.ALL).use(trace).toGet(
+            ScopedArtifact.CLASSES,
+            TraceQaInstrumentationReferences::targetJars,
+            TraceQaInstrumentationReferences::targetDirectories,
+        )
+        instrumentation.artifacts.forScope(ScopedArtifacts.Scope.ALL).use(trace).toGet(
+            ScopedArtifact.CLASSES,
+            TraceQaInstrumentationReferences::sourceJars,
+            TraceQaInstrumentationReferences::sourceDirectories,
+        )
+        variant.proguardFiles.add(trace.flatMap { it.rules })
+    }
+}
+
 
 dependencies {
     coreLibraryDesugaring(libs.android.desugar.jdk.libs)

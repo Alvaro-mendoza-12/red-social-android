@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T15:02:44.528574+00:00",
-  "baseCommit": "939377e816d00f0b31b11703656b74b78374bdec",
+  "generatedAtUtc": "2026-11-15T15:27:36.111918+00:00",
+  "baseCommit": "38b0274fa1303a7b065eb25a4f1f140aa56292f6",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3603,
-    "partial": 249,
-    "code-read": 687
+    "pending": 3604,
+    "partial": 250,
+    "code-read": 688
   },
   "countsByPhase": {
     "android": {
-      "pending": 1483,
-      "code-read": 478,
-      "partial": 102
+      "pending": 1482,
+      "partial": 103,
+      "code-read": 479
     },
     "documentation": {
-      "pending": 630,
+      "pending": 632,
       "code-read": 54,
       "partial": 20
     },
@@ -4625,9 +4625,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "22f949a6e862550ab86af3d17d3e7dbcca8ebc0a",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "gitBlobId": "9db7125314b322323792725c5f54e9dfadd09d5c",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4635,6 +4635,14 @@
       "phase": "android",
       "gitBlobId": "8e9a0f6f0c997422737ff0b68bb2f5f0a824255d",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/proguard-audit.pro",
+      "phase": "android",
+      "gitBlobId": "120e050e6973fd02fc85bd93aae550df6e9ef198",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/proguard-rules.pro",
@@ -4897,9 +4905,9 @@
     {
       "file": "app/src/androidTest/java/conectate/com/performance/PublicMediaTransferDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "c5efe7e470d629b7881999db52631a564b473af4",
+      "gitBlobId": "74d958edcd204a492ff0737e47de419c6f181e34",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4907,7 +4915,7 @@
       "phase": "android",
       "gitBlobId": "5a7ccc329b309d8f179d94b051910e3f0114c906",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4997,7 +5005,7 @@
       "phase": "android",
       "gitBlobId": "074adbd45b8abb1849056d4a1d1e922c6efad57a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -5005,7 +5013,7 @@
       "phase": "android",
       "gitBlobId": "5f0936144f701defaa66328be201398ff4fb1c40",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6341,7 +6349,7 @@
       "phase": "android",
       "gitBlobId": "f7429fe9858db02ffa6777c6748646169504b3f6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6461,7 +6469,7 @@
       "phase": "android",
       "gitBlobId": "ae7e651634ff6599ac5391bf8f2d739ee6244a17",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6477,7 +6485,7 @@
       "phase": "android",
       "gitBlobId": "69cce1bc03b7d8a5e9e385e96fc3975d7689ab9d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6493,7 +6501,7 @@
       "phase": "android",
       "gitBlobId": "27772db6360afe9826501551b3ac913b3f4175b4",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7283,7 +7291,7 @@
       "phase": "android",
       "gitBlobId": "ed163a1ce6ef6a26ca9bb6bb4b1e21bceee38d32",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12806,7 +12814,9 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoPlaybackRecoveryPolicy.kt",
       "phase": "android",
       "gitBlobId": "de1faa1d15e48606a3d2ca542e71b12caf3603f1",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoPlaybackRecoveryRunner.kt",
@@ -12827,7 +12837,7 @@
       "phase": "android",
       "gitBlobId": "b0aec6c21be73564ec518e356dbb1dc627e60725",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13245,7 +13255,7 @@
       "phase": "android",
       "gitBlobId": "553aa8195935aefae3445355ccdb92b2717956a1",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13455,7 +13465,7 @@
       "phase": "android",
       "gitBlobId": "dfdf0716f6343d97033d378fae1b4a9f18f466ca",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13553,7 +13563,7 @@
       "phase": "android",
       "gitBlobId": "9d48bd4d12ba3f341ccbe371ca3c09e1ce24a8bf",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13607,7 +13617,7 @@
       "phase": "android",
       "gitBlobId": "ff592be647c19036cfda6af5fb9c3a3e9537c657",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13653,7 +13663,7 @@
       "phase": "android",
       "gitBlobId": "e57f69b4d575633ba16469d846e31ceb711c2ae1",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13675,7 +13685,7 @@
       "phase": "android",
       "gitBlobId": "224e42d9ab52e6d9608139353203a3f020ac2f4e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20557,7 +20567,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "d92093fb6e07429aeb067347dc66383d7102a8ab",
+      "gitBlobId": "3637c596fa3f5b9b8f1f5a2c1717bd7d68543f22",
       "reviewStatus": "pending"
     },
     {
@@ -20841,6 +20851,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "b1aab2a34cb0824b44fe344af65d91b182db43b1",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
@@ -21393,7 +21409,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "7473397d2490d5342acca17e1a36d9c64b269206",
+      "gitBlobId": "99c800d92aacf11417efd305e43dd4729e177606",
       "reviewStatus": "pending"
     },
     {
@@ -21813,7 +21829,7 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "8eead227d310e7eb7d20a9058ff4354fe113d81b",
+      "gitBlobId": "891091d71d599fe5efca4fd85020d5955e1b6553",
       "reviewStatus": "pending"
     },
     {
@@ -22275,6 +22291,12 @@
       "reviewStatus": "partial",
       "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/145-mobile-media-runtime.json",
+      "phase": "documentation",
+      "gitBlobId": "739f804973aa6ae8ca27e5fbc0f800245b14316e",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/quality/evidence/147-media-delivery.json",

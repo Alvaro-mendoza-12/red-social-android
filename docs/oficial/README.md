@@ -4,6 +4,8 @@ Estado documental al 15 de noviembre de 2026. Esta es la entrada para desarrollo
 
 ## Estado vigente
 
+La [continuación 145 retomada](145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md) repara la ABI de instrumentación QA optimizada y aprueba cinco casos en el Moto g04, además de tres casos de avatares en emulador. La APK de laboratorio 9.1.40/180 incluye el código Android de 148; la instalación principal quedó igual. El primer cuadro tarda 3.054, 1.417 y 894 ms, sin acreditar reproducción continua ni desplazamiento. La caché autenticada, el acceso/ayuda, los demás módulos y la APK final siguen pendientes.
+
 La [continuación 149](149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md) comprueba el estado de Ubuntu y restaura 265 tablas del respaldo actual en aislamiento. Prepara el mantenimiento acotado de nueve paquetes con dieciocho pruebas Linux y preflight aprobado. La instalación del host requiere autenticación administrativa real y sigue pendiente; el ensayo no restaura propietarios/ACL ni cierra los recorridos móviles.
 
 La [continuación 148](148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md) corrige el bloqueo de recuperación asistida al cancelar una operación en cola y protege su estado frente a respuestas anteriores. Reproduce tres fallos del ViewModel y aprueba veinte casos JVM en cinco clases después del parche. Organiza la validación de acceso, ayuda y Mensajes por recorrido; el módulo completo, el ensayo físico, la entrega de correo y la APK nueva siguen pendientes.
