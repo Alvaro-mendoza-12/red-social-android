@@ -13,6 +13,7 @@ import conectate.com.data.localfallback.UsernameAvailabilityResponse
 import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.presentation.common.looksLikeStoredAccountSessionIssue
 import conectate.com.presentation.common.toUserFacingMessage
 import conectate.com.core.concurrency.AccountTasks
@@ -75,6 +76,10 @@ class AuthViewModel @Inject constructor(
 
     private val emailRecoveryStore = EmailRecoveryDraftStore(context)
     private val authEntryTasks = AccountTasks(viewModelScope)
+    private val accountEntryTasks = AccountTasks(viewModelScope)
+    private var accountEntryGeneration = 0L
+    private var accountEntryOwner: AuthSessionLease? = null
+    private var accountEntryScreenOwner: Any? = null
     private val emailRecoveryMutex = Mutex()
     private var emailRecoveryGeneration = 0
     private val _emailRecovery = MutableStateFlow<EmailRecoveryDraft?>(null)
@@ -117,6 +122,7 @@ class AuthViewModel @Inject constructor(
         assistedRecoveryGeneration += 1
         authEntryTasks.reset()
         _assistedRecoverySubmitting.value = false
+        cancelAccountEntryOperations()
     }
 
     private fun suspendedState(error: AccountSuspendedException) = AuthState.Suspended(
@@ -147,6 +153,7 @@ class AuthViewModel @Inject constructor(
         viewModelScope.launch {
             authRepository.getAuthStateFlow().collect { user ->
                 val resolvedUserId = authRepository.getCurrentUserId()
+                cancelStaleAccountEntries()
                 val hasValidUser = resolvedUserId != null
                 _currentUserId.value = resolvedUserId
                 _isUserLoggedIn.value = hasValidUser || user != null
@@ -288,9 +295,51 @@ class AuthViewModel @Inject constructor(
         _authState.value = AuthState.Idle
     }
 
-    fun saveCurrentAccount() {
-        viewModelScope.launch {
-            var result = authRepository.rememberCurrentAccount()
+    /** Discard callbacks for the departing settings visit, retaining durable accounts. */
+    fun cancelAccountEntryOperations(visitOwner: Any? = null) {
+        if (visitOwner != null && accountEntryScreenOwner !== visitOwner) return
+        accountEntryGeneration += 1
+        accountEntryTasks.reset()
+        accountEntryOwner = null
+        accountEntryScreenOwner = null
+        preparingAddAccount = false
+        _accountSwitchMessage.value = null
+    }
+
+    private fun cancelStaleAccountEntries() {
+        if (accountEntryOwner?.isCurrent() == false) cancelAccountEntryOperations()
+    }
+
+    private fun beginAccountEntry(visitOwner: Any?): AuthSessionLease {
+        val owner = authRepository.captureAccountLease()
+        if (accountEntryOwner?.sameVisit(owner) == false || accountEntryScreenOwner !== visitOwner) {
+            cancelAccountEntryOperations()
+        }
+        accountEntryOwner = owner
+        accountEntryScreenOwner = visitOwner
+        return owner
+    }
+
+    private fun rejectStaleAccountEntry(owner: AuthSessionLease, generation: Long): Boolean {
+        if (generation != accountEntryGeneration) return true
+        if (owner.isCurrent()) return false
+        // Only the expired current visit may reset its state. A completion from
+        // an earlier generation cannot cancel a newly admitted preparation.
+        cancelAccountEntryOperations()
+        return true
+    }
+
+    fun saveCurrentAccount(visitOwner: Any? = null) {
+        if (_authState.value is AuthState.Loading) return
+        val owner = beginAccountEntry(visitOwner)
+        val generation = accountEntryGeneration
+        accountEntryTasks.scope.launch {
+            if (rejectStaleAccountEntry(owner, generation)) return@launch
+            val result = authEntryOperation {
+                owner.requireCurrent()
+                authRepository.rememberCurrentAccount()
+            }
+            if (rejectStaleAccountEntry(owner, generation)) return@launch
             _accountSwitchMessage.value = if (result.isSuccess) {
                 "Cuenta guardada y actualizada para cambio rápido."
             } else {
@@ -302,30 +351,50 @@ class AuthViewModel @Inject constructor(
     suspend fun checkUsernameAvailability(username: String, displayName: String): Result<UsernameAvailabilityResponse> =
         localFallbackApiClient.checkUsernameAvailability(username, displayName)
 
-    fun prepareAddAccount(onReady: () -> Unit) {
-        if (_authState.value is AuthState.Loading || preparingAddAccount) return
+    fun prepareAddAccount(visitOwner: Any? = null, onReady: () -> Unit) {
+        if (_authState.value is AuthState.Loading) return
+        val owner = beginAccountEntry(visitOwner)
+        if (preparingAddAccount || !owner.isCurrent()) return
+        val generation = accountEntryGeneration
         preparingAddAccount = true
-        viewModelScope.launch {
+        accountEntryTasks.scope.launch {
+            val savingMessage = "Guardando la cuenta actual…"
+            var replyHandled = false
             try {
-            _accountSwitchMessage.value = "Guardando la cuenta actual…"
-            authEntryOperation { authRepository.rememberCurrentAccount() }.fold(
-                onSuccess = {
-                    guestModeApi.clear()
-                    _accountSwitchMessage.value = null
-                    // A previous login success must not complete the add-account screen.
-                    _authState.value = AuthState.Idle
-                    onReady()
-                },
-                onFailure = {
-                    _accountSwitchMessage.value = it.toUserFacingMessage("No se pudo guardar la cuenta actual.")
-                },
-            )
-            } finally { preparingAddAccount = false }
+                if (rejectStaleAccountEntry(owner, generation)) return@launch
+                _accountSwitchMessage.value = savingMessage
+                val result = authEntryOperation {
+                    owner.requireCurrent()
+                    authRepository.rememberCurrentAccount()
+                }
+                if (rejectStaleAccountEntry(owner, generation)) return@launch
+                result.fold(
+                    onSuccess = {
+                        guestModeApi.clear()
+                        _accountSwitchMessage.value = null
+                        // A previous login success must not complete the add-account screen.
+                        _authState.value = AuthState.Idle
+                        onReady()
+                    },
+                    onFailure = {
+                        _accountSwitchMessage.value = it.toUserFacingMessage("No se pudo guardar la cuenta actual.")
+                    },
+                )
+                replyHandled = true
+            } finally {
+                if (generation == accountEntryGeneration) {
+                    preparingAddAccount = false
+                    if (!replyHandled && _accountSwitchMessage.value == savingMessage) {
+                        _accountSwitchMessage.value = null
+                    }
+                }
+            }
         }
     }
 
     fun switchAccount(accountId: String, onSuccess: (User) -> Unit = {}) {
         if (_authState.value is AuthState.Loading) return
+        cancelAccountEntryOperations()
         _authState.value = AuthState.Loading
         authEntryTasks.scope.launch {
             val result = authEntryOperation { authRepository.switchAccount(accountId) }

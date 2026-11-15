@@ -104,12 +104,17 @@ fun SettingsScreen(
     val uriHandler = LocalUriHandler.current
     val screenContext = LocalContext.current
     val settingsLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-    DisposableEffect(settingsLifecycleOwner, viewModel) {
+    val accountEntryVisit = remember(authViewModel) { Any() }
+    DisposableEffect(settingsLifecycleOwner, viewModel, authViewModel, accountEntryVisit) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.loadWebSessions()
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) authViewModel.cancelAccountEntryOperations(accountEntryVisit)
         }
         settingsLifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { settingsLifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            settingsLifecycleOwner.lifecycle.removeObserver(observer)
+            authViewModel.cancelAccountEntryOperations(accountEntryVisit)
+        }
     }
     LaunchedEffect(twoFactorDisabled) {
         if (twoFactorDisabled) onLogout()
@@ -1125,8 +1130,14 @@ fun SettingsScreen(
             SettingsSection(title = "Cambio rápido de cuenta") {
                 Button(
                     onClick = {
-                        authViewModel.prepareAddAccount {
-                            mainNavController.navigate(Screen.AddAccountLogin.route)
+                        val origin = navController.currentBackStackEntry
+                        val mainOrigin = mainNavController.currentBackStackEntry
+                        authViewModel.prepareAddAccount(accountEntryVisit) {
+                            if (origin != null && mainOrigin != null &&
+                                navController.currentBackStackEntry === origin &&
+                                mainNavController.currentBackStackEntry === mainOrigin &&
+                                settingsLifecycleOwner.lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+                            ) mainNavController.navigate(Screen.AddAccountLogin.route)
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -1137,7 +1148,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
-                    onClick = { authViewModel.saveCurrentAccount() },
+                    onClick = { authViewModel.saveCurrentAccount(accountEntryVisit) },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Guardar cuenta actual")
