@@ -62,3 +62,8 @@ La [continuación 148](../oficial/148-acceso-recuperacion-y-validacion-por-modul
 ## Continuación 149 — 15 de noviembre de 2026
 
 El [mantenimiento preparado del host](../oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md) verifica el manifiesto completo del respaldo actual y restaura 265 tablas en un PostgreSQL aislado. Dieciocho pruebas Linux y el preflight del procedimiento acotado aprueban. Los nueve paquetes del host aún no se instalaron: sudo requiere autenticación administrativa. El ensayo omite propietarios/ACL, restauración de storage y arranque de aplicación. Los recorridos Android, la caché autenticada, la fluidez física y la APK final siguen abiertos.
+
+
+## Continuación 145 retomada — 15 de noviembre de 2026
+
+La [medición móvil actual](../oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md) corrige los bloqueos de runtime/ABI de la instrumentación QA con R8. Aprueban cinco casos físicos Moto/API 34 y tres de avatares repetidos en emulador/API 35. La APK es de laboratorio 9.1.40 / 180, fuente 148 con parche QA145; no sustituye la instalación principal. Las tres aperturas producen primer cuadro en 3.054, 1.417 y 894 ms y registran buffering al capturarlo; la reproducción sostenida y el desplazamiento no quedan validados. La caché autenticada, acceso/ayuda, Mensajes y demás módulos conservan sus pendientes. No es una entrega final ni una certificación de fluidez integral.
