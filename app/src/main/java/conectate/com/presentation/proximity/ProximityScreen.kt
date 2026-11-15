@@ -5,11 +5,9 @@ import androidx.compose.material3.TextButton
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -51,7 +49,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import conectate.com.presentation.components.rememberRealtimeProgress
 import androidx.compose.material3.Tab
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Text
@@ -70,9 +67,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -96,8 +91,6 @@ import conectate.com.presentation.navigation.Screen
 import coil.compose.AsyncImage
 import conectate.com.presentation.components.FullScreenImageDialog
 import kotlinx.coroutines.launch
-import kotlin.math.cos
-import kotlin.math.min
 import kotlin.math.sin
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -218,7 +211,7 @@ fun ProximityScreen(
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text("Radar") },
+                        text = { Text("Personas cerca") },
                         icon = { Icon(Icons.Default.MyLocation, contentDescription = null) }
                     )
                     Tab(
@@ -293,7 +286,7 @@ private fun NearbyTab(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            RadarVisualization(
+            NearbyStatusCard(
                 enabled = enabled,
                 radiusKm = radius,
                 profiles = profiles,
@@ -347,132 +340,29 @@ private fun NearbyTab(
 }
 
 @Composable
-private fun RadarVisualization(
-    enabled: Boolean,
-    radiusKm: Float,
-    profiles: List<NearbyProfile>,
-) {
-    val sweepProgress = rememberRealtimeProgress(
-        key = "radar-sweep",
-        durationMillis = 2_800L,
-        running = enabled,
-        repeat = true,
-    )
-    val pulseProgress = rememberRealtimeProgress(
-        key = "radar-pulse",
-        durationMillis = 1_900L,
-        running = enabled,
-        repeat = true,
-    )
-    val sweepAngle = sweepProgress * 360f
-    val primary = MaterialTheme.colorScheme.primary
-    val surface = MaterialTheme.colorScheme.surfaceVariant
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1.35f),
-        shape = RoundedCornerShape(24.dp),
-        color = surface,
-        tonalElevation = 2.dp,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Canvas(modifier = Modifier.fillMaxSize().padding(18.dp)) {
-                val center = Offset(size.width / 2f, size.height / 2f)
-                val outerRadius = min(size.width, size.height) * 0.46f
-                repeat(4) { index ->
-                    drawCircle(
-                        color = primary.copy(alpha = 0.16f + index * 0.03f),
-                        radius = outerRadius * (index + 1) / 4f,
-                        center = center,
-                        style = Stroke(width = 2f),
-                    )
-                }
-                drawLine(
-                    color = primary.copy(alpha = 0.14f),
-                    start = Offset(center.x - outerRadius, center.y),
-                    end = Offset(center.x + outerRadius, center.y),
-                    strokeWidth = 2f,
-                )
-                drawLine(
-                    color = primary.copy(alpha = 0.14f),
-                    start = Offset(center.x, center.y - outerRadius),
-                    end = Offset(center.x, center.y + outerRadius),
-                    strokeWidth = 2f,
-                )
-                if (enabled) {
-                    drawArc(
-                        color = primary.copy(alpha = 0.28f),
-                        startAngle = sweepAngle - 48f,
-                        sweepAngle = 48f,
-                        useCenter = true,
-                        topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
-                        size = androidx.compose.ui.geometry.Size(outerRadius * 2f, outerRadius * 2f),
-                    )
-                    val sweepRadians = Math.toRadians(sweepAngle.toDouble())
-                    drawLine(
-                        color = primary.copy(alpha = 0.92f),
-                        start = center,
-                        end = Offset(
-                            x = center.x + cos(sweepRadians).toFloat() * outerRadius,
-                            y = center.y + sin(sweepRadians).toFloat() * outerRadius,
-                        ),
-                        strokeWidth = 5f,
-                    )
-                    drawCircle(
-                        color = primary.copy(alpha = (1f - pulseProgress) * 0.28f),
-                        radius = outerRadius * pulseProgress,
-                        center = center,
-                        style = Stroke(width = 4f),
-                    )
-                    repeat(14) { trailIndex ->
-                        val trailFraction = 1f - (trailIndex / 14f)
-                        val radians = Math.toRadians(
-                            (sweepAngle - trailIndex * 2.5f).toDouble()
-                        )
-                        val beamEnd = Offset(
-                            x = center.x + cos(radians).toFloat() * outerRadius,
-                            y = center.y + sin(radians).toFloat() * outerRadius,
-                        )
-                        drawLine(
-                            color = primary.copy(alpha = 0.08f + 0.76f * trailFraction),
-                            start = center,
-                            end = beamEnd,
-                            strokeWidth = 2f + 5f * trailFraction,
-                        )
-                    }
-                    profiles.take(24).forEach { profile ->
-                        val angle = Math.toRadians((profile.userId.hashCode().toUInt().toLong() % 360).toDouble())
-                        val fraction = (profile.distanceKm / radiusKm.coerceAtLeast(1f))
-                            .toFloat()
-                            .coerceIn(0.12f, 0.95f)
-                        drawCircle(
-                            color = Color(0xFF45E08A),
-                            radius = 7f,
-                            center = Offset(
-                                center.x + cos(angle).toFloat() * outerRadius * fraction,
-                                center.y + sin(angle).toFloat() * outerRadius * fraction,
-                            ),
-                        )
-                    }
-                    drawCircle(color = primary, radius = 9f, center = center)
-                }
-            }
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    if (enabled) Icons.Default.MyLocation else Icons.Default.LocationOff,
-                    contentDescription = null,
-                    tint = primary,
-                )
+private fun NearbyStatusCard(enabled: Boolean, radiusKm: Float, profiles: List<NearbyProfile>) {
+    val colors = MaterialTheme.colorScheme
+    Surface(shape = RoundedCornerShape(24.dp), color = colors.primaryContainer) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (enabled) Icons.Default.LocationOn else Icons.Default.LocationOff,
+                contentDescription = null,
+                tint = colors.onPrimaryContainer,
+                modifier = Modifier.size(30.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Personas cerca", style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold, color = colors.onPrimaryContainer)
+                val count = profiles.size
                 Text(
-                    if (enabled) "Buscando · ${radiusKm.toInt()} km" else "Radar apagado",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    if (enabled) "${profiles.size} personas dentro del radio" else "Actívalo para comenzar",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    if (enabled) "$count ${if (count == 1) "persona" else "personas"} en un radio de ${radiusKm.toInt()} km"
+                    else "Activa el radar para ver personas que también decidieron aparecer.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onPrimaryContainer,
                 )
             }
         }
@@ -560,7 +450,7 @@ internal fun AnonymousTab(
     onOpenProfile: (String) -> Unit,
     onOpenNormalChat: (String) -> Unit,
 ) {
-    var bottleMessage by remember { mutableStateOf("") }
+    var bottleMessage by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
     LaunchedEffect(outgoingBottle?.id) {
         if (outgoingBottle != null) bottleMessage = ""
     }
@@ -596,12 +486,12 @@ internal fun AnonymousTab(
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null)
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Una botella al mar",
+                        "Botella al mar",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "Envía un mensaje o recibe una botella de otra persona. Si alguien responde, empieza un chat anónimo.",
+                        "Deja un mensaje anónimo. Otra persona podrá recogerlo al abrir su bandeja.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -642,9 +532,9 @@ internal fun AnonymousTab(
                                 )
                                 Text(
                                     if (outgoingBottle.status == "offered") {
-                                        "Alguien la está leyendo. Si no la acepta, seguirá automáticamente."
+                                        "La botella llegó a una bandeja. Si la persona pasa o vence la oferta, sigue su viaje."
                                     } else {
-                                        "Buscando a alguien que quiera responder…"
+                                        "Quedó en el mar. Podrá recogerla alguien que abra la bandeja antes de que venza."
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                 )
@@ -685,7 +575,8 @@ internal fun AnonymousTab(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text("Enviar botella", fontWeight = FontWeight.Bold)
+                        Text("Lanzar una botella", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Tu mensaje puede quedar disponible hasta 24 horas.", style = MaterialTheme.typography.bodySmall)
                         OutlinedTextField(
                             value = bottleMessage,
                             onValueChange = { bottleMessage = it.take(500) },
@@ -717,7 +608,7 @@ internal fun AnonymousTab(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
-                    "La búsqueda es global y no comparte tu ubicación ni tu identidad. Cada persona recibe una sola oportunidad para aceptar o pasar.",
+                    "Las botellas no usan tu ubicación. Aceptar una abre un chat anónimo; pasar la deja disponible para otra persona.",
                     modifier = Modifier.padding(14.dp),
                     style = MaterialTheme.typography.bodySmall,
                 )
@@ -737,15 +628,6 @@ internal fun AnonymousTab(
                     onClick = { onSelectSession(anonymousSession.id) },
                 )
             }
-        }
-        item {
-            Text(
-                "Al aceptar una botella empieza el chat anónimo. La identidad se revela gradualmente según la confianza de la conversación.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }

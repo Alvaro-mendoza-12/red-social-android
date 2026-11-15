@@ -8,6 +8,8 @@ El 4 de noviembre el propietario confirmó que todo el plan de innovación y sus
 
 La continuación vigente es [111: resultados, primera contribución y partidas acordadas](111-resultados-acogida-y-partidas.md), con tres modos añadidos a Rutas y Acuerdos. El backend experimental ya está activo; la [operación 112](../oficial/112-pruebas-android-studio-y-api-experimental.md) identifica respaldo, contratos y acceso desde Android Studio. La aceptación del diseño y la promoción requieren la decisión posterior del propietario. Los apartados siguientes conservan el plan y la evidencia de cada etapa; sus menciones de modos pendientes pertenecen a esas etapas.
 
+La [revisión 153 de Juegos y descubrimiento](153-juegos-personas-y-botella.md) organiza el catálogo, los jugadores y la actividad, y separa el descubrimiento cercano, la bandeja de botellas y los chats.
+
 La hipótesis común consiste en permitir que una persona declare para qué entra, recorra una cantidad comprensible de contenido o acciones, produzca un resultado y pueda retomarlo. La utilidad se medirá por tarea resuelta, control y satisfacción declarada. La duración de la visita por sí sola será insuficiente para aceptar una propuesta.
 
 Cada módulo tendrá una ventaja que se pueda probar por separado. La combinación de módulos servirá para conservar el contexto cuando el usuario decida pasar de uno a otro. La investigación documental permite identificar antecedentes y oportunidades. La preferencia real del público requiere ensayos de producto.

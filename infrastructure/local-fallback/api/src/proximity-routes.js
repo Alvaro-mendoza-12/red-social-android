@@ -462,7 +462,7 @@ async function bottleById(db, bottleId, lock = false) {
   return rows[0] || null
 }
 
-async function assignBottleRecipient(db, bottle) {
+async function assignBottleRecipient(db, bottle, recipientId = null) {
   if (!bottle || bottle.status !== 'searching') return bottle
   const senderId = normalizeId(bottle.sender_id)
   const attemptedIds = new Set((bottle.attempted_recipient_ids || []).map(normalizeId).filter(Boolean))
@@ -474,7 +474,9 @@ async function assignBottleRecipient(db, bottle) {
   const { rows: busyRows } = await db.query(
     `SELECT current_recipient_id
        FROM fallback_random_chat_bottles
-      WHERE status='offered' AND current_recipient_id IS NOT NULL AND id<>$1::uuid`,
+      WHERE status='offered' AND current_recipient_id IS NOT NULL AND id<>$1::uuid
+        AND expires_at>NOW()
+        AND offer_started_at > NOW() - INTERVAL '${BOTTLE_OFFER_TIMEOUT_SECONDS} seconds'`,
     [bottle.id],
   )
   const busyRecipientIds = new Set(busyRows.map((row) => normalizeId(row.current_recipient_id)).filter(Boolean))
@@ -494,8 +496,10 @@ async function assignBottleRecipient(db, bottle) {
     `SELECT user_id, created_at
        FROM fallback_random_bottle_availability
       WHERE updated_at > NOW() - INTERVAL '${BOTTLE_AVAILABILITY_TTL_SECONDS} seconds'
+        AND ($1::text IS NULL OR lower(user_id::text)=$1)
       ORDER BY created_at
       FOR UPDATE SKIP LOCKED`,
+    [recipientId],
   )
   const candidate = candidates.find((entry) => bottleCandidateAllowed({
     senderId,
@@ -520,7 +524,7 @@ async function assignBottleRecipient(db, bottle) {
   return rows[0] || bottle
 }
 
-async function advanceBottle(db, bottleId) {
+async function advanceBottle(db, bottleId, recipientId = null) {
   let bottle = await bottleById(db, bottleId, true)
   if (!bottle) return null
   if (ACTIVE_BOTTLE_STATUSES.has(bottle.status) && new Date(bottle.expires_at).getTime() <= Date.now()) {
@@ -554,7 +558,22 @@ async function advanceBottle(db, bottleId) {
     )
     bottle = rows[0] || bottle
   }
-  return bottle.status === 'searching' ? assignBottleRecipient(db, bottle) : bottle
+  return bottle.status === 'searching' ? assignBottleRecipient(db, bottle, recipientId) : bottle
+}
+
+async function incomingBottleForUser(db, identity) {
+  const { rows } = await db.query(
+    `SELECT id::text, sender_id, content, sender_gender, looking_for, status,
+            current_recipient_id, attempted_recipient_ids, session_id::text,
+            offer_started_at, expires_at, created_at, updated_at
+       FROM fallback_random_chat_bottles
+      WHERE status='offered' AND lower(current_recipient_id::text)=ANY($1::text[])
+        AND expires_at>NOW()
+        AND offer_started_at > NOW() - INTERVAL '${BOTTLE_OFFER_TIMEOUT_SECONDS} seconds'
+      ORDER BY offer_started_at LIMIT 1`,
+    [identity.values],
+  )
+  return rows[0] || null
 }
 
 async function releaseBottleRecipient(db, bottle) {
@@ -853,24 +872,41 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
          ON CONFLICT(user_id) DO UPDATE SET gender=EXCLUDED.gender,looking_for=EXCLUDED.looking_for,updated_at=NOW()`,
         [userId, gender, lookingFor],
       )
-      const pending = await client.query(
-        `SELECT id::text FROM fallback_random_chat_bottles
-          WHERE status IN ('searching','offered') AND expires_at>NOW()
-          ORDER BY created_at LIMIT 25`,
-      )
-      for (const row of pending.rows) await advanceBottle(client, row.id)
-      const incoming = await client.query(
-        `SELECT id::text, sender_id, content, sender_gender, looking_for, status,
-                current_recipient_id, attempted_recipient_ids, session_id::text,
-                offer_started_at, expires_at, created_at, updated_at
-           FROM fallback_random_chat_bottles
-          WHERE status='offered' AND lower(current_recipient_id::text)=ANY($1::text[])
-            AND offer_started_at > NOW() - INTERVAL '${BOTTLE_OFFER_TIMEOUT_SECONDS} seconds'
-          ORDER BY offer_started_at LIMIT 1`,
-        [identity.values],
-      )
+      let bottle = await incomingBottleForUser(client, identity)
+      if (!bottle) {
+        const excludedSenders = await blockedIds(client, identity)
+        for (const id of identity.values) excludedSenders.add(normalizeId(id))
+        for (const session of activeSessions) {
+          const peer = normalizeId(session.user_a) === userId ? session.user_b : session.user_a
+          excludedSenders.add(normalizeId(peer))
+        }
+        // Healthy offers are already in flight. Exclude incompatible bottles
+        // before applying the batch limit so they cannot hide a valid one.
+        const pending = await client.query(
+          `SELECT id::text FROM fallback_random_chat_bottles
+            WHERE expires_at>NOW()
+              AND lower(sender_id::text)<>ALL($2::text[])
+              AND NOT (attempted_recipient_ids ?| $1::text[])
+              AND (
+                status='searching' OR (
+                  status='offered'
+                  AND offer_started_at <= NOW() - INTERVAL '${BOTTLE_OFFER_TIMEOUT_SECONDS} seconds'
+                  AND lower(current_recipient_id::text)<>ALL($1::text[])
+                )
+              )
+            ORDER BY created_at, id LIMIT 25`,
+          [identity.values, Array.from(excludedSenders)],
+        )
+        for (const row of pending.rows) {
+          const offered = await advanceBottle(client, row.id, userId)
+          if (offered?.status === 'offered' && normalizeId(offered.current_recipient_id) === userId) {
+            bottle = offered
+            break
+          }
+        }
+      }
       await client.query('COMMIT')
-      const bottle = incoming.rows[0] || null
+      res.setHeader('Cache-Control', 'private, no-store')
       res.json({ status: bottle ? 'offered' : 'available', bottle: bottlePayload(bottle, 'recipient') })
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {})
@@ -1005,17 +1041,7 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
       const identity = userIdentity(user)
-      const { rows } = await pool.query(
-        `SELECT id::text, sender_id, content, sender_gender, looking_for, status,
-                current_recipient_id, attempted_recipient_ids, session_id::text,
-                offer_started_at, expires_at, created_at, updated_at
-           FROM fallback_random_chat_bottles
-          WHERE status='offered' AND lower(current_recipient_id::text)=ANY($1::text[])
-            AND offer_started_at > NOW() - INTERVAL '${BOTTLE_OFFER_TIMEOUT_SECONDS} seconds'
-          ORDER BY offer_started_at LIMIT 1`,
-        [identity.values],
-      )
-      const bottle = rows[0] || null
+      const bottle = await incomingBottleForUser(pool, identity)
       res.setHeader('Cache-Control', 'private, no-store')
       res.json({ status: bottle ? 'offered' : 'idle', bottle: bottlePayload(bottle, 'recipient') })
     } catch (error) {

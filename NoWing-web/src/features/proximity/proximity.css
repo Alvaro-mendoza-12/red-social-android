@@ -1,0 +1,39 @@
+.proximity-sections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  padding: .5rem;
+  border: 1px solid var(--app-line);
+  border-radius: 1rem;
+  background: var(--app-panel);
+}
+
+.proximity-sections button[aria-pressed="true"] {
+  background: var(--surface-raised);
+  box-shadow: inset 0 -2px 0 var(--brand-cyan);
+}
+
+.bottle-hero {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: clamp(1rem, 4vw, 1.75rem);
+  background: linear-gradient(115deg, var(--surface-raised), var(--app-panel));
+}
+
+.bottle-hero > svg { color: var(--brand-cyan); width: 2rem; height: 2rem; }
+.bottle-hero > div { flex: 1 1 16rem; }
+.bottle-hero h3, .bottle-hero p, .bottle-panel h4, .bottle-panel p { margin: 0; }
+.bottle-hero p { margin-top: .4rem; }
+.bottle-panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.bottle-panel { display: grid; gap: .8rem; align-content: start; min-width: 0; padding: 1rem; }
+.bottle-panel h4 { font-size: 1.15rem; }
+.bottle-panel label:not(.checkbox-inline) { display: grid; gap: .45rem; }
+.bottle-panel textarea { width: 100%; min-height: 6rem; resize: vertical; }
+.bottle-panel .row-between { gap: .5rem; flex-wrap: wrap; }
+.bottle-panel p { overflow-wrap: anywhere; }
+
+@media (max-width: 640px) {
+  .bottle-panels { grid-template-columns: minmax(0, 1fr); }
+}

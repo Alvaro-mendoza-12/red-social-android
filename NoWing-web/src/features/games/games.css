@@ -15,8 +15,9 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  padding: 1.35rem;
-  background: linear-gradient(120deg, var(--app-panel, #fff), var(--surface-raised));
+  padding: clamp(1.25rem, 5vw, 3rem);
+  border-radius: 1.4rem;
+  background: radial-gradient(ellipse at top right, color-mix(in srgb, var(--brand-cyan) 17%, transparent), transparent 70%), var(--app-panel);
 }
 .games-intro h2 {
   margin: 0.25rem 0 0.45rem;
@@ -27,12 +28,13 @@
   margin: 0;
   max-width: 60ch;
 }
-.games-eyebrow {
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: var(--brand-cyan);
+.games-intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
 }
+.games-profile-toolbar { display: flex; justify-content: flex-end; }
+.games-pending-count { border-radius: 1rem; background: var(--surface-raised); padding: 0 .4rem; font-size: .8rem; }
 .games-tabs {
   display: flex;
   gap: 0.4rem;
@@ -42,6 +44,10 @@
   border-bottom: 1px solid var(--app-line, #dbe2eb);
 }
 .games-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
   flex: 1 1 130px;
   min-height: 44px;
   padding: 0.65rem 1rem;

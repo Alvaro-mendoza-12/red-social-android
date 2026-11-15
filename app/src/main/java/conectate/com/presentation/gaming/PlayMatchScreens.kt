@@ -67,6 +67,27 @@ import androidx.compose.material.icons.automirrored.filled.Message
 private val GamingStart = PlayMatchColors.Primary
 private val GamingEnd = PlayMatchColors.Accent
 
+private enum class GamesSection(val label: String) {
+    Catalog("Catálogo"), Players("Jugadores"), Inbox("Actividad")
+}
+
+@Composable
+private fun GamesOverview(onFindPlayers: () -> Unit) {
+    Surface(shape = RoundedCornerShape(24.dp), color = PlayMatchColors.Card) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Default.SportsEsports, contentDescription = null, tint = PlayMatchColors.Accent)
+            Text("Juega en equipo", style = MaterialTheme.typography.headlineSmall,
+                color = PlayMatchColors.White, fontWeight = FontWeight.Bold)
+            Text("Elige un juego para encontrar jugadores de tu plataforma o busca directamente por nombre.",
+                color = PlayMatchColors.SecondaryText, style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = onFindPlayers, modifier = Modifier.heightIn(min = 48.dp)) { Text("Buscar jugadores") }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamesHomeScreen(
@@ -80,6 +101,7 @@ fun GamesHomeScreen(
 ) {
     PlayMatchSystemBars()
     val state by viewModel.state.collectAsState()
+    var section by rememberSaveable { mutableStateOf(GamesSection.Catalog) }
     var purposeTarget by remember { mutableStateOf<conectate.com.presentation.purpose.PurposeTarget?>(null) }
     purposeTarget?.let { target -> conectate.com.presentation.purpose.PurposeExperienceDialog(target,onDismiss = { purposeTarget = null },onSource = { source ->
         if(source.kind == "player") onOpenPlayer(source.id) else conectate.com.presentation.common.AppFeedbackBus.show("Ese contenido ya no está disponible.")
@@ -120,99 +142,139 @@ fun GamesHomeScreen(
             }
             return@LazyColumn
         }
-        item { OutlinedButton(onClick = { purposeTarget = conectate.com.presentation.purpose.PurposeTarget("gaming") },modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("Mis partidas acordadas") } }
-        item {
-            OutlinedTextField(
-                value = state.query,
-                onValueChange = viewModel::setQuery,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                placeholder = { Text("Buscar jugadores, juegos…", color = PlayMatchColors.SecondaryText) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                trailingIcon = {
-                    IconButton(onClick = viewModel::search) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Buscar")
-                    }
-                },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { viewModel.search() }),
-                shape = RoundedCornerShape(PlayMatchDimensions.CardRadius),
-                colors = playMatchTextFieldColors(),
-            )
-        }
-        item {
-            MatchmakingCallToAction(
-                enabled = !state.isWorking,
-                searching = state.session?.status == "SEARCHING",
-                onFind = { viewModel.startMatchmaking(criteriaFrom(state)) },
-                onCancel = viewModel::cancelSession,
-            )
-        }
-        item { SectionTitle("Filtros de búsqueda") }
-        item {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                FilterChip(
-                    selected = state.availableNowOnly,
-                    onClick = { viewModel.setAvailableNow(!state.availableNowOnly) },
-                    label = { Text("Disponibles ahora") },
-                )
-                TextButton(onClick = viewModel::clearPlayerFilters) { Text("Limpiar filtros") }
-            }
-        }
-        item {
-            FilterRail(
-                games = state.catalog,
-                selectedGame = state.gameFilter,
-                selectedPlatform = state.platformFilter,
-                onGame = { viewModel.search(gameId = it) },
-                onPlatform = { viewModel.search(platform = it) },
-            )
-        }
-        item { SectionTitle("Juegos populares", action = "Ver todos", onAction = onOpenAddGame) }
-        item {
-            if (state.catalog.isEmpty()) EmptyInline("El catálogo no está disponible.")
-            else LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(state.catalog.take(8), key = { it.id }) { game -> PopularGameCard(game) { viewModel.search(gameId = game.id) } }
-            }
-        }
-        if (state.connections.any { it.direction == "INCOMING" && it.status == "PENDING" }) {
-            item { SectionTitle("Solicitudes recibidas") }
-            items(state.connections.filter { it.direction == "INCOMING" && it.status == "PENDING" }, key = { it.id }) { connection ->
-                ConnectionRequestCard(connection, onAccept = { viewModel.decideConnection(connection.id, "ACCEPT") }, onReject = { viewModel.decideConnection(connection.id, "REJECT") })
-            }
-        }
-        val gameConversations = state.connections.filter { it.status == "ACCEPTED" && it.otherUserId.isNotBlank() }
-        if (gameConversations.isNotEmpty()) {
-            item { SectionTitle("Conversaciones de juego") }
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(gameConversations, key = { it.id }) { connection ->
-                        GameConversationCard(connection) { onOpenChat(connection.otherUserId) }
-                    }
+        item(key = "games_sections") {
+            ScrollableTabRow(
+                selectedTabIndex = GamesSection.entries.indexOf(section),
+                edgePadding = 0.dp,
+                containerColor = PlayMatchColors.Surface,
+                contentColor = PlayMatchColors.White,
+                modifier = Modifier.clip(RoundedCornerShape(18.dp)),
+            ) {
+                GamesSection.entries.forEach { destination ->
+                    Tab(
+                        selected = section == destination,
+                        onClick = { section = destination },
+                        text = { Text(destination.label) },
+                        selectedContentColor = PlayMatchColors.Accent,
+                        unselectedContentColor = PlayMatchColors.SecondaryText,
+                    )
                 }
             }
         }
-        if (state.matches.any { it.status == "PENDING" }) {
-            item { SectionTitle("Matches que esperan tu decisión") }
-            items(state.matches.filter { it.status == "PENDING" }, key = { it.id }) { match ->
-                IncomingMatchCard(
-                    match = match,
-                    onAccept = { viewModel.decideMatchById(match.id, "ACCEPT") },
-                    onSkip = { viewModel.decideMatchById(match.id, "SKIP") },
-                    onOpen = { match.player?.userId?.let(onOpenPlayer) },
-                )
+        when (section) {
+            GamesSection.Catalog -> {
+                item(key = "games_hero") {
+                    GamesOverview(onFindPlayers = { section = GamesSection.Players })
+                }
+                item { SectionTitle("Catálogo popular", action = "Ver catálogo", onAction = onOpenAddGame) }
+                item {
+                    if (state.catalog.isEmpty()) EmptyInline("El catálogo no está disponible.")
+                    else LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        items(state.catalog.take(8), key = { it.id }) { game -> PopularGameCard(game) { section = GamesSection.Players; viewModel.search(gameId = game.id) } }
+                    }
+                }
             }
-        }
-        item { SectionTitle("Jugadores cerca de ti") }
-        if (state.isSearchingPlayers && state.players.isEmpty()) {
-            item { CenteredProgress("Buscando jugadores…") }
-        } else if (state.players.isEmpty()) {
-            item { EmptyInline("Aún no hay jugadores compatibles. Ajusta tus filtros o completa tu perfil gamer.") }
-        } else {
-            items(state.players, key = { it.userId }) { player -> PlayerRecommendationCard(player, onOpenPlayer, onConnect = { viewModel.connect(player.userId) }) }
-            if (state.nextCursor != null) item {
-                OutlinedButton(onClick = viewModel::loadMore, enabled = !state.isSearchingPlayers, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), border = BorderStroke(1.dp, PlayMatchColors.Border), colors = ButtonDefaults.outlinedButtonColors(contentColor = PlayMatchColors.Accent)) {
-                    if (state.isSearchingPlayers) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Ver más jugadores")
+            GamesSection.Players -> {
+                item {
+                    OutlinedTextField(
+                        value = state.query,
+                        onValueChange = viewModel::setQuery,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                        placeholder = { Text("Buscar jugadores, juegos…", color = PlayMatchColors.SecondaryText) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        trailingIcon = {
+                            IconButton(onClick = viewModel::search) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Buscar")
+                            }
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(onSearch = { viewModel.search() }),
+                        shape = RoundedCornerShape(PlayMatchDimensions.CardRadius),
+                        colors = playMatchTextFieldColors(),
+                    )
+                }
+                item {
+                    MatchmakingCallToAction(
+                        enabled = !state.isWorking,
+                        searching = state.session?.status == "SEARCHING",
+                        onFind = { viewModel.startMatchmaking(criteriaFrom(state)) },
+                        onCancel = viewModel::cancelSession,
+                    )
+                }
+                item { SectionTitle("Filtros de búsqueda") }
+                item {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        FilterChip(
+                            selected = state.availableNowOnly,
+                            onClick = { viewModel.setAvailableNow(!state.availableNowOnly) },
+                            label = { Text("Disponibles ahora") },
+                        )
+                        TextButton(onClick = viewModel::clearPlayerFilters) { Text("Limpiar filtros") }
+                    }
+                }
+                item {
+                    FilterRail(
+                        games = state.catalog,
+                        selectedGame = state.gameFilter,
+                        selectedPlatform = state.platformFilter,
+                        onGame = { viewModel.search(gameId = it) },
+                        onPlatform = { viewModel.search(platform = it) },
+                    )
+                }
+                item { SectionTitle("Jugadores recomendados") }
+                if (state.isSearchingPlayers && state.players.isEmpty()) {
+                    item { CenteredProgress("Buscando jugadores…") }
+                } else if (state.players.isEmpty()) {
+                    item { EmptyInline("Aún no hay jugadores compatibles. Ajusta tus filtros o completa tu perfil gamer.") }
+                } else {
+                    items(state.players, key = { it.userId }) { player -> PlayerRecommendationCard(player, onOpenPlayer, onConnect = { viewModel.connect(player.userId) }) }
+                    if (state.nextCursor != null) item {
+                        OutlinedButton(onClick = viewModel::loadMore, enabled = !state.isSearchingPlayers, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), border = BorderStroke(1.dp, PlayMatchColors.Border), colors = ButtonDefaults.outlinedButtonColors(contentColor = PlayMatchColors.Accent)) {
+                            if (state.isSearchingPlayers) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Text("Ver más jugadores")
+                        }
+                    }
+                }
+            }
+            GamesSection.Inbox -> {
+                item(key = "play_plans") {
+                    SectionTitle("Tus partidas")
+                    OutlinedButton(
+                        onClick = { purposeTarget = conectate.com.presentation.purpose.PurposeTarget("gaming") },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) { Text("Mis partidas acordadas", color = PlayMatchColors.Accent) }
+                }
+                if (state.connections.none { it.status == "ACCEPTED" || (it.direction == "INCOMING" && it.status == "PENDING") } &&
+                    state.matches.none { it.status == "PENDING" }) {
+                    item { EmptyInline("Aquí verás solicitudes, coincidencias y conversaciones de juego.") }
+                }
+                if (state.connections.any { it.direction == "INCOMING" && it.status == "PENDING" }) {
+                    item { SectionTitle("Solicitudes recibidas") }
+                    items(state.connections.filter { it.direction == "INCOMING" && it.status == "PENDING" }, key = { it.id }) { connection ->
+                        ConnectionRequestCard(connection, onAccept = { viewModel.decideConnection(connection.id, "ACCEPT") }, onReject = { viewModel.decideConnection(connection.id, "REJECT") })
+                    }
+                }
+                val gameConversations = state.connections.filter { it.status == "ACCEPTED" && it.otherUserId.isNotBlank() }
+                if (gameConversations.isNotEmpty()) {
+                    item { SectionTitle("Conversaciones de juego") }
+                    item {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(gameConversations, key = { it.id }) { connection ->
+                                GameConversationCard(connection) { onOpenChat(connection.otherUserId) }
+                            }
+                        }
+                    }
+                }
+                if (state.matches.any { it.status == "PENDING" }) {
+                    item { SectionTitle("Matches que esperan tu decisión") }
+                    items(state.matches.filter { it.status == "PENDING" }, key = { it.id }) { match ->
+                        IncomingMatchCard(
+                            match = match,
+                            onAccept = { viewModel.decideMatchById(match.id, "ACCEPT") },
+                            onSkip = { viewModel.decideMatchById(match.id, "SKIP") },
+                            onOpen = { match.player?.userId?.let(onOpenPlayer) },
+                        )
+                    }
                 }
             }
         }

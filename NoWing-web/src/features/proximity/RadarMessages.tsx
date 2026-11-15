@@ -1,16 +1,178 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
-import { Send, Radar } from 'lucide-react'
+import { Send, Waves } from 'lucide-react'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
-import { friendlyError, textOf, type GenericRow } from '../../core/utils'
-export function RadarMessages({ onAccepted }: { onAccepted: () => void }) {
-  const {user}=useAuth(),[draft,setDraft]=useState(''),[receiving,setReceiving]=useState(false),[outgoing,setOutgoing]=useState<GenericRow|null>(null),[incoming,setIncoming]=useState<GenericRow|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[info,setInfo]=useState(''),accepted=useRef(''),sequence=useRef(0),onAccept=useRef(onAccepted)
-  useEffect(()=>{onAccept.current=onAccepted},[onAccepted])
-  const call=useCallback(<T,>(path:string,method='GET',body?:unknown)=>fallbackApiJson<T>('/v1/data/proximity/random/'+path,{method,expectedAccountId:user?.id,...(body===undefined?{}:{body:JSON.stringify(body)})}),[user?.id])
-  const refresh=useCallback(async()=>{const n=++sequence.current;try{const sent=await call<{bottle:GenericRow|null;status:string}>('bottles/outgoing');if(n!==sequence.current)return;setOutgoing(sent.bottle);if(sent.status==='accepted'&&textOf(sent.bottle||{},['id'])!==accepted.current){accepted.current=textOf(sent.bottle||{},['id']);onAccept.current()}if(receiving){const received=await call<{bottle:GenericRow|null}>('bottles/incoming');if(n===sequence.current)setIncoming(received.bottle)}}catch{/* The next poll retries without disrupting the current conversation. */}},[call,receiving])
-  useEffect(()=>{const guard=sequence;void refresh();const timer=window.setInterval(()=>{if(!document.hidden)void refresh()},5000);return()=>{guard.current++;window.clearInterval(timer)}},[refresh])
-  useEffect(()=>{if(!receiving)return;let stopped=false;const heartbeat=()=>{if(!document.hidden)void call('availability','POST',{}).catch(()=>{if(!stopped)setError('No se pudo mantener la recepción de mensajes.')})};heartbeat();const timer=window.setInterval(heartbeat,15000);return()=>{stopped=true;window.clearInterval(timer);void call('availability','DELETE').catch(()=>{})}},[receiving,call])
-  async function send(event:FormEvent){event.preventDefault();if(busy||!draft.trim())return;setBusy(true);setError('');try{const result=await call<{bottle:GenericRow}>('bottles','POST',{content:draft.trim()});setOutgoing(result.bottle);setDraft('');setInfo('Tu mensaje está buscando una persona que quiera conversar.')}catch(caught){setError(friendlyError(caught,'No se pudo lanzar el mensaje.'))}finally{setBusy(false)}}
-  async function respond(action:'accept'|'decline'){if(!incoming||busy)return;setBusy(true);try{await call(`bottles/${encodeURIComponent(textOf(incoming,['id']))}/respond`,'POST',{action});setIncoming(null);if(action==='accept'){setReceiving(false);onAccept.current()}else void refresh()}catch(caught){setError(friendlyError(caught,'La invitación ya no está disponible.'));setIncoming(null)}finally{setBusy(false)}}
-  return <section className="radar-messages surface-card"><header><Radar/><div><h3>Mensajes del radar</h3><p>Lanza un mensaje anónimo y conversa cuando alguien lo acepte.</p></div></header><label className="checkbox-inline"><input type="checkbox" checked={receiving} onChange={event=>{setReceiving(event.target.checked);setIncoming(null)}}/>Recibir mensajes mientras estoy aquí</label>{incoming?<article className="radar-message-invitation"><p>{textOf(incoming,['content'])}</p><div className="row-actions"><button className="primary-btn" type="button" disabled={busy} onClick={()=>void respond('accept')}>Aceptar conversación</button><button className="ghost-btn" type="button" disabled={busy} onClick={()=>void respond('decline')}>Pasar</button></div></article>:null}<form onSubmit={event=>void send(event)}><label>Tu mensaje<textarea className="text-input" maxLength={500} value={draft} onChange={event=>setDraft(event.target.value)} placeholder="Comparte una idea o saluda…"/></label><button className="primary-btn" type="submit" disabled={busy||!draft.trim()||['searching','offered'].includes(textOf(outgoing||{},['status']))}><Send size={17}/>Lanzar mensaje</button></form>{outgoing&&['searching','offered'].includes(textOf(outgoing,['status']))?<div className="row-between"><span>Buscando conversación…</span><button type="button" className="ghost-btn" disabled={busy} onClick={()=>void call(`bottles/${encodeURIComponent(textOf(outgoing,['id']))}`,'DELETE').then(()=>{setOutgoing(null);setInfo('Mensaje retirado.')}).catch(()=>setError('No se pudo retirar el mensaje.'))}>Retirar mensaje</button></div>:null}{error?<p role="alert" className="error-text">{error}</p>:info?<p role="status">{info}</p>:null}</section>
+import { friendlyError } from '../../core/utils'
+
+type Bottle = { id: string; content: string; status: string }
+type BottleResponse = { bottle: Bottle | null; status: string }
+const pollDelayMs = 5_000
+
+type BottleActions = { onAccepted: () => void; onOpenChats: () => void }
+
+export function RadarMessages(actions: BottleActions) {
+  const { user } = useAuth()
+  return user ? <BottleDesk key={user.id} accountId={user.id} {...actions} /> : null
+}
+
+function BottleDesk({ accountId, onAccepted, onOpenChats }: { accountId: string } & BottleActions) {
+  const [draft, setDraft] = useState('')
+  const [receiving, setReceiving] = useState(false)
+  const [outgoing, setOutgoing] = useState<Bottle | null>(null)
+  const [incoming, setIncoming] = useState<Bottle | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [receiveError, setReceiveError] = useState(false)
+  const [info, setInfo] = useState('')
+  const accepted = useRef('')
+  const generation = useRef(0)
+  const onAccept = useRef(onAccepted)
+  useEffect(() => { onAccept.current = onAccepted }, [onAccepted])
+  const call = useCallback(<T,>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal) =>
+    fallbackApiJson<T>(`/v1/data/proximity/random/${path}`, {
+      method, expectedAccountId: accountId, signal,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    }), [accountId])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    if (busy) return
+    function poll(request: (signal: AbortSignal) => Promise<BottleResponse>, receive: (value: BottleResponse) => void, fail?: () => void) {
+      let timer: number | undefined
+      let active = false
+      async function tick() {
+        window.clearTimeout(timer)
+        if (active || document.hidden || controller.signal.aborted) return
+        active = true
+        const currentGeneration = generation.current
+        const isCurrent = () => !controller.signal.aborted && currentGeneration === generation.current
+        const requestController = new AbortController()
+        const abortRequest = () => requestController.abort()
+        const timeout = window.setTimeout(abortRequest, 6_000)
+        controller.signal.addEventListener('abort', abortRequest, { once: true })
+        try {
+          const response = await request(requestController.signal)
+          if (isCurrent()) receive(response)
+        } catch {
+          if (isCurrent()) fail?.()
+        } finally {
+          window.clearTimeout(timeout)
+          controller.signal.removeEventListener('abort', abortRequest)
+          active = false
+          if (!controller.signal.aborted && !document.hidden) timer = window.setTimeout(tick, pollDelayMs)
+        }
+      }
+      const visibilityChanged = () => {
+        if (document.hidden) window.clearTimeout(timer)
+        else void tick()
+      }
+      document.addEventListener('visibilitychange', visibilityChanged)
+      void tick()
+      return () => {
+        window.clearTimeout(timer)
+        document.removeEventListener('visibilitychange', visibilityChanged)
+      }
+    }
+    const stopOutgoing = poll(
+      signal => call('bottles/outgoing', 'GET', undefined, signal),
+      response => {
+        setOutgoing(response.bottle)
+        if (response.status === 'accepted' && response.bottle && accepted.current !== response.bottle.id) {
+          accepted.current = response.bottle.id
+          onAccept.current()
+        }
+      },
+    )
+    const stopIncoming = receiving ? poll(
+      signal => call('availability', 'POST', {}, signal),
+      response => { setIncoming(response.bottle); setReceiveError(false) },
+      () => setReceiveError(true),
+    ) : undefined
+    return () => {
+      controller.abort()
+      stopOutgoing()
+      stopIncoming?.()
+    }
+  }, [busy, call, receiving])
+
+  async function mutate(operation: () => Promise<void>, failureMessage: string) {
+    if (busy) return
+    ++generation.current
+    setBusy(true)
+    setError('')
+    setInfo('')
+    try { await operation() } catch (caught) { setError(friendlyError(caught, failureMessage)) } finally { setBusy(false) }
+  }
+
+  function toggleReceiving(next: boolean) {
+    ++generation.current
+    setReceiving(next)
+    setIncoming(null)
+    setReceiveError(false)
+    // Let the server lease expire when reception stops. A delayed DELETE can
+    // unregister another tab that has just renewed the same account's lease.
+  }
+
+  async function send(event: FormEvent) {
+    event.preventDefault()
+    const content = draft.trim()
+    if (!content) return
+    await mutate(async () => {
+      const result = await call<BottleResponse>('bottles', 'POST', { content })
+      setOutgoing(result.bottle)
+      setDraft('')
+      setInfo('Tu mensaje está buscando una persona que quiera conversar.')
+    }, 'No se pudo lanzar el mensaje.')
+  }
+
+  async function respond(action: 'accept' | 'decline') {
+    if (!incoming) return
+    const id = encodeURIComponent(incoming.id)
+    await mutate(async () => {
+      await call(`bottles/${id}/respond`, 'POST', { action })
+      setIncoming(null)
+      if (action === 'accept') {
+        toggleReceiving(false)
+        onAccept.current()
+      }
+    }, 'La invitación ya no está disponible.')
+  }
+
+  async function withdraw(id: string) {
+    await mutate(async () => {
+      await call(`bottles/${encodeURIComponent(id)}`, 'DELETE')
+      setOutgoing(null)
+      setInfo('Mensaje retirado.')
+    }, 'No se pudo retirar el mensaje.')
+  }
+
+  const pending = outgoing && ['searching', 'offered'].includes(outgoing.status)
+  return <section className="bottle-desk section-stack">
+    <header className="bottle-hero surface-card">
+      <Waves aria-hidden="true" /><div><h3>Botella al mar</h3><p>Tu mensaje anónimo puede quedar disponible hasta 24 horas. Si alguien lo acepta, se abre una conversación.</p></div>
+      <button className="ghost-btn" type="button" onClick={onOpenChats}>Ver conversaciones</button>
+    </header>
+    <div className="bottle-panels">
+    <section className="surface-card bottle-panel">
+    <h4>Recibir</h4>
+    <label className="checkbox-inline"><input type="checkbox" checked={receiving} onChange={event => toggleReceiving(event.target.checked)} />Activar recepción</label>
+    {receiveError && <p role="alert">Perdimos la conexión. Volveremos a comprobar la bandeja.</p>}
+    {!incoming && !receiveError && <p role="status">{receiving ? 'Esperando una botella. Mantén abierta esta pestaña.' : 'Activa la recepción para recoger una botella de otra persona.'}</p>}
+    {incoming && <article className="radar-message-invitation">
+      <p>{incoming.content}</p><div className="row-actions">
+        <button className="primary-btn" type="button" disabled={busy} onClick={() => void respond('accept')}>Aceptar conversación</button>
+        <button className="ghost-btn" type="button" disabled={busy} onClick={() => void respond('decline')}>Pasar</button>
+      </div>
+    </article>}
+    </section>
+    <form className="surface-card bottle-panel" onSubmit={event => void send(event)}>
+      <h4>Lanzar</h4>
+      <label>Tu mensaje<textarea className="text-input" maxLength={500} value={draft} onChange={event => setDraft(event.target.value)} placeholder="Comparte una idea o saluda…" /></label>
+      <small>{draft.length}/500</small>
+      <button className="primary-btn" type="submit" disabled={busy || !draft.trim() || Boolean(pending)}><Send size={17} aria-hidden="true" />Lanzar botella</button>
+      {pending && <div className="row-between"><span>{outgoing.status === 'offered' ? 'En la bandeja de otra persona' : 'Esperando a que alguien la recoja'}</span><button type="button" className="ghost-btn" disabled={busy} onClick={() => void withdraw(outgoing.id)}>Retirar botella</button></div>}
+    </form>
+    </div>
+    {error ? <p role="alert" className="error-text">{error}</p> : info ? <p role="status">{info}</p> : null}
+  </section>
 }

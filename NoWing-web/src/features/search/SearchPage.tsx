@@ -7,7 +7,7 @@ import { friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { searchFallbackProfiles, submitFallbackUserReport } from '../../core/fallbackData'
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
-import { Flag, Search, X } from 'lucide-react'
+import { Flag, MapPin, Search, Waves, X } from 'lucide-react'
 import './searchPage.css'
 
 type ProfileCard = {
@@ -187,17 +187,22 @@ export function SearchPage() {
   return (
     <section className="section-stack user-search-page">
       <header className="section-header">
-        <h2>Buscar usuarios</h2>
-        <p>Encuentra personas por nombre o usuario.</p>
+        <h2>Buscar personas</h2>
       </header>
 
       <label className="user-search-input"><Search size={19} aria-hidden="true"/><input
         className="text-input"
         aria-label="Buscar personas"
-        placeholder="Buscar por nombre, usuario o bio"
+        placeholder="Nombre o @usuario"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
+        type="search"
       /></label>
+
+      {!query.trim() && isFallbackSession && <nav className="user-search-discovery" aria-label="Otras formas de encontrar personas">
+        <Link className="ghost-btn" to="/app/proximity"><MapPin size={18} aria-hidden="true" /> Personas cerca</Link>
+        <Link className="ghost-btn" to="/app/proximity?section=bottle"><Waves size={18} aria-hidden="true" /> Botella al mar</Link>
+      </nav>}
 
       {error ? <p role="alert">{error}</p> : null}
       {reportStatus ? <p role="status">{reportStatus}</p> : null}

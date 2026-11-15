@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-09T13:46:29.017065+00:00",
-  "baseCommit": "6dfd5eb7b117e45958c527819709572a4c15f038",
+  "generatedAtUtc": "2026-11-15T19:39:33.887011+00:00",
+  "baseCommit": "52c8ae60ba21776166a69a6bf9a9ea66bf311585",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,25 +10,25 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3684,
-    "code-read": 515,
-    "partial": 91
+    "pending": 3674,
+    "code-read": 519,
+    "partial": 100
   },
   "countsByPhase": {
     "android": {
-      "pending": 1541,
-      "partial": 53,
+      "pending": 1538,
+      "partial": 56,
       "code-read": 433
     },
     "documentation": {
-      "pending": 558,
+      "pending": 560,
       "code-read": 8,
-      "partial": 10
+      "partial": 9
     },
     "server": {
-      "pending": 867,
-      "code-read": 50,
-      "partial": 12
+      "pending": 865,
+      "code-read": 51,
+      "partial": 13
     },
     "tooling-and-other": {
       "pending": 155,
@@ -36,9 +36,9 @@
       "partial": 6
     },
     "web": {
-      "partial": 10,
-      "pending": 563,
-      "code-read": 13
+      "partial": 16,
+      "pending": 556,
+      "code-read": 16
     }
   },
   "files": [
@@ -1517,6 +1517,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/features/proximity/RadarMessages.test.tsx",
+      "phase": "web",
+      "gitBlobId": "82232e978a4753f970dc62786ab9729b752b5722",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/features/reels/reelFeedOrder.test.ts",
       "phase": "web",
       "gitBlobId": "20f06190f12f373ff939faec76e838770ee62827",
@@ -1631,8 +1639,10 @@
     {
       "file": "NoWing-web/src/__tests__/pages/SearchPage.test.tsx",
       "phase": "web",
-      "gitBlobId": "d847ee4f7b24079eb6a6f76f2ad12224dd49fd67",
-      "reviewStatus": "pending"
+      "gitBlobId": "198cc41c584661051eb35da926d609304bd75e78",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/pages/SystemAnnouncementAdmin.test.tsx",
@@ -2935,8 +2945,10 @@
     {
       "file": "NoWing-web/src/features/games/GamesPage.tsx",
       "phase": "web",
-      "gitBlobId": "8844a777ac184209fd3e8a34501e36cd1a382fe9",
-      "reviewStatus": "pending"
+      "gitBlobId": "492d959d55fe4908f349e91eb10881ae99be8a4b",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/games/PlayerDetailPage.tsx",
@@ -2947,8 +2959,10 @@
     {
       "file": "NoWing-web/src/features/games/games.css",
       "phase": "web",
-      "gitBlobId": "73787a78dfae9932836ebd82f5bb5cdb806d9b06",
-      "reviewStatus": "pending"
+      "gitBlobId": "7f8d822b8596916a86ac8ece7b5be01e58f057af",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/help/HelpPage.tsx",
@@ -3199,14 +3213,26 @@
     {
       "file": "NoWing-web/src/features/proximity/ProximityPage.tsx",
       "phase": "web",
-      "gitBlobId": "84edf8b08d9c79929a2803cb903076d36b335795",
-      "reviewStatus": "pending"
+      "gitBlobId": "61dad4285aa85f686c86042b11c35b440704ffb9",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/proximity/RadarMessages.tsx",
       "phase": "web",
-      "gitBlobId": "236f71deb52906766e9865e7df924a13e36e4131",
-      "reviewStatus": "pending"
+      "gitBlobId": "205b96c1c888ab28aa1b8834d81583d5c52e1399",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/proximity/proximity.css",
+      "phase": "web",
+      "gitBlobId": "35258efe13434d4f9e5b59ed178f8ec20f0dd9e2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/realtime/RealtimeManager.ts",
@@ -3247,14 +3273,18 @@
     {
       "file": "NoWing-web/src/features/search/SearchPage.tsx",
       "phase": "web",
-      "gitBlobId": "ac228a471256138b91c0c7ae811c4bdd43dd909b",
-      "reviewStatus": "pending"
+      "gitBlobId": "f1d625e0065b8db01025b6c302f0c3984fff03c2",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/search/searchPage.css",
       "phase": "web",
-      "gitBlobId": "f74d170d0816f5dbb423ad095c36ef5c63eb9565",
-      "reviewStatus": "pending"
+      "gitBlobId": "458c659ac054297b38b684502fe6183206c77e52",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/social/FollowsPage.tsx",
@@ -9303,8 +9333,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchScreens.kt",
       "phase": "android",
-      "gitBlobId": "7cabffd0024c7a822e712f7eca95b6c18773ba27",
-      "reviewStatus": "pending"
+      "gitBlobId": "e9c8fcc9c0bb5e2f642a7aa5a2f35011edb26027",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchUiPolicy.kt",
@@ -11039,8 +11071,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/proximity/ProximityScreen.kt",
       "phase": "android",
-      "gitBlobId": "3d71686148864176a2cba04716e2bb5efe962be4",
-      "reviewStatus": "pending"
+      "gitBlobId": "25d380b3be0e9f8b5f2ed8689ecb6f194173e44e",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/proximity/ProximityViewModel.kt",
@@ -11193,8 +11227,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchUsersScreen.kt",
       "phase": "android",
-      "gitBlobId": "7b6a6715d2290c520b8e8f2c12c0471d868765e7",
-      "reviewStatus": "pending"
+      "gitBlobId": "cf0aae2862bf9ab6661d52ce354e0e75778209fb",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchUsersViewModel.kt",
@@ -19293,10 +19329,8 @@
     {
       "file": "docs/experimental/105-experiencias-con-proposito.md",
       "phase": "documentation",
-      "gitBlobId": "3868c74a16435be45b26d2c0e6bc49c142ec203f",
-      "reviewStatus": "partial",
-      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "5b4351a9c3d831bfb9ca96755daefa56658f87e3",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/experimental/107-acuerdos-con-origen.md",
@@ -19321,6 +19355,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/experimental/111-resultados-acogida-y-partidas.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/experimental/153-juegos-personas-y-botella.md",
+      "phase": "documentation",
+      "gitBlobId": "851e0bfaa2cfa39cd58fa6ef1d644df6292d3e70",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/groups_communities_backup_20260212.md",
@@ -21813,8 +21853,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/proximity-routes.js",
       "phase": "server",
-      "gitBlobId": "697487f66266c2dea7674e6d3127e2b4e1647c2a",
-      "reviewStatus": "pending"
+      "gitBlobId": "fd6a910f88a9bc3d5e19cb40ab06ae0730f83967",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/public-api-error.js",
@@ -22409,8 +22451,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/bottle-reception.test.js",
       "phase": "server",
-      "gitBlobId": "aa37751309274eb318601c5389398f8b416f8a41",
-      "reviewStatus": "pending"
+      "gitBlobId": "cfb2f61b8093588ce0024c7c477f1bf4710af5a5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/153-juegos-personas-y-botella.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/bounded-read-load.test.js",

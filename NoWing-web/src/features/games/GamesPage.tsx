@@ -3,6 +3,7 @@ import { SafeAvatar } from '../../components/SafeAvatar'
 import { friendlyError } from '../../core/utils'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { CalendarDays, Gamepad2, Search, UserRound, UsersRound } from 'lucide-react'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { uploadFallbackFile } from '../../core/fallbackData'
@@ -18,6 +19,13 @@ type Session = { id: string; status: string; match?: Match }
 type Availability = { dayOfWeek: number; startMinute: number; endMinute: number; timezone: string }
 type Preferences = { version: number; rank_tolerance?: number; voice_required?: boolean; discovery_level?: number; rankTolerance?: number; voiceRequired?: boolean; discoveryLevel?: number }
 type Tab = 'catalog' | 'discover' | 'profile' | 'connections' | 'matches'
+const gameSections = [
+  { id: 'catalog', label: 'Catálogo', icon: Gamepad2 },
+  { id: 'discover', label: 'Jugadores', icon: Search },
+  { id: 'matches', label: 'Partidas', icon: CalendarDays },
+  { id: 'connections', label: 'Solicitudes', icon: UsersRound },
+  { id: 'profile', label: 'Mi perfil', icon: UserRound },
+] as const
 const root = '/v1/data/playmatch'
 const request = <T,>(path: string, method = 'GET', body?: unknown) => fallbackApiJson<T>(`${root}${path}`, body === undefined ? { method } : { method, body: JSON.stringify(body) })
 const errorText = (error: unknown) => {
@@ -77,10 +85,12 @@ export function GamesPage() {
   const [adultConfirmed, setAdultConfirmed] = useState(false)
   const [discoverable, setDiscoverable] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadingPlayers, setLoadingPlayers] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const mediaDraftRef = useRef(false)
+  const playersRequest = useRef(0)
   const pendingConnectionIds = new Set(connections.filter((item) => item.status === 'PENDING' || item.status === 'ACCEPTED').map((item) => item.otherUserId))
 
   const loadProfile = useCallback(async (preserveDraft = false) => {
@@ -118,12 +128,20 @@ export function GamesPage() {
     setMatches(matchesData.items)
   }, [])
   const loadPlayers = useCallback(async (search: string, gameId: string, now: boolean) => {
+    const generation = ++playersRequest.current
+    setLoadingPlayers(true)
     const params = new URLSearchParams({ limit: '20' })
     if (search.trim()) params.set('q', search.trim())
     if (gameId) params.set('gameId', gameId)
     if (now) params.set('availableNow', 'true')
-    const data = await request<{ items: Player[] }>(`/players?${params}`)
-    setPlayers(data.items)
+    try {
+      const data = await request<{ items: Player[] }>(`/players?${params}`)
+      if (generation === playersRequest.current) setPlayers(data.items)
+    } catch (error) {
+      if (generation === playersRequest.current) throw error
+    } finally {
+      if (generation === playersRequest.current) setLoadingPlayers(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -134,13 +152,14 @@ export function GamesPage() {
       setEnabled(capabilities.capabilities.enabled)
       setPhotosEnabled(capabilities.capabilities.photosEnabled)
       if (!capabilities.capabilities.enabled) return
+      void Promise.all([loadProfile(), loadPlayers('', '', false), loadConnections()])
+        .catch(caught => { if (active) setError(errorText(caught)) })
       const games = await request<{ items: Game[] }>('/catalog?limit=50')
       if (!active) return
       setCatalog(games.items)
-      await Promise.all([loadProfile(), loadPlayers('', '', false), loadConnections()])
     }).catch((caught) => { if (active) setError(errorText(caught)) })
       .finally(() => { if (active) setLoading(false) })
-    return () => { active = false }
+    return () => { active = false; ++playersRequest.current }
   }, [isFallbackSession, loadConnections, loadPlayers, loadProfile])
 
   useEffect(() => {
@@ -231,16 +250,30 @@ export function GamesPage() {
   const game = catalog.find((item) => item.id === selectedGame)
   const rankOptions = game?.rankSchemas?.flatMap((schema) => schema.ranks.map((rank) => [rank.key, rank.displayName] as const)) || game?.ranks.map((rank) => [rank, rank] as const) || []
   const roleOptions = game?.roleDefinitions?.map((role) => [role.key, role.displayName] as const) || game?.roles.map((role) => [role, role] as const) || []
+  const requestsWaiting = connections.filter(connection => connection.direction === 'INCOMING' && connection.status === 'PENDING').length
+  function selectSection(next: Tab) { setTab(next); setError(''); setNotice('') }
 
   if (!isFallbackSession) return <section className="surface-card games-state"><h2>Juegos</h2><p>Inicia sesión con el servidor Novvin para usar el perfil de juegos y buscar jugadores.</p></section>
   if (loading) return <section className="surface-card games-state" role="status">Cargando juegos...</section>
   if (enabled === null) return <section className="surface-card games-state" role="alert"><h2>No se pudieron cargar los juegos</h2><p>{error || 'Revisa tu conexión e inténtalo de nuevo.'}</p><button className="ghost-btn" type="button" onClick={() => window.location.reload()}>Reintentar</button></section>
   if (enabled === false) return <section className="surface-card games-state"><h2>Juegos no disponible</h2><p>El servidor aún no habilitó PlayMatch para esta cuenta. Tus otros espacios siguen disponibles.</p><Link className="ghost-btn" to="/app/social">Ir a Social</Link></section>
   return <div className="games-page">
-    <div className="games-intro surface-card"><div><span className="games-eyebrow">PLAYMATCH</span><h2>Tu espacio para jugar en compañía</h2><p>Encuentra personas por juego y plataforma. Decide qué datos compartes desde tu perfil.</p></div><button className="ghost-btn" type="button" onClick={() => { void act(async () => { await Promise.all([loadProfile(true), loadPlayers(query, gameFilter, availableNow), loadConnections()]) }, 'Información actualizada.') }} disabled={busy}>Actualizar</button></div>
     <nav className="games-tabs" aria-label="Secciones de juegos">
-      {([['catalog', 'Juegos'], ['discover', 'Descubrir'], ['profile', 'Mi perfil'], ['connections', 'Conexiones'], ['matches', 'Partidas']] as const).map(([id, label]) => <button key={id} type="button" className={tab === id ? 'games-tab active' : 'games-tab'} aria-pressed={tab === id} onClick={() => { setTab(id); setError(''); setNotice('') }}>{label}</button>)}
+      {gameSections.map(({ id, label, icon: Icon }) => <button key={id} type="button" className={tab === id ? 'games-tab active' : 'games-tab'} aria-pressed={tab === id} onClick={() => selectSection(id)}>
+        <Icon size={17} aria-hidden="true" />{label}
+        {id === 'connections' && requestsWaiting > 0 && <span className="games-pending-count" aria-label={`${requestsWaiting} pendientes`}>{requestsWaiting}</span>}
+      </button>)}
     </nav>
+    {tab === 'catalog' && <header className="games-intro surface-card">
+      <div><h2>Juega en equipo</h2><p>Elige un juego del catálogo o encuentra personas con quienes jugar.</p></div>
+      <div className="games-intro-actions">
+        <button className="primary-btn" type="button" onClick={() => selectSection('discover')}>Buscar jugadores</button>
+        <button className="ghost-btn" type="button" onClick={() => selectSection('matches')}>Buscar partida</button>
+      </div>
+    </header>}
+    {tab === 'profile' && <div className="games-profile-toolbar">
+      <button className="ghost-btn" type="button" onClick={() => { void act(() => loadProfile(true), 'Perfil actualizado.') }} disabled={busy}>Actualizar perfil</button>
+    </div>}
     {error && <p className="games-alert error" role="alert">{error}</p>}{notice && <p className="games-alert" role="status">{notice}</p>}
     {tab === 'catalog' && <section className="games-catalog-section"><div className="row-between"><h3>Encuentra tu juego</h3><small>{catalog.length} juegos</small></div><input className="text-input" type="search" aria-label="Buscar juego en catálogo" placeholder="Buscar juego…" value={catalogQuery} onChange={event => setCatalogQuery(event.target.value)} /><div className="games-catalog-grid">{catalog.filter(game => game.name.toLowerCase().includes(catalogQuery.trim().toLowerCase())).map(game => <button className="games-catalog-card" type="button" key={game.id} onClick={() => { setGameFilter(game.id); setTab('discover'); void loadPlayers(query, game.id, availableNow) }}>{game.imageUrl || game.coverUrl || game.iconUrl ? <StreamingImage src={game.imageUrl || game.coverUrl || game.iconUrl} alt="" /> : <span className="games-catalog-initials" aria-hidden="true">{game.name.slice(0,2)}</span>}<strong>{game.name}</strong><small>{game.platforms?.join(' · ')}</small><span>Buscar jugadores →</span></button>)}</div>{!catalog.length ? <p>No hay juegos disponibles por ahora.</p> : null}</section>}
     {tab === 'discover' && <section className="games-section">
@@ -254,7 +287,7 @@ export function GamesPage() {
         <div className="games-player-head"><SafeAvatar url={player.avatarUrl} name={player.displayName} size="lg" /><div><h3>{player.displayName}</h3><small>{player.regionCode || 'Región sin especificar'} · {player.playStyle}</small></div></div>
         <p>{player.gamerBio || 'Este jugador aún no escribió una presentación.'}</p><div className="games-tags">{player.games.slice(0, 4).map((item) => <span key={item.id}>{item.gameName} · {item.platform}</span>)}</div>
         <div className="games-player-actions"><span>{player.compatibilityScore ?? 0}% compatible</span><div className="games-row-actions"><Link className="ghost-btn" to={`/app/games/player/${encodeURIComponent(player.userId)}`}>Ver perfil</Link><button className="ghost-btn" type="button" disabled={busy || player.connected || pendingConnectionIds.has(player.userId)} onClick={() => void act(async () => { await request('/connections', 'POST', { playerId: player.userId, message: '', idempotencyKey: crypto.randomUUID() }); await loadConnections() }, 'Solicitud de conexión enviada.')}>{player.connected ? 'Conectados' : pendingConnectionIds.has(player.userId) ? 'Solicitud enviada' : 'Conectar'}</button></div></div>
-      </article>)}</div>{players.length === 0 && <p className="games-empty surface-card">No hay jugadores para estos filtros. Prueba otro juego o amplía la búsqueda.</p>}
+      </article>)}</div>{loadingPlayers ? <p role="status">Buscando jugadores…</p> : players.length === 0 && <p className="games-empty surface-card">No hay jugadores para estos filtros. Prueba otro juego o amplía la búsqueda.</p>}
     </section>}
     {tab === 'profile' && <div className="games-profile-grid">
       <form className="surface-card games-form games-player-profile" onSubmit={saveProfile}><h3>Perfil de jugador</h3><fieldset className="games-profile-fieldset"><legend>Tu identidad</legend><label>Foto de perfil (JPG, PNG o WEBP)<input className="text-input" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={(event) => { uploadPhoto(event.target.files?.[0], 'avatar'); event.target.value = '' }} /></label>{avatarUrl && <SafeAvatar className="games-profile-avatar" url={avatarUrl} mediaType={avatarMediaType} name={displayName || "Tu perfil"} size="lg" />}<label>Nombre de jugador<input className="text-input" required maxLength={40} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label><label>Presentación<textarea className="text-input" maxLength={500} value={bio} onChange={(event) => setBio(event.target.value)} /></label></fieldset><fieldset className="games-profile-fieldset"><legend>Cómo juegas</legend><label>Región<input className="text-input" maxLength={40} value={region} onChange={(event) => setRegion(event.target.value)} /></label><label>Idiomas, separados por coma<input className="text-input" value={languages} onChange={(event) => setLanguages(event.target.value)} placeholder="Español, inglés" /></label><label>Estilo de juego<select className="text-input" value={playStyle} onChange={(event) => setPlayStyle(event.target.value)}><option value="casual">Casual</option><option value="competitive">Competitivo</option><option value="mixed">Ambos</option></select></label><label className="games-check"><input type="checkbox" checked={voicePreference} onChange={(event) => setVoicePreference(event.target.checked)} /> Me gusta usar voz</label></fieldset><fieldset className="games-profile-fieldset"><legend>Privacidad y visibilidad</legend><label className="games-check"><input type="checkbox" checked={adultConfirmed} onChange={(event) => setAdultConfirmed(event.target.checked)} /> Confirmo que soy mayor de edad</label><label className="games-check"><input type="checkbox" checked={discoverable} disabled={!adultConfirmed} onChange={(event) => setDiscoverable(event.target.checked)} /> Mostrar mi perfil en la búsqueda</label><label>Visibilidad del ID de juego<select className="text-input" value={gameIdVisibility} onChange={(event) => setGameIdVisibility(event.target.value)}><option value="private">Solo yo</option><option value="connections">Conexiones</option><option value="public">Todos</option></select></label><label>Visibilidad de horarios<select className="text-input" value={availabilityVisibility} onChange={(event) => setAvailabilityVisibility(event.target.value)}><option value="private">Solo yo</option><option value="connections">Conexiones</option><option value="public">Todos</option></select></label></fieldset>{photosEnabled && <div className="games-form"><label>Capturas de juego (máximo 4)<input className="text-input" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy || photos.length >= 4} onChange={(event) => { uploadPhoto(event.target.files?.[0], 'photo'); event.target.value = '' }} /></label><div className="games-photo-grid">{photos.map((url, index) => <div className="games-photo" key={`${url}-${index}`}><StreamingImage src={url} alt={`Captura de juego ${index + 1}`} /><button className="ghost-btn" type="button" disabled={busy} onClick={() => { mediaDraftRef.current = true; setPhotos((current) => current.filter((_, position) => position !== index)) }}>Quitar</button></div>)}</div></div>}<button className="primary-btn" disabled={busy || !profile} type="submit">Guardar perfil</button></form>

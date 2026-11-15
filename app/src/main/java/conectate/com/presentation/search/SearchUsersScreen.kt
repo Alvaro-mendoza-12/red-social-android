@@ -66,7 +66,7 @@ fun SearchUsersScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Buscar en Novvin") },
+                title = { Text(if (selectedTab == 0) "Buscar personas" else "Buscar en Novvin") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Atrás")
@@ -80,28 +80,13 @@ fun SearchUsersScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            ListItem(
-                headlineContent = { Text("Personas cerca") },
-                supportingContent = { Text("Radar y chat aleatorio") },
-                leadingContent = { Icon(Icons.Default.MyLocation, contentDescription = null) },
-                trailingContent = { Icon(Icons.Default.ChevronRight, contentDescription = null) },
-                modifier = Modifier.clickable { navController.navigate(Screen.Proximity.route) }
-            )
-            HorizontalDivider()
-
-            PrimaryScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 12.dp) {
-                listOf("Personas", "Contenido", "Videos", "Etiquetas").forEachIndexed { index, label ->
-                    Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(label) })
-                }
-            }
-
-            // Search Bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = viewModel::searchUsers,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
                 placeholder = {
                     Text(if (selectedTab == 0) "Nombre o @usuario" else "Temas, videos o #etiquetas")
                 },
@@ -120,8 +105,37 @@ fun SearchUsersScreen(
                 keyboardActions = KeyboardActions(onSearch = { submit(searchQuery) }),
             )
 
+            PrimaryScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 12.dp) {
+                listOf("Personas", "Contenido", "Videos", "Etiquetas").forEachIndexed { index, label ->
+                    Tab(selected = selectedTab == index, onClick = { selectedTab = index }, text = { Text(label) })
+                }
+            }
+
             if (searchQuery.isBlank()) {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp)) {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (selectedTab == 0) item(key = "nearby_search") {
+                        Surface(
+                            onClick = { navController.navigate(Screen.Proximity.route) },
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                        ) {
+                            Row(Modifier.fillMaxWidth().padding(18.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.MyLocation, contentDescription = null)
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("Descubrir personas", style = MaterialTheme.typography.titleMedium)
+                                    Text("Explora quién está cerca o abre tu bandeja de botellas.",
+                                        style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Icon(Icons.Default.ChevronRight, contentDescription = null)
+                            }
+                        }
+                    }
                     if (history.isNotEmpty()) item {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("Tus búsquedas recientes", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
@@ -140,13 +154,11 @@ fun SearchUsersScreen(
                             modifier = Modifier.clickable { submit(query) },
                         )
                     }
-                    item { Text("Busca personas, temas y contenido de Novvin.", Modifier.padding(vertical = 16.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
                 return@Column
             }
 
-            if (suggestions.isNotEmpty()) {
+            if (selectedTab != 0 && suggestions.isNotEmpty()) {
                 LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(suggestions, key = { searchTermKey(it.query) }) { suggestion ->
                         SuggestionChip(onClick = { submit(suggestion.query); selectedTab = 1 },
@@ -214,7 +226,9 @@ fun SearchUsersScreen(
                     } }
                 }
             } else {
-                val visibleContent = if (selectedTab == 2) contentResults.filter { it.type == "video" } else contentResults
+                val visibleContent = remember(selectedTab, contentResults) {
+                    if (selectedTab == 2) contentResults.filter { it.type == "video" } else contentResults
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),

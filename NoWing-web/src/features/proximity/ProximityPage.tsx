@@ -14,7 +14,7 @@ import {
   UserRoundSearch,
   X,
 } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { SafeAvatar } from '../../components/SafeAvatar'
 import { StatusView } from '../../components/StatusView'
 import { useAuth } from '../../core/auth/AuthProvider'
@@ -36,9 +36,12 @@ import {
 } from '../../core/fallbackData'
 import { subscribeUbuntuRealtime, subscribeUbuntuRealtimeMany } from '../../core/ubuntuRealtime'
 import { apiErrorCode, friendlyError } from '../../core/utils'
+import './proximity.css'
 
 type Coordinates = { latitude: number; longitude: number }
 type MatchStatus = 'idle' | 'waiting' | 'matched'
+const proximitySections = [['nearby', 'Personas cerca'], ['bottle', 'Botella al mar'], ['chats', 'Conversaciones']] as const
+type ProximitySection = (typeof proximitySections)[number][0]
 
 function currentCoordinates(): Promise<Coordinates> {
   if (!navigator.geolocation) return Promise.reject(new Error('Este navegador no ofrece ubicación.'))
@@ -70,7 +73,11 @@ function radarPosition(index: number): { left: string; top: string } {
 
 export function ProximityPage() {
   const { user, isFallbackSession } = useAuth()
+  const [sectionParams, setSectionParams] = useSearchParams()
+  const section: ProximitySection = proximitySections.find(([id]) => id === sectionParams.get('section'))?.[0] ?? 'nearby'
+  const setSection = (next: ProximitySection) => setSectionParams(next === 'nearby' ? {} : { section: next })
   const [radiusKm, setRadiusKm] = useState(10)
+  const appliedRadius = useRef(10)
   const [gender, setGender] = useState('any')
   const [lookingFor, setLookingFor] = useState('any')
   const [enabled, setEnabled] = useState(false)
@@ -96,7 +103,7 @@ export function ProximityPage() {
     if (!isFallbackSession) return
     if (!silent) setLoadingNearby(true)
     try {
-      const response = await loadFallbackNearbyProfiles(radiusKm)
+      const response = await loadFallbackNearbyProfiles(appliedRadius.current)
       setNearby(response.items)
       setEnabled(true)
       setError(null)
@@ -107,7 +114,7 @@ export function ProximityPage() {
     } finally {
       setLoadingNearby(false)
     }
-  }, [isFallbackSession, radiusKm])
+  }, [isFallbackSession])
 
   const loadSessionMessages = useCallback(async (sessionId: string) => {
     try {
@@ -162,25 +169,26 @@ export function ProximityPage() {
   }, [isFallbackSession])
 
   useEffect(() => {
-    void loadNearby(true)
-    void refreshMatchStatus()
-  }, [loadNearby, refreshMatchStatus])
+    if (section === 'nearby') void loadNearby(true)
+  }, [loadNearby, section])
 
   useEffect(() => {
+    if (section !== 'chats') return
+    void refreshMatchStatus()
     const interval = window.setInterval(() => { if (!document.hidden) void refreshMatchStatus() }, 5_000)
     return () => window.clearInterval(interval)
-  }, [matchStatus, refreshMatchStatus])
+  }, [refreshMatchStatus, section])
 
   useEffect(() => {
-    if (!user || !isFallbackSession) return
+    if (!user?.id || !isFallbackSession || section !== 'chats') return
     return subscribeUbuntuRealtime({
       channel: `random-chat-user:${user.id.toLowerCase()}`,
       onEvent: () => void refreshMatchStatus(),
     })
-  }, [isFallbackSession, refreshMatchStatus, user])
+  }, [isFallbackSession, refreshMatchStatus, section, user?.id])
 
   useEffect(() => {
-    if (!session?.id) return
+    if (!session?.id || section !== 'chats') return
     void loadSessionMessages(session.id)
     const unsubscribe = subscribeUbuntuRealtimeMany({
       channels: [`random-chat:${session.id}`],
@@ -194,7 +202,7 @@ export function ProximityPage() {
       unsubscribe()
       window.clearInterval(interval)
     }
-  }, [loadSessionMessages, refreshSession, session?.id])
+  }, [loadSessionMessages, refreshSession, section, session?.id])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
@@ -215,6 +223,7 @@ export function ProximityPage() {
         lookingFor,
         randomEnabled: matchStatus === 'waiting',
       })
+      appliedRadius.current = radiusKm
       setEnabled(true)
       setInfo('Radar activo. Tu ubicación exacta nunca se muestra a otras personas.')
       await loadNearby()
@@ -323,22 +332,24 @@ export function ProximityPage() {
       <div className="row-between proximity-heading">
         <div>
           <span className="brand-tag"><Radar aria-hidden="true" /> Proximidad</span>
-          <h2>Personas cerca</h2>
-          <p>Distancias aproximadas, bloqueo respetado y ubicación exacta protegida.</p>
+          <h2>Descubrir personas</h2>
+          <p>Encuentra personas cerca, lanza una botella o retoma una conversación.</p>
         </div>
-        {enabled ? (
+        {enabled && section === 'nearby' ? (
           <button className="ghost-btn danger-text" type="button" onClick={() => void disable()}><X aria-hidden="true" /> Desactivar</button>
         ) : null}
       </div>
 
+      <nav className="proximity-sections" aria-label="Descubrir personas">
+        {proximitySections.map(([id, label]) => <button type="button" key={id} className="ghost-btn" aria-pressed={section === id} onClick={() => { setSection(id); setError(null); setInfo(null) }}>{label}</button>)}
+      </nav>
       {error ? <StatusView title="No se pudo completar la operación" description={error} /> : null}
       {info ? <div className="offline-banner syncing">{info}</div> : null}
 
-      <RadarMessages onAccepted={() => { setInfo('Nueva conversación disponible. Ábrela desde tus conversaciones anónimas.'); void refreshMatchStatus() }} />
-      <div className="proximity-layout">
+      {section === 'bottle' && <RadarMessages onAccepted={() => setInfo('Ya puedes abrir el chat desde Conversaciones.')} onOpenChats={() => setSection('chats')} />}
+      {section === 'nearby' && <div className="proximity-layout">
         <section className="proximity-radar-panel">
           <div className={enabled ? 'proximity-radar active' : 'proximity-radar'} aria-label={`${nearby.length} personas dentro de ${radiusKm} kilómetros`}>
-            <span className="radar-sweep" />
             <span className="radar-ring ring-one" />
             <span className="radar-ring ring-two" />
             <span className="radar-ring ring-three" />
@@ -386,8 +397,9 @@ export function ProximityPage() {
             </div>
           )}
         </section>
-      </div>
+      </div>}
 
+      {section === 'chats' && <>
       {sessions.length ? <section className="surface-card anonymous-session-inbox">
         <header className="row-between"><h3>Tus conversaciones anónimas</h3><small>Tu identidad sigue protegida</small></header>
         <p className="muted-line">Puedes salir de una conversación y retomarla aquí. Terminarla requiere confirmación.</p>
@@ -453,6 +465,7 @@ export function ProximityPage() {
           </div>
         )}
       </section>
+      </>}
     </section>
   )
 }
