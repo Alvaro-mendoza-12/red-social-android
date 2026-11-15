@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.firebase.crashlytics)
 }
 
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import java.io.FileInputStream
 import java.net.URI
 import java.security.KeyFactory
@@ -228,6 +229,9 @@ android {
             versionNameSuffix = "-qa"
             matchingFallbacks += listOf("debug")
             resValue("string", "app_name", "Novvin QA")
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+            }
         }
 
         getByName("release") {
@@ -258,6 +262,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
             matchingFallbacks += listOf("release")
             resValue("string", "app_name", "Novvin QA")
+            // QA has no Firebase client; its skipped Google Services generator
+            // cannot supply the resources required by a mapping upload.
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = false
+            }
         }
     }
 

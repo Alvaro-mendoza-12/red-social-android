@@ -47,3 +47,8 @@ La [medición y preparación del entorno](../oficial/143-velocidad-servidor-y-en
 ## Continuación 141 retomada — 14 de noviembre de 2026
 
 La [corrección de propiedad LIVE](../oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md) aprueba 54 casos focalizados y 2927 pruebas JVM en 538 clases; Lint conserva 343 advertencias y cero errores. Los recibos de cuenta, motor y pantalla no cierran la barrera física global ni todos los RPC asíncronos. No contiene ensayo físico ni APK final. La publicación y el despliegue se acreditan con recibos propios; permanece abierta la preparación integral.
+
+
+## Continuación 144 — 14 de noviembre de 2026
+
+La [continuación 144](../oficial/144-qa-medios-y-sincronizacion-2026-11-14.md) corrige la subida de mapas de Crashlytics en QA y comprueba el empaquetado optimizado separado. Registra una sincronización IDE aprobada, un build posterior fallido por recursos y las demoras de la ruta pública de avatares. Distingue las APK de laboratorio de los ensayos físicos y de la entrega final; la revisión móvil integral permanece abierta.
