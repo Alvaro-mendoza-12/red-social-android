@@ -36,20 +36,11 @@ function mediaOf(row: GenericRow): string[] {
     .filter((item): item is string => typeof item === 'string' && Boolean(item.trim())))].slice(0, 10)
 }
 
-function GuestAuthor({ id, name }: { id: string; name: string }) {
-  const [profile, setProfile] = useState<{ id: string; row: GenericRow | null } | null>(null)
-  useEffect(() => {
-    const controller = new AbortController()
-    void loadGuestContent('profiles', id, controller.signal).then(rows => {
-      if (!controller.signal.aborted) setProfile({ id, row: rows[0] || null })
-    }).catch(() => { if (!controller.signal.aborted) setProfile({ id, row: null }) })
-    return () => controller.abort()
-  }, [id])
-  const current = profile?.id === id ? profile : null, row = current?.row
-  const displayName = row ? textOf(row, ['display_name'], name) : name
-  const url = row && !row.is_private ? resolveSupabasePublicUrl('avatars', textOf(row, ['avatar_url'], '')) : ''
+function GuestAuthor({ id, name, profile }: { id: string; name: string; profile?: GenericRow | null }) {
+  const displayName = profile ? textOf(profile, ['display_name'], name) : name
+  const url = profile && !profile.is_private ? resolveSupabasePublicUrl('avatars', textOf(profile, ['avatar_url'], '')) : ''
   return <Link to={`/explore/profiles/${encodeURIComponent(id)}`}>
-    {current ? <SafeAvatar url={url} name={displayName} size="sm" /> : <span className="avatar-sm explore-avatar-loading" aria-hidden="true" />}
+    {profile === undefined ? <span className="avatar-sm explore-avatar-loading" aria-hidden="true" /> : <SafeAvatar url={url} name={displayName} size="sm" />}
     <strong>{displayName}</strong>
   </Link>
 }
@@ -66,8 +57,11 @@ function ExploreContent() {
   const register = sharedTarget ? authReturnPath('/register', sharedTarget) : '/register'
   const [items, setItems] = useState<GenericRow[]>([]), [loading, setLoading] = useState(true), [failed, setFailed] = useState(false)
   const [retry, setRetry] = useState(0), [limit, setLimit] = useState(10)
+  const [profiles, setProfiles] = useState(() => new Map<string, GenericRow | null>())
+  const authorLookup = useRef<{ requested: Set<string>; signal: AbortSignal } | null>(null)
   useEffect(() => {
     const controller = new AbortController()
+    authorLookup.current = { requested: new Set(), signal: controller.signal }
     const entrySession = crypto.randomUUID()
     void loadGuestContent(kind, params.id, controller.signal).then(rows => {
       if (!controller.signal.aborted) setItems(kind === 'videos' && !params.id ? mixBasicVideoSession(rows, 'guest', entrySession) : rows)
@@ -77,6 +71,28 @@ function ExploreContent() {
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [kind, params.id, retry])
+
+  useEffect(() => {
+    const lookup = authorLookup.current
+    if (!lookup || lookup.signal.aborted) return
+    for (const item of items.slice(0, limit)) {
+      const id = textOf(item, ['user_id'], '')
+      if (!id || lookup.requested.has(id)) continue
+      lookup.requested.add(id)
+      void loadGuestContent('profiles', id, lookup.signal).then(rows => rows[0] ?? null, () => null).then(profile => {
+        if (!lookup.signal.aborted) setProfiles(current => new Map(current).set(id, profile))
+      })
+    }
+  }, [items, limit])
+
+  function reload() {
+    setLoading(true)
+    setFailed(false)
+    setItems([])
+    setProfiles(new Map())
+    setLimit(10)
+    setRetry(value => value + 1)
+  }
 
   const heading = kind === 'videos' ? 'Videos' : kind === 'moments' ? 'Momentos' : kind === 'profiles' ? 'Perfil público' : 'Social'
   return <main className="explore-page explore-shell">
@@ -90,7 +106,7 @@ function ExploreContent() {
         <Link key={value} to={`/explore/${value}`} aria-current={kind === value && !params.id ? 'page' : undefined}>{label}</Link>)}
     </nav>
     {loading ? <StatusView title="Cargando contenido" description="Espera un momento." /> : failed ?
-      <section className="status-card"><h2>No pudimos cargar el contenido</h2><p>Comprueba tu conexión y vuelve a intentarlo.</p><button className="ghost-btn" onClick={() => { setLoading(true); setFailed(false); setItems([]); setLimit(10); setRetry(value => value + 1) }}>Reintentar</button></section> : !items.length ?
+      <section className="status-card"><h2>No pudimos cargar el contenido</h2><p>Comprueba tu conexión y vuelve a intentarlo.</p><button className="ghost-btn" onClick={reload}>Reintentar</button></section> : !items.length ?
       <StatusView title={params.id ? 'Contenido no disponible' : `Sin ${kind === 'moments' ? 'momentos activos' : 'contenido público'}`} description="Vuelve a explorar más tarde." /> :
       <section className={`explore-feed explore-${kind}`} aria-label={heading}>
         {items.slice(0, limit).map(row => {
@@ -99,7 +115,7 @@ function ExploreContent() {
           const title = textOf(row, ['title', 'caption', 'content'], ''), video = resolveSupabasePublicUrl('videos', textOf(row, ['video_url'], ''))
           const images = mediaOf(row), isMomentVideo = kind === 'moments' && /video/i.test(textOf(row, ['media_type'], ''))
           return <article className="explore-card" key={id}>
-            <header>{author ? <GuestAuthor id={author} name={name} /> : <><SafeAvatar url={row.is_private ? '' : avatar} name={name} size="sm" /><strong>{name}</strong></>}
+            <header>{author ? <GuestAuthor id={author} name={name} profile={profiles.get(author)} /> : <><SafeAvatar url={row.is_private ? '' : avatar} name={name} size="sm" /><strong>{name}</strong></>}
               {row.created_at ? <time dateTime={String(row.created_at)}>{new Date(String(row.created_at)).toLocaleDateString()}</time> : null}</header>
             {kind === 'profiles' ? <div className="explore-copy"><h2>{name}</h2>{row.username ? <p>@{String(row.username)}</p> : null}{row.bio ? <p>{String(row.bio)}</p> : null}</div> : <>
               {title ? <p className="explore-copy">{title}</p> : null}
@@ -111,7 +127,7 @@ function ExploreContent() {
             <footer><Link to={sharedTarget ? signIn : `/login?next=${encodeURIComponent(kind === 'profiles' ? `/u/${id}` : kind === 'videos' ? `/app/reels/${id}` : kind === 'posts' ? `/app/feed/post/${id}` : '/app/social?tab=moments')}`}>Inicia sesión para participar</Link></footer>
           </article>
         })}
-        {items.length > limit ? <button className="ghost-btn" onClick={() => setLimit(value => value + 10)}>Ver más</button> : <button className="ghost-btn" onClick={() => { setLoading(true); setFailed(false); setItems([]); setLimit(10); setRetry(value => value + 1) }}>Actualizar</button>}
+        {items.length > limit ? <button className="ghost-btn" onClick={() => setLimit(value => value + 10)}>Ver más</button> : <button className="ghost-btn" onClick={reload}>Actualizar</button>}
       </section>}
   </main>
 }
