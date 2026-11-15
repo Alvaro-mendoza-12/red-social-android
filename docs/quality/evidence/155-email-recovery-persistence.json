@@ -1,0 +1,638 @@
+{
+  "continuation": 155,
+  "recordedAtUtc": "2026-11-15T18:11:20.562194+00:00",
+  "initialBaseline": {
+    "startedAtUtc": "2026-11-15T17:31:34.711747+00:00",
+    "finishedAtUtc": "2026-11-15T17:46:37.481727+00:00",
+    "exitCode": 1,
+    "sourceCommitAtStart": "f874e682a774e44fc22b7cb0a637978e1e76939d",
+    "sourceCommitAtEnd": "f874e682a774e44fc22b7cb0a637978e1e76939d",
+    "sourceTreeAtStart": "f93e1d24ff002e2e36ea927f9833db099216a36e",
+    "sourcesUnchanged": true,
+    "changedInputs": [],
+    "committedAndroidInputsChanged": false,
+    "generatedDebugBuildCommit": "f874e682a774",
+    "commitMarkerOverride": null,
+    "productionPatchApplied": false,
+    "counts": {
+      "tests": 10,
+      "failures": 6,
+      "errors": 0,
+      "skipped": 0
+    },
+    "cases": [
+      {
+        "name": "aCurrentDeliveryAcknowledgementRetainsItsDraft",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "failedClearKeepsRecoveryAndDoesNotNavigate",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aNewClearOwnsNavigationAfterAnOlderClearFinishes",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancelledDeliveryStorageCannotResetTheNextForm",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentVerificationPersistsItsPermission",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancelledVerificationStorageCannotPublishIntoTheNextForm",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "clearFromAnOldEntryCannotNavigateAfterReset",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentClearCompletesOnce",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aClearedViewModelCannotRunThePendingBackCallback",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentVerificationWriteFailureRemainsVisible",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      }
+    ],
+    "physicalValidation": false,
+    "moduleClosed": false,
+    "fullProjectGoalComplete": false
+  },
+  "expandedBaseline": {
+    "startedAtUtc": "2026-11-15T17:49:24.345736+00:00",
+    "finishedAtUtc": "2026-11-15T17:52:52.075136+00:00",
+    "exitCode": 1,
+    "sourceCommitAtStart": "f874e682a774e44fc22b7cb0a637978e1e76939d",
+    "sourceCommitAtEnd": "f874e682a774e44fc22b7cb0a637978e1e76939d",
+    "sourceTreeAtStart": "f93e1d24ff002e2e36ea927f9833db099216a36e",
+    "sourcesUnchanged": true,
+    "changedInputs": [],
+    "committedAndroidInputsChanged": false,
+    "generatedDebugBuildCommit": "f874e682a774",
+    "commitMarkerOverride": null,
+    "productionPatchApplied": false,
+    "counts": {
+      "tests": 24,
+      "failures": 14,
+      "errors": 0,
+      "skipped": 0
+    },
+    "cases": [
+      {
+        "name": "repeatedFailedClearsRetainTheOriginalDraft",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentDeliveryAcknowledgementRetainsItsDraft",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentPasswordResetCompletesAfterCleanup",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "failedClearKeepsRecoveryAndDoesNotNavigate",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancelledPasswordResetCleanupCannotCompleteTheNextForm",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aNewClearOwnsNavigationAfterAnOlderClearFinishes",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancelledLostAcknowledgementStorageCannotOverwriteTheNextForm",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aLostAcknowledgementKeepsItsAddressAndAllowsRetry",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancelledEarlyFailureCleanupCannotOverwriteTheNextForm",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "queuedRestorationCannotRepublishAClearedDraft",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancelledDeliveryStorageCannotResetTheNextForm",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentVerificationPersistsItsPermission",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancelledVerificationStorageCannotPublishIntoTheNextForm",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aLegacyDeliveryKeepsItsPromptAfterTheClear",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "loggingOutInvalidatesAPendingRecoveryBack",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentTwoFactorHandoffCompletesAfterCleanup",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aFailureBeforeSendingDoesNotRequestAnEmail",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "cancelledTwoFactorCleanupCannotPublishIntoTheNextForm",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "clearFromAnOldEntryCannotNavigateAfterReset",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aDisabledDeliveryKeepsItsExplanationAfterTheClear",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentClearCompletesOnce",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aClearedViewModelCannotRunThePendingBackCallback",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentDeliveryWriteFailureRemainsVisible",
+        "failures": [
+          "java.lang.AssertionError"
+        ],
+        "errors": [],
+        "skipped": false
+      },
+      {
+        "name": "aCurrentVerificationWriteFailureRemainsVisible",
+        "failures": [],
+        "errors": [],
+        "skipped": false
+      }
+    ],
+    "physicalValidation": false,
+    "moduleClosed": false,
+    "fullProjectGoalComplete": false
+  },
+  "finalRepair": {
+    "startedAtUtc": "2026-11-15T17:55:28.004451+00:00",
+    "finishedAtUtc": "2026-11-15T18:10:18.068173+00:00",
+    "exitCode": 0,
+    "sourceCommitAtStart": "f874e682a774e44fc22b7cb0a637978e1e76939d",
+    "sourceCommitAtEnd": "f874e682a774e44fc22b7cb0a637978e1e76939d",
+    "sourceTreeAtStart": "f93e1d24ff002e2e36ea927f9833db099216a36e",
+    "sourcesUnchanged": true,
+    "changedInputs": [],
+    "committedAndroidInputsChanged": false,
+    "generatedDebugBuildCommit": "f874e682a774",
+    "commitMarkerOverride": null,
+    "productionPatchApplied": true,
+    "productionPatchSha256": "3d1d1f4c11512f40f92a9a6d81adfc646f963b1e464250faebe885930d3447c4",
+    "counts": {
+      "tests": 58,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "class": "conectate.com.presentation.auth.AuthViewModelEmailRecoveryPersistenceTest",
+        "tests": 24,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthViewModelAccountPreparationTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthViewModelRecoveryOwnershipTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthEntryOperationTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.AuthEntryFormCancellationTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.auth.PasswordChangeValidationTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "class": "conectate.com.presentation.navigation.AuthenticationJourneyRestorationTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "focusedPassed": true,
+    "physicalValidation": false,
+    "moduleClosed": false,
+    "finalApkDelivered": false,
+    "fullProjectGoalComplete": false
+  },
+  "distinctNewCases": 24,
+  "baselineAssertionFailures": 14,
+  "baselineControlsPassed": 10,
+  "expandedBaselineRepeatsInitialCases": 10,
+  "baselineCasesMustNotBeSummed": true,
+  "enumeratedSourceFilesPerRun": 2041,
+  "selectedPrivateConfigurationPaths": [
+    "local.properties",
+    "keystore.properties",
+    "app/google-services.json"
+  ],
+  "completePrivateConfigurationInventory": false,
+  "notFrozen": [
+    "secrets.properties",
+    "full process environment",
+    "all external build/signing inputs"
+  ],
+  "storageMethodsControlled": true,
+  "realKeystoreWritesTested": false,
+  "smtpOrRealEmailDeliveryTested": false,
+  "processDeathTested": false,
+  "navigationOriginGuardInstrumented": false,
+  "normalConfirmedPasswordCleanupFailureFullyHandled": false,
+  "productionFilesChanged": [
+    "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+    "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt"
+  ],
+  "codeRead": [
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+      "sha256": "27a619c5f6a682841b10081519f22af08e61ec742a8d16842982cce4eb5368f5"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelEmailRecoveryPersistenceTest.kt",
+      "sha256": "da0feef3adb1aab9b4a85e97eb02121e975ab5979a1ded9db17f2f0cc9ecefc4"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
+      "sha256": "45591e29c80b54d9002751181a5884e2b50ff998b78e8269b956636db747fcd1"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/AuthEntryOperation.kt",
+      "sha256": "5209dda8646418d909178d85220b92d69e5e28d11c15a91ab2c3e03daf4345e9"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/concurrency/AccountTasks.kt",
+      "sha256": "234d6c889ac8f3090a6c0b9eebf44a95d6fda3d6cf9a472ac9a014c8cca9879e"
+    }
+  ],
+  "partialRead": [
+    {
+      "path": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+      "sha256": "910fdb2ee3264355f10812a9faff7d4cda3dea4a1bc388e939d68e56d13ea12d"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/repository/AuthRepository.kt",
+      "sha256": "c55421630eae40367a0b2904efe1352245c71db18480399939ff8226141fe1ec"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+      "sha256": "0c93810fadd92b03a6592bb9fe0b1cdd09b6c8b4e7457b1d1711e1284861df45"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt",
+      "sha256": "8d4dafaa6211cff225f84ca9a0235eb7422a29f41a9b348c8bc7ad2a35afe67f"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/navigation/AuthNavigationRoutes.kt",
+      "sha256": "898cafb98e942b8aff433a834f79eda9c293f171a0fa81109eb61ad7afe13750"
+    }
+  ],
+  "worktreeSourceIdentity": {
+    "normalizedEqual": true,
+    "main": [
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+        "sha256": "61f2de74d29990932c1f5e91881162c734b7133b471ee283459f9b4592497d6c"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+        "sha256": "1e7c10ef383f3e1d96da021a1748b74819d37c5fc3013da49bb5c0253f395d1d"
+      },
+      {
+        "path": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelEmailRecoveryPersistenceTest.kt",
+        "sha256": "da0feef3adb1aab9b4a85e97eb02121e975ab5979a1ded9db17f2f0cc9ecefc4"
+      }
+    ],
+    "feature": [
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+        "sha256": "27a619c5f6a682841b10081519f22af08e61ec742a8d16842982cce4eb5368f5"
+      },
+      {
+        "path": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+        "sha256": "910fdb2ee3264355f10812a9faff7d4cda3dea4a1bc388e939d68e56d13ea12d"
+      },
+      {
+        "path": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelEmailRecoveryPersistenceTest.kt",
+        "sha256": "da0feef3adb1aab9b4a85e97eb02121e975ab5979a1ded9db17f2f0cc9ecefc4"
+      }
+    ]
+  },
+  "artifacts": [
+    {
+      "path": "app/build/audit155/baseline/AuthViewModel.kt",
+      "sha256": "1bfa249f45870804f22ab7d315cc3bd4724159d5d994c8da36315db403949ba2"
+    },
+    {
+      "path": "app/build/audit155/baseline/gradle.log",
+      "sha256": "4f1a72647228a1680a7bd88d0ad5ff1c1317ec97866daf4f52593b98e8534cdc"
+    },
+    {
+      "path": "app/build/audit155/baseline/LoginScreen.kt",
+      "sha256": "664267f2c37608a5cbfd8414ccb0f5ee85152e9a445ed82a22d4dcaa95b2c4fb"
+    },
+    {
+      "path": "app/build/audit155/baseline/private-configuration-fingerprints.json",
+      "sha256": "61f1692c75fc7472e8e33e9f56ac1e84e3c69c448ada187da39ed88e1b041883"
+    },
+    {
+      "path": "app/build/audit155/baseline/result.json",
+      "sha256": "d6febb758ed290599f47dc34a3a6558581e5d1c00ed9129673d4403902d851dc"
+    },
+    {
+      "path": "app/build/audit155/baseline/sources.json",
+      "sha256": "8a947668b2b586a3ee1cc847bbc8350436eb14751869179581a6142b7ef7a655"
+    },
+    {
+      "path": "app/build/audit155/baseline/started.json",
+      "sha256": "82a06bc32f11e634d8e4de21edfe551b44389cd121fb8c9734d42e526c6e4b7e"
+    },
+    {
+      "path": "app/build/audit155/baseline/TEST-conectate.com.presentation.auth.AuthViewModelEmailRecoveryPersistenceTest.xml",
+      "sha256": "1a8fb5c7816e8b27157655b090652e28b99728416fec9df7ccc340ededcd320f"
+    },
+    {
+      "path": "app/build/audit155/extended-baseline/AuthViewModel.kt",
+      "sha256": "1bfa249f45870804f22ab7d315cc3bd4724159d5d994c8da36315db403949ba2"
+    },
+    {
+      "path": "app/build/audit155/extended-baseline/gradle.log",
+      "sha256": "432ca5e811f0bcb701073609a4b6a2f2356ead6e5ad9b7f3dbde2168c42fcab8"
+    },
+    {
+      "path": "app/build/audit155/extended-baseline/LoginScreen.kt",
+      "sha256": "664267f2c37608a5cbfd8414ccb0f5ee85152e9a445ed82a22d4dcaa95b2c4fb"
+    },
+    {
+      "path": "app/build/audit155/extended-baseline/private-configuration-fingerprints.json",
+      "sha256": "61f1692c75fc7472e8e33e9f56ac1e84e3c69c448ada187da39ed88e1b041883"
+    },
+    {
+      "path": "app/build/audit155/extended-baseline/result.json",
+      "sha256": "74c092e78963ab9cdf7ce829bb386e77e8fe860d5624927f77e600c2f53f2ba8"
+    },
+    {
+      "path": "app/build/audit155/extended-baseline/sources.json",
+      "sha256": "2c177bef0eb9fcbd4fb016e61faed586282930eba0bb0aec08540341cb935497"
+    },
+    {
+      "path": "app/build/audit155/extended-baseline/started.json",
+      "sha256": "020a8d76a606a2c492f9b2421ddc7544ba337273ebc43389bf6760a747a79eb5"
+    },
+    {
+      "path": "app/build/audit155/extended-baseline/TEST-conectate.com.presentation.auth.AuthViewModelEmailRecoveryPersistenceTest.xml",
+      "sha256": "acf6bd3371514d4ceff925cef6dc1c7560a791ed7440cd05820284520bdab518"
+    },
+    {
+      "path": "app/build/audit155/repair/account-entry-fix.patch",
+      "sha256": "3d1d1f4c11512f40f92a9a6d81adfc646f963b1e464250faebe885930d3447c4"
+    },
+    {
+      "path": "app/build/audit155/repair/gradle.log",
+      "sha256": "02610b2d5f4b22f446294fc0773d603ce08d613b6be52cacd3bdb700207f9105"
+    },
+    {
+      "path": "app/build/audit155/repair/private-configuration-fingerprints.json",
+      "sha256": "61f1692c75fc7472e8e33e9f56ac1e84e3c69c448ada187da39ed88e1b041883"
+    },
+    {
+      "path": "app/build/audit155/repair/result.json",
+      "sha256": "bb1dd9e71d6f6582d2ab3f6cf240fa931ba14d17ac6769caedc175e862b96921"
+    },
+    {
+      "path": "app/build/audit155/repair/sources.json",
+      "sha256": "2e46e01ccd6277ae4f5eaed336298991527bdc8a6f8ffd34e3ed69a72027d412"
+    },
+    {
+      "path": "app/build/audit155/repair/started.json",
+      "sha256": "d9cf2bb600c496fa52bc39acf1641ac24b7bfd7f72d2c3f94f65caa716bfc88c"
+    },
+    {
+      "path": "app/build/audit155/repair/TEST-conectate.com.presentation.auth.AuthEntryFormCancellationTest.xml",
+      "sha256": "095a366138fdf2cd7dab2be6da1bef684f4e2e6bf62ba1731fefe072f457010c"
+    },
+    {
+      "path": "app/build/audit155/repair/TEST-conectate.com.presentation.auth.AuthEntryOperationTest.xml",
+      "sha256": "a3396f089738aeda244e37447117d05ddef4cdfe58135bf835415376d0158ab3"
+    },
+    {
+      "path": "app/build/audit155/repair/TEST-conectate.com.presentation.auth.AuthViewModelAccountPreparationTest.xml",
+      "sha256": "6791f07f6706b49ca8f0fab8bf33de4e2f2974994b2d8c2d3e751633c7725549"
+    },
+    {
+      "path": "app/build/audit155/repair/TEST-conectate.com.presentation.auth.AuthViewModelEmailRecoveryPersistenceTest.xml",
+      "sha256": "2dcf742b66035bae33ea01000304785c4045edb71d621a50f000c59922679ed6"
+    },
+    {
+      "path": "app/build/audit155/repair/TEST-conectate.com.presentation.auth.AuthViewModelRecoveryOwnershipTest.xml",
+      "sha256": "03c0bcc4cd409a71eddffa5934097134b16b2b57f59742a319bb13ca2236f4dc"
+    },
+    {
+      "path": "app/build/audit155/repair/TEST-conectate.com.presentation.auth.PasswordChangeValidationTest.xml",
+      "sha256": "43c17735a766116e1eecadb6f15854a6271ad3ccc32ebb83a490a649acc85f45"
+    },
+    {
+      "path": "app/build/audit155/repair/TEST-conectate.com.presentation.navigation.AuthenticationJourneyRestorationTest.xml",
+      "sha256": "cedf65153046d561b1eea9c1cecb92cbebd1aaf417a2b8df257b7022d7eec077"
+    },
+    {
+      "path": "app/build/audit155/run_baseline.py",
+      "sha256": "8081debd62769d76bf93bec3249ec96f736a6f428e4f1e73b2ec34df65d6bf7e"
+    },
+    {
+      "path": "app/build/audit155/run_extended_baseline.py",
+      "sha256": "10c6574fe99a7bc375b015e56ceb9fe09af4a73a519e47b6800a6ec84e77a440"
+    },
+    {
+      "path": "app/build/audit155/run_repair.py",
+      "sha256": "a7538d3052f8365744f8e1c452e6e1b2320cc089301fdf06c1d33393cf2ab556"
+    },
+    {
+      "path": "app/build/audit155/extend_baseline.py",
+      "sha256": "2aba18cd55a542a551a3a30e696990671e9e59e8ff7f23de0a635cc665a191e4"
+    },
+    {
+      "path": "app/build/audit155/add_remaining_cases.py",
+      "sha256": "c15b92475c3eb011a42ffb5d3bdf438f196b4b0cae82ca5d457218c3179dc109"
+    },
+    {
+      "path": "app/build/audit155/patch_recovery.py",
+      "sha256": "0ddf5aefd57bd546e571397d336436ff2355d70d44d0dd4fdc7fdf5411e9c709"
+    },
+    {
+      "path": "app/build/audit155/ten-case-test.kt",
+      "sha256": "7dbd78cf5a294842d490453319662ad16f35d19aaa31860e6b75208c1dee920f"
+    },
+    {
+      "path": "app/build/audit155/twenty-case-test.kt",
+      "sha256": "71406416bcff7d6d3cffd14ccc77a934d7e53578046c306c66547cfcb141d5ba"
+    }
+  ],
+  "physicalValidation": false,
+  "newApkGenerated": false,
+  "newApkInstalled": false,
+  "qa145ContainsThisChange": false,
+  "accessModuleClosed": false,
+  "r2DeliveryPolicyChanged": false,
+  "hostPackagesChanged": false,
+  "productionDeploymentVerified": false,
+  "fullProjectGoalComplete": false,
+  "localPersistenceErrorClassificationComplete": false,
+  "crossViewModelDraftWritesValidated": false
+}

@@ -77,3 +77,8 @@ El [plan administrativo vigente](../oficial/154-plan-host-vigente-tras-api153-20
 ## Continuación 152 retomada — 15 de noviembre de 2026
 
 La [corrección de cuentas y Ajustes](../oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md) rechaza respuestas de visitas anteriores, conserva las operaciones de una pantalla nueva y libera la preparación cancelada. Aprueba 34 casos JVM en seis clases. No representa un ensayo físico de A08 ni contiene una APK nueva; la QA145 ensayada incluye 148 y carece de 152. La revisión de acceso y los demás módulos siguen abiertos.
+
+
+## Continuación 155 — 15 de noviembre de 2026
+
+La [corrección de recuperación por correo](../oficial/155-recuperacion-correo-persistencia-y-salida-2026-11-15.md) protege la restauración/limpieza, los callbacks y el estado posterior a E/S cancelada; conserva el borrador y muestra fallos locales. Aprueba 58 casos JVM en siete clases tras reproducir 14 fallos en 24 casos distintos. El transporte y el almacén se controlan: no acredita SMTP, Keystore, proceso o navegación físicos ni una APK155. A03–A05 y los demás recorridos siguen abiertos; se conserva el pendiente de limpieza fallida tras una contraseña ya confirmada.
