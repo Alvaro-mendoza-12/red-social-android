@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-14T23:33:02.544523+00:00",
-  "baseCommit": "972b727a3bfa2c23398926ba394f42fd150a064a",
+  "generatedAtUtc": "2026-11-15T01:47:18.048777+00:00",
+  "baseCommit": "1b0a6ad48e4f7876da94cce594e1fb05dfb50bbc",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,24 +10,24 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3624,
-    "partial": 249,
-    "code-read": 651
+    "pending": 3615,
+    "partial": 248,
+    "code-read": 663
   },
   "countsByPhase": {
     "android": {
-      "pending": 1498,
-      "partial": 105,
-      "code-read": 458
+      "pending": 1490,
+      "code-read": 468,
+      "partial": 103
     },
     "documentation": {
       "pending": 623,
-      "code-read": 49,
-      "partial": 22
+      "code-read": 50,
+      "partial": 23
     },
     "server": {
-      "pending": 855,
-      "code-read": 56,
+      "pending": 854,
+      "code-read": 57,
       "partial": 30
     },
     "tooling-and-other": {
@@ -4597,9 +4597,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "ec7efb84c9c799587c5b28f2b2fcc2c402fae847",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "gitBlobId": "22f949a6e862550ab86af3d17d3e7dbcca8ebc0a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4871,7 +4871,7 @@
       "phase": "android",
       "gitBlobId": "c5efe7e470d629b7881999db52631a564b473af4",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4879,7 +4879,7 @@
       "phase": "android",
       "gitBlobId": "5a7ccc329b309d8f179d94b051910e3f0114c906",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4968,13 +4968,17 @@
       "file": "app/src/androidTest/java/conectate/com/presentation/components/ProfileAnimatedAvatarDeviceTest.kt",
       "phase": "android",
       "gitBlobId": "074adbd45b8abb1849056d4a1d1e922c6efad57a",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/ProfileAvatarContinuityDeviceTest.kt",
       "phase": "android",
       "gitBlobId": "5f0936144f701defaa66328be201398ff4fb1c40",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/documents/DocumentPreviewUiTest.kt",
@@ -5519,7 +5523,7 @@
       "phase": "android",
       "gitBlobId": "792f75cf29677d52ebe0d42a0f7043833519083d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6171,7 +6175,7 @@
       "phase": "android",
       "gitBlobId": "0a3235728df806bcfa95f0fa89530f1e3368a9aa",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6179,7 +6183,7 @@
       "phase": "android",
       "gitBlobId": "d8b17f7bdee9d7146ee1bc886cc43a9128c7f3a6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6211,7 +6215,7 @@
       "phase": "android",
       "gitBlobId": "f764e1f0d159ea4583ac591d1057dfaea1e930a6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6219,7 +6223,7 @@
       "phase": "android",
       "gitBlobId": "c07a829c1ee439feebe388fc7802926b45bc3698",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6461,7 +6465,7 @@
       "phase": "android",
       "gitBlobId": "27772db6360afe9826501551b3ac913b3f4175b4",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7220,7 +7224,9 @@
       "file": "app/src/main/java/conectate/com/data/localfallback/RuntimeBackendEndpoint.kt",
       "phase": "android",
       "gitBlobId": "59299bab041817bb23a9160d582e72a1ef96e814",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/StorageUploadPolicy.kt",
@@ -8959,7 +8965,7 @@
       "phase": "android",
       "gitBlobId": "d1bf3fbd1f96a8a9232344265e3f37c31baa5f85",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9102,7 +9108,9 @@
       "file": "app/src/main/java/conectate/com/data/webrtc/LiveMusicAudioMixer.kt",
       "phase": "android",
       "gitBlobId": "45dcc63a860e46674d6640083ea02eb9fbf08630",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/webrtc/ManagedIceReadiness.kt",
@@ -9674,8 +9682,8 @@
       "file": "app/src/main/java/conectate/com/presentation/components/CircularProfileImage.kt",
       "phase": "android",
       "gitBlobId": "5438469e12efcd03466102677a7ed2d451bab55b",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13586,7 +13594,9 @@
       "file": "app/src/main/java/conectate/com/util/UbuntuMedia.kt",
       "phase": "android",
       "gitBlobId": "f3161f2a6cc489aff6c7ea29e8b96e343d352a05",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/UnreadPushPolicy.kt",
@@ -14564,7 +14574,9 @@
       "file": "app/src/test/java/conectate/com/core/media/InteractiveMediaGateTest.kt",
       "phase": "android",
       "gitBlobId": "6f6ef04ed402e34798dd1b822f99f7ef792e7ab6",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/core/media/MediaUploadGuardTest.kt",
@@ -16068,7 +16080,9 @@
       "file": "app/src/test/java/conectate/com/data/webrtc/LiveMusicAudioMixerSignalTest.kt",
       "phase": "android",
       "gitBlobId": "6014a8b7917fab0e36c355575febc35bfd9b5489",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/webrtc/ManagedIceReadinessTest.kt",
@@ -20485,9 +20499,9 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "d31068b7fec34e5a29e43a8208aaf666932066fd",
+      "gitBlobId": "b086690fc02ef7bdb76aaa62e50ebe3aff2738d7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20762,6 +20776,14 @@
       "gitBlobId": "713a59f49388015302928c6ca0c481acc6bbc73d",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "phase": "documentation",
+      "gitBlobId": "8e524cffa2f0a66ec874258060f16dedf191e2b9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21281,9 +21303,9 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "a0790c91daecea8d40f2fccf032fc5e2f19da057",
+      "gitBlobId": "35af42be5294da2df1fd8b00dc00b5d3d5f1b723",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21703,9 +21725,9 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "032add75d14165191929736abe46aeb6eecda4ec",
+      "gitBlobId": "bdcf7d8382d09e56a8c834d5aee4ce2d1c6913ef",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22158,6 +22180,14 @@
       "gitBlobId": "5c8298e09f79973fdf1b175be8082f268800c63a",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/141-cuentas-motor-y-pantallas-live-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/144-qa-media-performance.json",
+      "phase": "documentation",
+      "gitBlobId": "bb6b52fa33984ae2d68a85165da7918b30fb7ccc",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -23204,7 +23234,9 @@
       "file": "infrastructure/local-fallback/api/src/conversation-history-page.js",
       "phase": "server",
       "gitBlobId": "c1afd6ca91d3e96f8219f04c1fcda251d3cee858",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/conversation-read-sync.js",
@@ -26930,7 +26962,9 @@
       "file": "settings.gradle.kts",
       "phase": "android",
       "gitBlobId": "44b85b57c051f9edda7aa3a2d8128d3b8156e692",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/.env.example",

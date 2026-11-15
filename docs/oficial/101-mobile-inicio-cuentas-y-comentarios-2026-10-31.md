@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 14 de noviembre de 2026
 
+La [continuación 144](144-qa-medios-y-sincronizacion-2026-11-14.md) corrige la subida de mapas de Crashlytics en QA y comprueba el empaquetado optimizado separado. Registra una sincronización IDE aprobada, un build posterior fallido por recursos y las demoras de la ruta pública de avatares. Distingue las APK de laboratorio de los ensayos físicos y de la entrega final; la revisión móvil integral permanece abierta.
+
 La [continuación 141 retomada](141-cuentas-motor-y-pantallas-live-2026-11-14.md) corrige la propiedad de cuenta/motor/pantalla LIVE, los controles retenidos, el replay de estado, la adopción del minimizado y las salidas por entrada. Aprueba 54 pruebas focalizadas y 2927 pruebas JVM en 538 clases; Lint registra cero errores y 343 advertencias. Siguen abiertos los RPC asíncronos restantes, la barrera física global de medios, el hardware, la seguridad integral y la APK final. Su numeración precede a las urgencias 142–143, pero este resultado es posterior.
 
 La [continuación 143](143-velocidad-servidor-y-entorno-android-2026-11-14.md) mide enlace Ethernet de 100 Mbps y una transferencia de 19,218/16,579 Mbps, distingue la latencia pública de la carga de Ubuntu y comprueba sincronización, compilación e inicio Android en emulador. Corrige una verificación web repetida, con 1.268 pruebas aprobadas; la mejora general de tiempo sigue inconclusa. Conserva 141 sin publicar, RLS y demás recorridos abiertos; la APK ensayada es de laboratorio y no representa una entrega final.

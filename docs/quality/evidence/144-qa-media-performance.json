@@ -1,0 +1,244 @@
+{
+  "review": "144",
+  "createdAtUtc": "2026-11-15T01:44:01.864735+00:00",
+  "sourceBaseCommit": "1b0a6ad48e4f7876da94cce594e1fb05dfb50bbc",
+  "sourceBaseTree": "ccbcbe92ea96bdfaafabb455a68a5732eae2c14d",
+  "buildFixDiffSha256": "5356d18f45d24b50e59f5e705f62e19614b59e806e2741c48dd7cd96557f09bd",
+  "packagingPassed": true,
+  "frozenBuildInputs": 2032,
+  "sourcesUnchanged": true,
+  "apks": [
+    {
+      "package": "conectate.com.qa",
+      "versionName": "9.1.40-qa-optimized",
+      "versionCode": "180",
+      "bytes": 221617476,
+      "sha256": "81b774dcbc71a9206148f678d5306b63bed1d01a2d6d33ae37e19a110854a49c",
+      "archivedPath": "D:\\red social - live-gifts\\app\\build\\audit144\\retry-after-resume\\Novvin-9.1.40-180-qa-optimized-141-144-LAB.apk",
+      "originalPath": "D:\\red social - live-gifts\\app\\build\\outputs\\apk\\auditRelease\\app-auditRelease.apk"
+    },
+    {
+      "package": "conectate.com.qa.test",
+      "versionName": "",
+      "versionCode": "",
+      "bytes": 2404683,
+      "sha256": "1e5f1430f59cdca608c8c3c45c6b02f67671d608664737a81ee518eccfd4cb9a",
+      "archivedPath": "D:\\red social - live-gifts\\app\\build\\audit144\\retry-after-resume\\Novvin-144-QA-INSTRUMENTATION-LAB.apk",
+      "originalPath": "D:\\red social - live-gifts\\app\\build\\outputs\\apk\\androidTest\\auditRelease\\app-auditRelease-androidTest.apk"
+    }
+  ],
+  "finalDelivery": false,
+  "physicalResult": null,
+  "sync": {
+    "observedAtUtc": "2026-11-15T00:45:47.069459+00:00",
+    "project": "D:/red social - live-gifts",
+    "syncStartedLocal": "2026-11-14 19:44:29.989 -05:00",
+    "syncFinishedLocal": "2026-11-14 19:45:28.722 -05:00",
+    "syncMilliseconds": 58731,
+    "syncSuccess": true,
+    "jdk": "C:/Program Files/Eclipse Adoptium/jdk-21.0.6.7-hotspot",
+    "newIdeProcessLaunched": false,
+    "oldLockTimeoutsRetained": true,
+    "logSha256": "2ac3d66c3ff0f6cb7f06bf1eeae0547b4ba71bf811a1cf0db16cceb3c72af5d4",
+    "fullEnvironmentEveryProjectValidated": false
+  },
+  "ideBuildFailure": {
+    "observedAtUtc": "2026-11-15T01:04:57.145237+00:00",
+    "syncPassedSeparately": true,
+    "ideBuildSucceeded": false,
+    "ideBuildStartedLocal": "2026-11-14 19:45:42 -05:00",
+    "durationReported": "16m 20s",
+    "taskAtCancellation": ":app:compileDebugJavaWithJavac",
+    "outOfMemoryIn": "RandomAccessFile.writeBytes0 / Gradle BTreePersistentIndexedCache",
+    "nativeFilesystemResourceErrorAlsoPresent": true,
+    "causeOfCancellationProven": false,
+    "assistantStoppedUserBuild": false,
+    "runtimeAppRegressionDemonstrated": false,
+    "snapshotSha256": "af29e89aad2aff5e58f12ad25508e88f34a235b892372fe43e2df5227c967f9e"
+  },
+  "sourcesFullyRead": [
+    {
+      "path": "app/src/main/java/conectate/com/core/media/InteractiveMediaGate.kt",
+      "sha256": "c49fd591005f51a391aed548342d244f32c411777f33ff8f1926b5f363bb5a29"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/core/media/InteractiveMediaGateTest.kt",
+      "sha256": "3263cd7fa44ce0201b6ef004859ba3a4f5f7755159f97624e00370e5ac5a86a5"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/webrtc/LiveMusicAudioMixer.kt",
+      "sha256": "cf52b9a0080286bdf2a0f238f1ba8f842c8bff6ad382a629dbba19ef1d6bc33e"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/supabase/AuthSessionMutationGuard.kt",
+      "sha256": "8aa78016458304ef2e9659074399f2b7892f57ee40fab23c5b0d784cf1f06b89"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/performance/PublicVideoFrameTimingDeviceTest.kt",
+      "sha256": "fd57e6a61ac2bb0d866746478f47c798748718bd3ee28decfa9a54fef0183aa1"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/performance/PublicMediaTransferDeviceTest.kt",
+      "sha256": "f71d2295f4a3efb16bbbadfa53f5919b64d02341bae2691cbea45774462cee2b"
+    },
+    {
+      "path": "app/src/auditSupport/java/conectate/com/core/testing/MediaAuditEntryPoint.kt",
+      "sha256": "4af624e6d2e47ec158947eb9edbd14ea20002b8c5d97b838ff0853a919180363"
+    },
+    {
+      "path": "settings.gradle.kts",
+      "sha256": "778ad438e3d3b5c5b0e95f456f035aea1f93a6154e241c61b1df84a93c328479"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/media/ProfileAvatarMedia.kt",
+      "sha256": "1a1238f3810e2cbcf7324c4f8910bd19372a5292e614058b3e313d7b1721c0b1"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/media/ProfileAvatarPlayback.kt",
+      "sha256": "552d7f126fb04d512fa9a99f77ee5b7d8dbf297ba5b4b318a1db68d420d3d8b2"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/components/CircularProfileImage.kt",
+      "sha256": "91ca3964f7250395ac0f3cf309b5a0de7cdc7816e03e783736d34281844f17b6"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/media/MediaImageRequestFactory.kt",
+      "sha256": "516848f6a610ec0490f863b4e12c53376b8665502a351f7ade21b9c543a1c584"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/data/localfallback/RuntimeBackendEndpoint.kt",
+      "sha256": "374da2b097d9b53ff9bc2e73f445c6aaad9ac148072198b7f682d17f94fd274a"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/core/network/PublicBackendDns.kt",
+      "sha256": "66df6921dbd72a499b81243eb760b774fb0e51eead3003e154a378de2a0dd4a6"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/data/webrtc/LiveMusicAudioMixerSignalTest.kt",
+      "sha256": "33ab9890307f14f57feb02d7c842156ecb55e4cac9fc96bbfce5dc94e2365ad0"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/presentation/components/ProfileAvatarContinuityDeviceTest.kt",
+      "sha256": "dd6d8d41b673b5d8ac13a451d41003ee23da7d629797264ec102fb111b6fdd7d"
+    },
+    {
+      "path": "app/src/androidTest/java/conectate/com/presentation/components/ProfileAnimatedAvatarDeviceTest.kt",
+      "sha256": "b1b04766ace5ba70ed14ff11db9d3a0a494415aebcdd72bec2ef75be142756b2"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/util/UbuntuMedia.kt",
+      "sha256": "29c2e1a0813ac381abe7496182a7e55ff5c605c79fa9385670da7b2bb4cebb33"
+    },
+    {
+      "path": "app/build.gradle.kts",
+      "sha256": "d7550a283127496e6e96e4954da8b8250ae89b1b1ca49b5eb176f0d67abef2f0"
+    },
+    {
+      "path": "infrastructure/local-fallback/api/src/conversation-history-page.js",
+      "sha256": "7229df65879da469385a985f8649fc5232a1d52c8bcf38f72060ca171fb38522"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/audit144/build-result.json",
+      "sha256": "1f00bc0e7f9464fe3e7862867fb51711836717104ba86d88b11300d30bd5a78b"
+    },
+    {
+      "path": "app/build/audit144/assemble-audit.log",
+      "sha256": "4266e769d6eee26911a5a3c9819f409eee623fceb1bf2b9873bd096cf112ed6f"
+    },
+    {
+      "path": "app/build/audit144/retry-packaging/build-result.json",
+      "sha256": "9f285c3e8b832d9cdaf282716c0b0194a8d6206eb66e5781aee3df4b0dfbabd6"
+    },
+    {
+      "path": "app/build/audit144/retry-packaging/assemble-audit.log",
+      "sha256": "ae6c1282f7a8b6ef67dd27a8f365bdef45c36fe3f42d3362ab61055dfbc637e7"
+    },
+    {
+      "path": "app/build/audit144/retry-packaging-verified/build-result.json",
+      "sha256": "20aa1ae7073d5bfdb0c4262f77e42494b681f1bfae3ad82f103641ff249cbeb2"
+    },
+    {
+      "path": "app/build/audit144/retry-packaging-verified/assemble-audit.log",
+      "sha256": "f218be5ee584cab3e84a21d250115f65f039dca5eebb414263f1c6321715cbe3"
+    },
+    {
+      "path": "app/build/audit144/retry-after-ide/interruption.json",
+      "sha256": "8b5e2849480f920dbd2b267ac6d49c05b824c2e82479d0beb99fc42cbd712472"
+    },
+    {
+      "path": "app/build/audit144/retry-after-ide/assemble-audit.log",
+      "sha256": "ca73667f80359d343a997993cf13678ef96708753b27b3fb1f0fc70603a498b1"
+    },
+    {
+      "path": "app/build/audit144/retry-after-resume/build-result.json",
+      "sha256": "91732fb66e1c10e160134d9f36dca36c662f6264730bbac259859fe126deb55a"
+    },
+    {
+      "path": "app/build/audit144/retry-after-resume/assemble-audit.log",
+      "sha256": "2d9c020abd49b700076a072980ee3488d05d962083792a9b90a7a662e79a233b"
+    },
+    {
+      "path": "app/build/audit144/retry-after-resume/build-sources.json",
+      "sha256": "b64eb78572b040e31d822c49f820e4844664df3f0c704491f2ae6524a0cc804f"
+    },
+    {
+      "path": "app/build/audit144/retry-after-resume/build-fix.patch",
+      "sha256": "5356d18f45d24b50e59f5e705f62e19614b59e806e2741c48dd7cd96557f09bd"
+    },
+    {
+      "path": "app/build/audit144/retry-after-resume/verify-qa-crashlytics.init.gradle",
+      "sha256": "afb35c7d4bbc56a08da6403f85fd11e19c921bd39be332e5dc019972cf8726fb"
+    },
+    {
+      "path": "app/build/audit144/apk-verification.json",
+      "sha256": "63ff49d0a5f5da789acf2c7d1a908855ddebf489dc591dd5fb1243b04567d577"
+    },
+    {
+      "path": "app/build/audit144/verified-instrumentation-manifest.txt",
+      "sha256": "18901445dc7e2ae9fa4ae7c896c4c23eeca3d62aebab5d12ab075bc5ad968bd7"
+    },
+    {
+      "path": "app/build/audit144/studio-sync-success.json",
+      "sha256": "1a16c9979f455518cf4e11ec5b7ab84f0a3f2eb64432818dccc01d40670b05bb"
+    },
+    {
+      "path": "app/build/audit144/studio-sync-success.log",
+      "sha256": "2ac3d66c3ff0f6cb7f06bf1eeae0547b4ba71bf811a1cf0db16cceb3c72af5d4"
+    },
+    {
+      "path": "app/build/audit144/ide-debug-failure/result.json",
+      "sha256": "286424b68209e652b6a7800dea9cabbd5aaff55229b61d7bd298bd7e1bbd89eb"
+    },
+    {
+      "path": "app/build/audit144/server-current-load.json",
+      "sha256": "dd6b06111b1dd65129ec31a45aa8a3d7c78266c40812e6ce1341fdfe3e2d7bb6"
+    },
+    {
+      "path": "app/build/audit144/avatar-post-port/result.jsonl",
+      "sha256": "d370b05ec9b4a83223a257a11c2c72fbf5aae19f4498beeb83a51b93d77a0eab"
+    },
+    {
+      "path": "app/build/audit144/public-route/timings.jsonl",
+      "sha256": "075c0ea66c82b7b559ba3bfb9fce1ff42e0ac46f5d6d519cd6f31994d6c5eb91"
+    },
+    {
+      "path": "app/build/audit144/phone-detection-before-publication.json",
+      "sha256": "1c76b9e3d23e78754c59ed37f461736895e4c03f9fbabbfa1260b2db54209ccc"
+    }
+  ],
+  "securityAuditComplete": false,
+  "fullProjectGoalComplete": false,
+  "phoneConnectionCheck": {
+    "observedAtLocal": "2026-11-14T20:47:11.1062689-05:00",
+    "userConfirmedConnection": true,
+    "adbDeviceRows": 0,
+    "expectedPhonePresent": false,
+    "matchingPresentDeviceNodes": 0,
+    "apkInstalled": false,
+    "physicalTestsExecuted": false,
+    "adbKeysReset": false,
+    "driverOrUsbSettingsChanged": false
+  }
+}
