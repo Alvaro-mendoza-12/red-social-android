@@ -4,6 +4,8 @@ Estado documental al 15 de noviembre de 2026. Esta es la entrada para desarrollo
 
 ## Estado vigente
 
+La [continuación 155](155-recuperacion-correo-persistencia-y-salida-2026-11-15.md) protege la recuperación por correo frente a restauraciones, limpiezas y respuestas de E/S anteriores. Confirma el borrado antes de salir, conserva el borrador si falla y muestra errores de persistencia. Reproduce catorce fallos en veinticuatro casos distintos y aprueba cincuenta y ocho casos JVM en siete clases después del parche. La entrega real del correo, Keystore, proceso/navegación físicos, otros recorridos de acceso y la APK nueva siguen pendientes.
+
 La [continuación 152 retomada](152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md) vincula el guardado y la preparación de cuentas a su visita de sesión y de Ajustes, cancela respuestas antiguas y libera el progreso interrumpido. Reproduce siete fallos de aserción antes del parche y aprueba treinta y cuatro casos JVM en seis clases después. A08, los recorridos físicos, los demás casos de acceso y la APK nueva siguen pendientes; la QA145 no incluye esta corrección.
 
 La [continuación 154](154-plan-host-vigente-tras-api153-2026-11-15.md) renueva el plan de mantenimiento tras la activación independiente de API153. Conserva la herramienta y las nueve versiones de 149, con dieciocho pruebas Linux y preflight aprobados contra la imagen vigente. El comando anterior es histórico; la instalación sigue pendiente de autenticación administrativa. La corrección móvil152 permanece en validación separada y la revisión integral continúa abierta.

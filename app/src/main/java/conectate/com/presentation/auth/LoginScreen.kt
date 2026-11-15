@@ -130,6 +130,12 @@ fun LoginScreen(
     val assistedRecoveryCaseId by viewModel.assistedRecoveryCaseId.collectAsStateWithLifecycle()
     LaunchedEffect(assistedRecoveryCaseId) { assistedCaseCopied = false }
     val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
+    fun clearRecoveryThen(action: () -> Unit) {
+        val origin = navController.currentBackStackEntry
+        viewModel.clearEmailRecovery {
+            if (origin != null && navController.currentBackStackEntry === origin) action()
+        }
+    }
     val suspendedState = authState as? AuthState.Suspended
     val authErrorText = (authState as? AuthState.Error)?.message.orEmpty()
     val emailIsValid = email.isBlank() || Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()
@@ -391,17 +397,18 @@ fun LoginScreen(
         {
             if (isAddAccountMode) {
                 if (initialAssistedRecovery) navController.popBackStack()
-                else viewModel.clearEmailRecovery { navController.popBackStack() }
+                else clearRecoveryThen { navController.popBackStack() }
             } else if (loginType == "recovery" || loginType == "assisted") {
-                viewModel.clearEmailRecovery()
-                loginType = "email"
-                migrationEmail = ""
-                migrationToken = ""
-                migrationNewPassword = ""
-                migrationConfirmPassword = ""
-                recoveryCodeRequired = false
-                migrationInfo = ""
-                viewModel.resetAuthState()
+                clearRecoveryThen {
+                    loginType = "email"
+                    migrationEmail = ""
+                    migrationToken = ""
+                    migrationNewPassword = ""
+                    migrationConfirmPassword = ""
+                    recoveryCodeRequired = false
+                    migrationInfo = ""
+                    viewModel.resetAuthState()
+                }
             } else {
                 viewModel.resetAuthState()
                 loginType = null
@@ -803,7 +810,7 @@ fun LoginScreen(
                 )
             }
             if (!assistedCodeStage) TextButton(
-                onClick = { viewModel.clearEmailRecovery(); loginType = "recovery"; passwordFlowMode = "saved_code" },
+                onClick = { clearRecoveryThen { loginType = "recovery"; passwordFlowMode = "saved_code" } },
                 enabled = authState !is AuthState.Loading,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
             ) { Text(stringResource(R.string.auth_saved_code)) }
@@ -837,12 +844,13 @@ fun LoginScreen(
                     onSavePassword = { viewModel.confirmMigratedPasswordCode(pendingEmailRecovery.resetToken, migrationNewPassword) },
                     onResend = { viewModel.requestMigratedPasswordCode(pendingEmailRecovery.email) },
                     onChangeEmail = {
-                        viewModel.clearEmailRecovery()
-                        viewModel.resetAuthState()
-                        passwordFlowMode = "migration"
-                        migrationEmail = ""
-                        migrationNewPassword = ""
-                        migrationConfirmPassword = ""
+                        clearRecoveryThen {
+                            viewModel.resetAuthState()
+                            passwordFlowMode = "migration"
+                            migrationEmail = ""
+                            migrationNewPassword = ""
+                            migrationConfirmPassword = ""
+                        }
                     },
                 )
             } else {
@@ -992,14 +1000,15 @@ fun LoginScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = {
-                            viewModel.clearEmailRecovery()
-                            assistedIdentifier = email.trim()
-                            assistedCodeStage = false
-                            migrationToken = ""
-                            migrationNewPassword = ""
-                            migrationConfirmPassword = ""
-                            loginType = "assisted"
-                            viewModel.resetAuthState()
+                            clearRecoveryThen {
+                                assistedIdentifier = email.trim()
+                                assistedCodeStage = false
+                                migrationToken = ""
+                                migrationNewPassword = ""
+                                migrationConfirmPassword = ""
+                                loginType = "assisted"
+                                viewModel.resetAuthState()
+                            }
                         },
                         enabled = authState !is AuthState.Loading,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp),
