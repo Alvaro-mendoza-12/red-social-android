@@ -257,7 +257,7 @@ function AppRouter() {
         <Route
           path="/app"
           element={
-            <RequireAuth>
+            <RequireAuth allowPublicContent>
               <AppLayout />
             </RequireAuth>
           }
