@@ -156,7 +156,6 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
       setActivityError('')
     } catch (caught) {
       setActivityError(errorText(caught))
-      throw caught
     }
   }, [request])
   useEffect(() => {
@@ -172,7 +171,7 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
       if (!capabilities.enabled) return
       void loadProfile().catch(caught => { if (active) setError(errorText(caught)) })
         .finally(() => { if (active) setProfileLoading(false) })
-      void loadConnections().catch(() => {})
+      void loadConnections()
         .finally(() => { if (active) setActivityLoading(false) })
       try {
         const games = await request<{ items: Game[] }>('/catalog?limit=12')
@@ -255,8 +254,7 @@ function GamesWorkspace({ accountId }: { accountId: string }) {
   async function refreshActivity() {
     if (busy || activityLoading) return
     setActivityLoading(true)
-    try { await loadConnections() } catch { /* The activity panel reports the load error. */ }
-    finally { setActivityLoading(false) }
+    try { await loadConnections() } finally { setActivityLoading(false) }
   }
   function saveProfile(event: FormEvent) {
     event.preventDefault()

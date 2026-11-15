@@ -155,3 +155,26 @@ test('activity offers a retry when its first load fails before the tab opens', a
   expect(await screen.findByText('Aún no tienes solicitudes recibidas.')).toBeInTheDocument()
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
+
+test('a confirmed matchmaking cancellation remains visible when activity cannot refresh', async () => {
+  Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: randomUUID })
+  api.mockImplementation((path, options) => {
+    if (path.endsWith('/profile')) return Promise.resolve({ profile: {
+      ...profile, games: [{ id: 'own-game', gameId: game.id, gameName: game.name, platform: 'PC' }],
+    } })
+    if (path.endsWith('/connections')) return Promise.reject(new Error('NETWORK_ERROR'))
+    if (path.endsWith('/matchmaking/sessions') && options?.method === 'POST') {
+      return Promise.resolve({ session: { id: 'session', status: 'SEARCHING' } })
+    }
+    if (path.endsWith('/sessions/session/cancel')) return Promise.resolve({ session: { id: 'session', status: 'CANCELLED' } })
+    return Promise.resolve(baseResponse(path))
+  })
+  showGames()
+  await screen.findByRole('heading', { name: 'Encuentra tu equipo' })
+  fireEvent.click(tab('Partidas'))
+  fireEvent.click(await screen.findByRole('button', { name: 'Buscar compañero' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Cancelar búsqueda' }))
+  expect(await screen.findByText('Búsqueda cancelada.')).toBeInTheDocument()
+  fireEvent.click(tab('Actividad'))
+  expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo cargar la actividad.')
+})

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T21:00:45.585656+00:00",
-  "baseCommit": "3120c15a717ded06bcc8c2c5025472b6334aec1f",
+  "generatedAtUtc": "2026-11-15T21:17:18.870231+00:00",
+  "baseCommit": "f5c9f647fc39c82a6cb87144f21797432e13970b",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -1821,7 +1821,7 @@
     {
       "file": "NoWing-web/src/__tests__/features/games/GamesWorkspace.test.tsx",
       "phase": "web",
-      "gitBlobId": "0febd3f2f2243cb5f63041ce8b30286042c0412b",
+      "gitBlobId": "649775e344d98a226b9691d57bd556e1de262885",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/159-juegos-web-y-validacion-android-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3529,7 +3529,7 @@
     {
       "file": "NoWing-web/src/features/games/GamesPage.tsx",
       "phase": "web",
-      "gitBlobId": "6a09582432d3cec2b79d1ad71f9f8a6178f03d5f",
+      "gitBlobId": "04786bcffb2445b8c4810267ceb792b4d77824ad",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/159-juegos-web-y-validacion-android-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -21035,7 +21035,7 @@
     {
       "file": "docs/oficial/159-juegos-web-y-validacion-android-2026-11-15.md",
       "phase": "documentation",
-      "gitBlobId": "0bb0a16cf5a82703df3ea46e6a1c0459555496f7",
+      "gitBlobId": "600689c52b202b96b123d39a08575904e2c75351",
       "reviewStatus": "pending"
     },
     {
