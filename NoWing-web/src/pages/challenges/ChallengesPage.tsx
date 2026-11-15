@@ -1,6 +1,6 @@
 import './challenges.css'
 import { StreamingImage, StreamingVideo } from '../../components/StreamingMedia'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
 import { supabase } from '../../core/supabase'
@@ -118,13 +118,19 @@ async function tryVoteRpc(submissionId: string): Promise<void> {
 
 export function ChallengesPage() {
   const { user } = useAuth()
+  return user ? <ChallengeRound key={user.id} ownerId={user.id} /> : null
+}
+
+function ChallengeRound({ ownerId }: { ownerId: string }) {
   const navigate = useNavigate()
+  const loadRevision = useRef(0)
   const [activeChallenge, setActiveChallenge] = useState<ActiveChallenge | null>(null)
   const [challengeMeta, setChallengeMeta] = useState<ChallengeMaster | null>(null)
   const [submissions, setSubmissions] = useState<ChallengeSubmission[]>([])
   const [ranking, setRanking] = useState<ChallengeRankingRow[]>([])
   const [winnerProfiles, setWinnerProfiles] = useState<WinnerProfile[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [textAnswer, setTextAnswer] = useState('')
@@ -152,23 +158,22 @@ export function ChallengesPage() {
   }, [activeChallenge])
 
   const myRank = useMemo(() => {
-    if (!user) return 0
-    const rank = ranking.findIndex((entry) => entry.userId === user.id)
+    const rank = ranking.findIndex((entry) => entry.userId === ownerId)
     return rank >= 0 ? rank + 1 : 0
-  }, [ranking, user])
+  }, [ranking, ownerId])
 
   const challengeStats = useMemo(() => {
     const totalSubmissions = submissions.length
     const totalVotes = submissions.reduce((acc, submission) => acc + submission.voteCount, 0)
-    const mySubmissions = submissions.filter((submission) => submission.userId === user?.id).length
+    const mySubmissions = submissions.filter((submission) => submission.userId === ownerId).length
     const myVotes = submissions.filter((submission) => submission.votedByMe).length
     return { totalSubmissions, totalVotes, mySubmissions, myVotes }
-  }, [submissions, user?.id])
+  }, [submissions, ownerId])
 
   const visibleSubmissions = useMemo(() => {
     let filtered = submissions
     if (submissionFilter === 'mine') {
-      filtered = filtered.filter((submission) => submission.userId === user?.id)
+      filtered = filtered.filter((submission) => submission.userId === ownerId)
     } else if (submissionFilter === 'unvoted') {
       filtered = filtered.filter((submission) => !submission.votedByMe)
     }
@@ -189,27 +194,25 @@ export function ChallengesPage() {
       if (b.voteCount !== a.voteCount) return b.voteCount - a.voteCount
       return toMillis(b.createdAt) - toMillis(a.createdAt)
     })
-  }, [submissionFilter, submissionSearch, submissionSort, submissions, user?.id])
+  }, [submissionFilter, submissionSearch, submissionSort, submissions, ownerId])
 
   const loadChallenge = useCallback(async () => {
-    if (!user) {
-      setLoading(false)
-      return
-    }
     if (isUbuntuPrimary) {
+      const revision = ++loadRevision.current
       setLoading(true)
-      setError(null)
+      setLoadError(null)
       try {
-        const bundle = await loadUbuntuChallengesBundle(user.id)
+        const bundle = await loadUbuntuChallengesBundle(ownerId)
+        if (revision !== loadRevision.current) return
         setActiveChallenge(bundle.activeChallenge)
         setChallengeMeta(bundle.challengeMeta)
         setSubmissions(bundle.submissions)
         setWinnerProfiles(bundle.winnerProfiles)
         setRanking(bundle.ranking)
       } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo cargar retos'))
+        if (revision === loadRevision.current) setLoadError(friendlyError(caught, 'No se pudo cargar la ronda.'))
       } finally {
-        setLoading(false)
+        if (revision === loadRevision.current) setLoading(false)
       }
       return
     }
@@ -218,7 +221,7 @@ export function ChallengesPage() {
       return
     }
     setLoading(true)
-    setError(null)
+    setLoadError(null)
 
     try {
       const rpcActiveResult = await supabase.rpc('get_or_generate_active_challenge')
@@ -350,7 +353,7 @@ export function ChallengesPage() {
           const { data: voteRows } = await supabase
             .from('challenge_votes')
             .select('submission_id')
-            .eq('voter_id', user.id)
+            .eq('voter_id', ownerId)
             .eq('active_challenge_id', active.id)
             .in('submission_id', submissionIds)
           ;((voteRows ?? []) as GenericRow[]).forEach((vote) => {
@@ -396,14 +399,15 @@ export function ChallengesPage() {
         }),
       )
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar retos'))
+      setLoadError(friendlyError(caught, 'No se pudo cargar la ronda.'))
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [ownerId])
 
   useEffect(() => {
     void loadChallenge()
+    return () => { loadRevision.current++ }
   }, [loadChallenge])
 
   useEffect(() => {
@@ -416,7 +420,7 @@ export function ChallengesPage() {
       })
     }
     const client = supabase
-    if (!client || !user) return
+    if (!client) return
     const channel = client
       .channel('challenges-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'active_challenges' }, () => {
@@ -433,10 +437,10 @@ export function ChallengesPage() {
     return () => {
       void client.removeChannel(channel)
     }
-  }, [loadChallenge, user])
+  }, [loadChallenge])
 
   async function submitTextAnswer() {
-    if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !challengeMeta || submitting) return
+    if ((!supabase && !isUbuntuPrimary) || !activeChallenge || !challengeMeta || submitting) return
     const text = textAnswer.trim()
     if (!text || activeChallenge.status !== 'active') return
     setSubmitting(true)
@@ -445,7 +449,7 @@ export function ChallengesPage() {
       const payload: Record<string, unknown> = {
         challenge_id: challengeMeta.id,
         active_challenge_id: activeChallenge.id,
-        user_id: user.id,
+        user_id: ownerId,
         text_content: text,
       }
       if (isUbuntuPrimary) {
@@ -464,13 +468,13 @@ export function ChallengesPage() {
   }
 
   async function submitMediaAnswer(file: File | null) {
-    if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !challengeMeta || !file || uploadingFile || activeChallenge.status !== 'active') return
+    if ((!supabase && !isUbuntuPrimary) || !activeChallenge || !challengeMeta || !file || uploadingFile || activeChallenge.status !== 'active') return
     setUploadingFile(true)
     setError(null)
     try {
       const mediaType = inferSubmissionMediaType(file)
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-      const path = `${user.id}/${activeChallenge.id}/${Date.now()}_${mediaType}_${safeName}`
+      const path = `${ownerId}/${activeChallenge.id}/${Date.now()}_${mediaType}_${safeName}`
       let publicUrl = ''
       if (isUbuntuPrimary) {
         const uploaded = await uploadFallbackFile('challenges', file, path)
@@ -487,7 +491,7 @@ export function ChallengesPage() {
       const payload: Record<string, unknown> = {
         challenge_id: challengeMeta.id,
         active_challenge_id: activeChallenge.id,
-        user_id: user.id,
+        user_id: ownerId,
         content_url: publicUrl,
       }
       if (isUbuntuPrimary) {
@@ -505,7 +509,7 @@ export function ChallengesPage() {
   }
 
   async function toggleVote(submissionId: string) {
-    if ((!supabase && !isUbuntuPrimary) || !user || !activeChallenge || !submissionId) return
+    if ((!supabase && !isUbuntuPrimary) || !activeChallenge || !submissionId) return
     try {
       await tryVoteRpc(submissionId)
       await loadChallenge()
@@ -515,11 +519,11 @@ export function ChallengesPage() {
   }
 
   async function openDirectChat(userId: string) {
-    if (!user || !userId || userId === user.id) return
+    if (!userId || userId === ownerId) return
     setOpeningChatUserId(userId)
     setError(null)
     try {
-      const chatId = await getOrCreateDirectChat(user.id, userId)
+      const chatId = await getOrCreateDirectChat(ownerId, userId)
       navigate(`/app/messages/${chatId}`)
     } catch (caught) {
       setError(friendlyError(caught, 'No se pudo abrir chat directo'))
@@ -534,29 +538,29 @@ export function ChallengesPage() {
 
   return (
     <section className="section-stack challenges-page">
-      <header className="section-header">
+      <header className="section-header challenge-heading">
         <div className="row-between">
           <h2>Rondas</h2>
           <Link to="/app/challenges/ranking" className="inline-link">
             Ver ranking
           </Link>
         </div>
-        <p>Participa en la ronda, comparte tu propuesta y vota por tus favoritas.</p>
+        {activeChallenge && <button type="button" className="ghost-btn" disabled={loading} onClick={() => void loadChallenge()}>
+          {loading ? 'Actualizando…' : 'Actualizar ronda'}
+        </button>}
       </header>
 
-      {loading ? (
-        <StatusView title="Cargando retos" description="Espera un momento..." />
-      ) : error ? (
-        <StatusView title="Retos no disponible" description={error} />
-      ) : !activeChallenge ? (
-        <StatusView title="Sin reto activo" description="No hay reto disponible por ahora." />
+      {(loadError || error) && <div className="challenge-load-error" role="alert">
+        <p>{loadError || error}</p>
+        {loadError && <button type="button" className="ghost-btn" onClick={() => void loadChallenge()}>Reintentar</button>}
+      </div>}
+      {!activeChallenge ? (
+        loading ? <p className="challenge-loading" role="status">Buscando la ronda…</p> : !loadError && <StatusView title="Sin ronda activa" description="Vuelve más tarde para participar." />
       ) : (
         <>
           <article className="surface-card section-stack challenge-hero">
-            <div className="row-between">
-              <h3>{challengeMeta?.title ?? 'Reto en curso'}</h3>
-              <span className="folder-tag">{phaseLabel}</span>
-            </div>
+            <div className="challenge-hero-phase">{phaseLabel}</div>
+            <h3>{challengeMeta?.title ?? 'Ronda actual'}</h3>
             <p>{challengeMeta?.description || 'Participa en el reto actual para sumar visibilidad.'}</p>
             <div className="row-actions">
               <span className="folder-tag">Tipo: {({text:'Texto',image:'Imagen',photo:'Fotografía',video:'Video',audio:'Audio'} as Record<string,string>)[challengeMeta?.challengeType || 'text'] || 'Creativa'}</span>
@@ -573,7 +577,7 @@ export function ChallengesPage() {
                 <span className="folder-tag">Ganadores:</span>
                 {winnerProfiles.map((winner) => {
                   const openingChat = openingChatUserId === winner.id
-                  const isMe = winner.id === user?.id
+                  const isMe = winner.id === ownerId
                   return (
                     <span key={winner.id} className="row-actions">
                       <Link className="inline-link" to={`/app/profile/${winner.id}`}>
@@ -594,38 +598,6 @@ export function ChallengesPage() {
                 })}
               </div>
             ) : null}
-          </article>
-
-          <article className="surface-card section-stack challenge-podium">
-            <h3>Ranking / Podio</h3>
-            {myRank > 0 ? <p>Tu posición actual: #{myRank}</p> : null}
-            {ranking.length === 0 ? (
-              <p>Sin ranking todavía.</p>
-            ) : (
-              <div className="list-stack">
-                {ranking.slice(0, 10).map((entry, index) => (
-                  <div key={entry.userId} className="surface-subcard row-between">
-                    <div>
-                      <strong>
-                        #{index + 1} {entry.ownerName}
-                      </strong>
-                      <small>{entry.submissions} participaciones</small>
-                    </div>
-                    <span className="folder-tag">{entry.totalVotes} votos</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </article>
-
-          <article className="surface-card section-stack challenge-stats">
-            <h3>Resumen del reto</h3>
-            <div className="row-actions">
-              <span className="folder-tag">Participaciones: {challengeStats.totalSubmissions}</span>
-              <span className="folder-tag">Votos totales: {challengeStats.totalVotes}</span>
-              <span className="folder-tag">Tus participaciones: {challengeStats.mySubmissions}</span>
-              <span className="folder-tag">Tus votos: {challengeStats.myVotes}</span>
-            </div>
           </article>
 
           <article className="surface-card section-stack challenge-compose">
@@ -662,6 +634,38 @@ export function ChallengesPage() {
                 />
               </label>
             )}
+          </article>
+
+          <article className="surface-card section-stack challenge-podium">
+            <h3>Ranking de la ronda</h3>
+            {myRank > 0 ? <p>Tu posición actual: #{myRank}</p> : null}
+            {ranking.length === 0 ? (
+              <p>Sin ranking todavía.</p>
+            ) : (
+              <div className="list-stack">
+                {ranking.slice(0, 10).map((entry, index) => (
+                  <div key={entry.userId} className="surface-subcard row-between">
+                    <div>
+                      <strong>
+                        #{index + 1} {entry.ownerName}
+                      </strong>
+                      <small>{entry.submissions} participaciones</small>
+                    </div>
+                    <span className="folder-tag">{entry.totalVotes} votos</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </article>
+
+          <article className="surface-card section-stack challenge-stats">
+            <h3>Actividad</h3>
+            <div className="row-actions">
+              <span className="folder-tag">Participaciones: {challengeStats.totalSubmissions}</span>
+              <span className="folder-tag">Votos totales: {challengeStats.totalVotes}</span>
+              <span className="folder-tag">Tus participaciones: {challengeStats.mySubmissions}</span>
+              <span className="folder-tag">Tus votos: {challengeStats.myVotes}</span>
+            </div>
           </article>
 
           <section className="section-stack">
@@ -723,7 +727,7 @@ export function ChallengesPage() {
             ) : (
               <div className="challenge-submissions-grid">
                 {visibleSubmissions.map((submission) => {
-                  const mine = submission.userId === user?.id
+                  const mine = submission.userId === ownerId
                   const votingOpen = activeChallenge.status === 'voting'
                   const canVote = votingOpen && !mine
                   const openingChat = openingChatUserId === submission.userId

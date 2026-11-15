@@ -1056,8 +1056,9 @@ export function ReelsPage() {
     void loadVideos({ silent: false })
   }, [loadVideos, reelsCacheKey, useUbuntu, location.key])
 
+  const canShowLiveCards = useUbuntu && !loading && feedPage.current.owner === user?.id && items.length >= 6
   useEffect(() => {
-    if (!useUbuntu) {
+    if (!canShowLiveCards) {
       setLiveStreams([])
       return
     }
@@ -1076,7 +1077,7 @@ export function ReelsPage() {
       cancelled = true
       window.clearInterval(interval)
     }
-  }, [useUbuntu])
+  }, [canShowLiveCards, user?.id])
 
   useEffect(() => {
     if (useUbuntu) return
@@ -1661,9 +1662,6 @@ export function ReelsPage() {
     }
   }
 
-  if (loading) {
-    return <StatusView title="Cargando reels" description="Buscando videos..." />
-  }
   if (!useUbuntu && !supabase && !isFallbackAuthConfigured) {
     return <StatusView title="Reels no disponible" description="Configura VITE_FALLBACK_API_URL." />
   }
@@ -2068,7 +2066,7 @@ export function ReelsPage() {
         </PublicationDialog>
       ) : null}
 
-      {visibleItems.length > 0 ? (
+      {!loading && visibleItems.length > 0 ? (
         <div className="reel-stage-navigation" aria-label="Cambiar de video">
           <button type="button" aria-label="Video anterior" onClick={() => moveVideo(-1)}>
             <ChevronUp />
@@ -2078,7 +2076,9 @@ export function ReelsPage() {
           </button>
         </div>
       ) : null}
-      {visibleItems.length === 0 ? (
+      {loading ? (
+        <div className="reels-vertical-feed reel-feed-loading" role="status">Buscando videos…</div>
+      ) : visibleItems.length === 0 ? (
         <StatusView
           title={feedPageError ? 'No pudimos cargar tus videos' : feedMode === 'friends' ? 'Sin videos de amigos' : 'Sin reels'}
           description={

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Sparkles, Send, Trash2, Square, Copy, RefreshCw } from 'lucide-react'
+import { Sparkles, ArrowUp, SquarePen, Square, Copy, RefreshCw } from 'lucide-react'
 import { useAuth } from '../../core/auth/AuthProvider'
 import { fallbackApiJson } from '../../core/auth/fallbackAuth'
 import { readCachedValue, writeCachedValue } from '../../core/localCache'
@@ -25,7 +25,7 @@ function AssistantConversation({ accountId }: { accountId: string }) {
   useEffect(() => () => request.current?.abort(), [])
   useEffect(() => { writeCachedValue(key + ':draft', draft); if (composer.current) { composer.current.style.height = 'auto'; composer.current.style.height = Math.min(160, composer.current.scrollHeight) + 'px' } }, [key,draft])
   useEffect(() => { writeCachedValue(key + ':conversation', conversationId) }, [key,conversationId])
-  useEffect(() => { writeCachedValue(key,messages.slice(-40)); bottom.current?.scrollIntoView({block:'nearest'}) }, [key,messages,busy])
+  useEffect(() => { writeCachedValue(key,messages.slice(-40)); if (messages.length) bottom.current?.scrollIntoView({block:'nearest'}) }, [key,messages,busy])
   async function ask(text: string, existingId?: string) {
     if (!text.trim() || request.current) return
     const controller = new AbortController(); request.current = controller; setBusy(true); setError(''); setFailedId('')
@@ -45,17 +45,90 @@ function AssistantConversation({ accountId }: { accountId: string }) {
   }
   function send(event: FormEvent) { event.preventDefault(); if (!draft.trim() || busy) return; const text=draft.trim(); setDraft(''); void ask(text) }
   function stop() { request.current?.abort(); request.current=null;setBusy(false);setError('Respuesta detenida. Puedes volver a preguntar.');const last=messages.at(-1);if(last?.role==='user')setFailedId(last.id) }
-  return <section className="assistant-page">
-    <header><div><Sparkles aria-hidden="true"/><div><h2>Novvin</h2><small>Tu asistente para preguntar y crear</small></div></div><button className="icon-btn assistant-new-conversation" type="button" aria-label="Nueva conversación con el asistente" title="Nueva conversación" onClick={() => { request.current?.abort();request.current=null;setBusy(false);setMessages([]);setDraft('');setConversationId(crypto.randomUUID());setError('');setFailedId('') }}><Trash2 size={18} aria-hidden="true"/><span>Nueva conversación</span></button></header>
-    <div className="assistant-conversation" role="log" aria-label="Conversación con el asistente" aria-live="polite" tabIndex={0}>
-      {!messages.length ? <article className="assistant-welcome"><Sparkles size={34}/><h3>¿En qué te ayudo?</h3><p>Pregunta por Novvin o cuéntame qué necesitas hacer.</p><div>{['¿Cómo vinculo la web con mi teléfono?','¿Cómo publico un momento con música?','Ayúdame a escribir una publicación'].map(text => <button type="button" className="ghost-btn" key={text} onClick={() => { setDraft(text);composer.current?.focus() }}>{text}</button>)}</div></article> : messages.map(item => <article className={'assistant-message '+item.role} key={item.id}><strong>{item.role==='user'?'Tú':'Novvin'}</strong>{item.role === 'assistant' ? <AssistantAnswer text={item.text}/> : <div className="assistant-answer"><p>{item.text}</p></div>}{item.role==='assistant'?<button className="assistant-message-copy" type="button" aria-label="Copiar respuesta" onClick={() => { void (async () => { try { if (!navigator.clipboard) throw new Error('CLIPBOARD_UNAVAILABLE'); await navigator.clipboard.writeText(item.text);setCopied(item.id) } catch { setError('No se pudo copiar la respuesta. Selecciona el texto para copiarlo.') } })() }}><Copy size={14}/>{copied===item.id?'Copiado':'Copiar'}</button>:failedId===item.id?<button className="ghost-btn" type="button" disabled={busy} onClick={() => void ask(item.text,item.id)}><RefreshCw size={15}/>Volver a intentar</button>:null}</article>)}
-      {busy ? <p className="assistant-typing" role="status"><span/>Novvin está escribiendo…</p> : null}<div ref={bottom}/>
-    </div>
-    {messages.at(-1)?.role==='assistant' && !busy && messages.at(-1)?.suggestions?.length ? <div className="assistant-followups" aria-label="Sugerencias para continuar">{messages.at(-1)!.suggestions!.map(text => <button type="button" className="ghost-btn" key={text} onClick={() => { setDraft(''); void ask(text) }}>{text}</button>)}</div> : null}
-    {error ? <p role="status" className="assistant-notice">{error}</p> : null}
-    <form onSubmit={send}><textarea rows={1} ref={composer} className="text-input" aria-label="Mensaje al asistente" placeholder="Escribe tu pregunta…" maxLength={1000} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => { if (event.key==='Enter'&&!event.shiftKey&&!event.nativeEvent.isComposing) {event.preventDefault();event.currentTarget.form?.requestSubmit()} }}/>{busy?<button type="button" className="icon-btn" aria-label="Detener respuesta" onClick={stop}><Square size={18}/></button>:<button type="submit" className="icon-btn" aria-label="Enviar al asistente" disabled={!draft.trim()}><Send size={20}/></button>}</form>
-    <div className="assistant-composer-options"><label><input type="checkbox" checked={expanded} onChange={event => setExpanded(event.target.checked)}/>Respuesta paso a paso</label><small aria-label="Caracteres del mensaje">{draft.length}/1000</small></div>
-    <small className="assistant-footnote">Enter para enviar · Mayús + Enter para una nueva línea</small>
-  </section>
+  const lastMessage = messages.at(-1)
+  const followups = !busy && lastMessage?.role === 'assistant' ? lastMessage.suggestions : undefined
+
+  function startConversation() {
+    request.current?.abort()
+    request.current = null
+    setBusy(false)
+    setMessages([])
+    setDraft('')
+    setConversationId(crypto.randomUUID())
+    setError('')
+    setFailedId('')
+    composer.current?.focus()
+  }
+
+  async function copyAnswer(message: Message) {
+    try {
+      await navigator.clipboard.writeText(message.text)
+      setCopied(message.id)
+    } catch {
+      setError('No se pudo copiar la respuesta. Selecciona el texto para copiarlo.')
+    }
+  }
+
+  return (
+    <section className={'assistant-page' + (messages.length ? '' : ' assistant-empty')} aria-label="Asistente de Novvin">
+      <header className="assistant-header">
+        <h2><Sparkles size={22} aria-hidden="true" /> Novvin</h2>
+        <button className="ghost-btn assistant-new-conversation" type="button" aria-label="Nueva conversación con el asistente" onClick={startConversation}>
+          <SquarePen size={17} aria-hidden="true" /><span>Nueva conversación</span>
+        </button>
+      </header>
+
+      <div className="assistant-conversation" role="log" aria-label="Conversación con el asistente" tabIndex={0}>
+        {!messages.length && <div className="assistant-welcome"><h3>¿En qué te ayudo?</h3></div>}
+        {messages.map(item => (
+          <article className={'assistant-message ' + item.role} key={item.id}>
+            <strong className={item.role === 'user' ? 'sr-only' : 'assistant-author'}>
+              {item.role === 'assistant' && <Sparkles size={18} aria-hidden="true" />}
+              {item.role === 'user' ? 'Tú' : 'Novvin'}
+            </strong>
+            {item.role === 'assistant' ? <AssistantAnswer text={item.text} /> : <div className="assistant-answer"><p>{item.text}</p></div>}
+            {item.role === 'assistant' ? (
+              <button className="assistant-message-copy" type="button" aria-label="Copiar respuesta" onClick={() => void copyAnswer(item)}>
+                <Copy size={14} aria-hidden="true" />{copied === item.id ? 'Copiado' : 'Copiar'}
+              </button>
+            ) : failedId === item.id && (
+              <button className="ghost-btn" type="button" disabled={busy} onClick={() => void ask(item.text, item.id)}>
+                <RefreshCw size={15} aria-hidden="true" /> Volver a intentar
+              </button>
+            )}
+          </article>
+        ))}
+        {busy && <p className="assistant-typing" role="status"><span />Preparando la respuesta…</p>}
+        <div ref={bottom} />
+      </div>
+
+      <div className="assistant-dock">
+        {followups?.length ? <div className="assistant-prompts" aria-label="Sugerencias para continuar">
+          {followups.map(text => <button type="button" className="ghost-btn" key={text} onClick={() => { setDraft(''); void ask(text) }}>{text}</button>)}
+        </div> : null}
+        {error && <p role="status" className="assistant-notice">{error}</p>}
+        <form className="assistant-composer" onSubmit={send}>
+          <textarea rows={1} ref={composer} className="text-input" aria-label="Mensaje al asistente" placeholder="Escribe tu pregunta…" maxLength={1000} value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => {
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+              event.preventDefault()
+              event.currentTarget.form?.requestSubmit()
+            }
+          }} />
+          <div className="assistant-composer-options">
+            <label><input type="checkbox" checked={expanded} onChange={event => setExpanded(event.target.checked)} />Respuesta paso a paso</label>
+            <small aria-label="Caracteres del mensaje">{draft.length}/1000</small>
+            {busy ? <button type="button" className="icon-btn" aria-label="Detener respuesta" onClick={stop}><Square size={18} /></button> : (
+              <button type="submit" className="icon-btn" aria-label="Enviar al asistente" disabled={!draft.trim()}><ArrowUp size={22} /></button>
+            )}
+          </div>
+        </form>
+        {!messages.length && <div className="assistant-prompts" aria-label="Preguntas sugeridas">
+          {['¿Cómo vinculo la web con mi teléfono?', '¿Cómo publico un momento con música?', 'Ayúdame a escribir una publicación'].map(text => (
+            <button type="button" className="ghost-btn" key={text} onClick={() => { setDraft(text); composer.current?.focus() }}>{text}</button>
+          ))}
+        </div>}
+      </div>
+    </section>
+  )
 }
 export function AssistantPage() { const { user }=useAuth(); return user ? <AssistantConversation key={user.id} accountId={user.id}/> : null }

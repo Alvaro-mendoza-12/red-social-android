@@ -1,6 +1,4 @@
 import { fallbackApiJson } from './auth/fallbackAuth'
-import { callUbuntuRpc } from './fallbackRpc'
-import { loadUbuntuRestTable } from './fallbackData'
 import { textOf, type GenericRow } from './utils'
 import { publicProfileSummaries } from './publicProfileSummaries'
 
@@ -53,10 +51,9 @@ function mapActive(row: GenericRow | null): UbuntuActiveChallenge | null {
 }
 
 export async function loadUbuntuChallengesBundle(userId: string) {
-  // The authenticated backend session determines voting state. Keep the
-  // argument for API compatibility with the Supabase implementation.
-  void userId
-  const activeRows = await callUbuntuRpc<GenericRow[]>('get_or_generate_active_challenge', {})
+  const activeRows = await fallbackApiJson<GenericRow[]>('/rest/v1/rpc/get_or_generate_active_challenge', {
+    method: 'POST', body: '{}', expectedAccountId: userId,
+  })
   const activeRow = Array.isArray(activeRows) ? activeRows[0] ?? null : null
   const active = mapActive(activeRow)
   if (!active) {
@@ -69,27 +66,25 @@ export async function loadUbuntuChallengesBundle(userId: string) {
     }
   }
 
-  let challengeMeta: UbuntuChallengeMaster | null = null
-  if (active.challengeId) {
-    const metaRows = await loadUbuntuRestTable(
-      'challenges_master',
-      `?id=eq.${encodeURIComponent(active.challengeId)}&limit=1`,
-    )
-    const metaRow = metaRows[0]
-    if (metaRow) {
-      challengeMeta = {
-        id: textOf(metaRow, ['id'], ''),
-        title: textOf(metaRow, ['title'], 'Reto'),
-        description: textOf(metaRow, ['description'], ''),
-        challengeType: textOf(metaRow, ['challenge_type', 'challengeType'], 'text'),
-        difficulty: textOf(metaRow, ['difficulty'], 'medium'),
-      }
-    }
-  }
+  const [metaRows, votedRows, winnerProfilesById] = await Promise.all([
+    active.challengeId ? fallbackApiJson<GenericRow[]>(
+      `/rest/v1/challenges_master?id=eq.${encodeURIComponent(active.challengeId)}&limit=1`,
+      { expectedAccountId: userId },
+    ) : Promise.resolve([]),
+    fallbackApiJson<GenericRow[]>('/rest/v1/rpc/get_challenge_submissions_voted', {
+      method: 'POST', body: JSON.stringify({ p_active_challenge_id: active.id }), expectedAccountId: userId,
+    }),
+    publicProfileSummaries(active.winnerIds),
+  ])
+  const metaRow = metaRows[0]
+  const challengeMeta: UbuntuChallengeMaster | null = metaRow ? {
+    id: textOf(metaRow, ['id'], ''),
+    title: textOf(metaRow, ['title'], 'Reto'),
+    description: textOf(metaRow, ['description'], ''),
+    challengeType: textOf(metaRow, ['challenge_type', 'challengeType'], 'text'),
+    difficulty: textOf(metaRow, ['difficulty'], 'medium'),
+  } : null
 
-  const votedRows = await callUbuntuRpc<GenericRow[]>('get_challenge_submissions_voted', {
-    p_active_challenge_id: active.id,
-  })
   const submissions: UbuntuChallengeSubmission[] = (votedRows ?? []).map((row) => ({
     id: textOf(row, ['id'], ''),
     activeChallengeId: textOf(row, ['active_challenge_id', 'activeChallengeId'], ''),
@@ -102,17 +97,10 @@ export async function loadUbuntuChallengesBundle(userId: string) {
     ownerName: textOf(row, ['owner_name', 'ownerName', 'user_name'], 'Usuario'),
   }))
 
-  const winnerProfiles: { id: string; name: string }[] = []
-  if (active.winnerIds.length > 0) {
-    const byId = await publicProfileSummaries(active.winnerIds)
-    active.winnerIds.forEach((id) => {
-      const profile = byId.get(id)
-      winnerProfiles.push({
-        id,
-        name: textOf(profile ?? {}, ['display_name', 'displayName', 'full_name', 'username'], 'Usuario'),
-      })
-    })
-  }
+  const winnerProfiles = active.winnerIds.map((id) => ({
+    id,
+    name: textOf(winnerProfilesById.get(id) ?? {}, ['display_name', 'displayName', 'full_name', 'username'], 'Usuario'),
+  }))
 
   const rankingMap = new Map<string, { userId: string; ownerName: string; totalVotes: number; submissions: number }>()
   submissions.forEach((submission) => {

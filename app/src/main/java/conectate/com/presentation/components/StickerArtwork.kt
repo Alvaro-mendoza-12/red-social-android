@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import coil.compose.SubcomposeAsyncImage
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
@@ -42,18 +43,20 @@ fun StickerArtwork(
     val fallback = remember(thumbnailUrl) { UbuntuStorageUrl.originalObjectUrl(thumbnailUrl) }
     var attempt by remember(original, fallback) { mutableIntStateOf(0) }
     var failed by remember(original, fallback, attempt) { mutableStateOf(false) }
-    // Retry one transient failure. A stale thumbnail must not hide a valid sticker.
-    val source = if (attempt == 2 && fallback != null) fallback else original ?: fallback
+    val preview = fallback?.takeIf { original != null && it != original }
+    val phase = attempt % 3
+    val source = if (phase == 2) preview ?: original else original ?: fallback
     val request = remember(context, source, attempt) {
         MediaImageRequestFactory.animated(context, source)?.newBuilder()
-            ?.setParameter("sticker_retry", attempt)
+            ?.setParameter("sticker_retry", attempt, memoryCacheKey = null)
             ?.build()
     }
+    val previewRequest = remember(context, preview) { MediaImageRequestFactory.animated(context, preview) }
     LaunchedEffect(failed, attempt) {
-        if (failed && attempt < 1) {
+        if (failed && phase == 0 && source != null) {
             delay(650)
             attempt += 1
-        } else if (failed && attempt == 1 && fallback != null && fallback != original) {
+        } else if (failed && phase == 1 && preview != null) {
             attempt += 1
         }
     }
@@ -65,12 +68,21 @@ fun StickerArtwork(
         onError = { failed = true },
         loading = {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                if (previewRequest != null && phase != 2) {
+                    AsyncImage(
+                        model = previewRequest,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                }
             }
         },
         error = {
             Column(
-                modifier = Modifier.fillMaxSize().clickable(onClickLabel = "Volver a cargar sticker") { attempt += 1 },
+                modifier = Modifier.fillMaxSize().clickable(onClickLabel = "Volver a cargar sticker") { attempt += 3 - phase },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {

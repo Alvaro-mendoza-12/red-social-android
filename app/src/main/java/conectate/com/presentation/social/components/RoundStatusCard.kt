@@ -25,40 +25,32 @@ internal fun roundRemainingSeconds(expiresAt: String?, nowMillis: Long): Int {
 }
 
 @Composable
-fun RoundStatusCard(title: String, status: String?, votingCountdown: Int, onRefresh: () -> Unit) {
+fun RoundStatusCard(title: String, status: String, remainingSeconds: Int, onRefresh: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val (container, content) = when (status) {
-        "voting" -> colors.secondaryContainer to colors.onSecondaryContainer
-        "completed" -> colors.tertiaryContainer to colors.onTertiaryContainer
-        else -> colors.primaryContainer to colors.onPrimaryContainer
+    val phase = when (status) {
+        "voting" -> "Votación"
+        "completed" -> "Resultados"
+        else -> "Participación"
     }
     Card(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp).testTag("round_status_card"),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = container, contentColor = content)
+        modifier = Modifier.fillMaxWidth().testTag("round_status_card"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = colors.surfaceContainerHigh),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.padding(start = 18.dp, end = 10.dp, top = 8.dp, bottom = 18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    when (status) {
-                        "voting" -> "Votación de la ronda"
-                        "completed" -> "Ronda finalizada"
-                        else -> "Ronda actual"
-                    },
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
+                Text(phase, color = colors.primary, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
                 IconButton(onClick = onRefresh, modifier = Modifier.testTag("round_refresh")) {
                     Icon(Icons.Default.Refresh, contentDescription = "Actualizar ronda")
                 }
             }
-            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold,
+            Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.testTag("round_title"))
-            if (status == "voting") {
-                val seconds = votingCountdown.coerceAtLeast(0)
-                Text("${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')} restantes",
-                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            if (remainingSeconds > 0) {
+                Spacer(Modifier.height(8.dp))
+                val minutes = remainingSeconds / 60
+                val seconds = (remainingSeconds % 60).toString().padStart(2, '0')
+                Text("$minutes:$seconds restantes", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
             }
         }
     }
