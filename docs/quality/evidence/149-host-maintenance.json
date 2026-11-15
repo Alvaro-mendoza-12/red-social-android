@@ -1,0 +1,234 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-15T14:56:51.183261+00:00",
+  "scope": "host snapshot, current archive integrity, isolated schema/data restore, bounded maintenance tool safety tests and read-only preflight",
+  "sourceCommit": "939377e816d00f0b31b11703656b74b78374bdec",
+  "includesUncommittedMaintenanceTool": true,
+  "hostSnapshot": {
+    "atUtc": "2026-11-15T14:24:03.511840+00:00",
+    "memoryKiB": {
+      "MemTotal": 15273340,
+      "MemAvailable": 11587848,
+      "SwapTotal": 4194300,
+      "SwapFree": 4192764
+    },
+    "loadAverage": [
+      0.6279296875,
+      0.724609375,
+      0.755859375
+    ],
+    "rootDiskBytes": {
+      "total": 234039422976,
+      "used": 113505841152,
+      "free": 108570431488
+    },
+    "failedUnits": "",
+    "api": {
+      "Status": "running",
+      "Running": true,
+      "OOMKilled": false,
+      "StartedAt": "2026-11-15T05:56:19.448340674Z",
+      "id": "d3bbc91ad7f73e5a8e78dd93be7c398901889a33da7f817f4c16db7889ee08d1",
+      "imageId": "sha256:19354f261e64d364ec8e99ba82c914fa9b43e9b74a7ba4384ab59723b840e0cf",
+      "image": "novvin-api:media147-deps-20261115",
+      "health": "healthy",
+      "restarts": 0,
+      "restartPolicy": "unless-stopped"
+    },
+    "dockerLiveRestoreEnabled": false,
+    "rebootRequired": false,
+    "sudoNoninteractiveExitCode": 1,
+    "sudoNoninteractiveError": "sudo: a password is required",
+    "aptIndexRefreshed": false
+  },
+  "reviewedPackagePlan": {
+    "containerd.io": {
+      "before": "2.4.2-3~ubuntu.24.04~noble",
+      "target": "2.4.2-4~ubuntu.24.04~noble"
+    },
+    "docker-buildx-plugin": {
+      "before": "0.38.1-1~ubuntu.24.04~noble",
+      "target": "0.39.0-1~ubuntu.24.04~noble"
+    },
+    "docker-ce": {
+      "before": "5:29.9.2-1~ubuntu.24.04~noble",
+      "target": "5:29.9.3-1~ubuntu.24.04~noble"
+    },
+    "docker-ce-cli": {
+      "before": "5:29.9.2-1~ubuntu.24.04~noble",
+      "target": "5:29.9.3-1~ubuntu.24.04~noble"
+    },
+    "docker-ce-rootless-extras": {
+      "before": "5:29.9.2-1~ubuntu.24.04~noble",
+      "target": "5:29.9.3-1~ubuntu.24.04~noble"
+    },
+    "docker-compose-plugin": {
+      "before": "5.6.1-1~ubuntu.24.04~noble",
+      "target": "5.7.1-1~ubuntu.24.04~noble"
+    },
+    "libsqlite3-0": {
+      "before": "3.45.1-1ubuntu2.8",
+      "target": "3.45.1-1ubuntu2.9"
+    },
+    "nodejs": {
+      "before": "22.23.4-1nodesource1",
+      "target": "22.23.5-1nodesource1"
+    },
+    "tailscale": {
+      "before": "1.104.6",
+      "target": "1.104.7"
+    }
+  },
+  "phasedPackagesNotForced": [
+    "distro-info",
+    "python3-distro-info",
+    "snapd"
+  ],
+  "currentBackup": {
+    "startedAtUtc": "2026-11-15T14:35:34.588217+00:00",
+    "finishedAtUtc": "2026-11-15T14:36:07.496528+00:00",
+    "backupDirectory": "/home/alvaro/conectate-backups/20261115T082639Z",
+    "backupManifestVerified": true,
+    "exitCode": 0,
+    "isolatedDatabaseRestorePassed": true,
+    "apiIdentityImageStartRestartsHealthUnchanged": true,
+    "apiBefore": "d3bbc91ad7f73e5a8e78dd93be7c398901889a33da7f817f4c16db7889ee08d1|sha256:19354f261e64d364ec8e99ba82c914fa9b43e9b74a7ba4384ab59723b840e0cf|2026-11-15T05:56:19.448340674Z|0|healthy",
+    "apiAfter": "d3bbc91ad7f73e5a8e78dd93be7c398901889a33da7f817f4c16db7889ee08d1|sha256:19354f261e64d364ec8e99ba82c914fa9b43e9b74a7ba4384ab59723b840e0cf|2026-11-15T05:56:19.448340674Z|0|healthy",
+    "restoredTables": 265,
+    "productionDatabaseWritten": false,
+    "hostPackagesChanged": false,
+    "networkAttachedToRestore": false,
+    "rolesOrAclRestored": false,
+    "storageExtractedOrRestored": false,
+    "applicationStartValidated": false,
+    "executedScriptSha256": "ea87bc3fb30e0ffa88b97d72090cb2af63c18bfa5aca011f73dc87cb3cc75979",
+    "artifacts": [
+      {
+        "name": "checksum.log",
+        "sha256": "d7e1d77f5de37b587614c9726bdb6ed01fe43e5ae7f6bbab3f1aa88d1ce66248"
+      },
+      {
+        "name": "restore.log",
+        "sha256": "2c2957da2f38839a3817eb3181c1f3be2dc93c704657219011e5b0e974a60e66"
+      }
+    ]
+  },
+  "maintenanceCandidate": {
+    "createdAtUtc": "2026-11-15T14:48:15.829137+00:00",
+    "stage": "/home/alvaro/novvin-host149-20261115T144815Z",
+    "planSha256": "b750de69eeb74a0ff56a5f3cdd16a1f6340d2d9c5505dccfda58e133d9c93d08",
+    "sourceFiles": [
+      {
+        "path": "infrastructure/local-fallback/scripts/host-maintenance149.py",
+        "sha256": "8d2b14a633fcd7d6425711668da5ae8414e8b8a2c9242bffb0f5eab8b84a8da1"
+      },
+      {
+        "path": "scripts/tests/test_host_maintenance149.py",
+        "sha256": "f8fc4d397404f1e520259f881f172c9d4c088dbcce1a43382abff7994314253a"
+      },
+      {
+        "path": "plan149.json",
+        "sha256": "b750de69eeb74a0ff56a5f3cdd16a1f6340d2d9c5505dccfda58e133d9c93d08"
+      }
+    ],
+    "hostPackagesChanged": false,
+    "rootApplyExecuted": false
+  },
+  "checks": {
+    "linux": {
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "windows": {
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "skippedScope": "POSIX symlink case, executed on Linux"
+    },
+    "ubuntuReadOnlyPreflightPassed": true
+  },
+  "codeRead": [
+    {
+      "path": "infrastructure/local-fallback/scripts/host-maintenance149.py",
+      "gitBlob": "e7b14911ec70b3c6dad3f9a65dc4a2a09c2803c5",
+      "sha256": "8d2b14a633fcd7d6425711668da5ae8414e8b8a2c9242bffb0f5eab8b84a8da1"
+    },
+    {
+      "path": "scripts/tests/test_host_maintenance149.py",
+      "gitBlob": "3ec7958ad928923a872805496f64391173a4fd1a",
+      "sha256": "f8fc4d397404f1e520259f881f172c9d4c088dbcce1a43382abff7994314253a"
+    },
+    {
+      "path": "infrastructure/local-fallback/scripts/upgrade-host-reviewed.sh",
+      "gitBlob": "2bef571b54f3738df1a8816be9467255d4266ac6",
+      "sha256": "6394c6a731ba58451a378c997edced5ac7502538c93eb7c7bd6dd5e80b3cd23e"
+    },
+    {
+      "path": "infrastructure/local-fallback/scripts/restore-drill-isolated.sh",
+      "gitBlob": "c8cd2c0b811a4aae1356c59a5b3293cb415c81aa",
+      "sha256": "ea87bc3fb30e0ffa88b97d72090cb2af63c18bfa5aca011f73dc87cb3cc75979"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/audit149/host-observation-20261115/host.json",
+      "sha256": "7675902498e016ff79b9301ff8cc2d125c35682b57e082707b7fa2872eef8057"
+    },
+    {
+      "path": "app/build/audit149/host-observation-20261115/manifest.json",
+      "sha256": "acb559f9d4b0d67632b02aef3d4fd94117435c7475c2119a8fc7df5f08d5d93f"
+    },
+    {
+      "path": "app/build/audit149/restore-current-backup/result.json",
+      "sha256": "e86567b81d54f6b84ece40682e4ad03430aa498c9bf93c6457420eed50d4ebf6"
+    },
+    {
+      "path": "app/build/audit149/restore-current-backup/checksum.log",
+      "sha256": "d7e1d77f5de37b587614c9726bdb6ed01fe43e5ae7f6bbab3f1aa88d1ce66248"
+    },
+    {
+      "path": "app/build/audit149/restore-current-backup/restore.log",
+      "sha256": "2c2957da2f38839a3817eb3181c1f3be2dc93c704657219011e5b0e974a60e66"
+    },
+    {
+      "path": "app/build/audit149/prepared-candidate-v4/manifest.json",
+      "sha256": "4845763d506b528b146e5babdc8cde0195a265702c27899d6306dd7fc03d389f"
+    },
+    {
+      "path": "app/build/audit149/prepared-candidate-v4/plan149.json",
+      "sha256": "b750de69eeb74a0ff56a5f3cdd16a1f6340d2d9c5505dccfda58e133d9c93d08"
+    },
+    {
+      "path": "app/build/audit149/prepared-candidate-v4/unit-linux.log",
+      "sha256": "4b4707eb7027a55c69b0a1863e438e9008a45e4d7ae446f59acd289e9867f356"
+    },
+    {
+      "path": "app/build/audit149/prepared-candidate-v4/preflight.log",
+      "sha256": "8d122d9f32955a9fb7556deb8150f50fef7bea5025ed98d6211d6bb14771ba6e"
+    },
+    {
+      "path": "app/build/audit149/prepared-candidate-v4/validation.json",
+      "sha256": "40c3fafbbadf25c3a1df183471cb18c059bd37e4d8e752bb2f232235f320d80c"
+    },
+    {
+      "path": "app/build/audit149/host-unit-windows-final.log",
+      "sha256": "63d3cd8bebde842a4b6f9a0ba5ef28eebc242f446e0e43e8c5d48f7a32c33096"
+    }
+  ],
+  "rootApplyExecuted": false,
+  "hostPackagesChanged": false,
+  "daemonOrNetworkConfigurationChanged": false,
+  "productionDatabaseWritten": false,
+  "mobilePhysicalValidation": false,
+  "fullProjectGoalComplete": false,
+  "pending": [
+    "real administrative authentication and bounded host update",
+    "post-update independent service/package checks",
+    "restore of owners/ACL and complete application/storage",
+    "physical authenticated cache and scrolling measurements",
+    "remaining per-module mobile review"
+  ]
+}

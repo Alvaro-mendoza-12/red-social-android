@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T14:53:00.217022+00:00",
-  "baseCommit": "fc6e7a9197eec29e55cb89dc192298b247eee51f",
+  "generatedAtUtc": "2026-11-15T15:02:44.528574+00:00",
+  "baseCommit": "939377e816d00f0b31b11703656b74b78374bdec",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3600,
-    "partial": 252,
-    "code-read": 683
+    "pending": 3603,
+    "partial": 249,
+    "code-read": 687
   },
   "countsByPhase": {
     "android": {
@@ -21,19 +21,19 @@
       "partial": 102
     },
     "documentation": {
-      "pending": 625,
+      "pending": 630,
       "code-read": 54,
-      "partial": 23
+      "partial": 20
     },
     "server": {
-      "pending": 854,
-      "code-read": 57,
+      "pending": 852,
+      "code-read": 60,
       "partial": 30
     },
     "tooling-and-other": {
       "pending": 151,
       "partial": 11,
-      "code-read": 15
+      "code-read": 16
     },
     "web": {
       "partial": 86,
@@ -20557,10 +20557,8 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "7a5fd06e2205fea9be4422a84b0e901b7e7fb751",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "d92093fb6e07429aeb067347dc66383d7102a8ab",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
@@ -20865,6 +20863,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "ccc1a9743384a84a64d9f0b0c33b63acb247b259",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/15-auditoria-extrema-2026-08-24.md",
@@ -21389,10 +21393,8 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "0a637b310f939d9f965ab250834fcbfed72f0045",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "7473397d2490d5342acca17e1a36d9c64b269206",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/VALIDACION_ANDROID_E729365.json",
@@ -21811,10 +21813,8 @@
     {
       "file": "docs/operations/PRODUCTION_READINESS.md",
       "phase": "documentation",
-      "gitBlobId": "0b3ea96cee75d447c67469330a3110acd1c70a35",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "8eead227d310e7eb7d20a9058ff4354fe113d81b",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/product/COMPARTIDOS_PUBLICOS_REFERENCIAS_2026-11-14.md",
@@ -22291,6 +22291,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/quality/evidence/149-host-maintenance.json",
+      "phase": "documentation",
+      "gitBlobId": "84e373a0632773aea8bfa2eb436f4341524c613a",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/quality/evidence/2026-11-14-call-tone-race.json",
@@ -26315,6 +26321,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/scripts/host-maintenance149.py",
+      "phase": "server",
+      "gitBlobId": "e7b14911ec70b3c6dad3f9a65dc4a2a09c2803c5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/scripts/import-mini-pc-migration.sh",
       "phase": "server",
       "gitBlobId": "8f6bd5e94d3295ff7e47526bd38e555d613f4db2",
@@ -26402,7 +26416,9 @@
       "file": "infrastructure/local-fallback/scripts/restore-drill-isolated.sh",
       "phase": "server",
       "gitBlobId": "c8cd2c0b811a4aae1356c59a5b3293cb415c81aa",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/restore-drill.sh",
@@ -26444,7 +26460,9 @@
       "file": "infrastructure/local-fallback/scripts/upgrade-host-reviewed.sh",
       "phase": "server",
       "gitBlobId": "2bef571b54f3738df1a8816be9467255d4266ac6",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/verify-admin-suspension.js",
@@ -27029,6 +27047,14 @@
       "phase": "tooling-and-other",
       "gitBlobId": "4098e810db1072588a3f46111b30f62b50964589",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "scripts/tests/test_host_maintenance149.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "3ec7958ad928923a872805496f64391173a4fd1a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "scripts/tests/test_public_feed_api_upgrade.py",
