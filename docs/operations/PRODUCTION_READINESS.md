@@ -57,3 +57,8 @@ La [continuación 144](../oficial/144-qa-medios-y-sincronizacion-2026-11-14.md) 
 ## Continuación 148 — 15 de noviembre de 2026
 
 La [continuación 148](../oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md) corrige el bloqueo de recuperación asistida al cancelar una operación en cola y protege su estado frente a respuestas anteriores. Reproduce tres fallos del ViewModel y aprueba veinte casos JVM en cinco clases después del parche. Organiza la validación de acceso, ayuda y Mensajes por recorrido; el módulo completo, el ensayo físico, la entrega de correo y la APK nueva siguen pendientes.
+
+
+## Continuación 149 — 15 de noviembre de 2026
+
+El [mantenimiento preparado del host](../oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md) verifica el manifiesto completo del respaldo actual y restaura 265 tablas en un PostgreSQL aislado. Dieciocho pruebas Linux y el preflight del procedimiento acotado aprueban. Los nueve paquetes del host aún no se instalaron: sudo requiere autenticación administrativa. El ensayo omite propietarios/ACL, restauración de storage y arranque de aplicación. Los recorridos Android, la caché autenticada, la fluidez física y la APK final siguen abiertos.
