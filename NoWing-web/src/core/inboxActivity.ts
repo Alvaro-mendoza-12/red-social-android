@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react'
 import type { GenericRow } from './utils'
+import { inboxMessageTime } from './inboxMessageTime'
 
 export type InboxScope = 'chat' | 'group' | 'community'
 export type InboxCounts = { chats: number; groups: number; communities: number; archivedChats: number }
@@ -194,15 +195,23 @@ export function notifyInboxMessage(accountId: string, scope: InboxScope, id: str
       publish(accountId, scope)
     }
   }
-  if (old && millis(old.created_at || old.createdAt) > time) return
+  const confirmsPending = old?.id === message.id && ['pending', 'failed'].includes(String(old?.status)) && !['pending', 'failed'].includes(String(message.status))
+  if (old && !confirmsPending && inboxMessageTime(old.created_at || old.createdAt) > inboxMessageTime(message.created_at || message.createdAt)) return
   if (message.status !== 'pending') s.seen.set(k, Math.max(s.seen.get(k) || 0, time))
   s.latest.set(k, message); emit({ accountId, scope, id, action: 'message', message })
 }
 export function latestInboxMessage(accountId: string, scope: InboxScope, id: string) { return state(accountId).latest.get(key(scope, id)) }
 export function invalidateInboxPreview(accountId: string, scope: InboxScope, id: string) { state(accountId).latest.delete(key(scope, id)); emit({ accountId, scope, id, action: 'changed' }) }
-export function acknowledgeInboxPreview(accountId: string, scope: InboxScope, id: string, updatedAt: string) {
+export function acknowledgeInboxPreview(accountId: string, scope: InboxScope, id: string, snapshot: { updatedAt: string; lastMessageId?: string; clearedAt?: string | null }) {
   const s = state(accountId), k = key(scope, id), latest = s.latest.get(k)
-  if (latest && millis(updatedAt) >= millis(latest.created_at || latest.createdAt) && latest.status !== 'pending') s.latest.delete(k)
+  if (!latest) return
+  const at = inboxMessageTime(latest.created_at || latest.createdAt)
+  if (snapshot.clearedAt && inboxMessageTime(snapshot.clearedAt) >= at) { s.latest.delete(k); return }
+  if (latest.status === 'pending' || latest.status === 'failed') return
+  // Row metadata and an equal millisecond do not prove that HTTP contains our ACK.
+  // A different, strictly newer visible message does; an empty/cleared row must
+  // carry its explicit clear cursor instead of resurrecting cached text.
+  if (snapshot.lastMessageId && (snapshot.lastMessageId === latest.id || inboxMessageTime(snapshot.updatedAt) > at)) s.latest.delete(k)
 }
 export function inboxMessageTarget(value: unknown): { scope: InboxScope; id: string } | null {
   const id = String(value || '').trim(), match = /^room:(group|community):(.+)$/.exec(id)

@@ -397,11 +397,13 @@ export async function setFallbackPostReaction(
   postId: string,
   liked: boolean,
   reactionType = 'LIKE',
+  expectedAccountId?: string,
 ): Promise<{ ok: boolean; post?: GenericRow | null }> {
   return fallbackApiJson<{ ok: boolean; post?: GenericRow | null }>(
     `/v1/data/feed/posts/${encodeURIComponent(postId)}/reaction`,
     {
       method: liked ? 'POST' : 'DELETE',
+      expectedAccountId,
       body: liked ? JSON.stringify({ reactionType }) : undefined,
     },
   )

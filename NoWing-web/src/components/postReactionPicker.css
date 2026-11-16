@@ -1,0 +1,9 @@
+.post-reaction-action { display: grid; grid-template-columns: minmax(0,1fr) auto; min-width: 0; }
+.post-reaction-action .ghost-btn { justify-content: center; min-width: 0; }
+.post-reaction-action .post-reaction-more { padding-inline: 7px; }
+.post-reaction-choices { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+.post-reaction-choice { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 12px 3px; min-width: 0; border: 1px solid var(--divider); border-radius: 12px; color: var(--text); background: var(--surface); cursor: pointer; font-size: .8rem; }
+.post-reaction-choice > span:first-child { font-size: 1.85rem; }
+.post-reaction-choice[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-soft,var(--surface)); }
+.post-reaction-choice:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media(max-width:380px) { .post-reaction-choices { grid-template-columns: repeat(2,minmax(0,1fr)); } }

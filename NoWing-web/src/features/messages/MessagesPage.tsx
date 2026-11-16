@@ -2,6 +2,7 @@ import { directConversationHasActivity } from '../../core/directConversationActi
 import { inboxConversationPreview, previewFromMessage } from '../../core/messagePreview'
 import { ProfileStatusBadges } from '../../components/ProfileStatusBadges'
 import {acknowledgeInboxPreview,applyInboxUnreadSnapshot,confirmInboxConversationRead,currentInboxUnreadCount,hasUnrepresentedInboxUnread,inboxActivityEvent,latestInboxMessage,markInboxConversationRead,useInboxUnreadCounts,type InboxActivity} from '../../core/inboxActivity'
+import { inboxMessageTime } from '../../core/inboxMessageTime'
 import { inboxRefreshScheduler } from '../../core/inboxRefreshScheduler'
 import { readConversationDraft, useDraftRevision } from '../../core/conversationDrafts'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -65,6 +66,7 @@ type ConversationItem = {
   lastMessageSenderId?: string
   lastMessageContentType?: string
   lastMessageIsOwn?: boolean
+  clearedAt?: string | null
   updatedAt: string
   kind: ConversationKind
   avatarUrl: string
@@ -539,7 +541,8 @@ function withInboxActivity(accountId:string,items:ConversationItem[]):Conversati
  return sortByUpdatedAt(items.map(item=>{
   if(item.kind==='voice')return item
   const latest=latestInboxMessage(accountId,item.kind,item.id),at=latest?textOf(latest,['created_at','createdAt'],''):''
-  const next=latest&&toMillis(at)>=toMillis(item.updatedAt)?{...item,subtitle:previewFromMessage(latest),updatedAt:at,
+  const afterClear=!item.clearedAt||inboxMessageTime(at)>inboxMessageTime(item.clearedAt)
+  const next=latest&&afterClear&&(latest.id===item.lastMessageId||inboxMessageTime(at)>=inboxMessageTime(item.updatedAt))?{...item,subtitle:previewFromMessage(latest),updatedAt:at,
     lastMessageId:textOf(latest,['id'],''),lastMessageSenderId:textOf(latest,['sender_id','senderId'],''),
     lastMessageContentType:textOf(latest,['content_type','contentType'],'text'),
     lastMessageIsOwn:textOf(latest,['sender_id','senderId'],'').trim().toLowerCase()===accountId.trim().toLowerCase()}:item
@@ -757,16 +760,26 @@ export function MessagesPage() {
       const commitItems=(next:ConversationItem[])=>{
         if(sequence!==inboxLoadSequence.current)return
         if(activeTab!=='voice')applyInboxUnreadSnapshot(user.id,activeTab==='chats'?'chat':activeTab==='groups'?'group':'community',next,requestedAt)
-        next.forEach(item=>{if(item.kind!=='voice')acknowledgeInboxPreview(user.id,item.kind,item.id,item.updatedAt)})
+        next.forEach(item=>{if(item.kind!=='voice')acknowledgeInboxPreview(user.id,item.kind,item.id,item)})
         const current=withInboxActivity(user.id,next)
         setItems(current);writeCachedValue(inboxCacheKey,current)
       }
       try {
         if (isFallbackSession) {
           const response = await loadFallbackMessagesInbox(activeTab)
-          const normalizedItems = await normalizeFallbackInboxItems(response.items)
+          const normalizedItems = response.items.map(normalizeConversationAvatar)
           const dedupedItems = sortByUpdatedAt(dedupeInboxConversations(normalizedItems))
           commitItems(dedupedItems)
+          // Text and realtime state must not wait for an independent avatar lookup.
+          // Merge only avatar fields so a late lookup cannot restore old previews.
+          void normalizeFallbackInboxItems(dedupedItems).then(enriched => {
+            if (sequence !== inboxLoadSequence.current) return
+            setItems(current => current.map(item => {
+              if (item.avatarUrl) return item
+              const match = enriched.find(entry => entry.id === item.id && entry.kind === item.kind && entry.profileId === item.profileId)
+              return match?.avatarUrl ? { ...item, avatarUrl: match.avatarUrl, avatarMediaType: match.avatarMediaType } : item
+            }))
+          })
           return
         }
 
