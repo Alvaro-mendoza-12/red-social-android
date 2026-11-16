@@ -9,7 +9,15 @@ import conectate.com.BuildConfig
 import conectate.com.core.network.PublicBackendDns
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import okhttp3.OkHttpClient
+import okhttp3.Call
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
+
+/** Cross-thread cancellation belongs to HTTP calls, never to a Media3 cache source. */
+internal interface PrefetchNetworkCancellation {
+    fun cancelNetworkRequests()
+}
 
 /**
  * Single network policy for every Media3 streaming surface.
@@ -67,10 +75,26 @@ object MediaPlaybackDataSources {
     }
 
     internal fun prefetchFactory(context: Context, timeoutMs: Long): DataSource.Factory {
-        val http = OkHttpDataSource.Factory(boundedPrefetchClient(timeoutMs))
+        val client = boundedPrefetchClient(timeoutMs)
+        val calls = CopyOnWriteArrayList<Call>()
+        val cancelled = AtomicBoolean(false)
+        val requests = Call.Factory { request ->
+            client.newCall(request).also { call ->
+                calls += call
+                if (cancelled.get()) call.cancel()
+            }
+        }
+        val http = OkHttpDataSource.Factory(requests)
             .setUserAgent(userAgent())
             .setDefaultRequestProperties(UbuntuStorageUrl.publicRequestHeaders)
-        return DefaultDataSource.Factory(context.applicationContext, StorageReadHttpDataSource.Factory(http))
+        val sources = DefaultDataSource.Factory(context.applicationContext, StorageReadHttpDataSource.Factory(http))
+        return object : DataSource.Factory, PrefetchNetworkCancellation {
+            override fun createDataSource(): DataSource = sources.createDataSource()
+            override fun cancelNetworkRequests() {
+                cancelled.set(true)
+                calls.forEach(Call::cancel)
+            }
+        }
     }
 
     fun httpFactory(includeStorageHeaders: Boolean = true): HttpDataSource.Factory {

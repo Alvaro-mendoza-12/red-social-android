@@ -79,7 +79,8 @@ fun ChatBackgroundLayer(
                         modifier = Modifier
                             .fillMaxSize()
                             .alpha(0.25f),
-                        contentScale = ContentScale.Crop,
+                        // The picker already applied the user's chosen crop.
+                        contentScale = ContentScale.Fit,
                         loading = {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 CircularProgressIndicator()
