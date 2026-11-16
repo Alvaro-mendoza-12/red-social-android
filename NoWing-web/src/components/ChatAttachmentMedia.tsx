@@ -66,13 +66,16 @@ export function ChatAttachmentMedia({
   useEffect(() => {
     const target = container.current
     if (!target || typeof IntersectionObserver === 'undefined') { setVisible(true); return }
+    let observing = true
     const observer = new IntersectionObserver((entries) => {
+      // Disconnecting cannot let a queued callback overwrite the next observer.
+      if (!observing) return
       const nearby = entries.some((entry) => entry.isIntersecting)
       if (kind === 'image') setVisible(nearby)
       else if (nearby) { setVisible(true); observer.disconnect() }
     }, { rootMargin: tilePreview ? '80px' : preserveAnimation ? '160px' : '1000px' })
     observer.observe(target)
-    return () => observer.disconnect()
+    return () => { observing = false; observer.disconnect() }
   }, [kind, preserveAnimation, tilePreview])
 
   useEffect(() => {

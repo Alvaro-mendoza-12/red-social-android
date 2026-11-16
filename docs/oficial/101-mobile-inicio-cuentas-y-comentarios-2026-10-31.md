@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 15 de noviembre de 2026
 
+La [continuación 161 retomada](161-stickers-visibilidad-y-recuperacion-2026-11-15.md) corrige callbacks de visibilidad obsoletos y añade recuperación acotada de fallos transitorios de medios, conservando identidad, permisos y capacidades de un uso. Aprueba 1.304 pruebas web, build y selector con 24/24 imágenes en tres anchos con datos ficticios. Despliegue y sesión real del propietario, un rechazo de catálogo, APK actualizada y revisión integral siguen pendientes.
+
 La [continuación 163](163-albumes-y-cambio-local-de-dia-2026-11-15.md) impide agrupar fotos de días locales distintos y conserva la primera fila del álbum nuevo, usando el mismo cálculo de día que el separador. Reproduce cuatro fallos en ocho casos distintos mediante referencia JVM directa y aprueba 51 casos Gradle en seis clases. APK, dispositivo, integración visual de álbumes, stickers de 161 y revisión integral siguen pendientes.
 
 La [continuación 162](162-fechas-locales-y-separadores-del-chat-2026-11-15.md) unifica el día local del separador con la hora de los mensajes, evita cortes inventados por formatos distintos o fechas ausentes y conserva la detección del cambio real de día en chats, grupos y comunidades. Reproduce ocho fallos en doce casos y aprueba 27 casos JVM en cuatro clases. La captura concreta no aporta timestamps originales; dispositivo, APK nueva, álbumes que cruzan medianoche, stickers de 161 y revisión integral siguen pendientes.

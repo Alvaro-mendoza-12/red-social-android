@@ -1,0 +1,26 @@
+# 161 retomada · Stickers, visibilidad y recuperación de medios
+
+Estado: **candidata web validada; despliegue y sesión del propietario pendientes**.
+
+El propietario confirma que los iconos del selector permanecen en «Cargando sticker» después de treinta segundos. Se reproduce una carrera que puede mantener ese estado: un callback pendiente de un observador de visibilidad anterior cambia el estado del nuevo, cancela su lectura y deja el elemento esperando sin un error de transporte activo. Los callbacks se ignoran ahora desde que su efecto se cierra. El observador vigente conserva el control para cargar o cancelar al entrar y salir de la vista. La reproducción controla el orden de callbacks y no demuestra que sea la única causa de la sesión real del propietario. La entrega asíncrona y desconexión se describen en el [borrador de Intersection Observer de W3C](https://www.w3.org/TR/intersection-observer/#dom-intersectionobserver-disconnect).
+
+La lectura ordinaria de medios admite además un único intento adicional ante un fallo de red anterior a los bytes o estados 500/502/503/504. Conserva el presupuesto total de 30 s, la identidad de cuenta, HTTPS, el origen, Bearer y los límites de bytes. Respeta Retry-After hasta cinco segundos; si el servidor pide más espera o el valor no es interpretable, devuelve el error para reintento explícito. No reintenta 401/403/404/429, redirecciones, capacidades lease/sign/token, descargas explícitas ni fallos tras empezar el cuerpo. El diseño toma como referencia la [idempotencia de HTTP](https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2) y [Retry-After](https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3).
+
+| Comprobación | Resultado |
+| --- | --- |
+| Referencia de visibilidad | 3 casos, 2 fallos y 1 control |
+| Referencia de recuperación | 15 casos, 5 fallos y 10 controles |
+| Selección focalizada final | 137 aprobados |
+| Suite web completa | 1.304 aprobados en 204 suites, cero fallos/omisiones |
+| Build TypeScript/Vite/SEO | Aprobado; 187 archivos; 21 páginas públicas comprobadas |
+| Navegador candidato | 24/24 stickers en 1355, 768 y 390 px; sin pendientes, fallos ni desbordamiento |
+
+Los 137 casos focalizados están dentro de los 1.304, no se suman. Cuatro controles nuevos se añadieron después del parche y no tienen referencia previa. El control anterior de 503 se separó de los rechazos de permisos: ahora exige dos peticiones al mismo origen con Bearer y sin caída anónima; los permisos y el límite 429 siguen exigiendo una sola. La primera selección de reparación registró esa expectativa antigua como su único fallo; la repetición final la conserva con el contrato actualizado.
+
+La candidata se compiló en main con sus configuraciones versionadas. No incorpora los cinco cambios SEO/configuración residuales del otro worktree. Las 659 entradas fuente y las huellas de configuración/temporales comprobadas quedaron iguales. El build terminó 2026-11-16T04:11:01Z con advertencias de tamaño de algunos chunks, sin errores de compilación. No se publica aquí una medición de descarga masiva ni una certificación de rendimiento general.
+
+El ensayo de navegador usa un origen de pruebas interceptado, datos ficticios y los 187 archivos de la candidata contrastados por hash. No usa un login real ni modifica producción. Inyecta un 503 antes de la primera lectura de un sticker: se recupera con dos peticiones; los otros 23 cargan normalmente. Al filtrar y actualizar quedan 24 imágenes decodificadas sin nuevas lecturas de stickers gracias a la caché de la sesión (25 peticiones iniciales y 25 tras actualizar). Menú por teclado, foco de retorno y controles automáticos Axe pasan en tres anchos. Los tres errores de consola son los 503 inyectados; no hay errores JavaScript. Se inspeccionaron las capturas ficticias. Sin baseline visual versionada, la regresión visual formal queda inconclusa; falta lector de pantalla manual.
+
+El diagnóstico del servidor es independiente: 33 objetos del catálogo tienen archivo y prueba clean completa. Se identificaron 36 referencias HTTPS sin objeto asociado en packs privados; no se borraron ni se atribuyeron a la cuenta real. El guard interno, con identidad simulada y conexión PostgreSQL read-only, permitió 30/31 lecturas; un rechazo sigue pendiente y esa prueba no valida JWT. Tres miniaturas públicas autorizadas con invitado real devolvieron 200 y sus cuerpos completos en 781–907 ms. El ensayo de originales limitó su lectura a 2 MiB y uno excede ese tamaño, por lo que no acredita su transferencia completa. Los 401 de las sondas anónimas no prueban un fallo autenticado.
+
+La [evidencia 161](../quality/evidence/161-sticker-visibility-delivery.json) distingue referencias, suite final, artefactos de build, navegador y sondas de solo lectura. La lectura completa nueva comprende los dos consumidores de producción y las dos pruebas nuevas; el test existente de lectura mantiene revisión parcial. Quedan pendientes verificar el despliegue Git efectivo, repetir con el propietario la incidencia exacta y revisar el rechazo del catálogo. Android permanece en 163, sin nueva APK ni ensayo físico por esta entrega. Recuperación 160, seguridad integral, conectividad/fluidez de todos los módulos y preparación de marketing siguen abiertos.
