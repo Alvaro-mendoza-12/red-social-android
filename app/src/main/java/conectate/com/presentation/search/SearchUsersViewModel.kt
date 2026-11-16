@@ -10,7 +10,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -45,10 +44,8 @@ class SearchUsersViewModel @Inject constructor(
     val accountId = _accountId.asStateFlow()
     private val _history = MutableStateFlow(historyStore.read(_accountId.value))
     val history = _history.asStateFlow()
-    internal val suggestions = combine(_query, search.content, _history, ::relatedSearchSuggestions)
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-    internal val hashtags = search.content.combine(_query) { content, _ -> searchHashtags(content) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    internal val discovery = observeSearchDiscovery(_query, search.content, _history)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), SearchDiscovery())
     val initialCategory = if (_query.value.isNotBlank()) 1 else 0
 
     init {
