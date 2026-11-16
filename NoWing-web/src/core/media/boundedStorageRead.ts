@@ -100,6 +100,51 @@ async function untilAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<
   })
 }
 
+function retryWait(headers: Headers): number | null {
+  const raw = headers.get('Retry-After')?.trim()
+  if (!raw) return 500
+  const delay = /^\d+$/.test(raw) ? Number(raw) * 1000
+    : /GMT$/i.test(raw) ? Date.parse(raw) - Date.now() : Number.NaN
+  if (!Number.isFinite(delay) || delay > 5000) return null
+  return Math.max(500, delay)
+}
+
+async function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); reject(abortError()) }
+    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve() }, milliseconds)
+    signal.addEventListener('abort', abort, { once: true })
+    if (signal.aborted) abort()
+  })
+}
+
+async function readOriginResponse(options: BoundedStorageReadOptions, init: RequestInit, fetcher: typeof fetch,
+  signal: AbortSignal, download: boolean): Promise<Response> {
+  const target = new URL(options.url)
+  // A one-use capability or explicit download must never be replayed.
+  const retryAllowed = !download && !target.pathname.toLowerCase().includes('/storage/v1/object/sign/') &&
+    ![...target.searchParams.keys()].some(key => /lease|token|authorization/i.test(key))
+  let response: Response
+  try {
+    response = await untilAbort(fetcher(options.url, init), signal)
+  } catch (error) {
+    if (!retryAllowed || signal.aborted || !(error instanceof TypeError)) throw error
+    await waitForRetry(500, signal)
+    requireStorageReadIdentity(options.identity)
+    return untilAbort(fetcher(options.url, init), signal)
+  }
+  requireStorageReadIdentity(options.identity)
+  const delay = retryAllowed && !response.redirected && response.type !== 'opaque' &&
+    (!response.url || isTrustedStorageReadUrl(response.url, options.backendBase)) &&
+    [500, 502, 503, 504].includes(response.status) ? retryWait(response.headers) : null
+  if (delay === null) return response
+  void response.body?.cancel().catch(() => {})
+  await waitForRetry(delay, signal)
+  requireStorageReadIdentity(options.identity)
+  // Only one additional origin attempt, under the original timeout and byte cap.
+  return untilAbort(fetcher(options.url, init), signal)
+}
+
 export type BoundedStorageReadOptions = {
   url: string
   backendBase: string
@@ -164,7 +209,7 @@ async function readStorageBlob(options: BoundedStorageReadOptions, limit: number
     const fromEdge = response !== undefined
     if (!response) {
       requireStorageReadIdentity(options.identity)
-      response = await untilAbort(fetcher(options.url, { ...init, credentials: isolatedBackendRequestCredentials(options.url) }), controller.signal)
+      response = await readOriginResponse(options, { ...init, credentials: isolatedBackendRequestCredentials(options.url) }, fetcher, controller.signal, download)
     }
     requireStorageReadIdentity(options.identity)
     if (!response.ok || response.status !== 200 || response.redirected || response.type === 'opaque') {

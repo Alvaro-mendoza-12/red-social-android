@@ -1,0 +1,1856 @@
+{
+  "continuation": 161,
+  "recordedAtUtc": "2026-11-16T04:23:52.752127+00:00",
+  "ownerReportedTooltip": "Cargando sticker after 30 seconds",
+  "exactOwnerBrowserSessionReproduced": false,
+  "visibilityBaseline": {
+    "success": false,
+    "startTime": 1794800307713,
+    "numTotalTests": 3,
+    "numPassedTests": 1,
+    "numFailedTests": 2,
+    "numPendingTests": 0,
+    "numTotalTestSuites": 1,
+    "numPassedTestSuites": 0,
+    "numFailedTestSuites": 1
+  },
+  "transientBaseline": {
+    "success": false,
+    "startTime": 1794789124606,
+    "numTotalTests": 15,
+    "numPassedTests": 10,
+    "numFailedTests": 5,
+    "numPendingTests": 0,
+    "numTotalTestSuites": 1,
+    "numPassedTestSuites": 0,
+    "numFailedTestSuites": 1
+  },
+  "focusedFinal": {
+    "success": true,
+    "startTime": 1794801718753,
+    "numTotalTests": 137,
+    "numPassedTests": 137,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numTotalTestSuites": 4,
+    "numPassedTestSuites": 4,
+    "numFailedTestSuites": 0
+  },
+  "fullFinal": {
+    "success": true,
+    "startTime": 1794801883609,
+    "numTotalTests": 1304,
+    "numPassedTests": 1304,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numTotalTestSuites": 204,
+    "numPassedTestSuites": 204,
+    "numFailedTestSuites": 0
+  },
+  "postPatchOnlyControls": 4,
+  "focalTestsIncludedInFullSuite": true,
+  "browserCandidate": {
+    "fixture": true,
+    "realAccountLoginUsed": false,
+    "productionApiRequestsSent": false,
+    "candidateAssetReads": [
+      {
+        "path": "/app/messages",
+        "status": 200
+      },
+      {
+        "path": "/js/index-Cff1Twcg.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-6MbwFD-v.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DCku0Z1b.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-ssBSiY4O.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-YRjpQ7Vc.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BQiD5qtO.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DGuvYFag.js",
+        "status": 200
+      },
+      {
+        "path": "/css/appEntry-BM3BtkOy.css",
+        "status": 200
+      },
+      {
+        "path": "/js/MessagesPage-BAy6N8-n.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BKmKyLBk.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DXPcBQmz.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-5ySSmLeY.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk--r4TssG_.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-KIRNUkmI.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-CFhqUcgJ.js",
+        "status": 200
+      },
+      {
+        "path": "/css/PublicationDialog-JTafY2Vv.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BRbhCyHG.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DADBKC96.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DXOmZMDX.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DDeVksI_.js",
+        "status": 200
+      },
+      {
+        "path": "/css/SpellingSuggestions-OdCk8p73.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DUsJ61y1.js",
+        "status": 200
+      },
+      {
+        "path": "/css/MessageText-DJySCxI3.css",
+        "status": 200
+      },
+      {
+        "path": "/css/ChatDetailPage-BTJh2Yc1.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BV8ZXHdE.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DDsrbOLg.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-Ci9Md7j6.js",
+        "status": 200
+      },
+      {
+        "path": "/css/communityQuestion-ZJXDda9X.css",
+        "status": 200
+      },
+      {
+        "path": "/icons/novvin-96.png",
+        "status": 200
+      },
+      {
+        "path": "/novvin-logo.png",
+        "status": 200
+      },
+      {
+        "path": "/assets/chat-doodles.svg",
+        "status": 200
+      },
+      {
+        "path": "/app/messages",
+        "status": 200
+      },
+      {
+        "path": "/js/index-Cff1Twcg.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-6MbwFD-v.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DCku0Z1b.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-ssBSiY4O.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-YRjpQ7Vc.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BQiD5qtO.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DGuvYFag.js",
+        "status": 200
+      },
+      {
+        "path": "/css/appEntry-BM3BtkOy.css",
+        "status": 200
+      },
+      {
+        "path": "/js/MessagesPage-BAy6N8-n.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BKmKyLBk.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DXPcBQmz.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-5ySSmLeY.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk--r4TssG_.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-KIRNUkmI.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-CFhqUcgJ.js",
+        "status": 200
+      },
+      {
+        "path": "/css/PublicationDialog-JTafY2Vv.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BRbhCyHG.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DADBKC96.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DXOmZMDX.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DDeVksI_.js",
+        "status": 200
+      },
+      {
+        "path": "/css/SpellingSuggestions-OdCk8p73.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DUsJ61y1.js",
+        "status": 200
+      },
+      {
+        "path": "/css/MessageText-DJySCxI3.css",
+        "status": 200
+      },
+      {
+        "path": "/css/ChatDetailPage-BTJh2Yc1.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BV8ZXHdE.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DDsrbOLg.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-Ci9Md7j6.js",
+        "status": 200
+      },
+      {
+        "path": "/css/communityQuestion-ZJXDda9X.css",
+        "status": 200
+      },
+      {
+        "path": "/icons/novvin-96.png",
+        "status": 200
+      },
+      {
+        "path": "/assets/chat-doodles.svg",
+        "status": 200
+      },
+      {
+        "path": "/app/messages",
+        "status": 200
+      },
+      {
+        "path": "/js/index-Cff1Twcg.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-6MbwFD-v.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DCku0Z1b.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-ssBSiY4O.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-YRjpQ7Vc.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BQiD5qtO.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DGuvYFag.js",
+        "status": 200
+      },
+      {
+        "path": "/css/appEntry-BM3BtkOy.css",
+        "status": 200
+      },
+      {
+        "path": "/js/MessagesPage-BAy6N8-n.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BKmKyLBk.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DXPcBQmz.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-5ySSmLeY.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk--r4TssG_.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-KIRNUkmI.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-CFhqUcgJ.js",
+        "status": 200
+      },
+      {
+        "path": "/css/PublicationDialog-JTafY2Vv.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BRbhCyHG.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DADBKC96.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DXOmZMDX.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DDeVksI_.js",
+        "status": 200
+      },
+      {
+        "path": "/css/SpellingSuggestions-OdCk8p73.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DUsJ61y1.js",
+        "status": 200
+      },
+      {
+        "path": "/css/MessageText-DJySCxI3.css",
+        "status": 200
+      },
+      {
+        "path": "/css/ChatDetailPage-BTJh2Yc1.css",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-BV8ZXHdE.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-DDsrbOLg.js",
+        "status": 200
+      },
+      {
+        "path": "/js/chunk-Ci9Md7j6.js",
+        "status": 200
+      },
+      {
+        "path": "/css/communityQuestion-ZJXDda9X.css",
+        "status": 200
+      },
+      {
+        "path": "/icons/novvin-96.png",
+        "status": 200
+      },
+      {
+        "path": "/assets/chat-doodles.svg",
+        "status": 200
+      }
+    ],
+    "visualRegression": "INCONCLUSIVE: no committed screenshot baseline for this fixture",
+    "viewports": [
+      {
+        "width": 1355,
+        "loaded": true,
+        "state": {
+          "tiles": 24,
+          "images": 24,
+          "pending": 0,
+          "failed": 0,
+          "width": 826.5625,
+          "overflow": false
+        },
+        "flakyOriginRequests": 2,
+        "initialStickerReads": 25,
+        "afterRefreshStickerReads": 25,
+        "favoriteFocused": true,
+        "focusReturned": true,
+        "violations": []
+      },
+      {
+        "width": 768,
+        "loaded": true,
+        "state": {
+          "tiles": 24,
+          "images": 24,
+          "pending": 0,
+          "failed": 0,
+          "width": 768,
+          "overflow": false
+        },
+        "flakyOriginRequests": 2,
+        "initialStickerReads": 25,
+        "afterRefreshStickerReads": 25,
+        "favoriteFocused": true,
+        "focusReturned": true,
+        "violations": []
+      },
+      {
+        "width": 390,
+        "loaded": true,
+        "state": {
+          "tiles": 24,
+          "images": 24,
+          "pending": 0,
+          "failed": 0,
+          "width": 390,
+          "overflow": false
+        },
+        "flakyOriginRequests": 2,
+        "initialStickerReads": 25,
+        "afterRefreshStickerReads": 25,
+        "favoriteFocused": true,
+        "focusReturned": true,
+        "violations": []
+      }
+    ],
+    "consoleErrors": [
+      {
+        "width": 1355,
+        "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+      },
+      {
+        "width": 768,
+        "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+      },
+      {
+        "width": 390,
+        "message": "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+      }
+    ],
+    "pageErrors": [],
+    "blockedExternalRequests": [],
+    "apiPaths": [
+      "GET /v1/system/announcements",
+      "POST /v1/auth/web-session/upgrade",
+      "GET /v1/data/notifications",
+      "GET /v1/data/messages/inbox",
+      "GET /v1/auth/me",
+      "GET /rest/v1/profiles",
+      "POST /v1/data/messages/chats/20000000-0000-4000-8000-000000000001/read",
+      "GET /v1/data/messages/chats/20000000-0000-4000-8000-000000000001/request",
+      "GET /v1/data/messages/chats/20000000-0000-4000-8000-000000000001",
+      "POST /rest/v1/rpc/secure_get_chat_scheduled_jobs",
+      "POST /rest/v1/rpc/secure_search_stickers"
+    ],
+    "candidateBuildReceiptSha256": "64e8d3f3297f61c30202c979a3b36815971445d76d8ab22851b5a5b4943a29df",
+    "engine": "Playwright bundled Chromium with an isolated profile",
+    "browser": "158.0.8127.18"
+  },
+  "build": {
+    "startedAtUtc": "2026-11-16T04:09:36.118976+00:00",
+    "finishedAtUtc": "2026-11-16T04:11:01.916072+00:00",
+    "exitCode": 0,
+    "sourceCommit": "7e9d4c870254d46b3c03bdb95455b58ea3807fb2",
+    "sourceInputsUnchanged": true,
+    "changedSourceInputs": [],
+    "preservedInputsUnchanged": true,
+    "changedPreservedInputs": [],
+    "foreignFeatureSeoExcluded": true,
+    "ownCandidateHashes": {
+      "NoWing-web/src/components/ChatAttachmentMedia.tsx": "459674649b3f5552bfc23d205f6939da453bbb6097b995321138c7c2a202586d",
+      "NoWing-web/src/core/media/boundedStorageRead.ts": "3aa82500c89496ddeeddd715922a8826dca5a94828b2e649072efab354e4f89c",
+      "NoWing-web/src/__tests__/core/boundedStorageRead.test.ts": "c3e3c523a5e116dd22eacb0a06f0309bd8e8be0b8e8a2b2e48f94704ccba72c1",
+      "NoWing-web/src/__tests__/core/storageTransientRead.test.ts": "f6d5b61f5ba48a54b7a0716c28b2f16514a5b7307b9b9b5159fc38dc23808db8",
+      "NoWing-web/src/__tests__/components/ChatAttachmentVisibility.test.tsx": "5cd5e3f123fccae7103ca20aa1e1cd48793fbf7181997451238a29a36415a3ae"
+    },
+    "artifacts": [
+      {
+        "path": "NoWing-web/dist/.well-known/assetlinks.json",
+        "sha256": "d0eb6402ca4cf7451887ec9b5dbd2e332432d9fc26cfee31a6a6f19980d4ac00",
+        "bytes": 315
+      },
+      {
+        "path": "NoWing-web/dist/404.html",
+        "sha256": "5cae3a64d891c3832c5373c9f8cc1f24556ccbf033df5f05b6f347d043c6d6bf",
+        "bytes": 2750
+      },
+      {
+        "path": "NoWing-web/dist/app-shell.html",
+        "sha256": "23bed61f4dc75ffd8fb597312ee01b6db3ed8ad84a738b9f26e3b72d081d7f98",
+        "bytes": 1125
+      },
+      {
+        "path": "NoWing-web/dist/asistente.html",
+        "sha256": "15f8955bc42f7cb639c239993bc26e00195eeaf4444c37fe2f4a948689740b94",
+        "bytes": 9400
+      },
+      {
+        "path": "NoWing-web/dist/assets/chat-doodles.svg",
+        "sha256": "8df5d17a91b2416607726b94d1803e1358698c9ea2c8a150c6f9ff6646ac7587",
+        "bytes": 955
+      },
+      {
+        "path": "NoWing-web/dist/ayuda.html",
+        "sha256": "8fe852a8e066b6a0ea6f028de3e61df6b943dab6a09e3ecc8563aff8594225e6",
+        "bytes": 9485
+      },
+      {
+        "path": "NoWing-web/dist/backend-config.json",
+        "sha256": "d44fafefa8596cd1769780cfc1331402fded9ac75940e063b1205371036966a9",
+        "bytes": 177
+      },
+      {
+        "path": "NoWing-web/dist/comunidades.html",
+        "sha256": "a79f1cdec018cc9490d2eacd271f4d1d3e94f3f7662c77f5ec37d8bc4962e8c5",
+        "bytes": 9506
+      },
+      {
+        "path": "NoWing-web/dist/conectate-logo.svg",
+        "sha256": "742a41192a8353f77562b3773fbdfd373951e8dcf2467d069e8c12825d9fa46d",
+        "bytes": 543
+      },
+      {
+        "path": "NoWing-web/dist/cookies.html",
+        "sha256": "d621efc0722d3ac62003994171bbf7f2d30fe8d4b1c12993d910e8691edd37d9",
+        "bytes": 9135
+      },
+      {
+        "path": "NoWing-web/dist/css/AccountSettingsPage-D5wnowNx.css",
+        "sha256": "7e9f8a9ecf53a80c084a7716535d6488c937575c99ead46ee980a603b2e4ca12",
+        "bytes": 4615
+      },
+      {
+        "path": "NoWing-web/dist/css/appEntry-BM3BtkOy.css",
+        "sha256": "51ef26a5af7b19f174ad839094590b4cda00129b973143b404dfe292e62823d2",
+        "bytes": 143701
+      },
+      {
+        "path": "NoWing-web/dist/css/AssistantPage-D1OqgeXg.css",
+        "sha256": "f1b1615eb2e87e7dfae56cc27df8d15ef2e700466ad7bdba0d3d16250675a7c3",
+        "bytes": 4869
+      },
+      {
+        "path": "NoWing-web/dist/css/CallsPage-Dvy7_IWO.css",
+        "sha256": "3c7add2fb32df8598476912507e807dc9e29f9d45a65a119381989921892f4c0",
+        "bytes": 10187
+      },
+      {
+        "path": "NoWing-web/dist/css/ChatDetailPage-BTJh2Yc1.css",
+        "sha256": "a97bbe1616501afd6a72edf14df1cc3705ed3fdf4e6eb687c03f91c693c0d708",
+        "bytes": 7564
+      },
+      {
+        "path": "NoWing-web/dist/css/communityQuestion-ZJXDda9X.css",
+        "sha256": "b2b8b66c97e27286eb34cfe651f58a1598df726660645475d8c1c627fef558b8",
+        "bytes": 11025
+      },
+      {
+        "path": "NoWing-web/dist/css/CreateSpacePage-Cor6eMgg.css",
+        "sha256": "3451e37a51bcb350260fb4397f899936e58f4327646caf2cd509ecb8ac76e4e4",
+        "bytes": 2648
+      },
+      {
+        "path": "NoWing-web/dist/css/ExplorePage-CwEMIVzF.css",
+        "sha256": "00bf2f42fef992baef97e526c6c1435515bdfac51f3ea528a3b11fef4988abfb",
+        "bytes": 2564
+      },
+      {
+        "path": "NoWing-web/dist/css/games-DZAOyq3U.css",
+        "sha256": "f578416924d720f43856eed702c5e24b381e3538dfbbccbd05e567649ccf7742",
+        "bytes": 15658
+      },
+      {
+        "path": "NoWing-web/dist/css/HelpPage-DG4DNGG9.css",
+        "sha256": "7d7859e31cc478f275eb2ede4afe5d6778991c9cdad88f6c464a853d3dd7161a",
+        "bytes": 440
+      },
+      {
+        "path": "NoWing-web/dist/css/live-1kP4YTkt.css",
+        "sha256": "5498de7ad916c007d842995a26c616485cb66b7a4d861270593299ff08ff242d",
+        "bytes": 15016
+      },
+      {
+        "path": "NoWing-web/dist/css/MediaDeviceDialog-BBmARIzq.css",
+        "sha256": "50ccee895e07bc7cd5949313f28ebc374e79b92488dccaf68221b4913ff3ada1",
+        "bytes": 967
+      },
+      {
+        "path": "NoWing-web/dist/css/MessageText-DJySCxI3.css",
+        "sha256": "4dbf6ed58eff5667aed550326133f0c5501a64b587d86a5466c8120cc04acf47",
+        "bytes": 666
+      },
+      {
+        "path": "NoWing-web/dist/css/momentComposer-BXLE6A0l.css",
+        "sha256": "fa8327cfb152c63a52ae65b7635c10641208206bbe8095573d51a24f1aace71a",
+        "bytes": 3707
+      },
+      {
+        "path": "NoWing-web/dist/css/MomentsViewerPage-BLFNSGKc.css",
+        "sha256": "a2e041b29c78d7c973a8c1d8881e947ee8ed06f9f4f2f89eb077e7f549b03a61",
+        "bytes": 3591
+      },
+      {
+        "path": "NoWing-web/dist/css/MyReportsPage-CO6ZhOTH.css",
+        "sha256": "32814ec32e7bdb015784740dbbce1f451238baaf23548c0ddb896795c47c8f1e",
+        "bytes": 841
+      },
+      {
+        "path": "NoWing-web/dist/css/NovvinPage-DJkKUwgv.css",
+        "sha256": "8fa3462e3eba561c54dac429344b06a2ea38115048fd9eed1b7db9b12e6d5e22",
+        "bytes": 7153
+      },
+      {
+        "path": "NoWing-web/dist/css/PostDetailPage-BqjxKNOT.css",
+        "sha256": "40eb95b81a6386cba701dc2742ae230154e8d12bbc35616e6fe757d9e0b5631d",
+        "bytes": 887
+      },
+      {
+        "path": "NoWing-web/dist/css/ProfileCoverEffect-CyJQ7Dyg.css",
+        "sha256": "e5669702b5f8f841c4ec4bbf89aca86948d93c37e97ba82551b7cc939b37352e",
+        "bytes": 3985
+      },
+      {
+        "path": "NoWing-web/dist/css/public-4755ba7c1914.css",
+        "sha256": "4755ba7c1914bbf168c3660ec6b0b661acb35d9d42235fdc654a24bed2c4440f",
+        "bytes": 13735
+      },
+      {
+        "path": "NoWing-web/dist/css/PublicationDialog-JTafY2Vv.css",
+        "sha256": "57432890694b6b345dce24ad7954cdac25070743966e681436f3687ff6a0ad42",
+        "bytes": 2083
+      },
+      {
+        "path": "NoWing-web/dist/css/PublicComments-YTefTymS.css",
+        "sha256": "a8562b4ff2cd157c760b17f0464555a7f23c3852c72df9d3d18af59d7252c28a",
+        "bytes": 3767
+      },
+      {
+        "path": "NoWing-web/dist/css/RankingPage-DMFoaK8i.css",
+        "sha256": "86c94254fc2963d6d9f92ec6bce96ea432041b273d5c5f8221f6e533452be553",
+        "bytes": 1962
+      },
+      {
+        "path": "NoWing-web/dist/css/replacePeerTracks-jwS9VLrr.css",
+        "sha256": "7461c6ecbc91b21e6c0b4439fac12046db1fdb982cb5f656f60ba7ec1ce56cd1",
+        "bytes": 568
+      },
+      {
+        "path": "NoWing-web/dist/css/SearchPage-BcTvJ9Ct.css",
+        "sha256": "561f8ecfbdaff7a22bf847a9ded52113258c576e90bcd27d89281df813421897",
+        "bytes": 2287
+      },
+      {
+        "path": "NoWing-web/dist/css/SocialPage-Coeybhdd.css",
+        "sha256": "9a18d66726b796091cde52aa2da6e5f0b5c9a8979efef834167470f1336cdb5c",
+        "bytes": 3048
+      },
+      {
+        "path": "NoWing-web/dist/css/SpellingSuggestions-OdCk8p73.css",
+        "sha256": "607770ffcb3051bafe1832d8a988e5bad086c3215038ef56f3419dbe3a749e15",
+        "bytes": 662
+      },
+      {
+        "path": "NoWing-web/dist/css/voice-DWjlcjPB.css",
+        "sha256": "73fa4d06e2d0c9b083afce1f5a6a45d18a0af00e7c7e0198be3a2e996e2bbbfb",
+        "bytes": 17800
+      },
+      {
+        "path": "NoWing-web/dist/css/WebRTCManager-C3wWenTl.css",
+        "sha256": "1c34322e15ede96873df6a129b59ed3aec2a2602a4d2d9dde1fcf7f846b21923",
+        "bytes": 2807
+      },
+      {
+        "path": "NoWing-web/dist/descargar.html",
+        "sha256": "85e9374c3e893d41953552083433a208588cc1bdc35aa59d54ae61fb2a5a1b3b",
+        "bytes": 11856
+      },
+      {
+        "path": "NoWing-web/dist/dictionaries/es-4.0.0/COPYING-MPL-1.1.txt",
+        "sha256": "f849fc26a7a99981611a3a370e83078deb617d12a45776d6c4cada4d338be469",
+        "bytes": 25755
+      },
+      {
+        "path": "NoWing-web/dist/dictionaries/es-4.0.0/index.aff",
+        "sha256": "892039d59db11d747061b81c3a92a52d48ba0e055b5835af1943cbd3c2fba85b",
+        "bytes": 167135
+      },
+      {
+        "path": "NoWing-web/dist/dictionaries/es-4.0.0/index.dic",
+        "sha256": "907f786a8ceb3456722b20ad91dd4dbe99c5c16e45015ea63155e36f26b06d2c",
+        "bytes": 706202
+      },
+      {
+        "path": "NoWing-web/dist/dictionaries/es-4.0.0/license",
+        "sha256": "a21581497f07b5e550e438d26890ea2b1704492357de67740613bd589b1c652a",
+        "bytes": 2596
+      },
+      {
+        "path": "NoWing-web/dist/dictionaries/es-4.0.0/NOTICE.txt",
+        "sha256": "874f4451ae5ba6b89d02ff840e504ed3c6e83f4ca02e2e453c8ab52228db1122",
+        "bytes": 600
+      },
+      {
+        "path": "NoWing-web/dist/dictionaries/es-4.0.0/nspell-license.txt",
+        "sha256": "ca4662cb5d1b738fbe5350c0d5485ba11773b4b7208974082ae6e129a52d631d",
+        "bytes": 1099
+      },
+      {
+        "path": "NoWing-web/dist/encontrar-novvin.html",
+        "sha256": "ddf5c039425d13bd86d62a0c7e68ec8dc4eb8a26bc45829b83e58f845bfd179a",
+        "bytes": 9940
+      },
+      {
+        "path": "NoWing-web/dist/favicon.ico",
+        "sha256": "bdf7daa942267d2f8df74f8fee7e9980699081a16071d74c7e1ed81bb8c84fdd",
+        "bytes": 6702
+      },
+      {
+        "path": "NoWing-web/dist/funciones.html",
+        "sha256": "1f64631a08d132a1dd2de26e95e9e498ee53851c3ff2b98a78853b7bc0b616d5",
+        "bytes": 12048
+      },
+      {
+        "path": "NoWing-web/dist/google0c9297c9ccb7a521.html",
+        "sha256": "5594a10d47d65a1e380c523232a06371837e89db68d2402bd05e14fbb288a1e2",
+        "bytes": 53
+      },
+      {
+        "path": "NoWing-web/dist/icons/novvin-180.png",
+        "sha256": "ce8f346e4269eb354c35eaeac9e310466832e25c8188d9fed311cd1bde95fa58",
+        "bytes": 12488
+      },
+      {
+        "path": "NoWing-web/dist/icons/novvin-192.png",
+        "sha256": "7fd3bf1dd006e174653c6540a41a1f07ea6382833227218636b8dac33b1928b0",
+        "bytes": 13576
+      },
+      {
+        "path": "NoWing-web/dist/icons/novvin-48.png",
+        "sha256": "717210674f48bdf48eae35008b33e85fa1a1ac2a6f21e1fd7b3c79fb00f60104",
+        "bytes": 1840
+      },
+      {
+        "path": "NoWing-web/dist/icons/novvin-512.png",
+        "sha256": "ad4da6d70f5fe8d84b03638b0ef7337d131eafb37f946db8ac98d89f0a494e51",
+        "bytes": 84391
+      },
+      {
+        "path": "NoWing-web/dist/icons/novvin-96.png",
+        "sha256": "4737022b313820e10aca04abf97d2d1a78cfc442d4868c4ece05fda8a7149780",
+        "bytes": 4824
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-chat-android-demo.png",
+        "sha256": "4d40d2e61af6f85592a377cee886170bf0b39b94ab64a20269f5c7faeae027a9",
+        "bytes": 240898
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-chat-android-demo.webp",
+        "sha256": "309bbb2902b3afea2e7490271e3e509b7d76f555fd9879d04d971b86c6525e6c",
+        "bytes": 73918
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-chat-web-demo.png",
+        "sha256": "efb91da07318102bde7fd8a6afdb09ebe582713da47fb1f5e97be59f220f32b6",
+        "bytes": 116819
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-chat-web-demo.webp",
+        "sha256": "fc794b1bb8f8aad0c27d1a07f795a792ac5791ff1abcabd1fda11dc6d10e346b",
+        "bytes": 61108
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-chats.png",
+        "sha256": "0cf2fb110386f70be01f4878dd003b05db1a94f6352a638716710dca723f5bfa",
+        "bytes": 72145
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-chats.svg",
+        "sha256": "7891ccbf00e6d1f47639911dcde7edec519f0d85af1ff6eda2831ea7f4cb388b",
+        "bytes": 4117
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-chats.webp",
+        "sha256": "5a495847080c23758f6ea001d83ecd2eda65d66617a432bb099f35d11e695f7b",
+        "bytes": 36034
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-comunidades.png",
+        "sha256": "d7b27b3c0be999de2df3c13e2e0a93e6c5f0d428a0c83d90e10be5b79a3779c4",
+        "bytes": 83350
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-comunidades.svg",
+        "sha256": "fce24a88b29876443876998b8a4b6c1c15c9790c6832da6055fb71a58bb9b6b9",
+        "bytes": 4212
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-comunidades.webp",
+        "sha256": "7030fec221439f4274665dd68438fb310f1d92105fa301f97f6693fabb25762b",
+        "bytes": 42634
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-grupos.png",
+        "sha256": "b42ead5437f8d7d1b75b191a3875df59bf2b5067f1d71d6088c16b0b77b5257c",
+        "bytes": 72218
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-grupos.svg",
+        "sha256": "d6b786707ec8465e93efa962739ab3ff251ea815ebfa18eaee62343ea3923e1d",
+        "bytes": 4138
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-grupos.webp",
+        "sha256": "1167a3fe94e31fa722da3afde8190478f2d9e67953663debec383dd8c787e0e0",
+        "bytes": 35886
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-momentos-fragmento-android.png",
+        "sha256": "2dc334c049a25af333db682e07dd26143cbe6dab1be20170a6b7352e2ac98a8d",
+        "bytes": 74549
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-momentos-fragmento-android.webp",
+        "sha256": "826bcaebe1164de74c4acad4358975a6b922002e18dd4d47091e3f0d3a0befb7",
+        "bytes": 38776
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-momentos-letras-android.png",
+        "sha256": "5ce7ef3a086dfaabb31008d612fd3a6c5d3c0f770663c38d0a81938d5976ddb1",
+        "bytes": 88322
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-momentos-letras-android.webp",
+        "sha256": "bbd67856f8fbcbc91bd82863b2daecf27c1c653b54144ec5713c2e363c222a11",
+        "bytes": 45902
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-momentos.png",
+        "sha256": "fd60c0f01f7ba25436cbebe4eb7faec419b8ab45dc5423630767491fd624d7d4",
+        "bytes": 45519
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-momentos.svg",
+        "sha256": "536891931855a6679d9d0afe68f29f78a2f284902eb0ebe0546bf31af3f6f42e",
+        "bytes": 3457
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-momentos.webp",
+        "sha256": "c8974825e8faf1e25000742a16b0ba910ada2a08ee2c12155dc04adfa166e24a",
+        "bytes": 22530
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-perfil-android-demo.png",
+        "sha256": "305e3861383ca6d0aaaed4f15042d842d93291a25d66d6c2df6d698061515b20",
+        "bytes": 309518
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-perfil-android-demo.webp",
+        "sha256": "b013c5301eae0fbae762d1bb0ff36f5ee8eefa7534a0c7bc160555f9414346b2",
+        "bytes": 176400
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-social.png",
+        "sha256": "3273a882413f998d820a971e79f58f2a7858db3e0582df8d6a65be8d1436252e",
+        "bytes": 70587
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-social.svg",
+        "sha256": "33831186fc48fbd337551acbdfff816343453c5167fab45e3ebd9ca6cb3435d2",
+        "bytes": 2686
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-social.webp",
+        "sha256": "2d3f73b72db519558cbc53b46ea74b13fd2776e10f127a926f3e3eb1381bbec2",
+        "bytes": 38284
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-videos.png",
+        "sha256": "ff79258c9e40fcb8683cdbf7b58c9a4afeb6bf2d8b892f7f57a51a7676818730",
+        "bytes": 51465
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-videos.svg",
+        "sha256": "adbb17f4ddf195fa9e8d9cf12fe0576abe02cddf6ae50907fa0d2efd0acccdba",
+        "bytes": 3042
+      },
+      {
+        "path": "NoWing-web/dist/images/novvin-videos.webp",
+        "sha256": "467457e0f51c65b8506b9b2671f118c04e2b84b94ed6b1bbf03687027087426f",
+        "bytes": 25232
+      },
+      {
+        "path": "NoWing-web/dist/images/promotion-messages.svg",
+        "sha256": "7f498d12b3aad7924354ccc3ccfeca44dfb2e0e09f3099f43cb3703f46708e93",
+        "bytes": 592
+      },
+      {
+        "path": "NoWing-web/dist/images/promotion-social.svg",
+        "sha256": "7f0b80788aa31793f0ae4b3be1230a842e910216b9898a8dbed4fb13329eb75a",
+        "bytes": 579
+      },
+      {
+        "path": "NoWing-web/dist/images/promotion-videos.svg",
+        "sha256": "91e5ca236e57fd696430eb9f1c06873eb1eb7936a27f45b1cef6fe5c1e244ec3",
+        "bytes": 579
+      },
+      {
+        "path": "NoWing-web/dist/index.html",
+        "sha256": "f2be4451e25a42582ffab57e7bea4e6b109dd502831db7ac4055f6cfc7b9c674",
+        "bytes": 7976
+      },
+      {
+        "path": "NoWing-web/dist/indexnow-key.txt",
+        "sha256": "713d15781bb1cfc1eef5de7995d16e79102dfd95f3d1f64569dada299047f141",
+        "bytes": 32
+      },
+      {
+        "path": "NoWing-web/dist/js/AccountSettingsPage-DkUke0kI.js",
+        "sha256": "5193725889fc785b9f2cf82c9cb5b71c680099fe6bb8b28b4980b3862867ff18",
+        "bytes": 32944
+      },
+      {
+        "path": "NoWing-web/dist/js/AdminModerationPage-D-9IQr3r.js",
+        "sha256": "8d6d75ff844190299b1f603794235b5ac46e4fcac4895cac89dc62c637711310",
+        "bytes": 43740
+      },
+      {
+        "path": "NoWing-web/dist/js/AssistantPage-DSKsMr6K.js",
+        "sha256": "a24fcb47ffc797996a4df93cf0ac8ab18da70c6e8100638e83f7035d823477fa",
+        "bytes": 7510
+      },
+      {
+        "path": "NoWing-web/dist/js/CallsPage-DJItLdZV.js",
+        "sha256": "f87c2719ff21f359a2d705f98e0e0645a255178ffa362a47e393d99154f27a1d",
+        "bytes": 39965
+      },
+      {
+        "path": "NoWing-web/dist/js/ChallengesRankingPage-D_zTvnUB.js",
+        "sha256": "3241553d176cf061effbe890e9923ec73a382fd235bef68236b841e4ca116d86",
+        "bytes": 7115
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk--r4TssG_.js",
+        "sha256": "744640deb62ec3dc4bdcee3bfe8af2d9e3cb321b2b1ae0f423fb18d0d09d3326",
+        "bytes": 116459
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-5ySSmLeY.js",
+        "sha256": "e68973ea523ae719ef6cc7c1a46e6a4b1823b2481d0b3223642dc07abdb25eea",
+        "bytes": 236
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-6MbwFD-v.js",
+        "sha256": "cf9d7f629f5029539f1dec7ffd465b9dd1d979e81435a91eab7057ef07ece613",
+        "bytes": 246809
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-BDLbeFR9.js",
+        "sha256": "2579caed9291d48d6d7a43d7af06d8572a7c02394a042a0e0af88583c4bab0b0",
+        "bytes": 9109
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-BKmKyLBk.js",
+        "sha256": "b7d2a3e5bbcb95d9fc49a83b3953a527eb5773d337ff0092972307098676ec78",
+        "bytes": 2431
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-BmYsWm9X.js",
+        "sha256": "27c8ca97d329ac70a8cd2a8aa0c3ffe245141e8a544d7737e7f5ae2f6b01f1b9",
+        "bytes": 4548
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-BnqVcmX0.js",
+        "sha256": "63a576341d3095e76dddf7f57f533742df4975a705784ecc587dcb8b0379df97",
+        "bytes": 1775
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-BQiD5qtO.js",
+        "sha256": "d208ddecc9ea6ac7f032af01621881f1d63e7e65e5f218a806501715982a8ce6",
+        "bytes": 38350
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-BRbhCyHG.js",
+        "sha256": "e697878d833619b171cc31912e70a9b8cec9d3d37596603fa5df4ae98548a056",
+        "bytes": 2808
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-BV8ZXHdE.js",
+        "sha256": "5f05bdc6d063af83e8f838e7300030db57f07b1c1b8b89fa4f441c90252a5023",
+        "bytes": 769
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-C9p5kLYP.js",
+        "sha256": "a1ca8ed13faf25beae3c4840b0fc4d0c2c5286444f1f6c47bd8620ed0700b154",
+        "bytes": 6834
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-CFhqUcgJ.js",
+        "sha256": "99daa1e23d28da8891ca501816b96c49d96592fafaa7bc7d2e2f154f819e57b6",
+        "bytes": 783
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-Cgz4YlBz.js",
+        "sha256": "02c51f81dde5682eaf0330162dd7d17bbd14ee81e26cb9aa557a52fe2aca21b5",
+        "bytes": 12415
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-Ci9Md7j6.js",
+        "sha256": "d95c1c8a4b09300f97fc5fbe6b34d8c41c07a8f61a6015063a8a9cf772cdff21",
+        "bytes": 888
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-CPUCxLnV.js",
+        "sha256": "05518d77e8eb61481aca5dd571577f745ec65a99837ddb377a5d69c4eeb264f2",
+        "bytes": 17812
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-CUryU2xj.js",
+        "sha256": "5a17c90c3df9cd43c51b514b41b4e21b3ec0e4b86d5c30a76911c7908bde93d2",
+        "bytes": 2069
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-D8K15bh_.js",
+        "sha256": "8393e955960b2a1899a03883fb40def0dcd51ad0c48f8c39e7c51b2e75ec5706",
+        "bytes": 2369
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DADBKC96.js",
+        "sha256": "7b27f8692953b88132525d003d6dac4af9f2b5f72a7f42e2abe78f266aa83bfe",
+        "bytes": 15266
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DCku0Z1b.js",
+        "sha256": "6f3cbf67571bdfa22f8aaec6062960bb8fd73cf414a6d3c1da5b0050c3215226",
+        "bytes": 190136
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DDeVksI_.js",
+        "sha256": "bde3b13d8fda38e53e7aae15cdd2d65adc8322ec103d3cbb3d72d8e71da0ad6b",
+        "bytes": 111
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DDsrbOLg.js",
+        "sha256": "f62466b9b890699f283d28e1c454be73c0091bcd3b262296cedc574571b3b4cc",
+        "bytes": 1833
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DFnDV29-.js",
+        "sha256": "0e4d7adaec7c25eca9d8c4685a878e8e3ace485ce13d4138cd8cdd812f6b1821",
+        "bytes": 668
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DGuvYFag.js",
+        "sha256": "80a9c1621ff376155750160ea05313dec3ffa1fa92ae6ca9ae6199f28ca94b0a",
+        "bytes": 31401
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DjhlvIEW.js",
+        "sha256": "d0f0bea579280cc35fe390c5f48e75aa242cfcfead678ec2ad0f154df3f78f1e",
+        "bytes": 2140
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DurTkSX4.js",
+        "sha256": "6bd561ab79a3141df26e3a8af9a3d123c2595972f4a11c9006a20c5511a6b2eb",
+        "bytes": 861
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DUsJ61y1.js",
+        "sha256": "3cdc3d25bdb7b526fe5887313368be0a7de763f4d87d9682e16cdddb95082d3b",
+        "bytes": 2488
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DXOmZMDX.js",
+        "sha256": "7c65ea8670a5d110f78a56df3e1641b7fc07c4744bb4d5abd172749be07722ad",
+        "bytes": 22153
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-DXPcBQmz.js",
+        "sha256": "68f638a67f5251a3da1c9a2ccbf325cdea4f0530bf8fe3dcb64abed85f41e3e1",
+        "bytes": 647
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-KIRNUkmI.js",
+        "sha256": "1144acef28ff6a90faee7e57a4deac8fb18ce106c8cb97c7dc7a5b2d87424390",
+        "bytes": 569
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-r4VqtOwF.js",
+        "sha256": "d36b1f99ab15e6b756d5dc68b80678cea8b8dfbdcfb77a0a2f8a1689cd7a7a2b",
+        "bytes": 4375
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-ssBSiY4O.js",
+        "sha256": "fa915ce6eb1f749428c04bae2d510a936a4d2934101256bd146315d5478df650",
+        "bytes": 164389
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-TNqBldyE.js",
+        "sha256": "03104be568bd44d6327330d098034ee8add1fe891e3a380c2582ba1ff448b062",
+        "bytes": 1247
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-VLgV3m3U.js",
+        "sha256": "1bcf9d010729d99e53c82559205feeba74c9eeb1622e0ce1b13236748b37dc3f",
+        "bytes": 878
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-XrP4chKV.js",
+        "sha256": "58221d499ee9e41548bb2abc3e1da1f890c96678562a27ed631fd756068f844f",
+        "bytes": 8959
+      },
+      {
+        "path": "NoWing-web/dist/js/chunk-YRjpQ7Vc.js",
+        "sha256": "9fd616ec322743dc600199b4ed10b02fadaff6c3bcfb3587db0300300f14af00",
+        "bytes": 1101018
+      },
+      {
+        "path": "NoWing-web/dist/js/CollectionInvitePage-CPexKTgX.js",
+        "sha256": "0402e1c1ba3512ff48c82107a298bbe49cdcc274209576efc4c53787fc6735cc",
+        "bytes": 2352
+      },
+      {
+        "path": "NoWing-web/dist/js/CreateSpacePage-DkjhXEMx.js",
+        "sha256": "fca693b5c8be6f09cc77abe8e5f469b28f16bd43ad6c84f2cb841b2f8a4e7734",
+        "bytes": 4831
+      },
+      {
+        "path": "NoWing-web/dist/js/createSpellingWorker-BSYjUOLp.js",
+        "sha256": "9a785cad94eef0e6c7ee2ff7ae4364d7c5a64d2aeef3175c8fa07f4ff7808c24",
+        "bytes": 142
+      },
+      {
+        "path": "NoWing-web/dist/js/ExplorePage-DfmwI_Yc.js",
+        "sha256": "543f41d81909204c7a30f516b7a2f77d2267f9f9e1f487b548b5733d570223a6",
+        "bytes": 5972
+      },
+      {
+        "path": "NoWing-web/dist/js/folderZip.worker-Dq029Zge.js",
+        "sha256": "973034cea69cf308a4c0b22fd8c57e3d4a42cb4a7d6012726f053aec6dd10f09",
+        "bytes": 13852
+      },
+      {
+        "path": "NoWing-web/dist/js/FollowsPage-DF7P1OyC.js",
+        "sha256": "abd5fc08ec5d12dc2d20cceae28456d774cf3318ba7f0c8fe62c5ff39128850e",
+        "bytes": 6075
+      },
+      {
+        "path": "NoWing-web/dist/js/FriendRequestsPage-CrgKgMGw.js",
+        "sha256": "1a8ddfb14a287fa695515f7e3d928b15976f4503c4ac194335bc0cc4b8aa28ad",
+        "bytes": 5627
+      },
+      {
+        "path": "NoWing-web/dist/js/GamesPage-BGOt31Sk.js",
+        "sha256": "1c104eccd4654f5d0e94e26b72009cb0b4f4d2643035eb672bcdffc04ec5f40c",
+        "bytes": 39974
+      },
+      {
+        "path": "NoWing-web/dist/js/HelpPage-BShspp1c.js",
+        "sha256": "68bd1fea68d73a1d7475e6423cb243e7dd06a13cfb5c67fe2b5d0e3632c56263",
+        "bytes": 2444
+      },
+      {
+        "path": "NoWing-web/dist/js/index-Cff1Twcg.js",
+        "sha256": "fa76c9149294e9eabe675771d7cd3bd53f642af02b82fd5b9167382753b118ed",
+        "bytes": 3600
+      },
+      {
+        "path": "NoWing-web/dist/js/LiveHubPage-DSqZMf58.js",
+        "sha256": "90af4b514c470beac0301ace07277c89f4a2409e7786e60ef7d6704201f6b030",
+        "bytes": 5997
+      },
+      {
+        "path": "NoWing-web/dist/js/LiveSessionPage-DeAwhL3A.js",
+        "sha256": "783e33853fd95ab1fae178459a3ff419e175efb67263a9a49d530954a82585b1",
+        "bytes": 43981
+      },
+      {
+        "path": "NoWing-web/dist/js/MessagesPage-BAy6N8-n.js",
+        "sha256": "0c7cf094ca309ef397735c90f40bc320391edf1e1eea68d74f542a7307bf6ece",
+        "bytes": 99452
+      },
+      {
+        "path": "NoWing-web/dist/js/MomentsViewerPage-BRk5o9jv.js",
+        "sha256": "a8a6908d44c3d2e91736ce088ea856fd611a123abdfa48ad18188b6bd03a4c99",
+        "bytes": 10491
+      },
+      {
+        "path": "NoWing-web/dist/js/MonetizationCenterPage-DhZauV2h.js",
+        "sha256": "4a81bd85a84234d3391a5e3f485f468ffcab7704e977f4f91b67c438b1db9d68",
+        "bytes": 8497
+      },
+      {
+        "path": "NoWing-web/dist/js/MyReportsPage-BQWl0ZyT.js",
+        "sha256": "f1d77c62b24b5d44972b4b8d379714baa8c711f290a6fdf28ef3e90ed6a60f57",
+        "bytes": 3410
+      },
+      {
+        "path": "NoWing-web/dist/js/NotificationsPage-DIFvhYWU.js",
+        "sha256": "5de01b4c912b2a65d6beed009dd4eafee4b37f985f26c1a134179fa27f0220a5",
+        "bytes": 12405
+      },
+      {
+        "path": "NoWing-web/dist/js/NovvinPage-BVOAFmwJ.js",
+        "sha256": "1533b5e6ac41fcb1d01909fdd63e72cee59e294716eabb26d435329f4df55cc8",
+        "bytes": 11221
+      },
+      {
+        "path": "NoWing-web/dist/js/PdfDocument-D3Nl4OTU.js",
+        "sha256": "82f7d28a7304a79680cecf75d77b1dc1d31e0fc9f9e4ea35935c3ec51896706f",
+        "bytes": 2042
+      },
+      {
+        "path": "NoWing-web/dist/js/PlayerDetailPage-Bjnu0QdP.js",
+        "sha256": "256bb93604aab4cfc4c987397c43b36ac346b4e6b07f2392e5caf91f12fb52cb",
+        "bytes": 3818
+      },
+      {
+        "path": "NoWing-web/dist/js/PostDetailPage-DZpx110j.js",
+        "sha256": "28fe075b5678bbae2e6725fa728b39874bd4ea0719fcb21c3af37365695e62e8",
+        "bytes": 5243
+      },
+      {
+        "path": "NoWing-web/dist/js/ProfileChatRedirectPage-BYi17Ln7.js",
+        "sha256": "a298144292f0968b2c8a687c88f9d2957b1709ef8116a5276171e543e04e9717",
+        "bytes": 1757
+      },
+      {
+        "path": "NoWing-web/dist/js/ProfilePage-D3jm8IBN.js",
+        "sha256": "cc00431c6f7e4462bae6854f77bfc13c5c1f436439d5c272df3c93649c882a0e",
+        "bytes": 12649
+      },
+      {
+        "path": "NoWing-web/dist/js/ProximityPage-CAcrUMLT.js",
+        "sha256": "4703abda284cff8e97cc6446fd6981324c6ebd634f3ea8eeddf2b1c08f7680f6",
+        "bytes": 17712
+      },
+      {
+        "path": "NoWing-web/dist/js/PublicProfilePage-BvzSNQ7a.js",
+        "sha256": "e006442205280f48551369dc2c3b490f9a48163e79c90d3fa3dc55ff98b149f7",
+        "bytes": 14776
+      },
+      {
+        "path": "NoWing-web/dist/js/RankingPage-DIx4a32s.js",
+        "sha256": "61933f19ec6294cbd7bfbc77518edaae698ad7e08efab088649a2b3c83a5990c",
+        "bytes": 4709
+      },
+      {
+        "path": "NoWing-web/dist/js/ReelsPage-BkT295_t.js",
+        "sha256": "7d26e5609d692dcb6a216d727e57ec1097bfb6e14e803b4bd696cc6cfe57d54d",
+        "bytes": 41991
+      },
+      {
+        "path": "NoWing-web/dist/js/SearchPage-CpuDZkqp.js",
+        "sha256": "c05d58e46e1cf0bf00424af4bc542ec3cfa9427901ad67d68343aae2ee5a79fb",
+        "bytes": 6098
+      },
+      {
+        "path": "NoWing-web/dist/js/SocialPage-DlNaQAZq.js",
+        "sha256": "10073e989452fa78f837cf1e757c7ce5bbb4f2e2b6677dc4fc6c7ce300898382",
+        "bytes": 68156
+      },
+      {
+        "path": "NoWing-web/dist/js/spelling.worker-D3yrqTS5.js",
+        "sha256": "273ee1d3f7fe95e052f6b2d38d9dda9a38b662a2f22ae98e55b524c88d2bb49c",
+        "bytes": 10078
+      },
+      {
+        "path": "NoWing-web/dist/js/VideoDetailPage-CFU3bvpE.js",
+        "sha256": "9113f5e4e202087f3624c8a9fece7e8c2690610eb2b600d551f7b1e35c3d9534",
+        "bytes": 14957
+      },
+      {
+        "path": "NoWing-web/dist/js/VoiceRoomPage-DHZfAq87.js",
+        "sha256": "baec20e67d201ae31f69f0fe239853cb53061cfe805ab798e79db867015c70f8",
+        "bytes": 58426
+      },
+      {
+        "path": "NoWing-web/dist/js/VoiceRoomsPage-CnYWGipZ.js",
+        "sha256": "4f87a96753c6022c15d92d84a7c2e27c3a0d4bac5335bccde4243dd5264934e7",
+        "bytes": 7437
+      },
+      {
+        "path": "NoWing-web/dist/juegos.html",
+        "sha256": "5fc4f09d6cddb80db49ecf678e66bb8be0d5cf05a9cd51355367bcec5b223247",
+        "bytes": 9174
+      },
+      {
+        "path": "NoWing-web/dist/manifest.json",
+        "sha256": "2ba38a6cb0e71a2105e3333105bf554ec0ccfb9232ac95e4b83e95ba8188990f",
+        "bytes": 980
+      },
+      {
+        "path": "NoWing-web/dist/mensajes.html",
+        "sha256": "c08ce93126ee6207c0708008ef570b30435caa757804579ca74a859bdbf41cec",
+        "bytes": 10450
+      },
+      {
+        "path": "NoWing-web/dist/mjs/pdf.worker.min-CjEcRF4W.mjs",
+        "sha256": "9536359f1b8367850d485731ca1d5e45c159a7b7a0912325e539937aa21ceb18",
+        "bytes": 1264342
+      },
+      {
+        "path": "NoWing-web/dist/momentos.html",
+        "sha256": "69f524e7951bdb7c67763f60b8c94802bf753cafcae02e01b269cb6a483cfb05",
+        "bytes": 11045
+      },
+      {
+        "path": "NoWing-web/dist/novvin-logo.png",
+        "sha256": "ad4da6d70f5fe8d84b03638b0ef7337d131eafb37f946db8ac98d89f0a494e51",
+        "bytes": 84391
+      },
+      {
+        "path": "NoWing-web/dist/novvin-media-worker.js",
+        "sha256": "8f7761a3927eea5cf514705e14ebbf9c9f77f2d334096061dda92eb0febcd4da",
+        "bytes": 10382
+      },
+      {
+        "path": "NoWing-web/dist/novvin-share.png",
+        "sha256": "6f1d6108814235a9aa44668f619e848bf5e424e6449084cc001fdf10e4a2a1b2",
+        "bytes": 211325
+      },
+      {
+        "path": "NoWing-web/dist/novvin-web.html",
+        "sha256": "a324ba6c4d00e8279ca542e241cedea515ef202c81bd88ee7559a4f2de1a5d07",
+        "bytes": 11202
+      },
+      {
+        "path": "NoWing-web/dist/preguntas-frecuentes.html",
+        "sha256": "69e84cbb4e68c81806eb44b705cedc548817cbe9e249b4eafad78525cbf7bb9b",
+        "bytes": 12711
+      },
+      {
+        "path": "NoWing-web/dist/privacidad-y-seguridad.html",
+        "sha256": "3e34b61ebe83d9cf8ac3870f516618a28bf1cace0b8c0656521096136016fa34",
+        "bytes": 9906
+      },
+      {
+        "path": "NoWing-web/dist/privacidad.html",
+        "sha256": "13f2565e38ba1c804d4570c893743d6db5ab8123a6e4cb408022f6cce5ab91f6",
+        "bytes": 10786
+      },
+      {
+        "path": "NoWing-web/dist/que-es-novvin.html",
+        "sha256": "1fda530226ab17f0337bcb9fbfd86c05385d0a3ca90c3dbc3db48d75dff1b009",
+        "bytes": 11162
+      },
+      {
+        "path": "NoWing-web/dist/robots.txt",
+        "sha256": "3491c6505e600a5c9a0d71292b674ca6d9a7c9cbfa550edc00889d9583920550",
+        "bytes": 299
+      },
+      {
+        "path": "NoWing-web/dist/salas-de-voz.html",
+        "sha256": "d20b1542c94cec136c63ca44797f00811433b1d1601511b3a4f6a625f5dc31aa",
+        "bytes": 8940
+      },
+      {
+        "path": "NoWing-web/dist/seo-build.json",
+        "sha256": "9dae04459f25e2c3cb6ab32e54eba78d9d5fa9a9b5d320303bc63f15e4c8cb6b",
+        "bytes": 11826
+      },
+      {
+        "path": "NoWing-web/dist/sitemap.xml",
+        "sha256": "8e4e9f1b27a48bf0bda2eb311a2ddebdd185816fa34d7c650745c88d1bdc10f9",
+        "bytes": 3194
+      },
+      {
+        "path": "NoWing-web/dist/social.html",
+        "sha256": "635888bf142f200fc977b3345c42bf6ea3cb370a288ddb2c9109e2c7f514bf4c",
+        "bytes": 9148
+      },
+      {
+        "path": "NoWing-web/dist/sounds/voice-join.wav",
+        "sha256": "97df234d55cc6842eee0dd894172f59bd0a67f9551b3dd3c7c9de898d92fd78b",
+        "bytes": 10888
+      },
+      {
+        "path": "NoWing-web/dist/sounds/voice-leave.wav",
+        "sha256": "d234056da42662cac4c57ab0c08273b3409656458531340e1c8f571fe282dde1",
+        "bytes": 10888
+      },
+      {
+        "path": "NoWing-web/dist/sounds/voice-mute.wav",
+        "sha256": "724bfcb67d47b5d5e6dd92efb3ad2a5fc113c5530bae5d8c71d4697046e4696b",
+        "bytes": 10888
+      },
+      {
+        "path": "NoWing-web/dist/sounds/voice-unmute.wav",
+        "sha256": "c742675e41ee04aa99244b273f12b17a6b30c66d31b4af69cfce76df1e5ff9f3",
+        "bytes": 10888
+      },
+      {
+        "path": "NoWing-web/dist/stickers-animados.html",
+        "sha256": "12efa7f177e082b037c2109a01877e3469e5037d151374985dc65b434b5446eb",
+        "bytes": 9870
+      },
+      {
+        "path": "NoWing-web/dist/videos.html",
+        "sha256": "723628626f6d4ccfc95598fa879ea439f508346848850962ba9964d25fc99d3b",
+        "bytes": 8628
+      },
+      {
+        "path": "NoWing-web/dist/vincular-web.html",
+        "sha256": "a1532a83e10d911d580e1a04bd094dfb3161f008eb7394b877f6c1a3153e8670",
+        "bytes": 9441
+      },
+      {
+        "path": "NoWing-web/dist/vite.svg",
+        "sha256": "4a748afd443918bb16591c834c401dae33e87861ab5dbad0811c3a3b4a9214fb",
+        "bytes": 1497
+      }
+    ],
+    "deployed": false,
+    "realAccountLoginUsed": false
+  },
+  "guestDelivery": {
+    "checkedAtUtc": "2026-11-16T00:14:50.834019+00:00",
+    "guestTokenPersisted": false,
+    "realAccountLoginUsed": false,
+    "accountOrContentMutations": false,
+    "publicImageCandidates": 47,
+    "results": [
+      {
+        "key": "1f71972fa27c37bd",
+        "preview": false,
+        "status": 200,
+        "mime": "image/jpeg",
+        "declaredBytes": "960447",
+        "accelHeaderPresent": false,
+        "bytesRead": 960447,
+        "bounded": true,
+        "milliseconds": 1672
+      },
+      {
+        "key": "1f71972fa27c37bd",
+        "preview": true,
+        "status": 200,
+        "mime": "image/webp",
+        "declaredBytes": "5622",
+        "accelHeaderPresent": false,
+        "bytesRead": 5622,
+        "bounded": true,
+        "milliseconds": 844
+      },
+      {
+        "key": "3d0570e6ab5c29d2",
+        "preview": false,
+        "status": 200,
+        "mime": "image/png",
+        "declaredBytes": "2835021",
+        "accelHeaderPresent": false,
+        "bytesRead": 2097153,
+        "bounded": false,
+        "milliseconds": 6968
+      },
+      {
+        "key": "3d0570e6ab5c29d2",
+        "preview": true,
+        "status": 200,
+        "mime": "image/webp",
+        "declaredBytes": "5410",
+        "accelHeaderPresent": false,
+        "bytesRead": 5410,
+        "bounded": true,
+        "milliseconds": 907
+      },
+      {
+        "key": "cf6a2a82b13b0574",
+        "preview": false,
+        "status": 200,
+        "mime": "image/jpeg",
+        "declaredBytes": "146694",
+        "accelHeaderPresent": false,
+        "bytesRead": 146694,
+        "bounded": true,
+        "milliseconds": 1281
+      },
+      {
+        "key": "cf6a2a82b13b0574",
+        "preview": true,
+        "status": 200,
+        "mime": "image/webp",
+        "declaredBytes": "4194",
+        "accelHeaderPresent": false,
+        "bytesRead": 4194,
+        "bounded": true,
+        "milliseconds": 781
+      }
+    ]
+  },
+  "catalogPolicyDiagnostic": {
+    "simulatedIdentity": true,
+    "realJwtNotTested": true,
+    "readOnly": true,
+    "items": 31,
+    "allowed": 30,
+    "remainingDenied": 1
+  },
+  "sourceRead": [
+    {
+      "path": "NoWing-web/src/components/ChatAttachmentMedia.tsx",
+      "sha256": "459674649b3f5552bfc23d205f6939da453bbb6097b995321138c7c2a202586d"
+    },
+    {
+      "path": "NoWing-web/src/core/media/boundedStorageRead.ts",
+      "sha256": "3aa82500c89496ddeeddd715922a8826dca5a94828b2e649072efab354e4f89c"
+    },
+    {
+      "path": "NoWing-web/src/__tests__/core/storageTransientRead.test.ts",
+      "sha256": "f6d5b61f5ba48a54b7a0716c28b2f16514a5b7307b9b9b5159fc38dc23808db8"
+    },
+    {
+      "path": "NoWing-web/src/__tests__/components/ChatAttachmentVisibility.test.tsx",
+      "sha256": "5cd5e3f123fccae7103ca20aa1e1cd48793fbf7181997451238a29a36415a3ae"
+    }
+  ],
+  "partialRead": [
+    {
+      "path": "NoWing-web/src/__tests__/core/boundedStorageRead.test.ts",
+      "sha256": "c3e3c523a5e116dd22eacb0a06f0309bd8e8be0b8e8a2b2e48f94704ccba72c1"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/audit161/catalog-policy-results.json",
+      "sha256": "54fc119bc3f8499258ccd0c9d171c80129f0d240e4f287ca1ac8c52bbdc6251b"
+    },
+    {
+      "path": "app/build/audit161/catalog-private.json",
+      "sha256": "6bce82147fbc0f8b4e4ea96a6ff2841533a0c7fd00f7e461fe1b7305b37e65a9"
+    },
+    {
+      "path": "app/build/audit161/catalog-scope-metadata.json",
+      "sha256": "3866ed304c84a93aa9c09cffd2cf3d87d6b72c2a2cc2aeb43a96df58b19eda91"
+    },
+    {
+      "path": "app/build/audit161/catalog-storage-metadata.json",
+      "sha256": "e63590c18ba6ac2a4d4f73e41301ea2f060fa2550da9cf871006d58d4c823176"
+    },
+    {
+      "path": "app/build/audit161/catalog-storage-proof.json",
+      "sha256": "07c9c05a170de5c9fde6217ba76d4d082723eb406940209006347cc18ebc9da6"
+    },
+    {
+      "path": "app/build/audit161/catalog_probe.py",
+      "sha256": "e38c15c540f7d84ebe86e50bc69d543ef1ba7453e40ebabf0f2eeb9284c059bf"
+    },
+    {
+      "path": "app/build/audit161/catalog_proof_probe.py",
+      "sha256": "587e02c7c4d231c2710baa0a82a8e1b5b4213802a0839e8602a0dae3d61ad067"
+    },
+    {
+      "path": "app/build/audit161/catalog_scope_probe.py",
+      "sha256": "8732172e05af5e7b4cd7b45b5787153fd644092cc6649da74bddfc31fbfcadce"
+    },
+    {
+      "path": "app/build/audit161/catalog_storage_probe.py",
+      "sha256": "3e7caa3a15ff8690ad48d070dfd552c47161ef0d53c0baaf475f0e15be38dbbd"
+    },
+    {
+      "path": "app/build/audit161/fixture-1440.png",
+      "sha256": "3b910e4991f8e8b56156b2a50c05b973c568960532f4bd9ff994d08cc5526c7a"
+    },
+    {
+      "path": "app/build/audit161/fixture-390.png",
+      "sha256": "e98b591e5703e52017e5a1d9d948168b89c105737c580492bd9235a82a62c8f0"
+    },
+    {
+      "path": "app/build/audit161/fixture-result.json",
+      "sha256": "c575998f133eacaa8482b7363db49c970e0db7dcef33c9c913fd4feade92edf3"
+    },
+    {
+      "path": "app/build/audit161/fixture-with-parity-1440.png",
+      "sha256": "91eaeb371b5e7ecdec6bfd1256e1596b61ba36b1220422cf91fd00703113a2cb"
+    },
+    {
+      "path": "app/build/audit161/fixture-with-parity-390.png",
+      "sha256": "0f623b144ee7a6c85177b179c624c0bf351bc44aa3d8a9d7fca54e2820a434c3"
+    },
+    {
+      "path": "app/build/audit161/fixture-with-parity-result.json",
+      "sha256": "ce8eeb5b30e8fd0cff0c329b3494d098c388d7d324213f37c5d3401d7983ab38"
+    },
+    {
+      "path": "app/build/audit161/fixture.cjs",
+      "sha256": "4c2312c176a5393f032bc09959538dd58891284dc370337bad8cc8134f4644a4"
+    },
+    {
+      "path": "app/build/audit161/full-picker-candidate-1355.png",
+      "sha256": "fcfc8b9275051962241c9466c9b8968e544f184116415a6eec2c612b339f7e4a"
+    },
+    {
+      "path": "app/build/audit161/full-picker-candidate-390.png",
+      "sha256": "4747ed218144c15c0f04b55ebbe65c2dd622e80309caead4d03d3cb322eebcaf"
+    },
+    {
+      "path": "app/build/audit161/full-picker-candidate-768.png",
+      "sha256": "894117991717ede475214ec52af43b619ecc5dbd8991217ac3ae2ba94bb30ef8"
+    },
+    {
+      "path": "app/build/audit161/full-picker-candidate.cjs",
+      "sha256": "7d9a8961afa578551a93baa8907ab1c252235f4a95cbd35bd0089efec60d17e4"
+    },
+    {
+      "path": "app/build/audit161/full-picker-candidate.json",
+      "sha256": "f3ae5905583051882814b2e7716f437d1c9d063630a24efee698ad70a9700f83"
+    },
+    {
+      "path": "app/build/audit161/full-picker-public-before-v2-1355.png",
+      "sha256": "42f89493188d4379b9ed3373fc2e5ea36a22f242de86a359931b8ac26c6b74f4"
+    },
+    {
+      "path": "app/build/audit161/full-picker-public-before-v2-390.png",
+      "sha256": "81b93f08f5eddfedce37e6e767b6135084b2f553bd307867b2d52084f41b41ea"
+    },
+    {
+      "path": "app/build/audit161/full-picker-public-before-v2.json",
+      "sha256": "06ba833fff6831b54d0682f233268a9f226522d909d2639c7a0659b2cff00316"
+    },
+    {
+      "path": "app/build/audit161/full-picker-public-before.json",
+      "sha256": "fbf9dd01d22f8ad2df6279f68d8002015a63f267322c3ecf13932483f3efc41e"
+    },
+    {
+      "path": "app/build/audit161/full-picker-public-error-1355.png",
+      "sha256": "13502a3928e9767f35e765dbbb78119d13569aef4ca94f69f7f557fe20a4b555"
+    },
+    {
+      "path": "app/build/audit161/full-picker-public-error-390.png",
+      "sha256": "3041d996afa19b08e53fb21c9dda04644020a7dc610c82f49b04bb1bde862b70"
+    },
+    {
+      "path": "app/build/audit161/full-picker-public-v2.cjs",
+      "sha256": "1b7de7bbe2dadb4c04d3c66df5a5e410409a61079fa2da56b06befadf70562ef"
+    },
+    {
+      "path": "app/build/audit161/full-picker-public.cjs",
+      "sha256": "e41365e662c742666664805f8a24878d0e2617d25db0d3633b6ed7e3e60af9de"
+    },
+    {
+      "path": "app/build/audit161/guest-delivery.json",
+      "sha256": "9d9f2707fa53471e025a0285fae894826097ddbeba3fb16d2bcbcdd855ad5620"
+    },
+    {
+      "path": "app/build/audit161/guest_delivery_probe.py",
+      "sha256": "aa8475fb94d35f0518343eb1a85dfd6e012efa19285d03d20fe048c31e401988"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/environment-hash.json",
+      "sha256": "d6b0b1258ed85f0943a4949d2eb7c4db0f4df9cda6992ebea68bdcfbd160af06"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/inputs.json",
+      "sha256": "69960843e910cdcb6f2dec513802b85fba1d52a7a865cf3fdcde03fac5155ee4"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/npm-build.log",
+      "sha256": "2dc03bf4766cbdeecac767b3a5393459804ecb5839dd01b691c69bd01ceca9ec"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/result.json",
+      "sha256": "64e8d3f3297f61c30202c979a3b36815971445d76d8ab22851b5a5b4943a29df"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/source-snapshots/NoWing-web/src/__tests__/components/ChatAttachmentVisibility.test.tsx",
+      "sha256": "5cd5e3f123fccae7103ca20aa1e1cd48793fbf7181997451238a29a36415a3ae"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/source-snapshots/NoWing-web/src/__tests__/core/boundedStorageRead.test.ts",
+      "sha256": "c3e3c523a5e116dd22eacb0a06f0309bd8e8be0b8e8a2b2e48f94704ccba72c1"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/source-snapshots/NoWing-web/src/__tests__/core/storageTransientRead.test.ts",
+      "sha256": "f6d5b61f5ba48a54b7a0716c28b2f16514a5b7307b9b9b5159fc38dc23808db8"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/source-snapshots/NoWing-web/src/components/ChatAttachmentMedia.tsx",
+      "sha256": "459674649b3f5552bfc23d205f6939da453bbb6097b995321138c7c2a202586d"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/source-snapshots/NoWing-web/src/core/media/boundedStorageRead.ts",
+      "sha256": "3aa82500c89496ddeeddd715922a8826dca5a94828b2e649072efab354e4f89c"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/build/started.json",
+      "sha256": "3378f5d50679a43a9c94377ec096de196a1f26da6810ecbb8a8d56973fb243cd"
+    },
+    {
+      "path": "app/build/audit161/main-candidate/prepared.json",
+      "sha256": "9a054e6422a36198fe12ea06a7017b68f4f023ec0edfa6f6c7c25ca2741dc39b"
+    },
+    {
+      "path": "app/build/audit161/media-probe.json",
+      "sha256": "2df03ed8802a18d1a02cab89c176bce2e6a384c66e71a215c69e41a3a219badb"
+    },
+    {
+      "path": "app/build/audit161/media_probe.py",
+      "sha256": "15bc1b4e4aaddbe21f04c9eafcc755694fc35b7afe4bba6c82ef8c215183b742"
+    },
+    {
+      "path": "app/build/audit161/policy_probe.py",
+      "sha256": "a0e3b58017a6a7e17cc2daf3e1db3f77d80e43dd8dbe6a7b614a6b2087aaf3e6"
+    },
+    {
+      "path": "app/build/audit161/prepare_candidate_browser.py",
+      "sha256": "533e39fefbe6431b990c518c1ed10718193bbc9cdd80ccaa027dc1d2da8f2298"
+    },
+    {
+      "path": "app/build/audit161/prepare_full_picker.py",
+      "sha256": "535ebe099464280933ab7cce1f0bcd134c88dd1e447f5b5ecde4573414260527"
+    },
+    {
+      "path": "app/build/audit161/prepare_main_candidate.py",
+      "sha256": "9519fce54222e81d5cad85184a37381ff1fc6ebb7dbe992b6a3fa0e00f0b31f5"
+    },
+    {
+      "path": "app/build/audit161/prepare_proof_probe.py",
+      "sha256": "fe7c33795d170bac85195cc7dd64fae572a18ffe059a63113e3fbfd8e7dbffeb"
+    },
+    {
+      "path": "app/build/audit161/prepare_publication.py",
+      "sha256": "6a63172d206281dd0573b9dc2d692e9da501599657309ca67f39bfbe14de5ee1"
+    },
+    {
+      "path": "app/build/audit161/run_build.py",
+      "sha256": "392abb9ed3810ce58755ce7881bacf81f6c981eacc8d7013bac6438b932ae1f5"
+    },
+    {
+      "path": "app/build/audit161/web-baseline-snapshots/boundedStorageRead.ts",
+      "sha256": "dedaa0c528c7d1744cee40d86c67c76745439c11dd3df4ed838b9c2bcf47829d"
+    },
+    {
+      "path": "app/build/audit161/web-baseline-snapshots/ChatAttachmentMedia.tsx",
+      "sha256": "061fc86fa600f807af9ab79582a016e447a6a459f37fed84c7cf009c4c645019"
+    },
+    {
+      "path": "app/build/audit161/web-baseline-snapshots/ChatAttachmentVisibility.test.tsx",
+      "sha256": "5cd5e3f123fccae7103ca20aa1e1cd48793fbf7181997451238a29a36415a3ae"
+    },
+    {
+      "path": "app/build/audit161/web-baseline-snapshots/storageTransientRead.test.ts",
+      "sha256": "cd371f08bbfbc327acf3a6f17d6585757e7c4a263c5243179ccb0c394a6e92e2"
+    },
+    {
+      "path": "app/build/audit161/web-focused-final.json",
+      "sha256": "cd58c47da4930178d1ea5824e8eca0dfc5f9815d62127ec89c1c6a9e222b65d2"
+    },
+    {
+      "path": "app/build/audit161/web-focused-final.log",
+      "sha256": "f0026a2c16016219664f9e23a02898452c7b4649ee0f698b09cdf973288549ff"
+    },
+    {
+      "path": "app/build/audit161/web-focused-repair.json",
+      "sha256": "2a920534e682aa6d70cd7fb845a49105c18daeebb06149dcb34dedabce2a3ba5"
+    },
+    {
+      "path": "app/build/audit161/web-focused-repair.log",
+      "sha256": "470aa574b83f5aff0b00b3e1b2b37cdaed76dfd1cfad17f0038572da6a59be13"
+    },
+    {
+      "path": "app/build/audit161/web-full-final.json",
+      "sha256": "993afd908141485d6d2f0fcef05221f3df3f0afc259d3d1857ae025c91f50065"
+    },
+    {
+      "path": "app/build/audit161/web-full-final.log",
+      "sha256": "009b071cbf8a70b47ff1a14ef8cc815d8159db32829edee3ede09043539df5b4"
+    },
+    {
+      "path": "app/build/audit161/web-transient-baseline.json",
+      "sha256": "bc9b7780108f960727adb28effcd3c7c211020883cf453b2e6fe4998e34e62c2"
+    },
+    {
+      "path": "app/build/audit161/web-transient-baseline.log",
+      "sha256": "7497840c829d51471b3910f98c1480e828a2e64385f1e403701fb65b9800e8e5"
+    },
+    {
+      "path": "app/build/audit161/web-visibility-baseline.json",
+      "sha256": "f41d33b46dd1b28f66a3efda0de4cfe97ca3504f20d94f9f6c063cb832a72276"
+    },
+    {
+      "path": "app/build/audit161/web-visibility-baseline.log",
+      "sha256": "116804159bd9926a803afeeeffb0b8af8e6cf0ea6795b65828a8e505c877d7d5"
+    }
+  ],
+  "deployed": false,
+  "newApkGenerated": false,
+  "physicalMobileValidation": false,
+  "serverOrDatabaseModified": false,
+  "realAccountLoginUsed": false,
+  "fullProjectGoalComplete": false
+}

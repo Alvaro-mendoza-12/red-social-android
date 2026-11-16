@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T03:56:43.686738+00:00",
-  "baseCommit": "223098d302c49fb9400ece863f38fa721123995f",
+  "generatedAtUtc": "2026-11-16T04:25:02.371942+00:00",
+  "baseCommit": "85b084a82013ff210f0779cc69de56a206426035",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3604,
-    "partial": 257,
-    "code-read": 713
+    "pending": 3606,
+    "partial": 255,
+    "code-read": 717
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 493
     },
     "documentation": {
-      "pending": 646,
+      "pending": 648,
       "code-read": 58,
       "partial": 20
     },
@@ -36,9 +36,9 @@
       "code-read": 16
     },
     "web": {
-      "partial": 86,
+      "partial": 84,
       "pending": 484,
-      "code-read": 85
+      "code-read": 89
     }
   },
   "files": [
@@ -823,6 +823,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/components/ChatAttachmentVisibility.test.tsx",
+      "phase": "web",
+      "gitBlobId": "27a197332db4512778a05eb3d10cb824e2b43855",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/161-stickers-visibilidad-y-recuperacion-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/components/ChatMediaAlbum.test.tsx",
       "phase": "web",
       "gitBlobId": "4a4db7b1a4250aa0183eb7b65e2e4f35bc0f9fe3",
@@ -1235,9 +1243,9 @@
     {
       "file": "NoWing-web/src/__tests__/core/boundedStorageRead.test.ts",
       "phase": "web",
-      "gitBlobId": "c2f32ec1dd0cf384e284d795235717e7d404f767",
+      "gitBlobId": "d25c0bf56298e17402d05ef594f13bec7d2b8044",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/161-stickers-visibilidad-y-recuperacion-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -1733,6 +1741,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/core/storageTransientRead.test.ts",
+      "phase": "web",
+      "gitBlobId": "188d03d78e1345c9c8cb7d51156959854e96b383",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/161-stickers-visibilidad-y-recuperacion-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/core/systemAnnouncements.test.ts",
       "phase": "web",
       "gitBlobId": "670d8c92abf1dfaea821452ee79c4c2e00c74124",
@@ -2141,9 +2157,9 @@
     {
       "file": "NoWing-web/src/components/ChatAttachmentMedia.tsx",
       "phase": "web",
-      "gitBlobId": "bcaa4380f616343ad4aac46319c888b7f49f897c",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
+      "gitBlobId": "c5a8f3471b6f71ccc8b12d09162ca6c9f6c97e37",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/161-stickers-visibilidad-y-recuperacion-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3055,9 +3071,9 @@
     {
       "file": "NoWing-web/src/core/media/boundedStorageRead.ts",
       "phase": "web",
-      "gitBlobId": "2e3da65729a8a9c81b1a681739bd7e0bcd36a00a",
-      "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "gitBlobId": "e4bf4c9f3e3f146ea3f6ef6af593a6ec142b5f3d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/161-stickers-visibilidad-y-recuperacion-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -20705,7 +20721,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "6063c3af2df9fc1d4b881521dc0a5886630d4e62",
+      "gitBlobId": "e9e6a04043d43a73ea9e4d5bd860e2dc99a9cab1",
       "reviewStatus": "pending"
     },
     {
@@ -21102,6 +21118,12 @@
       "file": "docs/oficial/16-recuperacion-tunel-y-feed-2026-09-09.md",
       "phase": "documentation",
       "gitBlobId": "601004750f3f9998f08a6125078208be547f8286",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/161-stickers-visibilidad-y-recuperacion-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "6ce572bfbb46fd831697e91552b6820ad8076fac",
       "reviewStatus": "pending"
     },
     {
@@ -21621,7 +21643,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "28f05ece03c05472b81ce1a0d50f7845213e98b5",
+      "gitBlobId": "dbe97e02c53b68f5d149d6857d6142a9bc9c5a3e",
       "reviewStatus": "pending"
     },
     {
@@ -22560,6 +22582,12 @@
       "file": "docs/quality/evidence/157-confirmed-recovery-cleanup.json",
       "phase": "documentation",
       "gitBlobId": "89b0e87fc6d1a6f6198303703581ae0961f70eb6",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/161-sticker-visibility-delivery.json",
+      "phase": "documentation",
+      "gitBlobId": "6638027e7ea23b14c71f14a35d457c0f0087855a",
       "reviewStatus": "pending"
     },
     {

@@ -149,9 +149,19 @@ describe('bounded authorized streaming', () => {
   test('allows exact maximum', async () => {
     fetcher.mockResolvedValue(response([new Uint8Array(100)])); expect((await readBoundedStorageBlob(options(100))).size).toBe(100)
   })
-  test.each([401, 403, 404, 429, 503])('denied status %d has no Blob or public fallback', async (status) => {
+  test.each([401, 403, 404, 429])('denied status %d has no Blob or public fallback', async (status) => {
     fetcher.mockResolvedValue(response([new Uint8Array([1])], {}, { ok: false, status }))
     await expect(readBoundedStorageBlob(options())).rejects.toThrow(`MEDIA_READ_${status}`); expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+  test('persistent 503 retries only the same authorized origin and never a public fallback', async () => {
+    fetcher.mockImplementation(async () => response([new Uint8Array([1])], {}, { ok: false, status: 503 }))
+    await expect(readBoundedStorageBlob(options())).rejects.toThrow('MEDIA_READ_503')
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    for (const [source, init] of fetcher.mock.calls) {
+      expect(source).toBe(url)
+      expect(new Headers(init.headers).get('Authorization')).toBe('Bearer ' + token)
+      expect(init.redirect).toBe('error')
+    }
   })
   test('rejects 206 because this transport is a complete small-object read', async () => {
     fetcher.mockResolvedValue(response([new Uint8Array([1])], {}, { status: 206 })); await expect(readBoundedStorageBlob(options())).rejects.toThrow('MEDIA_READ_206')
