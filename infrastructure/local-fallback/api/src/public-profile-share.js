@@ -3,7 +3,7 @@
 const { readPublicProfile } = require('./guest-mode-routes')
 const { canonicalStorageUrl } = require('./storage-url-canonicalization')
 const sharp = require('sharp')
-const { readPublicShareImage } = require('./public-share-image')
+const { readPublicShareImage, publicShareStorageInternalOrigin } = require('./public-share-image')
 const { publicShareProfileAllowed } = require('./public-share-policy')
 const logo = require('node:fs').readFileSync(require('node:path').join(__dirname, 'assets', 'novvin-logo.png')).toString('base64')
 
@@ -48,7 +48,9 @@ async function publicProfileCard(profile, publicBaseUrl) {
   const bioLines = previewLines(profile.bio || `Conoce el perfil de ${name} en Novvin.`)
   const nameSize = name.length > 18 || /[^\u0000-\u00ff]/.test(name) ? 44 : 64
   let avatarMarkup = `<circle cx="234" cy="325" r="128" fill="#2b629a"/><text x="234" y="361" text-anchor="middle" font-size="104" font-weight="700" fill="#ffffff">${escapeHtml(Array.from(name)[0]?.toUpperCase() || 'N')}</text>`
-  const avatar = await readPublicShareImage(profile.avatar_url, base)
+  const avatar = await readPublicShareImage(profile.avatar_url, base, {
+    guestAccess: true, thumbnail: 'avatar', localStorageOrigin: publicShareStorageInternalOrigin(),
+  })
   if (avatar) {
     const square = await sharp(avatar).resize(256, 256, { fit: 'cover' }).jpeg({ quality: 85 }).toBuffer()
     avatarMarkup = `<image x="106" y="197" width="256" height="256" href="data:image/jpeg;base64,${square.toString('base64')}" clip-path="url(#avatarClip)"/>`
