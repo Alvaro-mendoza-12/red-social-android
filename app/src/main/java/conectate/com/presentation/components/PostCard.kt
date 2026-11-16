@@ -39,8 +39,6 @@ import coil.request.CachePolicy
 import coil.request.ImageRequest
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.data.localfallback.UbuntuStorageUrl
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import conectate.com.data.model.Post
 import conectate.com.util.DateUtils
 import conectate.com.presentation.navigation.Screen
@@ -515,26 +513,7 @@ fun PostCard(
 
                     if (images.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
-                        if (images.size == 1) {
-                            PostMediaTile(images.first(), Modifier.fillMaxWidth().height(300.dp)) {
-                                fullScreenImageIndex = 0
-                            }
-                        } else {
-                            val pagerState = rememberPagerState(pageCount = { images.size })
-                            Box(Modifier.fillMaxWidth().height(300.dp)) {
-                                HorizontalPager(pagerState, modifier = Modifier.fillMaxSize()) { page ->
-                                    PostMediaTile(images[page], Modifier.fillMaxSize()) { fullScreenImageIndex = page }
-                                }
-                                Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
-                                    horizontalArrangement = Arrangement.Center) {
-                                    repeat(images.size) { index ->
-                                        Box(Modifier.padding(2.dp).clip(CircleShape)
-                                            .background(if (pagerState.currentPage == index) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = .5f))
-                                            .size(6.dp))
-                                    }
-                                }
-                            }
-                        }
+                        PostMediaGallery(images, windowHeightDp.dp) { fullScreenImageIndex = it }
                     }
                 }
             }

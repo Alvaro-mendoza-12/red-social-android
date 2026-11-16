@@ -872,7 +872,7 @@
   height: auto;
   max-height: 760px;
   object-fit: contain;
-  background: #000;
+  background: var(--surface);
 }
 .feed-media-grid {
   display: grid;
@@ -881,7 +881,7 @@
 }
 .feed-media-grid-item {
   aspect-ratio: 1;
-  object-fit: cover;
+  object-fit: contain;
 }
 .feed-stats {
   display: flex;
