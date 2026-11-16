@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T18:11:23.503907+00:00",
-  "baseCommit": "6d3685118ad53859e00b99b86e9e32f95b71cf28",
+  "generatedAtUtc": "2026-11-16T20:30:44.212266+00:00",
+  "baseCommit": "307ec9645a06942767606ecd214129478f00a16c",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3633,
+    "pending": 3625,
     "partial": 248,
-    "code-read": 723
+    "code-read": 732
   },
   "countsByPhase": {
     "android": {
-      "pending": 1485,
-      "code-read": 496,
+      "pending": 1476,
+      "code-read": 505,
       "partial": 107
     },
     "documentation": {
-      "pending": 650,
+      "pending": 651,
       "code-read": 59,
       "partial": 20
     },
@@ -7744,7 +7744,9 @@
       "file": "app/src/main/java/conectate/com/data/model/SemanticSearchResult.kt",
       "phase": "android",
       "gitBlobId": "8303b32fe31b63e12c771c256911ca4256c30a66",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/model/SharedVideoReference.kt",
@@ -12240,31 +12242,41 @@
       "file": "app/src/main/java/conectate/com/presentation/search/SearchDiscovery.kt",
       "phase": "android",
       "gitBlobId": "9295094f3fa4344e08e783d44363f35bb3627f69",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchHistoryStore.kt",
       "phase": "android",
       "gitBlobId": "0556da9821cf592c32b2610741de3e03c4cd50a5",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchUsersScreen.kt",
       "phase": "android",
       "gitBlobId": "7b6a6715d2290c520b8e8f2c12c0471d868765e7",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchUsersViewModel.kt",
       "phase": "android",
       "gitBlobId": "060269218546201bb4e8a1a639d9c1353636286e",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/search/UnifiedSearchController.kt",
       "phase": "android",
-      "gitBlobId": "0c30aaaca1161e5b76c58432a4113e44bc880ddf",
-      "reviewStatus": "pending"
+      "gitBlobId": "e495e8f1ce14d6c0840d09f0e5279692865793b0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/settings/ChatOfflineStorageSection.kt",
@@ -13208,7 +13220,9 @@
       "file": "app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomSearchViewModel.kt",
       "phase": "android",
       "gitBlobId": "6a39606e1d81da6eb45475ee9e3825ff231b469d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomsScreen.kt",
@@ -17478,13 +17492,17 @@
       "file": "app/src/test/java/conectate/com/presentation/search/SearchDiscoveryTest.kt",
       "phase": "android",
       "gitBlobId": "a1c338ed105dcf5d7bca8c0632414748a36c17dc",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/search/UnifiedSearchControllerTest.kt",
       "phase": "android",
-      "gitBlobId": "6490320c807f6395ae18d31f560c963d01c10b76",
-      "reviewStatus": "pending"
+      "gitBlobId": "14a8598ab41b24c8c8ed120c905ce6ca8e1f1471",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/social/ChallengeControllerTest.kt",
@@ -21836,6 +21854,12 @@
       "file": "docs/oficial/VALIDACION_RECHAZO_LLAMADAS_VERDE.json",
       "phase": "documentation",
       "gitBlobId": "ce173cb9cf0970ffd0cbdfb7870dd5406e3043ee",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "phase": "documentation",
+      "gitBlobId": "9c4d1448e625b1e678d645f22504afad7a921325",
       "reviewStatus": "pending"
     },
     {

@@ -25,6 +25,61 @@ class UnifiedSearchControllerTest {
         assertFalse(controller.loading.value)
     }
 
+    @Test fun submittingWhileWaitingStartsBothSearchesImmediately() = runTest {
+        val userStarts = mutableListOf<Long>()
+        val contentStarts = mutableListOf<Long>()
+        val controller = UnifiedSearchController(this, {
+            userStarts += testScheduler.currentTime
+            Result.success(listOf(it))
+        }, {
+            contentStarts += testScheduler.currentTime
+            Result.success(listOf(it))
+        })
+        controller.search("ana")
+        advanceTimeBy(100)
+        assertTrue(userStarts.isEmpty())
+        assertTrue(contentStarts.isEmpty())
+
+        controller.search(" @ana ", immediate = true)
+        runCurrent()
+        advanceUntilIdle()
+
+        assertEquals(listOf(100L), userStarts)
+        assertEquals(listOf(100L), contentStarts)
+        assertEquals(listOf("ana"), controller.users.value)
+        assertEquals(listOf("ana"), controller.content.value)
+        assertFalse(controller.loading.value)
+    }
+
+    @Test fun submittingAnActiveQueryKeepsItsExistingRequestsAndResults() = runTest {
+        val releaseContent = CompletableDeferred<Unit>()
+        var peopleCalls = 0
+        var contentCalls = 0
+        val controller = UnifiedSearchController(this, {
+            peopleCalls++
+            Result.success(listOf(it))
+        }, {
+            contentCalls++
+            releaseContent.await()
+            Result.success(listOf(it))
+        })
+        controller.search("ana")
+        advanceTimeBy(350)
+        runCurrent()
+        assertEquals(listOf("ana"), controller.users.value)
+        assertTrue(controller.loading.value)
+
+        controller.search("ana", immediate = true)
+        runCurrent()
+        assertEquals(listOf("ana"), controller.users.value)
+        releaseContent.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(1, peopleCalls)
+        assertEquals(1, contentCalls)
+        assertEquals(listOf("ana"), controller.content.value)
+    }
+
     @Test fun deletingToOneCharacterClearsStaleResults() = runTest {
         val controller = UnifiedSearchController(this, { Result.success(listOf(it)) }, { Result.success(listOf(it)) })
         controller.search("ana")
@@ -100,6 +155,33 @@ class UnifiedSearchControllerTest {
         assertEquals(listOf(0, 2), offsets)
         assertEquals(listOf("a", "b", "c"), controller.content.value)
         assertFalse(controller.hasMoreContent.value)
+    }
+
+    @Test fun paginatedSearchIndexesOnlyIncomingItemsAndResetsForTheNextQuery() = runTest {
+        val keyedItems = mutableListOf<String>()
+        val controller = UnifiedSearchController(this, { Result.success(emptyList<String>()) },
+            { error("The unpaged endpoint must not be called") }, findContentPage = { query, offset ->
+                Result.success(when {
+                    query == "new" -> SearchContentPage(listOf("a"))
+                    offset == 0 -> SearchContentPage(listOf("a", "b"), 2)
+                    offset == 2 -> SearchContentPage(listOf("b", "c"), 4)
+                    else -> SearchContentPage(listOf("c", "d", "d"))
+                })
+            }, contentKey = { item -> item.also { keyedItems += it } })
+
+        controller.search("old", immediate = true)
+        advanceUntilIdle()
+        repeat(2) {
+            controller.loadMoreContent()
+            advanceUntilIdle()
+        }
+        assertEquals(listOf("a", "b", "c", "d"), controller.content.value)
+        assertEquals(listOf("a", "b", "b", "c", "c", "d", "d"), keyedItems)
+
+        controller.search("new", immediate = true)
+        advanceUntilIdle()
+        assertEquals(listOf("a"), controller.content.value)
+        assertEquals("a", keyedItems.last())
     }
 
     @Test fun latePageCannotLeakIntoDifferentQueryOrClearedAccount() = runTest {
