@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T00:07:12.189194+00:00",
-  "baseCommit": "1fefd607a3abe7b473f37a952bf5e6d14431255b",
+  "generatedAtUtc": "2026-11-16T03:56:43.686738+00:00",
+  "baseCommit": "223098d302c49fb9400ece863f38fa721123995f",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3603,
-    "partial": 256,
-    "code-read": 711
+    "pending": 3604,
+    "partial": 257,
+    "code-read": 713
   },
   "countsByPhase": {
     "android": {
-      "pending": 1473,
-      "partial": 109,
-      "code-read": 491
+      "pending": 1472,
+      "partial": 110,
+      "code-read": 493
     },
     "documentation": {
-      "pending": 644,
+      "pending": 646,
       "code-read": 58,
       "partial": 20
     },
@@ -6425,6 +6425,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/core/messaging/MessageLocalDate.kt",
+      "phase": "android",
+      "gitBlobId": "884e04dc94b9e010f043895cfbcba3f282fcbaed",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/163-albumes-y-cambio-local-de-dia-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/core/messaging/MessageReceiptState.kt",
       "phase": "android",
       "gitBlobId": "85e8ccf7ba3b6240b481638b30bed8e945d903db",
@@ -9909,8 +9917,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/MediaGridMessageBubble.kt",
       "phase": "android",
-      "gitBlobId": "69ae1f2b301611d8ded407731aabb311ee2fa76b",
-      "reviewStatus": "pending"
+      "gitBlobId": "304e3eba4523ac2539576328bd97ceb2f469839d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/163-albumes-y-cambio-local-de-dia-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/MediaPickerViewModel.kt",
@@ -10997,9 +11007,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/DateSeparator.kt",
       "phase": "android",
-      "gitBlobId": "33207bf66a94b5523fff3f2d04282da8f1a3b58a",
+      "gitBlobId": "8634c123c2a93544e3c9a67af8f357895b9dd3d8",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
+      "evidence": "docs/oficial/163-albumes-y-cambio-local-de-dia-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16447,6 +16457,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/components/MediaGridDateBoundaryTest.java",
+      "phase": "android",
+      "gitBlobId": "c0d31338105c075e994a2b4e1d8a51ac9fca5e2a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/163-albumes-y-cambio-local-de-dia-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/components/MediaViewerSourceTest.kt",
       "phase": "android",
       "gitBlobId": "ddd675799c16c838e46822abdc29a94b4bcf3d9b",
@@ -20687,7 +20705,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "8e34fbb7d3cfbc4ebb915ee2e308bae3a322f321",
+      "gitBlobId": "6063c3af2df9fc1d4b881521dc0a5886630d4e62",
       "reviewStatus": "pending"
     },
     {
@@ -21090,6 +21108,12 @@
       "file": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
       "phase": "documentation",
       "gitBlobId": "ddcdbae0e96d93c3c0a4df7ae2571d251a77f7db",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/163-albumes-y-cambio-local-de-dia-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "7a253136fcae740e31afc61c42811d4be682f64f",
       "reviewStatus": "pending"
     },
     {
@@ -21597,7 +21621,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "4eae54b150fc3075851fb1fdac3de2895263cae0",
+      "gitBlobId": "28f05ece03c05472b81ce1a0d50f7845213e98b5",
       "reviewStatus": "pending"
     },
     {
@@ -22542,6 +22566,12 @@
       "file": "docs/quality/evidence/162-chat-local-date-separators.json",
       "phase": "documentation",
       "gitBlobId": "0707a0d011cb4f17ad5972416bf3397cc2ccc230",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/163-media-album-local-day.json",
+      "phase": "documentation",
+      "gitBlobId": "8eba64287c21abc8288feca0942689beeb16a164",
       "reviewStatus": "pending"
     },
     {

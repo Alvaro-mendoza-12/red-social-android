@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.SubcomposeAsyncImage
 import conectate.com.core.media.MediaImageRequestFactory
+import conectate.com.core.messaging.messageLocalDate
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Message
 import conectate.com.presentation.theme.currentChatAccentColors
@@ -110,13 +111,16 @@ internal fun mediaGridClusterAt(
 ): List<Message>? {
     val message = messages.getOrNull(index) ?: return emptyList()
     if (!isClusterableMediaGridMessage(message)) return listOf(message)
+    // An album belongs to one known local day, just like its date header.
+    val albumDate = messageLocalDate(message.created_at) ?: return listOf(message)
 
     val previous = messages.getOrNull(index - 1)
     if (
         previous != null &&
         previous.sender_id == message.sender_id &&
         isClusterableMediaGridMessage(previous) &&
-        kotlin.math.abs(message.timestampMillis - previous.timestampMillis) <= maxGapMillis
+        kotlin.math.abs(message.timestampMillis - previous.timestampMillis) <= maxGapMillis &&
+        messageLocalDate(previous.created_at) == albumDate
     ) return null
 
     val cluster = mutableListOf(message)
@@ -126,7 +130,8 @@ internal fun mediaGridClusterAt(
         if (
             next.sender_id == message.sender_id &&
             isClusterableMediaGridMessage(next) &&
-            kotlin.math.abs(next.timestampMillis - cluster.last().timestampMillis) <= maxGapMillis
+            kotlin.math.abs(next.timestampMillis - cluster.last().timestampMillis) <= maxGapMillis &&
+            messageLocalDate(next.created_at) == albumDate
         ) {
             cluster += next
             cursor += 1
