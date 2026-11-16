@@ -586,8 +586,7 @@ fun CommunityChatScreen(
                             contentPadding = PaddingValues(bottom = 16.dp, top = 8.dp)
                         ) {
                             itemsIndexed(chatMessages, key = { _, item -> item.id }, contentType = { _, item -> item.content_type }) { index, msg ->
-                                val previousIso = chatMessages.getOrNull(index - 1)?.created_at
-                                if (shouldShowDateSeparator(msg.created_at, previousIso)) {
+                                if (shouldShowDateSeparator(chatMessages, index)) {
                                     DateSeparator(label = formatDateSeparatorLabel(msg.created_at))
                                 }
                                 if (msg.content_type == "system_membership") {
