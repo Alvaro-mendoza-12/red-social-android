@@ -10,13 +10,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import conectate.com.data.model.Message
-import java.time.Instant
+import conectate.com.data.model.parseMessageInstant
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -44,14 +42,20 @@ fun DateSeparator(label: String, modifier: Modifier = Modifier) {
 }
 
 fun shouldShowDateSeparator(messages: List<Message>, index: Int): Boolean {
-    if (index <= 0) return true
-    val currentDate = extractLocalDate(messages.getOrNull(index)?.created_at)
-    val previousDate = extractLocalDate(messages.getOrNull(index - 1)?.created_at)
-    return currentDate != previousDate
+    val message = messages.getOrNull(index) ?: return false
+    val currentDate = extractLocalDate(message.created_at) ?: return false
+    // A missing or malformed timestamp is not a new day. Compare with the
+    // last known date so a legacy row cannot split an ongoing conversation.
+    for (previousIndex in index - 1 downTo 0) {
+        val previousDate = extractLocalDate(messages[previousIndex].created_at) ?: continue
+        return currentDate != previousDate
+    }
+    return true
 }
 
 fun shouldShowDateSeparator(currentIso: String?, previousIso: String?): Boolean {
-    return extractLocalDate(currentIso) != extractLocalDate(previousIso)
+    val currentDate = extractLocalDate(currentIso) ?: return false
+    return currentDate != extractLocalDate(previousIso)
 }
 
 fun formatDateSeparatorLabel(iso: String?): String {
@@ -66,13 +70,10 @@ fun formatDateSeparatorLabel(iso: String?): String {
 
 private fun extractLocalDate(rawIso: String?): LocalDate? {
     if (rawIso.isNullOrBlank()) return null
-    val clean = rawIso.trim().replace(" ", "T")
+    // Match timeline ordering and the bubble clock, including PostgreSQL
+    // offsets and legacy UTC dates. The displayed day belongs to the device.
     return runCatching {
-        Instant.parse(
-            if (clean.contains("Z") || clean.contains("+")) clean else "${clean}Z"
-        ).atZone(ZoneId.systemDefault()).toLocalDate()
-    }.getOrElse {
-        runCatching { LocalDateTime.parse(clean.removeSuffix("Z")).toLocalDate() }.getOrNull()
-    }
+        parseMessageInstant(rawIso)?.atZone(ZoneId.systemDefault())?.toLocalDate()
+    }.getOrNull()
 }
 

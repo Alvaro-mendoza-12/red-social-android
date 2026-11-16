@@ -1,0 +1,414 @@
+{
+  "continuation": 162,
+  "recordedAtUtc": "2026-11-16T00:06:43.086865+00:00",
+  "baseline": {
+    "phase": "baseline",
+    "started": "2026-11-15T23:23:16.005984+00:00",
+    "finished": "2026-11-15T23:48:12.353321+00:00",
+    "exitCode": 1,
+    "commitStart": "1fefd607a3abe7b473f37a952bf5e6d14431255b",
+    "commitEnd": "1fefd607a3abe7b473f37a952bf5e6d14431255b",
+    "changedInputs": [],
+    "counts": {
+      "tests": 12,
+      "failures": 8,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "class": "conectate.com.presentation.messages.DateSeparatorTest",
+        "tests": 12,
+        "failures": 8,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "malformed first row does not display an invented separator",
+            "failureTypes": [
+              "java.lang.AssertionError"
+            ]
+          },
+          {
+            "name": "compact offset and UTC live messages share one date",
+            "failureTypes": [
+              "java.lang.AssertionError"
+            ]
+          },
+          {
+            "name": "UTC midnight does not split a conversation before local midnight",
+            "failureTypes": []
+          },
+          {
+            "name": "PostgreSQL short offsets and UTC live messages share one date",
+            "failureTypes": [
+              "java.lang.AssertionError"
+            ]
+          },
+          {
+            "name": "normal UTC messages within a local day stay together",
+            "failureTypes": []
+          },
+          {
+            "name": "negative offset messages still separate at actual local midnight",
+            "failureTypes": [
+              "java.lang.AssertionError"
+            ]
+          },
+          {
+            "name": "a real local date boundary remains visible",
+            "failureTypes": []
+          },
+          {
+            "name": "incoming UTC after negative offset history does not split the same day",
+            "failureTypes": [
+              "java.lang.AssertionError"
+            ]
+          },
+          {
+            "name": "today and yesterday labels remain meaningful",
+            "failureTypes": []
+          },
+          {
+            "name": "undated row between valid messages never invents another day",
+            "failureTypes": [
+              "java.lang.AssertionError"
+            ]
+          },
+          {
+            "name": "out of bounds rows cannot create separators",
+            "failureTypes": [
+              "java.lang.AssertionError"
+            ]
+          },
+          {
+            "name": "legacy epoch and UTC live messages share one date",
+            "failureTypes": [
+              "java.lang.AssertionError"
+            ]
+          }
+        ]
+      }
+    ],
+    "buildCommit": "1fefd607a3ab",
+    "physicalValidation": false,
+    "apkDelivered": false
+  },
+  "repair": {
+    "phase": "repair",
+    "started": "2026-11-15T23:49:54.035241+00:00",
+    "finished": "2026-11-16T00:05:28.112826+00:00",
+    "exitCode": 0,
+    "commitStart": "1fefd607a3abe7b473f37a952bf5e6d14431255b",
+    "commitEnd": "1fefd607a3abe7b473f37a952bf5e6d14431255b",
+    "changedInputs": [],
+    "counts": {
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "suites": [
+      {
+        "class": "conectate.com.presentation.messages.DateSeparatorTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "malformed first row does not display an invented separator",
+            "failureTypes": []
+          },
+          {
+            "name": "compact offset and UTC live messages share one date",
+            "failureTypes": []
+          },
+          {
+            "name": "UTC midnight does not split a conversation before local midnight",
+            "failureTypes": []
+          },
+          {
+            "name": "PostgreSQL short offsets and UTC live messages share one date",
+            "failureTypes": []
+          },
+          {
+            "name": "normal UTC messages within a local day stay together",
+            "failureTypes": []
+          },
+          {
+            "name": "negative offset messages still separate at actual local midnight",
+            "failureTypes": []
+          },
+          {
+            "name": "a real local date boundary remains visible",
+            "failureTypes": []
+          },
+          {
+            "name": "equivalent instants have the same today label regardless of wire offset",
+            "failureTypes": []
+          },
+          {
+            "name": "an invalid bridge still preserves a real change of local day",
+            "failureTypes": []
+          },
+          {
+            "name": "incoming UTC after negative offset history does not split the same day",
+            "failureTypes": []
+          },
+          {
+            "name": "today and yesterday labels remain meaningful",
+            "failureTypes": []
+          },
+          {
+            "name": "the display zone determines the actual day boundary east of UTC too",
+            "failureTypes": []
+          },
+          {
+            "name": "undated row between valid messages never invents another day",
+            "failureTypes": []
+          },
+          {
+            "name": "out of bounds rows cannot create separators",
+            "failureTypes": []
+          },
+          {
+            "name": "legacy epoch and UTC live messages share one date",
+            "failureTypes": []
+          },
+          {
+            "name": "instants outside calendar range fail safely without an invented label",
+            "failureTypes": []
+          }
+        ]
+      },
+      {
+        "class": "conectate.com.presentation.components.MessageTimeFormattingTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "bubble clocks agree for ISO PostgreSQL and legacy UTC timestamps",
+            "failureTypes": []
+          },
+          {
+            "name": "changing display zone never changes the original message instant",
+            "failureTypes": []
+          }
+        ]
+      },
+      {
+        "class": "conectate.com.data.model.MessageTimestampCacheTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "Postgres hour offsets compact offsets and legacy UTC dates remain readable",
+            "failureTypes": []
+          },
+          {
+            "name": "legacy missing and malformed dates remain deterministic and safe",
+            "failureTypes": []
+          },
+          {
+            "name": "copy with another creation date cannot reuse the original cached timestamp",
+            "failureTypes": []
+          },
+          {
+            "name": "reading timestamp does not change wire JSON or message equality",
+            "failureTypes": []
+          },
+          {
+            "name": "UTC positive and negative offsets describe the same instant",
+            "failureTypes": []
+          }
+        ]
+      },
+      {
+        "class": "conectate.com.core.messaging.MessageTimelineOrderTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          {
+            "name": "equivalent UTC timestamps use chronological rather than textual ordering",
+            "failureTypes": []
+          },
+          {
+            "name": "pending stickers follow creation time instead of random IDs",
+            "failureTypes": []
+          },
+          {
+            "name": "out of order acknowledgements never swap pending stickers",
+            "failureTypes": []
+          },
+          {
+            "name": "incoming messages and equal timestamp ties remain chronological",
+            "failureTypes": []
+          }
+        ]
+      }
+    ],
+    "buildCommit": "1fefd607a3ab",
+    "physicalValidation": false,
+    "apkDelivered": false
+  },
+  "baselineCases": 12,
+  "baselineFailures": 8,
+  "baselineControls": 4,
+  "postPatchOwnCases": 4,
+  "codeRead": [
+    {
+      "path": "app/src/main/java/conectate/com/presentation/messages/DateSeparator.kt",
+      "sha256": "c306c30e9fec633bb1c70d9f8cf452fb79333748aa8c5be11e2932bca91dec37"
+    },
+    {
+      "path": "app/src/test/java/conectate/com/presentation/messages/DateSeparatorTest.kt",
+      "sha256": "2f382d228591887e0402cbec6cc5b44d47a5a58bcb020779839c21294aa280b3"
+    }
+  ],
+  "partialRead": [
+    {
+      "path": "app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt",
+      "sha256": "177fadfebef60d9f799165d25419d0d48b051e7fe8d4e4d5fd98520fa154cbcd"
+    },
+    {
+      "path": "app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt",
+      "sha256": "fb925ae2dcb93331fbf0725181b768bdb6f722b78749f7b145c52ea1172a14f0"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "app/build/audit162/baseline/gradle.log",
+      "sha256": "01f02e82a9dd6206d79d19a9da872725d5feacb90366ad807dc58cd8027ce670"
+    },
+    {
+      "path": "app/build/audit162/baseline/inputs.json",
+      "sha256": "c5171aa52645de0f8b5118b7c58a546fa6a0eb857487e1f90e5f527c5484d6bc"
+    },
+    {
+      "path": "app/build/audit162/baseline/result.json",
+      "sha256": "84655f4a5c215ea6f6205e1b688f63c9b21fbb0ddb7f66f2a4f98fa9d1f6cb24"
+    },
+    {
+      "path": "app/build/audit162/baseline/source-snapshots/app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt",
+      "sha256": "8bf1c41961b625ca6d711b2c98b63e2e3ee3fb86462f0188ce5f3600665d61d2"
+    },
+    {
+      "path": "app/build/audit162/baseline/source-snapshots/app/src/main/java/conectate/com/presentation/messages/DateSeparator.kt",
+      "sha256": "188ae9a4e111cdb293db9b12816923c3b2c1f8f2b1955dc1dce86365f227c42d"
+    },
+    {
+      "path": "app/build/audit162/baseline/source-snapshots/app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt",
+      "sha256": "d683af1b622b57327a35347b7b2686de42e5c51247473cbc0c0a80c52f1deac9"
+    },
+    {
+      "path": "app/build/audit162/baseline/source-snapshots/app/src/test/java/conectate/com/presentation/messages/DateSeparatorTest.kt",
+      "sha256": "f498f44e9cf1eb9e2511c9495ed6706616f43dd2fc5cf1b2bf89e411b127ef9f"
+    },
+    {
+      "path": "app/build/audit162/baseline/started.json",
+      "sha256": "2150ae0f32e3a6f9f254247d8c5c7adc50d6c1e53e35d232709069e130f0732c"
+    },
+    {
+      "path": "app/build/audit162/baseline/TEST-conectate.com.presentation.messages.DateSeparatorTest.xml",
+      "sha256": "4cb30fc70a0a778e0fa246b312522404eeaf24c4ecf2223aa929557c421fc67a"
+    },
+    {
+      "path": "app/build/audit162/repair/gradle.log",
+      "sha256": "81d45fb4e67700ce2c3b94c0745d2e2dcf59c8b0162f995b504c57c2c2aea62e"
+    },
+    {
+      "path": "app/build/audit162/repair/inputs.json",
+      "sha256": "7c710e042f5c5a85626b0fd3ed3708f839582cadb7640a530a7b012a1cebdf70"
+    },
+    {
+      "path": "app/build/audit162/repair/result.json",
+      "sha256": "ad18d5d3d5a24225a6ea7b926b296bd96fa81e105b1e5ddaeab0ad695e0308a4"
+    },
+    {
+      "path": "app/build/audit162/repair/source-snapshots/app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt",
+      "sha256": "fb925ae2dcb93331fbf0725181b768bdb6f722b78749f7b145c52ea1172a14f0"
+    },
+    {
+      "path": "app/build/audit162/repair/source-snapshots/app/src/main/java/conectate/com/presentation/messages/DateSeparator.kt",
+      "sha256": "c306c30e9fec633bb1c70d9f8cf452fb79333748aa8c5be11e2932bca91dec37"
+    },
+    {
+      "path": "app/build/audit162/repair/source-snapshots/app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt",
+      "sha256": "177fadfebef60d9f799165d25419d0d48b051e7fe8d4e4d5fd98520fa154cbcd"
+    },
+    {
+      "path": "app/build/audit162/repair/source-snapshots/app/src/test/java/conectate/com/presentation/messages/DateSeparatorTest.kt",
+      "sha256": "2f382d228591887e0402cbec6cc5b44d47a5a58bcb020779839c21294aa280b3"
+    },
+    {
+      "path": "app/build/audit162/repair/started.json",
+      "sha256": "b50924a79ce2b50bf02b712fe6a3b5aaf4f31decf510c046b4afabf3ced7083d"
+    },
+    {
+      "path": "app/build/audit162/repair/TEST-conectate.com.core.messaging.MessageTimelineOrderTest.xml",
+      "sha256": "182e54ddc331dec0067adabadf8ae2f8f6615ba89a023d73056da60b9edaf8fd"
+    },
+    {
+      "path": "app/build/audit162/repair/TEST-conectate.com.data.model.MessageTimestampCacheTest.xml",
+      "sha256": "59345bd0ab6b4280172a15a55ca741f849c0a0df2688fc2a6836aa9f0d12e871"
+    },
+    {
+      "path": "app/build/audit162/repair/TEST-conectate.com.presentation.components.MessageTimeFormattingTest.xml",
+      "sha256": "80abe604d3ac54d371a1a294cdb35960ba03d93c17554ae370ecaac0ec58916d"
+    },
+    {
+      "path": "app/build/audit162/repair/TEST-conectate.com.presentation.messages.DateSeparatorTest.xml",
+      "sha256": "ede9d768f2902a50eb0853e920c3be32b915082c85d7785e96b577c86ef61347"
+    },
+    {
+      "path": "app/build/audit162/run.py",
+      "sha256": "2b824530fc37b90e408bb705829250593307daf47d966dff7013b788d9d756db"
+    },
+    {
+      "path": "app/build/audit162/prepare_publication.py",
+      "sha256": "c858cf1924742d81af3536c745d09df18c097b469ceb7099f7525d98044e49c8"
+    },
+    {
+      "path": "app/build/audit162/integrate162.py",
+      "sha256": "5edac3252b56279eaf0ea349f9e833ea985ba83906337c573cb6267f4713f55c"
+    },
+    {
+      "path": "app/build/audit162/push162.py",
+      "sha256": "c72180d9287160916e0b7a87cf21916edcd6493fe8690a6b42adfb7d9b1d001b"
+    },
+    {
+      "path": "app/build/audit162/clock_probe.py",
+      "sha256": "27c2f1aee44120cad9c193be7d8e93f62e1da95ee0c4828eb3ff5911b91a5f15"
+    },
+    {
+      "path": "app/build/audit162/server-clock.json",
+      "sha256": "d918b8218672bade1e532593346b18fbfa9dbd480df641f996916c7d2d280678"
+    }
+  ],
+  "serverClockProbe": {
+    "checkedAtUtc": "2026-11-15T23:58:14.119635+00:00",
+    "readOnly": true,
+    "sshRoundTripMillis": 7352.13,
+    "serverMinusLocalMidpointMillis": 3666.81,
+    "possibleOffsetIntervalMillis": [
+      -9.26,
+      7342.87
+    ],
+    "ubuntuReportsNtpSynchronized": true,
+    "historicalScreenshotClockVerified": false
+  },
+  "screenshotSpecificWireTimestampsRead": false,
+  "privateMessagesRead": false,
+  "serverModified": false,
+  "physicalValidation": false,
+  "newApkGenerated": false,
+  "chatModuleClosed": false,
+  "fullProjectGoalComplete": false
+}

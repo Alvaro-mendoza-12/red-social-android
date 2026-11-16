@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-15T22:45:01.815883+00:00",
-  "baseCommit": "0dfaf95844ea0c8577aac30aacc300b03954f17a",
+  "generatedAtUtc": "2026-11-16T00:07:12.189194+00:00",
+  "baseCommit": "1fefd607a3abe7b473f37a952bf5e6d14431255b",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3602,
+    "pending": 3603,
     "partial": 256,
-    "code-read": 709
+    "code-read": 711
   },
   "countsByPhase": {
     "android": {
-      "pending": 1474,
+      "pending": 1473,
       "partial": 109,
-      "code-read": 489
+      "code-read": 491
     },
     "documentation": {
-      "pending": 642,
+      "pending": 644,
       "code-read": 58,
       "partial": 20
     },
@@ -10843,9 +10843,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "19fa3b02b611df3b30dfea6ca15cdbf9080184cf",
+      "gitBlobId": "d5a7f325e7165a759995be38dfbb4dcad2a8492f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10997,8 +10997,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/DateSeparator.kt",
       "phase": "android",
-      "gitBlobId": "a822cc51e2d9a8877fee759daeeb41a3795d7141",
-      "reviewStatus": "pending"
+      "gitBlobId": "33207bf66a94b5523fff3f2d04282da8f1a3b58a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/DirectMessageRequestNotice.kt",
@@ -11021,9 +11023,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "96e5ab688195c1fdd1a7b37fd84d26076c6c8ce7",
+      "gitBlobId": "fe6aa0c2521e25064ba820eefd3e522b9b03fe4b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16779,6 +16781,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/messages/DateSeparatorTest.kt",
+      "phase": "android",
+      "gitBlobId": "3f3b43698a303b2151eb428b3bfc1c2627103880",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/messages/ForwardCoordinatorNavigationTest.kt",
       "phase": "android",
       "gitBlobId": "21323c1d5264a3607df4f11d47ce8e5c64cfad73",
@@ -20677,7 +20687,7 @@
     {
       "file": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
       "phase": "documentation",
-      "gitBlobId": "e8fc3e0b04635b82ed051f7282301592500b84e7",
+      "gitBlobId": "8e34fbb7d3cfbc4ebb915ee2e308bae3a322f321",
       "reviewStatus": "pending"
     },
     {
@@ -21074,6 +21084,12 @@
       "file": "docs/oficial/16-recuperacion-tunel-y-feed-2026-09-09.md",
       "phase": "documentation",
       "gitBlobId": "601004750f3f9998f08a6125078208be547f8286",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
+      "phase": "documentation",
+      "gitBlobId": "ddcdbae0e96d93c3c0a4df7ae2571d251a77f7db",
       "reviewStatus": "pending"
     },
     {
@@ -21581,7 +21597,7 @@
     {
       "file": "docs/oficial/README.md",
       "phase": "documentation",
-      "gitBlobId": "44fb780ab809b33cc09fcf46f605d97a8bcdf52b",
+      "gitBlobId": "4eae54b150fc3075851fb1fdac3de2895263cae0",
       "reviewStatus": "pending"
     },
     {
@@ -22520,6 +22536,12 @@
       "file": "docs/quality/evidence/157-confirmed-recovery-cleanup.json",
       "phase": "documentation",
       "gitBlobId": "89b0e87fc6d1a6f6198303703581ae0961f70eb6",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/162-chat-local-date-separators.json",
+      "phase": "documentation",
+      "gitBlobId": "0707a0d011cb4f17ad5972416bf3397cc2ccc230",
       "reviewStatus": "pending"
     },
     {
