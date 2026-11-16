@@ -288,7 +288,7 @@ fun HomeScreen(
             
             composable(Screen.Videos.route) {
                 conectate.com.presentation.video.VideoFeedScreen(
-                    navController = navController,
+                    navController = mainNavController,
                     feedRefreshToken = videoFeedRefreshToken,
                     onFollowingFeedVisible = { videos -> homeViewModel.markFeedSeen("videos", videos.map { it.created_at }) },
                     onNavigateToUpload = { sound ->
@@ -440,7 +440,7 @@ fun HomeScreen(
                 )
             ) { backStackEntry ->
                 conectate.com.presentation.video.VideoFeedScreen(
-                    navController = navController,
+                    navController = mainNavController,
                     initialVideoId = backStackEntry.arguments?.getString("videoId"),
                     onNavigateToUpload = { sound ->
                         conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)
@@ -475,7 +475,7 @@ fun HomeScreen(
                 )
             ) { backStackEntry ->
                 conectate.com.presentation.video.VideoFeedScreen(
-                    navController = navController,
+                    navController = mainNavController,
                     initialVideoId = backStackEntry.arguments?.getString("videoId"),
                     onNavigateToUpload = { sound ->
                         conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)

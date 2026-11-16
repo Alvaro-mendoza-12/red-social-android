@@ -879,7 +879,7 @@ fun ProfileScreen(
                                                     (mainNavController ?: navController).navigate(Screen.MomentViewer.createRoute(avatarMoment.id))
                                                 } else rewrittenAvatarUrl?.let {
                                                     val route = if (user.isProfileAvatarVideo) {
-                                                        Screen.FullScreenVideo.createRoute(it, loop = false)
+                                                        Screen.FullScreenVideo.createRoute(it)
                                                     } else {
                                                         Screen.FullScreenImage.createRoute(it)
                                                     }
