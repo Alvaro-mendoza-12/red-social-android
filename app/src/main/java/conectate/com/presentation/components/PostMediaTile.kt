@@ -18,6 +18,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.size.Scale
 import conectate.com.core.media.MediaImageRequestFactory
 
 private enum class PostImageStatus { Loading, Ready, Failed }
@@ -29,7 +30,12 @@ internal fun postMediaType(url: String): String {
 
 /** A list shows a play control; the existing full-screen viewer owns playback. */
 @Composable
-internal fun PostMediaTile(url: String, modifier: Modifier = Modifier, onOpen: () -> Unit) {
+internal fun PostMediaTile(
+    url: String,
+    modifier: Modifier = Modifier,
+    onAspectRatio: (Float) -> Unit = {},
+    onOpen: () -> Unit,
+) {
     if (postMediaType(url) == "video") {
         Surface(onClick = onOpen, modifier = modifier, color = MaterialTheme.colorScheme.surfaceVariant) {
             Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally,
@@ -41,7 +47,9 @@ internal fun PostMediaTile(url: String, modifier: Modifier = Modifier, onOpen: (
         }
     } else {
         val context = LocalContext.current
-        val request = remember(context, url) { MediaImageRequestFactory.preview(context, url) }
+        val request = remember(context, url) {
+            MediaImageRequestFactory.preview(context, url)?.newBuilder()?.scale(Scale.FIT)?.build()
+        }
         var status by remember(request) { mutableStateOf(PostImageStatus.Loading) }
         Box(
             modifier.inlinePhotoZoom(url).clickable(onClick = onOpen)
@@ -52,9 +60,14 @@ internal fun PostMediaTile(url: String, modifier: Modifier = Modifier, onOpen: (
                 model = request,
                 contentDescription = if (status == PostImageStatus.Failed) null else "Imagen de publicación",
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
+                contentScale = ContentScale.Fit,
                 onLoading = { status = PostImageStatus.Loading },
-                onSuccess = { status = PostImageStatus.Ready },
+                onSuccess = { success ->
+                    status = PostImageStatus.Ready
+                    val drawable = success.result.drawable
+                    if (drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0)
+                        onAspectRatio(drawable.intrinsicWidth.toFloat() / drawable.intrinsicHeight)
+                },
                 onError = { status = PostImageStatus.Failed },
             )
             when (status) {
