@@ -18,6 +18,18 @@ internal sealed interface VideoPlaylistUpdate {
     ) : VideoPlaylistUpdate
 }
 
+internal fun mayPrepareFeedSelection(
+    playbackAllowed: Boolean,
+    installedMediaId: String?,
+    settledMediaId: String?,
+): Boolean = playbackAllowed && installedMediaId?.equals(settledMediaId, ignoreCase = true) == true
+
+internal fun shouldPrepareIdleFeedSelection(
+    hasPlaybackError: Boolean,
+    awaitingPlaylistPreparation: Boolean,
+    changedItem: Boolean,
+): Boolean = !hasPlaybackError || awaitingPlaylistPreparation || changedItem
+
 /**
  * Produces a playlist update that never restarts the visible video merely
  * because pagination appended items or mutable counters refreshed.

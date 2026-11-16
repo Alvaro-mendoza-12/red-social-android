@@ -1,10 +1,29 @@
 package conectate.com.presentation.video
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VideoPlaylistReconciliationTest {
     private fun entry(id: String, key: String = id) = VideoPlaylistEntry(id, key)
+
+    @Test fun `playlist installation cannot start loads while playback is blocked`() {
+        assertFalse(mayPrepareFeedSelection(false, "video-a", "video-a"))
+    }
+
+    @Test fun `playback waits for the playlist to contain the settled video`() {
+        assertFalse(mayPrepareFeedSelection(true, "video-a", "video-b"))
+        assertFalse(mayPrepareFeedSelection(true, null, null))
+        assertTrue(mayPrepareFeedSelection(true, "video-a", "VIDEO-A"))
+    }
+
+    @Test fun `a stopped selection is prepared without restarting a failed clip on pagination`() {
+        assertTrue(shouldPrepareIdleFeedSelection(false, false, false))
+        assertFalse(shouldPrepareIdleFeedSelection(true, false, false))
+        assertTrue(shouldPrepareIdleFeedSelection(true, true, false))
+        assertTrue(shouldPrepareIdleFeedSelection(true, false, true))
+    }
 
     @Test
     fun `pagination appends without replacing active media`() {

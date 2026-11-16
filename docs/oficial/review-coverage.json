@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T04:25:02.371942+00:00",
-  "baseCommit": "85b084a82013ff210f0779cc69de56a206426035",
+  "generatedAtUtc": "2026-11-16T05:10:07.400927+00:00",
+  "baseCommit": "68d7d8c60e56feace35e2aedd099a2b6de1fb499",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -12,16 +12,16 @@
   "counts": {
     "pending": 3606,
     "partial": 255,
-    "code-read": 717
+    "code-read": 718
   },
   "countsByPhase": {
     "android": {
-      "pending": 1472,
+      "pending": 1471,
       "partial": 110,
-      "code-read": 493
+      "code-read": 494
     },
     "documentation": {
-      "pending": 648,
+      "pending": 649,
       "code-read": 58,
       "partial": 20
     },
@@ -12829,9 +12829,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
       "phase": "android",
-      "gitBlobId": "00b367c07ff616ed20233ebd16be5d86c241fe0b",
+      "gitBlobId": "d2aa9023c5333c4404b265d22653c8a1d289b1a1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/165-android-preparacion-del-video-visible-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12917,9 +12917,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoPlaylistReconciliation.kt",
       "phase": "android",
-      "gitBlobId": "7ebc83257c10139c618598f290a92b589c5a3e69",
+      "gitBlobId": "8684cb04c0dc3d5a9a8c27eb345989d144c00853",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "evidence": "docs/oficial/165-android-preparacion-del-video-visible-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17705,8 +17705,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/video/VideoPlaylistReconciliationTest.kt",
       "phase": "android",
-      "gitBlobId": "1d1e679ec7b011f9de81e1fdef39fa0779fce4f9",
-      "reviewStatus": "pending"
+      "gitBlobId": "3181b2f0da337c1fe9e46a82490a6ace7369728b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/165-android-preparacion-del-video-visible-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/video/VideoPreloadPolicyTest.kt",
@@ -21136,6 +21138,12 @@
       "file": "docs/oficial/163-albumes-y-cambio-local-de-dia-2026-11-15.md",
       "phase": "documentation",
       "gitBlobId": "7a253136fcae740e31afc61c42811d4be682f64f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/165-android-preparacion-del-video-visible-2026-11-16.md",
+      "phase": "documentation",
+      "gitBlobId": "b075074913e4965652a929ffd6e533ec1f40b2e2",
       "reviewStatus": "pending"
     },
     {

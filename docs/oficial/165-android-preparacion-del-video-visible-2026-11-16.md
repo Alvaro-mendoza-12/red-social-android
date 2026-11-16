@@ -1,0 +1,7 @@
+# 165 · Preparación del video visible en Android
+
+Videos instalaba y preparaba una lista aunque la página seleccionada aún no pudiera reproducirse. `prepare()` activa la lectura multimedia y reserva recursos. Esto podía iniciar transferencias antes de terminar una selección, antes de que el enlace compartido fijara el video en la lista o cuando la reproducción automática estaba deshabilitada en datos móviles. [Contrato de `Player` en Media3](https://developer.android.com/reference/androidx/media3/common/Player)
+
+La instalación de la lista usa la misma autorización y la misma identidad que la reproducción. Si la página no puede reproducirse, el reproductor queda en reposo antes de reemplazar sus fuentes. Cuando coinciden la página seleccionada y el elemento instalado, el control de reproducción prepara la lista pendiente. Añadir resultados por paginación conserva la fuente activa y evita reiniciar un reproductor en reposo por el solo hecho de añadir elementos.
+
+Pasaron 19 pruebas JVM del selector, la reconciliación, la protección del buffer y la recuperación con Kotlin 2.2.10 y JUnit 4.13.2. Tres casos nuevos cubren una lista instalada durante un bloqueo, la coincidencia de identidad con la página seleccionada y la reanudación del reproductor en reposo sin repetir un fallo del mismo clip. La medición de transferencias, primer fotograma y desplazamiento en un teléfono físico sigue pendiente.
