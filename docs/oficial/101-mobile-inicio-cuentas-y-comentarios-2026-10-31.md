@@ -4,6 +4,8 @@ Este es un avance de correcciones comprobadas, no el cierre de la revisión inte
 
 ## Estado vigente — 15 de noviembre de 2026
 
+La [continuación 163](163-albumes-y-cambio-local-de-dia-2026-11-15.md) impide agrupar fotos de días locales distintos y conserva la primera fila del álbum nuevo, usando el mismo cálculo de día que el separador. Reproduce cuatro fallos en ocho casos distintos mediante referencia JVM directa y aprueba 51 casos Gradle en seis clases. APK, dispositivo, integración visual de álbumes, stickers de 161 y revisión integral siguen pendientes.
+
 La [continuación 162](162-fechas-locales-y-separadores-del-chat-2026-11-15.md) unifica el día local del separador con la hora de los mensajes, evita cortes inventados por formatos distintos o fechas ausentes y conserva la detección del cambio real de día en chats, grupos y comunidades. Reproduce ocho fallos en doce casos y aprueba 27 casos JVM en cuatro clases. La captura concreta no aporta timestamps originales; dispositivo, APK nueva, álbumes que cruzan medianoche, stickers de 161 y revisión integral siguen pendientes.
 
 La [continuación 157](157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md) distingue el cambio de contraseña confirmado del borrado local fallido y ofrece reintentar solo la limpieza o continuar con aviso. Protege las acciones retenidas y mantiene el acceso en verificación cuando falta segundo factor. Reproduce ocho fallos en diez casos distintos y aprueba 90 casos JVM en nueve clases; nueve controles se añadieron después del parche. Conserva Juegos158/159 como base independiente. Los fallos intermedios de servicio/repositorio tras ACK, reinicio/Keystore/SMTP/navegación físicos, otros módulos y APK157 siguen pendientes.
