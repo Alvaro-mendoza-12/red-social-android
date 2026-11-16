@@ -5,6 +5,7 @@ import { androidStoreUrl, publicPageLabel } from './publicNavigationData'
 export function PublicInfo({ path }: { path: string }) {
   const page = publicInfoPage(path)
   if (!page) return null
+  const legalPage = path === '/privacidad' || path === '/eliminar-cuenta'
   return <div className="public-home">
     <a className="public-skip-link" href="#contenido">Ir al contenido</a>
     <PublicHeader path={path} />
@@ -13,12 +14,20 @@ export function PublicInfo({ path }: { path: string }) {
       <h1>{page.heading}</h1>
       <p className="public-info-intro">{page.description}</p>
       {publicIllustrations[path]?.length ? <section className="public-feature-gallery" aria-label="Imágenes de las funciones de Novvin">{publicIllustrations[path].map(image=><figure key={image.src}><picture><source srcSet={image.src.replace(/\.png$/, '.webp')} type="image/webp"/><img className={image.height > image.width ? 'public-feature-portrait' : undefined} src={image.src} alt={image.alt} width={image.width} height={image.height} loading="lazy" decoding="async"/></picture><figcaption>{image.caption}</figcaption></figure>)}</section> : null}
-      <div className="public-home-actions"><a className={path === '/descargar' ? 'ghost-btn' : 'primary-btn'} href="/login">Entrar a Novvin</a><a className="ghost-btn" href="/explore/videos">Explorar videos</a></div>
+      {legalPage ? <aside className="public-download-card" aria-label="Privacidad y eliminación de cuenta">
+        <div><h2>{path === '/eliminar-cuenta' ? 'Solicitar eliminación por correo' : 'Gestiona tu cuenta y tus datos'}</h2>
+          <p>Contacto de Novvin: <a href="mailto:administracion@novvinapp.com">administracion@novvinapp.com</a>. No envíes contraseñas ni códigos de acceso.</p>
+          <div className="public-home-actions">
+            <a className="primary-btn" href={path === '/eliminar-cuenta' ? 'mailto:administracion@novvinapp.com?subject=Eliminar%20mi%20cuenta%20de%20Novvin' : '/eliminar-cuenta'}>{path === '/eliminar-cuenta' ? 'Escribir solicitud de eliminación' : 'Eliminar mi cuenta'}</a>
+            <a className="ghost-btn" href={path === '/eliminar-cuenta' ? '/privacidad#eliminacion' : '#eliminacion'}>{path === '/eliminar-cuenta' ? 'Política de privacidad' : 'Conservación y eliminación'}</a>
+          </div>
+        </div>
+      </aside> : <div className="public-home-actions"><a className={path === '/descargar' ? 'ghost-btn' : 'primary-btn'} href="/login">Entrar a Novvin</a><a className="ghost-btn" href="/explore/videos">Explorar videos</a></div>}
       {(path === '/descargar' || path === '/que-es-novvin') && <aside className="public-download-card" aria-label="Descarga oficial de Novvin">
         <img src="/novvin-logo.png" width="72" height="72" alt="" />
         <div><h2>Novvin para Android</h2><p>Abre la ficha de la aplicación para consultar su disponibilidad y descargarla.</p><a className={path === '/descargar' ? 'primary-btn' : 'ghost-btn'} href={androidStoreUrl}>Ver Novvin en Google Play</a></div>
       </aside>}
-      {page.sections.map(section => <section key={section.heading}><h2>{section.heading}</h2><p>{section.body}</p></section>)}
+      {page.sections.map(section => <section key={section.heading} id={path === '/privacidad' && section.heading === 'Conservación y eliminación' ? 'eliminacion' : undefined}><h2>{section.heading}</h2><p>{section.body}</p></section>)}
       <PublicGuideNavigation path={path} />
     </main>
     <PublicFooter path={path} />

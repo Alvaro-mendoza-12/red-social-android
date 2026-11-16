@@ -3,6 +3,7 @@ export const homeMetadata = { title: 'Novvin | Red social, mensajes y videos', d
 export const publicRoutes = [
   ['/', 'index.html', 'Inicio'],
   ['/privacidad', 'privacidad.html', 'Privacidad'],
+  ['/eliminar-cuenta', 'eliminar-cuenta.html', 'Eliminar cuenta'],
   ['/cookies', 'cookies.html', 'Cookies'],
   ['/que-es-novvin', 'que-es-novvin.html', 'Qué es Novvin'],
   ['/ayuda/preguntas-frecuentes', 'preguntas-frecuentes.html', 'Preguntas frecuentes'],

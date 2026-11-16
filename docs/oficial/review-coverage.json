@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T20:45:44.926092+00:00",
-  "baseCommit": "8490d1a2e580441ce88cb3acf7b43f136cab0b63",
+  "generatedAtUtc": "2026-11-16T22:44:51.706022+00:00",
+  "baseCommit": "d4a17f568d02cf40bbe6bb48a509145e7784558e",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3625,
+    "pending": 3624,
     "partial": 248,
-    "code-read": 732
+    "code-read": 736
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "partial": 107
     },
     "documentation": {
-      "pending": 651,
+      "pending": 653,
       "code-read": 59,
       "partial": 20
     },
@@ -31,14 +31,14 @@
       "partial": 30
     },
     "tooling-and-other": {
-      "pending": 151,
-      "partial": 11,
+      "pending": 150,
+      "partial": 12,
       "code-read": 16
     },
     "web": {
-      "partial": 80,
-      "pending": 496,
-      "code-read": 89
+      "partial": 79,
+      "pending": 494,
+      "code-read": 93
     }
   },
   "files": [
@@ -615,7 +615,7 @@
     {
       "file": "NoWing-web/public/sitemap.xml",
       "phase": "web",
-      "gitBlobId": "2686853388a4ec930cd09708390c2227766c96e6",
+      "gitBlobId": "92fa5ee90696c8ad17630c6eabccbc2e60064a0d",
       "reviewStatus": "pending"
     },
     {
@@ -704,20 +704,22 @@
       "file": "NoWing-web/scripts/public-page-model.mjs",
       "phase": "web",
       "gitBlobId": "c1f45311fa34a8ec12027079002cf9ab3f55a248",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "ade858fb9e6895f61628cde1058f58032c1d04e4",
+      "gitBlobId": "248ddeacecf4720cf9f08973546a84c3190f79e4",
       "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/scripts/public-seo.mjs",
       "phase": "web",
-      "gitBlobId": "7bd2eaebe0b675367b1c788b3ebf0e61ca1c5c24",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "gitBlobId": "4c0acba28f15d100db7a32a12e936f9a2c85987a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -771,9 +773,9 @@
     {
       "file": "NoWing-web/src/App.tsx",
       "phase": "web",
-      "gitBlobId": "92dbb3bea8c653cc2ae293ef87312c62c7fd3aed",
+      "gitBlobId": "2be057d948fce9fa2c7a722ace8f6e5f8116e3c0",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/150-conectividad-y-enlaces-publicos-2026-11-15.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4309,17 +4311,17 @@
     {
       "file": "NoWing-web/src/ui/novvin/PublicInfo.tsx",
       "phase": "web",
-      "gitBlobId": "5134aae51cbf7a5ea685d76cc93c71ec3193c753",
+      "gitBlobId": "271cdbcab1e13d0b6995c5049fc9849e85365f80",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/PublicNavigation.tsx",
       "phase": "web",
-      "gitBlobId": "ad0375ae5e9bd9a978cabbe639c6f556958c141f",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "gitBlobId": "43efc854eb36b1215cb80af795caccc305e1fb60",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4379,17 +4381,17 @@
     {
       "file": "NoWing-web/src/ui/novvin/publicInfoPages.ts",
       "phase": "web",
-      "gitBlobId": "f99f34fdad524127083b8e4025f07be54c8d9e0c",
+      "gitBlobId": "317e8994e7aab7cb34a8cc624b85755f038ed79e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/publicNavigationData.ts",
       "phase": "web",
-      "gitBlobId": "fe645d1f1dcccfb7dbf8ea56e546f930579efc7b",
+      "gitBlobId": "331a827ea43247d3d67f24dc83b4271969fa0723",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/118-veinte-criterios-web-y-android-2026-11-12.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4448,6 +4450,14 @@
       "gitBlobId": "54a72d5e77e38c2f2e928913c80dcc20a69ac915",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/tests/public-account-policy.test.mjs",
+      "phase": "web",
+      "gitBlobId": "95a5cfc0a90129acd7bb8e54d6f3f021cb5e5e1d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4513,8 +4523,10 @@
     {
       "file": "NoWing-web/vercel.json",
       "phase": "web",
-      "gitBlobId": "a0da242502d3d830163d540b326380d70fe867d9",
-      "reviewStatus": "pending"
+      "gitBlobId": "36c6779d916da3e151c40621f0bc5bb01731d497",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/vite.config.ts",
@@ -21295,6 +21307,12 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "phase": "documentation",
+      "gitBlobId": "92d692f2d3e4067979e7b96e6d83d2accfde9ad0",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/18-mensajes-programados-timeout-2026-09-09.md",
       "phase": "documentation",
       "gitBlobId": "53b44720abd16215d9023dfcf0d6f65feec827f4",
@@ -22762,6 +22780,12 @@
       "file": "docs/quality/evidence/171-resultados.json",
       "phase": "documentation",
       "gitBlobId": "1839b210972cb267d0807b955ff16d32426435bb",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/quality/evidence/173-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "9b3b71ad3b8fe61b113bf4c8c2e3424f6c784bc5",
       "reviewStatus": "pending"
     },
     {
@@ -29629,8 +29653,10 @@
     {
       "file": "vercel.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "90fb4c01f1d51163b0edb2bb24ff75bc7266d22d",
-      "reviewStatus": "pending"
+      "gitBlobId": "3c32f3d4185a5ca4287781b1d8315a0b29d5645e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     }
   ]
 }
