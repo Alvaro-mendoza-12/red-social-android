@@ -1,0 +1,9 @@
+.post-photo-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); grid-auto-rows: minmax(0,1fr); gap: 3px; aspect-ratio: 1; max-height: min(60dvh,560px); }
+.post-photo-cell { display: block; padding: 0; border: 0; width: 100%; min-width: 0; min-height: 0; background: var(--surface); cursor: zoom-in; }
+.post-photo-image { display: block; width: 100%; height: 100%; object-fit: contain; }
+.post-photo-pair { aspect-ratio: 2; }
+.post-photo-single { grid-template-columns: minmax(0,1fr); aspect-ratio: auto; max-height: none; }
+.post-photo-single .post-photo-cell { aspect-ratio: auto; }
+.post-photo-single .post-photo-image { height: auto; max-height: min(70dvh,640px); }
+.post-photo-more { display: block; width: 100%; padding: 10px 14px; border: 0; color: var(--primary); background: var(--surface); font-weight: 600; cursor: pointer; }
+.post-photo-cell:focus-visible,.post-photo-more:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }

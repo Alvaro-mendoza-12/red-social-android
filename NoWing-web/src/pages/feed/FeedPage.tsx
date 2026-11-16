@@ -44,8 +44,11 @@ import { SocialPromotion } from '../../components/SocialPromotion'
 import { SocialMoments } from '../../ui/novvin/SocialMoments'
 import { runtimeStoragePreviewUrl } from '../../core/runtimeBackend'
 import { getPublicWebOrigin } from '../../core/socialLinks'
+import { PostPhotoGallery } from '../../components/PostPhotoGallery'
+import { PostReactionPicker } from '../../components/PostReactionPicker'
+import { readPostReactionState, withPostReaction, type PostReaction, type PostReactionState } from '../../features/feed/postReactions'
 
-type FeedItem = {
+type FeedItem = PostReactionState & {
   id: string
   authorId: string
   authorName: string
@@ -53,9 +56,7 @@ type FeedItem = {
   content: string
   media: MediaEntry[]
   createdAt: string
-  likeCount: number
   commentCount: number
-  likedByMe: boolean
 }
 
 type LoadFeedOptions = {
@@ -89,9 +90,8 @@ function mapPost(row: GenericRow): FeedItem {
     content: textOf(row, ['content', 'caption', 'description', 'text'], 'Publicación sin texto'),
     media,
     createdAt: textOf(row, ['created_at', 'updated_at'], ''),
-    likeCount: Number(row.like_count ?? 0),
     commentCount: Number(row.comment_count ?? 0),
-    likedByMe: Boolean(row.liked_by_me ?? row.likedByMe ?? false),
+    ...readPostReactionState(row),
   }
 }
 
@@ -120,6 +120,7 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
   const [items, setItems] = useState<FeedItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reactionError, setReactionError] = useState<string | null>(null)
   const [newPostText, setNewPostText] = useState('')
   const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([])
   useEffect(() => {
@@ -168,7 +169,9 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
   const [realtimeRefreshing, setRealtimeRefreshing] = useState(false)
   const [shuffleSeed, setShuffleSeed] = useState(createShuffleSeed)
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const likeRequestsRef = useRef(new Set<string>())
+  const feedVisitRef = useRef({ key: feedCacheKey })
+  if (feedVisitRef.current.key !== feedCacheKey) feedVisitRef.current = { key: feedCacheKey }
+  const likeRequestsRef = useRef(new Map<string, { visit: typeof feedVisitRef.current }>())
   const feedRequestRef = useRef(0)
   const loadedCountRef = useRef(60)
   const feedScopeRef = useRef(feedCacheKey)
@@ -200,12 +203,11 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
         setError(null)
         setItems((previous) => {
           // A realtime refresh must not undo a reaction while its write is still pending.
-          const pending = new Map(previous.filter(item => likeRequestsRef.current.has(item.id)).map(item => [item.id, item]))
+          const pending = new Map(previous.filter(item => likeRequestsRef.current.get(item.id)?.visit === feedVisitRef.current).map(item => [item.id, item]))
           const page = mapped.map(item => {
             const optimistic = pending.get(item.id)
-            if (!optimistic || optimistic.likedByMe === item.likedByMe) return item
-            return { ...item, likedByMe: optimistic.likedByMe,
-              likeCount: Math.max(0, item.likeCount + (optimistic.likedByMe ? 1 : -1)) }
+            if (!optimistic || optimistic.myReaction === item.myReaction) return item
+            return withPostReaction(item, optimistic.myReaction || (optimistic.likedByMe ? 'LIKE' : null))
           })
           const next = offset > 0
             ? Array.from(new Map([...previous, ...page].map(item => [item.id, item])).values())
@@ -349,13 +351,14 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
   )
 
   useEffect(() => {
+    setReactionError(null)
     setHasMore(false)
     loadedCountRef.current = 60
     setNextOffset(0)
     setLoadingMore(false)
     const cached = readCachedValue<FeedItem[]>(feedCacheKey, 1000 * 60 * 60 * 8)
     if (cached && cached.length > 0) {
-      setItems(cached)
+      setItems(cached.map(item => ({ ...item, ...readPostReactionState(item) })))
       setLoading(false)
       void loadFeed({ silent: true })
       return
@@ -491,27 +494,23 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
     }
   }
 
-  async function toggleLike(item: FeedItem) {
-    if (likeRequestsRef.current.has(item.id)) return
+  async function selectReaction(item: FeedItem, selected: PostReaction | null) {
+    if (feedScopeRef.current !== feedCacheKey) return
+    const visit = feedVisitRef.current
+    if (likeRequestsRef.current.get(item.id)?.visit === visit) return
     if (!useUbuntu && (!supabase || !user)) return
-    likeRequestsRef.current.add(item.id)
-    const previousLiked = item.likedByMe
-    const nextLiked = !previousLiked
-    setItems((current) =>
-      current.map((entry) =>
-        entry.id === item.id
-          ? {
-              ...entry,
-              likedByMe: nextLiked,
-              likeCount: Math.max(0, entry.likeCount + (nextLiked ? 1 : -1)),
-            }
-          : entry,
-      ),
-    )
+    const request = { visit }
+    likeRequestsRef.current.set(item.id, request)
+    const currentVisit = () => feedVisitRef.current === visit
+    const previous = item.myReaction || (item.likedByMe ? 'LIKE' : null)
+    setReactionError(null)
+    setItems(current => current.map(entry => entry.id === item.id ? withPostReaction(entry, selected) : entry))
     try {
       if (useUbuntu) {
-        await setFallbackPostReaction(item.id, nextLiked)
-      } else if (previousLiked) {
+        const response = await setFallbackPostReaction(item.id, Boolean(selected), selected || 'LIKE', user?.id)
+        if (!currentVisit()) return
+        if (response.post) setItems(current => current.map(entry => entry.id === item.id ? { ...entry, ...readPostReactionState(response.post!) } : entry))
+      } else if (previous) {
         const { error: unlikeError } = await supabase!
           .from('post_likes')
           .delete()
@@ -525,21 +524,17 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
         })
         if (likeError) throw likeError
       }
-      await loadFeed({ silent: true })
     } catch (caught) {
-      setItems((current) =>
-        current.map((entry) => entry.id === item.id
-          ? {
-              ...entry,
-              likedByMe: previousLiked,
-              likeCount: Math.max(0, entry.likeCount + (nextLiked ? -1 : 1)),
-            }
-          : entry),
-      )
-      setError(friendlyError(caught, 'No se pudo actualizar el like'))
-      await loadFeed({ silent: true })
+      if (!currentVisit()) return
+      setItems(current => current.map(entry => entry.id === item.id ? withPostReaction(entry, previous) : entry))
+      setReactionError(friendlyError(caught, 'No se pudo guardar la reacción. Inténtalo de nuevo.'))
     } finally {
-      likeRequestsRef.current.delete(item.id)
+      if (likeRequestsRef.current.get(item.id) === request) likeRequestsRef.current.delete(item.id)
+      if (currentVisit()) {
+        // A GET started before this write must not restore the preceding reaction.
+        feedRequestRef.current += 1
+        void loadFeed({ silent: true })
+      }
     }
   }
 
@@ -553,6 +548,7 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
 
   return (
     <section className="section-stack feed-page">
+      {reactionError ? <p role="alert">{reactionError}</p> : null}
       {error ? <p role="status">{error} <button className="ghost-btn" type="button"
         onClick={() => void loadFeed({ silent: true })}>Reintentar</button></p> : null}
       {gallery ? (
@@ -743,6 +739,10 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
           </div>
           <ExpandableText text={item.content} lines={3} className="feed-card-text" />
           {item.media.length > 0 ? (
+            item.media.every(media => media.mediaType === 'image') ? <PostPhotoGallery
+              urls={item.media.map(media => media.url)} author={item.authorName} priority={itemIndex < 2}
+              onOpen={index => setGallery({items:item.media.map(media => ({url:media.url,type:'image',title:item.authorName})),index})}
+            /> :
             <div className={item.media.length > 1 ? 'feed-media-grid' : ''}>
               {item.media.map((media, index) => {
                 const mediaClass =
@@ -804,7 +804,7 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
             </div>
           ) : null}
           <div className="feed-stats">
-            <span aria-label={`${item.likeCount} Me gusta`}>
+            <span aria-label={`${item.likeCount} reacciones`}>
               <ThumbsUp size={15} aria-hidden="true" /> {item.likeCount}
             </span>
             <Link to={`/app/feed/post/${item.id}#comments`}>
@@ -812,15 +812,9 @@ export function FeedPage({ composerOpen = false, onOpenComposer, onCloseComposer
             </Link>
           </div>
           <div className="feed-card-actions">
-            <button
-              className={item.likedByMe ? 'ghost-btn active-action' : 'ghost-btn'}
-              type="button"
-              aria-pressed={item.likedByMe}
-              onClick={() => void toggleLike(item)}
-            >
-              <ThumbsUp fill={item.likedByMe ? 'currentColor' : 'none'} />
-              Me gusta
-            </button>
+            <PostReactionPicker selected={item.myReaction || (item.likedByMe ? 'LIKE' : null)}
+              busy={likeRequestsRef.current.get(item.id)?.visit === feedVisitRef.current}
+              multiple={useUbuntu} onSelect={selected => void selectReaction(item, selected)} />
             <Link className="ghost-btn" to={`/app/feed/post/${item.id}#comments`}>
               <MessageCircle />
               Comentar
