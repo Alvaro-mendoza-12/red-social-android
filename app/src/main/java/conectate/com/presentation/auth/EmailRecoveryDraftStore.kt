@@ -3,6 +3,7 @@ package conectate.com.presentation.auth
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import conectate.com.domain.auth.ConfirmedPasswordResets
 import java.util.WeakHashMap
 import java.security.MessageDigest
 import kotlinx.coroutines.CancellationException
@@ -129,19 +130,20 @@ class EmailRecoveryDraftStore(context: Context) {
         install: (EmailRecoveryVisit) -> Unit = {}): EmailRecoveryVisit =
         guard.retireConfirmedToken(expected, writer, token, install)
 
-    fun wasResetTokenConsumed(token: String): Boolean = guard.tokenWasConsumed(token)
+    fun wasResetTokenConsumed(token: String): Boolean = guard.tokenWasConsumed(token) ||
+        ConfirmedPasswordResets.confirmation(token) != null
 
     fun read(): EmailRecoveryDraft? = runCatching {
         val raw = preferences.getString("draft", null) ?: return@runCatching null
         val draft = decode(raw)
-        if (guard.tokenWasConsumed(draft.resetToken)) return@runCatching null
+        if (wasResetTokenConsumed(draft.resetToken)) return@runCatching null
         if (draft.expiresAt > System.currentTimeMillis()) return@runCatching draft
         guard.pruneExpired {
             // The first read can precede another writer. Re-read under the
             // shared write lock, retaining a newer valid replacement.
             val latestRaw = preferences.getString("draft", null) ?: return@pruneExpired null
             val latest = if (latestRaw == raw) draft else decode(latestRaw)
-            if (guard.tokenWasConsumed(latest.resetToken)) null
+            if (wasResetTokenConsumed(latest.resetToken)) null
             else if (latest.expiresAt > System.currentTimeMillis()) latest
             else { clearRaw(); null }
         }

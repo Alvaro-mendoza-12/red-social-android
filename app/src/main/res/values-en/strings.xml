@@ -106,6 +106,9 @@
     <string name="widget_minimal_actions_title">Novvin · Minimal</string>
     <string name="auth_email_delivery_unknown_hint">We could not confirm delivery. If you receive a six-digit code, enter it here or request another one.</string>
     <string name="auth_email_cleanup_title">Your password has already changed</string>
+    <string name="auth_email_confirmation_sign_in">Your password has already changed, but we could not complete sign-in on this device. Sign in with your new password.</string>
+    <string name="auth_email_confirmation_sign_in_action">Sign in</string>
+    <string name="auth_email_confirmation_session_changed">Your password has already changed. The session changed during recovery; reopen sign-in if you need to use that account.</string>
     <string name="auth_email_cleanup_failed">Your password has already changed, but we could not remove the recovery progress saved on this device. Retry cleanup or continue; your password will not be changed again.</string>
     <string name="auth_email_cleanup_two_factor">When you continue, sign in and complete two-step verification.</string>
     <string name="auth_email_cleanup_retry">Retry cleanup</string>

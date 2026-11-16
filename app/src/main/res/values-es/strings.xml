@@ -114,6 +114,9 @@
     <string name="widget_minimal_actions_title">Novvin · Minimalista</string>
     <string name="auth_email_delivery_unknown_hint">No pudimos confirmar el envío. Si recibes un código de seis dígitos, escríbelo aquí o vuelve a solicitarlo.</string>
     <string name="auth_email_cleanup_title">Tu contraseña ya cambió</string>
+    <string name="auth_email_confirmation_sign_in">Tu contraseña ya cambió, pero no pudimos completar el acceso en este dispositivo. Inicia sesión con tu nueva contraseña.</string>
+    <string name="auth_email_confirmation_sign_in_action">Iniciar sesión</string>
+    <string name="auth_email_confirmation_session_changed">Tu contraseña ya cambió. La sesión cambió durante la recuperación; vuelve a abrir el acceso si necesitas entrar con esa cuenta.</string>
     <string name="auth_email_cleanup_failed">Tu contraseña ya cambió, pero no pudimos borrar el avance de recuperación guardado en este dispositivo. Puedes reintentar la limpieza o continuar; no volveremos a cambiar tu contraseña.</string>
     <string name="auth_email_cleanup_two_factor">Al continuar tendrás que iniciar sesión y completar la verificación en dos pasos.</string>
     <string name="auth_email_cleanup_retry">Reintentar limpieza</string>

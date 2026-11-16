@@ -30,6 +30,7 @@ fun EmailRecoveryCleanupDialog(
     working: Boolean,
     onRetry: () -> Unit,
     onContinue: () -> Unit,
+    requiresSignIn: Boolean = requiresTwoFactor,
 ) {
     AlertDialog(
         modifier = Modifier.testTag("email_recovery_cleanup_notice"),
@@ -40,6 +41,8 @@ fun EmailRecoveryCleanupDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.auth_email_cleanup_failed))
                 if (requiresTwoFactor) Text(stringResource(R.string.auth_email_cleanup_two_factor),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else if (requiresSignIn) Text(stringResource(R.string.auth_email_confirmation_sign_in),
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (working) Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),

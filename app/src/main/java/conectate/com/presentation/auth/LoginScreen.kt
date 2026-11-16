@@ -194,6 +194,18 @@ fun LoginScreen(
                 recoveryCodeRequired = false
                 needsTwoFactor = true
             }
+            AuthState.PasswordChangedNeedsSignIn -> {
+                loginType = "email"
+                if (migrationEmail.isNotBlank()) email = migrationEmail
+                password = ""
+                migrationEmail = ""
+                migrationToken = ""
+                migrationNewPassword = ""
+                migrationConfirmPassword = ""
+                recoveryCodeRequired = false
+                needsTwoFactor = false
+                secondFactorCode = ""
+            }
             is AuthState.MigratedPasswordSetupRequired -> {
                 val resolvedEmail = state.email.ifBlank { email.trim().lowercase() }
                 loginType = "email"
@@ -266,9 +278,23 @@ fun LoginScreen(
     cleanupNotice?.let { notice ->
         EmailRecoveryCleanupDialog(
             requiresTwoFactor = notice.requiresTwoFactor,
+            requiresSignIn = notice.requiresSignIn,
             working = authState is AuthState.Loading,
             onRetry = { viewModel.retryEmailRecoveryCleanup(notice) },
             onContinue = { viewModel.continueAfterEmailRecoveryCleanup(notice) },
+        )
+    }
+
+    if (authState is AuthState.PasswordChangedNeedsSignIn) {
+        AlertDialog(
+            onDismissRequest = { viewModel.resetAuthState() },
+            title = { Text(stringResource(R.string.auth_email_cleanup_title)) },
+            text = { Text(stringResource(R.string.auth_email_confirmation_sign_in)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.resetAuthState() }) {
+                    Text(stringResource(R.string.auth_email_confirmation_sign_in_action))
+                }
+            },
         )
     }
 

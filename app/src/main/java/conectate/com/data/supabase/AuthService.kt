@@ -16,6 +16,9 @@ import conectate.com.data.localfallback.LocalFallbackAuthResponse
 import conectate.com.data.localfallback.LocalFallbackPasswordResetResponse
 import conectate.com.data.localfallback.LocalFallbackSessionRenewalRequiredException
 import conectate.com.data.localfallback.LocalFallbackUser
+import conectate.com.data.localfallback.LocalFallbackPasswordChangedNeedsTwoFactorException
+import conectate.com.domain.auth.ConfirmedPasswordResets
+import conectate.com.domain.auth.PasswordResetConfirmedNeedsSignInException
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -1126,14 +1129,48 @@ class AuthService @Inject constructor(
         resetToken: String,
         newPassword: String
     ): Result<Unit> {
-        val requestGeneration = localSessionMutationGuard.snapshot()
         if (!localFallbackApiClient.isConfigured) {
             return Result.failure(Exception("Servidor Ubuntu no configurado."))
         }
-        val localSession = localFallbackApiClient.confirmPasswordReset(resetToken, newPassword)
-            .getOrElse { return Result.failure(it) }
-        persistLocalFallbackSession(localSession, expectedGeneration = requestGeneration)
-        return Result.success(Unit)
+        val transition = localSessionMutationGuard.openTransition()
+        var acknowledged = false
+        var requiresTwoFactor = false
+        fun recordAcknowledgement() = localSessionMutationGuard.readCurrent {
+            val current = localSessionMutationGuard.isCurrent(transition)
+            val generation = localSessionMutationGuard.snapshot()
+            ConfirmedPasswordResets.record(resetToken, requiresTwoFactor) { mutation ->
+                current && localSessionMutationGuard.commitIfCurrent(generation, mutation = mutation)
+            }
+        }
+        try {
+            val response = localFallbackApiClient.confirmPasswordReset(resetToken, newPassword)
+            val failure = response.exceptionOrNull()
+            if (failure != null) {
+                if (failure is CancellationException) throw failure
+                if (failure is LocalFallbackPasswordChangedNeedsTwoFactorException || failure is PasswordResetConfirmedNeedsSignInException) {
+                    acknowledged = true
+                    requiresTwoFactor = failure is LocalFallbackPasswordChangedNeedsTwoFactorException
+                    recordAcknowledgement()
+                }
+                return Result.failure(failure)
+            }
+            acknowledged = true
+            // Record before local IO, outbox activation or the compatibility SDK can fail/cancel.
+            recordAcknowledgement()
+            persistLocalFallbackSession(response.getOrThrow(), transition = transition)
+            if (!localSessionMutationGuard.isCurrent(transition))
+                throw CancellationException("La cuenta cambió después de confirmar la contraseña.")
+            return Result.success(Unit)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            return Result.failure(if (acknowledged) PasswordResetConfirmedNeedsSignInException(error) else error)
+        } finally {
+            // Our own session write advances the transition. A different login/logout must
+            // instead invalidate completion, including A → B → A, while retaining single use.
+            if (acknowledged) recordAcknowledgement()
+            localSessionMutationGuard.closeTransition(transition)
+        }
     }
 
     suspend fun confirmSavedPasswordRecoveryCode(

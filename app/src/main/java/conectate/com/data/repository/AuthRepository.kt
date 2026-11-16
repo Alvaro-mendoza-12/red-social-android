@@ -10,6 +10,7 @@ import conectate.com.data.model.UpdateProfileRequest
 import conectate.com.data.model.User
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.domain.auth.PasswordResetConfirmedNeedsSignInException
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
@@ -746,16 +747,22 @@ class AuthRepository @Inject constructor(
         if (result.isFailure) {
             return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo cambiar la contraseña en Ubuntu."))
         }
-
-        val user = resolveCurrentSessionUser().getOrElse { return Result.failure(it) }
-        accountSessionRepository.captureCurrentAccount(
-            displayName = user.displayName,
-            avatarUrl = user.avatar_url,
-            expectedUserId = user.id
-        ).onFailure {
-            android.util.Log.w("AuthRepository", "Failed to save local fallback account after password reset", it)
+        try {
+            val user = resolveCurrentSessionUser().getOrThrow()
+            accountSessionRepository.captureCurrentAccount(
+                displayName = user.displayName,
+                avatarUrl = user.avatar_url,
+                expectedUserId = user.id
+            ).onFailure {
+                if (it is CancellationException) throw it
+                android.util.Log.w("AuthRepository", "Failed to save local fallback account after password reset", it)
+            }
+            return Result.success(confirmedEntryUser(user))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            return Result.failure(PasswordResetConfirmedNeedsSignInException(error))
         }
-        return Result.success(confirmedEntryUser(user))
     }
 
     suspend fun confirmSavedPasswordRecoveryCode(

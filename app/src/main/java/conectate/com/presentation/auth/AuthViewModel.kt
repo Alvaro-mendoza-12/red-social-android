@@ -15,6 +15,8 @@ import conectate.com.data.model.StoredAccountSession
 import conectate.com.data.model.User
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.supabase.AuthSessionLease
+import conectate.com.domain.auth.ConfirmedPasswordResets
+import conectate.com.domain.auth.PasswordResetConfirmedNeedsSignInException
 import conectate.com.presentation.common.looksLikeStoredAccountSessionIssue
 import conectate.com.presentation.common.toUserFacingMessage
 import conectate.com.core.concurrency.AccountTasks
@@ -67,12 +69,16 @@ sealed class AuthState {
     object PasswordChanged : AuthState()
     data class TwoFactorRequired(val message: String) : AuthState()
     object PasswordChangedNeedsTwoFactor : AuthState()
+    object PasswordChangedNeedsSignIn : AuthState()
     data class Error(val message: String) : AuthState()
 }
 
 
 /** An acknowledgement of a remote password change; contains no password or grant. */
-class EmailRecoveryCleanupNotice internal constructor(val requiresTwoFactor: Boolean)
+class EmailRecoveryCleanupNotice internal constructor(
+    val requiresTwoFactor: Boolean,
+    val requiresSignIn: Boolean = requiresTwoFactor,
+)
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
@@ -86,7 +92,14 @@ class AuthViewModel @Inject constructor(
     private var emailRecoveryVisit = emailRecoveryStore.currentVisit()
     private val emailRecoveryTasks = AccountTasks(viewModelScope)
     private var emailRecoveryBusyGeneration: Int? = null
-    private data class ConfirmedEmailRecovery(val visit: EmailRecoveryVisit, val user: User?)
+    private data class ConfirmedEmailRecovery(
+        val visit: EmailRecoveryVisit,
+        val user: User?,
+        val requiresTwoFactor: Boolean,
+        val publishIfCurrent: (() -> Unit) -> Boolean,
+    ) {
+        fun mayPublishCompletion(): Boolean = publishIfCurrent {}
+    }
     private var confirmedEmailRecovery: ConfirmedEmailRecovery? = null
     private val _emailRecoveryCleanupNotice = MutableStateFlow<EmailRecoveryCleanupNotice?>(null)
     val emailRecoveryCleanupNotice: StateFlow<EmailRecoveryCleanupNotice?> = _emailRecoveryCleanupNotice.asStateFlow()
@@ -814,35 +827,55 @@ class AuthViewModel @Inject constructor(
         }
     }
 
-    private fun confirmedRecoveryIsCurrent(completed: ConfirmedEmailRecovery, generation: Int): Boolean =
-        viewModelScope.isActive && confirmedEmailRecovery === completed && emailRecoveryIsCurrent(generation, completed.visit, null)
+    private fun confirmedRecoveryIsCurrent(completed: ConfirmedEmailRecovery, generation: Int): Boolean {
+        if (!viewModelScope.isActive || confirmedEmailRecovery !== completed ||
+            !emailRecoveryIsCurrent(generation, completed.visit, null)) return false
+        if (completed.mayPublishCompletion()) return true
+        confirmedEmailRecovery = null
+        _emailRecoveryCleanupNotice.value = null
+        _finishingEmailRecovery.value = recoveryNeedsVerifiedSignIn
+        _authState.value = AuthState.Error(context.getString(R.string.auth_email_confirmation_session_changed))
+        return false
+    }
 
     private fun showConfirmedRecoveryCleanupFailure(completed: ConfirmedEmailRecovery, generation: Int) {
         if (!confirmedRecoveryIsCurrent(completed, generation)) return
         if (_emailRecoveryCleanupNotice.value == null)
-            _emailRecoveryCleanupNotice.value = EmailRecoveryCleanupNotice(requiresTwoFactor = completed.user == null)
+            _emailRecoveryCleanupNotice.value = EmailRecoveryCleanupNotice(
+                requiresTwoFactor = completed.requiresTwoFactor, requiresSignIn = completed.user == null)
         _authState.value = AuthState.Error(context.getString(R.string.auth_email_cleanup_failed))
     }
 
     private fun publishConfirmedRecovery(completed: ConfirmedEmailRecovery, generation: Int) {
         if (!confirmedRecoveryIsCurrent(completed, generation)) return
-        val user = completed.user
-        if (user != null) {
-            _isUserLoggedIn.value = true
-            _currentUserId.value = user.id
-            _assistedRecoveryCaseId.value = null
-            context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE).edit().remove("case_id").apply()
+        // The last account check and UI/session publication share the same guard.
+        val accepted = completed.publishIfCurrent publish@ {
+            if (!viewModelScope.isActive || confirmedEmailRecovery !== completed ||
+                !emailRecoveryIsCurrent(generation, completed.visit, null)) return@publish
+            val user = completed.user
+            if (user != null) {
+                _isUserLoggedIn.value = true
+                _currentUserId.value = user.id
+                _assistedRecoveryCaseId.value = null
+                context.getSharedPreferences("recovery_request", Context.MODE_PRIVATE).edit().remove("case_id").apply()
+            }
+            confirmedEmailRecovery = null
+            _emailRecoveryCleanupNotice.value = null
+            if (!emailRecoveryIsCurrent(generation, completed.visit, null) || !viewModelScope.isActive) return@publish
+            recoveryNeedsVerifiedSignIn = user == null
+            _authState.value = when {
+                user != null -> AuthState.Success(user)
+                completed.requiresTwoFactor -> AuthState.PasswordChangedNeedsTwoFactor
+                else -> AuthState.PasswordChangedNeedsSignIn
+            }
+            if (emailRecoveryIsCurrent(generation, completed.visit, null))
+                _finishingEmailRecovery.value = recoveryNeedsVerifiedSignIn
         }
-        confirmedEmailRecovery = null
-        _emailRecoveryCleanupNotice.value = null
-        if (!emailRecoveryIsCurrent(generation, completed.visit, null) || !viewModelScope.isActive) return
-        recoveryNeedsVerifiedSignIn = user == null
-        _authState.value = if (user == null) AuthState.PasswordChangedNeedsTwoFactor else AuthState.Success(user)
-        if (emailRecoveryIsCurrent(generation, completed.visit, null))
-            _finishingEmailRecovery.value = recoveryNeedsVerifiedSignIn
+        if (!accepted) confirmedRecoveryIsCurrent(completed, generation)
     }
 
     private suspend fun cleanConfirmedRecovery(completed: ConfirmedEmailRecovery, generation: Int) {
+        if (!confirmedRecoveryIsCurrent(completed, generation)) return
         val saved = try {
             authEntryOperation { persistEmailRecovery(null, generation, completed.visit); Result.success(Unit) }
         } catch (cancelled: CancellationException) {
@@ -880,21 +913,48 @@ class AuthViewModel @Inject constructor(
         _finishingEmailRecovery.value = true
         _authState.value = AuthState.Loading
         launchEmailRecovery(operation, visit) {
-            val result = authEntryOperation { authRepository.confirmLocalFallbackPasswordReset(resetToken, newPassword) }
+            val result = try {
+                authEntryOperation { authRepository.confirmLocalFallbackPasswordReset(resetToken, newPassword) }
+            } catch (cancelled: CancellationException) {
+                val receipt = ConfirmedPasswordResets.confirmation(resetToken)
+                if (receipt != null) {
+                    val completed = retainConfirmedRecovery(resetToken, operation, visit, null, receipt.requiresTwoFactor)
+                    // A cancelled scope cannot safely start cleanup IO. Keep its acknowledgement
+                    // and let the current UI retry cleanup without replaying the password change.
+                    if (completed != null) showConfirmedRecoveryCleanupFailure(completed, emailRecoveryGeneration)
+                }
+                throw cancelled
+            }
             if (operation != emailRecoveryGeneration || !visit.isCurrent()) return@launchEmailRecovery
             val changedNeedsTwoFactor = result.exceptionOrNull() is LocalFallbackPasswordChangedNeedsTwoFactorException
-            if (result.isSuccess || changedNeedsTwoFactor) {
-                val completedVisit = emailRecoveryStore.retireConfirmedResetToken(resetToken, visit) { emailRecoveryVisit = it }
-                val generation = ++emailRecoveryGeneration
-                _emailRecovery.value = null
-                val completed = ConfirmedEmailRecovery(completedVisit, result.getOrNull())
-                confirmedEmailRecovery = completed
-                cleanConfirmedRecovery(completed, generation)
+            val confirmedNeedsSignIn = result.exceptionOrNull() is PasswordResetConfirmedNeedsSignInException
+            if (result.isSuccess || changedNeedsTwoFactor || confirmedNeedsSignIn) {
+                val completed = retainConfirmedRecovery(resetToken, operation, visit, result.getOrNull(), changedNeedsTwoFactor)
+                    ?: return@launchEmailRecovery
+                cleanConfirmedRecovery(completed, emailRecoveryGeneration)
             } else {
                 _finishingEmailRecovery.value = false
                 _authState.value = AuthState.Error(mapAuthError(result.exceptionOrNull()!!))
             }
         }
+    }
+
+    private fun retainConfirmedRecovery(resetToken: String, operation: Int, visit: EmailRecoveryVisit,
+        user: User?, requiresTwoFactor: Boolean): ConfirmedEmailRecovery? {
+        if (!viewModelScope.isActive || operation != emailRecoveryGeneration || !visit.isCurrent()) return null
+        val receipt = ConfirmedPasswordResets.confirmation(resetToken)
+        if (receipt?.mayPublishCompletion() == false) {
+            _finishingEmailRecovery.value = recoveryNeedsVerifiedSignIn
+            _authState.value = AuthState.Error(context.getString(R.string.auth_email_confirmation_session_changed))
+            return null
+        }
+        val completedVisit = emailRecoveryStore.retireConfirmedResetToken(resetToken, visit) { emailRecoveryVisit = it }
+        emailRecoveryGeneration += 1
+        _emailRecovery.value = null
+        return ConfirmedEmailRecovery(completedVisit, user, requiresTwoFactor) { mutation ->
+            if (receipt != null) receipt.publishIfCurrent(mutation)
+            else { mutation(); true }
+        }.also { confirmedEmailRecovery = it }
     }
 
     fun startNewAssistedRecoveryRequest() {
