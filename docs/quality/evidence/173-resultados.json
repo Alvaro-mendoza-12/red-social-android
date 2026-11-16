@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-16",
+  "timezone": "America/Bogota",
+  "scope": "public-privacy-and-account-deletion",
+  "webBuild": {"exitCode": 0, "publicPages": 22, "publicApplicationJavaScriptBytes": 0},
+  "lint": {"exitCode": 0, "errors": 0, "warnings": 9},
+  "publicNodeTests": {"tests": 75, "passed": 75, "failures": 0, "skipped": 0},
+  "before": {"privacyHttpStatus": 200, "accountDeletionHttpStatus": 404},
+  "accountDeletionExecuted": false,
+  "emailSent": false,
+  "playReviewSubmitted": false,
+  "newAndroidBundleVerified": false,
+  "deployment": "pending-independent-verification",
+  "durableLogs": "D:/Novvin-Entregas/evidencias/2026-11-16-play173/",
+  "integralReview": "open"
+}
