@@ -54,6 +54,7 @@ object PlayMatchUiPolicy {
         "RANK_NOT_SUPPORTED" -> "El rango seleccionado ya no está disponible."
         "ROLE_NOT_SUPPORTED" -> "El rol seleccionado ya no está disponible."
         "SESSION_NOT_CANCELLABLE" -> "La búsqueda ya terminó y no se puede cancelar."
+        "MATCH_NOT_PENDING" -> "Esta coincidencia ya cambió o venció. Estamos actualizando tu actividad."
         else -> error.message?.takeIf { it.isNotBlank() && it.length <= 160 }
             ?: "No se pudo completar la acción. Inténtalo nuevamente."
     }

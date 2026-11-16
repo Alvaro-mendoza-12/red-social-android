@@ -25,6 +25,7 @@ fun rememberInAppMediaPicker(onResult: (Uri?) -> Unit): InAppMediaPickerLauncher
     types?.let { allowed ->
         MessageMediaComposer(
             initialStep = "gallery", maxItems = 1, allowedMediaTypes = allowed,
+            title = "Seleccionar archivo", showViewOnceOption = false, showCaptionInput = false,
             isSending = false, confirmContentDescription = "Usar archivo",
             onDismiss = { types = null; callback(null) },
             onSend = { items, _ -> types = null; callback(items.single().uri) },
@@ -40,6 +41,7 @@ fun rememberInAppMultipleMediaPicker(maxItems: Int = 10, onResult: (List<Uri>) -
     val launcher = remember { InAppMediaPickerLauncher { types = it } }
     types?.let { allowed -> MessageMediaComposer(
         initialStep = "gallery", maxItems = maxItems.coerceIn(1, 10), allowedMediaTypes = allowed,
+        title = "Seleccionar archivos", showViewOnceOption = false, showCaptionInput = false,
         isSending = false, confirmContentDescription = "Añadir al proyecto",
         onDismiss = { types = null; callback(emptyList()) },
         onSend = { items, _ -> types = null; callback(items.map { it.uri }) },

@@ -21,6 +21,7 @@ import java.nio.ByteOrder
 import java.util.UUID
 import conectate.com.core.media.profileAvatarPreviewItem
 import conectate.com.core.media.useSingleProfilePlayback
+import conectate.com.core.media.useLoopingProfilePlayback
 
 @RunWith(AndroidJUnit4::class)
 class MediaPlaybackLifecycleDeviceTest {
@@ -29,7 +30,7 @@ class MediaPlaybackLifecycleDeviceTest {
         val registry=LifecycleRegistry(this)
         override val lifecycle:Lifecycle get()=registry
     }
-    @Test fun aProfilePreviewEndsOnceAndDoesNotRestartAfterReturningFromTheBackground() {
+    @Test fun anExplicitSinglePlayClipEndsOnceAndDoesNotRestartAfterReturningFromTheBackground() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val file = File(context.cacheDir, "qa-avatar-once-${UUID.randomUUID()}.mp4").apply {
@@ -85,10 +86,16 @@ class MediaPlaybackLifecycleDeviceTest {
         lateinit var player: ExoPlayer
         lateinit var owner: Owner
         val shown = mutableStateOf(true)
+        var repeatTransitions = 0
         instrumentation.runOnMainSync {
             owner = Owner().apply { registry.currentState = Lifecycle.State.STARTED }
             player = ExoPlayer.Builder(context).build().apply {
-                repeatMode = androidx.media3.common.Player.REPEAT_MODE_ONE
+                useLoopingProfilePlayback()
+                addListener(object : androidx.media3.common.Player.Listener {
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        if (reason == androidx.media3.common.Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) repeatTransitions++
+                    }
+                })
                 volume = 0f
                 setMediaItem(MediaItem.fromUri(android.net.Uri.fromFile(file)))
                 playWhenReady = true
@@ -109,6 +116,11 @@ class MediaPlaybackLifecycleDeviceTest {
             compose.runOnIdle { assertFalse(player.playWhenReady) }
             compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
             compose.waitUntil(10_000) { playing() }
+            compose.waitUntil(10_000) {
+                var repetitions = 0
+                instrumentation.runOnMainSync { repetitions = repeatTransitions }
+                repetitions >= 2
+            }
             compose.runOnIdle { owner.registry.currentState = Lifecycle.State.STARTED }
             compose.runOnIdle { assertFalse(player.playWhenReady) }
             compose.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }

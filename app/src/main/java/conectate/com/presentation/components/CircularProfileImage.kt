@@ -56,7 +56,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import conectate.com.core.media.MediaImageRequestFactory
 import conectate.com.core.media.ProfileIdentityImageStore
 import conectate.com.core.media.isVideoProfileAvatar
-import conectate.com.core.media.useSingleProfilePlayback
+import conectate.com.core.media.useLoopingProfilePlayback
 import conectate.com.core.media.profileAvatarImageRequest
 import conectate.com.core.media.profileAvatarPosterRequest
 import conectate.com.core.media.profileIdentityPreviewDimensions
@@ -128,8 +128,8 @@ fun CircularProfileImage(
         isVideoProfileAvatar(resolvedImageUrl, mediaType)
     }
     val effectiveMuted = muted || globalAnimatedAvatarsMuted.value || !allowSound
-    // La animación se reproduce una vez mientras está visible. Al terminar no
-    // vuelve al inicio; los elementos fuera de pantalla liberan el reproductor.
+    // Los avatares visibles se reproducen en bucle. Los elementos fuera de
+    // pantalla liberan el reproductor y el ciclo de vida pausa al salir.
     val visibleOnScreen = remember(resolvedImageUrl) { mutableStateOf(false) }
     val shouldAnimateVideoAvatar = isVideoAvatar && lifecycleStarted.value && visibleOnScreen.value
     val fallbackInitial = remember(fallbackName) {
@@ -242,7 +242,7 @@ fun CircularProfileImage(
                             ),
                         )
                         .build().apply {
-                        useSingleProfilePlayback()
+                        useLoopingProfilePlayback()
                         volume = 0f
                         trackSelectionParameters = trackSelectionParameters.buildUpon()
                             .setTrackTypeDisabled(androidx.media3.common.C.TRACK_TYPE_AUDIO, effectiveMuted)

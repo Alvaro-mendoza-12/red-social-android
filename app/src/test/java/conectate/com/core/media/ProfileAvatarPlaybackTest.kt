@@ -23,7 +23,7 @@ class ProfileAvatarPlaybackTest {
             assertThrows(IllegalArgumentException::class.java) { profileAvatarPreviewItem("file:///profile.mp4", start, end) }
         }
     }
-    @Test fun avatarNavigationDisablesLoopingAndPreservesEncodedUrlsAndOlderVideoRoutes() {
+    @Test fun explicitNonLoopingPlaybackPreservesEncodedUrlsAndOlderVideoRoutes() {
         val url = "https://example.test/avatar.mp4?width=320&token=a+b"
         val legacy = Screen.FullScreenVideo.createRoute(url)
         val avatar = Screen.FullScreenVideo.createRoute(url, loop = false)

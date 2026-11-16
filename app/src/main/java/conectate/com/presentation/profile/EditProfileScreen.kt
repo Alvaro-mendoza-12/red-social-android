@@ -1,6 +1,6 @@
 package conectate.com.presentation.profile
 import conectate.com.core.media.profileAvatarPreviewItem
-import conectate.com.core.media.useSingleProfilePlayback
+import conectate.com.core.media.useLoopingProfilePlayback
 
 import androidx.compose.runtime.Composable
 
@@ -702,7 +702,7 @@ private fun ProfileAvatarVideoPreview(
     val context = LocalContext.current
     val exoPlayer = remember(uri) {
         androidx.media3.exoplayer.ExoPlayer.Builder(context).build().apply {
-            useSingleProfilePlayback()
+            useLoopingProfilePlayback()
             volume = 0f
         }
     }

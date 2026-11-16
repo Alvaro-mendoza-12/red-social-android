@@ -3,6 +3,8 @@ package conectate.com.presentation.gaming
 import conectate.com.data.model.PlayMatchConnection
 import conectate.com.data.model.PlayMatchMatch
 import conectate.com.data.model.PlayMatchProfile
+import java.time.Instant
+import java.time.OffsetDateTime
 
 internal enum class PlayMatchStart {
     LOADING, NO_PROFILE, CONFIRM_AGE, ENABLE_DISCOVERY, ADD_GAME, READY,
@@ -31,11 +33,20 @@ internal fun playMatchActivity(
     connections: List<PlayMatchConnection>,
     matches: List<PlayMatchMatch>,
 ): PlayMatchActivity {
+    val now = Instant.now()
     val distinctConnections = connections.distinctBy { it.id }
     return PlayMatchActivity(
         requests = distinctConnections.filter { it.status == "PENDING" && it.direction == "INCOMING" },
         sent = distinctConnections.filter { it.status == "PENDING" && it.direction == "OUTGOING" },
         conversations = distinctConnections.filter { it.status == "ACCEPTED" && it.otherUserId.isNotBlank() },
-        decisions = matches.filter { it.status == "PENDING" }.distinctBy { it.id },
+        decisions = matches.filter { it.status == "PENDING" && matchHasNotExpired(it, now) }.distinctBy { it.id },
     )
+}
+
+private fun matchHasNotExpired(match: PlayMatchMatch, now: Instant): Boolean {
+    // Older payloads omit the deadline; retain their existing server-controlled behavior.
+    val raw = match.expiresAt ?: return true
+    if (raw.isBlank() || raw.length > 64) return false
+    val expires = runCatching { OffsetDateTime.parse(raw.trim()).toInstant() }.getOrNull() ?: return false
+    return expires.isAfter(now)
 }

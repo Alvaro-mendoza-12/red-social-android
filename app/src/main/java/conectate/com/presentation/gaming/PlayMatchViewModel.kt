@@ -8,6 +8,7 @@ import conectate.com.data.repository.MessageRepository
 import conectate.com.data.repository.PlayMatchRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.supabase.AuthService
+import conectate.com.data.gaming.PlayMatchApiException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -415,21 +416,30 @@ class PlayMatchViewModel @Inject constructor(
     }
     fun decideMatch(decision: String) {
         val match = _state.value.session?.match ?: return
-        work(if (decision == "ACCEPT") "Aceptación enviada." else "Buscaremos otra persona.", request = { repository.decideMatch(match.id, decision) }, onSuccess = {
-            if (decision == "SKIP") {
-                _state.update { current -> current.copy(session = current.session?.copy(status = "SEARCHING", match = null)) }
+        work(
+            if (decision == "ACCEPT") "Aceptación enviada." else "Buscaremos otra persona.",
+            request = { repository.decideMatch(match.id, decision) },
+            onFailure = ::handleMatchDecisionFailure,
+            onSuccess = {
+                if (decision == "ACCEPT") refreshConnections()
+                refreshMatchInbox()
+                if (decision == "SKIP") {
+                    _state.update { current -> current.copy(session = current.session?.copy(status = "SEARCHING", match = null)) }
+                }
                 _state.value.session?.id?.let(::pollSession)
-            } else {
-                _state.value.session?.id?.let(::pollSession)
-            }
-        })
+            },
+        )
     }
 
     fun decideMatchById(matchId: String, decision: String) {
         work(
             if (decision == "ACCEPT") "Aceptación enviada." else "Match descartado.",
             request = { repository.decideMatch(matchId, decision) },
-            onSuccess = { refreshMatchInbox() },
+            onFailure = ::handleMatchDecisionFailure,
+            onSuccess = {
+                refreshMatchInbox()
+                if (decision == "ACCEPT") refreshConnections()
+            },
         )
     }
 
@@ -467,11 +477,20 @@ class PlayMatchViewModel @Inject constructor(
     }
 
     private fun refreshConnections() {
-        accountTasks.scope.launch { repository.connections().onSuccess { value -> _state.update { it.copy(connections = value.items) } } }
+        accountTasks.scope.launch { boundedRequest { repository.connections() }.onSuccess { value -> _state.update { it.copy(connections = value.items) } } }
     }
 
     private fun refreshMatchInbox() {
-        accountTasks.scope.launch { repository.matches().onSuccess { value -> _state.update { it.copy(matches = value.items) } } }
+        accountTasks.scope.launch { boundedRequest { repository.matches() }.onSuccess { value -> _state.update { it.copy(matches = value.items) } } }
+    }
+
+    private fun handleMatchDecisionFailure(error: Throwable) {
+        fail(error)
+        if (error is PlayMatchApiException && error.code == "MATCH_NOT_PENDING") {
+            refreshMatchInbox()
+            refreshConnections()
+            _state.value.session?.id?.let(::pollSession)
+        }
     }
 
     private fun startInboxPolling() {
@@ -485,7 +504,12 @@ class PlayMatchViewModel @Inject constructor(
         }
     }
 
-    private fun <T> work(message: String, request: suspend () -> Result<T>, onSuccess: (T) -> Unit) {
+    private fun <T> work(
+        message: String,
+        request: suspend () -> Result<T>,
+        onFailure: ((Throwable) -> Unit)? = null,
+        onSuccess: (T) -> Unit,
+    ) {
         if (_state.value.isWorking) {
             return
         }
@@ -493,7 +517,7 @@ class PlayMatchViewModel @Inject constructor(
         accountTasks.scope.launch {
             boundedRequest(request).fold(
                 onSuccess = { value -> onSuccess(value); _state.update { it.copy(isWorking = false, message = message) } },
-                onFailure = { fail(it, loading = false) },
+                onFailure = { error -> if (onFailure != null) onFailure(error) else fail(error, loading = false) },
             )
         }
     }
