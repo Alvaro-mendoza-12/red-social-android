@@ -52,8 +52,8 @@ fun SearchUsersScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val userErrorMessage by viewModel.userErrorMessage.collectAsState()
     val history by viewModel.history.collectAsState()
-    val suggestions by viewModel.suggestions.collectAsState()
-    val hashtags by viewModel.hashtags.collectAsState()
+    val discovery by viewModel.discovery.collectAsState()
+    val (suggestions, hashtags) = discovery
     val loadingMore by viewModel.isLoadingMore.collectAsState()
     val hasMore by viewModel.hasMoreContent.collectAsState()
     var selectedTab by rememberSaveable(accountId) { mutableIntStateOf(viewModel.initialCategory) }

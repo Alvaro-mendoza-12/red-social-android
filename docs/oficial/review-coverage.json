@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T20:30:44.212266+00:00",
-  "baseCommit": "307ec9645a06942767606ecd214129478f00a16c",
+  "generatedAtUtc": "2026-11-16T20:45:44.926092+00:00",
+  "baseCommit": "8490d1a2e580441ce88cb3acf7b43f136cab0b63",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -12241,7 +12241,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchDiscovery.kt",
       "phase": "android",
-      "gitBlobId": "9295094f3fa4344e08e783d44363f35bb3627f69",
+      "gitBlobId": "9cfc7b02ebad186859e3444ab9f8e0def51b8c21",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -12257,7 +12257,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchUsersScreen.kt",
       "phase": "android",
-      "gitBlobId": "7b6a6715d2290c520b8e8f2c12c0471d868765e7",
+      "gitBlobId": "bef67a3133de8796c8ee7c77aaa1854ddf5b6aa8",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -12265,7 +12265,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchUsersViewModel.kt",
       "phase": "android",
-      "gitBlobId": "060269218546201bb4e8a1a639d9c1353636286e",
+      "gitBlobId": "045ab46be32699f60f642333010c3b3ef2ff6151",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -17491,7 +17491,7 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/search/SearchDiscoveryTest.kt",
       "phase": "android",
-      "gitBlobId": "a1c338ed105dcf5d7bca8c0632414748a36c17dc",
+      "gitBlobId": "79c6e4241d1d11eecc74fb364845a121d94891a9",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -21859,7 +21859,7 @@
     {
       "file": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
       "phase": "documentation",
-      "gitBlobId": "9c4d1448e625b1e678d645f22504afad7a921325",
+      "gitBlobId": "0a3343192004abd78d2c88cccf30abf1f626eb86",
       "reviewStatus": "pending"
     },
     {

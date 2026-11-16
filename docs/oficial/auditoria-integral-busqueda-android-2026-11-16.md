@@ -22,10 +22,17 @@ Se compilaron el controlador real y UnifiedSearchControllerTest.kt con Kotlin 2.
 
 La demora corresponde al reloj virtual del controlador. El recuento compara trabajo determinista en una muestra con duplicados. Quedan por medir tiempo de red, uso de memoria, fluidez y efecto en dispositivos. Los controles también cubren resultados rápidos de personas con contenido lento, fallos independientes, respuestas antiguas, cancelación, reintento y cursores sin progreso.
 
+## Sugerencias y etiquetas
+
+La pantalla observaba dos flujos derivados. Los dos recorrían el contenido para calcular las etiquetas, y editar la consulta volvía a leer el mismo contenido aunque la página seguía igual. Ahora la pantalla observa un estado con sugerencias y etiquetas. El flujo prepara etiquetas, títulos y claves al recibir contenido nuevo, y normaliza las entradas del historial cuando cambia el historial. Editar la consulta solo vuelve a seleccionar y ordenar las sugerencias ya preparadas. El estado se limpia cuando termina el período de suscripción.
+
+La prueba con dos resultados, una edición de la consulta y un cambio en el historial registró 16 lecturas de la lista con las dos expresiones originales del ViewModel y cuatro con el flujo nuevo. El recuento mide trabajo en JVM. El ensayo mantiene el orden de las sugerencias, el límite de seis, los acentos, la deduplicación y el recuento de etiquetas. También comprueba que limpiar y reemplazar contenido e historial retire las sugerencias de la búsqueda anterior.
+
+En la referencia, 18 de 19 pruebas pasaron y falló la comprobación de lecturas repetidas. Después del cambio, pasaron las 19 pruebas de búsqueda y los cuatro controles del generador de cobertura. Compilaron directamente SearchDiscovery, SearchUsersViewModel y SearchUsersScreen con Kotlin y el compilador de Compose, usando las clases Android compiladas previamente y los JAR de dependencias del caché local. La compilación del módulo completo y la medición en dispositivo siguen pendientes.
+
 ## Pendientes
 
 - Integrar el resultado de compilación, lint y pruebas Gradle de la variante que incorpore esta corrección. Verificar en dispositivo el teclado, la navegación, el cambio de cuenta y la paginación con el servidor propio.
-- Continuar la inspección del cálculo de sugerencias y etiquetas, que se ejecuta desde más de un flujo del ViewModel. Su costo aún no se midió.
 - Completar la revisión Android por módulo y dispositivo, incluidas las regresiones multimedia de 171 y las terminaciones por memoria. Después continúan web y la integración con el servidor Ubuntu, según la prioridad del propietario.
 - Quedan pendientes la limpieza general, la comparación del tamaño de los paquetes y la validación de una nueva entrega. Este bloque no produjo una APK ni un despliegue.
 
