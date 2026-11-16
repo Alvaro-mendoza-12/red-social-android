@@ -988,6 +988,7 @@ fun VideoFeedScreen(
     // Incremented whenever the player playlist has been reconciled. Playback
     // observes this state so it cannot race the first playlist installation.
     var playerPlaylistGeneration by remember { mutableIntStateOf(0) }
+    var awaitingPlaylistPreparation by remember(exoPlayer) { mutableStateOf(false) }
 
     // 🚀 RESTORED & STABLE: Synchronize Playlist when videos change
     LaunchedEffect(videoSourceSignature, runtimeBackendBaseUrl) {
@@ -1030,7 +1031,6 @@ fun VideoFeedScreen(
                     exoPlayer.addMediaItems(desiredPlaylist.drop(update.fromIndex).map { entry ->
                         buildVideoMediaItem(entry.mediaId, entry.playbackUri)
                     })
-                    if (exoPlayer.playbackState == Player.STATE_IDLE) exoPlayer.prepare()
                     playerPlaylistGeneration += 1
                 }
                 is VideoPlaylistUpdate.ReplaceTail -> {
@@ -1042,6 +1042,14 @@ fun VideoFeedScreen(
                 }
                 is VideoPlaylistUpdate.Replace -> {
                     renderedVideoId = null
+                    val targetId = desiredPlaylist[update.targetIndex].mediaId
+                    val canPrepare = mayPrepareFeedSelection(
+                        latestPlaybackAllowed.value, targetId, latestRecoveryTarget.value.second,
+                    )
+                    exoPlayer.pause()
+                    // A prepared player can load a replacement without another
+                    // prepare call. Keep it idle when the new page cannot play.
+                    if (!canPrepare && exoPlayer.playbackState != Player.STATE_IDLE) exoPlayer.stop()
                     exoPlayer.setMediaItems(
                         desiredPlaylist.map { entry ->
                             buildVideoMediaItem(entry.mediaId, entry.playbackUri)
@@ -1049,16 +1057,18 @@ fun VideoFeedScreen(
                         update.targetIndex,
                         update.startPositionMs,
                     )
-                    val targetId = desiredPlaylist[update.targetIndex].mediaId
-                    exoPlayer.playWhenReady = latestPlaybackAllowed.value &&
-                        targetId.equals(latestRecoveryTarget.value.second, ignoreCase = true)
-                    exoPlayer.prepare()
+                    awaitingPlaylistPreparation = !canPrepare
+                    if (canPrepare) {
+                        exoPlayer.playWhenReady = true
+                        exoPlayer.prepare()
+                    }
                     playerPlaylistGeneration += 1
                 }
             }
         } else {
             exoPlayer.stop()
             exoPlayer.clearMediaItems()
+            awaitingPlaylistPreparation = false
             playerPlaylistGeneration += 1
         }
     }
@@ -1094,21 +1104,29 @@ fun VideoFeedScreen(
         val selectedPlaylistId = settledVideoIndex
             .takeIf { it in 0 until exoPlayer.mediaItemCount }
             ?.let { index -> exoPlayer.getMediaItemAt(index).mediaId }
-        val playlistMatchesSelection = selectedPlaylistId?.equals(
-            settledVideoId,
-            ignoreCase = true,
-        ) == true
+        val canPlaySelection = mayPrepareFeedSelection(playbackAllowed, selectedPlaylistId, settledVideoId)
 
-        if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("FeedPlaybackAudit", "gate allowed=$playbackAllowed playlist=$playlistMatchesSelection count=${exoPlayer.mediaItemCount} selected=$settledVideoIndex overlay=$playbackOverlayOpen resumed=$lifecycleResumed requested=$playbackRequested")
+        if (conectate.com.BuildConfig.DEBUG) android.util.Log.d("FeedPlaybackAudit", "gate allowed=$playbackAllowed selectionReady=$canPlaySelection count=${exoPlayer.mediaItemCount} selected=$settledVideoIndex overlay=$playbackOverlayOpen resumed=$lifecycleResumed requested=$playbackRequested")
 
         // Reconciliation and playback run in independent coroutines. Never
         // seek by an index that still belongs to the previous playlist.
-        if (!playbackAllowed || !playlistMatchesSelection) {
+        if (!canPlaySelection) {
             exoPlayer.pause()
         } else {
-            if (exoPlayer.currentMediaItemIndex != settledVideoIndex) {
+            val changedItem = exoPlayer.currentMediaItemIndex != settledVideoIndex
+            if (changedItem) {
                 exoPlayer.seekTo(settledVideoIndex, 0L)
             }
+            // An idle player without an error can resume normally. Leave a
+            // failed item to its recovery policy unless the source/item changed.
+            if (exoPlayer.playbackState == Player.STATE_IDLE && shouldPrepareIdleFeedSelection(
+                    hasPlaybackError = exoPlayer.playerError != null,
+                    awaitingPlaylistPreparation = awaitingPlaylistPreparation,
+                    changedItem = changedItem,
+                )) {
+                exoPlayer.prepare()
+            }
+            awaitingPlaylistPreparation = false
             exoPlayer.play()
         }
     }
