@@ -1,0 +1,282 @@
+{
+  "recordedAt": "2026-11-16T18:10:36.919142+00:00",
+  "scope": "Progress source commits; not full production readiness, a new APK, or a deployment.",
+  "nativeBeforeCacheVoiceWallpaper": {
+    "file": "D:\\Novvin-Entregas\\evidencias\\2026-11-16-mobile171\\full-repair\\result.json",
+    "sha256": "9cc8f59775db9036c9cffb617988f2eca8674f99668f9f4742a68a075fc5038b",
+    "result": {
+      "startedAt": "2026-11-16T17:10:56.580925+00:00",
+      "finishedAt": "2026-11-16T17:35:44.288872+00:00",
+      "exitCode": 0,
+      "counts": {
+        "tests": 3083,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 553
+      },
+      "focus": {
+        "conectate.com.data.localfallback.LocalFallbackPasswordResetReceiptTest": {
+          "tests": 9,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "conectate.com.data.supabase.AuthServicePasswordResetConfirmationTest": {
+          "tests": 16,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      },
+      "changedInputs": [],
+      "changedPrivateFingerprints": [],
+      "headUnchanged": true,
+      "logSha256": "412e91b02ddb598134609bb08453aa4398f374bf1e99496c5eea10de7b2b3743"
+    }
+  },
+  "navigationAvatarFocused": {
+    "file": "D:\\Novvin-Entregas\\evidencias\\2026-11-16-mobile171\\nav-avatar-focused\\result.json",
+    "sha256": "8553a1f6ab4d1c996fb4d196d9f9c83bc53afe1683e62e219874dfc6db86eccc",
+    "result": {
+      "startedAt": "2026-11-16T16:07:08.892613+00:00",
+      "finishedAt": "2026-11-16T16:26:12.963325+00:00",
+      "exitCode": 0,
+      "counts": {
+        "tests": 17,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 6
+      },
+      "focus": {},
+      "changedInputs": [],
+      "changedPrivateFingerprints": [],
+      "headUnchanged": true,
+      "logSha256": "a4d91ace5e76f38156888a9f6fc0a5c19db3f1c123ca0f1d20063e64e47d6947"
+    }
+  },
+  "playmatchActivityBaseline": {
+    "file": "D:\\Novvin-Entregas\\evidencias\\2026-11-16-mobile171\\playmatch-baseline\\result.json",
+    "sha256": "f23c9bd202a887e80c5c110daafdbeb20ec52fd8ceb435223953ac41f7a54827",
+    "result": {
+      "startedAt": "2026-11-16T16:38:55.318186+00:00",
+      "finishedAt": "2026-11-16T16:54:15.117040+00:00",
+      "exitCode": 1,
+      "counts": {
+        "tests": 5,
+        "failures": 2,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 1
+      },
+      "focus": {},
+      "changedInputs": [],
+      "changedPrivateFingerprints": [],
+      "headUnchanged": true,
+      "logSha256": "74bc0c69b3d38ab58ece5aa815e7aea4b07e264e7cb027397f3655ac2da5527a"
+    }
+  },
+  "playmatchDecisionBaseline": {
+    "file": "D:\\Novvin-Entregas\\evidencias\\2026-11-16-mobile171\\playmatch-decision-baseline\\result.json",
+    "sha256": "3614cc7b0cf30819ea397c7a9928749392f2b05c6576024f32bbd4691d02c2e4",
+    "result": {
+      "startedAt": "2026-11-16T17:00:03.356577+00:00",
+      "finishedAt": "2026-11-16T17:03:48.314085+00:00",
+      "exitCode": 1,
+      "counts": {
+        "tests": 3,
+        "failures": 2,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 1
+      },
+      "focus": {},
+      "changedInputs": [],
+      "changedPrivateFingerprints": [],
+      "headUnchanged": true,
+      "logSha256": "05548d702af8b911629e542030489dd14e4a41746eb97813161ab2d2ae6cb9e3"
+    }
+  },
+  "crashBaseline": {
+    "file": "D:\\Novvin-Entregas\\evidencias\\2026-11-16-mobile171\\crash-races-baseline-v2\\result.json",
+    "sha256": "c0ada4cccdc402108f0b2f930af5bc36ae9338165c9656a1059a3f0e621fe2f0",
+    "result": {
+      "startedAt": "2026-11-16T17:40:05.471565+00:00",
+      "finishedAt": "2026-11-16T17:44:19.593921+00:00",
+      "exitCode": 1,
+      "counts": {
+        "tests": 5,
+        "failures": 5,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 2
+      },
+      "focus": {},
+      "changedInputs": [],
+      "changedPrivateFingerprints": [],
+      "headUnchanged": true,
+      "logSha256": "26fcc8a179312aa74936e2e06a91a0fd9992d92b5b43cef014e5abcfde407a10"
+    }
+  },
+  "interruptedRepair": {
+    "file": "D:\\Novvin-Entregas\\evidencias\\2026-11-16-mobile171\\publication\\interruption-observed.json",
+    "sha256": "e4e5000bcaee2cf456b2e2f9d767d676f69a940a2b253b2641ecb881951955cf",
+    "result": {
+      "observedAt": "2026-11-16T18:07:44.937381+00:00",
+      "originalHandle": 93357,
+      "originalClientPid": 32220,
+      "originalDaemonPid": 40484,
+      "handleAndProcessesAbsent": true,
+      "resultReceiptPresent": false,
+      "sourceUnchangedBeforeCommit": true,
+      "scope": "Observation after missing handle and OS process checks. Cause undetermined; no fabricated test outcome."
+    }
+  },
+  "node": {
+    "receiptFile": "D:\\Novvin-Entregas\\evidencias\\2026-11-16-mobile171\\share-reader-edge-repair\\result.json",
+    "receiptSha256": "0e1037978e01f8a9f77a091c4a561687c8c22d315d052bd57f1f90296d5e69a2",
+    "exitCode": 0,
+    "sourceUnchanged": true,
+    "tests": 19,
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0,
+    "sourceAfter": {
+      "src/public-share-image.js": "e2f4a5c555c894aa0d807003d5aaca106d4b5ef5e27f912c112281d22c2bfb35",
+      "src/public-profile-share.js": "24522928276b9386712d76048100f2e3e87bba82bc161d714eed48e355a2c3ae",
+      "tests/public-share-image.test.js": "6602cd1538b5fdd615567a53b27d791418c6e240b7b06358678db676de4da5da",
+      "tests/public-profile-share.test.js": "d5045cc06a9259fe3bffa3d5855c0f0c3be56591577310097fdab975a59679ec",
+      "tests/public-share-image-guest.test.js": "e9cb8275ade2a291d2aaefccb3622f2b239bc85b203637f61deb1b57806005b9"
+    }
+  },
+  "ubuntuShadow": {
+    "ok": true,
+    "readOnlyDatabaseSession": true,
+    "sourceSha256": {
+      "public-share-image.js": "e2f4a5c555c894aa0d807003d5aaca106d4b5ef5e27f912c112281d22c2bfb35",
+      "public-profile-share.js": "24522928276b9386712d76048100f2e3e87bba82bc161d714eed48e355a2c3ae"
+    },
+    "beforeCardSha256": "236f9cef4ccf138b0933cee47fd7e0db4744b52a6e1a30d555c7fec763f053bc",
+    "afterCardSha256": "cb157cc6c10071cbcd2b36a258a9b4334a2b9135c45a6634c0678bf5e9a3a144",
+    "deployed": false,
+    "scope": "Separate Node process, in-memory candidate modules, read-only DB session and approved public profile. No API source/image/configuration/deployment changed. No credentials saved."
+  },
+  "progressCommits": [
+    {
+      "commit": "cfc8035a96ea124a628bdd6bc51fb0c4c46207b0",
+      "title": "fix(auth): preserve confirmed recovery across local failures",
+      "paths": [
+        "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt",
+        "app/src/main/java/conectate/com/data/repository/AuthRepository.kt",
+        "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
+        "app/src/main/java/conectate/com/domain/auth/PasswordResetConfirmation.kt",
+        "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
+        "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryCleanupDialog.kt",
+        "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
+        "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
+        "app/src/main/res/values-en/strings.xml",
+        "app/src/main/res/values-es/strings.xml",
+        "app/src/main/res/values/strings.xml",
+        "app/src/test/java/conectate/com/data/localfallback/LocalFallbackPasswordResetReceiptTest.kt",
+        "app/src/test/java/conectate/com/data/supabase/AuthServicePasswordResetConfirmationTest.kt",
+        "app/src/test/java/conectate/com/domain/auth/PasswordResetConfirmationTest.kt",
+        "app/src/test/java/conectate/com/presentation/auth/AuthViewModelPasswordResetConfirmationTest.kt",
+        "infrastructure/local-fallback/api/src/server.js",
+        "infrastructure/local-fallback/api/tests/password-reset-confirmation.postgres.test.js"
+      ]
+    },
+    {
+      "commit": "09253a4d937d1a59f0adb3c938153f0c87b811e9",
+      "title": "fix(media): preserve complete photos in responsive galleries",
+      "paths": [
+        "NoWing-web/src/ui/novvin/screens.css",
+        "app/src/androidTest/java/conectate/com/presentation/components/PostPhotoScalingDeviceTest.kt",
+        "app/src/main/java/conectate/com/presentation/components/PostCard.kt",
+        "app/src/main/java/conectate/com/presentation/components/PostMediaGallery.kt",
+        "app/src/main/java/conectate/com/presentation/components/PostMediaTile.kt"
+      ]
+    },
+    {
+      "commit": "9ac37dd991e9c4292748a83fd2401e91a0942783",
+      "title": "fix(web): refresh inbox previews and expose social reactions",
+      "paths": [
+        "NoWing-web/src/__tests__/features/messages/inboxPreviewFreshness.test.tsx",
+        "NoWing-web/src/__tests__/pages/FeedGalleryReactions.test.tsx",
+        "NoWing-web/src/components/PostPhotoGallery.tsx",
+        "NoWing-web/src/components/PostReactionPicker.tsx",
+        "NoWing-web/src/components/postPhotoGallery.css",
+        "NoWing-web/src/components/postReactionPicker.css",
+        "NoWing-web/src/core/fallbackData.ts",
+        "NoWing-web/src/core/inboxActivity.ts",
+        "NoWing-web/src/core/inboxMessageTime.ts",
+        "NoWing-web/src/features/feed/postReactions.ts",
+        "NoWing-web/src/features/messages/MessagesPage.tsx",
+        "NoWing-web/src/pages/feed/FeedPage.tsx"
+      ]
+    },
+    {
+      "commit": "652b3979275a065b3ca652f1d0bee1400d4b6e85",
+      "title": "fix(android): correct video navigation and PlayMatch recovery",
+      "paths": [
+        "app/build.gradle.kts",
+        "app/src/androidTest/java/conectate/com/presentation/components/MediaPlaybackLifecycleDeviceTest.kt",
+        "app/src/main/java/conectate/com/core/media/ProfileAvatarPlayback.kt",
+        "app/src/main/java/conectate/com/presentation/components/CircularProfileImage.kt",
+        "app/src/main/java/conectate/com/presentation/components/InAppMediaPicker.kt",
+        "app/src/main/java/conectate/com/presentation/gaming/PlayMatchHubPolicy.kt",
+        "app/src/main/java/conectate/com/presentation/gaming/PlayMatchUiPolicy.kt",
+        "app/src/main/java/conectate/com/presentation/gaming/PlayMatchViewModel.kt",
+        "app/src/main/java/conectate/com/presentation/home/HomeScreen.kt",
+        "app/src/main/java/conectate/com/presentation/profile/EditProfileScreen.kt",
+        "app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt",
+        "app/src/test/java/conectate/com/core/media/ProfileAvatarPlaybackTest.kt",
+        "app/src/test/java/conectate/com/presentation/gaming/PlayMatchActivityExpiryTest.kt",
+        "app/src/test/java/conectate/com/presentation/gaming/PlayMatchDecisionRecoveryTest.kt",
+        "app/src/test/java/conectate/com/presentation/navigation/HomeVideoNavigationTest.kt"
+      ]
+    },
+    {
+      "commit": "4d9277688af09796d12fa1cd99a58fcc17649f07",
+      "title": "wip(android): repair prefetch races and voice service stop",
+      "paths": [
+        "app/src/androidTest/java/conectate/com/presentation/messages/ChatBackgroundScalingDeviceTest.kt",
+        "app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt",
+        "app/src/main/java/conectate/com/presentation/messages/ChatBackgroundLayer.kt",
+        "app/src/main/java/conectate/com/util/MediaPlaybackDataSources.kt",
+        "app/src/main/java/conectate/com/util/VideoCache.kt",
+        "app/src/test/java/conectate/com/data/repository/VoiceForegroundStopTest.kt",
+        "app/src/test/java/conectate/com/util/VideoCachePrefetchRaceTest.kt"
+      ]
+    },
+    {
+      "commit": "6d3685118ad53859e00b99b86e9e32f95b71cf28",
+      "title": "fix(sharing): read guest-authorized profile avatar posters",
+      "paths": [
+        "infrastructure/local-fallback/api/src/public-profile-share.js",
+        "infrastructure/local-fallback/api/src/public-share-image.js",
+        "infrastructure/local-fallback/api/tests/public-share-image-guest.test.js"
+      ]
+    }
+  ],
+  "apk": {
+    "nextVersion": "9.1.41",
+    "nextVersionCode": 181,
+    "newArtifactAvailable": false,
+    "historicalQA166Bytes": 265541355,
+    "comparableProductionSizeBeforeAfter": null
+  },
+  "removedDependencies": [],
+  "pending": [
+    "repair regression after interruption",
+    "physical gestures and lifecycle",
+    "wallpaper device test",
+    "memory and prolonged sessions across devices",
+    "public gallery and link opening",
+    "web reset acknowledgement integration",
+    "API activation",
+    "signed APK/AAB and production verification",
+    "stable branch publication verification",
+    "remaining requirements and module audit"
+  ]
+}

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T05:10:07.400927+00:00",
-  "baseCommit": "68d7d8c60e56feace35e2aedd099a2b6de1fb499",
+  "generatedAtUtc": "2026-11-16T18:11:23.503907+00:00",
+  "baseCommit": "6d3685118ad53859e00b99b86e9e32f95b71cf28",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,24 +10,24 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3606,
-    "partial": 255,
-    "code-read": 718
+    "pending": 3633,
+    "partial": 248,
+    "code-read": 723
   },
   "countsByPhase": {
     "android": {
-      "pending": 1471,
-      "partial": 110,
-      "code-read": 494
+      "pending": 1485,
+      "code-read": 496,
+      "partial": 107
     },
     "documentation": {
-      "pending": 649,
-      "code-read": 58,
+      "pending": 650,
+      "code-read": 59,
       "partial": 20
     },
     "server": {
       "pending": 851,
-      "code-read": 61,
+      "code-read": 63,
       "partial": 30
     },
     "tooling-and-other": {
@@ -36,8 +36,8 @@
       "code-read": 16
     },
     "web": {
-      "partial": 84,
-      "pending": 484,
+      "partial": 80,
+      "pending": 496,
       "code-read": 89
     }
   },
@@ -1883,6 +1883,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/features/messages/inboxPreviewFreshness.test.tsx",
+      "phase": "web",
+      "gitBlobId": "9e6618cf60e7c66361af89fe9a9671369648d079",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/__tests__/features/messages/messagesDiscovery.test.tsx",
       "phase": "web",
       "gitBlobId": "9fcc5be7b40ec2f7900cc2eecb64c740f3569350",
@@ -2030,6 +2036,12 @@
       "file": "NoWing-web/src/__tests__/pages/FeedCommentLinks.test.tsx",
       "phase": "web",
       "gitBlobId": "1ab13fd4ff60a985297882fb671260efd7f77968",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/pages/FeedGalleryReactions.test.tsx",
+      "phase": "web",
+      "gitBlobId": "a33ea73e29ee084f52a7cfabe9f70026da351042",
       "reviewStatus": "pending"
     },
     {
@@ -2407,6 +2419,18 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/components/PostPhotoGallery.tsx",
+      "phase": "web",
+      "gitBlobId": "cc5afc520428030ba815460595fba531674deb8e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/components/PostReactionPicker.tsx",
+      "phase": "web",
+      "gitBlobId": "b166b0d7c4714c4aa5cfeee3ba96af2824798e9d",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/components/ProfileAppearanceControls.tsx",
       "phase": "web",
       "gitBlobId": "a1f1a665b99719e130b1b277b6bacc2e81bfb822",
@@ -2672,6 +2696,18 @@
       "file": "NoWing-web/src/components/modern/UI/ModernInput.tsx",
       "phase": "web",
       "gitBlobId": "935b70bd7b2e95f68e8f4f368124b48ac5168a28",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/components/postPhotoGallery.css",
+      "phase": "web",
+      "gitBlobId": "7b844248d8b7d2d854cca6d4353552a958bef71a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/components/postReactionPicker.css",
+      "phase": "web",
+      "gitBlobId": "5b50061c1eb8bc3fb2123ed06d2a33e000594823",
       "reviewStatus": "pending"
     },
     {
@@ -2981,10 +3017,8 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "a92ab0c1aa3f9496e424a0950325eac489ab7fd2",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "ca7a29a75cd6915e64e795f83600d50103d18b53",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/core/fallbackRpc.ts",
@@ -3031,7 +3065,13 @@
     {
       "file": "NoWing-web/src/core/inboxActivity.ts",
       "phase": "web",
-      "gitBlobId": "16306ec18d6edf0ed186c6da5e99c923acd5ab03",
+      "gitBlobId": "767546f221bb8f127c51dfdd3e2faff60ca4556b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/core/inboxMessageTime.ts",
+      "phase": "web",
+      "gitBlobId": "ff62e94d5dd2278ef2a4740e28929e304195a649",
       "reviewStatus": "pending"
     },
     {
@@ -3535,6 +3575,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/features/feed/postReactions.ts",
+      "phase": "web",
+      "gitBlobId": "835410cc60b640bcd5006af9cdf65b6896aef41c",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/src/features/games/GameCatalog.tsx",
       "phase": "web",
       "gitBlobId": "193c904affed42e0dfeaf6717478a66fe355e3fa",
@@ -3663,10 +3709,8 @@
     {
       "file": "NoWing-web/src/features/messages/MessagesPage.tsx",
       "phase": "web",
-      "gitBlobId": "23de1405859dd9e4919f39df87fcb5bdc71d5881",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "6c399ee1503778ecdd9687f01f298d444d95026d",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/features/messages/RoomChatPage.tsx",
@@ -4187,10 +4231,8 @@
     {
       "file": "NoWing-web/src/pages/feed/FeedPage.tsx",
       "phase": "web",
-      "gitBlobId": "8d88a416920d3b15f16ed45f7df826772254fcc1",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "c44674dd27736455ea506cac9ba11cb927354d44",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/pages/feed/PostDetailPage.tsx",
@@ -4353,10 +4395,8 @@
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
       "phase": "web",
-      "gitBlobId": "ab3840fd4b6fb8cc1a3df4cd38a8f7f9725f463a",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "0e726403ae08a6ec5e3e1a10e06cdf77fd0fa88b",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/src/ui/novvin/shell.css",
@@ -4671,10 +4711,8 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "9db7125314b322323792725c5f54e9dfadd09d5c",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "3f6f1140d3aded3495ea1819808ebfe0a6fd9ad0",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/lint.xml",
@@ -5019,9 +5057,9 @@
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/MediaPlaybackLifecycleDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "e5f8ad0743ac2d3eeee7991a2575bc6ad3d3d3be",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
+      "gitBlobId": "9fedc226afc2015a69a3009b3c7d839cf9473a35",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -5045,6 +5083,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/components/PostPhotoScalingDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "50318beaf5879cdbdf3bc46d6dbc2d1eb267008e",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/ProfileAnimatedAvatarDeviceTest.kt",
@@ -5143,6 +5187,14 @@
       "phase": "android",
       "gitBlobId": "76cf615e3dafe2291c32e604afef707adb5c0691",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/messages/ChatBackgroundScalingDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "9e6827c62c506072d86cf8c27a8252f4f1e23ddd",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/messages/ChatCameraCaptureTest.kt",
@@ -6267,7 +6319,7 @@
       "phase": "android",
       "gitBlobId": "d8b17f7bdee9d7146ee1bc886cc43a9128c7f3a6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6299,15 +6351,15 @@
       "phase": "android",
       "gitBlobId": "f764e1f0d159ea4583ac591d1057dfaea1e930a6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/core/media/ProfileAvatarPlayback.kt",
       "phase": "android",
-      "gitBlobId": "c07a829c1ee439feebe388fc7802926b45bc3698",
+      "gitBlobId": "cd9e71a72f409ba8aae80fc275272d6637e8ac81",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7277,10 +7329,8 @@
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt",
       "phase": "android",
-      "gitBlobId": "5b421865567e66d9973412833e4927c4eff2f713",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "80e8cbeaefbd9fe9754cf5f2b8113cc7762fac96",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/MessageMarkers.kt",
@@ -7909,7 +7959,7 @@
       "phase": "android",
       "gitBlobId": "7bd237efb90815595a3e2d47148cffad6ea668d5",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7935,10 +7985,8 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/AuthRepository.kt",
       "phase": "android",
-      "gitBlobId": "82f2c442b2441c75c22a88cf95d86f21c749795f",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "ff2954025d4b850e479e93cab16066de7f262d0d",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/BadgeRepository.kt",
@@ -8022,8 +8070,8 @@
       "file": "app/src/main/java/conectate/com/data/repository/ChatSettingsRepository.kt",
       "phase": "android",
       "gitBlobId": "6ab31c6860cdc553460f0afdfb1f0c63298a6efd",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8487,9 +8535,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt",
       "phase": "android",
-      "gitBlobId": "4f7aae58e6a63694ca7df9106fffa2c4ae4d6335",
+      "gitBlobId": "041c19192f6af56ff8dd5349d368cf6da9651a13",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9047,10 +9095,8 @@
     {
       "file": "app/src/main/java/conectate/com/data/supabase/AuthService.kt",
       "phase": "android",
-      "gitBlobId": "9a4f0ae4c33f0b9af1858ee46046aeb0ce816e96",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/148-acceso-recuperacion-y-validacion-por-modulo-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "27841610cf1d2af4709873cb1a213cafcdf9194d",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/data/supabase/AuthSessionMutationGuard.kt",
@@ -9307,6 +9353,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/domain/auth/PasswordResetConfirmation.kt",
+      "phase": "android",
+      "gitBlobId": "78d6f791aa2f74761c2ccb5a5dde24d1d8121f68",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/main/java/conectate/com/domain/calls/CallForegroundSessionController.kt",
       "phase": "android",
       "gitBlobId": "25a5890916625017f08d475c5d6feb54fb779924",
@@ -9405,10 +9457,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/AuthViewModel.kt",
       "phase": "android",
-      "gitBlobId": "01f79ccc8912303c8bccf168322d0e422a7b1921",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "1c62c7759f8fa87107fb46c49db9c3db6794d0aa",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/ChangePasswordScreen.kt",
@@ -9419,18 +9469,14 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryCleanupDialog.kt",
       "phase": "android",
-      "gitBlobId": "fb62e65a342ee58360d4c3054eaa665e9c55682a",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "2c7da3eedeed60ba008cd8e47c38cd4c0b697db3",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/EmailRecoveryDraftStore.kt",
       "phase": "android",
-      "gitBlobId": "ced9b3a5533087c7c9b9493201959002766fba82",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "e9343fa8aa83f8f6d56af22784b69ceaab988727",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/EmailRecoverySteps.kt",
@@ -9459,10 +9505,8 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
       "phase": "android",
-      "gitBlobId": "82b57d92565365cdf88491e128db523300c74fa8",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "f1037dd9095514b5a3996fb2b8b0cf100d471247",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/NovvinAuthTheme.kt",
@@ -9781,9 +9825,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/CircularProfileImage.kt",
       "phase": "android",
-      "gitBlobId": "5438469e12efcd03466102677a7ed2d451bab55b",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/144-qa-medios-y-sincronizacion-2026-11-14.md",
+      "gitBlobId": "14dd2d581d532b810e786347598fad60d4c5d46b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9891,8 +9935,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/InAppMediaPicker.kt",
       "phase": "android",
-      "gitBlobId": "ba6fd8d5188fd61295f361373ae7c4835089d57f",
-      "reviewStatus": "pending"
+      "gitBlobId": "529439aa2784ff6549da6711d77ea0cc13f0908d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/InlinePhotoZoom.kt",
@@ -10027,16 +10073,20 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/PostCard.kt",
       "phase": "android",
-      "gitBlobId": "e2e7926ffe1c502f262df9062401961506e23f31",
+      "gitBlobId": "0925e870bfa7d2347ea7a86d24b6194fb9ded334",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/components/PostMediaGallery.kt",
+      "phase": "android",
+      "gitBlobId": "d503a38c3c7aab10c6844521e491d344bbcfd1c8",
       "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/PostMediaTile.kt",
       "phase": "android",
-      "gitBlobId": "cec3f0d3f6fd18079a72a9141ce8b12202dbbff7",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/103-rendimiento-social-y-videos.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "44b21d8b624d5295d03741e915cd8824702641bd",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/ProfileAmbientBackground.kt",
@@ -10102,8 +10152,8 @@
       "file": "app/src/main/java/conectate/com/presentation/components/SimpleImageCropDialog.kt",
       "phase": "android",
       "gitBlobId": "8821a39d4c1c4576ff4cb37a47a0ae37730a3ff1",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10291,9 +10341,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchHubPolicy.kt",
       "phase": "android",
-      "gitBlobId": "d9a11c71fe52b87747eefdba53245b08c56bcea2",
+      "gitBlobId": "d6ff36fcccb5cdfcd22db587fc73e4071ac7b2c5",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10315,15 +10365,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchUiPolicy.kt",
       "phase": "android",
-      "gitBlobId": "0ed129773361cf04293260ad63fea9b9e16551a6",
-      "reviewStatus": "pending"
+      "gitBlobId": "5ff5dee4b42206e3f18435d13c8dec8f846a6c4a",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchViewModel.kt",
       "phase": "android",
-      "gitBlobId": "aed41cfc9c780baeacc65d299c8ae697a09b99ed",
+      "gitBlobId": "d6ce50b0e924723e8a447d57ddf7ef003b7814bc",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10341,9 +10393,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/home/HomeScreen.kt",
       "phase": "android",
-      "gitBlobId": "c4fb5680b6639ac420b34500f967f24d29b3ddaf",
+      "gitBlobId": "2efa87aaf53792117bf7639fd9aa61344c9ad551",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10683,8 +10735,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatBackgroundLayer.kt",
       "phase": "android",
-      "gitBlobId": "533b417acd38a9d36045d4c32a47ee5cd3f8c6e0",
-      "reviewStatus": "pending"
+      "gitBlobId": "66087880ac41e559131843ce9ccd6f9b85ec6add",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatBackgroundPickerSheet.kt",
@@ -10749,7 +10803,7 @@
       "phase": "android",
       "gitBlobId": "8c65fd93a1595db74be5524f38cae02ce5623664",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11195,7 +11249,7 @@
       "phase": "android",
       "gitBlobId": "cd85a0abb003a64ea5738a4ae327bf75bd8fd88e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11831,9 +11885,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/EditProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "80b8c9e5c0b92bf96a34d106a2be4144ec2cd2b1",
+      "gitBlobId": "1ac1ae151d93f42c31a98d08450a3a2e5ce0a849",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12005,9 +12059,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "c376a64622897c5c58869e5e63418afe6450e718",
+      "gitBlobId": "855668be7e74b98482dc2bc0cf3ddf8cd2b542c8",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12831,7 +12885,7 @@
       "phase": "android",
       "gitBlobId": "d2aa9023c5333c4404b265d22653c8a1d289b1a1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/165-android-preparacion-del-video-visible-2026-11-16.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12946,7 +13000,9 @@
       "file": "app/src/main/java/conectate/com/presentation/videos/CommentSheet.kt",
       "phase": "android",
       "gitBlobId": "8bd2b169e97d2a036100cac7df721540c63b658d",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/videos/CubeColorLut.kt",
@@ -13307,7 +13363,7 @@
       "phase": "android",
       "gitBlobId": "ade8e508e2438c6e873f2572443302ad5d4a1b4a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13446,7 +13502,9 @@
       "file": "app/src/main/java/conectate/com/util/ConversationBackgroundCodec.kt",
       "phase": "android",
       "gitBlobId": "afdb428881d660521943e98fbc68a9eb30955941",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/util/ConversationListSupport.kt",
@@ -13553,9 +13611,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/MediaPlaybackDataSources.kt",
       "phase": "android",
-      "gitBlobId": "dfdf0716f6343d97033d378fae1b4a9f18f466ca",
+      "gitBlobId": "b4b9cbe200d51e5af2b7d53c86add4406f3454be",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13707,7 +13765,7 @@
       "phase": "android",
       "gitBlobId": "ff592be647c19036cfda6af5fb9c3a3e9537c657",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13715,7 +13773,7 @@
       "phase": "android",
       "gitBlobId": "0db480a30290d94aa072235b80edbe7fcbf2c690",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13751,9 +13809,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/VideoCache.kt",
       "phase": "android",
-      "gitBlobId": "e57f69b4d575633ba16469d846e31ceb711c2ae1",
+      "gitBlobId": "e61be71168ec8f1823ef9e6497bf647bb292ccb0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -14427,10 +14485,8 @@
     {
       "file": "app/src/main/res/values-en/strings.xml",
       "phase": "android",
-      "gitBlobId": "d21a5189805403beb62cd2e1fb8df8fe7e307ec7",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "62007c07ce58b05afeeb0833ed7530da13a612db",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/res/values-es/audit_strings.xml",
@@ -14443,10 +14499,8 @@
     {
       "file": "app/src/main/res/values-es/strings.xml",
       "phase": "android",
-      "gitBlobId": "1f00583a575f520a8c79c8726704cddf42702766",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "cd9408a5a492f052e31a1abf3633b90257af9337",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/res/values-fr/audit_strings.xml",
@@ -14525,10 +14579,8 @@
     {
       "file": "app/src/main/res/values/strings.xml",
       "phase": "android",
-      "gitBlobId": "391155c34ae18373ed99b3b73c5f0ceb53bbb20f",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/157-recuperacion-confirmada-y-limpieza-local-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "40c103c18ceeb2cb6c18a7d31bb060d46a19b1f2",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/main/res/values/themes.xml",
@@ -14749,9 +14801,9 @@
     {
       "file": "app/src/test/java/conectate/com/core/media/ProfileAvatarPlaybackTest.kt",
       "phase": "android",
-      "gitBlobId": "5d13ff795b112f78692a8580a37757a8ede51edb",
+      "gitBlobId": "4d8e12cf6458cf950b7f07939aa0a89921fdf5b2",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/110-contadores-social-y-avatares.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15198,6 +15250,12 @@
       "file": "app/src/test/java/conectate/com/data/localfallback/LocalFallbackMomentMusicRequestTest.kt",
       "phase": "android",
       "gitBlobId": "af2c3952ad9fd0f32f3017229216673b4fe9fd52",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/localfallback/LocalFallbackPasswordResetReceiptTest.kt",
+      "phase": "android",
+      "gitBlobId": "f9b9595bc0477dbd6631505e9f834f7b361ef932",
       "reviewStatus": "pending"
     },
     {
@@ -15847,6 +15905,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/VoiceForegroundStopTest.kt",
+      "phase": "android",
+      "gitBlobId": "ff1ea238f215a716b5cecb80780e22b4febd9b0a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/VoiceRoomAdmissionStateTest.kt",
       "phase": "android",
       "gitBlobId": "8508d17a50b04f3448b301a2fcea05f3b58c00a4",
@@ -16151,6 +16217,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/supabase/AuthServicePasswordResetConfirmationTest.kt",
+      "phase": "android",
+      "gitBlobId": "724a34d30984f175be02137ae19fcdca5642d746",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/supabase/AuthSessionMutationGuardTest.kt",
       "phase": "android",
       "gitBlobId": "498db79cb29ea006471874a37f1398226f0ec6e5",
@@ -16281,6 +16353,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/domain/auth/PasswordResetConfirmationTest.kt",
+      "phase": "android",
+      "gitBlobId": "e91c9f2059dd13248b51507fa7af396ccaa2bc46",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "app/src/test/java/conectate/com/domain/sync/PendingSyncRetryExceptionTest.kt",
       "phase": "android",
       "gitBlobId": "51eeec2dbade68f68e9d99794581a9270e7668e2",
@@ -16337,6 +16415,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/156-recuperacion-compartida-y-escrituras-tardias-2026-11-15.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelPasswordResetConfirmationTest.kt",
+      "phase": "android",
+      "gitBlobId": "dd37e0a5fd1e2264b9a87d558709b95aef13d7a3",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/auth/AuthViewModelRecoveryOwnershipTest.kt",
@@ -16575,6 +16659,22 @@
       "phase": "android",
       "gitBlobId": "ccf455ff52afb25b77f366c100bad9289d2b585f",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/gaming/PlayMatchActivityExpiryTest.kt",
+      "phase": "android",
+      "gitBlobId": "0268667c8b1362257b3ff7ece2a37ac7b9a38515",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/gaming/PlayMatchDecisionRecoveryTest.kt",
+      "phase": "android",
+      "gitBlobId": "c6976dc9d9b4b04e60d9a4820eb39f53bf43d88a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/gaming/PlayMatchDiscoveryControllerTest.kt",
@@ -17081,6 +17181,14 @@
       "phase": "android",
       "gitBlobId": "b10e8d4e31ab737999e749a16229d4597acc019b",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/navigation/HomeVideoNavigationTest.kt",
+      "phase": "android",
+      "gitBlobId": "477c86c1c17697895a796fc6183b48e0c03e886c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/navigation/LiveReturnRouteTest.kt",
@@ -18172,6 +18280,14 @@
       "gitBlobId": "a1dca8c41c7589ba8196cfe4657226de0f163d1a",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/util/VideoCachePrefetchRaceTest.kt",
+      "phase": "android",
+      "gitBlobId": "78921fa386aaffa45f2368a4b4337f1812a920cf",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21153,6 +21269,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "phase": "documentation",
+      "gitBlobId": "24c4b2e43f23e24582e189ceeaad8e2359b6c8cc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/18-mensajes-programados-timeout-2026-09-09.md",
       "phase": "documentation",
       "gitBlobId": "53b44720abd16215d9023dfcf0d6f65feec827f4",
@@ -22611,6 +22735,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/quality/evidence/171-resultados.json",
+      "phase": "documentation",
+      "gitBlobId": "1839b210972cb267d0807b955ff16d32426435bb",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/quality/evidence/2026-11-14-call-tone-race.json",
       "phase": "documentation",
       "gitBlobId": "dbd52d9d79cef7050b76d06b032b156ba6de36a1",
@@ -23768,7 +23898,9 @@
       "file": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
       "phase": "server",
       "gitBlobId": "91df55f45445297d707d6f75b6264aa921492f72",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/guest-storage-read.js",
@@ -24163,9 +24295,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/public-profile-share.js",
       "phase": "server",
-      "gitBlobId": "5811af10d6bbd06995fe13561474f55295a0b8d0",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "gitBlobId": "317d90d016d72cb13b8594c48e5db4b254c897a3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24177,9 +24309,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/public-share-image.js",
       "phase": "server",
-      "gitBlobId": "e03a5e9f145fd058af2373aac6c84dcb854adb75",
+      "gitBlobId": "29396c7ccc6a77f7e77649959544eda26b4aaa86",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24275,9 +24407,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "4c491a398199eed53378fe97fa52935c58c7c71d",
+      "gitBlobId": "5b795fa11a73c33ba1417ef6843d98bf3d7f5698",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24431,7 +24563,7 @@
       "phase": "server",
       "gitBlobId": "de92a88808eb414be380e5a494faf5582086129e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25433,6 +25565,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/password-reset-confirmation.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "ecabaf4671d240a40e6a5c5865019f643d2aa563",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/password-reset-email-code.test.js",
       "phase": "server",
       "gitBlobId": "644d22c284fbd90ff310e1cb2b8adbaab5185248",
@@ -25677,6 +25815,14 @@
       "phase": "server",
       "gitBlobId": "c26ee94dfc67992620a83ecd3ca79168e75b3984",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/public-share-image-guest.test.js",
+      "phase": "server",
+      "gitBlobId": "32a09a207058e37ade46843e95e6441fdec2e914",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/public-share-image.test.js",
@@ -29189,7 +29335,7 @@
       "phase": "tooling-and-other",
       "gitBlobId": "bc52c1b8fcecbb2f6f35468cfbb1a38845d87c56",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
