@@ -13,7 +13,10 @@ import conectate.com.data.localfallback.UbuntuStorageUrl
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
@@ -59,14 +62,11 @@ object VideoCache {
     private fun createCacheDataSourceFactory(
         context: Context,
         requireStorageCacheAdmission: Boolean,
-        prefetchTimeoutMs: Long? = null,
+        upstreamDataSourceFactory: DataSource.Factory = MediaPlaybackDataSources.streamingFactory(context),
         preferDirectOnMiss: Boolean = false,
     ): DataSource.Factory {
         // ChatMediaOfflineCache and pending uploads return file:/ or content:/ URIs.
         // An HTTP-only upstream fails as soon as the playback cache misses those local bytes.
-        val upstreamDataSourceFactory = if (prefetchTimeoutMs == null) MediaPlaybackDataSources.streamingFactory(context)
-            else MediaPlaybackDataSources.prefetchFactory(context, prefetchTimeoutMs)
-
         // StorageReadDataSource selects this factory from open() on Media3's
         // loading thread. Building a player in Compose must not open SQLite or
         // scan/create the disk cache on the main thread.
@@ -130,12 +130,14 @@ object VideoCache {
         byteCount: Long = 2L * 1024L * 1024L,
         timeoutMs: Long = 2_000L,
     ) = withContext(Dispatchers.IO) {
-      prefetchSlots.withPermit { coroutineScope {
-        val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return@coroutineScope
-        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return@coroutineScope
-        val cache = getOrCreateCache(context.applicationContext) ?: return@coroutineScope
+      try {
+      prefetchSlots.withPermit { supervisorScope {
+        val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return@supervisorScope
+        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return@supervisorScope
+        if (getOrCreateCache(context.applicationContext) == null) return@supervisorScope
+        val network = MediaPlaybackDataSources.prefetchFactory(context, timeoutMs)
         val dataSource = createCacheDataSourceFactory(context.applicationContext,
-            requireStorageCacheAdmission = true, prefetchTimeoutMs = timeoutMs).createDataSource()
+            requireStorageCacheAdmission = true, upstreamDataSourceFactory = network).createDataSource()
         val dataSpec = DataSpec.Builder()
             .setUri(resolvedUrl)
             .setPosition(0)
@@ -144,6 +146,7 @@ object VideoCache {
             .build()
         val task = async(Dispatchers.IO) {
             try {
+                currentCoroutineContext().ensureActive()
                 dataSource.open(dataSpec)
                 val scratch = ByteArray(32 * 1024)
                 var read = 0L
@@ -164,15 +167,24 @@ object VideoCache {
                 true
             } == true
         } finally {
-            // CacheWriter is blocking. Cancelling only the coroutine can leave
-            // an old prefetch consuming the same mobile connection as the
-            // visible player after a fast swipe or recycled chat row.
+            // Cancel this preload's HTTP calls to interrupt blocking I/O.
+            // Only its loader may close the source and release its cache span;
+            // closing concurrently races with CacheDataSource.open/read.
             if (!completedWithinBudget) {
                 task.cancel()
-                runCatching { dataSource.close() }
+                (network as? PrefetchNetworkCancellation)?.cancelNetworkRequests()
             }
         }
       } }
+      } catch (cancelled: CancellationException) {
+          throw cancelled
+      } catch (error: java.io.IOException) {
+          throw error
+      } catch (error: Exception) {
+          // A speculative cache failure uses the caller's recoverable preload
+          // path instead of terminating the visible Compose coroutine.
+          throw java.io.IOException("No se pudo precargar el vídeo.", error)
+      }
     }
 
     fun release() {

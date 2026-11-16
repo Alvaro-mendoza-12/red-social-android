@@ -498,14 +498,9 @@ class VoiceRoomRepository @Inject constructor(
 
     private fun stopVoiceForegroundService() {
         try {
-            var intent = Intent(context, VoiceForegroundService::class.java).apply {
-                action = VoiceForegroundService.ACTION_STOP
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            // Starting an absent service with ACTION_STOP creates a foreground
+            // promotion deadline. stopService is also safe when already stopped.
+            context.stopService(Intent(context, VoiceForegroundService::class.java))
         } catch (error: Exception) {
             android.util.Log.w("VoiceRoomRepository", "No se pudo detener VoiceForegroundService", error)
         }
