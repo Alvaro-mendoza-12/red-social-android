@@ -893,6 +893,8 @@ fun SettingsScreen(
                     Text("Centro de privacidad")
                 }
 
+                conectate.com.presentation.legal.AccountDeletionLinks(showPrivacyLink = false)
+
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedButton(

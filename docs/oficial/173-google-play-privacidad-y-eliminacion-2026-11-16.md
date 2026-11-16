@@ -25,11 +25,19 @@ El correo prepara una solicitud; cargar la página no envía correos ni elimina 
 
 Logs durables: `D:/Novvin-Entregas/evidencias/2026-11-16-play173/`. Los resultados locales se distinguen del despliegue y del estado efectivo de Play Console.
 
-## Límites y pasos pendientes
+## Despliegue y formulario efectivo
 
-Comprobar el despliegue anónimo de ambas páginas, guardar sus enlaces en Play Console y completar el cuestionario con las prácticas reales de la app y sus SDK. Las declaraciones no deben afirmar que Novvin no recopila datos. La aceptación final corresponde a Google y requiere un nuevo envío.
+El despliegue `dpl_BSpvDnTRVBg3iDzyxbHz7BgWVykb` quedó listo y asociado a `novvinapp.com`. Seis GET anónimos (navegador, Googlebot y WhatsApp, ambas páginas) comprobaron estado 200, contacto, recorrido sin aplicación/sesión, ausencia de módulos JavaScript y autorización del JSON-LD por CSP; el sitemap incluye eliminación. No acreditan disponibilidad desde todos los países ni entrega de correo.
 
-El código Android configura `targetSdk = 36`, versión 9.1.41/181. Esto no verifica el manifiesto de un AAB concreto ni acredita que Google haya recibido ese binario. La entrega nueva, firma, pruebas físicas, el acceso móvil a eliminación, los plazos operativos de retención y el cierre integral siguen abiertos.
+El cuestionario de Play quedó completado con 22 tipos de datos y guardado. La vista previa identifica las dos URL de eliminación como `https://novvinapp.com/eliminar-cuenta` y la de privacidad como `https://novvinapp.com/privacidad`. Google mostró «Se guardó el cambio. Envíalo a revisión en Descripción general de la publicación». No se pulsó Enviar a revisión. Los casos de tratamiento de búsquedas y otras acciones requieren contraste adicional; no se afirma una auditoría exhaustiva de todos los SDK o versiones históricas.
+
+## Acceso móvil y candidata posterior
+
+Play Console ya contiene la versión 181 (9.1.41) pendiente, junto con cambios de privacidad, seguridad de datos y estado del comerciante. Se localizó el AAB del propietario fuera de `build`, en `D:/red social - live-gifts/app/release/app-release.aab`: 132.972.612 bytes, SHA-256 `8580eb6254c93347429b1a7c511c84b881a180e1b3bf79ebf7feb893f2e8ea1b`. Su manifiesto real indica `conectate.com`, versión 181/9.1.41, minSdk24, targetSdk36, sin depuración ni tráfico claro. Contiene el marcador de compilación 307ec9645a06; no se compararon sus bytes con la descarga de Play ni se ensayó su ejecución en esta continuación.
+
+Se añade al código Android un acceso a la solicitud pública de eliminación desde Ajustes y desde el centro de privacidad. Abrir ese enlace no elimina cuentas y un navegador no disponible muestra el contacto en pantalla. El buscador de Ajustes reconoce eliminar cuenta/borrar datos. Se preparan tres pruebas instrumentales del componente y un caso JVM de descubrimiento; aún no se han ejecutado.
+
+La candidata siguiente usa 9.1.42/182, porque 181 ya fue utilizada en Play. Mantiene API36 e incluye los cambios móviles de eliminación. No se entrega todavía una APK/AAB 182. Su compilación, pruebas actuales, firma, ensayos físicos y subida permanecen pendientes. Los plazos operativos de retención y el cierre integral siguen abiertos. La aceptación final corresponde a Google.
 
 ## Referencias oficiales consultadas
 

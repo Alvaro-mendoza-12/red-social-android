@@ -10,7 +10,10 @@
   "emailSent": false,
   "playReviewSubmitted": false,
   "newAndroidBundleVerified": false,
-  "deployment": "pending-independent-verification",
+  "deployment": {"id": "dpl_BSpvDnTRVBg3iDzyxbHz7BgWVykb", "ready": true, "anonymousHttpChecksPassed": 6, "sitemapVerified": true},
+  "playDataSafety": {"dataTypesCompleted": 22, "saved": true, "submittedForReview": false, "accountDeletionUrl": "https://novvinapp.com/eliminar-cuenta", "dataDeletionUrl": "https://novvinapp.com/eliminar-cuenta", "privacyUrl": "https://novvinapp.com/privacidad", "remainingAudit": ["search-query-treatment", "other-app-actions", "all-historical-versions-and-SDKs"]},
+  "existingOwnerBundle": {"versionCode": 181, "versionName": "9.1.41", "bytes": 132972612, "sha256": "8580eb6254c93347429b1a7c511c84b881a180e1b3bf79ebf7feb893f2e8ea1b", "manifestTargetSdk": 36, "comparedToPlayBytes": false, "runtimeTestedHere": false},
+  "nextAndroidCandidate": {"versionCode": 182, "versionName": "9.1.42", "targetSdk": 36, "built": false, "newInstrumentedCases": 3, "newUnitCases": 1, "newCasesExecuted": false},
   "durableLogs": "D:/Novvin-Entregas/evidencias/2026-11-16-play173/",
   "integralReview": "open"
 }

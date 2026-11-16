@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T22:44:51.706022+00:00",
-  "baseCommit": "d4a17f568d02cf40bbe6bb48a509145e7784558e",
+  "generatedAtUtc": "2026-11-16T23:15:39.905084+00:00",
+  "baseCommit": "9ed4475473c31a5338111c28f330072be77dd612",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3624,
-    "partial": 248,
-    "code-read": 736
+    "pending": 3621,
+    "partial": 250,
+    "code-read": 739
   },
   "countsByPhase": {
     "android": {
-      "pending": 1476,
-      "code-read": 505,
-      "partial": 107
+      "pending": 1473,
+      "partial": 109,
+      "code-read": 508
     },
     "documentation": {
       "pending": 653,
@@ -711,7 +711,7 @@
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "248ddeacecf4720cf9f08973546a84c3190f79e4",
+      "gitBlobId": "728fce63f0bb40ee6ed7e0f584396393ef311c78",
       "reviewStatus": "pending"
     },
     {
@@ -4381,7 +4381,7 @@
     {
       "file": "NoWing-web/src/ui/novvin/publicInfoPages.ts",
       "phase": "web",
-      "gitBlobId": "317e8994e7aab7cb34a8cc624b85755f038ed79e",
+      "gitBlobId": "5b003faeba752b284bbfa69bd285ef2a64e92d8a",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -4723,8 +4723,10 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "3f6f1140d3aded3495ea1819808ebfe0a6fd9ad0",
-      "reviewStatus": "pending"
+      "gitBlobId": "1fd256a8b12e304e99f6a063d422b2020ef34c74",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/lint.xml",
@@ -5135,6 +5137,14 @@
       "phase": "android",
       "gitBlobId": "b7ac0db1e9fcc8756300508fed1552c100517b71",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/legal/AccountDeletionLinksDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "b871acd7beee5f26a2ad351208acf703f812ce7b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/live/LiveAudienceInteractionDeviceTest.kt",
@@ -10421,6 +10431,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/legal/AccountDeletionLinks.kt",
+      "phase": "android",
+      "gitBlobId": "7ae25940a19366ba9460e43dd8a179dffc43af99",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/legal/HelpAndTermsScreens.kt",
       "phase": "android",
       "gitBlobId": "bee514aaf82b6d0894b391435dfd92f6e30836fb",
@@ -10431,8 +10449,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/legal/PrivacyPolicyScreen.kt",
       "phase": "android",
-      "gitBlobId": "7fb2db19c4cdfe7f7584b013970e39afaeab2c50",
-      "reviewStatus": "pending"
+      "gitBlobId": "554152ed2114b8d0d4a9f6e800f2bc5352c5579d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/ActiveLiveSessionBubble.kt",
@@ -12135,17 +12155,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/SettingsDirectory.kt",
       "phase": "android",
-      "gitBlobId": "bad47fc69b069d69f7c4c98a775de9ba87dc3bba",
+      "gitBlobId": "dfa042f4f14d4a257155b63f959cd30d6cd37f0b",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/SettingsScreen.kt",
       "phase": "android",
-      "gitBlobId": "3e71e4b8a031cfda6ecb2c96f982885d1d8e31ef",
+      "gitBlobId": "6f9e7af18e55d59c1c123e7395a7526250528f16",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17473,8 +17493,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/SettingsDirectoryTest.kt",
       "phase": "android",
-      "gitBlobId": "3ed494379eb7df12e60e4f41957271da5d46cb3b",
-      "reviewStatus": "pending"
+      "gitBlobId": "e6786f4d5ebd191af0d42de9c546c560bf7e919e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/proximity/AnonymousSendPolicyTest.kt",
@@ -21309,7 +21331,7 @@
     {
       "file": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "phase": "documentation",
-      "gitBlobId": "92d692f2d3e4067979e7b96e6d83d2accfde9ad0",
+      "gitBlobId": "f547829261a9dcf8e92f28569bcf5af4ca979333",
       "reviewStatus": "pending"
     },
     {
@@ -22785,7 +22807,7 @@
     {
       "file": "docs/quality/evidence/173-resultados.json",
       "phase": "documentation",
-      "gitBlobId": "9b3b71ad3b8fe61b113bf4c8c2e3424f6c784bc5",
+      "gitBlobId": "ac393259cbf99b5b1ff206534c8ba5edcd200fae",
       "reviewStatus": "pending"
     },
     {
