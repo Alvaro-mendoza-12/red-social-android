@@ -14,4 +14,11 @@ class SettingsDirectoryTest {
         assertFalse(SettingsDirectory.hasMatches("moderacion", includeAdmin = false))
         assertTrue(SettingsDirectory.hasMatches("moderacion", includeAdmin = true))
     }
+    @Test fun accountDeletionAndDataRequestsAreDiscoverable() {
+        for (query in listOf("eliminar cuenta", "borrar datos", "ELIMINACIÓN", "contacto privacidad")) {
+            assertTrue(query, SettingsDirectory.hasMatches(query, includeAdmin = false))
+            assertTrue(query, SettingsDirectory.matches("Privacidad y legales", query))
+        }
+        assertFalse(SettingsDirectory.matches("Administración", "eliminar cuenta"))
+    }
 }

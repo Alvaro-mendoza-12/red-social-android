@@ -24,7 +24,7 @@ internal object SettingsDirectory {
         "Copia de seguridad" to "backup exportar importar restaurar preferencias google android nube",
         "Tomar un descanso" to "silencio notificaciones pausar ocultar perfil bienestar",
         "Pantalla" to "oscuro claro idioma lenguaje avatar animado sonido accesibilidad",
-        "Privacidad y legales" to "politicas terminos condiciones datos derechos",
+        "Privacidad y legales" to "politicas terminos condiciones datos derechos eliminar cuenta eliminacion borrar correo contacto",
         "Soporte y Ayuda" to "problemas errores ayuda contacto administrador",
         "Novvin Web" to "computadora navegador qr vincular dispositivos sesiones cerrar",
         "Cambio rápido de cuenta" to "cuentas agregar cambiar sesion",
