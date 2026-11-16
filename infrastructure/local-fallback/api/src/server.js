@@ -2967,6 +2967,7 @@ app.post('/v1/auth/password-reset/verify', async (req, res, next) => {
 
 app.post('/v1/auth/password-reset/confirm', requireBcryptPasswordLength('newPassword', 'password'), async (req, res, next) => {
   let client
+  let passwordChangeCommitted = false
   try {
     if (isWebClientRequest(req) && !requireTrustedWebSessionRequest(req, res)) return
     const resetToken = String(req.body?.resetToken || req.body?.token || '').trim()
@@ -3051,17 +3052,31 @@ app.post('/v1/auth/password-reset/confirm', requireBcryptPasswordLength('newPass
       )
     }
     await client.query('COMMIT')
-    client.release()
+    passwordChangeCommitted = true
+    const committedClient = client
     client = null
+    committedClient.release()
 
     const user = sanitizeUser(await hydrateUserRow(updated.rows[0]))
     await recordAudit('auth_password_reset_completed', user.id, { email: user.email })
-      .catch((error) => console.error('[auth] password reset audit failed', error))
+      .catch((error) => console.error('[auth] password reset audit failed', safeErrorLogDetails(error, { production: isProduction })))
     if (await hasEnabledSecondFactor(user.id)) {
-      return res.json({ ok: true, requiresTwoFactor: true })
+      res.set('Cache-Control', 'no-store')
+      return res.json({ ok: true, passwordChanged: true, requiresTwoFactor: true })
     }
-    return res.json({ ok: true, ...(await issueSessionForRequest(user, req, res)) })
+    const session = await issueSessionForRequest(user, req, res)
+    res.set('Cache-Control', 'no-store')
+    return res.json({ ok: true, passwordChanged: true, ...session })
   } catch (error) {
+    if (passwordChangeCommitted) {
+      console.error('[auth] password changed; session preparation failed', safeErrorLogDetails(error, { production: isProduction }))
+      if (res.headersSent) return next(error)
+      // Session preparation may have appended a cookie before failing. Discard
+      // that response cookie without clearing an unrelated existing browser login.
+      res.removeHeader('Set-Cookie')
+      res.set('Cache-Control', 'no-store')
+      return res.json({ ok: true, passwordChanged: true, requiresSignIn: true })
+    }
     if (client) await client.query('ROLLBACK').catch(() => {})
     return next(error)
   } finally {

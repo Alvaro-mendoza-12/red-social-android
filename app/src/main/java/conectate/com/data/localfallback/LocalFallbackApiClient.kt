@@ -44,6 +44,7 @@ import conectate.com.data.model.VideoComment
 import conectate.com.data.model.VoiceParticipant
 import conectate.com.data.model.VoiceRoom
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.domain.auth.PasswordResetConfirmedNeedsSignInException
 import io.ktor.client.plugins.timeout
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -1850,8 +1851,16 @@ class LocalFallbackApiClient @Inject constructor(
             }
             val body = response.bodyAsText()
             if (response.status.isSuccess()) {
-                if (json.parseToJsonElement(body).jsonObject["requiresTwoFactor"]?.jsonPrimitive?.content == "true") {
+                val payload = json.parseToJsonElement(body).jsonObject
+                if (payload["requiresTwoFactor"]?.jsonPrimitive?.content == "true") {
                     return Result.failure(LocalFallbackPasswordChangedNeedsTwoFactorException())
+                }
+                val confirmed = JsonPrimitive(true)
+                if (payload["ok"] == confirmed && payload["passwordChanged"] == confirmed &&
+                    payload["requiresSignIn"] == confirmed) {
+                    return Result.failure(PasswordResetConfirmedNeedsSignInException(
+                        IllegalStateException("El servidor confirmó el cambio; se requiere un nuevo inicio de sesión.")
+                    ))
                 }
                 Result.success(json.decodeFromString<LocalFallbackAuthResponse>(body).normalized())
             } else {
