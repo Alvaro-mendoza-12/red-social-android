@@ -1,9 +1,9 @@
 package conectate.com.presentation.search
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -34,23 +34,33 @@ internal class UnifiedSearchController<U, C>(
     val loadingMore = _loadingMore.asStateFlow()
     private val _hasMoreContent = MutableStateFlow(false)
     val hasMoreContent = _hasMoreContent.asStateFlow()
+    private val contentKeys = hashSetOf<Any?>()
     private var nextContentOffset: Int? = null
     private var moreJob: Job? = null
     private var generation = 0L
     private var job: Job? = null
+    private var pendingDebounce: CompletableDeferred<Unit>? = null
     private var query = ""
 
     fun search(rawQuery: String, immediate: Boolean = false) {
         val normalized = rawQuery.trim().removePrefix("@").trim().take(120)
-        if (normalized == query && job?.isActive == true) return
+        if (normalized == query && job?.isActive == true) {
+            if (immediate) pendingDebounce?.complete(Unit)
+            return
+        }
         clear()
         query = normalized
         if (normalized.length < 2) return
         val request = generation
+        val debounce = if (immediate || debounceMs <= 0) null else CompletableDeferred<Unit>()
+        pendingDebounce = debounce
         _loading.value = true
         job = scope.launch {
             try {
-                if (!immediate) delay(debounceMs)
+                if (debounce != null) {
+                    withTimeoutOrNull(debounceMs) { debounce.await() }
+                    if (request == generation) pendingDebounce = null
+                }
                 val usersJob = launch {
                     val result = safely { findUsers(normalized) }
                     if (request == generation) {
@@ -66,7 +76,7 @@ internal class UnifiedSearchController<U, C>(
                     }
                     if (request == generation) {
                         val page = result.getOrNull()
-                        _content.value = page?.items.orEmpty().distinctBy(contentKey)
+                        if (page != null) appendContent(page.items)
                         nextContentOffset = page?.nextOffset?.takeIf { it > 0 }
                         _hasMoreContent.value = nextContentOffset != null
                         _contentError.value = if (result.isFailure)
@@ -94,7 +104,7 @@ internal class UnifiedSearchController<U, C>(
                 val result = safely { read(requestedQuery, offset) }
                 if (request != generation) return@launch
                 result.onSuccess { page ->
-                    _content.value = (_content.value + page.items).distinctBy(contentKey)
+                    appendContent(page.items)
                     nextContentOffset = page.nextOffset?.takeIf { it > offset }
                     _hasMoreContent.value = nextContentOffset != null
                 }.onFailure {
@@ -106,10 +116,18 @@ internal class UnifiedSearchController<U, C>(
         }
     }
 
+    private fun appendContent(items: List<C>) {
+        val newItems = items.filter { contentKeys.add(contentKey(it)) }
+        if (newItems.isEmpty()) return
+        val current = _content.value
+        _content.value = if (current.isEmpty()) newItems else current + newItems
+    }
+
     fun clear() {
         generation++
         job?.cancel()
         job = null
+        pendingDebounce = null
         moreJob?.cancel()
         moreJob = null
         nextContentOffset = null
@@ -117,6 +135,7 @@ internal class UnifiedSearchController<U, C>(
         _hasMoreContent.value = false
         query = ""
         _users.value = emptyList()
+        contentKeys.clear()
         _content.value = emptyList()
         _usersError.value = null
         _contentError.value = null
