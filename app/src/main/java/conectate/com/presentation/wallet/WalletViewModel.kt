@@ -15,10 +15,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.UUID
 import java.time.Instant
 import javax.inject.Inject
+import conectate.com.data.supabase.AuthSessionLease
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -78,10 +80,27 @@ class WalletViewModel @Inject constructor(
     private val _historyLoadingMore = MutableStateFlow(false)
     val historyLoadingMore: StateFlow<Boolean> = _historyLoadingMore.asStateFlow()
 
+    private var payoutOwner = creatorPayoutRepository.captureSession()
+    private val payoutOperations = CreatorPayoutOperations(viewModelScope,
+        creatorPayoutRepository::captureSession,
+        { _payoutLoading.value = it },
+        { _payoutMessage.value = payoutErrorMessage(it) })
+
     init {
         refresh()
         refreshEarnings()
         refreshPayouts()
+        viewModelScope.launch {
+            creatorPayoutRepository.observeSessionVisits().collect { current ->
+                if (!payoutOwner.sameVisit(current)) {
+                    payoutOperations.cancel()
+                    payoutOwner = current
+                    _payoutSummary.value = null
+                    _payoutMessage.value = null
+                    if (current.isCurrent()) refreshPayouts()
+                }
+            }
+        }
     }
 
     fun refresh() {
@@ -225,61 +244,50 @@ class WalletViewModel @Inject constructor(
         }
     }
 
-    fun refreshPayouts() {
-        if (_payoutLoading.value) return
-        viewModelScope.launch(Dispatchers.IO) {
-            _payoutLoading.value = true
-            creatorPayoutRepository.summary()
-                .onSuccess { _payoutSummary.value = it }
-                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
-            _payoutLoading.value = false
-        }
+    private fun publishPayout(session: AuthSessionLease, mutation: () -> Unit) {
+        creatorPayoutRepository.publish(session, mutation)
     }
 
-    fun configurePayoutAccount(email: String, currency: String) {
-        if (_payoutLoading.value) return
-        viewModelScope.launch(Dispatchers.IO) {
-            _payoutLoading.value = true
-            creatorPayoutRepository.updateAccount(email, currency)
-                .onSuccess {
-                    _payoutMessage.value = "Cuenta PayPal registrada. Un administrador debe verificarla antes del primer retiro."
-                    creatorPayoutRepository.summary().onSuccess { summary -> _payoutSummary.value = summary }
-                }
-                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
-            _payoutLoading.value = false
-        }
+    private suspend fun loadPayoutSummary(session: AuthSessionLease, confirmed: Boolean = false) {
+        creatorPayoutRepository.summary(session)
+            .onSuccess { summary -> publishPayout(session) { _payoutSummary.value = summary } }
+            .onFailure { error -> publishPayout(session) {
+                _payoutMessage.value = if (confirmed) "El servidor confirmó la operación, pero no pudimos actualizar el resumen. Actualiza para comprobarlo."
+                    else payoutErrorMessage(error)
+            } }
     }
 
-    fun requestCreatorPayout(amountMinor: Long) {
-        if (_payoutLoading.value) return
-        viewModelScope.launch(Dispatchers.IO) {
-            _payoutLoading.value = true
-            creatorPayoutRepository.request(amountMinor)
-                .onSuccess { response ->
-                    _payoutMessage.value = if (response.duplicate) {
-                        "La solicitud ya existía y no se duplicó."
-                    } else {
-                        "Solicitud registrada. Queda pendiente de aprobación manual."
-                    }
-                    creatorPayoutRepository.summary().onSuccess { summary -> _payoutSummary.value = summary }
-                }
-                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
-            _payoutLoading.value = false
-        }
+    fun refreshPayouts() = payoutOperations.run { session -> loadPayoutSummary(session) }
+
+    fun configurePayoutAccount(email: String, currency: String) = payoutOperations.run { session ->
+        creatorPayoutRepository.updateAccount(session, email, currency)
+            .onSuccess {
+                publishPayout(session) { _payoutMessage.value = "Cuenta PayPal registrada. Un administrador debe verificarla antes del primer retiro." }
+                loadPayoutSummary(session, confirmed = true)
+            }
+            .onFailure { error -> publishPayout(session) { _payoutMessage.value = payoutErrorMessage(error) } }
     }
 
-    fun cancelCreatorPayout(requestId: String) {
-        if (_payoutLoading.value) return
-        viewModelScope.launch(Dispatchers.IO) {
-            _payoutLoading.value = true
-            creatorPayoutRepository.cancel(requestId)
-                .onSuccess {
-                    _payoutMessage.value = "Solicitud cancelada; el saldo reservado volvió a estar disponible."
-                    creatorPayoutRepository.summary().onSuccess { summary -> _payoutSummary.value = summary }
+    fun requestCreatorPayout(amountMinor: Long) = payoutOperations.run { session ->
+        creatorPayoutRepository.request(session, amountMinor)
+            .onSuccess { response ->
+                publishPayout(session) {
+                    _payoutMessage.value = if (response.localCleanupPending) "Retiro confirmado. Quedó pendiente la limpieza local; conservamos la clave para evitar duplicarlo."
+                        else if (response.duplicate) "La solicitud ya existía y no se duplicó."
+                        else "Solicitud registrada. Queda pendiente de aprobación manual."
                 }
-                .onFailure { _payoutMessage.value = payoutErrorMessage(it) }
-            _payoutLoading.value = false
-        }
+                loadPayoutSummary(session, confirmed = true)
+            }
+            .onFailure { error -> publishPayout(session) { _payoutMessage.value = payoutErrorMessage(error) } }
+    }
+
+    fun cancelCreatorPayout(requestId: String) = payoutOperations.run { session ->
+        creatorPayoutRepository.cancel(session, requestId)
+            .onSuccess {
+                publishPayout(session) { _payoutMessage.value = "Solicitud cancelada; el saldo reservado volvió a estar disponible." }
+                loadPayoutSummary(session, confirmed = true)
+            }
+            .onFailure { error -> publishPayout(session) { _payoutMessage.value = payoutErrorMessage(error) } }
     }
 
     fun clearPayoutMessage() {
@@ -298,6 +306,7 @@ class WalletViewModel @Inject constructor(
             "PAYOUT_EMAIL_INVALID" -> "Ingresa un correo PayPal válido."
             "PAYOUT_ACCOUNT_ALREADY_IN_USE" -> "Esta cuenta PayPal ya está asociada a otro creador."
             "PAYOUT_IDEMPOTENCY_CONFLICT" -> "La solicitud no pudo repetirse porque sus datos cambiaron."
+            "PAYOUT_PREVIOUS_ATTEMPT_UNCONFIRMED" -> "Hay un retiro sin confirmar. Reintenta el mismo monto para comprobarlo antes de solicitar otro."
             else -> "No se pudo completar la operación de retiro. Inténtalo nuevamente."
         }
     }
