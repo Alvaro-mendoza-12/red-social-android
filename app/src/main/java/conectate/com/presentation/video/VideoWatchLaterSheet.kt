@@ -43,21 +43,22 @@ fun VideoWatchLaterSheet(
     onOpenVideo: (String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val owner = viewModel.ownerAtRender()
     LaunchedEffect(viewModel) { viewModel.refresh() }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().heightIn(max = 600.dp).padding(horizontal = 16.dp)) {
             Text("Ver después", style = MaterialTheme.typography.titleLarge)
             Text("Lista privada sincronizada con tu cuenta", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = state.sort == "newest", onClick = { viewModel.setSort("newest") },
+                FilterChip(selected = state.sort == "newest", onClick = { if (owner?.isCurrent() == true) viewModel.setSort("newest") },
                     label = { Text("Más recientes") })
-                FilterChip(selected = state.sort == "oldest", onClick = { viewModel.setSort("oldest") },
+                FilterChip(selected = state.sort == "oldest", onClick = { if (owner?.isCurrent() == true) viewModel.setSort("oldest") },
                     label = { Text("Más antiguos") })
             }
             state.error?.let { error ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-                    TextButton(onClick = viewModel::refresh) { Text("Reintentar") }
+                    TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.refresh() }) { Text("Reintentar") }
                 }
             }
             if (state.loading) CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp))
@@ -84,18 +85,18 @@ fun VideoWatchLaterSheet(
                             if (!item.unavailable) Text(item.creatorName,
                                 style = MaterialTheme.typography.bodySmall)
                             Row {
-                                if (!item.unavailable) Button(onClick = { onOpenVideo(item.videoId) }) {
+                                if (!item.unavailable) Button(onClick = { if (owner?.isCurrent() == true) onOpenVideo(item.videoId) }) {
                                     androidx.compose.material3.Icon(Icons.Default.PlayArrow, contentDescription = null)
                                     Text("Abrir")
                                 }
-                                TextButton(onClick = { viewModel.remove(item.videoId) }) { Text("Quitar") }
+                                TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.remove(item.videoId) }) { Text("Quitar") }
                             }
                         }
                     }
                     HorizontalDivider()
                 }
                 if (state.nextCursor != null) item {
-                    TextButton(onClick = viewModel::loadMore, enabled = !state.loading,
+                    TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.loadMore() }, enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
                 }
             }

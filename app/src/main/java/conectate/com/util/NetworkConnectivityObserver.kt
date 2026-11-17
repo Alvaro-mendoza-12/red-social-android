@@ -4,10 +4,13 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Build
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -18,66 +21,85 @@ class NetworkConnectivityObserver @Inject constructor(
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
-    val isConnected: Flow<Boolean> = callbackFlow {
+    val isConnected: Flow<Boolean> = observeCapabilities(::isUsableConnection)
+
+    val isCellular: Flow<Boolean> = observeCapabilities(::isCellularConnection)
+
+    private fun observeCapabilities(resolve: (NetworkCapabilities) -> Boolean): Flow<Boolean> = callbackFlow {
+        val lock = Any()
+        // Only this initial snapshot uses synchronous getters. Android callbacks carry
+        // ordered capabilities; getters inside a callback can still describe the old network.
+        var trackedNetwork = connectivityManager.activeNetwork
+        val initialCapabilities = trackedNetwork?.let(connectivityManager::getNetworkCapabilities)
+        var callbackObserved = false
+        var hasCapabilities = false
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                trySend(resolveCurrentConnectionState())
+                synchronized(lock) {
+                    callbackObserved = true
+                    trackedNetwork = network
+                    hasCapabilities = false
+                }
+                // API 26+ delivers capabilities immediately after availability.
+                // On 24/25, query later on the collecting coroutine, and let a real
+                // capabilities callback supersede that fallback before it publishes.
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) launch {
+                    yield()
+                    val capabilities = connectivityManager.getNetworkCapabilities(network)
+                    synchronized(lock) {
+                        if (trackedNetwork == network && !hasCapabilities) {
+                            trySend(capabilities?.let(resolve) ?: false)
+                        }
+                    }
+                }
             }
 
             override fun onLost(network: Network) {
-                trySend(resolveCurrentConnectionState())
+                synchronized(lock) {
+                    callbackObserved = true
+                    if (trackedNetwork == network) {
+                        trackedNetwork = null
+                        trySend(false)
+                    }
+                }
             }
-            
+
             override fun onUnavailable() {
-                trySend(false)
+                synchronized(lock) { if (trackedNetwork == null) trySend(false) }
             }
-            
+
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                trySend(isUsableConnection(networkCapabilities))
+                synchronized(lock) {
+                    callbackObserved = true
+                    if (network == trackedNetwork) {
+                        hasCapabilities = true
+                        trySend(resolve(networkCapabilities))
+                    }
+                }
             }
         }
 
         connectivityManager.registerDefaultNetworkCallback(callback)
-
-        // Initial state
-        trySend(resolveCurrentConnectionState())
-
-        awaitClose {
-            connectivityManager.unregisterNetworkCallback(callback)
+        synchronized(lock) {
+            if (!callbackObserved) trySend(initialCapabilities?.let(resolve) ?: false)
         }
-    }.distinctUntilChanged()
-
-    val isCellular: Flow<Boolean> = callbackFlow {
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) { trySend(isCellularNetwork()) }
-            override fun onLost(network: Network) { trySend(isCellularNetwork()) }
-            override fun onUnavailable() { trySend(false) }
-            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                trySend(isCellularNetwork())
-            }
-        }
-        connectivityManager.registerDefaultNetworkCallback(callback)
-        trySend(isCellularNetwork())
         awaitClose { connectivityManager.unregisterNetworkCallback(callback) }
     }.distinctUntilChanged()
 
     fun isCellularNetwork(): Boolean {
         val network = connectivityManager.activeNetwork ?: return false
         val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-        return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-            (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
-                connectivityManager.isActiveNetworkMetered)
-    }
-    
-    fun isNetworkAvailable(): Boolean {
-        var activeNetwork = connectivityManager.activeNetwork ?: return false
-        var capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
-        return isUsableConnection(capabilities)
+        return isCellularConnection(capabilities)
     }
 
-    private fun resolveCurrentConnectionState(): Boolean {
-        var activeNetwork = connectivityManager.activeNetwork ?: return false
-        var capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+    private fun isCellularConnection(capabilities: NetworkCapabilities): Boolean =
+        capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+            (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN) &&
+                !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED))
+    
+    fun isNetworkAvailable(): Boolean {
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
         return isUsableConnection(capabilities)
     }
 

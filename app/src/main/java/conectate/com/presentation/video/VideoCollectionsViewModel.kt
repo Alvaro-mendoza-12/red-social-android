@@ -6,6 +6,7 @@ import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.VideoCollection
 import conectate.com.data.localfallback.VideoCollectionItem
 import conectate.com.data.repository.VideoRepository
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.AuthService
 import conectate.com.presentation.common.AppFeedbackBus
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,8 +16,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 data class VideoCollectionsState(
@@ -40,6 +40,7 @@ class VideoCollectionsViewModel @Inject constructor(
     private val _state = MutableStateFlow(VideoCollectionsState())
     val state = _state.asStateFlow()
     private var accountId: String? = null
+    private var ownerLease: AuthSessionLease? = null
     private var revision = 0L
     private var itemRevision = 0L
     private var searchJob: Job? = null
@@ -47,9 +48,9 @@ class VideoCollectionsViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            auth.observeSession().map { it?.user?.id?.trim()?.lowercase() }
-                .distinctUntilChanged().collect { current ->
-                    if (accountId != current) reset(current)
+            combine(auth.observeSession(), auth.accountVisitChanges) { _, _ -> auth.captureAccountLease() }
+                .collect { current ->
+                    if (ownerLease?.sameVisit(current) != true) reset(current)
                 }
         }
         viewModelScope.launch {
@@ -61,8 +62,9 @@ class VideoCollectionsViewModel @Inject constructor(
         }
     }
 
-    private fun reset(current: String?) {
-        accountId = current
+    private fun reset(current: AuthSessionLease) {
+        ownerLease = current
+        accountId = current.accountId
         revision++
         itemRevision++
         searchJob?.cancel()
@@ -70,11 +72,13 @@ class VideoCollectionsViewModel @Inject constructor(
         _state.value = VideoCollectionsState()
     }
 
-    private fun bindAccount(): String? {
-        val current = auth.getCurrentUserId()?.trim()?.lowercase()
-        if (current != accountId) reset(current)
-        return current
+    private fun bindAccount(): AuthSessionLease? {
+        val current = auth.captureAccountLease()
+        if (ownerLease?.sameVisit(current) != true) reset(current)
+        return current.takeIf { it.isCurrent() }
     }
+
+    internal fun ownerAtRender(): AuthSessionLease? = ownerLease
 
     fun refresh(silent: Boolean = false) {
         val account = bindAccount() ?: run {
@@ -86,12 +90,17 @@ class VideoCollectionsViewModel @Inject constructor(
         val requestRevision = revision
         if (!silent) _state.value = _state.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            if (!silent) auth.ensureValidAccessToken().onSuccess { token ->
-                realtime.updateAccessToken(token)
-                realtime.replaceUserSubscription(account)
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) {
+                account.requireCurrent()
+                if (!silent) auth.ensureValidAccessToken().onSuccess { token ->
+                    account.requireCurrent()
+                    realtime.updateAccessToken(token)
+                    account.requireCurrent()
+                    realtime.replaceUserSubscription(account.accountId!!)
+                }
+                repository.getVideoCollections(account).getOrThrow()
             }
-            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoCollections().getOrThrow() }
-            if (account != bindAccount() || requestRevision != revision) return@launch
+            if (!account.isCurrent() || requestRevision != revision) return@launch
             result.fold(onSuccess = { catalog ->
                 val selected = _state.value.selectedId?.takeIf { id ->
                     catalog.items.any { it.id == id }
@@ -145,8 +154,8 @@ class VideoCollectionsViewModel @Inject constructor(
         val requestRevision = itemRevision
         _state.value = _state.value.copy(loadingVideos = true, error = null)
         viewModelScope.launch {
-            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoCollectionItems(collectionId, query, offset).getOrThrow() }
-            if (account != bindAccount() || requestRevision != itemRevision ||
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoCollectionItems(account, collectionId, query, offset).getOrThrow() }
+            if (!account.isCurrent() || requestRevision != itemRevision ||
                 collectionId != _state.value.selectedId || query != _state.value.search) return@launch
             result.fold(onSuccess = { page ->
                 _state.value = _state.value.copy(
@@ -160,17 +169,26 @@ class VideoCollectionsViewModel @Inject constructor(
         }
     }
 
+    private fun launchMutation(account: AuthSessionLease, action: suspend () -> Unit) = viewModelScope.launch {
+        try {
+            account.requireCurrent()
+            action()
+        } finally {
+            if (account.isCurrent()) _state.value = _state.value.copy(working = false)
+        }
+    }
+
     fun create(name: String, videoId: String? = null) {
         val account = bindAccount() ?: return
         if (_state.value.working) return
         _state.value = _state.value.copy(working = true, error = null)
-        viewModelScope.launch {
-            val result = repository.saveVideoCollection(name.trim())
-            if (account != bindAccount()) return@launch
+        launchMutation(account) {
+            val result = repository.saveVideoCollection(account, name.trim())
+            if (!account.isCurrent()) return@launchMutation
             result.fold(onSuccess = { collection ->
-                viewModelScope.launch {
-                    val addResult = videoId?.let { repository.setVideoCollectionItem(collection.id, it, true) }
-                    if (account != bindAccount()) return@launch
+                run {
+                    val addResult = videoId?.let { repository.setVideoCollectionItem(account, collection.id, it, true) }
+                    if (!account.isCurrent()) return@launchMutation
                     addResult?.exceptionOrNull()?.let { error ->
                         AppFeedbackBus.showError(error.message ?: "No se pudo añadir el video.")
                     }
@@ -189,9 +207,9 @@ class VideoCollectionsViewModel @Inject constructor(
         val account = bindAccount() ?: return
         if (_state.value.working) return
         _state.value = _state.value.copy(working = true, error = null)
-        viewModelScope.launch {
-            val result = repository.saveVideoCollection(name.trim(), collectionId)
-            if (account != bindAccount()) return@launch
+        launchMutation(account) {
+            val result = repository.saveVideoCollection(account, name.trim(), collectionId)
+            if (!account.isCurrent()) return@launchMutation
             _state.value = _state.value.copy(working = false,
                 error = result.exceptionOrNull()?.message)
             if (result.isSuccess) refresh(silent = true)
@@ -202,9 +220,9 @@ class VideoCollectionsViewModel @Inject constructor(
         val account = bindAccount() ?: return
         if (_state.value.working) return
         _state.value = _state.value.copy(working = true, error = null)
-        viewModelScope.launch {
-            val result = repository.deleteVideoCollection(collectionId)
-            if (account != bindAccount()) return@launch
+        launchMutation(account) {
+            val result = repository.deleteVideoCollection(account, collectionId)
+            if (!account.isCurrent()) return@launchMutation
             _state.value = _state.value.copy(working = false,
                 error = result.exceptionOrNull()?.message)
             if (result.isSuccess) {
@@ -216,26 +234,26 @@ class VideoCollectionsViewModel @Inject constructor(
         }
     }
 
-    fun add(collectionId: String, videoId: String) = mutateItem(collectionId, videoId) {
-        repository.setVideoCollectionItem(collectionId, videoId, true)
+    fun add(collectionId: String, videoId: String) = mutateItem(collectionId, videoId) { lease ->
+        repository.setVideoCollectionItem(lease, collectionId, videoId, true)
     }
 
-    fun remove(collectionId: String, videoId: String) = mutateItem(collectionId, videoId) {
-        repository.setVideoCollectionItem(collectionId, videoId, false)
+    fun remove(collectionId: String, videoId: String) = mutateItem(collectionId, videoId) { lease ->
+        repository.setVideoCollectionItem(lease, collectionId, videoId, false)
     }
 
-    fun move(collectionId: String, videoId: String, direction: String) = mutateItem(collectionId, videoId) {
-        repository.moveVideoCollectionItem(collectionId, videoId, direction)
+    fun move(collectionId: String, videoId: String, direction: String) = mutateItem(collectionId, videoId) { lease ->
+        repository.moveVideoCollectionItem(lease, collectionId, videoId, direction)
     }
 
     private fun mutateItem(collectionId: String, videoId: String,
-                           operation: suspend () -> Result<Unit>) {
+                           operation: suspend (AuthSessionLease) -> Result<Unit>) {
         val account = bindAccount() ?: return
         if (_state.value.working) return
         _state.value = _state.value.copy(working = true, error = null)
-        viewModelScope.launch {
-            val result = operation()
-            if (account != bindAccount()) return@launch
+        launchMutation(account) {
+            val result = operation(account)
+            if (!account.isCurrent()) return@launchMutation
             _state.value = _state.value.copy(working = false,
                 error = result.exceptionOrNull()?.message)
             if (result.isSuccess) refresh(silent = true)

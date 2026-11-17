@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-17T12:48:42.065417+00:00",
-  "baseCommit": "424da6961a8ff42b0cc14bcbda804577c61e30b6",
+  "generatedAtUtc": "2026-11-17T13:17:11.167786+00:00",
+  "baseCommit": "cabeb1b60550f722bd9cf4f930728653c0a9e5b3",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3595,
+    "pending": 3596,
     "partial": 255,
-    "code-read": 769
+    "code-read": 772
   },
   "countsByPhase": {
     "android": {
       "pending": 1449,
       "partial": 111,
-      "code-read": 533
+      "code-read": 536
     },
     "documentation": {
-      "pending": 655,
+      "pending": 656,
       "code-read": 61,
       "partial": 20
     },
@@ -8007,6 +8007,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/data/repository/AccountScopedCall.kt",
+      "phase": "android",
+      "gitBlobId": "e64b3448d9f7795d414acf4ccb88b5e3c943103f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/repository/AccountSessionRepository.kt",
       "phase": "android",
       "gitBlobId": "b41cca7927d50be1b4bb132ebc738527b21dab07",
@@ -8395,9 +8403,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/NotificationAccountCall.kt",
       "phase": "android",
-      "gitBlobId": "d5958e5273ca340dcea5d96c307a47995d3c6775",
+      "gitBlobId": "1053f7e9b335f43cddb9d64ed49244407ce969b9",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8571,9 +8579,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/VideoRepository.kt",
       "phase": "android",
-      "gitBlobId": "33500d219ea4a77bd6832ca121f5db986a4068a1",
+      "gitBlobId": "6b4e8db9f0a14fb67cd8940003dd4130933ce307",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9153,7 +9161,7 @@
       "phase": "android",
       "gitBlobId": "d1bf3fbd1f96a8a9232344265e3f37c31baa5f85",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/152-cuentas-guardadas-y-salida-de-ajustes-2026-11-15.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12881,17 +12889,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoCollectionsSheet.kt",
       "phase": "android",
-      "gitBlobId": "29e35a3dfb91a2920920bb4565c6514c3433c52c",
+      "gitBlobId": "81e3a7332046d847979fc108497ac8873943f8fc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoCollectionsViewModel.kt",
       "phase": "android",
-      "gitBlobId": "805f918c6ef618903644ca03e52f17e77d79903a",
+      "gitBlobId": "85f6db280b8c28e6f978dbb8cd49104604833356",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13009,17 +13017,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoHistorySheet.kt",
       "phase": "android",
-      "gitBlobId": "ae97439498e38ffe90d68322b8edec5fd921b8c1",
+      "gitBlobId": "b4793cc4f630ea11230904ee9a380b9308f46d24",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoHistoryViewModel.kt",
       "phase": "android",
-      "gitBlobId": "a3fb27c2d76c3da03a6c63ef9fff321bcecb1c21",
+      "gitBlobId": "d336bbd51e84e83e62c52f605632d7ac6b94ecbe",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13075,17 +13083,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoWatchLaterSheet.kt",
       "phase": "android",
-      "gitBlobId": "93df0f3cfc970893f5ffb34458019dec6291f129",
+      "gitBlobId": "6fff720da4f43676f9028c10f803f75ab2e579dd",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoWatchLaterViewModel.kt",
       "phase": "android",
-      "gitBlobId": "25754d9ef0c35589b985b0a594fb919cc2a8e672",
+      "gitBlobId": "bc15da3627567869a395ce36fe317e30566f4a3c",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13763,9 +13771,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/NetworkConnectivityObserver.kt",
       "phase": "android",
-      "gitBlobId": "9d073159ac13460e6ae3f366085136b60ad3837e",
+      "gitBlobId": "04c24faffa4e23a6827a3f444efb91a4d95cda7a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15905,7 +15913,7 @@
       "phase": "android",
       "gitBlobId": "ee9c1f98cb55658c50766cf04b035832e6ba6772",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15993,6 +16001,14 @@
       "phase": "android",
       "gitBlobId": "674531fa8b1d6972708d041b075b96633a278ac0",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/VideoLibraryAccountBoundaryTest.kt",
+      "phase": "android",
+      "gitBlobId": "fc2f258c50638f3f2f7ef89a579608f16c929094",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/VideoPublishRetryPolicyTest.kt",
@@ -17899,9 +17915,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/video/VideoLibraryLoadingTest.kt",
       "phase": "android",
-      "gitBlobId": "e9c066ef8b9fe77531fc925dbfa40728c07a0240",
+      "gitBlobId": "1e549160a8c81f1761353188af7c7873980dcaa6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18277,6 +18293,14 @@
       "phase": "android",
       "gitBlobId": "b627fa14937df5da572cf233ac7436e6decbf2fa",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/util/NetworkConnectivityObserverTest.kt",
+      "phase": "android",
+      "gitBlobId": "dffa895eed40332076f79877c3a042baefd46aa1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/util/NotificationAccountTargetTest.kt",
@@ -21432,6 +21456,12 @@
       "file": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
       "phase": "documentation",
       "gitBlobId": "207215ca30261e4d4745c6ec5f970851f8077f0f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/178-auditoria-movil-sesion-red-y-plazos-2026-11-17.md",
+      "phase": "documentation",
+      "gitBlobId": "def4fd363b4672709172630dd45cceb1eba874be",
       "reviewStatus": "pending"
     },
     {

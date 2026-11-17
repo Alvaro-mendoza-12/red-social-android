@@ -3449,77 +3449,99 @@ class VideoRepository @Inject constructor(
         }
     }
 
-    suspend fun getVideoWatchLater(cursor: String = "", sort: String = "newest"): Result<VideoWatchLaterPage> {
-        val token = authService.getAccessTokenAwait()
-            ?: return Result.failure(Exception("Inicia sesión para ver tus videos pendientes."))
-        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("Ver después requiere el servidor Novvin."))
-        return localFallbackApiClient.getVideoWatchLater(token, cursor, sort)
+    private suspend fun <T> libraryCall(
+        lease: conectate.com.data.supabase.AuthSessionLease,
+        action: suspend (String) -> Result<T>,
+    ): Result<T> = accountScopedCall(lease, authService::getAccessTokenForAccountAwait) { _, token ->
+        if (!shouldUseUbuntuBackend()) Result.failure(IllegalStateException("La biblioteca requiere el servidor Novvin."))
+        else action(token)
     }
 
-    suspend fun setVideoWatchLater(videoId: String, saved: Boolean): Result<Unit> {
-        val token = authService.getAccessTokenAwait()
-            ?: return Result.failure(Exception("Inicia sesión para guardar videos."))
-        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("Ver después requiere el servidor Novvin."))
-        return localFallbackApiClient.setVideoWatchLater(token, videoId, saved)
+    suspend fun getVideoWatchLater(cursor: String = "", sort: String = "newest"): Result<VideoWatchLaterPage> =
+        getVideoWatchLater(authService.captureAccountLease(), cursor, sort)
+
+    internal suspend fun getVideoWatchLater(lease: conectate.com.data.supabase.AuthSessionLease,
+        cursor: String = "", sort: String = "newest"): Result<VideoWatchLaterPage> = libraryCall(lease) {
+        localFallbackApiClient.getVideoWatchLater(it, cursor, sort)
     }
 
-    suspend fun getVideoHistory(cursor: String = ""): Result<VideoHistoryPage> {
-        val token = authService.getAccessTokenAwait()
-            ?: return Result.failure(Exception("Inicia sesión para ver tu historial."))
-        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("El historial requiere el servidor Novvin."))
-        return localFallbackApiClient.getVideoHistory(token, cursor)
+    suspend fun setVideoWatchLater(videoId: String, saved: Boolean): Result<Unit> =
+        setVideoWatchLater(authService.captureAccountLease(), videoId, saved)
+
+    internal suspend fun setVideoWatchLater(lease: conectate.com.data.supabase.AuthSessionLease,
+        videoId: String, saved: Boolean): Result<Unit> = libraryCall(lease) {
+        localFallbackApiClient.setVideoWatchLater(it, videoId, saved)
     }
 
-    suspend fun recordVideoHistory(videoId: String, positionMs: Long, durationMs: Long): Result<Unit> {
-        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("El historial requiere el servidor Novvin."))
-        val token = authService.getAccessTokenAwait()
-            ?: return Result.failure(Exception("Inicia sesión para guardar tu progreso."))
-        return localFallbackApiClient.recordVideoHistory(token, videoId, positionMs, durationMs)
+    suspend fun getVideoHistory(cursor: String = ""): Result<VideoHistoryPage> =
+        getVideoHistory(authService.captureAccountLease(), cursor)
+
+    internal suspend fun getVideoHistory(lease: conectate.com.data.supabase.AuthSessionLease,
+        cursor: String = ""): Result<VideoHistoryPage> = libraryCall(lease) {
+        localFallbackApiClient.getVideoHistory(it, cursor)
     }
 
-    suspend fun deleteVideoHistory(videoId: String? = null): Result<Unit> {
-        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("El historial requiere el servidor Novvin."))
-        val token = authService.getAccessTokenAwait()
-            ?: return Result.failure(Exception("Inicia sesión para borrar tu historial."))
-        return localFallbackApiClient.deleteVideoHistory(token, videoId)
+    suspend fun recordVideoHistory(videoId: String, positionMs: Long, durationMs: Long): Result<Unit> =
+        recordVideoHistory(authService.captureAccountLease(), videoId, positionMs, durationMs)
+
+    internal suspend fun recordVideoHistory(lease: conectate.com.data.supabase.AuthSessionLease,
+        videoId: String, positionMs: Long, durationMs: Long): Result<Unit> = libraryCall(lease) {
+        localFallbackApiClient.recordVideoHistory(it, videoId, positionMs, durationMs)
     }
 
-    private suspend fun videoCollectionToken(): Result<String> {
-        if (!shouldUseUbuntuBackend()) return Result.failure(Exception("Las colecciones requieren el servidor Novvin."))
-        val token = authService.getAccessTokenAwait()
-            ?: return Result.failure(Exception("Inicia sesión para usar colecciones."))
-        return Result.success(token)
+    suspend fun deleteVideoHistory(videoId: String? = null): Result<Unit> =
+        deleteVideoHistory(authService.captureAccountLease(), videoId)
+
+    internal suspend fun deleteVideoHistory(lease: conectate.com.data.supabase.AuthSessionLease,
+        videoId: String? = null): Result<Unit> = libraryCall(lease) {
+        localFallbackApiClient.deleteVideoHistory(it, videoId)
     }
 
-    suspend fun getVideoCollections(): Result<VideoCollectionCatalog> = videoCollectionToken()
-        .fold(onSuccess = { localFallbackApiClient.getVideoCollections(it) },
-            onFailure = { Result.failure(it) })
+    suspend fun getVideoCollections(): Result<VideoCollectionCatalog> = getVideoCollections(authService.captureAccountLease())
+
+    internal suspend fun getVideoCollections(lease: conectate.com.data.supabase.AuthSessionLease): Result<VideoCollectionCatalog> = libraryCall(lease) {
+        localFallbackApiClient.getVideoCollections(it)
+    }
 
     suspend fun saveVideoCollection(name: String, collectionId: String? = null): Result<VideoCollection> =
-        videoCollectionToken().fold(
-            onSuccess = { localFallbackApiClient.saveVideoCollection(it, name, collectionId) },
-            onFailure = { Result.failure(it) },
-        )
+        saveVideoCollection(authService.captureAccountLease(), name, collectionId)
 
-    suspend fun deleteVideoCollection(collectionId: String): Result<Unit> = videoCollectionToken()
-        .fold(onSuccess = { localFallbackApiClient.deleteVideoCollection(it, collectionId) },
-            onFailure = { Result.failure(it) })
+    internal suspend fun saveVideoCollection(lease: conectate.com.data.supabase.AuthSessionLease,
+        name: String, collectionId: String? = null): Result<VideoCollection> = libraryCall(lease) {
+        localFallbackApiClient.saveVideoCollection(it, name, collectionId)
+    }
 
-    suspend fun getVideoCollectionItems(collectionId: String, search: String = "",
-                                        offset: Int = 0): Result<VideoCollectionPage> = videoCollectionToken()
-        .fold(onSuccess = { localFallbackApiClient.getVideoCollectionItems(it, collectionId, search, offset) },
-            onFailure = { Result.failure(it) })
+    suspend fun deleteVideoCollection(collectionId: String): Result<Unit> =
+        deleteVideoCollection(authService.captureAccountLease(), collectionId)
+
+    internal suspend fun deleteVideoCollection(lease: conectate.com.data.supabase.AuthSessionLease,
+        collectionId: String): Result<Unit> = libraryCall(lease) {
+        localFallbackApiClient.deleteVideoCollection(it, collectionId)
+    }
+
+    suspend fun getVideoCollectionItems(collectionId: String, search: String = "", offset: Int = 0): Result<VideoCollectionPage> =
+        getVideoCollectionItems(authService.captureAccountLease(), collectionId, search, offset)
+
+    internal suspend fun getVideoCollectionItems(lease: conectate.com.data.supabase.AuthSessionLease,
+        collectionId: String, search: String = "", offset: Int = 0): Result<VideoCollectionPage> = libraryCall(lease) {
+        localFallbackApiClient.getVideoCollectionItems(it, collectionId, search, offset)
+    }
 
     suspend fun setVideoCollectionItem(collectionId: String, videoId: String, add: Boolean): Result<Unit> =
-        videoCollectionToken().fold(
-            onSuccess = { localFallbackApiClient.setVideoCollectionItem(it, collectionId, videoId, add) },
-            onFailure = { Result.failure(it) },
-        )
+        setVideoCollectionItem(authService.captureAccountLease(), collectionId, videoId, add)
 
-    suspend fun moveVideoCollectionItem(collectionId: String, videoId: String,
-                                        direction: String): Result<Unit> = videoCollectionToken()
-        .fold(onSuccess = { localFallbackApiClient.moveVideoCollectionItem(it, collectionId, videoId, direction) },
-            onFailure = { Result.failure(it) })
+    internal suspend fun setVideoCollectionItem(lease: conectate.com.data.supabase.AuthSessionLease,
+        collectionId: String, videoId: String, add: Boolean): Result<Unit> = libraryCall(lease) {
+        localFallbackApiClient.setVideoCollectionItem(it, collectionId, videoId, add)
+    }
+
+    suspend fun moveVideoCollectionItem(collectionId: String, videoId: String, direction: String): Result<Unit> =
+        moveVideoCollectionItem(authService.captureAccountLease(), collectionId, videoId, direction)
+
+    internal suspend fun moveVideoCollectionItem(lease: conectate.com.data.supabase.AuthSessionLease,
+        collectionId: String, videoId: String, direction: String): Result<Unit> = libraryCall(lease) {
+        localFallbackApiClient.moveVideoCollectionItem(it, collectionId, videoId, direction)
+    }
 
     suspend fun getVideosBySound(soundId: String): Result<List<Video>> = withContext(Dispatchers.IO) {
         val cleanSoundId = soundId.trim().lowercase().takeIf { it.isNotBlank() }
