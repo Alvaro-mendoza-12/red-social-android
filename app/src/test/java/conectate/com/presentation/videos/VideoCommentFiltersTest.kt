@@ -29,6 +29,39 @@ class VideoCommentFiltersTest {
         assertEquals(listOf("nested"), threads.single().replies.map { it.id })
     }
 
+    @Test fun aPartialPageKeepsRepliesBelowTheirClosestAvailableAncestor() {
+        val availableParent = comments[2].copy(parentId = "missing")
+        val threads = visibleVideoCommentThreads(
+            listOf(comments[3], availableParent),
+            VideoCommentOrder.RECENT, VideoCommentAuthorFilter.MINE, "me", "creator",
+        )
+        assertEquals(listOf("reply"), threads.map { it.root.id })
+        assertEquals(listOf("nested"), threads.single().replies.map { it.id })
+    }
+
+    @Test fun duplicateAliasesDoNotBecomeAdditionalReplies() {
+        val duplicateReply = comments[2].copy(id = " REPLY ")
+        val threads = visibleVideoCommentThreads(
+            comments + duplicateReply, VideoCommentOrder.RECENT,
+            VideoCommentAuthorFilter.ALL, "me", "creator",
+        )
+        assertEquals(listOf("reply", "nested"), threads.single { it.root.id == "early" }.replies.map { it.id })
+    }
+
+    @Test fun aHistoricalCycleUsesOneStableRootAndKeepsItsDescendants() {
+        val first = comments[0].copy(parentId = "reply")
+        val second = comments[2]
+        val descendant = comments[3]
+        val cyclic = listOf(first, second, descendant)
+        for (input in listOf(cyclic, cyclic.reversed())) {
+            val thread = visibleVideoCommentThreads(
+                input, VideoCommentOrder.RECENT, VideoCommentAuthorFilter.ALL, "me", "creator",
+            ).single()
+            assertEquals("early", thread.root.id)
+            assertEquals(listOf("reply", "nested"), thread.replies.map { it.id })
+        }
+    }
+
     private fun view(
         order: VideoCommentOrder,
         filter: VideoCommentAuthorFilter = VideoCommentAuthorFilter.ALL,
