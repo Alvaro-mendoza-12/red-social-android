@@ -25,6 +25,7 @@
 
 const crypto = require('crypto')
 const { loadImportedVideoCandidateRows } = require('./algorithm-imported-video-candidates')
+const { publicVideoSound } = require('./video-public-attribution')
 
 const SUPPORTED_SURFACES = new Set(['social', 'video'])
 const MAX_CANDIDATES = 200
@@ -667,6 +668,12 @@ function videoCandidate(row, now) {
   const specificFormat = classification.formatKey === 'video'
     ? 'long-video'
     : classification.formatKey
+  const authorName = publicDisplayName(row.display_name)
+  const { soundArtist, soundTitle } = publicVideoSound(
+    cleanPublicText(row.sound_title, 180),
+    cleanPublicText(row.sound_artist, 120),
+    authorName,
+  )
   return {
     id,
     surface: 'video',
@@ -676,7 +683,7 @@ function videoCandidate(row, now) {
     item: {
       id,
       user_id: creatorId,
-      user_name: publicDisplayName(row.display_name),
+      user_name: authorName,
       user_profile_image: safePublicUrl(row.avatar_url),
       title: cleanPublicText(row.title, 240),
       description: cleanPublicText(row.description),
@@ -685,8 +692,8 @@ function videoCandidate(row, now) {
       thumbnail_url: safePublicUrl(row.thumbnail_url),
       sound_id: normalizeId(row.sound_id) || id,
       sound_source_video_id: normalizeId(row.sound_source_video_id) || id,
-      sound_title: cleanPublicText(row.sound_title, 180) || `Sonido original — ${publicDisplayName(row.display_name)}`,
-      sound_artist: cleanPublicText(row.sound_artist, 120) || publicDisplayName(row.display_name),
+      sound_title: soundTitle,
+      sound_artist: soundArtist,
       sound_url: safePublicUrl(row.sound_url) || videoUrl,
       duration_seconds: safeNumber(row.duration_seconds, 86_400),
       views: safeNumber(row.views),

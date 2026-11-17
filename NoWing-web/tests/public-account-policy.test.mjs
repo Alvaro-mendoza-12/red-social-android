@@ -36,3 +36,13 @@ test('public privacy identifies Novvin, actual integrated services and a visible
   assert.match(page, /href="#eliminacion"/)
   for (const page of pages) assert.match(page.content, /href="\/eliminar-cuenta"/)
 })
+
+test('public policies explain content removal, copyright requests and the Android account request', () => {
+  const privacy = html('/privacidad')
+  const deletion = html('/eliminar-cuenta')
+  assert.match(privacy, /Eliminar contenido publicado/)
+  assert.match(privacy, /Derechos sobre videos, música e imágenes/)
+  assert.match(privacy, /Seguridad infantil en Novvin/)
+  assert.match(privacy, /revocación de la autorización/)
+  assert.match(deletion, /Cuenta y seguridad y selecciona Solicitar eliminación de mi cuenta/)
+})

@@ -107,7 +107,10 @@ sealed class Screen(val route: String) {
     }
     
     object SearchUsers : Screen("search_users") {
-        fun createRoute(query: String) = "search_users?query=${android.net.Uri.encode(query)}"
+        val routeWithQuery = "$route?query={query}"
+
+        fun createRoute(query: String): String =
+            if (query.isBlank()) route else "$route?query=${android.net.Uri.encode(query)}"
     }
     object Proximity : Screen("proximity")
     object CreateGroup : Screen("create_group")

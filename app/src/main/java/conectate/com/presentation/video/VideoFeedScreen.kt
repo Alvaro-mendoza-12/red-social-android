@@ -264,7 +264,7 @@ fun VideoFeedScreen(
     showBackButton: Boolean = false,
     feedRefreshToken: Long = 0L,
     onNavigateToUpload: (VideoSoundSelection?) -> Unit,
-    onNavigateToSearch: () -> Unit,
+    onNavigateToSearch: (String) -> Unit,
     onNavigateToProfile: (String) -> Unit,
     onNavigateToChat: (String) -> Unit,
     onNavigateToLiveSetup: () -> Unit = {},
@@ -1904,7 +1904,7 @@ fun VideoFeedScreen(
                          if (selectedTab == 1) {
                              Spacer(modifier = Modifier.height(16.dp))
                              Button(
-                                 onClick = { onNavigateToSearch() },
+                                 onClick = { onNavigateToSearch("") },
                                  colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                              ) {
                                  Text("Buscar personas")
@@ -2032,9 +2032,7 @@ fun VideoFeedScreen(
                                 selectedVideoForReport = reportedVideo
                             },
                             onSoundClick = { soundVideo -> selectedSound = soundVideo },
-                            onRelatedSearch = { query ->
-                                navController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
-                            },
+                            onRelatedSearch = onNavigateToSearch,
                             hasPlaybackError = exhaustedPlaybackVideoId == video.id,
                             onRetryPlayback = {
                                 automaticPlaybackAttempts[video.id] = 0
@@ -3049,7 +3047,7 @@ fun VideoItem(
             remember(video.id, video.title, video.description, video.tags, video.isPublic, video.isSensitive) {
                 videoRelatedTopic(video)
             }?.let { topic ->
-                Row(Modifier.fillMaxWidth().clickable { onRelatedSearch(topic) }.padding(vertical = 4.dp),
+                Row(Modifier.heightIn(min = 40.dp).clickable(role = androidx.compose.ui.semantics.Role.Button) { onRelatedSearch(topic) },
                     verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Search, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Text("Buscar: $topic", color = Color.White, style = MaterialTheme.typography.bodySmall,

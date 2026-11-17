@@ -1,11 +1,8 @@
 package conectate.com.presentation.videos
 
-import androidx.compose.runtime.Composable
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,11 +15,13 @@ import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.EmojiEmotions
+import androidx.compose.material.icons.filled.Report
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,16 +29,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import conectate.com.data.model.VideoComment
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.components.AdminBadge
 import conectate.com.presentation.components.CreatorBadge
-import java.text.SimpleDateFormat
-import java.util.*
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 
@@ -80,7 +78,6 @@ fun CommentSheet(
     var focusResolved by remember(focusCommentId) { mutableStateOf(focusCommentId.isNullOrBlank()) }
     var commentOrder by remember { mutableStateOf(VideoCommentOrder.RECENT) }
     var commentAuthorFilter by remember { mutableStateOf(VideoCommentAuthorFilter.ALL) }
-    val haptic = LocalHapticFeedback.current
     var showStickerPanel by remember { mutableStateOf(false) }
     
     val visibleThreads = remember(comments, commentOrder, commentAuthorFilter, currentUserId, videoCreatorId) {
@@ -170,7 +167,7 @@ fun CommentSheet(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
                     items(visibleThreads, key = { it.root.id }) { thread ->
@@ -190,7 +187,8 @@ fun CommentSheet(
                             onReplyClick = onReplyClick,
                             onReactComment = onReactComment,
                             onEditComment = onEditComment,
-                            onReportComment = onReportComment
+                            onReportComment = onReportComment,
+                            initiallyExpanded = thread.replies.any { it.id == focusCommentId },
                         )
                     }
                 }
@@ -216,10 +214,11 @@ fun CommentSheet(
                         Text(
                             text = "Respondiendo a @${replyingTo?.userName ?: "Usuario"}",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
                         )
-                        IconButton(onClick = cancelReply, modifier = Modifier.size(20.dp)) {
-                            Icon(Icons.Default.Close, null)
+                        IconButton(onClick = cancelReply) {
+                            Icon(Icons.Default.Close, "Cancelar respuesta")
                         }
                     }
                 }
@@ -326,14 +325,15 @@ private fun replaceActiveMention(currentText: String, username: String): String 
     return currentText.substring(0, atIndex + 1) + username + " "
 }
 
-private fun String?.isRootCommentParent(): Boolean {
-    return normalizedCommentParent() == null
-}
+private data class VideoCommentReaction(val type: String, val emoji: String, val label: String)
 
-private fun String?.normalizedCommentParent(): String? {
-    val clean = this?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
-    return clean.takeUnless { it == "0" || it == "null" || it == "undefined" || it == "none" }
-}
+private val videoCommentReactions = listOf(
+    VideoCommentReaction("LIKE", "👍", "Me gusta"),
+    VideoCommentReaction("LOVE", "❤️", "Me encanta"),
+    VideoCommentReaction("LAUGH", "😂", "Me divierte"),
+    VideoCommentReaction("WOW", "😮", "Me sorprende"),
+    VideoCommentReaction("SAD", "😢", "Me entristece"),
+)
 
 @Composable
 fun CommentThreadItem(
@@ -358,8 +358,8 @@ fun CommentThreadItem(
     var expanded by remember(comment.id, initiallyExpanded) { mutableStateOf(initiallyExpanded) }
     val currentUserNormalized = currentUserId?.trim()?.lowercase()
     val videoCreatorNormalized = videoCreatorId?.trim()?.lowercase()
-    val canDeleteParent = currentUserNormalized != null &&
-        (currentUserNormalized == comment.userId.trim().lowercase() || currentUserNormalized == videoCreatorNormalized)
+    val ownsParent = currentUserNormalized != null && currentUserNormalized == comment.userId.trim().lowercase()
+    val ownsVideo = currentUserNormalized != null && currentUserNormalized == videoCreatorNormalized
 
     Column {
         // Parent Comment
@@ -368,8 +368,8 @@ fun CommentThreadItem(
             onPlayAudio = onPlayAudio,
             isPlaying = isPlaying,
             progress = progress,
-            isOwnComment = currentUserId == comment.userId,
-            canDelete = canDeleteParent,
+            isOwnComment = ownsParent,
+            canDelete = ownsParent || ownsVideo,
             onDelete = { onDeleteComment(comment) },
             onProfileClick = { onProfileClick(comment.userId) },
             onMentionClick = onMentionClick,
@@ -382,54 +382,50 @@ fun CommentThreadItem(
 
         // Replies Toggle
         if (replies.isNotEmpty()) {
-            Row(
-                modifier = Modifier
-                    .padding(start = 52.dp, top = 4.dp)
-                    .clickable { expanded = !expanded },
-                verticalAlignment = Alignment.CenterVertically
+            TextButton(
+                onClick = { expanded = !expanded },
+                modifier = Modifier.padding(start = 48.dp),
+                contentPadding = PaddingValues(horizontal = 8.dp),
             ) {
-                 Box(
-                     modifier = Modifier
-                         .width(20.dp)
-                         .height(1.dp)
-                         .background(MaterialTheme.colorScheme.outlineVariant)
-                 )
-                 Spacer(modifier = Modifier.width(8.dp))
-                 Text(
-                     text = if (expanded) "Ocultar respuestas" else "Ver ${replies.size} respuestas",
-                     style = MaterialTheme.typography.labelSmall,
-                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                     fontWeight = FontWeight.Bold
-                 )
+                Text(
+                    text = when {
+                        expanded -> "Ocultar respuestas"
+                        replies.size == 1 -> "Ver 1 respuesta"
+                        else -> "Ver ${replies.size} respuestas"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         }
 
         // Nested Replies
         AnimatedVisibility(visible = expanded) {
             Column(
-                modifier = Modifier.padding(start = 44.dp, top = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.padding(start = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 replies.forEach { reply ->
-                    val canDeleteReply = currentUserNormalized != null &&
-                        (currentUserNormalized == reply.userId.trim().lowercase() || currentUserNormalized == videoCreatorNormalized)
-                    VideoCommentItem(
-                        comment = reply,
-                        onPlayAudio = onPlayAudio,
-                        isPlaying = currentPlayingCommentId == reply.id,
-                        progress = if (currentPlayingCommentId == reply.id) audioProgress else 0f,
-                        isOwnComment = currentUserId == reply.userId,
-                        canDelete = canDeleteReply,
-                        onDelete = { onDeleteComment(reply) },
-                        onProfileClick = { onProfileClick(reply.userId) },
-                        onMentionClick = onMentionClick,
-                        isCreator = reply.userId == videoCreatorId,
-                        onReplyClick = { onReplyClick(reply) }, // Reply to reply? Usually replies to original parent or flat structure. Let's keep it simple.
-                        isReply = true,
-                        onReaction = { reaction -> onReactComment(reply, reaction) },
-                        onEdit = { content -> onEditComment(reply, content) },
-                        onReport = { onReportComment(reply) }
-                    )
+                    key(reply.id) {
+                        val ownsReply = currentUserNormalized != null &&
+                            currentUserNormalized == reply.userId.trim().lowercase()
+                        VideoCommentItem(
+                            comment = reply,
+                            onPlayAudio = onPlayAudio,
+                            isPlaying = currentPlayingCommentId == reply.id,
+                            progress = if (currentPlayingCommentId == reply.id) audioProgress else 0f,
+                            isOwnComment = ownsReply,
+                            canDelete = ownsReply || ownsVideo,
+                            onDelete = { onDeleteComment(reply) },
+                            onProfileClick = { onProfileClick(reply.userId) },
+                            onMentionClick = onMentionClick,
+                            isCreator = reply.userId == videoCreatorId,
+                            onReplyClick = { onReplyClick(reply) },
+                            isReply = true,
+                            onReaction = { reaction -> onReactComment(reply, reaction) },
+                            onEdit = { content -> onEditComment(reply, content) },
+                            onReport = { onReportComment(reply) },
+                        )
+                    }
                 }
             }
         }
@@ -437,6 +433,7 @@ fun CommentThreadItem(
 }
 
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun VideoCommentItem(
     comment: VideoComment,
@@ -456,6 +453,7 @@ fun VideoCommentItem(
     onReport: () -> Unit = {}
 ) {
     var showEditDialog by remember(comment.id) { mutableStateOf(false) }
+    var showActions by remember(comment.id) { mutableStateOf(false) }
     var editText by remember(comment.id) { mutableStateOf(comment.content) }
     Row(
         modifier = Modifier
@@ -531,81 +529,105 @@ fun VideoCommentItem(
                  }
              }
 
-             Row(
-                 modifier = Modifier
-                     .padding(start = 8.dp, top = 4.dp)
-                     .horizontalScroll(rememberScrollState()),
-                 horizontalArrangement = Arrangement.spacedBy(4.dp)
-             ) {
-                 listOf("LIKE" to "👍", "LOVE" to "❤️", "LAUGH" to "😂", "WOW" to "😮", "SAD" to "😢")
-                     .forEach { (type, emoji) ->
-                         val selected = comment.myReaction == type
-                         val count = comment.reactions[type] ?: 0
-                         Text(
-                             text = if (count > 0) "$emoji $count" else emoji,
-                             modifier = Modifier
-                                 .clip(CircleShape)
-                                 .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant)
-                                 .clickable { onReaction(if (selected) null else type) }
-                                 .padding(horizontal = 6.dp, vertical = 3.dp),
-                             style = MaterialTheme.typography.labelSmall
-                         )
-                     }
-             }
-             
-             // Footer (Time, Reply, Delete)
-             Row(
-                 verticalAlignment = Alignment.CenterVertically,
-                 modifier = Modifier
-                     .padding(start = 12.dp, top = 2.dp)
-                     .horizontalScroll(rememberScrollState())
-             ) {
-                 Text(
+            val reaction = videoCommentReactions.firstOrNull { it.type == comment.myReaction }
+                ?: videoCommentReactions.first()
+            val reactionCount = comment.reactions[reaction.type] ?: 0
+            val hasReaction = reaction.type == comment.myReaction
+            val canEdit = isOwnComment && comment.contentType == "text" && canEditVideoComment(comment.created_at)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
                     text = conectate.com.util.localCommentDateLabel(comment.created_at),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                 )
-                 
-                 Spacer(modifier = Modifier.width(16.dp))
-                 
-                 Text(
-                     text = "Responder",
-                     style = MaterialTheme.typography.labelSmall,
-                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                     fontWeight = FontWeight.Bold,
-                     modifier = Modifier
-                         .clip(RoundedCornerShape(4.dp))
-                         .clickable { onReplyClick() }
-                         .padding(horizontal = 8.dp, vertical = 4.dp)
-                 )
-                 
-                 if (canDelete) {
-                     Spacer(modifier = Modifier.width(8.dp))
-                     Text(
-                         text = "Eliminar",
-                         style = MaterialTheme.typography.labelSmall,
-                         color = MaterialTheme.colorScheme.error,
-                         modifier = Modifier
-                             .clip(RoundedCornerShape(4.dp))
-                             .clickable { onDelete() }
-                             .padding(horizontal = 8.dp, vertical = 4.dp)
-                     )
-                 }
-                 if (isOwnComment && comment.contentType == "text" && canEditVideoComment(comment.created_at)) {
-                     Text(
-                         text = "Editar",
-                         style = MaterialTheme.typography.labelSmall,
-                         modifier = Modifier.clickable { showEditDialog = true }.padding(horizontal = 8.dp, vertical = 4.dp)
-                     )
-                 } else if (!isOwnComment) {
-                     Text(
-                         text = "Reportar",
-                         style = MaterialTheme.typography.labelSmall,
-                         color = MaterialTheme.colorScheme.error,
-                         modifier = Modifier.clickable(onClick = onReport).padding(horizontal = 8.dp, vertical = 4.dp)
-                     )
-                 }
-             }
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp, end = 2.dp),
+                )
+                TextButton(
+                    onClick = onReplyClick,
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text("Responder", style = MaterialTheme.typography.labelMedium)
+                }
+                TextButton(
+                    onClick = { onReaction(if (hasReaction) null else reaction.type) },
+                    modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { selected = hasReaction },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = if (hasReaction) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    ),
+                ) {
+                    if (reaction.type == "LIKE") {
+                        Icon(Icons.Default.ThumbUp, reaction.label, Modifier.size(18.dp))
+                    } else {
+                        Text(reaction.emoji, modifier = Modifier.semantics { contentDescription = reaction.label })
+                    }
+                    if (reactionCount > 0) {
+                        Spacer(Modifier.width(4.dp))
+                        Text(reactionCount.toString(), style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+                Box {
+                    IconButton(onClick = { showActions = true }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            "Más opciones del comentario",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    DropdownMenu(expanded = showActions, onDismissRequest = { showActions = false }) {
+                        videoCommentReactions.forEach { option ->
+                            val count = comment.reactions[option.type] ?: 0
+                            val active = comment.myReaction == option.type
+                            DropdownMenuItem(
+                                text = { Text(option.label) },
+                                leadingIcon = { Text(option.emoji) },
+                                trailingIcon = { if (count > 0) Text(count.toString()) },
+                                modifier = Modifier.semantics { selected = active },
+                                onClick = {
+                                    showActions = false
+                                    onReaction(if (active) null else option.type)
+                                },
+                            )
+                        }
+                        if (canEdit || canDelete || !isOwnComment) HorizontalDivider()
+                        if (canEdit) {
+                            DropdownMenuItem(
+                                text = { Text("Editar") },
+                                leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                onClick = {
+                                    showActions = false
+                                    editText = comment.content
+                                    showEditDialog = true
+                                },
+                            )
+                        }
+                        if (canDelete) {
+                            DropdownMenuItem(
+                                text = { Text("Eliminar") },
+                                leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                onClick = {
+                                    showActions = false
+                                    onDelete()
+                                },
+                            )
+                        }
+                        if (!isOwnComment) {
+                            DropdownMenuItem(
+                                text = { Text("Reportar") },
+                                leadingIcon = { Icon(Icons.Default.Report, null) },
+                                onClick = {
+                                    showActions = false
+                                    onReport()
+                                },
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 

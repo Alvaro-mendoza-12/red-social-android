@@ -71,6 +71,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import io.socket.client.IO
 import io.socket.client.Socket
+import conectate.com.core.media.InteractiveMediaGate
+import conectate.com.core.media.InteractiveMediaKind
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -91,11 +93,13 @@ class CallRepository @Inject constructor(
     private val appMetrics: AppMetrics,
     private val ubuntuRealtimeClient: UbuntuRealtimeClient,
     private val callControlClient: CallControlClient,
+    private val interactiveMediaGate: InteractiveMediaGate,
 ) : CallForegroundSessionController {
     private val callCancellationGuard = CallCancellationGuard(context)
     private val callStartMutex = Mutex()
     private var notificationVisit: CallNotificationVisit? = null
     @Volatile private var pendingCallLeaveJob: Job? = null
+    @Volatile private var pendingCallMediaReset: Job? = null
     @Serializable
     private data class CallInviteBroadcastPayload(
         val callId: String,
@@ -391,6 +395,24 @@ class CallRepository @Inject constructor(
         }
     }
 
+    private suspend inline fun <T> withCallStartup(start: (claimMedia: () -> Boolean) -> Result<T>): Result<T> =
+        callStartMutex.withLock {
+            pendingCallLeaveJob?.join()
+            pendingCallMediaReset?.join()
+            var claimed = false
+            try {
+                start {
+                    interactiveMediaGate.acquireExclusive(InteractiveMediaKind.CALL).also { claimed = it }
+                }
+            } finally {
+                synchronized(this) {
+                    if (claimed && _activeCall.value == null && pendingCallMediaReset?.isCompleted != false) {
+                        interactiveMediaGate.release(InteractiveMediaKind.CALL)
+                    }
+                }
+            }
+        }
+
     suspend fun startOutgoingCall(
         title: String,
         invitedUserIds: List<String>,
@@ -398,12 +420,12 @@ class CallRepository @Inject constructor(
         contextId: String? = null,
         isVideo: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
-        callStartMutex.withLock {
-        pendingCallLeaveJob?.join()
+        withCallStartup { claimMedia ->
         val notificationAccount = authService.captureAccountLease()
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
+        if (!claimMedia()) return@withContext Result.failure(IllegalStateException(interactiveMediaGate.conflictMessage()))
 
         // Names and avatars must not delay the invitation's network request.
         val callerName = authService.getCurrentUserDisplayName() ?: "Usuario"
@@ -551,12 +573,12 @@ class CallRepository @Inject constructor(
         contextType: String,
         contextId: String? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
-        callStartMutex.withLock {
-        pendingCallLeaveJob?.join()
+        withCallStartup { claimMedia ->
         val notificationAccount = authService.captureAccountLease()
         var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
+        if (!claimMedia()) return@withContext Result.failure(IllegalStateException(interactiveMediaGate.conflictMessage()))
 
         callControlClient.accept(callId.trim()).getOrElse { return@withContext Result.failure(it) }
         var profile = loadUserProfileQuick(currentUserId)
@@ -606,18 +628,22 @@ class CallRepository @Inject constructor(
             )
         )
 
-        prepareCallAudioSession()
-        startService()
-        scheduleConnectingTimeout(callId.trim())
-        connectSocket(callId.trim(), currentUserId, myName, myAvatar)
+        synchronized(this@CallRepository) {
+            if (!canRefreshCallMedia(_activeCall.value, callId.trim())) {
+                return@withContext Result.failure(Exception("Esta llamada ya finalizó."))
+            }
+            prepareCallAudioSession()
+            startService()
+            scheduleConnectingTimeout(callId.trim())
+            connectSocket(callId.trim(), currentUserId, myName, myAvatar)
+        }
         callTonePlayer.stopRingback()
         Result.success(Unit)
         }
     }
 
     suspend fun acceptIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
-        callStartMutex.withLock {
-        pendingCallLeaveJob?.join()
+        withCallStartup { claimMedia ->
         val notificationAccount = authService.captureAccountLease()
         if (!hasMicrophonePermission() || (invite.isVideo &&
                 ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
@@ -635,6 +661,7 @@ class CallRepository @Inject constructor(
                 canRefreshCallMedia(active, invite.callId)) Result.success(Unit)
                 else Result.failure(Exception("Ya hay una llamada activa"))
         }
+        if (!claimMedia()) return@withContext Result.failure(IllegalStateException(interactiveMediaGate.conflictMessage()))
 
         callControlClient.accept(invite.callId).getOrElse { return@withContext Result.failure(it) }
 
@@ -704,14 +731,16 @@ class CallRepository @Inject constructor(
                 )
             }
         }
-        if (callCancellationGuard.contains(invite.callId)) {
-            if (_activeCall.value?.callId.equals(invite.callId, ignoreCase = true)) endCallInternal("Llamada finalizada")
-            return@withContext Result.failure(Exception("Esta llamada ya finalizó."))
+        synchronized(this@CallRepository) {
+            if (callCancellationGuard.contains(invite.callId) || !canRefreshCallMedia(_activeCall.value, invite.callId)) {
+                if (_activeCall.value?.callId.equals(invite.callId, ignoreCase = true)) endCallInternal("Llamada finalizada")
+                return@withContext Result.failure(Exception("Esta llamada ya finalizó."))
+            }
+            prepareCallAudioSession()
+            startService()
+            scheduleConnectingTimeout(invite.callId)
+            connectSocket(invite.callId, currentUserId, myName, myAvatar)
         }
-        prepareCallAudioSession()
-        startService()
-        scheduleConnectingTimeout(invite.callId)
-        connectSocket(invite.callId, currentUserId, myName, myAvatar)
         scope.launch {
             val profile = loadUserProfileQuick(currentUserId, timeoutMs = 2_500L) ?: return@launch
             if (!_activeCall.value?.callId.equals(invite.callId, ignoreCase = true)) return@launch
@@ -1970,7 +1999,7 @@ class CallRepository @Inject constructor(
     private fun endCallInternal(reason: String, releaseServerSession: Boolean = true) {
         val departingNotification = notificationVisit?.target
         discardPreparedIncomingSocket()
-        var callSnapshot = _activeCall.value
+        val callSnapshot = _activeCall.value
         if (callSnapshot?.connectionState == CallConnectionState.ENDED) return
         callSnapshot?.let { callCancellationGuard.mark(it.callId) }
         // Invalidate delayed audio work before disconnecting/resetting native media.
@@ -2027,16 +2056,23 @@ class CallRepository @Inject constructor(
         }
         socket = null
 
-        try {
-            webRTCManager?.hardReset()
-        } catch (error: Exception) {
-            logBestEffortFailure(
-                operation = "hardResetWebRtcManager",
-                throwable = error,
-                callId = callSnapshot?.callId
-            )
+        if (callSnapshot != null) {
+            releaseCallAudioSession()
+            val manager = webRTCManager
+            if (manager == null) {
+                interactiveMediaGate.release(InteractiveMediaKind.CALL)
+            } else {
+                pendingCallMediaReset = scope.launch {
+                    try {
+                        manager.hardResetAwait()
+                    } catch (error: Exception) {
+                        logBestEffortFailure("hardResetWebRtcManager", error, callSnapshot.callId)
+                    } finally {
+                        interactiveMediaGate.release(InteractiveMediaKind.CALL)
+                    }
+                }
+            }
         }
-        releaseCallAudioSession()
 
         _endedCallSummary.value = callSnapshot?.toEndedSummary(reason)
         _activeCall.value = _activeCall.value?.copy(connectionState = CallConnectionState.ENDED)

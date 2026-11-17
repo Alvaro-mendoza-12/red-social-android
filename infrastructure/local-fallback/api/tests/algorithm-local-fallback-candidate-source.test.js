@@ -248,6 +248,8 @@ async function testSourceScrubsUnsafeDisplayAndSignedMediaUrls() {
   const pool = fakePool({
     videoRows: [videoRow({
       display_name: 'private@example.test',
+      sound_artist: 'private@example.test',
+      sound_title: 'Sonido original — private@example.test',
       avatar_url: 'https://cdn.example.test/avatar.png?token=never-expose',
       video_url: 'https://cdn.example.test/video.mp4',
       cover_url: 'http://insecure.example.test/cover.jpg',
@@ -258,6 +260,8 @@ async function testSourceScrubsUnsafeDisplayAndSignedMediaUrls() {
   const result = await source.loadRawCandidates({ owner: owner(), surface: 'video', now: NOW })
   assert.equal(result.candidates.length, 1)
   assert.equal(result.candidates[0].item.user_name, 'Usuario')
+  assert.equal(result.candidates[0].item.sound_artist, 'Usuario')
+  assert.equal(result.candidates[0].item.sound_title, 'Sonido original — Usuario')
   assert.equal(result.candidates[0].item.user_profile_image, null)
   assert.equal(result.candidates[0].item.video_url, 'https://cdn.example.test/video.mp4')
   assert.equal(result.candidates[0].item.cover_url, null)

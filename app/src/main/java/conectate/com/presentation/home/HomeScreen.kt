@@ -295,8 +295,8 @@ fun HomeScreen(
                         conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)
                         mainNavController.navigate(Screen.VideoUpload.route)
                     },
-                    onNavigateToSearch = {
-                        mainNavController.navigate(Screen.SearchUsers.route)
+                    onNavigateToSearch = { query ->
+                        mainNavController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
                     },
                     onNavigateToProfile = { userId ->
                         mainNavController.navigate(Screen.UserProfile.createRoute(userId))
@@ -446,7 +446,9 @@ fun HomeScreen(
                         conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)
                         mainNavController.navigate(Screen.VideoUpload.route)
                     },
-                    onNavigateToSearch = { mainNavController.navigate(Screen.SearchUsers.route) },
+                    onNavigateToSearch = { query ->
+                        mainNavController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
+                    },
                     onNavigateToProfile = { userId ->
                         mainNavController.navigate(Screen.UserProfile.createRoute(userId))
                     },
@@ -481,7 +483,9 @@ fun HomeScreen(
                         conectate.com.presentation.video.savePendingVideoSound(mainNavController, sound)
                         mainNavController.navigate(Screen.VideoUpload.route)
                     },
-                    onNavigateToSearch = { mainNavController.navigate(Screen.SearchUsers.route) },
+                    onNavigateToSearch = { query ->
+                        mainNavController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
+                    },
                     onNavigateToProfile = { userId ->
                         mainNavController.navigate(Screen.UserProfile.createRoute(userId))
                     },
@@ -596,6 +600,9 @@ fun HomeScreen(
             ) { backStackEntry ->
                 conectate.com.presentation.video.VideoDetailFeedScreen(
                     navController = navController,
+                    onNavigateToSearch = { query ->
+                        mainNavController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
+                    },
                     videoId = backStackEntry.arguments?.getString("videoId") ?: return@composable,
                     focusCommentId = backStackEntry.arguments?.getString("focusCommentId"),
                     initialPositionMs = backStackEntry.arguments?.getLong("resumeMs") ?: 0L,

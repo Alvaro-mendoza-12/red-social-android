@@ -32,7 +32,7 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
             }
         } else conectate.com.presentation.surveys.SurveysScreen(id, key, mode, onBack = { navController.popBackStack() })
     }
-    composable(Screen.SearchUsers.route + "?query={query}", arguments = listOf(
+    composable(Screen.SearchUsers.routeWithQuery, arguments = listOf(
         navArgument("query") { type = NavType.StringType; defaultValue = "" }
     )) {
         RequireLoggedIn(isLoggedIn, navController) {
@@ -119,7 +119,9 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
                     conectate.com.presentation.video.savePendingVideoSound(navController, sound)
                     navController.navigate(Screen.VideoUpload.route)
                 },
-                onNavigateToSearch = { navController.navigate(Screen.SearchUsers.route) },
+                onNavigateToSearch = { query ->
+                    navController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
+                },
                 onNavigateToProfile = { userId ->
                     navController.navigate(Screen.UserProfile.createRoute(userId))
                 },
@@ -157,7 +159,9 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
                     conectate.com.presentation.video.savePendingVideoSound(navController, sound)
                     navController.navigate(Screen.VideoUpload.route)
                 },
-                onNavigateToSearch = { navController.navigate(Screen.SearchUsers.route) },
+                onNavigateToSearch = { query ->
+                    navController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
+                },
                 onNavigateToProfile = { userId ->
                     navController.navigate(Screen.UserProfile.createRoute(userId))
                 },
@@ -578,6 +582,9 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         RequireLoggedIn(isLoggedIn, navController) {
             conectate.com.presentation.video.VideoDetailFeedScreen(
                 navController = navController,
+                onNavigateToSearch = { query ->
+                    navController.navigate(Screen.SearchUsers.createRoute(query)) { launchSingleTop = true }
+                },
                 videoId = backStackEntry.arguments?.getString("videoId") ?: return@RequireLoggedIn,
                 focusCommentId = focusCommentId,
                 initialPositionMs = resumeMs,
