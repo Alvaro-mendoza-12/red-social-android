@@ -1,3 +1,5 @@
+import { problemForError } from '../features/errors/errorCatalog'
+
 export type GenericRow = Record<string, unknown>
 
 export function textOf(row: GenericRow, keys: string[], fallback = ''): string {
@@ -43,7 +45,7 @@ export function formatDateTime(value: string): string {
 
 export function friendlyError(error: unknown, fallback = 'Ocurrió un error inesperado'): string {
   const raw = error instanceof Error ? error.message.trim() : ''
-  if (!raw) return fallback
+  if (!raw) return problemForError(error)?.description ?? fallback
   if (raw === 'GROUP_INVITE_INVALID') return 'La invitación está incompleta o no es válida.'
   if (raw === 'GROUP_INVITE_EXPIRED_OR_USED') return 'Esta invitación caducó o fue revocada. Pide un enlace nuevo.'
   if (raw === 'GROUP_INVITE_CREATE_DENIED') return 'Debes ser integrante para compartir esta invitación.'
@@ -51,6 +53,8 @@ export function friendlyError(error: unknown, fallback = 'Ocurrió un error ines
   if (raw === 'COMMUNITY_DAILY_MESSAGE_LIMIT_REACHED') return 'Alcanzaste el cupo diario de esta comunidad.'
   if (raw === 'ONLY_ADMINS_CAN_TALK') return 'Solo los administradores pueden escribir en esta comunidad.'
   if (raw === 'COMMUNITY_OWNER_ROLE_REQUIRED') return 'Solo quien creó la comunidad puede asignar o quitar administradores.'
+  const problem = problemForError(error)
+  if (problem) return problem.description
   if (/(timeout|failed to fetch|network|connection|offline|abort)/i.test(raw))
     return 'No se pudo conectar. Inténtalo de nuevo cuando tengas conexión.'
   if (/(https?:\/\/|wss?:\/\/|request_timeout|sqlstate|relation |stack|trace|^\w+_(DENIED|INVALID|REQUIRED|NOT_FOUND)$)/i.test(raw)) return fallback

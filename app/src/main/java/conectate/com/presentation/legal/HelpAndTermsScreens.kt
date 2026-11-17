@@ -15,6 +15,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -34,7 +35,11 @@ fun HelpCenterScreen(navController: NavController) {
         DocumentSection("Privacidad y seguridad", "Bloquea, silencia o reporta desde el contenido o perfil. Los reportes deben describir el hecho sin incluir información sensible innecesaria."),
         DocumentSection("Problemas técnicos", "Comprueba permisos de cámara y micrófono, conexión, ahorro de batería y versión instalada. Puedes contactar soporte desde la pantalla anterior.")
     )
-    DocumentScreen(navController, "Centro de ayuda", sections)
+    DocumentScreen(navController, "Centro de ayuda", sections) {
+        TextButton(onClick = { navController.navigate(conectate.com.presentation.navigation.Screen.ErrorCharacters.route) }) {
+            Text("Errores con personalidad")
+        }
+    }
 }
 
 @Composable
@@ -54,7 +59,12 @@ fun TermsAndConditionsScreen(navController: NavController) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DocumentScreen(navController: NavController, title: String, sections: List<DocumentSection>) {
+private fun DocumentScreen(
+    navController: NavController,
+    title: String,
+    sections: List<DocumentSection>,
+    extraAction: (@Composable () -> Unit)? = null,
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -72,6 +82,7 @@ private fun DocumentScreen(navController: NavController, title: String, sections
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            if (extraAction != null) item { extraAction() }
             items(sections) { section ->
                 Card {
                     androidx.compose.foundation.layout.Column(

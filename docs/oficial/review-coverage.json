@@ -1,8 +1,8 @@
 {
-  "generatedAtUtc": "2026-11-15T19:39:33.887011+00:00",
-  "baseCommit": "52c8ae60ba21776166a69a6bf9a9ea66bf311585",
+  "generatedAtUtc": "2026-11-17T13:33:21.221430+00:00",
+  "baseCommit": "6b0c405bfe8b306fcc78513be825ca2e8cd7f3e2",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
-  "scope": "Tracked repository working tree, plus explicitly reviewed new files; ignored backups and temporary files excluded.",
+  "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
   "definitions": {
     "pending": "Not fully read at this exact file hash.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3674,
-    "code-read": 519,
-    "partial": 100
+    "pending": 3666,
+    "code-read": 541,
+    "partial": 112
   },
   "countsByPhase": {
     "android": {
-      "pending": 1538,
-      "partial": 56,
-      "code-read": 433
+      "pending": 1540,
+      "partial": 58,
+      "code-read": 440
     },
     "documentation": {
       "pending": 560,
-      "code-read": 8,
+      "code-read": 9,
       "partial": 9
     },
     "server": {
@@ -31,14 +31,14 @@
       "partial": 13
     },
     "tooling-and-other": {
-      "pending": 155,
+      "pending": 154,
       "code-read": 11,
-      "partial": 6
+      "partial": 7
     },
     "web": {
-      "partial": 16,
-      "pending": 556,
-      "code-read": 16
+      "partial": 25,
+      "pending": 547,
+      "code-read": 30
     }
   },
   "files": [
@@ -235,6 +235,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/error-404.html",
+      "phase": "web",
+      "gitBlobId": "6922842ab19e6aa50c692ae41a0d3a1e2934b78d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/eslint.config.js",
       "phase": "web",
       "gitBlobId": "a6d7a9820f3a72fb6a7df0449d137e2ecae50614",
@@ -322,6 +330,42 @@
       "file": "NoWing-web/public/dictionaries/es-4.0.0/nspell-license.txt",
       "phase": "web",
       "gitBlobId": "8d8660d36ef2eced1f9cce91e17ae0290261734c",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/error-characters/confused.webp",
+      "phase": "web",
+      "gitBlobId": "442a0db57294720dc3c72a19701f5e25bba509eb",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/error-characters/detective.webp",
+      "phase": "web",
+      "gitBlobId": "11e9c83b44b8f08025a7b0122a9a5123a68ca50f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/error-characters/guardian.webp",
+      "phase": "web",
+      "gitBlobId": "da289bbe8514398f7b097d661296e78cbd7a18a9",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/error-characters/overloaded.webp",
+      "phase": "web",
+      "gitBlobId": "db28904c1001b0beee9e7861455aa1c154ff285d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/error-characters/protector.webp",
+      "phase": "web",
+      "gitBlobId": "bd40ddbef3753311b51f624bc32ba35abd00652f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/error-characters/sleeper.webp",
+      "phase": "web",
+      "gitBlobId": "d2ccc3f2a608c29bd8ac96014bfd1464339b67f8",
       "reviewStatus": "pending"
     },
     {
@@ -515,7 +559,7 @@
     {
       "file": "NoWing-web/public/sitemap.xml",
       "phase": "web",
-      "gitBlobId": "e954d00faa9aabd9fce646ce25d70c4c62a8ce39",
+      "gitBlobId": "50ab239aaa9b58db89de4b66ac945f92cdf2d5cb",
       "reviewStatus": "pending"
     },
     {
@@ -593,19 +637,23 @@
     {
       "file": "NoWing-web/scripts/prerender-public-home.mjs",
       "phase": "web",
-      "gitBlobId": "6a3fe31480691627e2520b8f7d7c3caf514c3523",
-      "reviewStatus": "pending"
+      "gitBlobId": "760499c3b61dfd9a7d829e5c2b89a309fdbec6cb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/scripts/public-page-model.mjs",
       "phase": "web",
-      "gitBlobId": "c1f45311fa34a8ec12027079002cf9ab3f55a248",
-      "reviewStatus": "pending"
+      "gitBlobId": "7e6c60904a8c8e932ed71d7b762ce13bfe0f05a8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "12bf41c42c715263da49955cc13a12a1b06dec02",
+      "gitBlobId": "2aac81f5210a7594effb33dbb2e2650581c0178d",
       "reviewStatus": "pending"
     },
     {
@@ -647,9 +695,9 @@
     {
       "file": "NoWing-web/src/App.tsx",
       "phase": "web",
-      "gitBlobId": "c6d8af3780ac56a8907a5fdebbb125a2478716d5",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "gitBlobId": "24d283f1bc25d7233147c8988c383d9af9e82ce6",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -661,8 +709,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/AppErrorBoundary.test.tsx",
       "phase": "web",
-      "gitBlobId": "dfbbeea6c8828055998b588c8f3f5e4e57734fb2",
-      "reviewStatus": "pending"
+      "gitBlobId": "396f00f8cd53fd871618987e8192bf97037a0e95",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/ChatAttachmentMedia.test.tsx",
@@ -819,6 +869,14 @@
       "phase": "web",
       "gitBlobId": "da586f43387b8fb989683afc7efcaa2608005d03",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/components/PersonifiedErrors.test.tsx",
+      "phase": "web",
+      "gitBlobId": "640208d825f4d59f2e76ec446aa1edb62427ba65",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/ProfileAppearanceControls.test.tsx",
@@ -1659,8 +1717,10 @@
     {
       "file": "NoWing-web/src/appEntry.tsx",
       "phase": "web",
-      "gitBlobId": "48e2cd41cd19ec33aa4c019d66cc7a3a9ccd032b",
-      "reviewStatus": "pending"
+      "gitBlobId": "3b8632d37740695dde7d9d1011c8bc110aa2122f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/assets/react.svg",
@@ -1671,9 +1731,9 @@
     {
       "file": "NoWing-web/src/components/AppErrorBoundary.tsx",
       "phase": "web",
-      "gitBlobId": "7a4e711c5f4c0c0f7dad5674a12ec6e343270c2f",
+      "gitBlobId": "5e8962818eba4d733e84e7928a0b8b72e31697f0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2291,8 +2351,10 @@
     {
       "file": "NoWing-web/src/core/auth/guestAccess.ts",
       "phase": "web",
-      "gitBlobId": "0c30ccb7fad72410fbba76270dc43cebd4b40f19",
-      "reviewStatus": "pending"
+      "gitBlobId": "a52f9442a7239cf17d6bf7a2cebfcac8b2265bcc",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/auth/loginReturnPath.ts",
@@ -2831,8 +2893,10 @@
     {
       "file": "NoWing-web/src/core/utils.ts",
       "phase": "web",
-      "gitBlobId": "2aa3464ae07aaa921b223a5b5cd3b6d1d1d85d89",
-      "reviewStatus": "pending"
+      "gitBlobId": "ac32b246cb917de6fabdeae4158ecdfab5c7961c",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/utils/cn.ts",
@@ -2937,6 +3001,54 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/features/errors/ErrorGalleryPage.tsx",
+      "phase": "web",
+      "gitBlobId": "e251a9de5124882d5e019c6e8e499bedf5b9afb4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/errors/PersonifiedErrorPanel.tsx",
+      "phase": "web",
+      "gitBlobId": "e618d5c05d5fde63b4f43d6edffa8a2236e260b6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/errors/errorCatalog.ts",
+      "phase": "web",
+      "gitBlobId": "f6df6bb6f223ef2032915da3c3e3b05fa4cc09fa",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/errors/notFoundEntry.tsx",
+      "phase": "web",
+      "gitBlobId": "2dce2ff85bd968274d230ede962c52f837b5d2c6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/errors/personifiedErrors.css",
+      "phase": "web",
+      "gitBlobId": "d74e9774283ccf2eaac1c58d4b35e5284b3e850c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/errors/useErrorSpeech.ts",
+      "phase": "web",
+      "gitBlobId": "2d7c765ef7d983d11c8e0c9980909e905256f3ed",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/features/feed/mediaUtils.ts",
       "phase": "web",
       "gitBlobId": "ce5a8ab355458329e62a020c980162d69e06bbae",
@@ -2967,8 +3079,10 @@
     {
       "file": "NoWing-web/src/features/help/HelpPage.tsx",
       "phase": "web",
-      "gitBlobId": "98f05c3965f5a3ad7c70160163f56e553a5acffa",
-      "reviewStatus": "pending"
+      "gitBlobId": "c45a0e65ca8488ed42f0c1c665bdacc900ff2553",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/help/help.css",
@@ -3249,8 +3363,10 @@
     {
       "file": "NoWing-web/src/features/reels/VideoDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "a940e7d72786a5b8f46998ceb9479a8fa9116de9",
-      "reviewStatus": "pending"
+      "gitBlobId": "0716141a7b5999657d90ef0f1b61db0c035fbbf6",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/reels/reelFeedOrder.ts",
@@ -3457,9 +3573,9 @@
     {
       "file": "NoWing-web/src/pages/ExplorePage.tsx",
       "phase": "web",
-      "gitBlobId": "a8eb64d5b6537e8a5334d55058e1d06df5fea5c7",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "gitBlobId": "387066711d782c787e5cde72a0ff0b743b3f7a90",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3533,8 +3649,10 @@
     {
       "file": "NoWing-web/src/pages/feed/PostDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "abe0ca52f3747c7717b268e9a2b8cb02bfdd9fdb",
-      "reviewStatus": "pending"
+      "gitBlobId": "38c4ec407c2d7a7b6f1cdc8f4b964c24cb85dd7a",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/pages/feed/postDetail.css",
@@ -3575,14 +3693,18 @@
     {
       "file": "NoWing-web/src/ui/novvin/NotFoundPage.tsx",
       "phase": "web",
-      "gitBlobId": "667a32e05f4c009252a47730a03387eec5e43067",
-      "reviewStatus": "pending"
+      "gitBlobId": "18b3a9cac3bd9007f31e49184eedb60c6315bd82",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/PageMetadata.tsx",
       "phase": "web",
-      "gitBlobId": "7d60581889798f6f1855b3997f6ae696b3dca742",
-      "reviewStatus": "pending"
+      "gitBlobId": "07214abe9bc6598034c1b41cd5db6dbfd67ff1cb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/ProfileHeader.tsx",
@@ -3601,8 +3723,10 @@
     {
       "file": "NoWing-web/src/ui/novvin/PublicInfo.tsx",
       "phase": "web",
-      "gitBlobId": "f8f87af1effcbeb749d5cc25821549374c6ebcb4",
-      "reviewStatus": "pending"
+      "gitBlobId": "f0f7a4c68bf7ef22d5d4a2941f5cc26ec3966890",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/PublicNavigation.tsx",
@@ -3719,8 +3843,10 @@
     {
       "file": "NoWing-web/tests/public-home.test.mjs",
       "phase": "web",
-      "gitBlobId": "aaae59a6ad5d60e572fdaed6b59655337351173c",
-      "reviewStatus": "pending"
+      "gitBlobId": "8966d9ee388e3735b2b0c14e8ecda9a9a0eba5bd",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/tests/public-http.test.mjs",
@@ -3773,14 +3899,18 @@
     {
       "file": "NoWing-web/vercel.json",
       "phase": "web",
-      "gitBlobId": "e959de9186cbbaa55458f57b1cf8f2c5ebe51d6f",
-      "reviewStatus": "pending"
+      "gitBlobId": "52b87fcb1ea62ec5afa2f9b63722b506cc594695",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/vite.config.ts",
       "phase": "web",
-      "gitBlobId": "475eee91dcbab3f6de0f303abec4352916db2fa8",
-      "reviewStatus": "pending"
+      "gitBlobId": "9d5557839477c7d3ee6025e3e031b0ed2777467a",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "Novvin logo.jpeg",
@@ -4279,6 +4409,14 @@
       "phase": "android",
       "gitBlobId": "b7ac0db1e9fcc8756300508fed1552c100517b71",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/presentation/errors/ErrorGalleryDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "ef2aced222e5b017de48c49c6e6febefd39a9904",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/live/LiveBattleScoreDeviceTest.kt",
@@ -5203,9 +5341,9 @@
     {
       "file": "app/src/main/AndroidManifest.xml",
       "phase": "android",
-      "gitBlobId": "56b499de6c8b14f7389e1acfcd106383e6dd35d2",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "7ff4eaa620f8b3d7d5586ed6b5e4cfe4d353914b",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -5857,6 +5995,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/core/result/NovvinErrors.kt",
+      "phase": "android",
+      "gitBlobId": "87d45b6c12f68931eec06afce9d117c30eb4ece2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/core/security/EncryptionManager.kt",
       "phase": "android",
       "gitBlobId": "8ba911b946f4fbb420b31f967726b2ee654a4492",
@@ -6489,9 +6635,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt",
       "phase": "android",
-      "gitBlobId": "a83ca11ad0a25b72a7bc1d0b6155b86a593906db",
+      "gitBlobId": "3523ef6253c1d085d30c857fd2943eeeeea02bee",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7571,9 +7717,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/VideoRepository.kt",
       "phase": "android",
-      "gitBlobId": "0f81503318984ce377610951b46e118b90811297",
+      "gitBlobId": "bffc0fc307b3970ce76b0a9ae3aa3b7cf6902461",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8725,8 +8871,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/common/OfflineRoutePolicy.kt",
       "phase": "android",
-      "gitBlobId": "d5571d6380814d016a55de3f31aafb7150b6d2a9",
-      "reviewStatus": "pending"
+      "gitBlobId": "a3330d3b4c05614de2edb77d4d71033d8699279a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/common/SessionSideEffects.kt",
@@ -8753,8 +8901,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/common/UserFacingErrorMessage.kt",
       "phase": "android",
-      "gitBlobId": "8ece59c45ce7d0562b67aae392bb70aacb03fbf3",
-      "reviewStatus": "pending"
+      "gitBlobId": "955c6e1dd95e8bea99b4c6c16122499f97886562",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/ActiveVoiceBar.kt",
@@ -9061,8 +9211,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/OfflineRetryState.kt",
       "phase": "android",
-      "gitBlobId": "7d8d448d23bd30be97689a561a7096f6c6ea61f5",
-      "reviewStatus": "pending"
+      "gitBlobId": "7dad8c0c78eb025859f5584d25411f6b8c7d7aef",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/Placeholders.kt",
@@ -9313,6 +9465,22 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/errors/ErrorSpeech.kt",
+      "phase": "android",
+      "gitBlobId": "c8032eff27e464a4a1d103399405e6883827c287",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/errors/PersonifiedErrors.kt",
+      "phase": "android",
+      "gitBlobId": "1bd3603f20aa5b5076ffb6b6a890729cc663973e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchAccountTasks.kt",
       "phase": "android",
       "gitBlobId": "41cc00d1fd2027441511986f1241dce39dc728bd",
@@ -9365,9 +9533,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/home/HomeScreen.kt",
       "phase": "android",
-      "gitBlobId": "6daa18b1ecbd59eebea4cb467e30fea9a732367f",
+      "gitBlobId": "af59361f80a32cb0652f33211b839c8aa883d798",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9381,9 +9549,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/legal/HelpAndTermsScreens.kt",
       "phase": "android",
-      "gitBlobId": "bee514aaf82b6d0894b391435dfd92f6e30836fb",
+      "gitBlobId": "264ae294b458cd385c7062b116f79e1bdf109afc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10641,9 +10809,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/MainNavigationRoutes.kt",
       "phase": "android",
-      "gitBlobId": "919020f938e8325a6f398b49db5d093bdf4b8e17",
+      "gitBlobId": "f677db115d4ffd959643ffef2f866896a5a0f0cc",
       "reviewStatus": "partial",
-      "evidence": "docs/experimental/105-experiencias-con-proposito.md",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10681,8 +10849,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/Screen.kt",
       "phase": "android",
-      "gitBlobId": "592c3852a5c69bbfdc77f500fcdacdc7661938fc",
-      "reviewStatus": "pending"
+      "gitBlobId": "694e66b899376505b8758d105b37dcd169f37b68",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/SharedContentLinks.kt",
@@ -11857,9 +12027,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
       "phase": "android",
-      "gitBlobId": "d089f320bfe9d623e20f4f4e21da9e4cd8a491d1",
+      "gitBlobId": "f971a796bce6b9738210861b71c4a73c847a3127",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11879,9 +12049,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedViewModel.kt",
       "phase": "android",
-      "gitBlobId": "655a83d320d45e63c4117bff324f2f204fb46562",
+      "gitBlobId": "c7c72b7d8786fea4c11f7cf31c4a189270535977",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12896,6 +13066,42 @@
       "file": "app/src/main/java/org/webrtc/NovvinCamera2Session.java",
       "phase": "android",
       "gitBlobId": "fbf8ee710a71c0f9f51d8222d1272bacb2555055",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/drawable-nodpi/error_character_confused.webp",
+      "phase": "android",
+      "gitBlobId": "442a0db57294720dc3c72a19701f5e25bba509eb",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/drawable-nodpi/error_character_detective.webp",
+      "phase": "android",
+      "gitBlobId": "11e9c83b44b8f08025a7b0122a9a5123a68ca50f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/drawable-nodpi/error_character_guardian.webp",
+      "phase": "android",
+      "gitBlobId": "da289bbe8514398f7b097d661296e78cbd7a18a9",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/drawable-nodpi/error_character_overloaded.webp",
+      "phase": "android",
+      "gitBlobId": "db28904c1001b0beee9e7861455aa1c154ff285d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/drawable-nodpi/error_character_protector.webp",
+      "phase": "android",
+      "gitBlobId": "bd40ddbef3753311b51f624bc32ba35abd00652f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/drawable-nodpi/error_character_sleeper.webp",
+      "phase": "android",
+      "gitBlobId": "d2ccc3f2a608c29bd8ac96014bfd1464339b67f8",
       "reviewStatus": "pending"
     },
     {
@@ -13926,6 +14132,14 @@
       "gitBlobId": "bdda0deb3fe75138fac6ba32d2f4b03a14fe5680",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/core/result/NovvinErrorsTest.kt",
+      "phase": "android",
+      "gitBlobId": "c272c3d9ed177d99e2716969f0b3ff940780f53f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -19361,6 +19575,14 @@
       "phase": "documentation",
       "gitBlobId": "851e0bfaa2cfa39cd58fa6ef1d644df6292d3e70",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/experimental/178-errores-con-personalidad.md",
+      "phase": "documentation",
+      "gitBlobId": "8461edd37722663b2be288d709a9ca4399bd4595",
+      "reviewStatus": "code-read",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/groups_communities_backup_20260212.md",
@@ -27035,8 +27257,10 @@
     {
       "file": "vercel.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "133db55164b9ee19a264749b10a884dc4d0e12a4",
-      "reviewStatus": "pending"
+      "gitBlobId": "f969ddcb51b4ea2a7bf1307789c553b8fd287932",
+      "reviewStatus": "partial",
+      "evidence": "docs/experimental/178-errores-con-personalidad.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     }
   ]
 }

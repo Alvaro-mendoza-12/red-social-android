@@ -57,6 +57,7 @@ export default defineConfig({
     
     // 🔥 BEST PRACTICE: Code splitting inteligente
     rollupOptions: {
+      input: { index: 'index.html', notFound: 'error-404.html' },
       output: {
         // Agrupar por el módulo realmente resuelto, incluidos subpaths como
         // react/jsx-runtime y react-dom/client. La tabla anterior apuntaba solo

@@ -166,6 +166,10 @@ const AdminModerationPage = lazy(() =>
   })),
 )
 
+const ErrorGalleryPage = lazy(() =>
+  import('./features/errors/ErrorGalleryPage').then(module => ({ default: module.ErrorGalleryPage })),
+)
+
 function RouteSuspense({ children }: { children: ReactNode }) {
   const {pathname}=useLocation()
   return (
@@ -208,6 +212,7 @@ function AppRouter() {
         <Route path="/juegos" element={<PublicInfo path="/juegos" />} />
         <Route path="/asistente" element={<PublicInfo path="/asistente" />} />
         <Route path="/ayuda" element={<PublicInfo path="/ayuda" />} />
+        <Route path="/ayuda/errores" element={<RouteSuspense><ErrorGalleryPage /></RouteSuspense>} />
         <Route
           path="/explore/:kind?/:id?"
           element={

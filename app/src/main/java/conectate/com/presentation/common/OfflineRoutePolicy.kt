@@ -9,6 +9,7 @@ internal fun isOfflineAccessibleRoute(route: String?): Boolean {
         "group_chat",
         "community_chat",
         "offline_videos",
+        "error_characters",
         "fullscreen_video",
         "fullscreen_image",
     )

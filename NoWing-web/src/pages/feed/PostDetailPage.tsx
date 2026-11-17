@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ExpandableText } from '../../components/ExpandableText'
 import { StatusView } from '../../components/StatusView'
+import { interruptedProblem, problemForError, problemForStatus, unexpectedProblem, type NovvinProblem } from '../../features/errors/errorCatalog'
+import { PersonifiedErrorPanel } from '../../features/errors/PersonifiedErrorPanel'
 import { loadFallbackPostDetail, shareFallbackPost } from '../../core/fallbackData'
 import { resolveSupabasePublicUrl, supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
@@ -45,6 +47,7 @@ export function PostDetailPage() {
   const [post, setPost] = useState<PostDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [loadProblem, setLoadProblem] = useState<NovvinProblem | null>(null)
 
   const load = useCallback(async () => {
     if (!cleanPostId) {
@@ -53,6 +56,7 @@ export function PostDetailPage() {
     }
     setLoading(true)
     setError(null)
+    setLoadProblem(null)
     try {
       if (useUbuntu) {
         const payload = await loadFallbackPostDetail(cleanPostId)
@@ -71,7 +75,7 @@ export function PostDetailPage() {
       }
 
       if (!supabase) {
-        setError('Servidor de publicaciones no configurado.')
+        setLoadProblem(interruptedProblem)
         return
       }
       const { data: postRows, error: postError } = await supabase
@@ -82,7 +86,7 @@ export function PostDetailPage() {
       if (postError) throw postError
       const row = ((postRows ?? []) as GenericRow[])[0]
       if (!row) {
-        setError('Publicación no encontrada.')
+        setLoadProblem(problemForStatus(404) ?? interruptedProblem)
         setLoading(false)
         return
       }
@@ -131,7 +135,7 @@ export function PostDetailPage() {
       })
 
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar la publicación'))
+      setLoadProblem(problemForError(caught) ?? unexpectedProblem)
     } finally {
       setLoading(false)
     }
@@ -188,19 +192,17 @@ export function PostDetailPage() {
     }
   }
 
-  if (!supabase && !useUbuntu) return <StatusView title="Backend no configurado" description="Configura Ubuntu o Supabase legacy para usar posts." />
+  if (!supabase && !useUbuntu) return <PersonifiedErrorPanel problem={interruptedProblem} />
   if (loading) return <StatusView title="Cargando publicación" description="Espera un momento..." />
-  if (error && !post) {
-    return (
-      <section className="section-stack" id="comments">
-        <Link to="/app/feed" className="inline-link">
-          ← Volver al feed
-        </Link>
-        <StatusView title="No se pudo abrir el post" description={error} />
-      </section>
-    )
+  if (!post) {
+    const problem = loadProblem ?? problemForStatus(404) ?? interruptedProblem
+    return <PersonifiedErrorPanel problem={problem} actions={<>
+      {problem.code === 401
+        ? <Link className="novvin-error-button solid" to="/login">Iniciar sesión</Link>
+        : <button className="novvin-error-button solid" type="button" onClick={() => void load()}>Reintentar</button>}
+      <Link className="novvin-error-button" to="/app/feed">Volver al feed</Link>
+    </>} />
   }
-  if (!post) return <StatusView title="Post no encontrado" description="No existe o no está disponible." />
 
   return (
     <section className="section-stack post-detail-section">
@@ -211,9 +213,9 @@ export function PostDetailPage() {
         <h2>Detalle del post</h2>
       </div>
 
-      {error ? (
+      {error || loadProblem ? (
         <article className="surface-card">
-          <small>{error}</small>
+          <small role="status">{error ?? loadProblem?.description}</small>
         </article>
       ) : null}
 

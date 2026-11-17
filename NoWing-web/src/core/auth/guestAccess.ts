@@ -20,14 +20,14 @@ async function request(path: string, token: string, signal?: AbortSignal, method
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
   if (signal?.aborted) abort()
-  const timer = setTimeout(abort, 15_000)
+  const timer = setTimeout(() => controller.abort(new DOMException("Guest read deadline", "TimeoutError")), 15_000)
   try {
     const response = await fetch(`${base}${path}`, {
       method, credentials: 'omit', redirect: 'error', cache: 'no-store',
       headers: { Accept: 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       signal: controller.signal,
     })
-    if (!response.ok) throw new Error(`GUEST_READ_${response.status}`)
+    if (!response.ok) throw Object.assign(new Error(`GUEST_READ_${response.status}`), { status: response.status })
     return await response.json() as Record<string, unknown>
   } finally {
     clearTimeout(timer)

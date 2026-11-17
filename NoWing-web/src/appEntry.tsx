@@ -15,7 +15,7 @@ const renderApp = () => {
   appRendered = true
   root.render(
     <StrictMode>
-      <AppErrorBoundary>
+      <AppErrorBoundary standalone>
         <App />
       </AppErrorBoundary>
     </StrictMode>,

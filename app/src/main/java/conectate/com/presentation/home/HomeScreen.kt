@@ -526,6 +526,10 @@ fun HomeScreen(
                 conectate.com.presentation.legal.HelpCenterScreen(navController = navController)
             }
 
+            composable(Screen.ErrorCharacters.route) {
+                conectate.com.presentation.errors.ErrorGalleryScreen(onBack = { navController.popBackStack() })
+            }
+
             composable(Screen.PrivacyPolicy.route) {
                 conectate.com.presentation.legal.PrivacyPolicyScreen(navController = navController)
             }

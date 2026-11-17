@@ -7,6 +7,8 @@ import { loadGuestContent, type GuestKind } from '../core/auth/guestAccess'
 import { resolveSupabasePublicUrl } from '../core/supabase'
 import { textOf, type GenericRow } from '../core/utils'
 import { mixBasicVideoSession } from '../core/videoRecommendations'
+import { interruptedProblem, problemForError, problemForStatus, unexpectedProblem, type NovvinProblem } from '../features/errors/errorCatalog'
+import { PersonifiedErrorPanel } from '../features/errors/PersonifiedErrorPanel'
 import './explore.css'
 
 function GuestVideo({ src, poster, title }: { src: string; poster?: string; title: string }) {
@@ -59,18 +61,21 @@ export function ExplorePage() {
 }
 function ExploreContent() {
   const params = useParams(), kind: GuestKind = ['posts', 'moments', 'profiles'].includes(params.kind || '') ? params.kind as GuestKind : 'videos'
-  const [items, setItems] = useState<GenericRow[]>([]), [loading, setLoading] = useState(true), [failed, setFailed] = useState(false)
+  const [items, setItems] = useState<GenericRow[]>([]), [loading, setLoading] = useState(true), [failed, setFailed] = useState<NovvinProblem | null>(null)
   const [retry, setRetry] = useState(0), [limit, setLimit] = useState(10)
   useEffect(() => {
     const controller = new AbortController()
     const entrySession = crypto.randomUUID()
     void loadGuestContent(kind, params.id, controller.signal).then(rows => {
       if (!controller.signal.aborted) setItems(kind === 'videos' && !params.id ? mixBasicVideoSession(rows, 'guest', entrySession) : rows)
-    }).catch(() => { if (!controller.signal.aborted) setFailed(true) })
+    }).catch((error: unknown) => {
+      if (!controller.signal.aborted) setFailed(problemForError(error) ?? unexpectedProblem)
+    })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
   }, [kind, params.id, retry])
 
+  const retryLoad = () => { setLoading(true); setFailed(null); setItems([]); setLimit(10); setRetry(value => value + 1) }
   const heading = kind === 'videos' ? 'Videos' : kind === 'moments' ? 'Momentos' : kind === 'profiles' ? 'Perfil público' : 'Social'
   return <main className="explore-page explore-shell">
     <header className="explore-header">
@@ -83,7 +88,8 @@ function ExploreContent() {
         <Link key={value} to={`/explore/${value}`} aria-current={kind === value && !params.id ? 'page' : undefined}>{label}</Link>)}
     </nav>
     {loading ? <StatusView title="Cargando contenido" description="Espera un momento." /> : failed ?
-      <section className="status-card"><h2>No pudimos cargar el contenido</h2><p>Comprueba tu conexión y vuelve a intentarlo.</p><button className="ghost-btn" onClick={() => { setLoading(true); setFailed(false); setItems([]); setLimit(10); setRetry(value => value + 1) }}>Reintentar</button></section> : !items.length ?
+      <PersonifiedErrorPanel problem={failed} actions={<button type="button" className="novvin-error-button solid" onClick={retryLoad}>Reintentar</button>} /> : !items.length && params.id ?
+      <PersonifiedErrorPanel problem={problemForStatus(404) ?? interruptedProblem} /> : !items.length ?
       <StatusView title={params.id ? 'Contenido no disponible' : `Sin ${kind === 'moments' ? 'momentos activos' : 'contenido público'}`} description="Vuelve a explorar más tarde." /> :
       <section className={`explore-feed explore-${kind}`} aria-label={heading}>
         {items.slice(0, limit).map(row => {
@@ -104,7 +110,7 @@ function ExploreContent() {
             <footer><Link to={`/login?next=${encodeURIComponent(kind === 'profiles' ? `/u/${id}` : kind === 'videos' ? `/app/reels/${id}` : kind === 'posts' ? `/app/feed/post/${id}` : '/app/social?tab=moments')}`}>Inicia sesión para participar</Link></footer>
           </article>
         })}
-        {items.length > limit ? <button className="ghost-btn" onClick={() => setLimit(value => value + 10)}>Ver más</button> : <button className="ghost-btn" onClick={() => { setLoading(true); setFailed(false); setItems([]); setLimit(10); setRetry(value => value + 1) }}>Actualizar</button>}
+        {items.length > limit ? <button className="ghost-btn" onClick={() => setLimit(value => value + 10)}>Ver más</button> : <button className="ghost-btn" onClick={retryLoad}>Actualizar</button>}
       </section>}
   </main>
 }

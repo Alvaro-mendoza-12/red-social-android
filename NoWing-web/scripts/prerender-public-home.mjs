@@ -39,8 +39,11 @@ for (const info of pages) {
   if (!page.includes('<h1>') || /<script[^>]+type="module"/.test(page)) throw new Error('Incomplete static public page')
   fs.writeFileSync(path.join(root, 'dist', file), page)
 }
-const notFound = template.replace(/<title>.*?<\/title>/, '<title>Página no encontrada · Novvin</title>').replace(/\s*<link rel="canonical"[^>]*>/, '').replace('</head>', '<meta name="robots" content="noindex, follow" /></head>').replace('<div id="root"></div>', `<div id="root">${notFoundContent}</div>`)
-fs.writeFileSync(path.join(root, 'dist/404.html'), notFound)
+const notFoundFile = path.join(root, 'dist/error-404.html')
+const notFound = fs.readFileSync(notFoundFile, 'utf8')
+if (!notFound.includes('<div id="root"></div>')) throw new Error('404 prerender entry is missing')
+fs.writeFileSync(path.join(root, 'dist/404.html'), notFound.replace('<div id="root"></div>', `<div id="root">${notFoundContent}</div>`))
+fs.unlinkSync(notFoundFile)
 // A missing or outdated CSP hash is a build failure, rather than a silent SEO defect.
 for (const configPath of [path.join(root, 'vercel.json'), path.join(root, '../vercel.json')]) {
   const config = JSON.parse(fs.readFileSync(configPath, 'utf8'))

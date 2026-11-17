@@ -208,7 +208,11 @@ test('unknown paths do not rewrite into successful application documents',()=>{
  assert.ok(!config.rewrites.some(item=>item.source==='/(.*)'))
  for(const source of ['/app/:path*','/explore/:path*','/u/:path*','/profile/:path*','/chat/:path*'])assert.ok(config.rewrites.some(item=>item.source===source&&item.destination==='/app-shell.html'))
  const html=read('404.html');assert.match(html,/No encontramos esta página/);assert.match(html,/name="robots" content="noindex/)
- assert.doesNotMatch(html,/rel="canonical"|type="module"/)
+ assert.doesNotMatch(html,/rel="canonical"/)
+ assert.match(html,/<script type="module"[^>]+src="\/js\/notFound-[^"]+\.js"/)
+ assert.match(html,/<h1>No encontramos esta página<\/h1>/)
+ assert.match(html,/href="\/ayuda\/errores"/)
+ assert.match(html,/src="\/error-characters\/detective\.webp"/)
 })
 test('HTML duplicates permanently redirect to the canonical public URL',()=>{
  for(const [route,file] of publicRoutes)assert.ok(config.redirects.some(item=>item.source==='/'+file&&item.destination===route&&item.permanent))

@@ -1,60 +1,48 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { StatusView } from './StatusView'
 import { isChunkLoadError, recoverChunkLoad } from '../core/chunkRecovery'
+import { interruptedProblem, problemForError, unexpectedProblem } from '../features/errors/errorCatalog'
+import { ErrorBrand, ErrorHomeLink, PersonifiedErrorPanel } from '../features/errors/PersonifiedErrorPanel'
 
-type Props = {
-  children: ReactNode
+type Props = { children: ReactNode; standalone?: boolean }
+
+type Failure = {
+  problem: ReturnType<typeof problemForError>
+  moduleError: boolean
 }
 
-type State = {
-  hasError: boolean
-  message: string
-  moduleError?: boolean
-}
+type State = { failure: Failure | null }
 
 export class AppErrorBoundary extends Component<Props, State> {
-  state: State = {
-    hasError: false,
-    message: '',
-  }
+  state: State = { failure: null }
 
   static getDerivedStateFromError(error: unknown): State {
-    const message =
-      error instanceof Error && error.message.trim().length > 0
-        ? error.message.trim()
-        : 'Se produjo un fallo inesperado en la interfaz.'
-    return {
-      hasError: true,
-      message,
-      moduleError:isChunkLoadError(error),
-    }
+    return { failure: { problem: problemForError(error), moduleError: isChunkLoadError(error) } }
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('AppErrorBoundary', { error, errorInfo })
+    console.error('AppErrorBoundary', { name: error instanceof Error ? error.name : 'UnknownError', component: errorInfo.componentStack?.split('\n')[1]?.trim() })
     recoverChunkLoad(error)
   }
 
-  private retry = () => {
-    this.setState({ hasError: false, message: '' })
-  }
+  private retry = () => this.setState({ failure: null })
 
   render() {
-    if (this.state.hasError) {
-      return (
-        <section className="section-stack">
-          <StatusView
-            title={this.state.moduleError?'No pudimos abrir esta sección':'No pudimos mostrar esta pantalla'}
-            description={this.state.moduleError?'Puede haber una actualización disponible o un problema de conexión. Puedes ir a otra sección o recargar la aplicación.':'Vuelve a intentarlo. Si el problema continúa, regresa a otra sección.'}
-          />
-          <div className="status-action">
-            <button className="ghost-btn" type="button" onClick={this.state.moduleError?()=>location.reload():this.retry}>
-              {this.state.moduleError?'Recargar aplicación':'Reintentar'}
-            </button>
-          </div>
-        </section>
-      )
-    }
-    return this.props.children
+    const failure = this.state.failure
+    if (!failure) return this.props.children
+    const problem = failure.moduleError
+      ? interruptedProblem
+      : failure.problem ?? unexpectedProblem
+    const panel = <PersonifiedErrorPanel problem={problem} actions={<>
+      <button className="novvin-error-button solid" type="button"
+        onClick={failure.moduleError ? () => location.reload() : this.retry}>
+        {failure.moduleError ? 'Recargar aplicación' : 'Reintentar'}
+      </button>
+      <ErrorHomeLink />
+    </>} />
+    if (!this.props.standalone) return panel
+    return <main className="novvin-error-page" lang="es">
+      <header className="novvin-error-header"><ErrorBrand /></header>
+      <div className="novvin-error-content">{panel}</div>
+    </main>
   }
 }

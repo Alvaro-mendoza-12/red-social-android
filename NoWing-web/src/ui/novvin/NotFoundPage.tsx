@@ -1,3 +1,15 @@
+import { problemForStatus, interruptedProblem } from '../../features/errors/errorCatalog'
+import { ErrorBrand, ErrorHomeLink, PersonifiedErrorPanel } from '../../features/errors/PersonifiedErrorPanel'
+
 export function NotFoundPage() {
-  return <div className="public-home"><header className="public-home-header"><a className="public-home-brand" href="/">Novvin</a><a className="ghost-btn" href="/login">Iniciar sesión</a></header><main className="public-info"><p className="public-home-eyebrow">404</p><h1>No encontramos esta página.</h1><p className="public-info-intro">El enlace puede haber cambiado o estar incompleto. Puedes volver al inicio o abrir tus mensajes.</p><div className="public-home-actions"><a className="primary-btn" href="/">Ir al inicio</a><a className="ghost-btn" href="/app/messages">Abrir mensajes</a></div></main></div>
+  return <main className="novvin-error-page" lang="es">
+    <header className="novvin-error-header"><ErrorBrand /><a className="novvin-error-button" href="/login">Iniciar sesión</a></header>
+    <div className="novvin-error-content">
+      <PersonifiedErrorPanel problem={problemForStatus(404) ?? interruptedProblem} heading="h1" actions={<>
+        <ErrorHomeLink />
+        <a className="novvin-error-button" href="/app/messages">Abrir mensajes</a>
+        <a className="novvin-error-button" href="/ayuda/errores">Errores con personalidad</a>
+      </>} />
+    </div>
+  </main>
 }

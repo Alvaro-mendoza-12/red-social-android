@@ -2,7 +2,8 @@ package conectate.com.presentation.common
 
 import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.supabase.mapSupabaseServiceRestrictionMessage
-import io.ktor.client.plugins.ClientRequestException
+import conectate.com.core.result.NovvinErrors
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.network.sockets.SocketTimeoutException
 import java.io.IOException
@@ -17,6 +18,9 @@ internal fun Throwable?.toUserFacingMessage(
 
     val rawMessage = throwable.message?.trim().orEmpty()
     mapSupabaseServiceRestrictionMessage(rawMessage)?.let { return it }
+
+    val problem = NovvinErrors.from(throwable)
+    if (problem?.code != null && problem.code >= 500) return problem.description
 
     return when {
         looksLikeStoredAccountSessionIssue(rawMessage) ->
@@ -102,13 +106,8 @@ internal fun Throwable?.toUserFacingMessage(
         looksLikeTechnicalBackendMessage(rawMessage) ->
             "El servicio no está disponible en este momento. Inténtalo nuevamente más tarde."
 
-        throwable is ClientRequestException -> when (throwable.response.status.value) {
-            401 -> "Tu sesión ya no es válida. Inicia sesión nuevamente."
-            403 -> "No tienes permisos para completar esta acción."
-            404 -> "No encontramos lo que estabas buscando."
-            422 -> "Los datos enviados no son válidos."
-            else -> rawMessage.ifBlank { fallback }
-        }
+        problem?.code != null -> problem.description
+        throwable is ResponseException -> fallback
 
         rawMessage.isBlank() -> fallback
         else -> rawMessage

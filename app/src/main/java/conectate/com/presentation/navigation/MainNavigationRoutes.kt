@@ -459,6 +459,10 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
         conectate.com.presentation.legal.HelpCenterScreen(navController = navController)
     }
 
+    composable(Screen.ErrorCharacters.route) {
+        conectate.com.presentation.errors.ErrorGalleryScreen(onBack = { navController.popBackStack() })
+    }
+
     composable(Screen.TermsAndConditions.route) {
         conectate.com.presentation.legal.TermsAndConditionsScreen(navController = navController)
     }

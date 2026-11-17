@@ -19,6 +19,7 @@ export function PublicInfo({ path }: { path: string }) {
         <div><h2>Novvin para Android</h2><p>Abre la ficha de la aplicación para consultar su disponibilidad y descargarla.</p><a className="primary-btn" href={androidStoreUrl}>Ver Novvin en Google Play</a></div>
       </aside>}
       {page.sections.map(section => <section key={section.heading}><h2>{section.heading}</h2><p>{section.body}</p></section>)}
+      {path === '/ayuda' && <p><a className="ghost-btn" href="/ayuda/errores">Errores con personalidad</a></p>}
       <PublicGuideNavigation path={path} />
     </main>
     <PublicFooter />

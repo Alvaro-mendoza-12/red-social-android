@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { ArrowLeft, Flag, Heart, MessageCircle, Pencil, Share2, Star, Trash2 } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { StatusView } from '../../components/StatusView'
+import { interruptedProblem, problemForError, problemForStatus, unexpectedProblem, type NovvinProblem } from '../../features/errors/errorCatalog'
+import { PersonifiedErrorPanel } from '../../features/errors/PersonifiedErrorPanel'
 import { supabase } from '../../core/supabase'
 import { formatDateTime, friendlyError, textOf, type GenericRow } from '../../core/utils'
 import { useAuth } from '../../core/auth/AuthProvider'
@@ -72,6 +74,7 @@ export function VideoDetailPage() {
   const [favoriteCount, setFavoriteCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [loadProblem, setLoadProblem] = useState<NovvinProblem | null>(null)
   const [draft, setDraft] = useState('')
   const [reportReason, setReportReason] = useState('spam')
   const [reportDetails, setReportDetails] = useState('')
@@ -92,6 +95,7 @@ export function VideoDetailPage() {
     }
     setLoading(true)
     setError(null)
+    setLoadProblem(null)
     try {
       if (useUbuntu) {
         const payload = await loadFallbackVideo(cleanVideoId)
@@ -119,7 +123,7 @@ export function VideoDetailPage() {
       }
 
       if (!supabase) {
-        setError('Configura VITE_FALLBACK_API_URL para ver videos en Ubuntu.')
+        setLoadProblem(interruptedProblem)
         return
       }
 
@@ -131,7 +135,7 @@ export function VideoDetailPage() {
       if (videoError) throw videoError
       const row = ((videoRows ?? []) as GenericRow[])[0]
       if (!row) {
-        setError('Video no encontrado.')
+        setLoadProblem(problemForStatus(404) ?? interruptedProblem)
         setLoading(false)
         return
       }
@@ -263,7 +267,7 @@ export function VideoDetailPage() {
         setFavoritedByMe(false)
       }
     } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar el video'))
+      setLoadProblem(problemForError(caught) ?? unexpectedProblem)
     } finally {
       setLoading(false)
     }
@@ -555,20 +559,18 @@ export function VideoDetailPage() {
   }
 
   if (!useUbuntu && !supabase && !isFallbackAuthConfigured) {
-    return <StatusView title="Backend no configurado" description="Configura VITE_FALLBACK_API_URL." />
+    return <PersonifiedErrorPanel problem={interruptedProblem} />
   }
   if (loading) return <StatusView title="Cargando video" description="Espera un momento..." />
-  if (error && !video) {
-    return (
-      <section className="section-stack video-detail-page">
-        <Link to="/app/reels" className="inline-link">
-          <ArrowLeft aria-hidden="true" size={17} /> Volver a reels
-        </Link>
-        <StatusView title="No se pudo abrir el video" description={error} />
-      </section>
-    )
+  if (!video) {
+    const problem = loadProblem ?? problemForStatus(404) ?? interruptedProblem
+    return <PersonifiedErrorPanel problem={problem} actions={<>
+      {problem.code === 401
+        ? <Link className="novvin-error-button solid" to="/login">Iniciar sesión</Link>
+        : <button className="novvin-error-button solid" type="button" onClick={() => void load()}>Reintentar</button>}
+      <Link className="novvin-error-button" to="/app/reels">Volver a Videos</Link>
+    </>} />
   }
-  if (!video) return <StatusView title="Video no encontrado" description="No existe o no está disponible." />
 
   return (
     <section className="section-stack video-detail-page">
@@ -578,7 +580,7 @@ export function VideoDetailPage() {
         </Link>
         <h2>Detalle del video</h2>
       </div>
-      {error ? <div className="voice-room-alert" role="status">{error}</div> : null}
+      {error || loadProblem ? <div className="voice-room-alert" role="status">{error ?? loadProblem?.description}</div> : null}
       <article className="surface-card video-detail-player">
         <h3>{video.title}</h3>
         <small>{formatDateTime(video.createdAt)}</small>

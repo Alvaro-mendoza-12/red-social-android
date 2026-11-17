@@ -199,8 +199,8 @@ class VideoFeedViewModel @Inject constructor(
     private var focusedEntryVideoId = savedStateHandle.get<String>("videoId")
         ?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf(String::isNotBlank)
     private val focusedVideoIds = mutableSetOf<String>()
-    private val _focusedVideoError = MutableStateFlow<String?>(null)
-    val focusedVideoError: StateFlow<String?> = _focusedVideoError.asStateFlow()
+    private val _focusedVideoError = MutableStateFlow<conectate.com.core.result.NovvinProblem?>(null)
+    internal val focusedVideoError = _focusedVideoError.asStateFlow()
     private val focusedVideosById = linkedMapOf<String, Video>()
     private val displayedForYouIds = linkedSetOf<String>()
     private var previousInitialForYouOrder: List<String> = emptyList()
@@ -209,7 +209,8 @@ class VideoFeedViewModel @Inject constructor(
     fun ensureVideoInFeed(videoId: String) {
         val cleanId = videoId.trim().lowercase(java.util.Locale.ROOT)
         if (cleanId.isBlank()) {
-            _focusedVideoError.value = "El enlace del video no es válido."
+            _focusedVideoError.value = checkNotNull(conectate.com.core.result.NovvinErrors[400])
+                .copy(title = "El enlace del video no es válido.")
             return
         }
         focusedEntryVideoId = cleanId
@@ -246,11 +247,9 @@ class VideoFeedViewModel @Inject constructor(
                     }
                     .onFailure { error ->
                         if (generation == accountGeneration && focusedEntryVideoId == cleanId) {
-                            _focusedVideoError.value = if (error is conectate.com.core.network.ReadDeadlineExceededException) {
-                                "El video tardó demasiado en responder. Revisa tu conexión y vuelve a intentarlo."
-                            } else {
-                                "No se pudo abrir este video. Puede haber sido eliminado o no estar disponible para tu cuenta."
-                            }
+                            val errors = conectate.com.core.result.NovvinErrors
+                            _focusedVideoError.value = errors.from(error)
+                                ?: errors.unexpected.copy(title = "No se pudo abrir este video")
                         }
                     }
             } finally {
@@ -269,7 +268,8 @@ class VideoFeedViewModel @Inject constructor(
         when (event.action) {
             "deleted" -> {
                 if (focusedEntryVideoId.equals(event.videoId, true)) {
-                    _focusedVideoError.value = "Este video fue eliminado o dejó de estar disponible."
+                    _focusedVideoError.value = checkNotNull(conectate.com.core.result.NovvinErrors[404])
+                        .copy(title = "Este video ya no está disponible")
                 }
                 focusedVideoIds.remove(event.videoId.trim().lowercase(java.util.Locale.ROOT))
                 focusedVideosById.remove(event.videoId.trim().lowercase(java.util.Locale.ROOT))

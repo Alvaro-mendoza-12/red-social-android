@@ -12,7 +12,7 @@ export function PageMetadata() {
   useEffect(() => {
     const info = publicInfoPage(pathname)
     const title =
-      info ? info.title : pathname === '/'
+      pathname === '/ayuda/errores' ? 'Errores con personalidad · NOVVIN' : info ? info.title : pathname === '/'
         ? 'Novvin Web — mensajes, videos y comunidades'
         : pathname === '/login'
           ? 'Iniciar sesión en Novvin Web'

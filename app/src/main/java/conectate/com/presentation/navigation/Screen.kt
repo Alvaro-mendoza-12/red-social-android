@@ -105,6 +105,7 @@ sealed class Screen(val route: String) {
     object LanguageSettings : Screen("language_settings")
     object ThemeSettings : Screen("theme_settings")
     object HelpSettings : Screen("help_settings")
+    object ErrorCharacters : Screen("error_characters")
     object TermsAndConditions : Screen("terms_and_conditions")
     object AboutSettings : Screen("about_settings")
     object ChangePassword : Screen("change_password")

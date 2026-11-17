@@ -23,6 +23,12 @@ export function loadPublicPageModel(root) {
   dependencies['./PublicNavigation'] = componentModule('src/ui/novvin/PublicNavigation.tsx')
   const { PublicHome } = componentModule('src/ui/novvin/PublicHome.tsx')
   const { PublicInfo } = componentModule('src/ui/novvin/PublicInfo.tsx')
+  const errorCatalog = componentModule('src/features/errors/errorCatalog.ts')
+  dependencies['./errorCatalog'] = errorCatalog
+  dependencies['../../features/errors/errorCatalog'] = errorCatalog
+  dependencies['./useErrorSpeech'] = componentModule('src/features/errors/useErrorSpeech.ts')
+  dependencies['./personifiedErrors.css'] = {}
+  dependencies['../../features/errors/PersonifiedErrorPanel'] = componentModule('src/features/errors/PersonifiedErrorPanel.tsx')
   const { NotFoundPage } = componentModule('src/ui/novvin/NotFoundPage.tsx')
   const pages = publicRoutes.map(([route, file, label]) => {
     const metadata = route === '/' ? homeMetadata : info.publicInfoPage(route)

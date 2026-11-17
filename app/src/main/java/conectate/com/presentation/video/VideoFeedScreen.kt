@@ -1741,18 +1741,21 @@ fun VideoFeedScreen(
         )) {
             
             if ((showBackButton && !initialVideoPositionApplied) || (isRoutePlayback && focusedVideoError != null)) {
-                Column(
-                    Modifier.align(Alignment.Center).padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    if (focusedVideoError == null) {
+                val problem = focusedVideoError
+                if (problem == null) {
+                    Column(
+                        Modifier.align(Alignment.Center).padding(32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
                         CircularProgressIndicator(color = Color.White)
                         Text("Abriendo video…", color = Color.White)
-                    } else {
-                        Text(focusedVideoError.orEmpty(), color = Color.White, textAlign = TextAlign.Center)
-                        Button(onClick = { initialVideoId?.let(viewModel::ensureVideoInFeed) }) { Text("Reintentar") }
                     }
+                } else {
+                    conectate.com.presentation.errors.PersonifiedErrorState(
+                        problem = problem,
+                        onRetry = { initialVideoId?.let(viewModel::ensureVideoInFeed) },
+                    )
                 }
             } else if (isProfileFeed && currentVideos.isEmpty() && profileFeedError != null) {
                 Column(Modifier.align(Alignment.Center).padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {

@@ -1272,7 +1272,7 @@ class VideoRepository @Inject constructor(
             if (response.status.isSuccess()) {
                 val videos: List<Video> = response.body()
                 var video = videos.firstOrNull()
-                    ?: return Result.failure(Exception("Video not found"))
+                    ?: return Result.failure(conectate.com.core.result.HttpStatusFailure(404, "Video no encontrado"))
                 
                 // Set liked and shared status
                 var currentUserId = authService.getCurrentUserId()
@@ -1287,7 +1287,7 @@ class VideoRepository @Inject constructor(
                 
                 Result.success(video)
             } else {
-                Result.failure(Exception("Failed to fetch video: ${response.status}"))
+                Result.failure(conectate.com.core.result.HttpStatusFailure(response.status.value, "No se pudo cargar el video"))
             }
         } catch (e: Exception) {
             Result.failure(e)

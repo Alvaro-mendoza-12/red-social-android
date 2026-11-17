@@ -4519,7 +4519,7 @@ class LocalFallbackApiClient @Inject constructor(
             "$baseUrl/v1/data/videos/${urlEncode(videoId)}",
             accessToken
         ).mapCatching { response ->
-            mapVideo(response.video ?: throw IllegalStateException("Video no encontrado"))
+            mapVideo(response.video ?: throw conectate.com.core.result.HttpStatusFailure(404, "Video no encontrado"))
         }
     }
 
@@ -6725,7 +6725,7 @@ class LocalFallbackApiClient @Inject constructor(
             "COMMUNITY_OWNER_ROLE_REQUIRED" -> Exception("Solo quien creó la comunidad puede asignar o quitar administradores.")
             "NOT_FOUND" -> BackendRouteUnavailableException()
             "VIDEO_NOT_FOUND", "VIDEOS_NOT_FOUND" ->
-                Exception("Este video ya no está disponible o no tienes acceso.")
+                conectate.com.core.result.HttpStatusFailure(response.status.value, "Este video ya no está disponible o no tienes acceso.")
             "INVALID_RECOVERY_CODE" ->
                 Exception("El código de recuperación no coincide o ya fue utilizado.")
             "RECOVERY_CASE_DETAILS_REQUIRED" ->
@@ -6909,7 +6909,9 @@ class LocalFallbackApiClient @Inject constructor(
                 displayName = error.displayName.orEmpty()
             )
             "PASSWORD_TOO_LONG" -> Exception("La contraseña es demasiado larga. Usa una más corta.")
-            else -> Exception(code.ifBlank { "Servidor Ubuntu respondió ${response.status.value}." })
+            else -> conectate.com.core.result.HttpStatusFailure(
+                response.status.value, code.ifBlank { "Servidor Ubuntu respondió ${response.status.value}." }
+            )
         }
     }
 
