@@ -4,17 +4,20 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 
 internal class StickerKeyboardPanel(
-    val height: Dp,
+    val panelSize: Modifier,
     val inputFocusRequester: FocusRequester,
     val toggle: () -> Unit,
     val showKeyboard: () -> Unit,
@@ -30,14 +33,18 @@ internal fun rememberStickerKeyboardPanel(
     val focus = LocalFocusManager.current
     val requester = remember { FocusRequester() }
     val density = LocalDensity.current
-    val windowHeight = with(density) { LocalWindowInfo.current.containerSize.height.toDp() }
-    val imeHeight = WindowInsets.ime.getBottom(density)
+    val windowInfo = LocalWindowInfo.current
+    val ime = WindowInsets.ime
     var lastKeyboardHeight by remember { mutableStateOf(280.dp) }
-    LaunchedEffect(imeHeight, visible) {
-        if (!visible && imeHeight > 0) {
-            // Ignore intermediate frames while the keyboard opens/closes.
-            delay(180)
-            lastKeyboardHeight = with(density) { imeHeight.toDp() }
+    LaunchedEffect(ime, density, visible) {
+        if (!visible) {
+            snapshotFlow { ime.getBottom(density) }.collectLatest { height ->
+                if (height > 0) {
+                    // Capture the settled keyboard without reading its animation in composition.
+                    delay(180)
+                    lastKeyboardHeight = with(density) { height.toDp() }
+                }
+            }
         }
     }
     LaunchedEffect(visible) {
@@ -52,12 +59,19 @@ internal fun rememberStickerKeyboardPanel(
         runCatching { requester.requestFocus() }
         keyboard?.show()
     }
-    // Keep a useful grid on tall phones/tablets; matching a short keyboard left
-    // barely one sticker row after the controls. Still leave the composer visible.
-    val availableHeight = windowHeight - if (visible) with(density) { imeHeight.toDp() } else 0.dp
-    val preferredHeight = maxOf(lastKeyboardHeight, (windowHeight * 0.48f).coerceIn(300.dp, 480.dp))
+    val panelSize = remember(windowInfo, ime) {
+        Modifier.layout { measurable, constraints ->
+            val windowHeight = windowInfo.containerSize.height.toDp()
+            val availableHeight = windowHeight - ime.getBottom(this).toDp()
+            val preferredHeight = maxOf(lastKeyboardHeight, (windowHeight * 0.48f).coerceIn(300.dp, 480.dp))
+            val height = preferredHeight.coerceIn(160.dp, (availableHeight * 0.56f).coerceAtLeast(160.dp))
+            val measuredHeight = constraints.constrainHeight(height.roundToPx())
+            val placeable = measurable.measure(constraints.copy(minHeight = measuredHeight, maxHeight = measuredHeight))
+            layout(placeable.width, placeable.height) { placeable.placeRelative(0, 0) }
+        }
+    }
     return StickerKeyboardPanel(
-        height = preferredHeight.coerceIn(160.dp, (availableHeight * 0.56f).coerceAtLeast(160.dp)),
+        panelSize = panelSize,
         inputFocusRequester = requester,
         toggle = { if (visible) showKeyboard() else onVisibleChange(true) },
         showKeyboard = showKeyboard,

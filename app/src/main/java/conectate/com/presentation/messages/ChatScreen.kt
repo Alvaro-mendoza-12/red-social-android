@@ -1853,7 +1853,7 @@ fun ChatScreen(
                 StickerPanel(
                     visible = showStickerCatalogDialog,
                     onDismiss = stickerKeyboardPanel.showKeyboard,
-                    modifier = Modifier.fillMaxWidth().height(stickerKeyboardPanel.height),
+                    modifier = Modifier.fillMaxWidth().then(stickerKeyboardPanel.panelSize),
                     snackbarHostState = snackbarHostState,
                     onStickerSelected = { sticker ->
                         if (!sticker.media_url.isNullOrBlank()) {

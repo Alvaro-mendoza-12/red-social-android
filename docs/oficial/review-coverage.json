@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-17T12:18:37.466745+00:00",
-  "baseCommit": "2be7acea7ed9e63a10c8bf97f3fabcd9695be180",
+  "generatedAtUtc": "2026-11-17T12:38:52.666535+00:00",
+  "baseCommit": "926c85f4520a9125f74cd63de08e05a939522f48",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3604,
+    "pending": 3600,
     "partial": 255,
-    "code-read": 757
+    "code-read": 762
   },
   "countsByPhase": {
     "android": {
-      "pending": 1460,
+      "pending": 1455,
       "partial": 111,
-      "code-read": 521
+      "code-read": 526
     },
     "documentation": {
-      "pending": 653,
+      "pending": 654,
       "code-read": 61,
       "partial": 20
     },
@@ -9869,8 +9869,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/ChatSpellCheck.kt",
       "phase": "android",
-      "gitBlobId": "6fe95728c3d69ea0e49b889997143170e42cbdbc",
-      "reviewStatus": "pending"
+      "gitBlobId": "40c5552b9b42814b31b0a52b712fb4e58ff48a5b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/CircularProfileImage.kt",
@@ -10861,9 +10863,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "8c65fd93a1595db74be5524f38cae02ce5623664",
+      "gitBlobId": "e6942a7b6855b61d99e4a5e1da921bd2128a8b05",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10983,9 +10985,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "d5a7f325e7165a759995be38dfbb4dcad2a8492f",
+      "gitBlobId": "30fb3fb0500b9729b80fb739cd52655d3484a088",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
+      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11069,8 +11071,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ConversationScrollAnchor.kt",
       "phase": "android",
-      "gitBlobId": "57f3f7a8ac4b810c03eb29e3e6d2d70b7c3735c1",
-      "reviewStatus": "pending"
+      "gitBlobId": "023b5172d459aae3ade57da8c5270ec1ef615470",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ConversationVisibleMessages.kt",
@@ -11163,9 +11167,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "fe6aa0c2521e25064ba820eefd3e522b9b03fe4b",
+      "gitBlobId": "af0730059669f9e5c0642848edc99cb6947745ca",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/162-fechas-locales-y-separadores-del-chat-2026-11-15.md",
+      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11689,8 +11693,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/stickers/StickerKeyboardPanel.kt",
       "phase": "android",
-      "gitBlobId": "a26bc8aaa0be715c12c79a90c32ec3b2b178d9d6",
-      "reviewStatus": "pending"
+      "gitBlobId": "440ddf1e4f8a29923b62028e4ec45987497299bd",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/stickers/StickerPanel.kt",
@@ -16613,8 +16619,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/components/ChatSpellCheckerRegressionTest.kt",
       "phase": "android",
-      "gitBlobId": "cf37b80842984f9068c6c073a6aaa7df0d939ea3",
-      "reviewStatus": "pending"
+      "gitBlobId": "37e7ae7c9f37284d77df195d74e8facad94f1801",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/components/CircularProfileImageFallbackTest.kt",
@@ -16989,8 +16997,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/messages/ConversationScrollAnchorTest.kt",
       "phase": "android",
-      "gitBlobId": "f9f65839d402040fb07c5fa9bc5acfe9bcdc4aeb",
-      "reviewStatus": "pending"
+      "gitBlobId": "75c11d6cc40fd225eb9267a0a6f6f7bd294ca3c9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/messages/ConversationTestSupport.kt",
@@ -21391,6 +21401,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/175-hilos-incompletos-de-videos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "phase": "documentation",
+      "gitBlobId": "e2706b75ce77f1d73c64916ab0b0f08d0f7dc508",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/18-mensajes-programados-timeout-2026-09-09.md",
