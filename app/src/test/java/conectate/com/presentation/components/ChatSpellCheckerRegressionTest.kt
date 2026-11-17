@@ -1,5 +1,7 @@
 package conectate.com.presentation.components
 
+import android.content.Context
+import android.content.ContextWrapper
 import android.view.textservice.SentenceSuggestionsInfo
 import android.view.textservice.SuggestionsInfo
 import androidx.test.core.app.ApplicationProvider
@@ -13,6 +15,32 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = UnitTestApplication::class)
 class ChatSpellCheckerRegressionTest {
+    @Test fun startingOrInvalidatingAnEmptyEditorDoesNotLookUpTheSpellService() {
+        var serviceLookups = 0
+        val context = object : ContextWrapper(ApplicationProvider.getApplicationContext()) {
+            override fun getSystemService(name: String): Any? {
+                if (name == Context.TEXT_SERVICES_MANAGER_SERVICE) {
+                    serviceLookups++
+                    return null
+                }
+                return super.getSystemService(name)
+            }
+        }
+        val unused = ChatSpellChecker(context)
+        unused.invalidate()
+        unused.check("")
+        unused.close()
+        assertEquals(0, serviceLookups)
+
+        val checker = ChatSpellChecker(context)
+        try {
+            repeat(6) { checker.invalidate() }
+            assertEquals(0, serviceLookups)
+            checker.check("hola")
+            assertEquals(1, serviceLookups)
+        } finally { checker.close() }
+    }
+
     @Test fun punctuationAndClearingASentDraftIgnoreEmptyAndLateSystemResults() {
         val checker = ChatSpellChecker(ApplicationProvider.getApplicationContext())
         try {

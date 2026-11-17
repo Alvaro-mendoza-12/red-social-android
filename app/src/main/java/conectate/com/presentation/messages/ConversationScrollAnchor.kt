@@ -17,6 +17,13 @@ internal fun <T> initialConversationScrollIndex(
 ): Int = if (focusMessageId.isNullOrBlank()) messages.lastIndex
     else messages.indexOfFirst { messageId(it).equals(focusMessageId, ignoreCase = true) }
 
+internal fun shouldUpdateFollowingLatest(
+    wasUserScrolling: Boolean,
+    isUserScrolling: Boolean,
+    isScrolling: Boolean,
+    anchorInProgress: Boolean,
+): Boolean = isUserScrolling || (wasUserScrolling && !isScrolling && !anchorInProgress)
+
 /** Keep the latest message above the composer as the keyboard/panel changes size. */
 @Composable
 internal fun <T> ConversationScrollAnchor(
@@ -50,12 +57,18 @@ internal fun <T> ConversationScrollAnchor(
     }
 
     LaunchedEffect(conversationKey, listState) {
+        var wasUserScrolling = false
         // Observe scrolling outside composition. A fling should not restart the
         // anchor's effects or recompose this scope on every layout update.
         snapshotFlow { Triple(currentlyDragging, listState.isScrollInProgress, listState.canScrollForward) }
             .distinctUntilChanged()
             .collect { (dragged, scrolling, canScrollForward) ->
-                if (dragged || (scrolling && !scrollMutex.isLocked)) followingLatest = !canScrollForward
+                val anchorInProgress = scrollMutex.isLocked
+                val userScrolling = dragged || (scrolling && !anchorInProgress)
+                if (shouldUpdateFollowingLatest(wasUserScrolling, userScrolling, scrolling, anchorInProgress)) {
+                    followingLatest = !canScrollForward
+                }
+                wasUserScrolling = userScrolling
             }
     }
 
@@ -64,10 +77,12 @@ internal fun <T> ConversationScrollAnchor(
         withFrameNanos { }
         // A keyboard resize or new message must not cancel an active native
         // drag/fling through scrollToItem's higher-priority scroll mutation.
-        if (currentlyDragging || listState.isScrollInProgress) return@withLock
+        if (currentlyDragging || listState.isScrollInProgress || !listState.canScrollForward) return@withLock
         val lastIndex = latestMessages.lastIndex
         if (lastIndex < 0) return@withLock
         listState.scrollToItem(lastIndex)
+        // Most rows fit in the viewport and Compose already clamps to the end.
+        if (!listState.canScrollForward) return@withLock
         withFrameNanos { }
         if (currentlyDragging || listState.isScrollInProgress) return@withLock
         val tail = listState.layoutInfo.visibleItemsInfo.lastOrNull()

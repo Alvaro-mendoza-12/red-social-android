@@ -139,22 +139,28 @@ internal class ChatSpellChecker(context: Context) : SpellCheckerSession.SpellChe
     private var sequence = 0
     private var requestedText = ""
     private var closed = false
-    private val session = runCatching {
-        (context.getSystemService(Context.TEXT_SERVICES_MANAGER_SERVICE) as? TextServicesManager)
-            ?.newSpellCheckerSession(null, null, this, true)
-    }.getOrNull()
+    private val session = lazy(LazyThreadSafetyMode.NONE) {
+        runCatching {
+            (context.getSystemService(Context.TEXT_SERVICES_MANAGER_SERVICE) as? TextServicesManager)
+                ?.newSpellCheckerSession(null, null, this, true)
+        }.getOrNull()
+    }
 
     fun invalidate() {
         sequence++
         checkedText = ""
         issues = emptyList()
-        runCatching { session?.cancel() }
     }
 
     fun check(text: String) {
         if (closed || text.isBlank() || text.length > 4_000) return
         requestedText = text
-        runCatching { session?.getSentenceSuggestions(arrayOf(TextInfo(text, 0, sequence)), 4) }
+        // The caller debounces checks. Invalidate locally while typing and cancel
+        // system work only when a replacement request is ready to be sent.
+        val replacingRequest = session.isInitialized()
+        val activeSession = session.value ?: return
+        if (replacingRequest) runCatching { activeSession.cancel() }
+        runCatching { activeSession.getSentenceSuggestions(arrayOf(TextInfo(text, 0, sequence)), 4) }
     }
 
     override fun onGetSuggestions(results: Array<out SuggestionsInfo>?) = Unit
@@ -201,6 +207,6 @@ internal class ChatSpellChecker(context: Context) : SpellCheckerSession.SpellChe
     fun close() {
         closed = true
         sequence++
-        runCatching { session?.close() }
+        if (session.isInitialized()) runCatching { session.value?.close() }
     }
 }
