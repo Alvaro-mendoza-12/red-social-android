@@ -1282,7 +1282,6 @@ class VoiceRoomRepository @Inject constructor(
         val isWebResHealthy = webRTCManager?.isHealthy() == true
         val isReentry = (activeRoomId == signalRoom && isSocketConnected && isWebResHealthy)
         val joinMuted = startMuted || (activeRoomId == signalRoom && isSelfMuted())
-        roomCues.start(userId, signalRoom)
         if (!activeRoomId.equals(signalRoom, ignoreCase = true)) {
             disableCaptionsInternal(announce = true)
             _captionConsentUserIds.value = emptySet()
@@ -1294,6 +1293,7 @@ class VoiceRoomRepository @Inject constructor(
         }
         
         if (isReentry) {
+            roomCues.start(userId, signalRoom)
             android.util.Log.w("VoiceRoomRepository", "♻️ RE-ENTRY DETECTED: Already in room $signalRoom. Skipping reset.")
             
             // Ensure self exists in participants (UI sync)
@@ -1327,21 +1327,30 @@ class VoiceRoomRepository @Inject constructor(
             return@withContext
         }
         
-        try {
-            if (roomChannel != null) {
-                android.util.Log.d("VoiceRoomRepository", "Cleaning up previous room channel...")
-                try {
-                    leaveRoom()
-                } catch (e: Exception) {
-                    android.util.Log.e("VoiceRoomRepository", "Warning during cleanup: ${e.message}")
-                    crashReporter.recordException(
-                        throwable = e,
-                        extra = currentMetricAttributes(roomId = roomId)
-                    )
-                }
+        if (roomChannel != null) {
+            android.util.Log.d("VoiceRoomRepository", "Cleaning up previous room channel...")
+            try {
+                leaveRoom()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                android.util.Log.e("VoiceRoomRepository", "Warning during cleanup: ${e.message}")
+                crashReporter.recordException(
+                    throwable = e,
+                    extra = currentMetricAttributes(roomId = roomId)
+                )
             }
+        }
 
-            check(interactiveMediaGate.acquire(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM)) { interactiveMediaGate.conflictMessage() }
+        if (!interactiveMediaGate.acquire(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM)) {
+            val message = interactiveMediaGate.conflictMessage()
+            pendingConnectMetricName = null
+            pendingConnectStartedAtMs = null
+            updateConnectionState(VoiceConnectionState.ERROR, message)
+            throw IllegalStateException(message)
+        }
+        try {
+            roomCues.start(userId, signalRoom)
             activeRoomId = signalRoom
             activeRoomPassword = roomPassword?.takeIf { it.isNotBlank() }
             desiredSelfMuted = joinMuted
@@ -1432,6 +1441,7 @@ class VoiceRoomRepository @Inject constructor(
         } catch (e: Exception) {
             android.util.Log.e("VoiceRoomRepository", "❌ CRITICAL error joining room", e)
             leaveRoom()
+            if (e is CancellationException) throw e
             updateConnectionState(
                 VoiceConnectionState.ERROR,
                 e.message?.takeIf { it.isNotBlank() } ?: "No pudimos abrir esta sala de voz."
@@ -2504,8 +2514,7 @@ class VoiceRoomRepository @Inject constructor(
         } finally {
             updateConnectionState(VoiceConnectionState.IDLE)
             stopVoiceForegroundService()
-            releaseVoiceAudioSession()
-            interactiveMediaGate.release(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM)
+            interactiveMediaGate.release(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM, ::releaseVoiceAudioSession)
         }
     }
 
@@ -2556,11 +2565,13 @@ class VoiceRoomRepository @Inject constructor(
 
     fun toggleSpeaker(on: Boolean) {
         desiredSpeakerOn = on
-        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-        if (audioManager != null) {
-            routeVoiceOutput(audioManager, on)
+        interactiveMediaGate.withOwner(conectate.com.core.media.InteractiveMediaKind.VOICE_ROOM) {
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audioManager != null) {
+                routeVoiceOutput(audioManager, on)
+            }
+            webRTCManager?.setSpeakerphoneOn(on)
         }
-        webRTCManager?.setSpeakerphoneOn(on)
     }
 
     fun setParticipantVolume(socketId: String, volume: Double) {

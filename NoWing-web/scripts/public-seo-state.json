@@ -8,13 +8,13 @@
     },
     "/privacidad": {
       "file": "privacidad.html",
-      "contentHash": "05fc4bb8f087e75fd4c0f9d9618cb3bc84ec66715e30836e5cc20dbeff00458a",
-      "lastmod": "2026-11-16"
+      "contentHash": "6bb3ae52efcab220612a51e28c864a3915c627145b1893e3df827e6fc473ae98",
+      "lastmod": "2026-11-17"
     },
     "/eliminar-cuenta": {
       "file": "eliminar-cuenta.html",
-      "contentHash": "99adf0e840f08a43d67aefd11fbe4222c4471c89e77c748f1e09b9888c2a3b0b",
-      "lastmod": "2026-11-16"
+      "contentHash": "8a16f54f467c68eadfd78e90f4c34eaaf0eff5975353044344c46158bf4100af",
+      "lastmod": "2026-11-17"
     },
     "/cookies": {
       "file": "cookies.html",

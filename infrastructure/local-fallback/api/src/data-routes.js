@@ -3,6 +3,7 @@ const { latestConversationReadAt } = require('./conversation-read-sync')
 const { isMessageLocationUrl } = require('./message-location')
 const { ensureFollowState, visibleFollowRows, setFollowState, publishFollowChange } = require('./follow-store')
 const { blockedProfileIds } = require('./blocked-profile-ids')
+const { publicVideoSound } = require('./video-public-attribution')
 const crypto = require('crypto')
 const { adminAccessFromStoredRow, appAdminAccess } = require('./admin-moderation-routes')
 const { SYSTEM_MEMBERSHIP, ensureCollectionMembershipTables, loadCollectionMembershipState, collectionHistoryAllows, registerCollectionMembershipRoutes } = require('./collection-membership-policy')
@@ -1902,15 +1903,23 @@ function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
   const videoUrl = textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], '')
   const soundId = textOf(row, ['sound_id', 'soundId'], '') || id
   const soundSourceVideoId = textOf(row, ['sound_source_video_id', 'soundSourceVideoId'], '') || id
-  const soundArtist = textOf(row, ['sound_artist', 'soundArtist'], '') ||
-    profileName(profile, textOf(row, ['user_name', 'userName'], 'Novvin'))
-  const soundTitle = textOf(row, ['sound_title', 'soundTitle'], '') || `Sonido original — ${soundArtist}`
+  const authorName = publicNotificationName({
+    display_name: profileName(profile, textOf(row, ['user_name', 'userName'], 'Usuario')),
+  })
+  const { soundArtist, soundTitle } = publicVideoSound(
+    textOf(row, ['sound_title', 'soundTitle'], ''),
+    textOf(row, ['sound_artist', 'soundArtist'], ''),
+    authorName,
+  )
   const soundUrl = textOf(row, ['sound_url', 'soundUrl'], '') || videoUrl
   return {
     ...row,
     id,
     user_id: userId,
-    user_name: profileName(profile, textOf(row, ['user_name', 'userName'], 'Usuario')),
+    user_name: authorName,
+    ...('userName' in row ? { userName: authorName } : {}),
+    ...('soundArtist' in row ? { soundArtist } : {}),
+    ...('soundTitle' in row ? { soundTitle } : {}),
     is_admin: boolOf(profile, ['is_admin'], false),
     is_verified: boolOf(profile, ['is_verified'], false),
     user_profile_image:
@@ -1958,7 +1967,9 @@ function mapVideoComment(row, profilesById, currentIdentity) {
     id,
     video_id: videoIdOf(row),
     user_id: userId,
-    user_name: profileName(profile, textOf(row, ['user_name', 'display_name', 'author_name'], 'Usuario')),
+    user_name: publicNotificationName({
+      display_name: profileName(profile, textOf(row, ['user_name', 'display_name', 'author_name'], 'Usuario')),
+    }),
     is_admin: boolOf(profile, ['is_admin'], false),
     is_verified: boolOf(profile, ['is_verified'], false),
     user_profile_image:
@@ -13037,7 +13048,8 @@ function registerDataRoutes(app, {
       const newVideoId = crypto.randomUUID()
       let soundId = newVideoId
       let soundSourceVideoId = newVideoId
-      let soundArtist = cleanText(user.display_name || user.email || 'Novvin', 120) || 'Novvin'
+      const authorName = publicNotificationName(user)
+      let soundArtist = cleanText(authorName, 120)
       let soundTitle = `Sonido original — ${soundArtist}`
       let soundUrl = videoUrl
       if (requestedSoundId) {
@@ -13058,14 +13070,13 @@ function registerDataRoutes(app, {
         soundId = textOf(source, ['sound_id', 'soundId'], '') || textOf(source, ['id'], '')
         soundSourceVideoId = textOf(source, ['sound_source_video_id', 'soundSourceVideoId'], '') ||
           textOf(source, ['id'], '')
-        soundArtist = cleanText(
-          textOf(source, ['sound_artist', 'soundArtist', 'user_name', 'userName'], 'Novvin'),
-          120,
-        ) || 'Novvin'
-        soundTitle = cleanText(
-          textOf(source, ['sound_title', 'soundTitle'], `Sonido original — ${soundArtist}`),
-          180,
-        ) || `Sonido original — ${soundArtist}`
+        const sourceSound = publicVideoSound(
+          cleanText(textOf(source, ['sound_title', 'soundTitle'], ''), 180),
+          cleanText(textOf(source, ['sound_artist', 'soundArtist', 'user_name', 'userName'], ''), 120),
+          'Novvin',
+        )
+        soundArtist = sourceSound.soundArtist
+        soundTitle = sourceSound.soundTitle
         soundUrl = textOf(source, ['sound_url', 'soundUrl', 'video_url', 'videoUrl'], '')
         if (!soundId || !soundSourceVideoId || !soundUrl) {
           return res.status(409).json({ error: 'VIDEO_SOUND_UNAVAILABLE' })
@@ -13086,7 +13097,7 @@ function registerDataRoutes(app, {
         [
           newVideoId,
           identity.displayUserId,
-          user.display_name || user.email || 'Usuario',
+          authorName,
           user.avatar_url || null,
           title,
           description,
@@ -13573,7 +13584,7 @@ function registerDataRoutes(app, {
         [
           cleanId,
           identity.displayUserId,
-          user.display_name || user.email || 'Usuario',
+          publicNotificationName(user),
           user.avatar_url || null,
           content,
           contentType,

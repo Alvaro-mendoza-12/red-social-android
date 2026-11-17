@@ -949,13 +949,15 @@ class VideoRepository @Inject constructor(
                 metadataPersisted = true
                 onUploadProgress(1f)
                 val createdVideo = created.getOrThrow()
-                updateLocalVideoStats(
-                    createdVideo.id,
-                    createdVideo.views,
-                    createdVideo.likeCount,
-                    createdVideo.commentCount,
-                    createdVideo.shareCount
-                )
+                updateCacheAfterVideoWrite {
+                    updateLocalVideoStats(
+                        createdVideo.id,
+                        createdVideo.views,
+                        createdVideo.likeCount,
+                        createdVideo.commentCount,
+                        createdVideo.shareCount
+                    )
+                }
                 if (finalTags.isNotEmpty()) {
                     repositoryScope.launch {
                         runCatching { hashtagRepository.attachHashtagsToVideo(createdVideo.id, finalTags) }
@@ -1005,6 +1007,8 @@ class VideoRepository @Inject constructor(
                  var errorBody = response.body<String>()
                  Result.failure(Exception("Error guardando metadatos: ${response.status} - $errorBody"))
              }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Result.failure(e)
         } finally {
@@ -3044,16 +3048,18 @@ class VideoRepository @Inject constructor(
 
     suspend fun deleteVideo(videoId: String): Result<Unit> {
         return try {
-            var accessToken = authService.getAccessToken() ?: return Result.failure(Exception("No access token"))
+            val accessToken = authService.getAccessTokenAwait() ?: return Result.failure(Exception("No access token"))
 
             if (shouldUseUbuntuBackend()) {
                 val result = localFallbackApiClient.deleteVideo(accessToken, videoId)
                 if (result.isSuccess) {
-                    videoCommentDao.deleteCommentsByVideo(videoId)
-                    val cleanVideoId = canonicalVideoId(videoId)
-                    if (cleanVideoId.isNotBlank()) {
-                        videoStatsDao.deleteStatsAliases(cleanVideoId)
-                        videoStatsDao.insertStats(VideoStatsEntity(cleanVideoId))
+                    updateCacheAfterVideoWrite {
+                        videoCommentDao.deleteCommentsByVideo(videoId)
+                        val cleanVideoId = canonicalVideoId(videoId)
+                        if (cleanVideoId.isNotBlank()) {
+                            videoStatsDao.deleteStatsAliases(cleanVideoId)
+                            videoStatsDao.insertStats(VideoStatsEntity(cleanVideoId))
+                        }
                     }
                 }
                 return result
@@ -3070,8 +3076,20 @@ class VideoRepository @Inject constructor(
             } else {
                  Result.failure(Exception("Failed to delete video: ${response.status}"))
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private suspend fun updateCacheAfterVideoWrite(update: suspend () -> Unit) {
+        try {
+            update()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            android.util.Log.w("VideoRepository", "No se pudo actualizar la caché tras confirmar el cambio de video", error)
         }
     }
 

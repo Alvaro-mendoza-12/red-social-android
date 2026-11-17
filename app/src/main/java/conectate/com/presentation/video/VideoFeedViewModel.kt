@@ -1739,8 +1739,11 @@ class VideoFeedViewModel @Inject constructor(
     }
 
     fun deleteVideo(video: Video) {
+        val generation = accountGeneration
         viewModelScope.launch {
-            videoRepository.deleteVideo(video.id)
+            val result = videoRepository.deleteVideo(video.id)
+            if (generation != accountGeneration) return@launch
+            result
                 .onSuccess {
                     _forYouVideos.value = _forYouVideos.value.filterNot { it.id == video.id }
                     _followingVideos.value = _followingVideos.value.filterNot { it.id == video.id }

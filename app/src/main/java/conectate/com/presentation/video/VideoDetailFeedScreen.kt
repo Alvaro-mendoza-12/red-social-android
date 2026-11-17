@@ -9,6 +9,7 @@ import conectate.com.presentation.navigation.Screen
 fun VideoDetailFeedScreen(
     navController: NavController,
     videoId: String,
+    onNavigateToSearch: (String) -> Unit,
     focusCommentId: String? = null,
     initialPositionMs: Long = 0L,
     initialClipEndMs: Long = 0L,
@@ -24,7 +25,7 @@ fun VideoDetailFeedScreen(
             savePendingVideoSound(navController, sound)
             navController.navigate(Screen.VideoUpload.route)
         },
-        onNavigateToSearch = { navController.navigate(Screen.SearchUsers.route) },
+        onNavigateToSearch = onNavigateToSearch,
         onNavigateToProfile = { navController.navigate(Screen.UserProfile.createRoute(it)) },
         onNavigateToChat = { navController.navigate(it) },
         onNavigateToLiveSetup = { navController.navigate(Screen.LiveSetup.route) },
