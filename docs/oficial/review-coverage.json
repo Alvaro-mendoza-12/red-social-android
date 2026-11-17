@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-16T23:15:39.905084+00:00",
-  "baseCommit": "9ed4475473c31a5338111c28f330072be77dd612",
+  "generatedAtUtc": "2026-11-17T00:14:33.218943+00:00",
+  "baseCommit": "eb921d06801dd63470bc855bcb5a84c9c188c781",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3621,
-    "partial": 250,
+    "pending": 3619,
+    "partial": 252,
     "code-read": 739
   },
   "countsByPhase": {
     "android": {
       "pending": 1473,
-      "partial": 109,
-      "code-read": 508
+      "partial": 110,
+      "code-read": 507
     },
     "documentation": {
       "pending": 653,
@@ -26,9 +26,9 @@
       "partial": 20
     },
     "server": {
-      "pending": 851,
-      "code-read": 63,
-      "partial": 30
+      "pending": 849,
+      "code-read": 64,
+      "partial": 31
     },
     "tooling-and-other": {
       "pending": 150,
@@ -711,7 +711,7 @@
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "728fce63f0bb40ee6ed7e0f584396393ef311c78",
+      "gitBlobId": "ed343ddd11147ce072acd617e16cc5976e929a5f",
       "reviewStatus": "pending"
     },
     {
@@ -4381,7 +4381,7 @@
     {
       "file": "NoWing-web/src/ui/novvin/publicInfoPages.ts",
       "phase": "web",
-      "gitBlobId": "5b003faeba752b284bbfa69bd285ef2a64e92d8a",
+      "gitBlobId": "95993f3dec7457419e137baffddc0c35a93b352e",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -12283,7 +12283,7 @@
       "phase": "android",
       "gitBlobId": "0556da9821cf592c32b2610741de3e03c4cd50a5",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13658,8 +13658,8 @@
       "file": "app/src/main/java/conectate/com/util/MediaPlaybackDataSources.kt",
       "phase": "android",
       "gitBlobId": "b4b9cbe200d51e5af2b7d53c86add4406f3454be",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13757,7 +13757,7 @@
       "phase": "android",
       "gitBlobId": "9d48bd4d12ba3f341ccbe371ca3c09e1ce24a8bf",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13811,7 +13811,7 @@
       "phase": "android",
       "gitBlobId": "ff592be647c19036cfda6af5fb9c3a3e9537c657",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13857,7 +13857,7 @@
       "phase": "android",
       "gitBlobId": "e61be71168ec8f1823ef9e6497bf647bb292ccb0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18337,9 +18337,9 @@
     {
       "file": "app/src/test/java/conectate/com/util/VideoCachePrefetchRaceTest.kt",
       "phase": "android",
-      "gitBlobId": "78921fa386aaffa45f2368a4b4337f1812a920cf",
+      "gitBlobId": "500f30a983bed6f377c0c276712b82832782ccee",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21331,7 +21331,7 @@
     {
       "file": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "phase": "documentation",
-      "gitBlobId": "f547829261a9dcf8e92f28569bcf5af4ca979333",
+      "gitBlobId": "fa3266611846416f02978dbf1260409421fc29af",
       "reviewStatus": "pending"
     },
     {
@@ -22807,7 +22807,7 @@
     {
       "file": "docs/quality/evidence/173-resultados.json",
       "phase": "documentation",
-      "gitBlobId": "ac393259cbf99b5b1ff206534c8ba5edcd200fae",
+      "gitBlobId": "34589688f00ccf5e89c7bfb3a41ca96d72549832",
       "reviewStatus": "pending"
     },
     {
@@ -23026,13 +23026,17 @@
       "file": "infrastructure/local-fallback/ai-chatbot/src/semantic-search.js",
       "phase": "server",
       "gitBlobId": "7d0437aa8a7fe854b03eb31ec0859c7db7f0a005",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/ai-chatbot/src/server.js",
       "phase": "server",
       "gitBlobId": "79bb5f48f05d87eada8d98dbb03e1899a0d62f95",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/ai-chatbot/src/text.js",
@@ -23883,7 +23887,7 @@
       "phase": "server",
       "gitBlobId": "509ee391b3f75e1d39eb5f95eb31857de5344c78",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24441,7 +24445,7 @@
       "phase": "server",
       "gitBlobId": "e419ab40701e524813e78bfb639f657556b30262",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

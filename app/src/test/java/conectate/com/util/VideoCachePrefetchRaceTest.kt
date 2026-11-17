@@ -11,6 +11,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
+import io.mockk.verify
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -157,10 +158,18 @@ class VideoCachePrefetchRaceTest {
 
     @Test fun aSpeculativeCacheExceptionUsesTheRecoverableIoFailurePath() = runBlocking {
         val source = mockk<DataSource>(relaxed = true)
-        every { source.open(any()) } throws IllegalStateException("Fixture cache state failure")
+        val upstreamFailure = IllegalStateException("Fixture cache state failure")
+        every { source.open(any()) } throws upstreamFailure
         every { MediaPlaybackDataSources.prefetchFactory(any(), any()) } returns DataSource.Factory { source }
         val failure = runCatching { VideoCache.preloadStart(context, "https://fixture.invalid/failure.mp4", 128, 5_000) }.exceptionOrNull()
+        verify(exactly = 1) { source.open(any()) }
         assertTrue("The feed handles IOException without terminating playback", failure is java.io.IOException)
-        assertTrue(failure?.cause is IllegalStateException)
+        // withContext/await may add stacktrace-recovery wrappers. Preserve the
+        // original upstream failure without requiring it to be the direct cause.
+        val causes = generateSequence(failure) { it.cause }.take(12).toList()
+        assertTrue(
+            "The injected upstream failure must remain in the cause chain: ${causes.map { it.javaClass.simpleName }}",
+            causes.any { it === upstreamFailure },
+        )
     }
 }
