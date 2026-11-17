@@ -63,4 +63,5 @@ data class CreatorPayoutAccountResponse(
 data class CreatorPayoutRequestResponse(
     val request: CreatorPayoutRequest,
     val duplicate: Boolean = false,
+    val localCleanupPending: Boolean = false,
 )
