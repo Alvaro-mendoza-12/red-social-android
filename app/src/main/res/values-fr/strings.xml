@@ -105,4 +105,14 @@
     <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
     <string name="widget_minimal_actions_title">Novvin · Minimaliste</string>
     <string name="auth_email_delivery_unknown_hint">Nous ne pouvons pas confirmer l’envoi. Si vous recevez un code à six chiffres, saisissez-le ici ou demandez-en un autre.</string>
+    <string name="auth_email_cleanup_title">Votre mot de passe a déjà été modifié</string>
+    <string name="auth_email_confirmation_sign_in">Votre mot de passe a déjà été modifié, mais la connexion n’a pas pu être finalisée sur cet appareil. Connectez-vous avec votre nouveau mot de passe.</string>
+    <string name="auth_email_confirmation_sign_in_action">Se connecter</string>
+    <string name="auth_email_confirmation_session_changed">Votre mot de passe a déjà été modifié. La session a changé pendant la récupération. Si vous souhaitez utiliser ce compte, rouvrez l’écran de connexion.</string>
+    <string name="auth_email_cleanup_failed">Votre mot de passe a déjà été modifié, mais les étapes de récupération enregistrées sur cet appareil n’ont pas pu être effacées. Réessayez de les effacer ou continuez. Votre mot de passe ne sera pas modifié une seconde fois.</string>
+    <string name="auth_email_cleanup_two_factor">Après avoir continué, connectez-vous et terminez la validation en deux étapes.</string>
+    <string name="auth_email_cleanup_retry">Réessayer d’effacer</string>
+    <string name="auth_email_cleanup_continue">Continuer</string>
+    <string name="auth_email_cleanup_working">Effacement des étapes enregistrées…</string>
+    <string name="auth_email_operation_interrupted">Le résultat n’a pas pu être confirmé. Vérifiez l’état actuel avant de réessayer.</string>
 </resources>

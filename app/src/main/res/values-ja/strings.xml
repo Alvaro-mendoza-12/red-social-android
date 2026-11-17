@@ -105,4 +105,14 @@
     <string name="live_overlay_bubble_idle">LIVE\nチャット</string>
     <string name="widget_minimal_actions_title">Novvin · ミニマル</string>
     <string name="auth_email_delivery_unknown_hint">送信を確認できませんでした。6桁のコードが届いたらここに入力するか、再送をリクエストしてください。</string>
+    <string name="auth_email_cleanup_title">パスワードは変更済みです</string>
+    <string name="auth_email_confirmation_sign_in">パスワードは変更済みですが、この端末でログインを完了できませんでした。新しいパスワードでログインしてください。</string>
+    <string name="auth_email_confirmation_sign_in_action">ログイン</string>
+    <string name="auth_email_confirmation_session_changed">パスワードは変更済みです。復元中にセッションが切り替わりました。このアカウントを使用する場合は、ログイン画面を開き直してください。</string>
+    <string name="auth_email_cleanup_failed">パスワードは変更済みですが、この端末に保存された復元の進行状況を削除できませんでした。削除をやり直すか、そのまま続行してください。パスワードが再度変更されることはありません。</string>
+    <string name="auth_email_cleanup_two_factor">続行したら、ログインして2段階認証を完了してください。</string>
+    <string name="auth_email_cleanup_retry">削除をやり直す</string>
+    <string name="auth_email_cleanup_continue">続行</string>
+    <string name="auth_email_cleanup_working">保存された進行状況を削除中…</string>
+    <string name="auth_email_operation_interrupted">処理の結果を確認できませんでした。再試行する前に現在の状態を確認してください。</string>
 </resources>
