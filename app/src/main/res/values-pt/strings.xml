@@ -105,4 +105,14 @@
     <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
     <string name="widget_minimal_actions_title">Novvin · Minimalista</string>
     <string name="auth_email_delivery_unknown_hint">Não foi possível confirmar o envio. Se receber um código de seis dígitos, digite-o aqui ou solicite outro.</string>
+    <string name="auth_email_cleanup_title">Sua senha já foi alterada</string>
+    <string name="auth_email_confirmation_sign_in">Sua senha já foi alterada, mas não foi possível concluir o login neste dispositivo. Entre com a nova senha.</string>
+    <string name="auth_email_confirmation_sign_in_action">Entrar</string>
+    <string name="auth_email_confirmation_session_changed">Sua senha já foi alterada. A sessão mudou durante a recuperação. Abra a tela de login novamente se precisar usar essa conta.</string>
+    <string name="auth_email_cleanup_failed">Sua senha já foi alterada, mas não foi possível remover o progresso da recuperação salvo neste dispositivo. Tente limpar novamente ou continue. Sua senha não será alterada outra vez.</string>
+    <string name="auth_email_cleanup_two_factor">Ao continuar, entre na conta e conclua a verificação em duas etapas.</string>
+    <string name="auth_email_cleanup_retry">Tentar limpar novamente</string>
+    <string name="auth_email_cleanup_continue">Continuar</string>
+    <string name="auth_email_cleanup_working">Removendo o progresso salvo…</string>
+    <string name="auth_email_operation_interrupted">Não foi possível confirmar o resultado. Verifique o estado atual antes de tentar novamente.</string>
 </resources>

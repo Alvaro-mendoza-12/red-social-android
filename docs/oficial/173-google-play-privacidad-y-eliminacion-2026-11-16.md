@@ -47,7 +47,9 @@ La primera compilación con heap de 3 GiB se interrumpió sin casos ejecutados: 
 
 El único fallo estaba en la expectativa de causa inmediata de `aSpeculativeCacheExceptionUsesTheRecoverableIoFailurePath`. Su aserción anterior de IOException recuperable ya aprobaba. La prueba se corrigió para exigir que el upstream inyectado se abra exactamente una vez y que la misma excepción original permanezca en la cadena causal, admitiendo envoltorios intermedios. No se cambió producción para ese ajuste. La repetición focalizada aprueba 10 casos/3 clases, sin fallos/errores/omisiones, sobre precarga, parada de voz en tres API y descubrimiento de eliminación. La repetición completa final y el paquete firmado siguen pendientes.
 
-La candidata siguiente usa 9.1.42/182, porque 181 ya fue utilizada en Play. Mantiene API36 e incluye los cambios móviles de eliminación. No se entrega todavía una APK/AAB 182. Su compilación, pruebas actuales, firma, ensayos físicos y subida permanecen pendientes. Los plazos operativos de retención y el cierre integral siguen abiertos. La aceptación final corresponde a Google.
+La repetición completa de 9.1.42/182 aprobó los 3.097 casos JVM en 555 clases y produjo los APK Audit y de instrumentación. El intento de empaquetado de producción terminó con salida 1 en `lintRelease`, por diez cadenas de recuperación ausentes en alemán, portugués, japonés, francés y chino. No produjo un AAB de producción. Se añadieron las diez traducciones en cada uno de los seis archivos, incluidos chino simplificado y tradicional. La comprobación de nombres únicos y la compilación AAPT2 de los seis XML aprobaron.
+
+La candidata usa 9.1.42/182, porque 181 ya fue utilizada en Play. Mantiene API36 e incluye los cambios móviles de eliminación. La repetición de lint, el AAB firmado, los ensayos físicos y su subida se comprueban por separado. Los plazos operativos de retención y el cierre integral siguen abiertos. La aceptación final corresponde a Google.
 
 ## Referencias oficiales consultadas
 

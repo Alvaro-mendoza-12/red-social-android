@@ -105,4 +105,14 @@
     <string name="live_overlay_bubble_idle">LIVE\n聊天</string>
     <string name="widget_minimal_actions_title">Novvin · 極簡</string>
     <string name="auth_email_delivery_unknown_hint">無法確認傳送。如果收到六位驗證碼，請在此輸入，或重新申請驗證碼。</string>
+    <string name="auth_email_cleanup_title">密碼已變更</string>
+    <string name="auth_email_confirmation_sign_in">你的密碼已變更，但無法在此裝置上完成登入。請使用新密碼登入。</string>
+    <string name="auth_email_confirmation_sign_in_action">登入</string>
+    <string name="auth_email_confirmation_session_changed">你的密碼已變更。復原過程中工作階段已切換。如需使用該帳號，請重新開啟登入頁面。</string>
+    <string name="auth_email_cleanup_failed">你的密碼已變更，但無法清除儲存在此裝置上的復原進度。你可以重試清除或繼續。密碼不會再次變更。</string>
+    <string name="auth_email_cleanup_two_factor">繼續後，請登入並完成兩步驟驗證。</string>
+    <string name="auth_email_cleanup_retry">重試清除</string>
+    <string name="auth_email_cleanup_continue">繼續</string>
+    <string name="auth_email_cleanup_working">正在清除已儲存的進度…</string>
+    <string name="auth_email_operation_interrupted">無法確認操作結果。請先檢查目前狀態，再重試。</string>
 </resources>

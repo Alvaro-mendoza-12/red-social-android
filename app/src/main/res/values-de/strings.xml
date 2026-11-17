@@ -105,4 +105,14 @@
     <string name="live_overlay_bubble_idle">LIVE\nCHAT</string>
     <string name="widget_minimal_actions_title">Novvin · Minimalistisch</string>
     <string name="auth_email_delivery_unknown_hint">Der Versand konnte nicht bestätigt werden. Falls du einen sechsstelligen Code erhältst, gib ihn hier ein oder fordere einen neuen an.</string>
+    <string name="auth_email_cleanup_title">Dein Passwort wurde bereits geändert</string>
+    <string name="auth_email_confirmation_sign_in">Dein Passwort wurde bereits geändert, aber wir konnten die Anmeldung auf diesem Gerät nicht abschließen. Melde dich mit deinem neuen Passwort an.</string>
+    <string name="auth_email_confirmation_sign_in_action">Anmelden</string>
+    <string name="auth_email_confirmation_session_changed">Dein Passwort wurde bereits geändert. Die Sitzung hat sich während der Wiederherstellung geändert. Öffne die Anmeldung erneut, wenn du dieses Konto verwenden möchtest.</string>
+    <string name="auth_email_cleanup_failed">Dein Passwort wurde bereits geändert, aber wir konnten den auf diesem Gerät gespeicherten Wiederherstellungsfortschritt nicht löschen. Versuche die Bereinigung erneut oder fahre fort. Dein Passwort wird nicht erneut geändert.</string>
+    <string name="auth_email_cleanup_two_factor">Melde dich nach dem Fortfahren an und schließe die Bestätigung in zwei Schritten ab.</string>
+    <string name="auth_email_cleanup_retry">Bereinigung wiederholen</string>
+    <string name="auth_email_cleanup_continue">Fortfahren</string>
+    <string name="auth_email_cleanup_working">Gespeicherter Fortschritt wird gelöscht…</string>
+    <string name="auth_email_operation_interrupted">Wir konnten das Ergebnis nicht bestätigen. Prüfe den aktuellen Status, bevor du es erneut versuchst.</string>
 </resources>

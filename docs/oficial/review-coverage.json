@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-17T00:14:33.218943+00:00",
-  "baseCommit": "eb921d06801dd63470bc855bcb5a84c9c188c781",
+  "generatedAtUtc": "2026-11-17T02:01:07.190358+00:00",
+  "baseCommit": "186b5320b393c653995072cb3bea48324bf3bcad",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -14489,7 +14489,7 @@
     {
       "file": "app/src/main/res/values-b+zh+Hans/strings.xml",
       "phase": "android",
-      "gitBlobId": "1eb72f3239e6c7e569cb95d4d95cc2a2110f361e",
+      "gitBlobId": "546412f774f02251ea9ff9b23f6b00aada482ccf",
       "reviewStatus": "pending"
     },
     {
@@ -14503,7 +14503,7 @@
     {
       "file": "app/src/main/res/values-b+zh+Hant/strings.xml",
       "phase": "android",
-      "gitBlobId": "2736596a5dcb33b84c1580f1140e903a1fc3f7c8",
+      "gitBlobId": "364255d560338fd71e682bfc899d0dad14300109",
       "reviewStatus": "pending"
     },
     {
@@ -14517,7 +14517,7 @@
     {
       "file": "app/src/main/res/values-de/strings.xml",
       "phase": "android",
-      "gitBlobId": "45538dae70035617edda20a889ae2d0f5ef4589a",
+      "gitBlobId": "3aa5d8efbad54931c55ea8e9b81d0033ab2f694a",
       "reviewStatus": "pending"
     },
     {
@@ -14559,7 +14559,7 @@
     {
       "file": "app/src/main/res/values-fr/strings.xml",
       "phase": "android",
-      "gitBlobId": "9c19b03e8433652faca4579f4d0d30e3db4bc1a4",
+      "gitBlobId": "ec970cdb8682bde2c692718ed4c94b6326492bd0",
       "reviewStatus": "pending"
     },
     {
@@ -14573,7 +14573,7 @@
     {
       "file": "app/src/main/res/values-ja/strings.xml",
       "phase": "android",
-      "gitBlobId": "592492c5c87b3a2d2a371f807e2c0b877e6b635d",
+      "gitBlobId": "97db4264de7e1f4e2ce2202600d75dfd5bbdc6c6",
       "reviewStatus": "pending"
     },
     {
@@ -14587,7 +14587,7 @@
     {
       "file": "app/src/main/res/values-pt/strings.xml",
       "phase": "android",
-      "gitBlobId": "88ec0503d0f3e9008a87e4c106872182dbdee580",
+      "gitBlobId": "5a8fa152c06176df378675a480f934d957bb0a4c",
       "reviewStatus": "pending"
     },
     {
@@ -21331,7 +21331,7 @@
     {
       "file": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
       "phase": "documentation",
-      "gitBlobId": "fa3266611846416f02978dbf1260409421fc29af",
+      "gitBlobId": "dac559dc1598af4f2dff6cacce96fd60156a959a",
       "reviewStatus": "pending"
     },
     {
