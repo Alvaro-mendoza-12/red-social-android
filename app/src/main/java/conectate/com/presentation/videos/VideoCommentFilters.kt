@@ -29,28 +29,39 @@ fun visibleVideoCommentThreads(
     currentUserId: String?,
     creatorId: String?,
 ): List<VisibleVideoCommentThread> {
-    val byId = comments.associateBy { it.id.trim().lowercase() }
+    val byId = linkedMapOf<String, VideoComment>()
+    for (comment in comments) {
+        val id = comment.id.trim().lowercase()
+        if (id.isNotBlank()) byId.putIfAbsent(id, comment)
+    }
     val roots = linkedMapOf<String, VideoComment>()
     val replies = mutableMapOf<String, MutableList<VideoComment>>()
+    val resolvedRoots = mutableMapOf<String, String>()
 
-    fun rootFor(comment: VideoComment): VideoComment {
-        var cursor = comment
-        val visited = mutableSetOf<String>()
-        while (true) {
-            val cursorId = cursor.id.trim().lowercase()
-            if (!visited.add(cursorId)) return comment
-            val parentId = cursor.parentId?.trim()?.lowercase()
+    fun rootFor(commentId: String): String {
+        resolvedRoots[commentId]?.let { return it }
+        var current = commentId
+        val path = linkedSetOf<String>()
+        while (current !in resolvedRoots && path.add(current)) {
+            val parentId = byId.getValue(current).parentId?.trim()?.lowercase()
                 ?.takeUnless { it.isBlank() || it == "0" || it == "null" || it == "undefined" || it == "none" }
-                ?: return cursor
-            cursor = byId[parentId] ?: return comment
+            if (parentId == null || parentId !in byId) {
+                // A partial page still shows the oldest available comment in this chain.
+                resolvedRoots[current] = current
+                break
+            }
+            current = parentId
         }
+        // For a cycle, choose the same root regardless of which reply led to it.
+        val root = resolvedRoots[current] ?: path.asSequence().dropWhile { it != current }.minOrNull() ?: current
+        for (id in path) resolvedRoots[id] = root
+        return root
     }
 
-    comments.forEach { comment ->
-        val root = rootFor(comment)
-        val rootId = root.id.trim().lowercase()
-        roots[rootId] = root
-        if (!comment.id.equals(root.id, ignoreCase = true)) {
+    for ((id, comment) in byId) {
+        val rootId = rootFor(id)
+        roots.getOrPut(rootId) { byId.getValue(rootId) }
+        if (id != rootId) {
             replies.getOrPut(rootId) { mutableListOf() }.add(comment)
         }
     }
