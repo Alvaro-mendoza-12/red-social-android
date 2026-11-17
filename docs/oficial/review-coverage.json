@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-17T12:38:52.666535+00:00",
-  "baseCommit": "926c85f4520a9125f74cd63de08e05a939522f48",
+  "generatedAtUtc": "2026-11-17T12:48:42.065417+00:00",
+  "baseCommit": "424da6961a8ff42b0cc14bcbda804577c61e30b6",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3600,
+    "pending": 3595,
     "partial": 255,
-    "code-read": 762
+    "code-read": 769
   },
   "countsByPhase": {
     "android": {
-      "pending": 1455,
+      "pending": 1449,
       "partial": 111,
-      "code-read": 526
+      "code-read": 533
     },
     "documentation": {
-      "pending": 654,
+      "pending": 655,
       "code-read": 61,
       "partial": 20
     },
@@ -8573,7 +8573,7 @@
       "phase": "android",
       "gitBlobId": "33500d219ea4a77bd6832ca121f5db986a4068a1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12882,13 +12882,17 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoCollectionsSheet.kt",
       "phase": "android",
       "gitBlobId": "29e35a3dfb91a2920920bb4565c6514c3433c52c",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoCollectionsViewModel.kt",
       "phase": "android",
-      "gitBlobId": "2aab2b1609a400159242e34c492d4763bd1d94b1",
-      "reviewStatus": "pending"
+      "gitBlobId": "805f918c6ef618903644ca03e52f17e77d79903a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoCommentSession.kt",
@@ -13006,13 +13010,17 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoHistorySheet.kt",
       "phase": "android",
       "gitBlobId": "ae97439498e38ffe90d68322b8edec5fd921b8c1",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoHistoryViewModel.kt",
       "phase": "android",
-      "gitBlobId": "9e28b68c774bb31e8e32d2e919c14ea8009f8241",
-      "reviewStatus": "pending"
+      "gitBlobId": "a3fb27c2d76c3da03a6c63ef9fff321bcecb1c21",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoLearningTools.kt",
@@ -13068,13 +13076,17 @@
       "file": "app/src/main/java/conectate/com/presentation/video/VideoWatchLaterSheet.kt",
       "phase": "android",
       "gitBlobId": "93df0f3cfc970893f5ffb34458019dec6291f129",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoWatchLaterViewModel.kt",
       "phase": "android",
-      "gitBlobId": "49fb611cca628ca1134e61cc1fc4b58b3ce5a172",
-      "reviewStatus": "pending"
+      "gitBlobId": "25754d9ef0c35589b985b0a594fb919cc2a8e672",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/videos/CommentSheet.kt",
@@ -17885,6 +17897,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/video/VideoLibraryLoadingTest.kt",
+      "phase": "android",
+      "gitBlobId": "e9c066ef8b9fe77531fc925dbfa40728c07a0240",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/video/VideoLikeWriterTest.kt",
       "phase": "android",
       "gitBlobId": "b535df22f6a4fafd9ed2c69b6474d82b983e7d07",
@@ -21406,6 +21426,12 @@
       "file": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
       "phase": "documentation",
       "gitBlobId": "e2706b75ce77f1d73c64916ab0b0f08d0f7dc508",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/177-carga-y-borrado-biblioteca-videos-2026-11-17.md",
+      "phase": "documentation",
+      "gitBlobId": "207215ca30261e4d4745c6ec5f970851f8077f0f",
       "reviewStatus": "pending"
     },
     {
