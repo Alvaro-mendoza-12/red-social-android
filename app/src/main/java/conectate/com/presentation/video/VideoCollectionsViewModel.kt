@@ -96,6 +96,7 @@ class VideoCollectionsViewModel @Inject constructor(
                 val selected = _state.value.selectedId?.takeIf { id ->
                     catalog.items.any { it.id == id }
                 }
+                if (selected != _state.value.selectedId) select(selected)
                 _state.value = _state.value.copy(collections = catalog.items,
                     selectedId = selected, loading = false, error = null,
                     videos = if (selected == null) emptyList() else _state.value.videos)
@@ -118,7 +119,11 @@ class VideoCollectionsViewModel @Inject constructor(
 
     fun search(query: String) {
         if (query.length > 80) return
-        _state.value = _state.value.copy(search = query)
+        // Invalidate now: the previous offset and even an A -> B -> A reply are stale
+        // throughout the debounce interval, before the next request is launched.
+        itemRevision++
+        _state.value = _state.value.copy(search = query, videos = emptyList(),
+            nextOffset = null, loadingVideos = _state.value.selectedId != null, error = null)
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(250)
@@ -201,9 +206,13 @@ class VideoCollectionsViewModel @Inject constructor(
             val result = repository.deleteVideoCollection(collectionId)
             if (account != bindAccount()) return@launch
             _state.value = _state.value.copy(working = false,
-                selectedId = if (result.isSuccess) _state.value.selectedId.takeUnless { it == collectionId } else _state.value.selectedId,
                 error = result.exceptionOrNull()?.message)
-            if (result.isSuccess) refresh(silent = true)
+            if (result.isSuccess) {
+                if (_state.value.selectedId == collectionId) select(null)
+                _state.value = _state.value.copy(
+                    collections = _state.value.collections.filterNot { it.id == collectionId })
+                refresh(silent = true)
+            }
         }
     }
 

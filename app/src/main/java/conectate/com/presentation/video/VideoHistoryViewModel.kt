@@ -72,7 +72,7 @@ class VideoHistoryViewModel @Inject constructor(
             return
         }
         revision++
-        _state.value = VideoHistoryState(loading = true)
+        _state.value = VideoHistoryState(loading = true, deleting = _state.value.deleting)
         loadPage(account, revision, "")
     }
 
@@ -140,8 +140,12 @@ class VideoHistoryViewModel @Inject constructor(
             val result = repository.deleteVideoHistory(videoId)
             if (account != bindAccount()) return@launch
             result.fold(onSuccess = {
+                // A page read before this acknowledgement may still contain the deleted video.
+                revision++
                 _state.value = if (videoId == null) VideoHistoryState() else _state.value.copy(
-                    items = _state.value.items.filterNot { it.videoId == videoId }, deleting = false)
+                    items = _state.value.items.filterNot { it.videoId == videoId },
+                    deleting = false, loading = true, error = null)
+                if (videoId != null) loadPage(account, revision, "")
             }, onFailure = { error ->
                 _state.value = _state.value.copy(deleting = false,
                     error = error.message ?: "No se pudo borrar el historial.")

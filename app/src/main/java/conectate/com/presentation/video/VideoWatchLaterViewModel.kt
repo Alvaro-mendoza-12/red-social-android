@@ -145,7 +145,12 @@ class VideoWatchLaterViewModel @Inject constructor(
             pending.remove(pendingKey)
             if (account != bindAccount()) return@launch
             result.fold(onSuccess = {
-                _state.value = _state.value.copy(items = _state.value.items.filterNot { it.videoId == id })
+                // Retire pages captured before the confirmed removal, then reconcile the list.
+                revision++
+                _state.value = _state.value.copy(
+                    items = _state.value.items.filterNot { it.videoId == id },
+                    loading = true, error = null)
+                loadPage(account, revision, "", _state.value.sort)
             }, onFailure = { error ->
                 _state.value = _state.value.copy(error = error.message ?: "No se pudo quitar el video.")
             })
