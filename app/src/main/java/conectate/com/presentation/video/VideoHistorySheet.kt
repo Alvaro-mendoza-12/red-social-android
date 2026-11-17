@@ -44,7 +44,8 @@ fun VideoHistorySheet(
     onContinue: (String, Long) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var confirmClear by remember { mutableStateOf(false) }
+    val owner = viewModel.ownerAtRender()
+    var confirmClear by remember(owner) { mutableStateOf(false) }
     LaunchedEffect(viewModel) { viewModel.refresh() }
     if (confirmClear) AlertDialog(
         onDismissRequest = { confirmClear = false },
@@ -52,7 +53,7 @@ fun VideoHistorySheet(
         text = { Text("Se quitarán todos los videos de tu historial privado. Esto no cambia las visualizaciones de los creadores.") },
         confirmButton = { TextButton(onClick = {
             confirmClear = false
-            viewModel.remove(null)
+            if (owner?.isCurrent() == true) viewModel.remove(null)
         }) { Text("Borrar") } },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancelar") } },
     )
@@ -69,7 +70,7 @@ fun VideoHistorySheet(
             state.error?.let { error ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-                    TextButton(onClick = viewModel::refresh) { Text("Reintentar") }
+                    TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.refresh() }) { Text("Reintentar") }
                 }
             }
             if (state.loading) CircularProgressIndicator(Modifier.padding(12.dp).size(24.dp))
@@ -98,9 +99,9 @@ fun VideoHistorySheet(
                             }
                             Row {
                                 if (!item.unavailable) Button(onClick = {
-                                    onContinue(item.videoId, item.positionMs)
+                                    if (owner?.isCurrent() == true) onContinue(item.videoId, item.positionMs)
                                 }) { Text("Continuar") }
-                                TextButton(onClick = { viewModel.remove(item.videoId) },
+                                TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.remove(item.videoId) },
                                     enabled = !state.deleting) { Text("Quitar") }
                             }
                         }
@@ -108,7 +109,7 @@ fun VideoHistorySheet(
                     HorizontalDivider()
                 }
                 if (state.nextCursor != null) item {
-                    TextButton(onClick = viewModel::loadMore, enabled = !state.loading,
+                    TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.loadMore() }, enabled = !state.loading,
                         modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
                 }
             }

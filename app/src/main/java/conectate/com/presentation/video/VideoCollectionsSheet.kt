@@ -51,9 +51,10 @@ fun VideoCollectionsSheet(
     onOpenVideo: (String) -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var newName by remember { mutableStateOf("") }
-    var renameName by remember { mutableStateOf("") }
-    var confirmingDelete by remember { mutableStateOf<String?>(null) }
+    val owner = viewModel.ownerAtRender()
+    var newName by remember(owner) { mutableStateOf("") }
+    var renameName by remember(owner) { mutableStateOf("") }
+    var confirmingDelete by remember(owner) { mutableStateOf<String?>(null) }
     val selected = state.collections.find { it.id == state.selectedId }
     LaunchedEffect(viewModel) { viewModel.refresh() }
     LaunchedEffect(selected?.id) { renameName = selected?.name.orEmpty() }
@@ -65,7 +66,7 @@ fun VideoCollectionsSheet(
             text = { Text("Se quitará la lista, pero los videos originales permanecerán publicados.") },
             confirmButton = { TextButton(onClick = {
                 confirmingDelete = null
-                viewModel.delete(collectionId)
+                if (owner?.isCurrent() == true) viewModel.delete(collectionId)
             }) { Text("Eliminar") } },
             dismissButton = { TextButton(onClick = { confirmingDelete = null }) { Text("Cancelar") } },
         )
@@ -73,7 +74,7 @@ fun VideoCollectionsSheet(
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.fillMaxWidth().heightIn(max = 660.dp).padding(horizontal = 16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (selected != null) TextButton(onClick = { viewModel.select(null) }) { Text("‹ Volver") }
+                if (selected != null) TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.select(null) }) { Text("‹ Volver") }
                 Text(if (selected == null) "Mis colecciones" else selected.name,
                     style = MaterialTheme.typography.titleLarge)
             }
@@ -81,7 +82,7 @@ fun VideoCollectionsSheet(
             state.error?.let { error ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { viewModel.refresh() }) { Text("Reintentar") }
+                    TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.refresh() }) { Text("Reintentar") }
                 }
             }
             if (state.loading || state.loadingVideos) CircularProgressIndicator(
@@ -94,7 +95,7 @@ fun VideoCollectionsSheet(
                         modifier = Modifier.weight(1f), singleLine = true,
                         label = { Text("Nueva colección") })
                     Button(onClick = {
-                        viewModel.create(newName, videoToAdd)
+                        if (owner?.isCurrent() == true) viewModel.create(newName, videoToAdd)
                     }, enabled = newName.isNotBlank() && !state.working && state.collections.size < 100) {
                         Text("Crear")
                     }
@@ -114,10 +115,10 @@ fun VideoCollectionsSheet(
                                     style = MaterialTheme.typography.bodySmall)
                             }
                             if (videoToAdd != null) TextButton(
-                                onClick = { viewModel.add(collection.id, videoToAdd) },
+                                onClick = { if (owner?.isCurrent() == true) viewModel.add(collection.id, videoToAdd) },
                                 enabled = !state.working && collection.itemCount < 500,
                             ) { Text("Añadir") }
-                            TextButton(onClick = { viewModel.select(collection.id) }) { Text("Abrir") }
+                            TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.select(collection.id) }) { Text("Abrir") }
                         }
                         HorizontalDivider()
                     }
@@ -129,13 +130,13 @@ fun VideoCollectionsSheet(
                         onValueChange = { if (it.length <= 60) renameName = it },
                         modifier = Modifier.weight(1f), singleLine = true,
                         label = { Text("Nombre") })
-                    TextButton(onClick = { viewModel.rename(selected.id, renameName) },
+                    TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.rename(selected.id, renameName) },
                         enabled = renameName.isNotBlank() && renameName != selected.name && !state.working) {
                         Text("Guardar")
                     }
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(state.search, onValueChange = viewModel::search,
+                    OutlinedTextField(state.search, onValueChange = { if (owner?.isCurrent() == true) viewModel.search(it) },
                         modifier = Modifier.weight(1f), singleLine = true,
                         label = { Text("Buscar en esta colección") })
                     TextButton(onClick = { confirmingDelete = selected.id },
@@ -161,18 +162,18 @@ fun VideoCollectionsSheet(
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (!video.unavailable) TextButton(onClick = {
-                                        onOpenVideo(video.videoId)
+                                        if (owner?.isCurrent() == true) onOpenVideo(video.videoId)
                                     }) { Text("Abrir") }
-                                    TextButton(onClick = { viewModel.remove(selected.id, video.videoId) },
+                                    TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.remove(selected.id, video.videoId) },
                                         enabled = !state.working) { Text("Quitar") }
                                 }
                             }
                             Column {
-                                IconButton(onClick = { viewModel.move(selected.id, video.videoId, "up") },
+                                IconButton(onClick = { if (owner?.isCurrent() == true) viewModel.move(selected.id, video.videoId, "up") },
                                     enabled = !state.working && state.search.isBlank()) {
                                     Icon(Icons.Default.ArrowUpward, contentDescription = "Subir en la colección")
                                 }
-                                IconButton(onClick = { viewModel.move(selected.id, video.videoId, "down") },
+                                IconButton(onClick = { if (owner?.isCurrent() == true) viewModel.move(selected.id, video.videoId, "down") },
                                     enabled = !state.working && state.search.isBlank()) {
                                     Icon(Icons.Default.ArrowDownward, contentDescription = "Bajar en la colección")
                                 }
@@ -181,7 +182,7 @@ fun VideoCollectionsSheet(
                         HorizontalDivider()
                     }
                     if (state.nextOffset != null) item {
-                        TextButton(onClick = viewModel::loadMore, enabled = !state.loadingVideos,
+                        TextButton(onClick = { if (owner?.isCurrent() == true) viewModel.loadMore() }, enabled = !state.loadingVideos,
                             modifier = Modifier.fillMaxWidth()) { Text("Cargar más") }
                     }
                 }

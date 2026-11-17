@@ -5,14 +5,14 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.localfallback.VideoHistoryItem
 import conectate.com.data.repository.VideoRepository
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 data class VideoHistoryState(
@@ -32,15 +32,16 @@ class VideoHistoryViewModel @Inject constructor(
     private val _state = MutableStateFlow(VideoHistoryState())
     val state = _state.asStateFlow()
     private var accountId: String? = null
+    private var ownerLease: AuthSessionLease? = null
     private var revision = 0L
     private val recentProgress = mutableMapOf<String, Long>()
     private val pendingProgress = mutableSetOf<String>()
 
     init {
         viewModelScope.launch {
-            auth.observeSession().map { it?.user?.id?.trim()?.lowercase() }
-                .distinctUntilChanged().collect { current ->
-                    if (accountId != current) resetAccount(current)
+            combine(auth.observeSession(), auth.accountVisitChanges) { _, _ -> auth.captureAccountLease() }
+                .collect { current ->
+                    if (ownerLease?.sameVisit(current) != true) resetAccount(current)
                 }
         }
         viewModelScope.launch {
@@ -52,19 +53,22 @@ class VideoHistoryViewModel @Inject constructor(
         }
     }
 
-    private fun resetAccount(current: String?) {
-        accountId = current
+    private fun resetAccount(current: AuthSessionLease) {
+        ownerLease = current
+        accountId = current.accountId
         revision++
         recentProgress.clear()
         pendingProgress.clear()
         _state.value = VideoHistoryState()
     }
 
-    private fun bindAccount(): String? {
-        val current = auth.getCurrentUserId()?.trim()?.lowercase()
-        if (current != accountId) resetAccount(current)
-        return current
+    private fun bindAccount(): AuthSessionLease? {
+        val current = auth.captureAccountLease()
+        if (ownerLease?.sameVisit(current) != true) resetAccount(current)
+        return current.takeIf { it.isCurrent() }
     }
+
+    internal fun ownerAtRender(): AuthSessionLease? = ownerLease
 
     fun refresh() {
         val account = bindAccount() ?: run {
@@ -90,14 +94,19 @@ class VideoHistoryViewModel @Inject constructor(
         loadPage(account, revision, cursor)
     }
 
-    private fun loadPage(account: String, requestRevision: Long, cursor: String) {
+    private fun loadPage(account: AuthSessionLease, requestRevision: Long, cursor: String) {
         viewModelScope.launch {
-            if (cursor.isEmpty()) auth.ensureValidAccessToken().onSuccess { token ->
-                realtime.updateAccessToken(token)
-                realtime.replaceUserSubscription(account)
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) {
+                account.requireCurrent()
+                if (cursor.isEmpty()) auth.ensureValidAccessToken().onSuccess { token ->
+                    account.requireCurrent()
+                    realtime.updateAccessToken(token)
+                    account.requireCurrent()
+                    realtime.replaceUserSubscription(account.accountId!!)
+                }
+                repository.getVideoHistory(account, cursor).getOrThrow()
             }
-            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoHistory(cursor).getOrThrow() }
-            if (requestRevision != revision || account != bindAccount()) return@launch
+            if (requestRevision != revision || !account.isCurrent()) return@launch
             result.fold(onSuccess = { page ->
                 val items = (if (cursor.isEmpty()) page.items else _state.value.items + page.items)
                     .distinctBy(VideoHistoryItem::videoId)
@@ -115,7 +124,7 @@ class VideoHistoryViewModel @Inject constructor(
         val id = videoId?.trim()?.lowercase()?.takeIf(String::isNotBlank) ?: return
         if (durationMs <= 0 || durationMs > 86_400_000L || positionMs < 0 || positionMs > durationMs) return
         if (positionMs < minOf(1_500L, durationMs / 2L)) return
-        val key = "$account:$id"
+        val key = "${account.accountId}:$id"
         val now = android.os.SystemClock.elapsedRealtime()
         if (pendingProgress.contains(key) ||
             (recentProgress.containsKey(key) && now - recentProgress.getValue(key) < 5_000L)) return
@@ -123,10 +132,10 @@ class VideoHistoryViewModel @Inject constructor(
         pendingProgress.add(key)
         viewModelScope.launch {
             try {
-                if (account != bindAccount()) return@launch
-                repository.recordVideoHistory(id, positionMs, durationMs)
+                if (!account.isCurrent()) return@launch
+                repository.recordVideoHistory(account, id, positionMs, durationMs)
             } finally {
-                pendingProgress.remove(key)
+                if (account.isCurrent()) pendingProgress.remove(key)
             }
         }
     }
@@ -136,20 +145,24 @@ class VideoHistoryViewModel @Inject constructor(
         if (_state.value.deleting) return
         _state.value = _state.value.copy(deleting = true, error = null)
         viewModelScope.launch {
-            if (account != bindAccount()) return@launch
-            val result = repository.deleteVideoHistory(videoId)
-            if (account != bindAccount()) return@launch
-            result.fold(onSuccess = {
-                // A page read before this acknowledgement may still contain the deleted video.
-                revision++
-                _state.value = if (videoId == null) VideoHistoryState() else _state.value.copy(
-                    items = _state.value.items.filterNot { it.videoId == videoId },
-                    deleting = false, loading = true, error = null)
-                if (videoId != null) loadPage(account, revision, "")
-            }, onFailure = { error ->
-                _state.value = _state.value.copy(deleting = false,
-                    error = error.message ?: "No se pudo borrar el historial.")
-            })
+            try {
+                if (!account.isCurrent()) return@launch
+                val result = repository.deleteVideoHistory(account, videoId)
+                if (!account.isCurrent()) return@launch
+                result.fold(onSuccess = {
+                    // A page read before this acknowledgement may still contain the deleted video.
+                    revision++
+                    _state.value = if (videoId == null) VideoHistoryState() else _state.value.copy(
+                        items = _state.value.items.filterNot { it.videoId == videoId },
+                        deleting = false, loading = true, error = null)
+                    if (videoId != null) loadPage(account, revision, "")
+                }, onFailure = { error ->
+                    _state.value = _state.value.copy(deleting = false,
+                        error = error.message ?: "No se pudo borrar el historial.")
+                })
+            } finally {
+                if (account.isCurrent()) _state.value = _state.value.copy(deleting = false)
+            }
         }
     }
 }

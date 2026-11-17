@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import conectate.com.data.localfallback.VideoWatchLaterItem
 import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.repository.VideoRepository
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.AuthService
 import conectate.com.presentation.common.AppFeedbackBus
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -13,8 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 
 data class VideoWatchLaterState(
     val items: List<VideoWatchLaterItem> = emptyList(),
@@ -33,19 +33,15 @@ class VideoWatchLaterViewModel @Inject constructor(
     private val _state = MutableStateFlow(VideoWatchLaterState())
     val state = _state.asStateFlow()
     private var accountId: String? = null
+    private var ownerLease: AuthSessionLease? = null
     private var revision = 0L
     private val pending = mutableSetOf<String>()
 
     init {
         viewModelScope.launch {
-            auth.observeSession().map { it?.user?.id?.trim()?.lowercase() }
-                .distinctUntilChanged().collect { current ->
-                    if (accountId != current) {
-                        accountId = current
-                        revision++
-                        pending.clear()
-                        _state.value = VideoWatchLaterState()
-                    }
+            combine(auth.observeSession(), auth.accountVisitChanges) { _, _ -> auth.captureAccountLease() }
+                .collect { current ->
+                    if (ownerLease?.sameVisit(current) != true) resetAccount(current)
                 }
         }
         viewModelScope.launch {
@@ -56,16 +52,21 @@ class VideoWatchLaterViewModel @Inject constructor(
         }
     }
 
-    private fun bindAccount(): String? {
-        val current = auth.getCurrentUserId()?.trim()?.lowercase()
-        if (accountId != current) {
-            accountId = current
-            revision++
-            pending.clear()
-            _state.value = VideoWatchLaterState()
-        }
-        return current
+    private fun resetAccount(current: AuthSessionLease) {
+        ownerLease = current
+        accountId = current.accountId
+        revision++
+        pending.clear()
+        _state.value = VideoWatchLaterState()
     }
+
+    private fun bindAccount(): AuthSessionLease? {
+        val current = auth.captureAccountLease()
+        if (ownerLease?.sameVisit(current) != true) resetAccount(current)
+        return current.takeIf { it.isCurrent() }
+    }
+
+    internal fun ownerAtRender(): AuthSessionLease? = ownerLease
 
     fun refresh() {
         val account = bindAccount() ?: run {
@@ -93,14 +94,19 @@ class VideoWatchLaterViewModel @Inject constructor(
         loadPage(account, revision, cursor, _state.value.sort)
     }
 
-    private fun loadPage(account: String, requestRevision: Long, cursor: String, sort: String) {
+    private fun loadPage(account: AuthSessionLease, requestRevision: Long, cursor: String, sort: String) {
         viewModelScope.launch {
-            if (cursor.isEmpty()) auth.ensureValidAccessToken().onSuccess { token ->
-                realtime.updateAccessToken(token)
-                realtime.replaceUserSubscription(account)
+            val result = conectate.com.core.network.runReadWithDeadline(10_000) {
+                account.requireCurrent()
+                if (cursor.isEmpty()) auth.ensureValidAccessToken().onSuccess { token ->
+                    account.requireCurrent()
+                    realtime.updateAccessToken(token)
+                    account.requireCurrent()
+                    realtime.replaceUserSubscription(account.accountId!!)
+                }
+                repository.getVideoWatchLater(account, cursor, sort).getOrThrow()
             }
-            val result = conectate.com.core.network.runReadWithDeadline(10_000) { repository.getVideoWatchLater(cursor, sort).getOrThrow() }
-            if (requestRevision != revision || account != bindAccount()) return@launch
+            if (requestRevision != revision || !account.isCurrent()) return@launch
             result.fold(onSuccess = { page ->
                 val items = (if (cursor.isEmpty()) page.items else _state.value.items + page.items)
                     .distinctBy(VideoWatchLaterItem::videoId)
@@ -119,41 +125,47 @@ class VideoWatchLaterViewModel @Inject constructor(
             return
         }
         val id = videoId.trim().lowercase()
-        val pendingKey = "$account:$id"
+        val pendingKey = "${account.accountId}:$id"
         if (id.isEmpty() || !pending.add(pendingKey)) return
         viewModelScope.launch {
-            val result = repository.setVideoWatchLater(id, true)
-            pending.remove(pendingKey)
-            if (account != bindAccount()) return@launch
-            result.fold(onSuccess = {
-                AppFeedbackBus.showSuccess(
-                    "Guardado. Abre Videos > + > Mi biblioteca > Ver después."
-                )
-            }, onFailure = { error ->
-                AppFeedbackBus.showError(error.message ?: "No se pudo guardar el video.")
-            })
+            try {
+                val result = repository.setVideoWatchLater(account, id, true)
+                if (!account.isCurrent()) return@launch
+                result.fold(onSuccess = {
+                    AppFeedbackBus.showSuccess(
+                        "Guardado. Abre Videos > + > Mi biblioteca > Ver después."
+                    )
+                }, onFailure = { error ->
+                    AppFeedbackBus.showError(error.message ?: "No se pudo guardar el video.")
+                })
+            } finally {
+                if (account.isCurrent()) pending.remove(pendingKey)
+            }
         }
     }
 
     fun remove(videoId: String) {
         val account = bindAccount() ?: return
         val id = videoId.trim().lowercase()
-        val pendingKey = "$account:$id"
+        val pendingKey = "${account.accountId}:$id"
         if (id.isEmpty() || !pending.add(pendingKey)) return
         viewModelScope.launch {
-            val result = repository.setVideoWatchLater(id, false)
-            pending.remove(pendingKey)
-            if (account != bindAccount()) return@launch
-            result.fold(onSuccess = {
-                // Retire pages captured before the confirmed removal, then reconcile the list.
-                revision++
-                _state.value = _state.value.copy(
-                    items = _state.value.items.filterNot { it.videoId == id },
-                    loading = true, error = null)
-                loadPage(account, revision, "", _state.value.sort)
-            }, onFailure = { error ->
-                _state.value = _state.value.copy(error = error.message ?: "No se pudo quitar el video.")
-            })
+            try {
+                val result = repository.setVideoWatchLater(account, id, false)
+                if (!account.isCurrent()) return@launch
+                result.fold(onSuccess = {
+                    // Retire pages captured before the confirmed removal, then reconcile the list.
+                    revision++
+                    _state.value = _state.value.copy(
+                        items = _state.value.items.filterNot { it.videoId == id },
+                        loading = true, error = null)
+                    loadPage(account, revision, "", _state.value.sort)
+                }, onFailure = { error ->
+                    _state.value = _state.value.copy(error = error.message ?: "No se pudo quitar el video.")
+                })
+            } finally {
+                if (account.isCurrent()) pending.remove(pendingKey)
+            }
         }
     }
 }
