@@ -70,7 +70,7 @@ fun RegisterScreen(
     var name by rememberSaveable { mutableStateOf("") }
     var username by rememberSaveable { mutableStateOf("") }
     var registrationStep by rememberSaveable { mutableIntStateOf(0) }
-    // Do not restore a server check after recreation; verify again before continuing.
+    // On recreation, repeat the server check even when the final step was restored.
     var verifiedUsername by remember { mutableStateOf<String?>(null) }
     val usernameAvailable = isPublicUsernameVerified(username, verifiedUsername)
     var usernameChecking by remember { mutableStateOf(false) }
@@ -82,10 +82,10 @@ fun RegisterScreen(
     var usernameCheckFailed by remember { mutableStateOf(false) }
     var showUsernameSuggestions by remember { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
-    var passwordVisible by rememberSaveable { mutableStateOf(false) }
-    var confirmPassword by rememberSaveable { mutableStateOf("") }
-    var confirmPasswordVisible by rememberSaveable { mutableStateOf(false) }
+    var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPassword by remember { mutableStateOf("") }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
     var country by rememberSaveable { mutableStateOf("") }
     var gender by rememberSaveable { mutableStateOf("unspecified") }
     var birthDate by rememberSaveable { mutableStateOf("") }
@@ -126,8 +126,9 @@ fun RegisterScreen(
         }
     }
 
-    LaunchedEffect(username, name, registrationStep, usernameCheckAttempt) {
-        if (registrationStep != 1) return@LaunchedEffect
+    val requiresUsernameCheck = registrationStep >= 1
+    LaunchedEffect(username, name, requiresUsernameCheck, usernameCheckAttempt) {
+        if (!requiresUsernameCheck) return@LaunchedEffect
         verifiedUsername = null
         usernameSuggestions = emptyList()
         usernameError = ""
@@ -460,6 +461,17 @@ fun RegisterScreen(
         
         Text("$name · @$username", style = MaterialTheme.typography.titleMedium)
         TextButton(onClick = { registrationStep = 0 }) { Text("Cambiar nombre o @usuario") }
+        if (usernameChecking || usernameError.isNotBlank()) {
+            Text(
+                text = if (usernameChecking) "Comprobando disponibilidad…" else usernameError,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (usernameChecking) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            )
+            if (usernameCheckFailed) {
+                TextButton(onClick = { usernameCheckAttempt += 1 }) { Text("Reintentar comprobación") }
+            }
+        }
         
         Spacer(modifier = Modifier.height(24.dp))
         Text(

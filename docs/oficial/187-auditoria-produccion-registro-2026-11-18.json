@@ -326,6 +326,33 @@
       "evidenceKind": "runtime-controlled",
       "status": "fixed-unit-validated-device-pending",
       "published": true
+    },
+    {
+      "id": "N015",
+      "severity": "medium",
+      "description": "La etapa final del registro se restaura sin volver a comprobar el identificador",
+      "evidenceReport": "195",
+      "evidenceKind": "source-read",
+      "status": "fixed-compiled-device-pending",
+      "published": true
+    },
+    {
+      "id": "N016",
+      "severity": "medium",
+      "description": "Contraseñas de acceso y registro incluidas en el estado restaurable de Compose",
+      "evidenceReport": "195",
+      "evidenceKind": "source-read",
+      "status": "fixed-compiled-device-pending",
+      "published": true
+    },
+    {
+      "id": "N017",
+      "severity": "high",
+      "description": "La ruta de alta de Ubuntu crea la cuenta antes de comprobar la edad",
+      "evidenceReport": "195",
+      "evidenceKind": "source-read",
+      "status": "open-client-and-server-migration",
+      "published": true
     }
   ],
   "release": {
@@ -438,15 +465,22 @@
       "tests": 37,
       "passed": 37,
       "scope": "Voice room ViewModel and related regression cases. Physical audio and interactions between separate screens remain pending."
+    },
+    {
+      "kind": "compose-compile-and-jvm-policy",
+      "tests": 8,
+      "passed": 8,
+      "path": "2026-11-18-mobile-audit195-registration/candidate",
+      "scope": "Both actual Android auth screens compiled. Policy tests passed. Interactive restoration and network retry pending."
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
-    "high": 11,
-    "medium": 3,
+    "high": 12,
+    "medium": 5,
     "low": 0,
-    "total": 14
+    "total": 17
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",
