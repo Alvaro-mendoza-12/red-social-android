@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T05:28:59.846095+00:00",
-  "baseCommit": "1c2f7092d5085a8f9eda86ce4889dc3ad1bd5c32",
+  "generatedAtUtc": "2026-11-18T11:47:33.355547+00:00",
+  "baseCommit": "49d3ccba8d08797f38e1dc9498f470610a118a11",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -12,16 +12,16 @@
   "counts": {
     "pending": 3587,
     "partial": 265,
-    "code-read": 806
+    "code-read": 809
   },
   "countsByPhase": {
     "android": {
-      "pending": 1439,
+      "pending": 1438,
       "partial": 118,
-      "code-read": 558
+      "code-read": 561
     },
     "documentation": {
-      "pending": 661,
+      "pending": 662,
       "code-read": 61,
       "partial": 20
     },
@@ -8253,8 +8253,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/CreatorProgramRepository.kt",
       "phase": "android",
-      "gitBlobId": "e101ed49975aecfc7e55deb1ead50d361efb37ca",
-      "reviewStatus": "pending"
+      "gitBlobId": "41e8e12630fed455f571c43aa493ebd1622637eb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/DeviceTokenRepository.kt",
@@ -13457,17 +13459,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/CreatorEarningsScreen.kt",
       "phase": "android",
-      "gitBlobId": "7bddd947ee434004e2a4340b9af415cdf277eeb2",
+      "gitBlobId": "9b8c8428549261d7dd4117b5b13163a3d18004de",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "evidence": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/CreatorPayoutOperations.kt",
       "phase": "android",
-      "gitBlobId": "b9a0fe413a5882d56b00d979723576f9e54c0484",
+      "gitBlobId": "bc7201d5a0ef6efb2fbc4317288f7803e1819672",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/179-retiros-sesion-y-reintentos-duraderos-2026-11-17.md",
+      "evidence": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13561,9 +13563,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/WalletViewModel.kt",
       "phase": "android",
-      "gitBlobId": "2502dd2536652e44b7759f24998a0adea624bf6f",
+      "gitBlobId": "b143705b444a2a70d65077e3d6f97454120fb0f3",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/183-regalos-sesion-confirmacion-y-reintentos-2026-11-18.md",
+      "evidence": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15869,6 +15871,14 @@
       "phase": "android",
       "gitBlobId": "62aac79f6f72b0b98e94ef91f3cb73f2b8393a14",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/CreatorDashboardContractTest.kt",
+      "phase": "android",
+      "gitBlobId": "79a096ca0374ca95ae457e856c7454d7a65756e4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/CreatorPayoutAccountBoundaryTest.kt",
@@ -18306,6 +18316,14 @@
       "gitBlobId": "21526009d10c0b40883e81d4f29883d91bdfcd2e",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/wallet/WalletEarningsSessionTest.kt",
+      "phase": "android",
+      "gitBlobId": "bf6b26d9586d3b2395d93427a8e0dd6376d2e387",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21720,6 +21738,12 @@
       "file": "docs/oficial/183-regalos-sesion-confirmacion-y-reintentos-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "ffff9c4b451c6b49ca5c614a3df7dab3fe7c8640",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "5a47c9b8ee608ef576403419ce66384ccf4f23ad",
       "reviewStatus": "pending"
     },
     {

@@ -17,8 +17,11 @@ internal class CreatorPayoutOperations(
     private class Operation(val owner: AuthSessionLease) { var job: Job? = null }
     private var active: Operation? = null
 
-    fun run(action: suspend (AuthSessionLease) -> Unit) {
-        val owner = captureOwner()
+    fun run(action: suspend (AuthSessionLease) -> Unit) = run(captureOwner(), action)
+
+    fun run(owner: AuthSessionLease, action: suspend (AuthSessionLease) -> Unit) {
+        // A retained form carries the visit that originally displayed its amount/account.
+        if (!owner.sameVisit(captureOwner())) return
         if (!owner.isCurrent()) { failure(IllegalStateException("Inicia sesión para continuar.")); return }
         if (active?.owner?.isCurrent() == true) return
         cancel()
@@ -41,6 +44,10 @@ internal class CreatorPayoutOperations(
             }
         }
         if (active === operation) operation.job!!.start() else operation.job!!.cancel()
+    }
+
+    fun onSessionChanged(owner: AuthSessionLease) {
+        if (active?.owner?.sameVisit(owner) != true) cancel()
     }
 
     fun cancel() {

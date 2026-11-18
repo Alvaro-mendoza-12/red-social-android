@@ -64,6 +64,8 @@ fun CreatorEarningsScreen(
     viewModel: WalletViewModel = hiltViewModel()
 ) {
     val dashboard by viewModel.creatorDashboard.collectAsStateWithLifecycle()
+    val session by viewModel.accountSession.collectAsStateWithLifecycle()
+    val confirmed by viewModel.earningsLoaded.collectAsStateWithLifecycle()
     val loading by viewModel.earningsLoading.collectAsStateWithLifecycle()
     val error by viewModel.earningsError.collectAsStateWithLifecycle()
     val payoutSummary by viewModel.payoutSummary.collectAsStateWithLifecycle()
@@ -75,11 +77,11 @@ fun CreatorEarningsScreen(
         ?: payout?.currency?.takeIf { it.length == 3 }
         ?: "USD"
     val payoutVerified = payoutSummary?.account?.status.equals("VERIFIED", ignoreCase = true)
-    var showWithdrawalInfo by remember { mutableStateOf(false) }
-    var showAccountDialog by remember { mutableStateOf(false) }
-    var showRequestDialog by remember { mutableStateOf(false) }
-    var payoutEmail by remember { mutableStateOf("") }
-    var payoutAmount by remember { mutableStateOf("") }
+    var showWithdrawalInfo by remember(session) { mutableStateOf(false) }
+    var showAccountDialog by remember(session) { mutableStateOf(false) }
+    var showRequestDialog by remember(session) { mutableStateOf(false) }
+    var payoutEmail by remember(session) { mutableStateOf("") }
+    var payoutAmount by remember(session) { mutableStateOf("") }
 
     val serverBalances = payoutSummary?.balances
     val availableLabel = serverBalances?.let { formatMinorMoney(it.availableMinor, currency) }
@@ -90,14 +92,12 @@ fun CreatorEarningsScreen(
         ?: formatMoney(summary.heldCredits, currency)
     val paidLabel = serverBalances?.let { formatMinorMoney(it.paidMinor, currency) }
         ?: formatMoney(summary.paidCredits, currency)
-    val totalCoins = (serverBalances?.totalCoins?.takeIf { it > 0 }
-        ?: summary.totalCoins.toLong().takeIf { it > 0 }
-        ?: 0L)
-    val pendingCoins = serverBalances?.pendingCoins?.takeIf { it > 0 }
+    val totalCoins = serverBalances?.totalCoins ?: summary.totalCoins.toLong()
+    val pendingCoins = serverBalances?.pendingCoins
         ?: summary.pendingCoins.toLong()
-    val heldCoins = serverBalances?.heldCoins?.takeIf { it > 0 }
+    val heldCoins = serverBalances?.heldCoins
         ?: summary.heldCoins.toLong()
-    val paidCoins = serverBalances?.paidCoins?.takeIf { it > 0 }
+    val paidCoins = serverBalances?.paidCoins
         ?: summary.paidCoins.toLong()
     val totalMinor = serverBalances?.let {
         (it.pendingMinor + it.availableMinor + it.heldMinor + it.paidMinor - it.recoveryDebtMinor)
@@ -253,7 +253,7 @@ fun CreatorEarningsScreen(
                 Text("Actividad", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Black)
             }
 
-            if (!loading && dashboard.activity.isEmpty()) {
+            if (!loading && confirmed && error == null && dashboard.activity.isEmpty()) {
                 item {
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -310,7 +310,7 @@ fun CreatorEarningsScreen(
                                 trailingContent = {
                                     if (request.status.equals("PENDING", ignoreCase = true)) {
                                         TextButton(
-                                            onClick = { viewModel.cancelCreatorPayout(request.id) },
+                                            onClick = { viewModel.cancelCreatorPayout(session, request.id) },
                                             enabled = !payoutLoading,
                                         ) { Text("Cancelar") }
                                     }
@@ -387,7 +387,7 @@ fun CreatorEarningsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.configurePayoutAccount(payoutEmail, currency)
+                        viewModel.configurePayoutAccount(session, payoutEmail, currency)
                         showAccountDialog = false
                     },
                     enabled = payoutEmail.contains('@') && !payoutLoading,
@@ -424,7 +424,7 @@ fun CreatorEarningsScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.requestCreatorPayout(requestedMinor)
+                        viewModel.requestCreatorPayout(session, requestedMinor)
                         showRequestDialog = false
                     },
                     enabled = requestedMinor >= (payoutSummary?.minimumMinor ?: Long.MAX_VALUE) &&
