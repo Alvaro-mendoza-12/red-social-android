@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T03:20:32.241613+00:00",
-  "baseCommit": "3028fc56bfc5bec5daf8214b85ed9043fdf96270",
+  "generatedAtUtc": "2026-11-18T04:03:08.436506+00:00",
+  "baseCommit": "41aa5790c8a6617a315004a16d7be4a90ec32555",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3589,
-    "partial": 264,
-    "code-read": 796
+    "pending": 3588,
+    "partial": 265,
+    "code-read": 799
   },
   "countsByPhase": {
     "android": {
-      "pending": 1444,
-      "partial": 117,
-      "code-read": 548
+      "pending": 1442,
+      "partial": 118,
+      "code-read": 551
     },
     "documentation": {
-      "pending": 658,
+      "pending": 659,
       "code-read": 61,
       "partial": 20
     },
@@ -4773,9 +4773,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "399120dd6c73493507aaec03c091568341ff32db",
+      "gitBlobId": "94222f548cf5b1c1e8ff267ceebb0a96955a0762",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/181-reportes-cargas-parciales-y-confirmaciones-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9023,9 +9023,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/message/MessageReportStore.kt",
       "phase": "android",
-      "gitBlobId": "73a39abc71ca0c8596e2126c129facd144151e6d",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "cf35207a5b789b2b6895326b05b49cc1a7537f18",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/181-reportes-cargas-parciales-y-confirmaciones-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12105,14 +12105,18 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/MyReportsScreen.kt",
       "phase": "android",
-      "gitBlobId": "fc962efbc970fa09cf2c53a3f8f8decf80644e35",
-      "reviewStatus": "pending"
+      "gitBlobId": "a2a9b017f1ea02c9c736e73ea6995b3a86970546",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/181-reportes-cargas-parciales-y-confirmaciones-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/MyReportsViewModel.kt",
       "phase": "android",
-      "gitBlobId": "cbe93fc580a3c8cb7c568e5542a13e13d7cb7cbf",
-      "reviewStatus": "pending"
+      "gitBlobId": "5ef9b2ed9b3acd10f836569d1c4af94715a786a6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/181-reportes-cargas-parciales-y-confirmaciones-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/NotificationNavigation.kt",
@@ -16359,6 +16363,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/message/MessageReportResponseTest.kt",
+      "phase": "android",
+      "gitBlobId": "92ba20b7f0fdcfae6b92645a38601ae3acad260d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/181-reportes-cargas-parciales-y-confirmaciones-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/message/MessageSendCoordinatorTest.kt",
       "phase": "android",
       "gitBlobId": "72d77e6f990538e308b7fdb2372f6c07023a7065",
@@ -17615,6 +17627,14 @@
       "phase": "android",
       "gitBlobId": "f778d8c972879829e6c822c318359de973301d29",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/profile/MyReportsLoadingTest.kt",
+      "phase": "android",
+      "gitBlobId": "3ba736775b3c5d9686c05ae79b60e7ca2e74e19c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/181-reportes-cargas-parciales-y-confirmaciones-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/NotificationNavigationTest.kt",
@@ -21644,6 +21664,12 @@
       "file": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "phase": "documentation",
       "gitBlobId": "090fe3b1e541ee5930fe7dd580d70c7e18f8ccdf",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/181-reportes-cargas-parciales-y-confirmaciones-2026-11-17.md",
+      "phase": "documentation",
+      "gitBlobId": "85e6cea9a850432ffa159801865f6185e8222ca9",
       "reviewStatus": "pending"
     },
     {

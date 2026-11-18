@@ -13,6 +13,8 @@ import conectate.com.core.security.OperationGuard
 import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.model.Report
 import conectate.com.data.repository.UserRepository
+import conectate.com.data.repository.accountScopedCall
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
@@ -32,6 +34,10 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 internal class MessageReportStore(
     private val context: Context,
@@ -280,54 +286,64 @@ internal class MessageReportStore(
         }
     }
 
-    suspend fun getMyReports(): Result<List<Report>> {
-        var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-        val userId = authService.getCurrentUserId() ?: return Result.failure(Exception("Not logged in"))
-        return fetchReports(
-            token = token,
-            logLabel = "getMyReports",
-            reporterId = userId.trim().lowercase()
-        )
+    suspend fun getMyReports(): Result<List<Report>> = forSession { lease, token ->
+        fetchReports(token, "getMyReports", lease.accountId)
     }
 
-    suspend fun getAllReports(): Result<List<Report>> {
-        var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-        return fetchReports(
-            token = token,
-            logLabel = "getAllReports",
-            reporterId = null
-        )
+    suspend fun getAllReports(): Result<List<Report>> = forSession { _, token ->
+        fetchReports(token, "getAllReports", null)
     }
 
-    suspend fun updateReportStatus(reportId: String, newStatus: String): Result<Unit> {
-        return try {
-            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            val update = buildJsonObject { put("status", newStatus) }
-            supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                header("Content-Type", "application/json")
-                parameter("id", "eq.$reportId")
-                setBody(update)
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
+    suspend fun updateReportStatus(reportId: String, newStatus: String): Result<Unit> = forSession { _, token ->
+        require(reportId.isNotBlank() && newStatus.isNotBlank()) { "Falta identificar el reporte o su estado." }
+        val response = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
+            header("Authorization", "Bearer $token")
+            header("apikey", supabaseConfig.supabaseAnonKey)
+            header("Content-Type", "application/json")
+            header("Prefer", "return=representation")
+            parameter("id", "eq.$reportId")
+            setBody(buildJsonObject { put("status", newStatus) })
+        }
+        requireMutationAck(response, reportId, newStatus)
+        Result.success(Unit)
+    }
+
+    suspend fun deleteReport(reportId: String): Result<Unit> = forSession { _, token ->
+        require(reportId.isNotBlank()) { "Falta identificar el reporte." }
+        val response = supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
+            header("Authorization", "Bearer $token")
+            header("apikey", supabaseConfig.supabaseAnonKey)
+            header("Prefer", "return=representation")
+            parameter("id", "eq.$reportId")
+        }
+        requireMutationAck(response, reportId)
+        Result.success(Unit)
+    }
+
+    private suspend fun requireMutationAck(
+        response: io.ktor.client.statement.HttpResponse,
+        reportId: String,
+        expectedStatus: String? = null,
+    ) {
+        check(response.status.isSuccess()) { "El servidor no confirmó el cambio del reporte (${response.status.value})." }
+        val rows = json.parseToJsonElement(response.bodyAsText()) as? JsonArray
+        check(rows?.any {
+            val row = it as? JsonObject
+            row?.get("id")?.jsonPrimitive?.contentOrNull == reportId &&
+                (expectedStatus == null || row["status"]?.jsonPrimitive?.contentOrNull == expectedStatus)
+        } == true) {
+            "El servidor no confirmó el cambio de este reporte. Actualiza para comprobar su estado."
         }
     }
 
-    suspend fun deleteReport(reportId: String): Result<Unit> {
-        return try {
-            var token = authService.getAccessToken() ?: return Result.failure(Exception("No token"))
-            supabaseConfig.httpClient.delete("${supabaseConfig.supabaseUrl}/rest/v1/reports") {
-                header("Authorization", "Bearer $token")
-                header("apikey", supabaseConfig.supabaseAnonKey)
-                parameter("id", "eq.$reportId")
-            }
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    private suspend fun <T> forSession(action: suspend (AuthSessionLease, String) -> Result<T>): Result<T> {
+        val lease = authService.captureAccountLease()
+        return accountScopedCall(lease, { owner ->
+            lease.requireCurrent()
+            authService.ensureValidAccessToken().getOrThrow()
+            lease.requireCurrent()
+            authService.getAccessTokenForAccountAwait(owner)
+        }) { _, token -> action(lease, token) }
     }
 
     private suspend fun fetchReports(
@@ -356,16 +372,17 @@ internal class MessageReportStore(
                     val reports = json.decodeFromString<List<Report>>(rawJson)
                     android.util.Log.d("MessageReportStore", "$logLabel: Successfully deserialized ${reports.size} reports")
                     Result.success(reports)
-                } catch (e: Exception) {
+                } catch (cancelled: CancellationException) { throw cancelled }
+                catch (e: Exception) {
                     android.util.Log.e("MessageReportStore", "DESERIALIZATION ERROR in $logLabel", e)
                     Result.failure(Exception("Error parsing data: ${e.message}"))
                 }
             } else {
-                val errorBody = response.bodyAsText()
-                android.util.Log.e("MessageReportStore", "$logLabel error: ${response.status}, body: $errorBody")
+                android.util.Log.e("MessageReportStore", "$logLabel error: ${response.status}")
                 Result.failure(Exception("Failed to fetch reports: ${response.status}"))
             }
-        } catch (e: Exception) {
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (e: Exception) {
             android.util.Log.e("MessageReportStore", "$logLabel CRASHED during fetch", e)
             Result.failure(e)
         }
