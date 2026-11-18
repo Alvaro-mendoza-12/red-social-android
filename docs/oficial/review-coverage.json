@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T04:03:08.436506+00:00",
-  "baseCommit": "41aa5790c8a6617a315004a16d7be4a90ec32555",
+  "generatedAtUtc": "2026-11-18T04:19:26.996534+00:00",
+  "baseCommit": "bf285c0792b1beb44da4719a46d8e522f228a6c4",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,17 +11,17 @@
   },
   "counts": {
     "pending": 3588,
-    "partial": 265,
-    "code-read": 799
+    "partial": 264,
+    "code-read": 803
   },
   "countsByPhase": {
     "android": {
-      "pending": 1442,
-      "partial": 118,
-      "code-read": 551
+      "pending": 1441,
+      "partial": 117,
+      "code-read": 555
     },
     "documentation": {
-      "pending": 659,
+      "pending": 660,
       "code-read": 61,
       "partial": 20
     },
@@ -8691,9 +8691,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/WalletRepository.kt",
       "phase": "android",
-      "gitBlobId": "f61d4d51b90792690368c9786ebd798afcfa7678",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "gitBlobId": "66b0eae72d560324da22db43a20d3a24e6dd6cf0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/182-saldo-confirmado-y-errores-de-actualizacion-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13447,8 +13447,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/CoinsAndPaymentsScreen.kt",
       "phase": "android",
-      "gitBlobId": "952729277a6483ff6aa58895de3a390d36988f2b",
-      "reviewStatus": "pending"
+      "gitBlobId": "dffa315a1364c68a32aab7a70eb6709e688a07ed",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/182-saldo-confirmado-y-errores-de-actualizacion-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/CreatorEarningsScreen.kt",
@@ -13555,9 +13557,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/WalletViewModel.kt",
       "phase": "android",
-      "gitBlobId": "5ff0d0a3c87c181a5f962c3f3bb090199f6e2e1d",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/179-retiros-sesion-y-reintentos-duraderos-2026-11-17.md",
+      "gitBlobId": "4767c828d022b22a95a58c0c0d3832bf224767b3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/182-saldo-confirmado-y-errores-de-actualizacion-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16187,6 +16189,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/WalletBalanceConfirmationTest.kt",
+      "phase": "android",
+      "gitBlobId": "23644afe05f959319b984142c252813a6c2e65eb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/182-saldo-confirmado-y-errores-de-actualizacion-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/collection/CollectionCreationAccountTest.kt",
       "phase": "android",
       "gitBlobId": "48a42d18ca86de7b65ec57bd1e8b4b661e6e96cc",
@@ -18291,6 +18301,14 @@
       "phase": "android",
       "gitBlobId": "41b0b061cf0bf3f6cf049d3a65180ac8897e2006",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/wallet/WalletRefreshConfirmationTest.kt",
+      "phase": "android",
+      "gitBlobId": "55f2853566628216b468271b5b6e5c836e4b9fe0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/182-saldo-confirmado-y-errores-de-actualizacion-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/services/CallForegroundSessionTest.kt",
@@ -21670,6 +21688,12 @@
       "file": "docs/oficial/181-reportes-cargas-parciales-y-confirmaciones-2026-11-17.md",
       "phase": "documentation",
       "gitBlobId": "85e6cea9a850432ffa159801865f6185e8222ca9",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/182-saldo-confirmado-y-errores-de-actualizacion-2026-11-17.md",
+      "phase": "documentation",
+      "gitBlobId": "ec95f616f3247a20734d1c7762a2f9db83ed04bf",
       "reviewStatus": "pending"
     },
     {

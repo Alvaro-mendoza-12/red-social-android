@@ -25,6 +25,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -101,26 +102,32 @@ class WalletRepository @Inject constructor(
         }
     }
 
-    suspend fun fetchBalance() = withContext(Dispatchers.IO) {
-        runCatching {
-            val session = walletSession()
-            val userId = session.accountId ?: return@runCatching
-            if (!supabaseConfig.isConfigured) return@runCatching
-            val token = authService.getAccessTokenForAccountAwait(userId)
-                ?: throw IllegalStateException("No hay token de acceso")
-            val balance = fetchWalletViaRpc(token)
-                ?: fetchWalletByRest(token, userId)
-                ?: WalletBalance(userId = userId)
-
-            authService.commitForAccountLease(session) {
-                _coinBalance.value = balance.balanceDiamonds.coerceAtLeast(0)
-                _coinDebt.value = balance.balanceDebtDiamonds.coerceAtLeast(0)
+    suspend fun fetchBalance(): Result<Unit> {
+        val session = walletSession()
+        return accountScopedCall(session, { userId ->
+            check(supabaseConfig.isConfigured) { "El monedero no está configurado para este entorno." }
+            authService.ensureValidAccessToken().getOrThrow()
+            session.requireCurrent()
+            authService.getAccessTokenForAccountAwait(userId)
+        }) { userId, token ->
+            withContext(Dispatchers.IO) {
+                session.requireCurrent()
+                val balance = fetchWalletViaRpc(token) ?: run {
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    session.requireCurrent()
+                    fetchWalletByRest(token, userId) ?: WalletBalance(userId = userId)
+                }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                session.requireCurrent()
+                authService.commitForAccountLease(session) {
+                    _coinBalance.value = balance.balanceDiamonds
+                    _coinDebt.value = balance.balanceDebtDiamonds
+                }
+                Result.success(Unit)
             }
         }.onFailure { error ->
             Log.e(TAG, "Unable to fetch wallet balance", error)
-            // A temporary network failure must never make a real wallet look
-            // empty or hide a refund debt. Keep the last server-confirmed
-            // snapshot until a later refresh succeeds.
+            // Keep the last confirmed snapshot when the server cannot confirm a new one.
         }
     }
 
@@ -396,8 +403,17 @@ class WalletRepository @Inject constructor(
             parameter("select", "user_id,balance_diamonds,balance_debt_diamonds,balance_credits,total_spent")
             parameter("limit", "1")
         }
-        if (!response.status.isSuccess()) return null
-        return decodeObjects(response.bodyAsText()).firstOrNull()?.toWalletBalance()
+        check(response.status.isSuccess()) { "No se pudo confirmar el saldo (${response.status.value})." }
+        val parsed = supabaseConfig.json.parseToJsonElement(response.bodyAsText())
+        val row = when (parsed) {
+            is JsonArray -> {
+                if (parsed.isEmpty()) return null
+                parsed.first() as? JsonObject ?: error("El servidor devolvió un saldo inválido.")
+            }
+            is JsonObject -> parsed
+            else -> error("El servidor no confirmó el saldo.")
+        }
+        return row.toWalletBalance()
     }
 
     private suspend fun fetchGiftById(token: String, giftId: String): VirtualGift? {
@@ -429,10 +445,15 @@ class WalletRepository @Inject constructor(
     private fun decodeFirstObject(body: String): JsonObject? = decodeObjects(body).firstOrNull()
 
     private fun JsonObject.toWalletBalance(): WalletBalance {
+        val balance = this["balance_diamonds"]?.jsonPrimitive?.intOrNull
+        val debt = if (containsKey("balance_debt_diamonds")) this["balance_debt_diamonds"]?.jsonPrimitive?.intOrNull else 0
+        check(balance != null && balance >= 0 && debt != null && debt >= 0) {
+            "El servidor no devolvió un saldo y una deuda válidos."
+        }
         return WalletBalance(
             userId = string("user_id").orEmpty(),
-            balanceDiamonds = int("balance_diamonds"),
-            balanceDebtDiamonds = int("balance_debt_diamonds"),
+            balanceDiamonds = balance,
+            balanceDebtDiamonds = debt,
             balanceCredits = double("balance_credits"),
             totalSpent = double("total_spent")
         )
