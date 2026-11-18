@@ -16,6 +16,7 @@ import java.util.UUID
 import java.time.Instant
 import javax.inject.Inject
 import conectate.com.data.supabase.AuthSessionLease
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,6 +30,10 @@ class WalletViewModel @Inject constructor(
     private val creatorProgramRepository: CreatorProgramRepository,
     private val creatorPayoutRepository: CreatorPayoutRepository,
 ) : ViewModel() {
+    private companion object {
+        const val WALLET_REFRESH_ERROR = "No se pudo actualizar el saldo. Comprueba la conexión y vuelve a intentarlo."
+    }
+
     val coinBalance = walletRepository.coinBalance
     val coinDebt = walletRepository.coinDebt
     val availableGifts = walletRepository.availableGifts
@@ -104,16 +109,23 @@ class WalletViewModel @Inject constructor(
     }
 
     fun refresh() {
-        if (_loading.value) return
+        if (!_loading.compareAndSet(false, true)) return
         viewModelScope.launch(Dispatchers.IO) {
-            _loading.value = true
             try {
-                walletRepository.fetchBalance()
-                _walletLastUpdatedAt.value = Instant.now().toString()
+                val balance = walletRepository.fetchBalance()
+                (balance.exceptionOrNull() as? CancellationException)?.let { throw it }
+                balance.onSuccess {
+                    _walletLastUpdatedAt.value = Instant.now().toString()
+                    _error.compareAndSet(WALLET_REFRESH_ERROR, null)
+                }.onFailure { _error.value = WALLET_REFRESH_ERROR }
                 walletRepository.fetchAvailableGifts()
                 walletRepository.fetchTransactionHistory()
                 walletRepository.fetchBillingCapabilities()
                     .onSuccess { _billingCapabilities.value = it }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                _error.value = WALLET_REFRESH_ERROR
             } finally {
                 _loading.value = false
             }

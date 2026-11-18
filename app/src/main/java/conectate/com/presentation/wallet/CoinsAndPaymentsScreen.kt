@@ -78,6 +78,7 @@ fun CoinsAndPaymentsScreen(
     val historyLoadingMore by viewModel.historyLoadingMore.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val lastUpdatedAt by viewModel.walletLastUpdatedAt.collectAsStateWithLifecycle()
+    val walletError by viewModel.error.collectAsStateWithLifecycle()
     val verifying by viewModel.billingVerifying.collectAsStateWithLifecycle()
     val billingMessage by viewModel.billingMessage.collectAsStateWithLifecycle()
     val uriHandler = LocalUriHandler.current
@@ -153,6 +154,17 @@ fun CoinsAndPaymentsScreen(
                     rechargeEnabled = capabilities.enabled && playProducts.isNotEmpty() && !verifying,
                     onRecharge = { showRecharge = true }
                 )
+            }
+
+            walletError?.let { message ->
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(message)
+                            OutlinedButton(onClick = viewModel::refresh, enabled = !loading) { Text("Reintentar") }
+                        }
+                    }
+                }
             }
 
             item {
@@ -464,7 +476,7 @@ private fun WalletBalanceCard(
                 Column(Modifier.weight(1f)) {
                     Text("Saldo disponible", style = MaterialTheme.typography.labelLarge)
                     Text(
-                        formatCoins(balance),
+                        if (lastUpdatedAt == null) "Sin confirmar" else formatCoins(balance),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Black
                     )
