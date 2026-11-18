@@ -1,6 +1,7 @@
 package conectate.com.presentation.wallet
 
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.*
 import conectate.com.data.repository.CreatorPayoutRepository
 import conectate.com.data.repository.CreatorProgramRepository
@@ -54,7 +55,15 @@ class WalletPayoutStateTest {
         store.put("wallet", model)
     }
 
-    @After fun stop() { store.clear(); Dispatchers.resetMain() }
+    @After fun stop() = runBlocking {
+        val job = model.viewModelScope.coroutineContext[Job]!!
+        try {
+            store.clear()
+            withTimeout(5000) {
+                while (!job.isCompleted) { dispatcher.scheduler.runCurrent(); delay(5) }
+            }
+        } finally { Dispatchers.resetMain() }
+    }
 
     @Test fun confirmedAccountUpdateIsStillIdentifiedWhenItsSummaryReloadFails() = runTest(dispatcher) {
         runCurrent()

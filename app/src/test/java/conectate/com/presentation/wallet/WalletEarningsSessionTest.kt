@@ -1,6 +1,7 @@
 package conectate.com.presentation.wallet
 
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.*
 import conectate.com.data.repository.*
 import conectate.com.data.supabase.*
@@ -48,7 +49,15 @@ class WalletEarningsSessionTest {
         coEvery { wallet.fetchBalance() } coAnswers { awaitCancellation() }
         model=WalletViewModel(wallet,program,payouts);store.put("wallet",model)
     }
-    @After fun stop() { store.clear();dispatcher.scheduler.runCurrent();Dispatchers.resetMain() }
+    @After fun stop() = runBlocking {
+        val job = if (::model.isInitialized) model.viewModelScope.coroutineContext[Job] else null
+        try {
+            store.clear()
+            withTimeout(5000) {
+                while (job?.isCompleted == false) { dispatcher.scheduler.runCurrent(); delay(5) }
+            }
+        } finally { Dispatchers.resetMain() }
+    }
     private suspend fun until(condition:()->Boolean) {
         withTimeout(5000) { do { dispatcher.scheduler.runCurrent();if(condition())break;delay(5) } while(true) }
     }

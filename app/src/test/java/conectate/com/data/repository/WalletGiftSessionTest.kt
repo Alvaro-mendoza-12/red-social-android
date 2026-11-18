@@ -28,7 +28,13 @@ internal class GiftHttpFixture {
     val guard = AuthSessionMutationGuard()
     val auth = mockk<AuthService>()
     val config = mockk<SupabaseConfig>()
-    val disk = ConcurrentHashMap<String, String>()
+    private val memory = ConcurrentHashMap<String, String>()
+    val disk: Map<String, String> get() = memory.filterKeys { !it.startsWith("__") }
+    val persisted = ConcurrentHashMap<String, String>()
+    var legacyNoopCommit = false
+    var failRemovalOnce = false
+    var failRestoreOnce = false
+    private var removalFailed = false
     private val edits = ThreadLocal.withInitial { mutableMapOf<String, String?>() }
     var failedWrites = 0
     var onWrite: (() -> Unit)? = null
@@ -98,14 +104,24 @@ internal class GiftHttpFixture {
         val preferences = mockk<SharedPreferences>()
         val editor = mockk<SharedPreferences.Editor>()
         every { context.getSharedPreferences(any(), any()) } returns preferences
-        every { preferences.getString(any(), any()) } answers { disk[firstArg()] }
+        every { preferences.getString(any(), any()) } answers { memory[firstArg()] }
         every { preferences.edit() } answers { edits.get().clear(); editor }
         every { editor.putString(any(), any()) } answers { edits.get()[firstArg()] = secondArg(); editor }
         every { editor.remove(any()) } answers { edits.get()[firstArg()] = null; editor }
         every { editor.commit() } answers {
-            edits.get().forEach { (key, value) -> if (value == null) disk.remove(key) else disk[key] = value }
+            val update = requireNotNull(edits.get())
+            val changed = update.any { (key, value) -> memory[key] != value }
+            update.forEach { (key, value) -> if (value == null) memory.remove(key) else memory[key] = value }
             onWrite?.invoke()
-            if (failedWrites > 0) { failedWrites--; false } else true
+            if (legacyNoopCommit && !changed) true
+            else if (failedWrites > 0) { failedWrites--; false }
+            else if (failRemovalOnce && update.any { !it.key.startsWith("__") && it.value == null }) {
+                failRemovalOnce = false; removalFailed = true; false
+            } else if (removalFailed && failRestoreOnce && update.any { !it.key.startsWith("__") && it.value != null }) {
+                failRestoreOnce = false; false
+            } else {
+                persisted.clear(); persisted.putAll(memory); true
+            }
         }
         repository = WalletRepository(config, auth, context)
     }

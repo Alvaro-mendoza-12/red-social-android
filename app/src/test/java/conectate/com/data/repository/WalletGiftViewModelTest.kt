@@ -1,6 +1,7 @@
 package conectate.com.data.repository
 
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.CreatorPayoutSummary
 import conectate.com.data.model.CreatorProgramDashboard
 import conectate.com.presentation.wallet.WalletViewModel
@@ -34,7 +35,15 @@ class WalletGiftViewModelTest {
         model = WalletViewModel(f.repository, program, payouts)
         store.put("wallet", model)
     }
-    @After fun stop() { store.clear(); dispatcher.scheduler.runCurrent(); f.close(); Dispatchers.resetMain() }
+    @After fun stop() = runBlocking {
+        val job = model.viewModelScope.coroutineContext[Job]!!
+        try {
+            store.clear()
+            withTimeout(5000) {
+                while (!job.isCompleted) { dispatcher.scheduler.runCurrent(); delay(5) }
+            }
+        } finally { f.close(); Dispatchers.resetMain() }
+    }
     private suspend fun until(condition: () -> Boolean) {
         withTimeout(5000) {
             do { dispatcher.scheduler.runCurrent(); if (condition()) break; delay(5) } while (true)

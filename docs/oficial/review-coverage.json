@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T11:47:33.355547+00:00",
-  "baseCommit": "49d3ccba8d08797f38e1dc9498f470610a118a11",
+  "generatedAtUtc": "2026-11-18T12:23:49.601987+00:00",
+  "baseCommit": "f0dd2b2ddb063ef951a18bd2f12618f93ab192a1",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3587,
+    "pending": 3588,
     "partial": 265,
-    "code-read": 809
+    "code-read": 810
   },
   "countsByPhase": {
     "android": {
       "pending": 1438,
       "partial": 118,
-      "code-read": 561
+      "code-read": 562
     },
     "documentation": {
-      "pending": 662,
+      "pending": 663,
       "code-read": 61,
       "partial": 20
     },
@@ -8025,9 +8025,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/payout/CreatorPayoutRetryStore.kt",
       "phase": "android",
-      "gitBlobId": "9fcb4bdae2760f1a402cb3fa90a38ee54eeca8bc",
+      "gitBlobId": "eba1195dd3e5c10befe964686d060c1260862a73",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/179-retiros-sesion-y-reintentos-duraderos-2026-11-17.md",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8695,9 +8695,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/WalletRepository.kt",
       "phase": "android",
-      "gitBlobId": "9c1833d462f07afc73776452d230256ce9a1ca28",
+      "gitBlobId": "fa7c19c3edd8c93706a78568850459df94775551",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/183-regalos-sesion-confirmacion-y-reintentos-2026-11-18.md",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15891,9 +15891,9 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/CreatorPayoutRetryTest.kt",
       "phase": "android",
-      "gitBlobId": "2ffd02c4d23741ee9035dea22c5c03ff6adc3e82",
+      "gitBlobId": "ef8b53f4fe3972961d7110f61a4954fe5c8d6c8b",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/179-retiros-sesion-y-reintentos-duraderos-2026-11-17.md",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15913,6 +15913,14 @@
       "phase": "android",
       "gitBlobId": "9c0444ed3523cd456495a55110bd29e3d61f5f16",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/GiftStorageCompatibilityTest.kt",
+      "phase": "android",
+      "gitBlobId": "c35df99c2ae6920550e116cef92645d4220a3bd6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/GroupVoiceRepositoryTest.kt",
@@ -16213,17 +16221,17 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/WalletGiftSessionTest.kt",
       "phase": "android",
-      "gitBlobId": "ea28ee3dce98bce4c6310e7ee3b98e0a70105e3d",
+      "gitBlobId": "12093c2fe6d190d2c9b7ded846331ef8f6a0a66a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/183-regalos-sesion-confirmacion-y-reintentos-2026-11-18.md",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/WalletGiftViewModelTest.kt",
       "phase": "android",
-      "gitBlobId": "959184799895e65e35f02e841118ce1efa007bbf",
+      "gitBlobId": "fde8e0e26e468e84cc33dde78baee7c1626e800c",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/183-regalos-sesion-confirmacion-y-reintentos-2026-11-18.md",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18321,17 +18329,17 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/wallet/WalletEarningsSessionTest.kt",
       "phase": "android",
-      "gitBlobId": "bf6b26d9586d3b2395d93427a8e0dd6376d2e387",
+      "gitBlobId": "9e8253e7c940b02bd6e49675802ba511c1c1eedf",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/wallet/WalletPayoutStateTest.kt",
       "phase": "android",
-      "gitBlobId": "0e54b9193cb8d7ab89d02dcde5d8fe2fc7dc43bc",
+      "gitBlobId": "a02754a5243342138ac621054a6e1d1239c4c46e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/179-retiros-sesion-y-reintentos-duraderos-2026-11-17.md",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18343,9 +18351,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/wallet/WalletRefreshConfirmationTest.kt",
       "phase": "android",
-      "gitBlobId": "55f2853566628216b468271b5b6e5c836e4b9fe0",
+      "gitBlobId": "198face88e8d9adbe74685d0c88e373de7aafd06",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/182-saldo-confirmado-y-errores-de-actualizacion-2026-11-17.md",
+      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21744,6 +21752,12 @@
       "file": "docs/oficial/184-ganancias-confirmadas-y-formularios-por-visita-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "5a47c9b8ee608ef576403419ce66384ccf4f23ad",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "f16083dcb69027e353f44deb913156318b07d593",
       "reviewStatus": "pending"
     },
     {

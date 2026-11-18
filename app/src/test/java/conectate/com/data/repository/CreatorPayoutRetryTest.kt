@@ -20,6 +20,7 @@ import java.io.IOException
 /** Simulates Android commit(): memory can change even if the disk write fails. */
 private class PayoutDisk(private val persisted: MutableMap<String, String> = mutableMapOf()) {
     val memory = persisted.toMutableMap()
+    var legacyNoopCommit = false
     var failedCommits = 0
     var failRemove = false
     var beforeRemove: () -> Unit = {}
@@ -35,11 +36,15 @@ private class PayoutDisk(private val persisted: MutableMap<String, String> = mut
             every { editor.remove(any()) } answers { updates[firstArg()] = null; editor }
             every { editor.commit() } answers {
                 if (updates.values.any { it == null }) beforeRemove()
+                val changed = updates.any { (key, value) -> memory[key] != value }
                 for ((key, value) in updates) if (value == null) memory.remove(key) else memory[key] = value
                 val failed = failedCommits > 0 || (failRemove && updates.values.any { it == null })
-                if (failedCommits > 0) failedCommits--
-                if (!failed) { persisted.clear(); persisted.putAll(memory) }
-                !failed
+                if (legacyNoopCommit && !changed) true
+                else {
+                    if (failedCommits > 0) failedCommits--
+                    if (!failed) { persisted.clear(); persisted.putAll(memory) }
+                    !failed
+                }
             }
             editor
         }
@@ -100,7 +105,7 @@ class CreatorPayoutRetryTest {
         val repository = repository(disk)
         disk.failedCommits = 1
         assertTrue(repository.request(100).isFailure)
-        assertFalse(disk.memory.isEmpty())
+        assertNotNull(disk.memory["pending:a"])
         disk.failedCommits = 1
         assertTrue(repository.request(100).isFailure)
         assertTrue(keys.isEmpty())
@@ -114,7 +119,7 @@ class CreatorPayoutRetryTest {
         disk.failRemove = true
         val response = repository.request(100).getOrThrow()
         assertTrue(response.localCleanupPending)
-        assertFalse(disk.memory.isEmpty())
+        assertNotNull(disk.memory["pending:a"])
         disk.failRemove = false
         assertTrue(repository.request(100).isSuccess)
         assertEquals(keys[0], keys[1])
@@ -195,4 +200,16 @@ class CreatorPayoutRetryTest {
         assertEquals(2, keys.size)
         assertNotEquals(keys[0], keys[1])
     }
+    @Test fun aLegacyIdenticalCommitCannotAuthorizeAnUndurableWithdrawal() = runTest {
+        val disk = PayoutDisk()
+        disk.legacyNoopCommit = true
+        disk.failedCommits = 2
+        val repository = repository(disk)
+        assertTrue(repository.request(100).isFailure)
+        repository.request(100)
+        assertTrue("The request must wait for a real disk write", keys.isEmpty())
+        assertTrue(repository.request(100).isSuccess)
+        assertEquals(1, keys.size)
+    }
+
 }
