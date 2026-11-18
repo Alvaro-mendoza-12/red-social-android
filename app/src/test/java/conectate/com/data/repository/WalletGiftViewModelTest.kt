@@ -6,6 +6,7 @@ import conectate.com.data.model.CreatorPayoutSummary
 import conectate.com.data.model.CreatorProgramDashboard
 import conectate.com.presentation.wallet.WalletViewModel
 import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.json.*
 import io.mockk.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.map
@@ -119,5 +120,29 @@ class WalletGiftViewModelTest {
         dispatcher.scheduler.advanceTimeBy(45001); dispatcher.scheduler.runCurrent()
         assertNull("The operation needs a deadline including credential renewal", model.sendingGiftId.value)
         assertNotNull(model.error.value); assertTrue(f.requests.isEmpty())
+    }
+
+    @Test fun theClickedGiftPriceIsNotReplacedByANewerCatalogPrice() = runBlocking {
+        f.catalogPrice = 40
+        ready()
+        assertEquals(40, model.availableGifts.value.first { it.id == f.gift.id }.priceDiamonds)
+        send(); finished()
+        assertEquals(10, f.requests.single()["p_expected_price_diamonds"]?.jsonPrimitive?.intOrNull)
+        assertTrue(f.endpoints.single().endsWith("/send_virtual_gift_v2"))
+        assertEquals(10, model.lastReceipt.value!!.gift.priceDiamonds)
+    }
+
+    @Test fun aPriceChangeExplainsHowToReconfirmWithoutClaimingAnEarlierGiftWasUncharged() = runBlocking {
+        ready(); f.status = HttpStatusCode.Conflict
+        f.overrideReceipt = """{"message":"GIFT_PRICE_CHANGED"}"""
+        send(); finished()
+        assertTrue(model.error.value.orEmpty().contains("precio cambió"))
+        assertTrue(model.error.value.orEmpty().contains("confirmar"))
+        assertNull(model.lastReceipt.value)
+        assertTrue(f.disk.isNotEmpty())
+        send(); finished()
+        assertTrue(model.error.value.orEmpty().contains("precio cambió"))
+        assertEquals(f.requests[0]["p_idempotency_key"], f.requests[1]["p_idempotency_key"])
+        assertFalse(model.error.value.orEmpty().contains("No se descontaron"))
     }
 }

@@ -270,7 +270,7 @@ class WalletViewModel @Inject constructor(
             try {
                 withTimeout(45_000) {
                     session.requireCurrent()
-                    val result = walletRepository.sendGift(session, receiverId, gift.id, liveStreamId, isPublic, idempotencyKey)
+                    val result = walletRepository.sendGift(session, receiverId, gift.id, liveStreamId, isPublic, idempotencyKey, gift.priceDiamonds)
                     currentCoroutineContext().ensureActive()
                     session.requireCurrent()
                     (result.exceptionOrNull() as? CancellationException)?.let { throw it }
@@ -321,6 +321,9 @@ class WalletViewModel @Inject constructor(
     }
 
     private fun giftErrorMessage(failure: Throwable, checkingPrevious: Boolean): String {
+        if (failure.message.orEmpty().contains("GIFT_PRICE_CHANGED", ignoreCase = true)) {
+            return "El precio cambió. Actualiza el catálogo y vuelve a confirmar el importe antes de enviar. Conservamos la clave para evitar un cargo duplicado."
+        }
         if (checkingPrevious) return "El envío anterior sigue sin confirmar. Conservamos su clave: revisa el historial o vuelve a comprobarlo sin duplicar el cargo."
         val rawMessage = failure.message.orEmpty()
         return when {

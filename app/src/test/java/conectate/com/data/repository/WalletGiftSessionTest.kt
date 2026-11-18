@@ -46,6 +46,8 @@ internal class GiftHttpFixture {
     var entered = CompletableDeferred<Unit>()
     var status = HttpStatusCode.OK
     var overrideReceipt: String? = null
+    var catalogPrice = 10
+    val endpoints = CopyOnWriteArrayList<String>()
     val requests = CopyOnWriteArrayList<JsonObject>()
     val charges = AtomicInteger()
     private val ledger = ConcurrentHashMap<String, String>()
@@ -53,25 +55,29 @@ internal class GiftHttpFixture {
     val gift = VirtualGift("gift", "Regalo QA", priceDiamonds = 10)
     val client = HttpClient(MockEngine { request ->
         val body = when {
-            request.url.encodedPath.endsWith("/send_virtual_gift") -> {
+            request.url.encodedPath.endsWith("/send_virtual_gift") || request.url.encodedPath.endsWith("/send_virtual_gift_v2") -> {
+                endpoints += request.url.encodedPath
                 val payload = json.parseToJsonElement((request.body as OutgoingContent.ByteArrayContent).bytes().toString(Charsets.UTF_8)).jsonObject
                 requests += payload
                 val key = payload.getValue("p_idempotency_key").jsonPrimitive.content
+                val replay = ledger.containsKey(key)
                 val receipt = ledger.getOrPut(key) {
                     val number = charges.incrementAndGet()
                     buildJsonObject {
                         put("ok", true); put("transaction_id", "receipt-$number")
+                        put("amount_diamonds", payload["p_expected_price_diamonds"] ?: JsonPrimitive(10))
                         put("sender_id", payload["p_sender_id"]!!); put("receiver_id", payload["p_receiver_id"]!!)
                         put("gift_id", payload["p_gift_id"]!!); put("live_stream_id", payload["p_live_stream_id"]!!)
                         put("is_public", payload["p_is_public"]!!); put("sender_balance_diamonds", 990)
                     }.toString()
                 }
                 entered.complete(Unit); holdReply?.await(); onReply?.invoke()
-                return@MockEngine respond(overrideReceipt ?: receipt, status, headersOf(HttpHeaders.ContentType, "application/json"))
+                val replayReceipt = JsonObject(json.parseToJsonElement(receipt).jsonObject + ("idempotent_replay" to JsonPrimitive(replay))).toString()
+                return@MockEngine respond(overrideReceipt ?: replayReceipt, status, headersOf(HttpHeaders.ContentType, "application/json"))
             }
             request.url.encodedPath.endsWith("/virtual_gifts") -> {
                 onCatalog?.invoke()
-                """[{"id":"gift","name":"Regalo QA","price_diamonds":10}]"""
+                """[{"id":"gift","name":"Regalo QA","price_diamonds":$catalogPrice}]"""
             }
             request.url.encodedPath.endsWith("/wallet_get_or_create") ->
                 """{"user_id":"$account","balance_diamonds":1000,"balance_debt_diamonds":0}"""
@@ -190,9 +196,10 @@ class WalletGiftSessionTest {
         f.overrideReceipt = """{"transaction_id":"wrong","sender_balance_diamonds":-1}"""
         assertTrue(f.send().isFailure); assertEquals("first-key", f.disk.values.single())
     }
-    @Test fun aMinimalCompatibleReceiptRemainsSupported() = runBlocking {
-        f.overrideReceipt = """{"transaction_id":"legacy-receipt","sender_balance_diamonds":990}"""
-        assertEquals("legacy-receipt", f.send().getOrThrow().transactionId)
+    @Test fun aVersionedReceiptRequiresTheChargedAmountAndReplayFlag() = runBlocking {
+        f.overrideReceipt = """{"transaction_id":"incomplete","sender_balance_diamonds":990}"""
+        assertTrue(f.send().isFailure)
+        assertEquals("first-key", f.disk.values.single())
     }
     @Test fun suppliedReceiptDetailsMustAcknowledgeTheSameIntent() = runBlocking {
         for (field in listOf("\"gift_id\":\"another-gift\"", "\"live_stream_id\":\"another-live\"", "\"is_public\":false", "\"ok\":false")) {

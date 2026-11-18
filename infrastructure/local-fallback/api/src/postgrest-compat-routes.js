@@ -145,6 +145,7 @@ const SUPPORTED_RPC_NAMES = new Set([
   'secure_toggle_sticker_favorite',
   'secure_vote_poll_option',
   'send_virtual_gift',
+  'send_virtual_gift_v2',
   'get_virtual_gift_receipt',
   'billing_capabilities',
   'verify_google_play_purchase',
@@ -4641,7 +4642,11 @@ async function processGooglePlayRtdnNotification(pool, event, rtdnConfig) {
   return { status: 'unsupported_notification' }
 }
 
-async function sendVirtualGiftRpc(pool, auth, body) {
+async function sendVirtualGiftV2Rpc(pool, auth, body) {
+  return sendVirtualGiftRpc(pool, auth, body, { requireExpectedPrice: true })
+}
+
+async function sendVirtualGiftRpc(pool, auth, body, { requireExpectedPrice = false } = {}) {
   const identity = await getAuthIdentity(pool, auth)
   if (!identity) throw httpError('AUTH_REQUIRED', 401)
   if (!liveGiftTransactionsEnabled()) throw httpError('GIFTS_DISABLED', 503)
@@ -4656,6 +4661,13 @@ async function sendVirtualGiftRpc(pool, auth, body) {
   if (!idempotencyKey) throw httpError('GIFT_IDEMPOTENCY_KEY_REQUIRED', 400)
   if (identityOwnsValue(identity, receiverId)) throw httpError('SELF_GIFT_NOT_ALLOWED', 409)
   if (!DEFAULT_VIRTUAL_GIFT_IDS.has(giftId)) throw httpError('GIFT_NOT_FOUND', 404)
+  const hasExpectedPrice = ['p_expected_price_diamonds', 'expected_price_diamonds']
+    .some((key) => Object.prototype.hasOwnProperty.call(body, key))
+  const expectedPrice = messageBodyValue(body, 'expected_price_diamonds', null)
+  if ((requireExpectedPrice || hasExpectedPrice) &&
+      (!Number.isSafeInteger(expectedPrice) || expectedPrice <= 0)) {
+    throw httpError('GIFT_EXPECTED_PRICE_REQUIRED', 400)
+  }
 
   const priorTransaction = (await importedAndCompatRows(pool, 'gift_transactions'))
     .find((row) => normalizeIdentityValue(row.idempotency_key) === idempotencyKey)
@@ -4671,7 +4683,8 @@ async function sendVirtualGiftRpc(pool, auth, body) {
       ok: true,
       transaction_id: priorTransaction.id,
       earning_id: priorTransaction.earning_id || null,
-      sender_balance_diamonds: priorTransaction.sender_balance_after,
+      sender_balance_diamonds: (await walletForIdentity(pool, identity)).balance_diamonds,
+      amount_diamonds: priorTransaction.amount_diamonds,
       gift_id: priorTransaction.gift_id,
       gift_name: priorTransaction.gift_name,
       gift_image_url: priorTransaction.gift_image_url || null,
@@ -4685,12 +4698,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     }
   }
 
-  const gift = await findCompatEntity(pool, 'virtual_gifts', giftId)
-  if (!gift || gift.is_active === false) throw httpError('GIFT_NOT_FOUND', 404)
-  const costDiamonds = Math.max(0, Math.trunc(Number(gift.price_diamonds || 0) || 0))
-  if (costDiamonds <= 0) throw httpError('GIFT_PRICE_INVALID', 409)
   const giftLimits = liveGiftLimitsConfiguration()
-  if (costDiamonds > giftLimits.max_coins_per_gift) throw httpError('GIFT_VALUE_LIMIT_EXCEEDED', 409)
   const profiles = await readTableRows(pool, 'profiles', {}, auth)
   const receiver = profiles.find((profile) =>
     [profile.id, profile.local_id, profile.user_id, profile.supabase_user_id]
@@ -4739,11 +4747,19 @@ async function sendVirtualGiftRpc(pool, auth, body) {
         (existing.is_public !== false) === isPublic
       if (!samePayload) throw httpError('GIFT_IDEMPOTENCY_CONFLICT', 409)
       transaction = existing
-      newBalance = Math.max(0, Math.trunc(Number(existing.sender_balance_after || wallet.balance_diamonds) || 0))
+      newBalance = wallet.balance_diamonds
       replay = true
       await client.query('COMMIT')
       inTransaction = false
     } else {
+    // Read the current price inside the charge transaction. A client quote is
+    // consent, never authority to replace the server's catalog price.
+    const gift = await findCompatEntity(client, 'virtual_gifts', giftId)
+    if (!gift || gift.is_active === false) throw httpError('GIFT_NOT_FOUND', 404)
+    const costDiamonds = Number(gift.price_diamonds)
+    if (!Number.isSafeInteger(costDiamonds) || costDiamonds <= 0) throw httpError('GIFT_PRICE_INVALID', 409)
+    if (hasExpectedPrice && expectedPrice !== costDiamonds) throw httpError('GIFT_PRICE_CHANGED', 409)
+    if (costDiamonds > giftLimits.max_coins_per_gift) throw httpError('GIFT_VALUE_LIMIT_EXCEEDED', 409)
     const now = Date.now()
     const senderTransactions = existingTransactions.filter((row) =>
       identityOwnsValue(identity, row.sender_id),
@@ -4901,6 +4917,7 @@ async function sendVirtualGiftRpc(pool, auth, body) {
     transaction_id: transaction.id,
     earning_id: transaction.earning_id || earningId,
     sender_balance_diamonds: newBalance,
+    amount_diamonds: transaction.amount_diamonds,
     gift_id: giftId,
     gift_name: transaction.gift_name,
     gift_image_url: transaction.gift_image_url || null,
@@ -6179,6 +6196,8 @@ async function handleRpc(pool, req, rpcName) {
       return searchStickersRpc(pool, auth, body)
     case 'send_virtual_gift':
       return sendVirtualGiftRpc(pool, auth, body)
+    case 'send_virtual_gift_v2':
+      return sendVirtualGiftV2Rpc(pool, auth, body)
     case 'get_virtual_gift_receipt':
       return getVirtualGiftReceiptRpc(pool, auth, body)
     case 'billing_capabilities':
@@ -6416,6 +6435,7 @@ module.exports = {
     readSpecificRows,
     rowId,
     sendVirtualGiftRpc,
+    sendVirtualGiftV2Rpc,
     googlePlayConfiguration,
     googlePlayServiceAccountRaw,
     verifyGooglePlayPurchaseRpc,
