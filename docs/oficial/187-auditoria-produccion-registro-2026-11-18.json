@@ -299,6 +299,15 @@
       "evidenceKind": "runtime-controlled; existing request contract",
       "status": "fixed-unit-validated-server-activation-pending",
       "published": true
+    },
+    {
+      "id": "N012",
+      "severity": "high",
+      "description": "Una respuesta de saldo antigua reemplaza una lectura o un cargo más reciente",
+      "evidenceReport": "192",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
     }
   ],
   "release": {
@@ -377,15 +386,28 @@
       "kind": "official-legal-sources",
       "path": "docs/oficial/190-revision-juridica-inicial-por-mercados-2026-11-18.md",
       "status": "partial-research; technical flows and professional applicability pending"
+    },
+    {
+      "kind": "gradle-full",
+      "path": "2026-11-18-mobile-audit192-balance-order/gradle-full-balance",
+      "counts": {
+        "tests": 3495,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 582
+      },
+      "logSha256": "4c88b7b0e1e3ef8cf3658af4b2ea1aba1eb9ebd8d248660d361b2a795b896633",
+      "inputsStable": true
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
-    "high": 8,
+    "high": 9,
     "medium": 3,
     "low": 0,
-    "total": 11
+    "total": 12
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",
@@ -409,7 +431,7 @@
     {
       "id": "R04",
       "status": "pending",
-      "description": "Orden de actualizaciones de saldo concurrentes con regalos, compras y otros dispositivos."
+      "description": "Orden entre dos cargos concurrentes y actualizaciones de otros dispositivos. Las lecturas obsoletas dentro del repositorio Android se corrigieron en 192."
     },
     {
       "id": "R05",

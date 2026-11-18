@@ -47,6 +47,10 @@ internal class GiftHttpFixture {
     var status = HttpStatusCode.OK
     var overrideReceipt: String? = null
     var catalogPrice = 10
+    var walletBalance = 1000
+    var walletBody: String? = null
+    var onBalance: (suspend () -> Unit)? = null
+
     val endpoints = CopyOnWriteArrayList<String>()
     val requests = CopyOnWriteArrayList<JsonObject>()
     val charges = AtomicInteger()
@@ -79,8 +83,13 @@ internal class GiftHttpFixture {
                 onCatalog?.invoke()
                 """[{"id":"gift","name":"Regalo QA","price_diamonds":$catalogPrice}]"""
             }
-            request.url.encodedPath.endsWith("/wallet_get_or_create") ->
-                """{"user_id":"$account","balance_diamonds":1000,"balance_debt_diamonds":0}"""
+            request.url.encodedPath.endsWith("/wallet_get_or_create") -> {
+                val snapshot = walletBody ?: """{"user_id":"$account","balance_diamonds":$walletBalance,"balance_debt_diamonds":0}"""
+                onBalance?.invoke()
+                snapshot
+            }
+            request.url.encodedPath.endsWith("/verify_google_play_purchase") ->
+                """{"status":"credited","credited":true,"coins":100,"balance_diamonds":1100}"""
             request.url.encodedPath.endsWith("/billing_capabilities") -> """{"enabled":false,"products":[]}"""
             else -> "[]"
         }

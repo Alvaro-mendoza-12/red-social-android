@@ -110,12 +110,14 @@ class WalletRepository @Inject constructor(
     internal val historyStatus = mutableHistoryStatus.asStateFlow()
 
     private var walletOwner: AuthSessionLease? = null
+    private val balanceRead = java.util.concurrent.atomic.AtomicReference<Any?>(null)
 
     @Synchronized
     private fun walletSession(): AuthSessionLease {
         val session = authService.captureAccountLease()
         if (walletOwner?.sameVisit(session) != true) {
             walletOwner = session
+            balanceRead.set(null)
             _coinBalance.value = 0
             _coinDebt.value = 0
             synchronized(historyLock) {
@@ -137,31 +139,49 @@ class WalletRepository @Inject constructor(
 
     suspend fun fetchBalance(): Result<Unit> {
         val session = walletSession()
-        return accountScopedCall(session, { userId ->
-            check(supabaseConfig.isConfigured) { "El monedero no está configurado para este entorno." }
-            authService.ensureValidAccessToken().getOrThrow()
-            session.requireCurrent()
-            authService.getAccessTokenForAccountAwait(userId)
-        }) { userId, token ->
-            withContext(Dispatchers.IO) {
+        val read = Any()
+        authService.commitForAccountLease(session) { balanceRead.set(read) }
+        return try {
+            accountScopedCall(session, { userId ->
+                check(supabaseConfig.isConfigured) { "El monedero no está configurado para este entorno." }
+                authService.ensureValidAccessToken().getOrThrow()
                 session.requireCurrent()
-                val balance = fetchWalletViaRpc(token) ?: run {
+                authService.getAccessTokenForAccountAwait(userId)
+            }) { userId, token ->
+                withContext(Dispatchers.IO) {
+                    session.requireCurrent()
+                    val balance = fetchWalletViaRpc(token) ?: run {
+                        kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                        session.requireCurrent()
+                        fetchWalletByRest(token, userId) ?: WalletBalance(userId = userId)
+                    }
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     session.requireCurrent()
-                    fetchWalletByRest(token, userId) ?: WalletBalance(userId = userId)
+                    var confirmed = false
+                    val current = authService.commitForAccountLease(session) {
+                        if (balanceRead.compareAndSet(read, null)) {
+                            _coinBalance.value = balance.balanceDiamonds
+                            _coinDebt.value = balance.balanceDebtDiamonds
+                            confirmed = true
+                        }
+                    }
+                    if (!current) session.requireCurrent()
+                    check(confirmed) { "Otra operación reemplazó esta consulta de saldo. Vuelve a actualizar el monedero." }
+                    Result.success(Unit)
                 }
-                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                session.requireCurrent()
-                authService.commitForAccountLease(session) {
-                    _coinBalance.value = balance.balanceDiamonds
-                    _coinDebt.value = balance.balanceDebtDiamonds
-                }
-                Result.success(Unit)
+            }.onFailure { error ->
+                Log.e(TAG, "Unable to fetch wallet balance", error)
+                // Keep the last confirmed snapshot when this request cannot confirm a new one.
             }
-        }.onFailure { error ->
-            Log.e(TAG, "Unable to fetch wallet balance", error)
-            // Keep the last confirmed snapshot when the server cannot confirm a new one.
+        } finally {
+            // A cancelled/late reader must not release a newer reader's reservation.
+            balanceRead.compareAndSet(read, null)
         }
+    }
+
+    private fun invalidateBalanceRead(session: AuthSessionLease) {
+        val current = authService.commitForAccountLease(session) { balanceRead.set(null) }
+        if (!current) session.requireCurrent()
     }
 
     suspend fun fetchAvailableGifts() = withContext(Dispatchers.IO) {
@@ -369,61 +389,68 @@ class WalletRepository @Inject constructor(
                 // The journal can block or fail. Recheck after its durable write, before any charge request.
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 session.requireCurrent()
-                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/send_virtual_gift_v2") {
-                    restHeaders(token)
-                    contentType(ContentType.Application.Json)
-                    header(HttpHeaders.Prefer, "return=representation")
-                    setBody(buildJsonObject {
-                        put("p_sender_id", senderId)
-                        put("p_receiver_id", cleanReceiverId)
-                        put("p_gift_id", cleanGiftId)
-                        put("p_expected_price_diamonds", expectedPrice)
-                        put("p_idempotency_key", durableKey)
-                        put("p_is_public", isPublic)
-                        put("p_message", JsonNull)
-                        put("p_live_stream_id", cleanLiveStreamId.takeIf { it.isNotBlank() })
-                    })
+                // An attempted mutation makes earlier reads unsuitable for fresh confirmation,
+                // even if its charge commits but the response is lost or malformed.
+                invalidateBalanceRead(session)
+                try {
+                    val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/send_virtual_gift_v2") {
+                        restHeaders(token)
+                        contentType(ContentType.Application.Json)
+                        header(HttpHeaders.Prefer, "return=representation")
+                        setBody(buildJsonObject {
+                            put("p_sender_id", senderId)
+                            put("p_receiver_id", cleanReceiverId)
+                            put("p_gift_id", cleanGiftId)
+                            put("p_expected_price_diamonds", expectedPrice)
+                            put("p_idempotency_key", durableKey)
+                            put("p_is_public", isPublic)
+                            put("p_message", JsonNull)
+                            put("p_live_stream_id", cleanLiveStreamId.takeIf { it.isNotBlank() })
+                        })
+                    }
+                    val body = response.bodyAsText()
+                    if (!response.status.isSuccess()) {
+                        throw IllegalStateException(parseSupabaseError(body) ?: "No se pudo enviar el regalo (${response.status.value})")
+                    }
+                    val receipt = decodeFirstObject(body)
+                        ?: throw IllegalStateException("El servidor no devolvió el comprobante del regalo")
+                    val transactionId = receipt.string("transaction_id")?.takeIf { it.isNotBlank() }
+                        ?: throw IllegalStateException("El comprobante del regalo no es válido")
+                    val newBalance = receipt["sender_balance_diamonds"]?.jsonPrimitive?.intOrNull
+                    check(newBalance != null && newBalance >= 0) { "El comprobante no contiene un saldo confirmado válido" }
+                    // This versioned endpoint must confirm the actual charged amount.
+                    // A replay reconciles the original gift, even if its catalog price changed.
+                    val chargedAmount = receipt["amount_diamonds"]?.jsonPrimitive?.intOrNull
+                    val replay = receipt["idempotent_replay"]?.jsonPrimitive?.booleanOrNull
+                    check(chargedAmount != null && chargedAmount > 0 && replay != null) { "El comprobante no contiene el importe confirmado." }
+                    check(replay || chargedAmount == expectedPrice) { "El comprobante no coincide con el precio confirmado." }
+                    // Imported receipt metadata remains optional; supplied fields must match.
+                    check(!receipt.containsKey("ok") || receipt["ok"]?.jsonPrimitive?.booleanOrNull == true) { "El servidor no confirmó el regalo" }
+                    check(!receipt.containsKey("receiver_id") || receipt.string("receiver_id").equals(cleanReceiverId, ignoreCase = true)) { "El comprobante corresponde a otro destinatario" }
+                    check(!receipt.containsKey("gift_id") || receipt.string("gift_id") == cleanGiftId) { "El comprobante corresponde a otro regalo" }
+                    check(!receipt.containsKey("live_stream_id") || receipt.string("live_stream_id").orEmpty().equals(cleanLiveStreamId, ignoreCase = true)) { "El comprobante corresponde a otro directo" }
+                    check(!receipt.containsKey("is_public") || receipt["is_public"]?.jsonPrimitive?.booleanOrNull == isPublic) { "El comprobante tiene otra visibilidad" }
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                    session.requireCurrent()
+                    GiftReceipt(
+                        transactionId = transactionId,
+                        liveStreamId = cleanLiveStreamId.takeIf { it.isNotBlank() },
+                        senderId = senderId,
+                        senderName = receipt.string("sender_name").orEmpty().ifBlank { "Usuario" },
+                        receiverId = cleanReceiverId,
+                        gift = gift.copy(priceDiamonds = chargedAmount),
+                        senderBalanceDiamonds = newBalance,
+                        isPublic = isPublic,
+                        idempotentReplay = replay
+                    )
+                } finally {
+                    invalidateBalanceRead(session)
                 }
-                val body = response.bodyAsText()
-                if (!response.status.isSuccess()) {
-                    throw IllegalStateException(parseSupabaseError(body) ?: "No se pudo enviar el regalo (${response.status.value})")
-                }
-                val receipt = decodeFirstObject(body)
-                    ?: throw IllegalStateException("El servidor no devolvió el comprobante del regalo")
-                val transactionId = receipt.string("transaction_id")?.takeIf { it.isNotBlank() }
-                    ?: throw IllegalStateException("El comprobante del regalo no es válido")
-                val newBalance = receipt["sender_balance_diamonds"]?.jsonPrimitive?.intOrNull
-                check(newBalance != null && newBalance >= 0) { "El comprobante no contiene un saldo confirmado válido" }
-                // This versioned endpoint must confirm the actual charged amount.
-                // A replay reconciles the original gift, even if its catalog price changed.
-                val chargedAmount = receipt["amount_diamonds"]?.jsonPrimitive?.intOrNull
-                val replay = receipt["idempotent_replay"]?.jsonPrimitive?.booleanOrNull
-                check(chargedAmount != null && chargedAmount > 0 && replay != null) { "El comprobante no contiene el importe confirmado." }
-                check(replay || chargedAmount == expectedPrice) { "El comprobante no coincide con el precio confirmado." }
-                // Imported receipt metadata remains optional; supplied fields must match.
-                check(!receipt.containsKey("ok") || receipt["ok"]?.jsonPrimitive?.booleanOrNull == true) { "El servidor no confirmó el regalo" }
-                check(!receipt.containsKey("receiver_id") || receipt.string("receiver_id").equals(cleanReceiverId, ignoreCase = true)) { "El comprobante corresponde a otro destinatario" }
-                check(!receipt.containsKey("gift_id") || receipt.string("gift_id") == cleanGiftId) { "El comprobante corresponde a otro regalo" }
-                check(!receipt.containsKey("live_stream_id") || receipt.string("live_stream_id").orEmpty().equals(cleanLiveStreamId, ignoreCase = true)) { "El comprobante corresponde a otro directo" }
-                check(!receipt.containsKey("is_public") || receipt["is_public"]?.jsonPrimitive?.booleanOrNull == isPublic) { "El comprobante tiene otra visibilidad" }
-                kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                session.requireCurrent()
-                GiftReceipt(
-                    transactionId = transactionId,
-                    liveStreamId = cleanLiveStreamId.takeIf { it.isNotBlank() },
-                    senderId = senderId,
-                    senderName = receipt.string("sender_name").orEmpty().ifBlank { "Usuario" },
-                    receiverId = cleanReceiverId,
-                    gift = gift.copy(priceDiamonds = chargedAmount),
-                    senderBalanceDiamonds = newBalance,
-                    isPublic = isPublic,
-                    idempotentReplay = replay
-                )
             }
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             session.requireCurrent()
             result.onSuccess { receipt ->
-                authService.commitForAccountLease(session) { _coinBalance.value = receipt.senderBalanceDiamonds }
+                authService.commitForAccountLease(session) { balanceRead.set(null); _coinBalance.value = receipt.senderBalanceDiamonds }
             }
         }
     }
@@ -506,36 +533,41 @@ class WalletRepository @Inject constructor(
     }) { _, token ->
         withContext(Dispatchers.IO) {
             session.requireCurrent()
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/verify_google_play_purchase") {
-                restHeaders(token)
-                contentType(ContentType.Application.Json)
-                setBody(buildJsonObject {
-                    put("p_product_id", productId)
-                    put("p_purchase_token", purchaseToken)
-                })
+            invalidateBalanceRead(session)
+            try {
+                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/verify_google_play_purchase") {
+                    restHeaders(token)
+                    contentType(ContentType.Application.Json)
+                    setBody(buildJsonObject {
+                        put("p_product_id", productId)
+                        put("p_purchase_token", purchaseToken)
+                    })
+                }
+                val body = response.bodyAsText()
+                if (!response.status.isSuccess()) {
+                    throw IllegalStateException(parseSupabaseError(body) ?: "Google Play no pudo verificar la compra")
+                }
+                val value = decodeFirstObject(body)
+                    ?: throw IllegalStateException("La verificación no devolvió un resultado")
+                val status = value.string("status")
+                val credited = value["credited"]?.jsonPrimitive?.booleanOrNull
+                val coins = value["coins"]?.jsonPrimitive?.intOrNull
+                check(status in setOf("pending", "credited") && credited != null && coins != null && coins >= 0) {
+                    "El servidor no confirmó el estado de la compra."
+                }
+                val balance = if (status == "credited") value["balance_diamonds"]?.jsonPrimitive?.intOrNull else 0
+                check(balance != null && balance >= 0) { "La confirmación no contiene un saldo válido." }
+                check(if (status == "pending") !credited && coins == 0 else if (credited) coins > 0 else coins == 0) {
+                    "La confirmación de monedas no es válida."
+                }
+                val verified = CoinPurchaseVerification(status!!, credited, coins, balance)
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                session.requireCurrent()
+                if (verified.status == "credited") publishPurchaseResult(session) { _coinBalance.value = balance }
+                Result.success(verified)
+            } finally {
+                invalidateBalanceRead(session)
             }
-            val body = response.bodyAsText()
-            if (!response.status.isSuccess()) {
-                throw IllegalStateException(parseSupabaseError(body) ?: "Google Play no pudo verificar la compra")
-            }
-            val value = decodeFirstObject(body)
-                ?: throw IllegalStateException("La verificación no devolvió un resultado")
-            val status = value.string("status")
-            val credited = value["credited"]?.jsonPrimitive?.booleanOrNull
-            val coins = value["coins"]?.jsonPrimitive?.intOrNull
-            check(status in setOf("pending", "credited") && credited != null && coins != null && coins >= 0) {
-                "El servidor no confirmó el estado de la compra."
-            }
-            val balance = if (status == "credited") value["balance_diamonds"]?.jsonPrimitive?.intOrNull else 0
-            check(balance != null && balance >= 0) { "La confirmación no contiene un saldo válido." }
-            check(if (status == "pending") !credited && coins == 0 else if (credited) coins > 0 else coins == 0) {
-                "La confirmación de monedas no es válida."
-            }
-            val verified = CoinPurchaseVerification(status!!, credited, coins, balance)
-            kotlinx.coroutines.currentCoroutineContext().ensureActive()
-            session.requireCurrent()
-            if (verified.status == "credited") publishPurchaseResult(session) { _coinBalance.value = balance }
-            Result.success(verified)
         }
     }
 
