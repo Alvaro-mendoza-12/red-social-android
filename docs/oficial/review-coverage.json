@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T17:55:28.080513+00:00",
-  "baseCommit": "1324953ab9b9ef47863ede9ff9e4048d0197be17",
+  "generatedAtUtc": "2026-11-18T23:31:53.631655+00:00",
+  "baseCommit": "7fcb2d6a20714f9d56bd7385cb873e34e9f8cc1f",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3593,
+    "pending": 3594,
     "partial": 263,
-    "code-read": 823
+    "code-read": 824
   },
   "countsByPhase": {
     "android": {
       "pending": 1436,
       "partial": 116,
-      "code-read": 574
+      "code-read": 575
     },
     "documentation": {
-      "pending": 670,
+      "pending": 671,
       "code-read": 61,
       "partial": 20
     },
@@ -8695,9 +8695,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/WalletRepository.kt",
       "phase": "android",
-      "gitBlobId": "758662c1026039e5ddb3295110a23e9579af1fdf",
+      "gitBlobId": "48db50b92789b63fb54923d5009468984d90a4ee",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
+      "evidence": "docs/oficial/192-orden-de-respuestas-de-saldo-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16239,6 +16239,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/WalletBalanceOrderingTest.kt",
+      "phase": "android",
+      "gitBlobId": "a3d078c00dcee27d68e8dc5f9a37bc45164111c8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/192-orden-de-respuestas-de-saldo-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/WalletGiftQuoteTest.kt",
       "phase": "android",
       "gitBlobId": "24588b304f27aca2ae5248409e84748fb8493c8c",
@@ -16249,9 +16257,9 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/WalletGiftSessionTest.kt",
       "phase": "android",
-      "gitBlobId": "5dda1e6d3aab78923dd227b7948d21ca17323b4d",
+      "gitBlobId": "07e6d9ff7e7a829dccd7e3e648041432168fb782",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
+      "evidence": "docs/oficial/192-orden-de-respuestas-de-saldo-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21837,13 +21845,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "0b8472a4ae885f3f1e0e0d1a43889af9cb1a50f7",
+      "gitBlobId": "95d92ae2049c01d3a6824dab29e8d8e198ad69af",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "0f15ba8def2e7b15902f94dad010eca96cb7d99f",
+      "gitBlobId": "09b14f5c64d0a673132bcc977d3f68c8e24b6221",
       "reviewStatus": "pending"
     },
     {
@@ -21874,6 +21882,12 @@
       "file": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "fb2d2c9f53b1dd945c812b1b024bd82196197878",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/192-orden-de-respuestas-de-saldo-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "f1ee0a785d89427bb89f972b5d00cdc264018e0f",
       "reviewStatus": "pending"
     },
     {
