@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-Se registran catorce familias nuevas: ninguna crítica confirmada en esta selección, once altas y tres medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+Se registran diecisiete familias nuevas: ninguna crítica confirmada en esta selección, doce altas y cinco medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -32,6 +32,9 @@ Se registran catorce familias nuevas: ninguna crítica confirmada en esta selecc
 | N012 | Alta | Una lectura antigua puede restaurar el saldo tras un regalo, una compra o una lectura posterior | [192](192-orden-de-respuestas-de-saldo-2026-11-18.md): reservas por lectura e invalidación al intentar un cargo |
 | N013 | Alta | La búsqueda unificada conserva resultados o paginación de una visita de cuenta anterior | [193](193-busqueda-por-visita-de-cuenta-2026-11-18.md): invalidación por visita y escritura de historial protegida |
 | N014 | Alta | Una entrada antigua a una sala de voz puede completarse después de salir o elegir otra sala | [194](194-entrada-y-salida-vigentes-de-salas-2026-11-18.md): cancelación y orden de entrada y salida |
+| N015 | Media | La recreación de la etapa final pierde la comprobación del identificador y bloquea el alta | [195](195-restauracion-del-registro-en-android-2026-11-18.md): comprobación renovada y reintento |
+| N016 | Media | Las contraseñas de acceso y registro se guardan en el estado restaurable de Compose | [195](195-restauracion-del-registro-en-android-2026-11-18.md): contraseñas en memoria de la composición |
+| N017 | Alta | La ruta de alta crea cuentas antes de comprobar la elegibilidad por edad | [195](195-restauracion-del-registro-en-android-2026-11-18.md): documentado; migración de Android, web y otros flujos pendiente |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -47,6 +50,7 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 - 192: referencia con 7 fallos en 10 casos. Candidata con 246 casos focalizados aprobados. Gradle sin filtros registró 3495 pruebas en 582 clases, con 0 fallos, 0 errores y 0 omisiones.
 - 193: cinco fallos de referencia y 25 casos aprobados en la candidata. La batería Gradle completa de 192 corresponde al padre de esta corrección.
 - 194: seis fallos en siete casos de referencia. Candidata con 37 casos dirigidos aprobados. Compilación y pruebas físicas de esta corrección pendientes.
+- 195: dos pantallas reales compiladas con Kotlin y Compose, ocho casos de políticas aprobados. Recreación interactiva y reintento en dispositivo pendientes.
 - Compilación de producción, firma y dispositivos del commit exacto: pendientes. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.

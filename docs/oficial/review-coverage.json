@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T23:41:14.648621+00:00",
-  "baseCommit": "bd22573a12fbd19d9bb6452ee9bd4475cc3079e5",
+  "generatedAtUtc": "2026-11-18T23:58:17.102165+00:00",
+  "baseCommit": "2fdea82bfa4f060ff0c0d891e250caa378186b50",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,17 +11,17 @@
   },
   "counts": {
     "pending": 3596,
-    "partial": 263,
+    "partial": 264,
     "code-read": 826
   },
   "countsByPhase": {
     "android": {
-      "pending": 1436,
-      "partial": 116,
+      "pending": 1435,
+      "partial": 117,
       "code-read": 577
     },
     "documentation": {
-      "pending": 673,
+      "pending": 674,
       "code-read": 61,
       "partial": 20
     },
@@ -9659,8 +9659,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/LoginScreen.kt",
       "phase": "android",
-      "gitBlobId": "f1037dd9095514b5a3996fb2b8b0cf100d471247",
-      "reviewStatus": "pending"
+      "gitBlobId": "f2fbfdbda5e0995c55466a68c090ded77ebdc991",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/195-restauracion-del-registro-en-android-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/NovvinAuthTheme.kt",
@@ -9691,9 +9693,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/auth/RegisterScreen.kt",
       "phase": "android",
-      "gitBlobId": "276eea617ded75cb312a7b0ef61db6c54f0b68b0",
+      "gitBlobId": "7ecb8ae4554960f7db3907fa35760e4947236e2e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/195-restauracion-del-registro-en-android-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21861,13 +21863,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "2a68132aacf2c1867071a1e336da284c51bf12a6",
+      "gitBlobId": "22a12ae7d70d57b6a0caa85b9836177489fc5725",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "e8a5f743541ee3c5cbe6faa141b9598e137584ce",
+      "gitBlobId": "4dc5ffdb64726973f498f7fce524fe49b6e37bd1",
       "reviewStatus": "pending"
     },
     {
@@ -21916,6 +21918,12 @@
       "file": "docs/oficial/194-entrada-y-salida-vigentes-de-salas-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "7bd87ad667f66c95637aa689d17f7fe8a8d2500f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/195-restauracion-del-registro-en-android-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "04a9fdb4e4b4ce65182118e244f1c95d4f0b639d",
       "reviewStatus": "pending"
     },
     {

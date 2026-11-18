@@ -78,10 +78,10 @@ fun LoginScreen(
     }
     var loginType by rememberSaveable { mutableStateOf(if (initialAssistedRecovery) "assisted" else if (isAddAccountMode) "email" else null) }
     var email by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
     var secondFactorCode by remember { mutableStateOf("") }
     var needsTwoFactor by rememberSaveable { mutableStateOf(false) }
-    var passwordVisible by rememberSaveable { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
     var migrationEmail by rememberSaveable { mutableStateOf("") }
     var migrationDisplayName by rememberSaveable { mutableStateOf("") }
     var migrationToken by rememberSaveable { mutableStateOf("") }
