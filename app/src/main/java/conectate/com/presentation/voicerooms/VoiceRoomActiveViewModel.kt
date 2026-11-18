@@ -17,7 +17,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -149,6 +156,9 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private val _inviteNotice = MutableStateFlow<String?>(null)
     val inviteNotice = _inviteNotice.asStateFlow()
 
+    private val roomTransition = Mutex()
+    private var entryJob: Job? = null
+    private var exitJob: Job? = null
     private var joinedRoomId: String? = null
     private var pendingPasswordRoomId: String? = null
     private var stageSyncJob: Job? = null
@@ -282,10 +292,14 @@ class VoiceRoomActiveViewModel @Inject constructor(
 
     fun joinRoom(roomId: String, password: String? = null) {
         val initiatingSession = authService.captureAccountLease()
-        viewModelScope.launch {
+        if (!initiatingSession.isCurrent()) return
+        entryJob?.cancel()
+        entryJob = viewModelScope.launch {
             initiatingSession.requireCurrent()
             _joinError.value = null
             val seed = authService.getCurrentUserProfileSeed()
+            currentCoroutineContext().ensureActive()
+            initiatingSession.requireCurrent()
             val userId = voiceRoomRepository.getCurrentUserId()
                 ?: seed?.id
                 ?: run {
@@ -295,51 +309,59 @@ class VoiceRoomActiveViewModel @Inject constructor(
             _currentUserId.value = userId
             try {
                 val roomResult = voiceRoomRepository.getRoomById(roomId)
+                currentCoroutineContext().ensureActive()
                 initiatingSession.requireCurrent()
                 val resolvedRoom = roomResult.getOrThrow()
-                _room.value = resolvedRoom
-                val isCreator = resolvedRoom.creatorId.trim().equals(userId.trim(), ignoreCase = true)
-                if (resolvedRoom.passwordRequired && !isCreator && password == null) {
-                    pendingPasswordRoomId = resolvedRoom.id
+                roomTransition.withLock {
+                    currentCoroutineContext().ensureActive()
+                    initiatingSession.requireCurrent()
+                    _room.value = resolvedRoom
+                    val isCreator = resolvedRoom.creatorId.trim().equals(userId.trim(), ignoreCase = true)
+                    if (resolvedRoom.passwordRequired && !isCreator && password == null) {
+                        pendingPasswordRoomId = resolvedRoom.id
+                        _passwordError.value = null
+                        _showPasswordPrompt.value = true
+                        return@withLock
+                    }
+                    if (resolvedRoom.passwordRequired && !isCreator && password.isNullOrEmpty()) {
+                        _passwordError.value = "Escribe la contraseña de la sala."
+                        _showPasswordPrompt.value = true
+                        return@withLock
+                    }
+                    _showPasswordPrompt.value = false
                     _passwordError.value = null
-                    _showPasswordPrompt.value = true
-                    return@launch
-                }
-                if (resolvedRoom.passwordRequired && !isCreator && password.isNullOrEmpty()) {
-                    _passwordError.value = "Escribe la contraseña de la sala."
-                    _showPasswordPrompt.value = true
-                    return@launch
-                }
-                _showPasswordPrompt.value = false
-                _passwordError.value = null
-                if (joinedRoomId == resolvedRoom.id && _isJoined.value) return@launch
-                joinedRoomId = resolvedRoom.id
+                    if (joinedRoomId == resolvedRoom.id && _isJoined.value) return@withLock
+                    joinedRoomId = resolvedRoom.id
 
-                val displayName = seed?.displayName
-                    ?: seed?.fullName
-                    ?: "Usuario"
-                val startMuted = !resolvedRoom.groupId.isNullOrBlank() || (resolvedRoom.isStageMode()
-                    && resolvedRoom.creatorId.trim().lowercase() != userId.trim().lowercase())
-                if (startMuted) {
-                    _isMuted.value = true
-                }
-                voiceRoomRepository.toggleSpeaker(_isSpeaker.value)
-                initiatingSession.requireCurrent()
-                voiceRoomRepository.joinRoom(
-                    roomId = resolvedRoom.id,
-                    userId = userId,
-                    displayName = displayName,
-                    avatarUrl = seed?.avatarUrl,
-                    signalingRoomId = roomId,
-                    startMuted = startMuted,
-                    roomPassword = password,
-                    resolvedRoom = resolvedRoom
-                )
-                if (resolvedRoom.isStageMode()) {
-                    startStageSync(resolvedRoom.id)
+                    val displayName = seed?.displayName
+                        ?: seed?.fullName
+                        ?: "Usuario"
+                    val startMuted = !resolvedRoom.groupId.isNullOrBlank() || (resolvedRoom.isStageMode()
+                        && resolvedRoom.creatorId.trim().lowercase() != userId.trim().lowercase())
+                    if (startMuted) {
+                        _isMuted.value = true
+                    }
+                    voiceRoomRepository.toggleSpeaker(_isSpeaker.value)
+                    initiatingSession.requireCurrent()
+                    voiceRoomRepository.joinRoom(
+                        roomId = resolvedRoom.id,
+                        userId = userId,
+                        displayName = displayName,
+                        avatarUrl = seed?.avatarUrl,
+                        signalingRoomId = roomId,
+                        startMuted = startMuted,
+                        roomPassword = password,
+                        resolvedRoom = resolvedRoom
+                    )
+                    currentCoroutineContext().ensureActive()
+                    initiatingSession.requireCurrent()
+                    if (resolvedRoom.isStageMode()) {
+                        startStageSync(resolvedRoom.id)
+                    }
                 }
             } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
             catch (e: Exception) {
+                currentCoroutineContext().ensureActive()
                 initiatingSession.requireCurrent()
                 android.util.Log.e("VoiceRoomActiveVM", "Error joining room", e)
                 _isJoined.value = false
@@ -453,12 +475,24 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun leaveRoom() {
-        viewModelScope.launch {
-            stageSyncJob?.cancel()
-            stageSyncJob = null
-            voiceRoomRepository.leaveRoom()
-            _isJoined.value = false
-            joinedRoomId = null
+        entryJob?.cancel()
+        entryJob = null
+        if (exitJob?.isActive == true) return
+        stageSyncJob?.cancel()
+        stageSyncJob = null
+        pendingPasswordRoomId = null
+        _showPasswordPrompt.value = false
+        _passwordError.value = null
+        // The screen can be popped immediately after tapping Leave. Finish the
+        // accepted exit after any in-flight admission has released the media engine.
+        exitJob = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            withContext(NonCancellable) {
+                roomTransition.withLock {
+                    voiceRoomRepository.leaveRoom()
+                    _isJoined.value = false
+                    joinedRoomId = null
+                }
+            }
         }
     }
 

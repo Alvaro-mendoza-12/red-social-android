@@ -317,6 +317,15 @@
       "evidenceKind": "runtime-controlled",
       "status": "fixed-unit-validated-device-pending",
       "published": true
+    },
+    {
+      "id": "N014",
+      "severity": "high",
+      "description": "La respuesta de una entrada anterior puede conectar a una sala de voz tras salir o cambiar de sala",
+      "evidenceReport": "194",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
     }
   ],
   "release": {
@@ -422,15 +431,22 @@
       "scenariosPassed": 4,
       "sourceSha256": "bdcea566351a1582d17e3f1eeb8462e7e017c2785ba2e94278b0cc183f257334",
       "scope": "PostgreSQL 17.5, HTTP and real database locks with fictional users and authentication fixture"
+    },
+    {
+      "kind": "jvm-controlled",
+      "path": "2026-11-18-mobile-audit194-voice-exit/candidate-regression",
+      "tests": 37,
+      "passed": 37,
+      "scope": "Voice room ViewModel and related regression cases. Physical audio and interactions between separate screens remain pending."
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
-    "high": 10,
+    "high": 11,
     "medium": 3,
     "low": 0,
-    "total": 13
+    "total": 14
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",
