@@ -83,16 +83,26 @@ fun GiftSelectionDialog(
     val error by viewModel.error.collectAsStateWithLifecycle()
     val receipt by viewModel.lastReceipt.collectAsStateWithLifecycle()
     val billingCapabilities by viewModel.billingCapabilities.collectAsStateWithLifecycle()
-    var confirmationGift by remember { mutableStateOf<VirtualGift?>(null) }
-    var previewGift by remember { mutableStateOf<VirtualGift?>(null) }
-    var isPublic by remember { mutableStateOf(true) }
+    val session by viewModel.giftSession.collectAsStateWithLifecycle()
+    val dialogOwner = remember(viewModel) { session }
+    var confirmationGift by remember(session, receiverId, liveStreamId) { mutableStateOf<VirtualGift?>(null) }
+    var previewGift by remember(session, receiverId, liveStreamId) { mutableStateOf<VirtualGift?>(null) }
+    var isPublic by remember(session) { mutableStateOf(true) }
     var selectedCategory by remember { mutableStateOf<GiftCategory?>(null) }
     val visibleGifts = remember(gifts, selectedCategory) {
         gifts.filter { selectedCategory == null || it.category() == selectedCategory }
     }
 
-    LaunchedEffect(receipt?.transactionId) {
+    LaunchedEffect(session) {
+        if (!dialogOwner.sameVisit(session) || !dialogOwner.isCurrent()) onDismiss()
+    }
+
+    LaunchedEffect(receipt?.transactionId, session, receiverId, liveStreamId) {
         val committed = receipt ?: return@LaunchedEffect
+        if (!dialogOwner.isCurrent() || !dialogOwner.sameVisit(session) ||
+            !committed.senderId.equals(dialogOwner.accountId, ignoreCase = true) ||
+            !committed.receiverId.equals(receiverId.trim(), ignoreCase = true) ||
+            !committed.liveStreamId.orEmpty().equals(liveStreamId.trim(), ignoreCase = true)) return@LaunchedEffect
         onGiftSent(committed)
         viewModel.consumeReceipt()
         onDismiss()
@@ -228,9 +238,9 @@ fun GiftSelectionDialog(
         val retrying = viewModel.hasPendingGift(receiverId, liveStreamId, gift.id, isPublic)
         val isHighValue = gift.priceDiamonds >=
             billingCapabilities.giftLimits.highValueConfirmationCoins
-        var highValueAcknowledged by remember(gift.id) { mutableStateOf(false) }
-        var safetyCountdown by remember(gift.id) { mutableIntStateOf(if (isHighValue) 3 else 0) }
-        LaunchedEffect(gift.id, isHighValue) {
+        var highValueAcknowledged by remember(gift.id, isHighValue, isPublic) { mutableStateOf(false) }
+        var safetyCountdown by remember(gift.id, isHighValue, isPublic) { mutableIntStateOf(if (isHighValue) 3 else 0) }
+        LaunchedEffect(gift.id, isHighValue, isPublic) {
             while (safetyCountdown > 0) {
                 delay(1_000)
                 safetyCountdown -= 1
@@ -294,10 +304,11 @@ fun GiftSelectionDialog(
                         (retrying || gift.priceDiamonds <= billingCapabilities.giftLimits.maxCoinsPerGift) &&
                         (!isHighValue || (safetyCountdown == 0 && highValueAcknowledged)),
                     onClick = {
+                        if (!dialogOwner.isCurrent() || confirmationGift?.id != gift.id) return@Button
                         if (balance < gift.priceDiamonds && !retrying) {
                             onRecharge((gift.priceDiamonds - balance).coerceAtLeast(1))
                         } else {
-                            viewModel.sendGift(receiverId, liveStreamId, gift, isPublic)
+                            viewModel.sendGift(dialogOwner, receiverId, liveStreamId, gift, isPublic)
                         }
                     }
                 ) {

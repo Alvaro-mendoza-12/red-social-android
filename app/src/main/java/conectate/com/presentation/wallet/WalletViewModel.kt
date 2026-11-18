@@ -16,6 +16,12 @@ import java.util.UUID
 import java.time.Instant
 import javax.inject.Inject
 import conectate.com.data.supabase.AuthSessionLease
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,6 +92,10 @@ class WalletViewModel @Inject constructor(
     val historyLoadingMore: StateFlow<Boolean> = _historyLoadingMore.asStateFlow()
 
     private var payoutOwner = creatorPayoutRepository.captureSession()
+    private val mutableGiftSession = MutableStateFlow(payoutOwner)
+    internal val giftSession = mutableGiftSession.asStateFlow()
+    private class GiftSend(val owner: AuthSessionLease, val checkingPrevious: Boolean) { var job: Job? = null }
+    private var activeGift: GiftSend? = null
     private val payoutOperations = CreatorPayoutOperations(viewModelScope,
         creatorPayoutRepository::captureSession,
         { _payoutLoading.value = it },
@@ -96,8 +106,10 @@ class WalletViewModel @Inject constructor(
         refreshEarnings()
         refreshPayouts()
         viewModelScope.launch {
-            creatorPayoutRepository.observeSessionVisits().collect { current ->
+            creatorPayoutRepository.observeSessionVisits().collect {
+                val current = creatorPayoutRepository.captureSession()
                 if (!payoutOwner.sameVisit(current)) {
+                    resetGiftSession(current)
                     payoutOperations.cancel()
                     payoutOwner = current
                     _payoutSummary.value = null
@@ -132,68 +144,111 @@ class WalletViewModel @Inject constructor(
         }
     }
 
-    fun sendGift(
-        receiverId: String,
-        liveStreamId: String,
-        gift: VirtualGift,
-        isPublic: Boolean
-    ) {
+    fun sendGift(receiverId: String, liveStreamId: String, gift: VirtualGift, isPublic: Boolean) =
+        sendGift(walletRepository.purchaseSession(), receiverId, liveStreamId, gift, isPublic)
+
+    internal fun sendGift(session: AuthSessionLease, receiverId: String, liveStreamId: String, gift: VirtualGift, isPublic: Boolean) {
+        if (!session.isCurrent() || activeGift?.owner?.isCurrent() == true) return
+        resetGiftSession(session)
         val limits = _billingCapabilities.value.giftLimits
         val pending = hasPendingGift(receiverId, liveStreamId, gift.id, isPublic)
         if (gift.priceDiamonds > limits.maxCoinsPerGift && !pending) {
-            _error.value = "Este regalo supera el límite permitido por el servidor."
+            walletRepository.publishPurchaseResult(session) { _error.value = "Este regalo supera el límite permitido por el servidor." }
             return
         }
         if (coinBalance.value < gift.priceDiamonds && !pending) {
-            _error.value = "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo."
+            walletRepository.publishPurchaseResult(session) { _error.value = "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo." }
             return
         }
+        cancelGift()
+        val operation = GiftSend(session, pending)
+        activeGift = operation
+        _sendingGiftId.value = gift.id
+        walletRepository.publishPurchaseResult(session) { _error.value = null; _lastReceipt.value = null }
         val idempotencyKey = UUID.randomUUID().toString()
-        if (!_sendingGiftId.compareAndSet(null, gift.id)) return
-        viewModelScope.launch(Dispatchers.IO) {
+        operation.job = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
-            _error.value = null
-            walletRepository.sendGift(
-                receiverId = receiverId,
-                giftId = gift.id,
-                liveStreamId = liveStreamId,
-                isPublic = isPublic,
-                idempotencyKey = idempotencyKey
-            ).onSuccess { receipt ->
-                if (walletRepository.currentAccountId() == receipt.senderId) _lastReceipt.value = receipt
-            }.onFailure { failure ->
-                val rawMessage = failure.message.orEmpty()
-                _error.value = when {
-                    rawMessage.contains("WALLET_DEBT_OUTSTANDING", ignoreCase = true) ->
-                        "Tu cuenta tiene monedas pendientes por un reembolso. La próxima compra verificable pagará primero esa deuda."
-                    rawMessage.contains("INSUFFICIENT_BALANCE", ignoreCase = true) ->
-                        "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo."
-                    rawMessage.contains("LIVE_GIFTS_DISABLED", ignoreCase = true) ->
-                        "El creador desactivó los regalos para este directo. No se descontaron monedas."
-                    rawMessage.contains("GIFTS_DISABLED", ignoreCase = true) ->
-                        "Los regalos están temporalmente desactivados. No se descontaron monedas."
-                    rawMessage.contains("LIVE_NOT_ACTIVE", ignoreCase = true) ->
-                        "Este directo ya terminó o no está activo. No se descontaron monedas."
-                    rawMessage.contains("LIVE_RECEIVER_MISMATCH", ignoreCase = true) ->
-                        "El regalo no corresponde al creador de este directo."
-                    rawMessage.contains("SELF_GIFT_NOT_ALLOWED", ignoreCase = true) ->
-                        "No puedes enviarte regalos a ti mismo."
-                    rawMessage.contains("GIFT_VALUE_LIMIT", ignoreCase = true) ->
-                        "Este regalo supera el límite configurado para la cuenta."
-                    rawMessage.contains("GIFT_DAILY_LIMIT", ignoreCase = true) ->
-                        "Alcanzaste el límite diario de regalos. No se descontaron monedas."
-                    rawMessage.contains("RATE_LIMITED", ignoreCase = true) ->
-                        "Estás enviando regalos demasiado rápido. Espera un momento y vuelve a intentarlo."
-                    rawMessage.contains("GIFT_NOT_FOUND", ignoreCase = true) ->
-                        "El catálogo cambió. Actualízalo y vuelve a seleccionar el regalo."
-                    rawMessage.contains("DATABASE_ERROR", ignoreCase = true) ->
-                        "No se pudo confirmar el regalo. Reintenta el mismo regalo para comprobar el envío sin duplicarlo."
-                    else -> "No se pudo confirmar la respuesta. Reintenta el mismo regalo; se comprobará el envío anterior sin duplicar el cargo."
+                withTimeout(45_000) {
+                    session.requireCurrent()
+                    val result = walletRepository.sendGift(session, receiverId, gift.id, liveStreamId, isPublic, idempotencyKey)
+                    currentCoroutineContext().ensureActive()
+                    session.requireCurrent()
+                    (result.exceptionOrNull() as? CancellationException)?.let { throw it }
+                    publishGift(operation) {
+                        result.onSuccess { _lastReceipt.value = it }
+                            .onFailure { _error.value = giftErrorMessage(it, operation.checkingPrevious) }
+                    }
                 }
-            }
+            } catch (timeout: TimeoutCancellationException) {
+                currentCoroutineContext().ensureActive()
+                publishGift(operation) { _error.value = giftErrorMessage(timeout, operation.checkingPrevious) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                publishGift(operation) { _error.value = giftErrorMessage(failure, operation.checkingPrevious) }
             } finally {
-                _sendingGiftId.value = null
+                finishGift(operation)
             }
+        }
+        operation.job!!.invokeOnCompletion { finishGift(operation) }
+        if (activeGift === operation) operation.job!!.start() else operation.job!!.cancel()
+    }
+
+    private fun publishGift(operation: GiftSend, mutation: () -> Unit) {
+        if (activeGift === operation) walletRepository.publishPurchaseResult(operation.owner, mutation)
+    }
+
+    private fun finishGift(operation: GiftSend) {
+        if (activeGift === operation) {
+            activeGift = null
+            _sendingGiftId.value = null
+        }
+    }
+
+    private fun cancelGift() {
+        val previous = activeGift
+        activeGift = null
+        previous?.job?.cancel()
+        _sendingGiftId.value = null
+    }
+
+    private fun resetGiftSession(session: AuthSessionLease) {
+        if (mutableGiftSession.value.sameVisit(session)) return
+        cancelGift()
+        mutableGiftSession.value = session
+        _lastReceipt.value = null
+        _error.value = null
+    }
+
+    private fun giftErrorMessage(failure: Throwable, checkingPrevious: Boolean): String {
+        if (checkingPrevious) return "El envío anterior sigue sin confirmar. Conservamos su clave: revisa el historial o vuelve a comprobarlo sin duplicar el cargo."
+        val rawMessage = failure.message.orEmpty()
+        return when {
+            rawMessage.contains("WALLET_DEBT_OUTSTANDING", ignoreCase = true) ->
+                "Tu cuenta tiene monedas pendientes por un reembolso. La próxima compra verificable pagará primero esa deuda."
+            rawMessage.contains("INSUFFICIENT_BALANCE", ignoreCase = true) ->
+                "Saldo insuficiente. Recarga monedas y vuelve a confirmar el regalo."
+            rawMessage.contains("LIVE_GIFTS_DISABLED", ignoreCase = true) ->
+                "El creador desactivó los regalos para este directo. No se descontaron monedas."
+            rawMessage.contains("GIFTS_DISABLED", ignoreCase = true) ->
+                "Los regalos están temporalmente desactivados. No se descontaron monedas."
+            rawMessage.contains("LIVE_NOT_ACTIVE", ignoreCase = true) ->
+                "Este directo ya terminó o no está activo. No se descontaron monedas."
+            rawMessage.contains("LIVE_RECEIVER_MISMATCH", ignoreCase = true) ->
+                "El regalo no corresponde al creador de este directo."
+            rawMessage.contains("SELF_GIFT_NOT_ALLOWED", ignoreCase = true) ->
+                "No puedes enviarte regalos a ti mismo."
+            rawMessage.contains("GIFT_VALUE_LIMIT", ignoreCase = true) ->
+                "Este regalo supera el límite configurado para la cuenta."
+            rawMessage.contains("GIFT_DAILY_LIMIT", ignoreCase = true) ->
+                "Alcanzaste el límite diario de regalos. No se descontaron monedas."
+            rawMessage.contains("RATE_LIMITED", ignoreCase = true) ->
+                "Estás enviando regalos demasiado rápido. Espera un momento y vuelve a intentarlo."
+            rawMessage.contains("GIFT_NOT_FOUND", ignoreCase = true) ->
+                "El catálogo cambió. Actualízalo y vuelve a seleccionar el regalo."
+            rawMessage.contains("DATABASE_ERROR", ignoreCase = true) ->
+                "No se pudo confirmar el regalo. Reintenta el mismo regalo para comprobar el envío sin duplicarlo."
+            else -> "No se pudo confirmar la respuesta. Reintenta el mismo regalo; se comprobará el envío anterior sin duplicar el cargo."
         }
     }
 
