@@ -19,6 +19,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import java.math.BigDecimal
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -61,19 +63,28 @@ class CreatorProgramRepository @Inject constructor(
         val status: String = "pending"
     )
 
-    suspend fun loadDashboard(): Result<CreatorProgramDashboard> = withContext(Dispatchers.IO) {
-        runCatching {
-            val userId = authService.getCurrentUserId() ?: throw IllegalStateException("No user logged in")
-            val token = authService.getAccessToken() ?: throw IllegalStateException("No token")
-
-            val earnings = fetchEarnings(token, userId)
-            CreatorProgramDashboard(
-                application = fetchApplication(token, userId),
-                payoutAccount = fetchPayoutAccount(token, userId),
-                earnings = earnings.summary,
-                activity = earnings.activity,
-                nextPayoutAt = earnings.nextPayoutAt
-            )
+    suspend fun loadDashboard(): Result<CreatorProgramDashboard> {
+        val session = authService.captureAccountLease()
+        return accountScopedCall(session, { userId ->
+            authService.ensureValidAccessToken().getOrThrow()
+            session.requireCurrent()
+            authService.getAccessTokenForAccountAwait(userId)
+        }) { userId, token ->
+            withContext(Dispatchers.IO) {
+                coroutineScope {
+                    val earnings = async { session.requireCurrent(); fetchEarnings(token, userId) }
+                    val application = async { session.requireCurrent(); fetchApplication(token, userId) }
+                    val payout = async { session.requireCurrent(); fetchPayoutAccount(token, userId) }
+                    val confirmedEarnings = earnings.await()
+                    Result.success(CreatorProgramDashboard(
+                        application = application.await(),
+                        payoutAccount = payout.await(),
+                        earnings = confirmedEarnings.summary,
+                        activity = confirmedEarnings.activity,
+                        nextPayoutAt = confirmedEarnings.nextPayoutAt
+                    ))
+                }
+            }
         }
     }
 
@@ -208,7 +219,7 @@ class CreatorProgramRepository @Inject constructor(
             parameter("select", "*")
             parameter("limit", "1")
         }
-        if (!response.status.isSuccess()) return null
+        check(response.status.isSuccess()) { "El servidor no confirmó esta sección (${response.status.value})." }
         return decodeObjects(response.bodyAsText()).firstOrNull()?.toApplication()
     }
 
@@ -219,7 +230,7 @@ class CreatorProgramRepository @Inject constructor(
             parameter("select", "*")
             parameter("limit", "1")
         }
-        if (!response.status.isSuccess()) return null
+        check(response.status.isSuccess()) { "El servidor no confirmó esta sección (${response.status.value})." }
         return decodeObjects(response.bodyAsText()).firstOrNull()?.toPayoutAccount()
     }
 
@@ -237,7 +248,7 @@ class CreatorProgramRepository @Inject constructor(
             parameter("order", "created_at.desc")
             parameter("limit", "100")
         }
-        if (!response.status.isSuccess()) return EarningsSnapshot()
+        check(response.status.isSuccess()) { "El servidor no confirmó las ganancias (${response.status.value})." }
 
         var pending = BigDecimal.ZERO
         var available = BigDecimal.ZERO
@@ -326,8 +337,9 @@ class CreatorProgramRepository @Inject constructor(
     }
 
     private fun decodeObjects(body: String): List<JsonObject> {
-        if (body.isBlank()) return emptyList()
-        return supabaseConfig.json.decodeFromString<JsonArray>(body).mapNotNull { it as? JsonObject }
+        return supabaseConfig.json.decodeFromString<JsonArray>(body).map {
+            it as? JsonObject ?: error("El servidor devolvió una sección inválida.")
+        }
     }
 
     private fun JsonObject.toApplication(): CreatorProgramApplication {

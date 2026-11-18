@@ -94,6 +94,12 @@ class WalletViewModel @Inject constructor(
     private var payoutOwner = creatorPayoutRepository.captureSession()
     private val mutableGiftSession = MutableStateFlow(payoutOwner)
     internal val giftSession = mutableGiftSession.asStateFlow()
+    internal val accountSession get() = giftSession
+    private var earningsOwner = payoutOwner
+    private var earningsJob: Job? = null
+    private var earningsGeneration = 0L
+    private val mutableEarningsLoaded = MutableStateFlow(false)
+    val earningsLoaded = mutableEarningsLoaded.asStateFlow()
     private class GiftSend(val owner: AuthSessionLease, val checkingPrevious: Boolean) { var job: Job? = null }
     private var activeGift: GiftSend? = null
     private val payoutOperations = CreatorPayoutOperations(viewModelScope,
@@ -110,11 +116,15 @@ class WalletViewModel @Inject constructor(
                 val current = creatorPayoutRepository.captureSession()
                 if (!payoutOwner.sameVisit(current)) {
                     resetGiftSession(current)
-                    payoutOperations.cancel()
+                    resetEarningsSession(current)
+                    payoutOperations.onSessionChanged(current)
                     payoutOwner = current
                     _payoutSummary.value = null
                     _payoutMessage.value = null
-                    if (current.isCurrent()) refreshPayouts()
+                    if (current.isCurrent()) {
+                        refreshPayouts()
+                        refreshEarnings()
+                    }
                 }
             }
         }
@@ -297,18 +307,67 @@ class WalletViewModel @Inject constructor(
     }
 
     fun refreshEarnings() {
+        val session = creatorPayoutRepository.captureSession()
+        resetEarningsSession(session)
+        if (!session.isCurrent()) {
+            _earningsError.value = "Inicia sesión para consultar tus ganancias."
+            return
+        }
         if (_earningsLoading.value) return
-        viewModelScope.launch(Dispatchers.IO) {
-            _earningsLoading.value = true
-            _earningsError.value = null
-            creatorProgramRepository.loadDashboard()
-                .onSuccess { _creatorDashboard.value = it }
-                .onFailure { failure ->
-                    _earningsError.value = failure.message
-                        ?: "No se pudo actualizar el estado de ganancias."
+        val request = ++earningsGeneration
+        _earningsLoading.value = true
+        _earningsError.value = null
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                withTimeout(15_000) {
+                    session.requireCurrent()
+                    val result = creatorProgramRepository.loadDashboard()
+                    currentCoroutineContext().ensureActive()
+                    session.requireCurrent()
+                    (result.exceptionOrNull() as? CancellationException)?.let { throw it }
+                    publishEarnings(session, request) {
+                        result.onSuccess { _creatorDashboard.value = it; mutableEarningsLoaded.value = true }
+                            .onFailure { _earningsError.value = "No se pudieron actualizar tus ganancias. Comprueba la conexión y reintenta." }
+                    }
                 }
+            } catch (timeout: TimeoutCancellationException) {
+                currentCoroutineContext().ensureActive()
+                publishEarnings(session, request) { _earningsError.value = "La consulta tardó demasiado. Comprueba la conexión y reintenta." }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                publishEarnings(session, request) { _earningsError.value = "No se pudieron actualizar tus ganancias. Reintenta." }
+            } finally {
+                finishEarnings(request)
+            }
+        }
+        earningsJob = job
+        job.invokeOnCompletion { finishEarnings(request) }
+        if (earningsGeneration == request) job.start() else job.cancel()
+    }
+
+    private fun publishEarnings(session: AuthSessionLease, request: Long, mutation: () -> Unit) {
+        if (request == earningsGeneration) creatorPayoutRepository.publish(session, mutation)
+    }
+
+    private fun finishEarnings(request: Long) {
+        if (request == earningsGeneration) {
+            earningsJob = null
             _earningsLoading.value = false
         }
+    }
+
+    private fun resetEarningsSession(session: AuthSessionLease) {
+        if (earningsOwner.sameVisit(session)) return
+        earningsOwner = session
+        earningsGeneration++
+        val previous = earningsJob
+        earningsJob = null
+        previous?.cancel()
+        _earningsLoading.value = false
+        _earningsError.value = null
+        _creatorDashboard.value = CreatorProgramDashboard()
+        mutableEarningsLoaded.value = false
     }
 
     private fun publishPayout(session: AuthSessionLease, mutation: () -> Unit) {
@@ -326,7 +385,10 @@ class WalletViewModel @Inject constructor(
 
     fun refreshPayouts() = payoutOperations.run { session -> loadPayoutSummary(session) }
 
-    fun configurePayoutAccount(email: String, currency: String) = payoutOperations.run { session ->
+    fun configurePayoutAccount(email: String, currency: String) =
+        configurePayoutAccount(creatorPayoutRepository.captureSession(), email, currency)
+
+    internal fun configurePayoutAccount(owner: AuthSessionLease, email: String, currency: String) = payoutOperations.run(owner) { session ->
         creatorPayoutRepository.updateAccount(session, email, currency)
             .onSuccess {
                 publishPayout(session) { _payoutMessage.value = "Cuenta PayPal registrada. Un administrador debe verificarla antes del primer retiro." }
@@ -335,7 +397,9 @@ class WalletViewModel @Inject constructor(
             .onFailure { error -> publishPayout(session) { _payoutMessage.value = payoutErrorMessage(error) } }
     }
 
-    fun requestCreatorPayout(amountMinor: Long) = payoutOperations.run { session ->
+    fun requestCreatorPayout(amountMinor: Long) = requestCreatorPayout(creatorPayoutRepository.captureSession(), amountMinor)
+
+    internal fun requestCreatorPayout(owner: AuthSessionLease, amountMinor: Long) = payoutOperations.run(owner) { session ->
         creatorPayoutRepository.request(session, amountMinor)
             .onSuccess { response ->
                 publishPayout(session) {
@@ -348,7 +412,9 @@ class WalletViewModel @Inject constructor(
             .onFailure { error -> publishPayout(session) { _payoutMessage.value = payoutErrorMessage(error) } }
     }
 
-    fun cancelCreatorPayout(requestId: String) = payoutOperations.run { session ->
+    fun cancelCreatorPayout(requestId: String) = cancelCreatorPayout(creatorPayoutRepository.captureSession(), requestId)
+
+    internal fun cancelCreatorPayout(owner: AuthSessionLease, requestId: String) = payoutOperations.run(owner) { session ->
         creatorPayoutRepository.cancel(session, requestId)
             .onSuccess {
                 publishPayout(session) { _payoutMessage.value = "Solicitud cancelada; el saldo reservado volvió a estar disponible." }
