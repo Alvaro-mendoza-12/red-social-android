@@ -33,7 +33,8 @@ data class VoiceRoom(
     @SerialName("is_playing") val isPlaying: Boolean = false,
     @SerialName("current_position") val currentPosition: Long = 0L,
     @Transient val created_at: String = "",  // Database generates this
-    @Transient val updated_at: String = ""   // Database generates this
+    @Transient val updated_at: String = "",   // Database generates this
+    @SerialName("group_id") val groupId: String? = null
 )
 
 @Serializable

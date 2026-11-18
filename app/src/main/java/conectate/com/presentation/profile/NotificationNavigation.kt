@@ -51,7 +51,7 @@ internal fun notificationDestination(notice: Notification): String? {
         "view_moment", "new_moment", "like_moment" -> moment?.let(Screen.MomentViewer::createRoute)
         "live_started", "new_live" -> (extra("live_id") ?: target)?.let(Screen.LiveViewer::createRoute)
             ?: Screen.LiveDiscovery.route
-        "voice_invite", "voice_return" -> (extra("room_id") ?: target)?.let(Screen.RoomDetail::createRoute)
+        "voice_invite", "voice_return", "group_voice_room_invite" -> (extra("room_id") ?: target)?.let(Screen.RoomDetail::createRoute)
         "admin_access_audit" -> (extra("target_user_id") ?: target)?.let(Screen.UserProfile::createRoute)
         "admin_access_changed" -> Screen.AdminPanel.route
         "challenge_invite" -> Screen.Home.roundsRoute()

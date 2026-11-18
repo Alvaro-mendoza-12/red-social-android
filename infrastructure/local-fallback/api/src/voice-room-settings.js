@@ -7,6 +7,7 @@ async function updateVoiceRoomSettings(pool, room, actorIds, input, hashPassword
   const ids = [...actorIds].map(value => String(value).trim().toLowerCase()).filter(Boolean)
   const owner = String(room.creator_id || room.owner_id || '').trim().toLowerCase()
   if (!owner || !ids.includes(owner)) throw problem('VOICE_ROOM_UPDATE_DENIED', 403)
+  if (room.group_id || room.groupId) throw problem('VOICE_ROOM_GROUP_MANAGED', 409)
   if (room.community_id || room.communityId || room.community_channel_id || room.communityChannelId) throw problem('VOICE_ROOM_COMMUNITY_MANAGED', 409)
   const name = typeof input.name === 'string' ? input.name.trim() : ''
   if (!name || name.length > 120) throw problem('VOICE_ROOM_NAME_INVALID')
@@ -44,6 +45,7 @@ async function deleteVoiceRoomRecord(pool, room, actorIds) {
   const ids = [...actorIds].map(id => String(id).trim().toLowerCase()).filter(Boolean)
   const owner = String(room.creator_id || room.owner_id || '').trim().toLowerCase()
   if (!owner || !ids.includes(owner)) throw problem('VOICE_ROOM_DELETE_DENIED', 403)
+  if (room.group_id || room.groupId) throw problem('VOICE_ROOM_GROUP_MANAGED', 409)
   if (room.community_id || room.communityId || room.community_channel_id || room.communityChannelId) throw problem('VOICE_ROOM_COMMUNITY_MANAGED', 409)
   const result = await pool.query(`INSERT INTO fallback_voice_rooms(id,name,creator_id,is_active,legacy_readable_id)
     VALUES ($1::uuid,$2,$3,FALSE,$4)

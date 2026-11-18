@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-17T15:37:53.196974+00:00",
-  "baseCommit": "77b67fe89b5a5ee5d2889418340620a0c6ef4ecd",
+  "generatedAtUtc": "2026-11-18T03:20:32.241613+00:00",
+  "baseCommit": "3028fc56bfc5bec5daf8214b85ed9043fdf96270",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,35 +10,35 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3593,
-    "partial": 256,
-    "code-read": 781
+    "pending": 3589,
+    "partial": 264,
+    "code-read": 796
   },
   "countsByPhase": {
     "android": {
-      "pending": 1446,
-      "partial": 111,
-      "code-read": 545
+      "pending": 1444,
+      "partial": 117,
+      "code-read": 548
     },
     "documentation": {
-      "pending": 657,
+      "pending": 658,
       "code-read": 61,
       "partial": 20
     },
     "server": {
-      "pending": 846,
-      "code-read": 66,
-      "partial": 34
+      "pending": 844,
+      "code-read": 71,
+      "partial": 35
     },
     "tooling-and-other": {
       "pending": 150,
       "partial": 12,
-      "code-read": 16
+      "code-read": 17
     },
     "web": {
-      "partial": 79,
-      "pending": 494,
-      "code-read": 93
+      "partial": 80,
+      "pending": 493,
+      "code-read": 99
     }
   },
   "files": [
@@ -915,6 +915,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "NoWing-web/src/__tests__/components/GroupVoiceRoomDialog.test.tsx",
+      "phase": "web",
+      "gitBlobId": "831ac7df5433e269c2e14a5361eab9734f47c9fc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/components/LegacyCallBroadcast.test.tsx",
       "phase": "web",
       "gitBlobId": "3dc02be05b1621f05411988c0fbd494ccc48f55d",
@@ -1781,6 +1789,14 @@
       "phase": "web",
       "gitBlobId": "73dafeb076b11b5390f1c54afb15fbcef723e90c",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/core/voiceActivity.test.ts",
+      "phase": "web",
+      "gitBlobId": "4a8ace80d871b5d8ba04bbc000304d8e3400539d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/voiceRoomLinks.test.ts",
@@ -3709,6 +3725,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/features/messages/GroupVoiceRoomDialog.tsx",
+      "phase": "web",
+      "gitBlobId": "95f2765ee62235e8919d5fcb4bb6b5d45044d2a6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/features/messages/MessagesPage.tsx",
       "phase": "web",
       "gitBlobId": "6c399ee1503778ecdd9687f01f298d444d95026d",
@@ -3717,9 +3741,9 @@
     {
       "file": "NoWing-web/src/features/messages/RoomChatPage.tsx",
       "phase": "web",
-      "gitBlobId": "d0573d8611f61f41bbfdc6a45dbdd0da7535399b",
+      "gitBlobId": "23e104b3cd137d7a327b71fbe816553a1caaf6af",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3735,6 +3759,22 @@
       "phase": "web",
       "gitBlobId": "f8e77e70c845f839bad7edd4d91d4d34703844de",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/features/messages/groupVoiceDraft.ts",
+      "phase": "web",
+      "gitBlobId": "a23cbe139b385a43a4a3f93d23a1b65d60725332",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/messages/groupVoiceRoom.css",
+      "phase": "web",
+      "gitBlobId": "a3b113654e4d9f1f7dffd229fd571f5d79f4028e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/messages/types.ts",
@@ -3831,8 +3871,10 @@
     {
       "file": "NoWing-web/src/features/notifications/NotificationsPage.tsx",
       "phase": "web",
-      "gitBlobId": "586f87b08c903861a73d338bbf70ec0322b802aa",
-      "reviewStatus": "pending"
+      "gitBlobId": "f1502deab98974cac835496844dfbcb985ac6d32",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/novvin/NovvinPage.tsx",
@@ -4055,9 +4097,9 @@
     {
       "file": "NoWing-web/src/features/voice/VoiceRoomPage.tsx",
       "phase": "web",
-      "gitBlobId": "bc3ca98fc69d33837c1c11736b75ed9148db7057",
+      "gitBlobId": "86d4c21bcdd8f0afcb57206098fbeb0f75330836",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4092,6 +4134,14 @@
       "gitBlobId": "087440d56991ca2ab4fef3f82f098e23c3bfb6d4",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/features/voice/voiceActivity.ts",
+      "phase": "web",
+      "gitBlobId": "39c52f88616d08f48da531f235664189b32a8fe2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -6875,6 +6925,22 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/data/groupvoice/GroupVoiceApi.kt",
+      "phase": "android",
+      "gitBlobId": "911bb8e16db6231580e48ed1668d4e66cd95f52a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/groupvoice/GroupVoiceIntentStore.kt",
+      "phase": "android",
+      "gitBlobId": "086ddacbae64e63b7cd01d53e0b434fabff19042",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/livekit/ExistingLiveVideoCapturer.kt",
       "phase": "android",
       "gitBlobId": "4c7dce56b1d6b75a13e95f40f73032de1918b89a",
@@ -7877,8 +7943,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/model/VoiceRoom.kt",
       "phase": "android",
-      "gitBlobId": "7789519b97b75e46c8d4c6aa68cc4ce854333635",
-      "reviewStatus": "pending"
+      "gitBlobId": "c0514e83591086c53f62f4d2672ca11716d211c9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/model/WalletModels.kt",
@@ -8234,6 +8302,14 @@
       "gitBlobId": "7a508055575fb1a73381095ab82d9cfd2b48fc33",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/repository/GroupVoiceRepository.kt",
+      "phase": "android",
+      "gitBlobId": "bf93cc31ef67536b79c47431d26073cbb660e44f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8607,9 +8683,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt",
       "phase": "android",
-      "gitBlobId": "90e929f50c68f011ea8d9bff56e4d288048343e2",
+      "gitBlobId": "a4bd309210c6a0b0969dd145c4c210d351ccabe6",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9367,8 +9443,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/webrtc/WebRTCManager.kt",
       "phase": "android",
-      "gitBlobId": "a025916b0ad7360185757e01f68ded64e076828f",
-      "reviewStatus": "pending"
+      "gitBlobId": "6dafbc9dc6a884759e7beace70b2837cebdf682a",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/webrtc/WebRtcNegotiationPolicy.kt",
@@ -11189,9 +11267,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "af0730059669f9e5c0642848edc99cb6947745ca",
+      "gitBlobId": "f0847d7ba9c5dd97e6f083c9a0aa6d35ce77fa11",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11227,6 +11305,22 @@
       "phase": "android",
       "gitBlobId": "f5915e19919b2664ddfe38e1231563a353c00c44",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/messages/GroupVoiceRoomDialog.kt",
+      "phase": "android",
+      "gitBlobId": "45fc3d8a23eb764b5bbc45556f8301f1b00fc150",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/messages/GroupVoiceRoomViewModel.kt",
+      "phase": "android",
+      "gitBlobId": "93be126614595187a9b47b2421bbbcbfbc251301",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/GroupsTab.kt",
@@ -11777,9 +11871,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/IntentRouter.kt",
       "phase": "android",
-      "gitBlobId": "185917120e0feae6a34b2b5f3d3aedbd853614c1",
+      "gitBlobId": "54ba5ba1394b970d3aee449625061bcc66f378dc",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12023,9 +12117,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/NotificationNavigation.kt",
       "phase": "android",
-      "gitBlobId": "232962ab6911d683ec6a0980a68d3a659e8b1596",
+      "gitBlobId": "b55c26bfeded04eb4c67ea52cf2cd9d94076c0a8",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12047,9 +12141,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/NotificationScreen.kt",
       "phase": "android",
-      "gitBlobId": "02083d29bad14ee9502390cc138017f9f95ccfee",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "311ec0fbdd5cc6d0b36428de6cadb5b546243c04",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12063,9 +12157,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/NotificationViewModel.kt",
       "phase": "android",
-      "gitBlobId": "ff69c5960d8f8c0e5e33086134f8d2ad9bb65b46",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "95c8e3ed45fc93c7a0acfabb402e6ca6c9b5cdc2",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13309,9 +13403,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveViewModel.kt",
       "phase": "android",
-      "gitBlobId": "e058ff598137313e9b2da9ec310f551a36d2ac7a",
+      "gitBlobId": "4598f604b78e837a49ea7868b475acff8cb2af96",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13523,9 +13617,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/ActivityNotificationPolicy.kt",
       "phase": "android",
-      "gitBlobId": "a5882fcc1a594b5c7084d4d52452d70036700fc9",
+      "gitBlobId": "09a1b3310fa8c24d40f1afc1848ab8a77a306cec",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13721,9 +13815,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/LocalNotificationHelper.kt",
       "phase": "android",
-      "gitBlobId": "e30a52f5706339e9708739f2868c99e0ea480d34",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "c2174632fbbd47462f2ab94ef36b48420a322ed5",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15801,6 +15895,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/GroupVoiceRepositoryTest.kt",
+      "phase": "android",
+      "gitBlobId": "2797635fc37d6febc3d523acc09c647fdb87f740",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/InboxPreferenceChangesTest.kt",
       "phase": "android",
       "gitBlobId": "38a8e6e947be18da7bf0eb47b37ded302f1b011d",
@@ -17091,6 +17193,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/messages/GroupVoiceRoomViewModelTest.kt",
+      "phase": "android",
+      "gitBlobId": "ee7a2e4148ce60f45380eed35c3235c0479961ad",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/messages/InboxFilterCountsTest.kt",
       "phase": "android",
       "gitBlobId": "ef2c84fb3cefc082b18ff9e34865b547f419b37a",
@@ -17509,9 +17619,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/NotificationNavigationTest.kt",
       "phase": "android",
-      "gitBlobId": "a9c3b4c47a85350bb146197ddb3e903f5fb3f1a0",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "f51ff11b78c96b31a97e4311f83eda61822525db",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18213,9 +18323,9 @@
     {
       "file": "app/src/test/java/conectate/com/util/ActivityNotificationDeliveryTest.kt",
       "phase": "android",
-      "gitBlobId": "47748b0c1dd8d1237e9688d59d2ef235e937a267",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "7c58f95bd63a9bd8f9e50c85c99f4c9be982373b",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21531,6 +21641,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "phase": "documentation",
+      "gitBlobId": "090fe3b1e541ee5930fe7dd580d70c7e18f8ccdf",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/19-visibilidad-bandeja-2026-09-10.md",
       "phase": "documentation",
       "gitBlobId": "8c2805e712eab25789965c9bd47d281d008b848a",
@@ -23541,6 +23657,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/scripts/verify-group-voice-local.js",
+      "phase": "server",
+      "gitBlobId": "9323c11468785805efc17badd55853bcd83a54ec",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/scripts/verify-live-audio-e2e.js",
       "phase": "server",
       "gitBlobId": "1cb2fbd5872b20df6e801bdc56bf9572cac91158",
@@ -23987,8 +24111,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/collection-membership-policy.js",
       "phase": "server",
-      "gitBlobId": "a2a4837080dae8075c343f8074fe4068e23ae8a9",
-      "reviewStatus": "pending"
+      "gitBlobId": "d8b467c31510308e7c38c4c9b0979d1c17c236e7",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/collection-mentions.js",
@@ -24079,9 +24205,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "ca184b8d27d793b80fc87467afebf87c6b1973af",
+      "gitBlobId": "bb63f527b4e54d94b7273eccd949958c1ddc19e1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24161,6 +24287,22 @@
       "phase": "server",
       "gitBlobId": "75b6c2134f6db80f9a074f0aa0e3340d57aaf0ac",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/group-voice-policy.js",
+      "phase": "server",
+      "gitBlobId": "8b591449d16aac8dd3e9964971082ebd3ba63c2d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/group-voice-rooms.js",
+      "phase": "server",
+      "gitBlobId": "b8926135f48fa6d8a61e8b67a982b024d624815b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/guest-mode-routes.js",
@@ -24417,9 +24559,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/notification-event-policy.js",
       "phase": "server",
-      "gitBlobId": "b5120f9de864d9c2464af63be9b386aee5e81533",
+      "gitBlobId": "b1d76ee094796fb159ec416b55291119b040c355",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24503,9 +24645,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/postgrest-compat-routes.js",
       "phase": "server",
-      "gitBlobId": "59a910f3cce84fe500b9dce92a5000204d0b1ef2",
+      "gitBlobId": "99449b9431cbc27b1766cbfe9f46248ffc51243d",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24971,8 +25113,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/voice-room-settings.js",
       "phase": "server",
-      "gitBlobId": "4a1ff65bc11b436efb3712785d0a320a5c4273c9",
-      "reviewStatus": "pending"
+      "gitBlobId": "d59fb8a5ff3c400f10f15b67b6d9a365ef1947d9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/web-session-events.js",
@@ -25455,6 +25599,14 @@
       "phase": "server",
       "gitBlobId": "1b008872ba1ddf0dbe5d381a3628a126a837fc49",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/group-voice-policy.test.js",
+      "phase": "server",
+      "gitBlobId": "30efd457a7598d8a722d13708efb1a395fc27c6b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/guest-mode-routes.test.js",
@@ -27893,9 +28045,9 @@
     {
       "file": "signaling-server/index.js",
       "phase": "tooling-and-other",
-      "gitBlobId": "bf98afd0340906acbe9ca73f109c78ccb14a988d",
+      "gitBlobId": "2876c1ae2eb638c14ff63feff827513a2e653b1d",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -29642,6 +29794,14 @@
       "gitBlobId": "4daed0c58bb002cba61b2553b05ed589e46606e2",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "tools/deploy_group_voice.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "a9c1eed4bebbe088abed059c68a6bc5f8f5fac5d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AlternateEmail
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -456,6 +457,7 @@ private fun notificationEventStyle(type: String): Pair<ImageVector, Color> = whe
         Icons.Default.AlternateEmail to Color(0xFF1687F8)
     "follow", "friend_request", "friend_request_accepted" ->
         Icons.Default.PersonAdd to Color(0xFF18A66A)
+    "group_voice_room_invite" -> Icons.Default.Mic to Color(0xFF1687F8)
     "birthday" -> Icons.Default.Cake to Color(0xFFEC4899)
     "new_video", "share_video", "new_moment", "view_moment" ->
         Icons.Default.PlayCircle to Color(0xFF8B5CF6)

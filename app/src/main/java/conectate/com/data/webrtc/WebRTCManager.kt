@@ -65,7 +65,8 @@ class WebRTCManager(
     signalingEvents: SignalingEvents,
     private val accessTokenProvider: (() -> String?)? = null,
     private val failureReporter: ((metric: String, throwable: Throwable) -> Unit)? = null,
-    private val iceTransportPolicy: PeerConnection.IceTransportsType = PeerConnection.IceTransportsType.ALL
+    private val iceTransportPolicy: PeerConnection.IceTransportsType = PeerConnection.IceTransportsType.ALL,
+    initialAudioEnabled: Boolean = true,
 ) {
     private val cameraSwitchInProgress = AtomicBoolean(false)
 
@@ -221,7 +222,7 @@ class WebRTCManager(
     private val peerConnections = ConcurrentHashMap<String, PeerConnection>()
     private val mediaCallbackGeneration = java.util.concurrent.atomic.AtomicLong()
     private val deferredPeerDisposals = DeferredNativeDisposals<PeerConnection>()
-    @Volatile private var outgoingAudioEnabled = true
+    @Volatile private var outgoingAudioEnabled = initialAudioEnabled
     private val remoteUserIds = ConcurrentHashMap<String, String>()
     private val remoteAudioTracks = ConcurrentHashMap<String, AudioTrack>()
     private var remoteAudioPlaybackEnabled: Boolean = true
@@ -795,7 +796,7 @@ class WebRTCManager(
         }
         localAudioSource = f.createAudioSource(audioConstraints)
         localAudioTrack = f.createAudioTrack("ARDAMSa0", localAudioSource)
-        localAudioTrack?.setEnabled(true)
+        localAudioTrack?.setEnabled(outgoingAudioEnabled)
         Log.i("WebRTC", "Audio track created: ${localAudioTrack?.id()}, enabled=${localAudioTrack?.enabled()}")
     }
 

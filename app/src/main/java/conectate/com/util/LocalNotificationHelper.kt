@@ -140,7 +140,7 @@ class LocalNotificationHelper(private val context: Context) {
                 "like_video", "comment_video", "reply_video", "mention_video", "share_video", "admin_warning_video", "mention_video_description", "new_video" -> {
                     (resolvedVideoId ?: targetId).takeIf { it.isNotBlank() }?.let { putExtra("video_id", it) }
                 }
-                "voice_invite" -> {
+                "voice_invite", "group_voice_room_invite" -> {
                     putExtra("room_id", targetId)
                 }
                 "challenge_invite" -> {

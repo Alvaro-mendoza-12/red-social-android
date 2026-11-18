@@ -232,7 +232,7 @@ object IntentRouter {
                 }
             }
 
-            "voice_invite", "voice_return" -> {
+            "voice_invite", "voice_return", "group_voice_room_invite" -> {
                 val roomId = incomingIntent.getStringExtra("room_id")
                     ?: incomingIntent.getStringExtra("target_id")
                 if (!roomId.isNullOrBlank()) {

@@ -33,6 +33,26 @@ class ActivityNotificationDeliveryTest {
     private fun post(account: NotificationAccountTarget, body: String = "Aviso", type: String = "like_post") =
         helper.showSocialNotification(account, "Fixture", body, type, "fixture-target", notificationId = "fixture-record")
 
+    @Test fun groupVoiceInvitationIsADeduplicatedNormalAlertWithAVoluntaryRoomDestination() {
+        val account = owner()
+        try {
+            val first = requireNotNull(post(account, type = "group_voice_room_invite"))
+            val repeated = requireNotNull(post(account, type = "group_voice_room_invite"))
+            assertEquals(first.tag, repeated.tag)
+            drain() // The normal alert queue coalesces repeated publication before the OS sees it.
+            val alerts = manager.activeNotifications.filter { it.tag == repeated.tag }
+            assertEquals(1, alerts.size)
+            val notification = alerts.single().notification
+            assertNull(notification.fullScreenIntent)
+            assertNotEquals(android.app.Notification.CATEGORY_CALL, notification.category)
+            val intent = shadowOf(notification.contentIntent).savedIntent
+            assertEquals("group_voice_room_invite", intent.getStringExtra("type"))
+            assertEquals("fixture-target", intent.getStringExtra("room_id"))
+            assertTrue(TrustedNavigationIntents.isTrusted(context, intent))
+            assertFalse(isMessageDeliveryPush("group_voice_room_invite", "id", "actor", account.userId))
+        } finally { MessageNotificationFactory.cancelAccount(context, account.userId) }
+    }
+
     @Test fun disablingSocialAndLiveSwitchesAppliesAtTheCommonPublicationBoundary() {
         val account = owner()
         val preferences = AppSettingsPreferences(context)

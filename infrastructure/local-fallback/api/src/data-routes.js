@@ -5459,10 +5459,11 @@ async function localVoiceRooms(pool, limit = 1000) {
             password_hash,
             community_id,
             community_channel_id::text,
+            group_id,
             created_at,
             updated_at
          FROM fallback_voice_rooms
-         WHERE is_active = TRUE
+         WHERE is_active = TRUE AND group_id IS NULL
          ORDER BY updated_at DESC, created_at DESC
          LIMIT $1`,
         [safeLimit],
@@ -5491,6 +5492,7 @@ async function localVoiceRoomsByAliases(pool, roomAliases) {
         password_hash,
         community_id,
         community_channel_id::text,
+        group_id,
         created_at,
         updated_at
      FROM fallback_voice_rooms
@@ -5521,6 +5523,7 @@ async function voiceRoomRowsByAliases(pool, roomAliases) {
 }
 
 async function canAccessCommunityVoiceRoom(pool, user, room) {
+  if (!(await require('./group-voice-rooms').canAccessGroupVoiceRoom(pool, user, room))) return false
   const communityId = normalizeId(textOf(room, ['community_id', 'communityId'], ''))
   if (!communityId) return true
   const payload = await loadCollectionRoomPayload(pool, user, 'community', communityId)
@@ -5535,6 +5538,7 @@ async function canAccessCommunityVoiceRoom(pool, user, room) {
 
 async function canJoinVoiceRoom(pool, user, room, suppliedPassword = '', suppliedSocketId = '') {
   if (!(await canAccessCommunityVoiceRoom(pool, user, room))) return false
+  if (room.group_id || room.groupId) return true // Membership + invitation were checked above.
   const identity = userIdentity(user)
   if (rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)) return true
   if (boolOf(room, ['is_public', 'public'], true)) return true
@@ -5590,7 +5594,7 @@ function mapVoiceParticipant(row, profilesById) {
 }
 
 function isStandaloneVoiceRoom(row) {
-  return !['community_id', 'communityId', 'community_channel_id', 'communityChannelId']
+  return !['group_id', 'groupId', 'community_id', 'communityId', 'community_channel_id', 'communityChannelId']
     .some(field => String(row?.[field] || '').trim())
 }
 
@@ -6978,6 +6982,7 @@ async function ensureLocalDataTables(pool) {
   await ensureFollowState(pool)
   await require('./profile-music-routes').ensureProfileMusicTables(pool)
   await ensureCollectionMembershipTables(pool)
+  await require('./group-voice-rooms').ensureGroupVoiceTables(pool)
 }
 
 function registerDataRoutes(app, {
@@ -7024,6 +7029,15 @@ function registerDataRoutes(app, {
     dispatchNotification: notification => dispatchLocalNotification(pool, notification, notificationExtraData(notification)),
     onChanged: context => Promise.all(context.ownerIds.map(id => publishRealtimeEvent(`profile-music:${id}`,
       { event: 'profile_music_updated', profileId: id }))),
+  })
+  require('./group-voice-rooms').registerGroupVoiceRoutes(app, { pool, authRequired, getCurrentUser,
+    onChanged: clearVoiceCaches,
+    deliver: async notice => {
+      const extra = notificationExtraData(notice)
+      await publishRealtimeEvent(`user:${notice.recipient_id}`, { event: 'notification', notification: notice, extraData: extra })
+      const result = await require('./push-notifications').sendPushForNotification(pool, notice, extra)
+      return !result.disabled && !result.failed
+    },
   })
   registerCollectionMembershipRoutes(app, { pool, authRequired, getCurrentUser,
     invalidate: invalidateImportedDataCache,
@@ -11929,6 +11943,7 @@ function registerDataRoutes(app, {
       const requestedId = validUuid(req.body?.id)
       if (requestedId) {
         const existing = await voiceRoomRowsByAliases(pool, [requestedId])
+        if (existing.some(room => room.group_id)) return res.status(409).json({ error: 'VOICE_ROOM_GROUP_MANAGED' })
         if (existing.some((room) => !rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids))) {
           return res.status(403).json({ error: 'VOICE_ROOM_CREATOR_REQUIRED' })
         }
@@ -12089,7 +12104,7 @@ function registerDataRoutes(app, {
       const actualRoomId = voiceRoomId(room) || cleanRoomId
       const identity = userIdentity(user)
       const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
-      const maySeeParticipants = isCreator || boolOf(room, ['is_public', 'public'], true)
+      const maySeeParticipants = Boolean(room.group_id) || isCreator || boolOf(room, ['is_public', 'public'], true)
       const participantRows = maySeeParticipants
         ? await localVoiceParticipants(pool, actualRoomId)
         : []
@@ -12138,6 +12153,8 @@ function registerDataRoutes(app, {
   })
 
   app.post('/v1/data/voice/rooms/:roomId/join', authRequired, async (req, res, next) => {
+    let groupDb
+    let db = pool
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
@@ -12147,15 +12164,26 @@ function registerDataRoutes(app, {
       const rooms = await voiceRoomRowsByAliases(pool, [cleanRoomId])
       const room = rooms.find((row) => voiceRoomMatches(row, cleanRoomId))
       if (!room) return res.status(404).json({ error: 'VOICE_ROOM_NOT_FOUND' })
-      if (!(await canJoinVoiceRoom(pool, user, room, req.body?.password, req.body?.socketId))) {
+      if (room.group_id) {
+        groupDb = await pool.connect(); db = groupDb
+        await db.query('BEGIN')
+        await require('./group-voice-rooms').lockGroupVoiceRoom(db, room.id)
+        await require('./collection-membership-policy').lockRoom(db, 'group', room.group_id)
+      }
+      if (!(await canJoinVoiceRoom(db, user, room, req.body?.password, req.body?.socketId))) {
         return res.status(403).json({ error: 'VOICE_ROOM_ACCESS_DENIED' })
       }
       const actualRoomId = voiceRoomId(room) || cleanRoomId
 
       const identity = userIdentity(user)
+      if (room.group_id) {
+        const capacity = await db.query(`SELECT COUNT(*)::int AS count FROM fallback_voice_room_participants
+          WHERE room_id=$1 AND lower(user_id)<>ALL($2::text[]) AND updated_at>=NOW()-INTERVAL '2 minutes'`, [actualRoomId, identity.values])
+        if (capacity.rows[0].count >= Number(room.max_participants || 50)) return res.status(409).json({ error: 'VOICE_ROOM_FULL' })
+      }
       const mode = voiceRoomMode(room)
       const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
-      const existingParticipant = await pool.query(
+      const existingParticipant = await db.query(
         `SELECT role, hand_raised
          FROM fallback_voice_room_participants
          WHERE lower(room_id) = $1 AND lower(user_id) = $2
@@ -12174,7 +12202,7 @@ function registerDataRoutes(app, {
       const handRaised = mode === 'stage'
         && role === 'audience'
         && Boolean(existingParticipant.rows[0]?.hand_raised)
-      await pool.query(
+      await db.query(
         `INSERT INTO fallback_voice_room_participants(
             room_id,
             user_id,
@@ -12193,7 +12221,7 @@ function registerDataRoutes(app, {
          DO UPDATE SET
             user_name = EXCLUDED.user_name,
             user_avatar_url = EXCLUDED.user_avatar_url,
-            socket_id = EXCLUDED.socket_id,
+            socket_id = CASE WHEN $9 THEN COALESCE(NULLIF(EXCLUDED.socket_id,''),fallback_voice_room_participants.socket_id) ELSE EXCLUDED.socket_id END,
             is_muted = EXCLUDED.is_muted,
             role = EXCLUDED.role,
             hand_raised = EXCLUDED.hand_raised,
@@ -12207,18 +12235,20 @@ function registerDataRoutes(app, {
           isMuted,
           role,
           handRaised,
+          Boolean(room.group_id),
         ],
       )
-      await pool.query(
+      await db.query(
         `UPDATE fallback_voice_rooms
          SET updated_at = NOW()
          WHERE lower(id::text) = $1`,
         [actualRoomId],
       )
+      if (groupDb) await db.query('COMMIT')
       clearVoiceCaches()
-      const payload = await localVoiceParticipants(pool, actualRoomId)
+      const payload = await localVoiceParticipants(db, actualRoomId)
       const profilesById = indexProfiles(await publicProfilesByIds(
-        pool,
+        db,
         payload.map((row) => textOf(row, ['user_id', 'profile_id'], '')),
       ))
       const participants = payload.map((row) => mapVoiceParticipant(row, profilesById))
@@ -12231,6 +12261,8 @@ function registerDataRoutes(app, {
       })
     } catch (error) {
       next(error)
+    } finally {
+      if (groupDb) { await groupDb.query('ROLLBACK').catch(() => {}); groupDb.release() }
     }
   })
 

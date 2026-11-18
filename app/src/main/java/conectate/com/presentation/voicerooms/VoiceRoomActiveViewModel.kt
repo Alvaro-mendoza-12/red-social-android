@@ -281,7 +281,9 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     fun joinRoom(roomId: String, password: String? = null) {
+        val initiatingSession = authService.captureAccountLease()
         viewModelScope.launch {
+            initiatingSession.requireCurrent()
             _joinError.value = null
             val seed = authService.getCurrentUserProfileSeed()
             val userId = voiceRoomRepository.getCurrentUserId()
@@ -293,6 +295,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
             _currentUserId.value = userId
             try {
                 val roomResult = voiceRoomRepository.getRoomById(roomId)
+                initiatingSession.requireCurrent()
                 val resolvedRoom = roomResult.getOrThrow()
                 _room.value = resolvedRoom
                 val isCreator = resolvedRoom.creatorId.trim().equals(userId.trim(), ignoreCase = true)
@@ -315,12 +318,13 @@ class VoiceRoomActiveViewModel @Inject constructor(
                 val displayName = seed?.displayName
                     ?: seed?.fullName
                     ?: "Usuario"
-                val startMuted = resolvedRoom.isStageMode()
-                    && resolvedRoom.creatorId.trim().lowercase() != userId.trim().lowercase()
+                val startMuted = !resolvedRoom.groupId.isNullOrBlank() || (resolvedRoom.isStageMode()
+                    && resolvedRoom.creatorId.trim().lowercase() != userId.trim().lowercase())
                 if (startMuted) {
                     _isMuted.value = true
                 }
                 voiceRoomRepository.toggleSpeaker(_isSpeaker.value)
+                initiatingSession.requireCurrent()
                 voiceRoomRepository.joinRoom(
                     roomId = resolvedRoom.id,
                     userId = userId,
@@ -334,7 +338,9 @@ class VoiceRoomActiveViewModel @Inject constructor(
                 if (resolvedRoom.isStageMode()) {
                     startStageSync(resolvedRoom.id)
                 }
-            } catch (e: Exception) {
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (e: Exception) {
+                initiatingSession.requireCurrent()
                 android.util.Log.e("VoiceRoomActiveVM", "Error joining room", e)
                 _isJoined.value = false
                 _joinError.value = e.message ?: "No se pudo entrar a la sala de voz."
