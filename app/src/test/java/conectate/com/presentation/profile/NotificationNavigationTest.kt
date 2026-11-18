@@ -34,7 +34,7 @@ class NotificationNavigationTest {
             "mention_video_description" to Screen.VideoPlayer.route, "new_video" to Screen.VideoPlayer.route,
             "friend_request_accepted" to Screen.UserProfile.route, "friend_request" to Screen.FriendRequests.route,
             "like_moment" to Screen.MomentViewer.route, "new_live" to Screen.LiveViewer.route,
-            "voice_invite" to Screen.RoomDetail.route, "notification_digest" to Screen.NotificationSettings.route,
+            "group_voice_room_invite" to Screen.RoomDetail.route, "voice_invite" to Screen.RoomDetail.route, "notification_digest" to Screen.NotificationSettings.route,
             "admin_access_changed" to Screen.AdminPanel.route, "account_enabled" to Screen.UserProfile.route,
         )
         cases.forEach { (type, expected) ->

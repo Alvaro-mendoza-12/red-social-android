@@ -1131,6 +1131,17 @@ async function filterRowsForRead(pool, tableName, rows, auth) {
   if (tableName === 'profiles') {
     return rows.map((row) => sanitizeProfileRow(row, identity))
   }
+  if (tableName === 'voice_rooms' || tableName === 'voice_room_participants') {
+    // Group rooms use the invitation-aware native endpoints. Compatibility must
+    // not publish private metadata/presence through a generic table listing.
+    const values = [...new Set(rows.map(row => normalizeIdentityValue(tableName === 'voice_rooms' ? row.id : row.room_id)).filter(Boolean))]
+    if (!values.length) return []
+    const managed = await pool.query(`SELECT id::text FROM fallback_voice_rooms
+      WHERE group_id IS NOT NULL AND lower(id::text)=ANY($1::text[])`, [values])
+    const hidden = new Set(managed.rows.map(row => normalizeIdentityValue(row.id)))
+    return rows.filter(row => !hidden.has(normalizeIdentityValue(tableName === 'voice_rooms' ? row.id : row.room_id)))
+  }
+
   if (tableName === 'posts' || tableName === 'moments') {
     // Use the same audience decisions as the native feeds, before client filters,
     // pagination and HEAD counts. Compatibility is not a second privacy policy.
@@ -1738,6 +1749,9 @@ async function prepareInsertRow(pool, tableName, identity, source) {
   }
 
   if (tableName === 'voice_rooms') {
+    if (row.group_id || row.groupId) throw httpError('VOICE_ROOM_GROUP_MANAGED', 409)
+    const managed = await pool.query('SELECT 1 FROM fallback_voice_rooms WHERE lower(id::text)=$1 AND group_id IS NOT NULL', [normalizeIdentityValue(row.id)])
+    if (managed.rows.length) throw httpError('VOICE_ROOM_GROUP_MANAGED', 409)
     row = forceActorField(row, 'creator_id', identity)
     if (row.owner_id != null && !identityOwnsValue(identity, row.owner_id)) {
       throw httpError('ACTOR_ID_MISMATCH')

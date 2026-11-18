@@ -1,0 +1,12 @@
+.group-voice-dialog { width: min(460px, calc(100vw - 24px)); max-height: calc(100dvh - 32px); overflow: auto; color: inherit; padding: 20px; border: 1px solid var(--border-color, #6b728066); border-radius: 20px; }
+.group-voice-dialog::backdrop { background: #0009; }
+.group-voice-dialog header, .group-voice-dialog footer { display: flex; align-items: center; gap: 12px; }
+.group-voice-dialog h2 { margin: 0; font-size: 1.3rem; }
+.group-voice-dialog footer { justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
+.group-voice-dialog fieldset { border: 0; padding: 0; margin: 16px 0; }
+.group-voice-dialog label { display: flex; align-items: center; gap: 12px; min-height: 48px; cursor: pointer; }
+.group-voice-dialog input { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--color-primary, #dc2626); }
+.group-voice-members { list-style: none; padding: 0; margin: 8px 0; max-height: 35dvh; overflow-y: auto; }
+.group-voice-members label { padding: 6px 2px; }
+.group-voice-members span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.group-voice-dialog [role=alert] { color: var(--color-danger, #f87171); }

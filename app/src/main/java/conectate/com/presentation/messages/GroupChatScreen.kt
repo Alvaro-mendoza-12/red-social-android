@@ -132,6 +132,12 @@ fun GroupChatScreen(
     var selectedForwardTargets by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showBackgroundSheet by remember { mutableStateOf(false) }
     var showHeaderMenu by remember { mutableStateOf(false) }
+    var showGroupVoice by remember(groupId, currentUserId) { mutableStateOf(false) }
+    val voiceGroupMember by viewModel.isMember.collectAsStateWithLifecycle()
+    if (showGroupVoice) GroupVoiceRoomDialog(groupId, onDismiss = { showGroupVoice = false }, onCreated = { room ->
+        showGroupVoice = false
+        navController.navigate(conectate.com.presentation.navigation.Screen.RoomDetail.createRoute(room)) { launchSingleTop = true }
+    })
     var showQuestions by remember { mutableStateOf(false) }
     var publicationAllowed by remember(groupId, currentUserId) { mutableStateOf(true) }
     CollectionQuestionTools("group", groupId, currentUserId, showQuestions, { showQuestions = false }, { publicationAllowed = it })
@@ -426,6 +432,10 @@ fun GroupChatScreen(
                         Icon(Icons.Default.MoreVert, contentDescription = "Opciones del grupo")
                     }
                     DropdownMenu(expanded = showHeaderMenu, onDismissRequest = { showHeaderMenu = false }) {
+                        DropdownMenuItem(text = { Text("Crear sala de voz") },
+                            leadingIcon = { Icon(Icons.Default.Mic, contentDescription = null) },
+                            enabled = voiceGroupMember,
+                            onClick = { showHeaderMenu = false; showGroupVoice = true })
                         DropdownMenuItem(text = { Text("Preguntas y permisos") }, onClick = { showHeaderMenu = false; showQuestions = true })
                         DropdownMenuItem(text = { Text("Sorteos") }, onClick = {
                             showHeaderMenu = false

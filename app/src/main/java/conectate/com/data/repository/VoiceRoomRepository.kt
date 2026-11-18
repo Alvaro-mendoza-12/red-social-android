@@ -1281,7 +1281,7 @@ class VoiceRoomRepository @Inject constructor(
         var isSocketConnected = socket?.connected() == true
         val isWebResHealthy = webRTCManager?.isHealthy() == true
         val isReentry = (activeRoomId == signalRoom && isSocketConnected && isWebResHealthy)
-        val joinMuted = startMuted || (activeRoomId == signalRoom && isSelfMuted())
+        var joinMuted = startMuted || (activeRoomId == signalRoom && isSelfMuted())
         if (!activeRoomId.equals(signalRoom, ignoreCase = true)) {
             disableCaptionsInternal(announce = true)
             _captionConsentUserIds.value = emptySet()
@@ -1356,6 +1356,8 @@ class VoiceRoomRepository @Inject constructor(
             desiredSelfMuted = joinMuted
             val room = resolvedRoom?.takeIf { it.id.equals(roomId, ignoreCase = true) }
                 ?: getRoomById(roomLookupId).getOrThrow()
+            joinMuted = joinMuted || !room.groupId.isNullOrBlank()
+            desiredSelfMuted = joinMuted
             _currentRoom.value = normalizeRoomForUi(room)
 
             // v21.0: Reverting seamless re-entry due to "Zombie Session" issues (Audio/Chat loss).
@@ -2239,6 +2241,7 @@ class VoiceRoomRepository @Inject constructor(
             context = context,
             signalingEvents = events,
             accessTokenProvider = { authService.getAccessToken() },
+            initialAudioEnabled = !desiredSelfMuted,
             failureReporter = { metric, throwable ->
                 appMetrics.recordFailure(
                     metric = metric,

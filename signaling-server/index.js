@@ -848,6 +848,12 @@ async function syncVoiceRoomJoin(socket, roomId, participant) {
         applyPersistedVoiceRoomAccess(socket, roomId, access);
     } catch (error) {
         console.error(`[SOCKET_DEBUG] [DB] Error syncing voice room join for ref=${diagnosticRef(roomId)}:`, diagnosticError(error));
+        if ([403, 404, 410].includes(Number(error.status))) {
+            // Revalidation revokes only the voice namespace; calls use their own namespace.
+            socket.emit('room-join-error', { roomId, error: 'VOICE_ROOM_ACCESS_REVOKED' });
+            socket.disconnect(false);
+            return;
+        }
         socket.emit('room-sync-warning', {
             roomId,
             error: error.message || 'VOICE_ROOM_JOIN_SYNC_FAILED'

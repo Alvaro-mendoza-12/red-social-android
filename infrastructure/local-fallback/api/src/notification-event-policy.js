@@ -2,7 +2,7 @@
 
 // These events are created by their authorized transactions, never by a public alert insert.
 const SERVER_MANAGED_TYPES = new Set([
-  'system_announcement', 'message_deleted', 'account_suspended', 'account_enabled',
+  'group_voice_room_invite', 'system_announcement', 'message_deleted', 'account_suspended', 'account_enabled',
   'conversation_read', 'message_reaction',
   'message', 'new_message', 'chat_message', 'group_message', 'community_message',
   'text', 'image', 'video', 'audio', 'sticker', 'file', 'document', 'location', 'contact',

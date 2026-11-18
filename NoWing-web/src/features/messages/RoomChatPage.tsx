@@ -1,4 +1,5 @@
 import { ArrowLeft, BarChart3, Check, CircleDot, Files, Import, LoaderCircle, Mic, MoreVertical, Paperclip, Search, Send, Square, Sticker } from 'lucide-react'
+import { GroupVoiceRoomDialog } from './GroupVoiceRoomDialog'
 import { animatedImageFile } from '../../core/imageEditPolicy'
 import { getStorageReadIdentity, subscribeStorageReadIdentity } from '../../core/media/storageReadSession'
 import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
@@ -416,7 +417,9 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
   const audioRecorderRef = useRef<MediaRecorder | null>(null)
   const audioStreamRef = useRef<MediaStream | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
+  const [showGroupVoice, setShowGroupVoice] = useState(false)
   const pollIdentity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  useEffect(() => { setShowGroupVoice(false) }, [pollIdentity, cleanRoomId])
   const pollContext = useRef(0)
   useEffect(() => {
     setPollQuestion('')
@@ -1590,6 +1593,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
         </div>
       </div>
 
+      {showGroupVoice && scope === 'group' && isMember ? <GroupVoiceRoomDialog key={`${pollIdentity.generation}:${cleanRoomId}`} groupId={cleanRoomId} onClose={() => setShowGroupVoice(false)} /> : null}
       {showMessageSearch ? (
         <div className="chat-search-row">
           <input
@@ -1627,6 +1631,7 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
             </button>
           </div>
           <div className="row-actions wrap">
+            {scope === 'group' && useUbuntu && isMember ? <button className="ghost-btn-sm" type="button" onClick={() => { setShowQuickTools(false); setShowGroupVoice(true) }}><Mic size={18} aria-hidden="true" /> Crear sala de voz</button> : null}
             <button className="ghost-btn-sm" type="button" onClick={() => setShowPollComposer((current) => !current)}>
               {showPollComposer ? 'Ocultar encuesta' : 'Nueva encuesta'}
             </button>

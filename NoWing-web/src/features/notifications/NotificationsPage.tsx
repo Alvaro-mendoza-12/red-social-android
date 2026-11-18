@@ -124,6 +124,8 @@ function mapNotification(row: GenericRow): NotificationItem {
 
 function typeLabel(type: string): string {
   switch (type) {
+    case 'group_voice_room_invite':
+      return 'Invitación a sala de voz'
     case 'follow':
       return 'Nuevo seguidor'
     case 'like_post':
@@ -188,6 +190,7 @@ function resolveNotificationAction(item: NotificationItem): NotificationAction |
   const postTargetId = item.postId || (targetType === 'post' ? item.targetId : '')
   const videoTargetId = item.videoId || (targetType === 'video' ? item.targetId : '')
 
+  if (type === 'group_voice_room_invite' && item.targetId) return { label: 'Unirse a la sala de voz', path: `/app/voice/${encodeURIComponent(item.targetId)}?join=1` }
   if (targetType === 'live' && item.targetId) return { label: 'Ver directo', path: `/app/live/${encodeURIComponent(item.targetId)}` }
   if (targetType === 'moment' && item.targetId) return { label: 'Ver momento', path: `/app/moments/view/${encodeURIComponent(item.targetId)}` }
   if (postTargetId) return { label: 'Ver publicación', path: `/app/feed/post/${postTargetId}` }

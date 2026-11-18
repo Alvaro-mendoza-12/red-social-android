@@ -1,3 +1,4 @@
+import { voiceIsAudible } from './voiceActivity'
 import { MovableVoicePanel } from '../../components/MovableVoicePanel'
 import { ReactionCloud } from '../../components/ReactionCloud'
 import { useReactionBursts } from '../../components/useReactionBursts'
@@ -76,6 +77,8 @@ type VoiceRoom = {
   maxParticipants: number
   updatedAt: string
   isPrivate: boolean
+  groupId: string
+  passwordRequired: boolean
 }
 
 type Participant = {
@@ -248,6 +251,8 @@ function mapRoom(row: GenericRow, fallbackId: string): VoiceRoom {
     maxParticipants: Math.max(1, Number(row.max_participants ?? 10)),
     updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
     isPrivate: row.is_public === false || row.is_public === 'false',
+    groupId: textOf(row, ['group_id'], ''),
+    passwordRequired: voiceBoolean(row.password_required) ?? (row.is_public === false && !row.group_id),
   }
 }
 
@@ -405,7 +410,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
 
   const stopSpeakingDetection = useCallback(() => {
     if (speakingFrameRef.current !== null) {
-      window.cancelAnimationFrame(speakingFrameRef.current)
+      window.clearInterval(speakingFrameRef.current)
       speakingFrameRef.current = null
     }
     analyserRef.current = null
@@ -477,21 +482,23 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     audioContextRef.current = audioContext
     analyserRef.current = analyser
 
-    const samples = new Uint8Array(analyser.frequencyBinCount)
+    void audioContext.resume().catch(() => {})
+    const samples = new Uint8Array(analyser.fftSize)
     let lastSpeaking = false
+    let lastAudibleAt = -Infinity
     const tick = () => {
       if (!analyserRef.current) return
-      analyserRef.current.getByteFrequencyData(samples)
-      const average = samples.reduce((sum, value) => sum + value, 0) / samples.length
-      const nextSpeaking = average > 28 && !mutedRef.current
+      analyserRef.current.getByteTimeDomainData(samples)
+      const now = performance.now()
+      if (voiceIsAudible(samples, mutedRef.current)) lastAudibleAt = now
+      const nextSpeaking = !mutedRef.current && now - lastAudibleAt < 240
       if (nextSpeaking !== lastSpeaking) {
         lastSpeaking = nextSpeaking
         setIsSpeaking(nextSpeaking)
         emitSpeakingState(nextSpeaking)
       }
-      speakingFrameRef.current = window.requestAnimationFrame(tick)
     }
-    speakingFrameRef.current = window.requestAnimationFrame(tick)
+    speakingFrameRef.current = window.setInterval(tick, 100)
   }, [emitSpeakingState, stopSpeakingDetection])
 
   const loadRoom = useCallback(async () => {
@@ -1153,8 +1160,10 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           throw new Error('Sala llena')
         }
 
-        const micStarted = await startLocalAudio()
-        const nextMuted = isMuted || !micStarted
+        if (room.groupId && !webrtcManagerRef.current) webrtcManagerRef.current = new WebRTCManager(user.id)
+        const micStarted = room.groupId ? false : await startLocalAudio()
+        if (room.groupId) setMicAvailable(false)
+        const nextMuted = !!room.groupId || isMuted || !micStarted
         setIsMuted(nextMuted)
         mutedRef.current = nextMuted
 
@@ -1162,7 +1171,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           userName: displayName,
           userAvatarUrl: avatarUrl,
           isMuted: nextMuted,
-          ...(room.isPrivate ? { password: roomPassword } : {}),
+          ...(room.passwordRequired ? { password: roomPassword } : {}),
         })
         createdParticipant = true
         const mappedParticipants = (response.participants ?? []).map(mapParticipant)
@@ -1320,6 +1329,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
         setMicAvailable(true)
       } catch { setJoinError('Permite el acceso al micrófono para hablar en la sala.'); return }
     }
+    setJoinError(null)
     setIsMuted(nextMuted)
     mutedRef.current = nextMuted
     webrtcManagerRef.current?.getLocalStream()?.getAudioTracks().forEach((track) => {
@@ -1448,7 +1458,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
     const nextParams = new URLSearchParams(searchParams)
     nextParams.delete('join')
     navigate({ search: nextParams.toString() }, { replace: true })
-    if (room.isPrivate && room.creatorId !== user.id) {
+    if (room.passwordRequired && room.creatorId !== user.id) {
       setJoinError('Esta sala es privada. Introduce su contraseña y pulsa Unirse.')
       return
     }
@@ -1633,7 +1643,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           }}>Reconectar voz</button> : null}
         </article>
       ) : null}
-      {!isJoined && room.isPrivate && room.creatorId !== user?.id ? <label>
+      {!isJoined && room.passwordRequired && room.creatorId !== user?.id ? <label>
         Contraseña de la sala
         <input className="text-input" type="password" autoComplete="off" value={roomPassword} onChange={event => setRoomPassword(event.target.value)} />
       </label> : null}
