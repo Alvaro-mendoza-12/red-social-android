@@ -41,4 +41,10 @@ Las fuentes y pruebas propias se publican en main y feature/live-gifts con árbo
 
 **Orden de incorporación:** verificar y activar la API compatible con v2 antes de distribuir la APK nueva. Mientras falte v2, el cliente nuevo falla sin recurrir a la ruta sin precio. El contrato heredado permanece para consumidores antiguos; estos aún necesitan una migración comprobada para vincular su precio mostrado al cargo. Esta continuación no elimina esa limitación de los binarios ya instalados ni afirma un despliegue productivo.
 
-N010 queda corregido en el nuevo contrato y consumidor, pendiente de incorporación efectiva y migración heredada. N011 tiene parche en ambos contratos, pendiente de activación. Siguen abiertos el orden entre respuestas concurrentes de saldo, otros dispositivos, integración con PostgreSQL real, red y permisos físicos, Google Play, la APK exacta y los demás módulos. La matriz jurídica inicial se conserva en [190](190-revision-juridica-inicial-por-mercados-2026-11-18.md), sin inventar datos del operador.
+N010 queda corregido en el nuevo contrato y consumidor, pendiente de incorporación efectiva y migración heredada. N011 tiene parche en ambos contratos, pendiente de activación. Siguen abiertos el orden entre respuestas concurrentes de saldo, otros dispositivos, comprobación en el PostgreSQL del servicio instalado, red y permisos físicos, Google Play, la APK exacta y los demás módulos. La matriz jurídica inicial se conserva en [190](190-revision-juridica-inicial-por-mercados-2026-11-18.md), sin inventar datos del operador.
+
+## Verificación posterior en PostgreSQL 17
+
+Cuatro escenarios HTTP aprobados con Express, tablas reales del módulo y PostgreSQL 17.5 en una instancia local aislada. Ocho reintentos concurrentes produjeron un solo débito y aviso. Se verificaron el rechazo de un precio antiguo, la recuperación del importe y saldo tras otro cargo y la reversión completa ante un fallo de escritura. El caso inicial se detuvo antes de invocar la ruta porque faltaba la tabla de notificaciones en el entorno de prueba. El segundo creó esa tabla y aprobó los cuatro escenarios. Se usaron cuentas ficticias y un doble de autenticación.
+
+El recibo está en `2026-11-18-mobile-audit191-gift-quotes/postgres17-loopback-v2/`. Sigue pendiente la activación y validación del servicio instalado.

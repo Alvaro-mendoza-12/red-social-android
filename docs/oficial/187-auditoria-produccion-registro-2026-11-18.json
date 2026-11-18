@@ -308,6 +308,15 @@
       "evidenceKind": "runtime-controlled",
       "status": "fixed-unit-validated-device-pending",
       "published": true
+    },
+    {
+      "id": "N013",
+      "severity": "high",
+      "description": "Resultados y paginación de búsqueda conservados tras cambio de visita de cuenta",
+      "evidenceReport": "193",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
     }
   ],
   "release": {
@@ -399,15 +408,29 @@
       },
       "logSha256": "4c88b7b0e1e3ef8cf3658af4b2ea1aba1eb9ebd8d248660d361b2a795b896633",
       "inputsStable": true
+    },
+    {
+      "kind": "jvm-controlled",
+      "path": "2026-11-18-mobile-audit193-search-visits/candidate",
+      "tests": 25,
+      "passed": 25,
+      "scope": "Search ViewModel, controller, suggestions and pagination; device pending"
+    },
+    {
+      "kind": "postgresql-http-isolated",
+      "path": "2026-11-18-mobile-audit191-gift-quotes/postgres17-loopback-v2",
+      "scenariosPassed": 4,
+      "sourceSha256": "bdcea566351a1582d17e3f1eeb8462e7e017c2785ba2e94278b0cc183f257334",
+      "scope": "PostgreSQL 17.5, HTTP and real database locks with fictional users and authentication fixture"
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
-    "high": 9,
+    "high": 10,
     "medium": 3,
     "low": 0,
-    "total": 12
+    "total": 13
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",

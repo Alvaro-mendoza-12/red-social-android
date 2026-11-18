@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-Se registran doce familias nuevas: ninguna crítica confirmada en esta selección, nueve altas y tres medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+Se registran trece familias nuevas: ninguna crítica confirmada en esta selección, diez altas y tres medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -30,6 +30,7 @@ Se registran doce familias nuevas: ninguna crítica confirmada en esta selecció
 | N010 | Alta | Cambiar el precio almacenado permite cobrar15 tras mostrar5 |191: precio consentido obligatorio en v2; migración heredada pendiente |
 | N011 | Alta | Repetir un regalo devuelve95 aunque otro cargo dejó90 |191: saldo actual e importe original en ambos contratos; activación pendiente |
 | N012 | Alta | Una lectura antigua puede restaurar el saldo tras un regalo, una compra o una lectura posterior | [192](192-orden-de-respuestas-de-saldo-2026-11-18.md): reservas por lectura e invalidación al intentar un cargo |
+| N013 | Alta | La búsqueda unificada conserva resultados o paginación de una visita de cuenta anterior | [193](193-busqueda-por-visita-de-cuenta-2026-11-18.md): invalidación por visita y escritura de historial protegida |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -43,6 +44,7 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 -191: referencia Android236 casos/10 fallos y candidata236/236; Gradle236/23clases, sin fallos, errores ni omisiones. API28/28, seis casos HTTP locales, y tres scripts de regresión aprobados con base/proveedores controlados. No se atribuye la batería completa del padre a estas fuentes nuevas.
 - [190](190-revision-juridica-inicial-por-mercados-2026-11-18.md): contraste inicial de fuentes oficiales por mercados; alcance profesional y demás países pendientes.
 - 192: referencia con 7 fallos en 10 casos. Candidata con 246 casos focalizados aprobados. Gradle sin filtros registró 3495 pruebas en 582 clases, con 0 fallos, 0 errores y 0 omisiones.
+- 193: cinco fallos de referencia y 25 casos aprobados en la candidata. La batería Gradle completa de 192 corresponde al padre de esta corrección.
 - Compilación de producción, firma y dispositivos del commit exacto: pendientes. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
