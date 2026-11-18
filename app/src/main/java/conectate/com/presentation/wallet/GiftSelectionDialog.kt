@@ -238,9 +238,9 @@ fun GiftSelectionDialog(
         val retrying = viewModel.hasPendingGift(receiverId, liveStreamId, gift.id, isPublic)
         val isHighValue = gift.priceDiamonds >=
             billingCapabilities.giftLimits.highValueConfirmationCoins
-        var highValueAcknowledged by remember(gift.id, isHighValue, isPublic) { mutableStateOf(false) }
-        var safetyCountdown by remember(gift.id, isHighValue, isPublic) { mutableIntStateOf(if (isHighValue) 3 else 0) }
-        LaunchedEffect(gift.id, isHighValue, isPublic) {
+        var highValueAcknowledged by remember(gift.id, gift.priceDiamonds, isHighValue, isPublic) { mutableStateOf(false) }
+        var safetyCountdown by remember(gift.id, gift.priceDiamonds, isHighValue, isPublic) { mutableIntStateOf(if (isHighValue) 3 else 0) }
+        LaunchedEffect(gift.id, gift.priceDiamonds, isHighValue, isPublic) {
             while (safetyCountdown > 0) {
                 delay(1_000)
                 safetyCountdown -= 1
@@ -351,7 +351,15 @@ fun GiftSelectionDialog(
             },
             dismissButton = if (message.contains("Saldo insuficiente", ignoreCase = true)) {
                 { TextButton(onClick = { viewModel.clearError(); onRecharge(1) }) { Text("Recargar") } }
-            } else null
+            } else {
+                { TextButton(onClick = {
+                    if (dialogOwner.isCurrent() && dialogOwner.sameVisit(session)) {
+                        confirmationGift = null
+                        viewModel.clearError()
+                        viewModel.refresh()
+                    }
+                }) { Text("Actualizar catálogo") } }
+            }
         )
     }
 }

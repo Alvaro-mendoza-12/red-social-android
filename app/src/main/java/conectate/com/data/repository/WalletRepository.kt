@@ -331,6 +331,16 @@ class WalletRepository @Inject constructor(
         liveStreamId: String?,
         isPublic: Boolean,
         idempotencyKey: String,
+    ): Result<GiftReceipt> = sendGift(session, receiverId, giftId, liveStreamId, isPublic, idempotencyKey, null)
+
+    internal suspend fun sendGift(
+        session: AuthSessionLease,
+        receiverId: String,
+        giftId: String,
+        liveStreamId: String?,
+        isPublic: Boolean,
+        idempotencyKey: String,
+        expectedPriceDiamonds: Int?,
     ): Result<GiftReceipt> = accountScopedCall(session, { senderId ->
         check(supabaseConfig.isConfigured) { "La tienda de regalos no está configurada para este entorno" }
         authService.ensureValidAccessToken().getOrThrow()
@@ -348,7 +358,8 @@ class WalletRepository @Inject constructor(
             val gift = _availableGifts.value.firstOrNull { it.id == cleanGiftId }
                 ?: fetchGiftById(token, cleanGiftId)
                 ?: throw IllegalArgumentException("GIFT_NOT_FOUND")
-            check(gift.priceDiamonds > 0) { "El regalo seleccionado no tiene precio válido" }
+            val expectedPrice = expectedPriceDiamonds ?: gift.priceDiamonds
+            require(expectedPrice > 0) { "El regalo seleccionado no tiene precio válido" }
             kotlinx.coroutines.currentCoroutineContext().ensureActive()
             session.requireCurrent()
             val result = giftSendCoordinator.execute(
@@ -358,7 +369,7 @@ class WalletRepository @Inject constructor(
                 // The journal can block or fail. Recheck after its durable write, before any charge request.
                 kotlinx.coroutines.currentCoroutineContext().ensureActive()
                 session.requireCurrent()
-                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/send_virtual_gift") {
+                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/send_virtual_gift_v2") {
                     restHeaders(token)
                     contentType(ContentType.Application.Json)
                     header(HttpHeaders.Prefer, "return=representation")
@@ -366,6 +377,7 @@ class WalletRepository @Inject constructor(
                         put("p_sender_id", senderId)
                         put("p_receiver_id", cleanReceiverId)
                         put("p_gift_id", cleanGiftId)
+                        put("p_expected_price_diamonds", expectedPrice)
                         put("p_idempotency_key", durableKey)
                         put("p_is_public", isPublic)
                         put("p_message", JsonNull)
@@ -382,7 +394,13 @@ class WalletRepository @Inject constructor(
                     ?: throw IllegalStateException("El comprobante del regalo no es válido")
                 val newBalance = receipt["sender_balance_diamonds"]?.jsonPrimitive?.intOrNull
                 check(newBalance != null && newBalance >= 0) { "El comprobante no contiene un saldo confirmado válido" }
-                // Imported servers may omit these fields. If supplied, they must acknowledge this intent.
+                // This versioned endpoint must confirm the actual charged amount.
+                // A replay reconciles the original gift, even if its catalog price changed.
+                val chargedAmount = receipt["amount_diamonds"]?.jsonPrimitive?.intOrNull
+                val replay = receipt["idempotent_replay"]?.jsonPrimitive?.booleanOrNull
+                check(chargedAmount != null && chargedAmount > 0 && replay != null) { "El comprobante no contiene el importe confirmado." }
+                check(replay || chargedAmount == expectedPrice) { "El comprobante no coincide con el precio confirmado." }
+                // Imported receipt metadata remains optional; supplied fields must match.
                 check(!receipt.containsKey("ok") || receipt["ok"]?.jsonPrimitive?.booleanOrNull == true) { "El servidor no confirmó el regalo" }
                 check(!receipt.containsKey("receiver_id") || receipt.string("receiver_id").equals(cleanReceiverId, ignoreCase = true)) { "El comprobante corresponde a otro destinatario" }
                 check(!receipt.containsKey("gift_id") || receipt.string("gift_id") == cleanGiftId) { "El comprobante corresponde a otro regalo" }
@@ -396,10 +414,10 @@ class WalletRepository @Inject constructor(
                     senderId = senderId,
                     senderName = receipt.string("sender_name").orEmpty().ifBlank { "Usuario" },
                     receiverId = cleanReceiverId,
-                    gift = gift,
+                    gift = gift.copy(priceDiamonds = chargedAmount),
                     senderBalanceDiamonds = newBalance,
                     isPublic = isPublic,
-                    idempotentReplay = receipt.string("idempotent_replay")?.toBooleanStrictOrNull() ?: false
+                    idempotentReplay = replay
                 )
             }
             kotlinx.coroutines.currentCoroutineContext().ensureActive()

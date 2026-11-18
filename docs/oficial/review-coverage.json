@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T17:32:16.619949+00:00",
-  "baseCommit": "56e55094f2a66f578cac9009aaf602186da001c7",
+  "generatedAtUtc": "2026-11-18T17:55:28.080513+00:00",
+  "baseCommit": "1324953ab9b9ef47863ede9ff9e4048d0197be17",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,24 +10,24 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3591,
-    "partial": 264,
-    "code-read": 820
+    "pending": 3593,
+    "partial": 263,
+    "code-read": 823
   },
   "countsByPhase": {
     "android": {
       "pending": 1436,
-      "partial": 117,
-      "code-read": 572
+      "partial": 116,
+      "code-read": 574
     },
     "documentation": {
-      "pending": 668,
+      "pending": 670,
       "code-read": 61,
       "partial": 20
     },
     "server": {
       "pending": 844,
-      "code-read": 71,
+      "code-read": 72,
       "partial": 35
     },
     "tooling-and-other": {
@@ -8695,9 +8695,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/WalletRepository.kt",
       "phase": "android",
-      "gitBlobId": "78737eb4d860e9d110ce3512a02be99da101746b",
+      "gitBlobId": "758662c1026039e5ddb3295110a23e9579af1fdf",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13517,9 +13517,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/GiftSelectionDialog.kt",
       "phase": "android",
-      "gitBlobId": "11ef39e5acb13948078c90569e8ed9496c341c05",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/183-regalos-sesion-confirmacion-y-reintentos-2026-11-18.md",
+      "gitBlobId": "aa6e09114fceef2912553a2a2a784684ff91a865",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13567,9 +13567,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/WalletViewModel.kt",
       "phase": "android",
-      "gitBlobId": "a3919905cd6a093bcc8a5b281dfc2915dc6cb870",
+      "gitBlobId": "f9dda5b3600a68e49f494b11ccc418c5f366b4de",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16239,19 +16239,27 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/WalletGiftQuoteTest.kt",
+      "phase": "android",
+      "gitBlobId": "24588b304f27aca2ae5248409e84748fb8493c8c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/WalletGiftSessionTest.kt",
       "phase": "android",
-      "gitBlobId": "12093c2fe6d190d2c9b7ded846331ef8f6a0a66a",
+      "gitBlobId": "5dda1e6d3aab78923dd227b7948d21ca17323b4d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
+      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/WalletGiftViewModelTest.kt",
       "phase": "android",
-      "gitBlobId": "fde8e0e26e468e84cc33dde78baee7c1626e800c",
+      "gitBlobId": "cc02345130c236ec39b6a315ae6579e7f2184c6d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
+      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21829,13 +21837,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "2bcdf7396c2dee8cc7682173b396eca10c176b9b",
+      "gitBlobId": "0b8472a4ae885f3f1e0e0d1a43889af9cb1a50f7",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "28eb79ee23bf487d4a919c6c9dc368eef7fc7449",
+      "gitBlobId": "0f15ba8def2e7b15902f94dad010eca96cb7d99f",
       "reviewStatus": "pending"
     },
     {
@@ -21854,6 +21862,18 @@
       "file": "docs/oficial/19-visibilidad-bandeja-2026-09-10.md",
       "phase": "documentation",
       "gitBlobId": "8c2805e712eab25789965c9bd47d281d008b848a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/190-revision-juridica-inicial-por-mercados-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "ee7730d11c554654f447d4dccfdde18bb19c44d7",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "fb2d2c9f53b1dd945c812b1b024bd82196197878",
       "reviewStatus": "pending"
     },
     {
@@ -24849,9 +24869,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/postgrest-compat-routes.js",
       "phase": "server",
-      "gitBlobId": "99449b9431cbc27b1766cbfe9f46248ffc51243d",
+      "gitBlobId": "20a63d77019e5dca5582cd9417ae250a288b528f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25791,6 +25811,14 @@
       "phase": "server",
       "gitBlobId": "199023c14860f8cc613558c7520541477cbc8cb6",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/gift-price-quote-flow.test.js",
+      "phase": "server",
+      "gitBlobId": "5cf10f39eac209dcc3fee4068c5989f8889d8388",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/gift-transaction-flow.test.js",

@@ -286,19 +286,19 @@
       "id": "N010",
       "severity": "high",
       "description": "Precio mostrado no vinculado al cargo cuando cambia el catálogo",
-      "evidenceReport": "191 (in preparation)",
+      "evidenceReport": "191",
       "evidenceKind": "runtime-controlled; existing request contract",
-      "status": "reproduced-awaiting-fix",
-      "published": false
+      "status": "fixed-new-client-legacy-rollout-pending",
+      "published": true
     },
     {
       "id": "N011",
       "severity": "high",
       "description": "Replay de regalo devuelve saldo anterior a otra transacción",
-      "evidenceReport": "191 (in preparation)",
+      "evidenceReport": "191",
       "evidenceKind": "runtime-controlled; existing request contract",
-      "status": "reproduced-awaiting-fix",
-      "published": false
+      "status": "fixed-unit-validated-server-activation-pending",
+      "published": true
     }
   ],
   "release": {
@@ -351,6 +351,32 @@
       "tests": 3,
       "failures": 2,
       "scope": "Current unchanged RPC body, fake pool, changed stored price and prior receipt replay; no actual charges"
+    },
+    {
+      "kind": "gradle-focused",
+      "path": "2026-11-18-mobile-audit191-gift-quotes/gradle-gift-quotes",
+      "counts": {
+        "tests": 236,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 23
+      },
+      "logSha256": "717c92b75e86c28908b80d2f7ff15de0081a2aff74e1620fc39014c2d5f2afd4",
+      "inputsStable": true
+    },
+    {
+      "kind": "http-loopback-and-server-controlled",
+      "path": "2026-11-18-mobile-audit191-gift-quotes/server-regressions-result.json",
+      "tests": 28,
+      "failures": 0,
+      "regressionScriptsPassed": 3,
+      "scope": "Six HTTP loopback cases; fake pool/session middleware/provider, not production PostgreSQL/JWT/payments"
+    },
+    {
+      "kind": "official-legal-sources",
+      "path": "docs/oficial/190-revision-juridica-inicial-por-mercados-2026-11-18.md",
+      "status": "partial-research; technical flows and professional applicability pending"
     }
   ],
   "findingCounts": {
@@ -389,6 +415,11 @@
       "id": "R05",
       "status": "pending",
       "description": "Compilación de producción del commit exacto y ensayos físicos; checkouts antiguos contienen cambios ajenos y se preservan."
+    },
+    {
+      "id": "R06",
+      "status": "pending",
+      "description": "Activar API v2 antes de distribuir la APK; migrar clientes heredados que todavía pueden enviar sin precio consentido."
     }
   ]
 }
