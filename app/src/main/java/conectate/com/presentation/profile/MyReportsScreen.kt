@@ -53,7 +53,7 @@ fun MyReportsScreen(
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is MyReportsUiState.Success -> {
-                    if (state.reports.isEmpty() && state.videoReports.isEmpty()) {
+                    if (state.reports.isEmpty() && state.videoReports.isEmpty() && state.warning == null) {
                         EmptyReportsView(onAccept = { navController.popBackStack() })
                     } else {
                         LazyColumn(
@@ -61,6 +61,16 @@ fun MyReportsScreen(
                             contentPadding = PaddingValues(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
+                            state.warning?.let { warning ->
+                                item {
+                                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                                        Column(Modifier.padding(16.dp)) {
+                                            Text(warning)
+                                            TextButton(onClick = viewModel::loadMyReports) { Text("Reintentar") }
+                                        }
+                                    }
+                                }
+                            }
                             if (state.reports.isNotEmpty()) {
                                 item {
                                     Text(
@@ -100,9 +110,8 @@ fun MyReportsScreen(
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            Button(onClick = { navController.popBackStack() }) {
-                                Text("Aceptar")
-                            }
+                            Button(onClick = viewModel::loadMyReports) { Text("Reintentar") }
+                            TextButton(onClick = { navController.popBackStack() }) { Text("Volver") }
                          }
                     }
                 }
