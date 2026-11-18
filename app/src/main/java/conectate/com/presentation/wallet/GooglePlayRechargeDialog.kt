@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,38 +42,44 @@ fun GooglePlayRechargeDialog(
     onDismiss: () -> Unit,
     viewModel: WalletViewModel = hiltViewModel()
 ) {
-    val capabilities by viewModel.billingCapabilities.collectAsStateWithLifecycle()
-    val balance by viewModel.coinBalance.collectAsStateWithLifecycle()
+    val currentOwner by viewModel.accountSession.collectAsStateWithLifecycle()
+    val owner = remember { currentOwner }
+    val state by viewModel.refreshState.collectAsStateWithLifecycle()
+    val wallet = if (owner.isCurrent() && owner.sameVisit(currentOwner) && state.owner?.sameVisit(owner) == true) state else WalletRefreshState(owner = null)
+    val authorized = owner.isCurrent() && owner.sameVisit(currentOwner) && accountId.equals(owner.accountId, ignoreCase = true)
+    val capabilities = wallet.capabilities
+    val balance = if (wallet.confirmedAt != null) wallet.balance else 0
     val verifying by viewModel.billingVerifying.collectAsStateWithLifecycle()
-    val message by viewModel.billingMessage.collectAsStateWithLifecycle()
+    val message = wallet.billingMessage
+    LaunchedEffect(currentOwner) { if (!authorized) onDismiss() }
     val context = LocalContext.current
     val activity = remember(context) { context.findActivityForBilling() }
-    var playProducts by remember(capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
-    var catalogIssues by remember(capabilities.products) { mutableStateOf<List<PlayCatalogIssue>>(emptyList()) }
-    var catalogResolved by remember(capabilities.products) { mutableStateOf(false) }
+    var playProducts by remember(owner, capabilities.enabled, capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
+    var catalogIssues by remember(owner, capabilities.enabled, capabilities.products) { mutableStateOf<List<PlayCatalogIssue>>(emptyList()) }
+    var catalogResolved by remember(owner, capabilities.enabled, capabilities.products) { mutableStateOf(false) }
 
-    val controller = remember(capabilities.enabled, capabilities.products, accountId) {
-        if (!capabilities.enabled || accountId.isBlank()) null else GooglePlayBillingController(
+    val controller = remember(owner, authorized, capabilities.enabled, capabilities.products, accountId) {
+        if (!authorized || !capabilities.enabled || accountId.isBlank()) null else GooglePlayBillingController(
             context = context,
             accountId = accountId,
             productIds = capabilities.products.map { it.productId }.toSet(),
             onProducts = {
-                playProducts = it
-                catalogResolved = true
+                if (owner.isCurrent()) { playProducts = it; catalogResolved = true }
             },
-            onCatalogIssues = { catalogIssues = it },
-            onPurchased = { product, token -> viewModel.verifyGooglePlayPurchase(accountId, product, token) },
+            onCatalogIssues = { if (owner.isCurrent()) catalogIssues = it },
+            onPurchased = { product, token -> if (owner.isCurrent()) viewModel.verifyGooglePlayPurchase(accountId, product, token) },
             onPending = {
                 viewModel.showBillingMessage(
+                    owner,
                     "Pago pendiente. No se acreditarán monedas hasta que Google Play confirme el cobro."
                 )
             },
             onCanceled = {
-                viewModel.showBillingMessage("Compra cancelada. No se realizó ningún cobro.")
+                viewModel.showBillingMessage(owner, "Compra cancelada. No se realizó ningún cobro.")
             },
             onError = {
-                catalogResolved = true
-                viewModel.showBillingMessage(it)
+                if (owner.isCurrent()) catalogResolved = true
+                viewModel.showBillingMessage(owner, it)
             }
         )
     }
@@ -88,7 +95,7 @@ fun GooglePlayRechargeDialog(
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("Recargar monedas")
                 Text(
-                    "$balance disponibles",
+                    if (wallet.confirmedAt == null) "Saldo sin confirmar" else "$balance disponibles",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -104,6 +111,10 @@ fun GooglePlayRechargeDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when {
+                    wallet.billingError != null -> {
+                        Text(wallet.billingError, color = MaterialTheme.colorScheme.error)
+                        OutlinedButton(onClick = viewModel::refresh) { Text("Reintentar compras") }
+                    }
                     !capabilities.enabled || accountId.isBlank() -> {
                         Surface(
                             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -140,6 +151,10 @@ fun GooglePlayRechargeDialog(
                         )
                     }
                     catalogResolved -> {
+                        if (playProducts.isEmpty()) {
+                            Text("No se pudieron obtener precios disponibles para esta cuenta.")
+                            OutlinedButton(onClick = { catalogResolved = false; controller?.start() }, enabled = controller != null) { Text("Volver a consultar precios") }
+                        }
                         Text(
                             "El precio mostrado es el precio localizado que entrega Google Play.",
                             style = MaterialTheme.typography.bodySmall
@@ -160,12 +175,12 @@ fun GooglePlayRechargeDialog(
                                     onClick = {
                                         val hostActivity = activity
                                         if (hostActivity == null) {
-                                            viewModel.showBillingMessage("No se encontró una actividad Android para abrir Google Play.")
+                                            viewModel.showBillingMessage(owner, "No se pudo abrir Google Play en esta pantalla.")
                                         } else {
-                                            controller?.launch(hostActivity, coinProduct.productId)
+                                            if (owner.isCurrent()) controller?.launch(hostActivity, coinProduct.productId)
                                         }
                                     },
-                                    enabled = playProduct != null && !verifying,
+                                    enabled = authorized && playProduct != null && !verifying,
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Row(
@@ -202,11 +217,11 @@ fun GooglePlayRechargeDialog(
 
     message?.let { value ->
         AlertDialog(
-            onDismissRequest = viewModel::clearBillingMessage,
+            onDismissRequest = { viewModel.clearBillingMessage(owner) },
             title = { Text("Google Play") },
             text = { Text(value) },
             confirmButton = {
-                Button(onClick = viewModel::clearBillingMessage) { Text("Entendido") }
+                Button(onClick = { viewModel.clearBillingMessage(owner) }) { Text("Entendido") }
             }
         )
     }

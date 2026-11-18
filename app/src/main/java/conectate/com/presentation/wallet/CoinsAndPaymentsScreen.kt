@@ -72,10 +72,12 @@ fun CoinsAndPaymentsScreen(
     mainNavController: NavController = navController,
     viewModel: WalletViewModel = hiltViewModel()
 ) {
-    val balance by viewModel.coinBalance.collectAsStateWithLifecycle()
-    val debt by viewModel.coinDebt.collectAsStateWithLifecycle()
-    val capabilities by viewModel.billingCapabilities.collectAsStateWithLifecycle()
     val historyOwner by viewModel.accountSession.collectAsStateWithLifecycle()
+    val refreshState by viewModel.refreshState.collectAsStateWithLifecycle()
+    val wallet = if (historyOwner.isCurrent() && refreshState.owner?.sameVisit(historyOwner) == true) refreshState else WalletRefreshState(owner = null)
+    val balance = if (wallet.confirmedAt != null) wallet.balance else 0
+    val debt = if (wallet.confirmedAt != null) wallet.debt else 0
+    val capabilities = wallet.capabilities
     val historyState by viewModel.historyStatus.collectAsStateWithLifecycle()
     val history = if (historyOwner.isCurrent() && historyState.owner?.sameVisit(historyOwner) == true) historyState else WalletHistoryStatus()
     LaunchedEffect(historyOwner) {
@@ -85,47 +87,47 @@ fun CoinsAndPaymentsScreen(
     val transactionsHasMore = history.hasMore
     val historyLoadingMore by viewModel.historyLoadingMore.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
-    val lastUpdatedAt by viewModel.walletLastUpdatedAt.collectAsStateWithLifecycle()
+    val lastUpdatedAt = wallet.confirmedAt
     val walletError by viewModel.error.collectAsStateWithLifecycle()
     val verifying by viewModel.billingVerifying.collectAsStateWithLifecycle()
-    val billingMessage by viewModel.billingMessage.collectAsStateWithLifecycle()
+    val billingMessage = wallet.billingMessage
     val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     val activity = remember(context) { context.findActivityForBilling() }
-    val accountId = viewModel.currentAccountId()
+    val accountId = historyOwner.accountId.orEmpty()
     var showRecharge by remember(historyOwner) { mutableStateOf(false) }
     var showLimits by remember(historyOwner) { mutableStateOf(false) }
     var selectedReceipt by remember(historyOwner) { mutableStateOf<WalletTransaction?>(null) }
-    var playProducts by remember(capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
-    var catalogIssues by remember(capabilities.products) { mutableStateOf<List<PlayCatalogIssue>>(emptyList()) }
-    var catalogLoading by remember(capabilities.enabled) { mutableStateOf(capabilities.enabled) }
+    var playProducts by remember(historyOwner, capabilities.enabled, capabilities.products, showRecharge) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
+    var catalogIssues by remember(historyOwner, capabilities.enabled, capabilities.products, showRecharge) { mutableStateOf<List<PlayCatalogIssue>>(emptyList()) }
+    var catalogLoading by remember(historyOwner, capabilities.enabled, capabilities.products, showRecharge) { mutableStateOf(capabilities.enabled) }
     val spending = remember(transactions, transactionsHasMore, history) {
         val snapshot = calculateWalletSpend(transactions, hasMore = transactionsHasMore)
         snapshot.copy(historyComplete = snapshot.historyComplete && history.loaded && !history.loading && history.error == null)
     }
 
-    val billingController = remember(capabilities.enabled, capabilities.products, accountId) {
-        if (!capabilities.enabled || accountId.isBlank()) null else GooglePlayBillingController(
+    val billingController = remember(historyOwner, capabilities.enabled, capabilities.products, accountId, showRecharge) {
+        if (!historyOwner.isCurrent() || showRecharge || !capabilities.enabled || accountId.isBlank()) null else GooglePlayBillingController(
             context = context,
             accountId = accountId,
             productIds = capabilities.products.map { it.productId }.toSet(),
             onProducts = {
-                playProducts = it
-                catalogLoading = false
+                if (historyOwner.isCurrent()) { playProducts = it; catalogLoading = false }
             },
-            onCatalogIssues = { catalogIssues = it },
-            onPurchased = { product, token -> viewModel.verifyGooglePlayPurchase(accountId, product, token) },
+            onCatalogIssues = { if (historyOwner.isCurrent()) catalogIssues = it },
+            onPurchased = { product, token -> if (historyOwner.isCurrent()) viewModel.verifyGooglePlayPurchase(accountId, product, token) },
             onPending = {
                 viewModel.showBillingMessage(
+                    historyOwner,
                     "Pago pendiente. Las monedas se acreditarán cuando Google Play confirme el cobro."
                 )
             },
             onCanceled = {
-                viewModel.showBillingMessage("Compra cancelada. No se realizó ningún cobro.")
+                viewModel.showBillingMessage(historyOwner, "Compra cancelada. No se realizó ningún cobro.")
             },
             onError = {
-                catalogLoading = false
-                viewModel.showBillingMessage(it)
+                if (historyOwner.isCurrent()) catalogLoading = false
+                viewModel.showBillingMessage(historyOwner, it)
             }
         )
     }
@@ -181,6 +183,14 @@ fun CoinsAndPaymentsScreen(
             }
 
             when {
+                wallet.billingError != null -> item {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(wallet.billingError)
+                            OutlinedButton(onClick = viewModel::refresh, enabled = !loading) { Text("Reintentar compras") }
+                        }
+                    }
+                }
                 loading && lastUpdatedAt == null -> item {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp),
@@ -211,6 +221,9 @@ fun CoinsAndPaymentsScreen(
                         title = "Catálogo no disponible",
                         body = "Google Play no devolvió productos publicados para esta cuenta o país. No se iniciará ningún cobro."
                     )
+                    OutlinedButton(onClick = { catalogLoading = true; billingController?.start() }, enabled = billingController != null) {
+                        Text("Volver a consultar precios")
+                    }
                 }
                 else -> items(
                     capabilities.products.sortedBy { it.coins },
@@ -226,9 +239,9 @@ fun CoinsAndPaymentsScreen(
                         onClick = {
                             val host = activity
                             if (host == null) {
-                                viewModel.showBillingMessage("No se pudo abrir Google Play en esta pantalla.")
+                                viewModel.showBillingMessage(historyOwner, "No se pudo abrir Google Play en esta pantalla.")
                             } else {
-                                billingController?.launch(host, coinProduct.productId)
+                                if (historyOwner.isCurrent()) billingController?.launch(host, coinProduct.productId)
                             }
                         }
                     )
@@ -472,11 +485,11 @@ fun CoinsAndPaymentsScreen(
 
     billingMessage?.takeUnless { showRecharge }?.let { message ->
         AlertDialog(
-            onDismissRequest = viewModel::clearBillingMessage,
+            onDismissRequest = { viewModel.clearBillingMessage(historyOwner) },
             title = { Text("Google Play") },
             text = { Text(message) },
             confirmButton = {
-                TextButton(onClick = viewModel::clearBillingMessage) { Text("Entendido") }
+                TextButton(onClick = { viewModel.clearBillingMessage(historyOwner) }) { Text("Entendido") }
             }
         )
     }

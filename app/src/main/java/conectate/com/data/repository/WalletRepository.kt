@@ -410,11 +410,15 @@ class WalletRepository @Inject constructor(
         }
     }
 
-    suspend fun fetchBillingCapabilities(): Result<BillingCapabilities> = withContext(Dispatchers.IO) {
-        runCatching {
-            if (!supabaseConfig.isConfigured) return@runCatching BillingCapabilities()
-            val token = authService.getAccessToken()
-                ?: throw IllegalStateException("No hay token de acceso")
+    suspend fun fetchBillingCapabilities(): Result<BillingCapabilities> {
+        val session = walletSession()
+        return accountScopedCall(session, { userId ->
+            check(supabaseConfig.isConfigured) { "Las compras no están configuradas para este entorno." }
+            authService.ensureValidAccessToken().getOrThrow()
+            session.requireCurrent()
+            authService.getAccessTokenForAccountAwait(userId)
+        }) { _, token -> withContext(Dispatchers.IO) {
+            session.requireCurrent()
             val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/billing_capabilities") {
                 restHeaders(token)
                 contentType(ContentType.Application.Json)
@@ -424,16 +428,31 @@ class WalletRepository @Inject constructor(
             if (!response.status.isSuccess()) {
                 throw IllegalStateException(parseSupabaseError(body) ?: "No se pudo consultar Google Play")
             }
-            val objectValue = decodeFirstObject(body) ?: return@runCatching BillingCapabilities()
-            BillingCapabilities(
-                enabled = objectValue.boolean("enabled"),
-                provider = objectValue.string("provider") ?: "google_play",
-                products = (objectValue["products"] as? JsonArray).orEmpty().mapNotNull { element ->
-                    val product = element as? JsonObject ?: return@mapNotNull null
-                    val id = product.string("product_id").orEmpty()
-                    val coins = product.int("coins")
-                    if (id.isBlank() || coins <= 0) null else CoinProduct(id, coins)
-                },
+            val parsed = supabaseConfig.json.parseToJsonElement(body)
+            val objectValue = when (parsed) {
+                is JsonObject -> parsed
+                is JsonArray -> parsed.singleOrNull() as? JsonObject
+                else -> null
+            } ?: error("El servidor no confirmó la disponibilidad de compras.")
+            val enabled = objectValue["enabled"]?.jsonPrimitive?.booleanOrNull
+                ?: error("El servidor no confirmó la disponibilidad de compras.")
+            val provider = objectValue.string("provider") ?: "google_play"
+            check(!enabled || provider == "google_play") { "El proveedor de compras no es compatible." }
+            val productsValue = objectValue["products"]
+            val products = if (productsValue == null && !enabled) emptyList() else {
+                check(productsValue is JsonArray) { "El catálogo de compras no es válido." }
+                productsValue.map { element ->
+                    val product = element as? JsonObject ?: error("El catálogo contiene un producto inválido.")
+                    val id = product.string("product_id")?.trim() ?: error("El producto no tiene referencia.")
+                    val coins = product["coins"]?.jsonPrimitive?.intOrNull
+                    check(coins != null && coins > 0) { "El producto no contiene una cantidad válida de monedas." }
+                    CoinProduct(id, coins)
+                }.also { check(it.map(CoinProduct::productId).distinct().size == it.size) { "El catálogo contiene productos duplicados." } }
+            }
+            val capabilities = BillingCapabilities(
+                enabled = enabled,
+                provider = provider,
+                products = products,
                 giftLimits = (objectValue["gift_limits"] as? JsonObject)?.let { limits ->
                     GiftSafetyLimits(
                         maxCoinsPerGift = limits.int("max_coins_per_gift").takeIf { it > 0 } ?: 5_000,
@@ -445,7 +464,10 @@ class WalletRepository @Inject constructor(
                     )
                 } ?: GiftSafetyLimits()
             )
-        }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            session.requireCurrent()
+            Result.success(capabilities)
+        } }
     }
 
     internal fun purchaseSession() = walletSession()
@@ -457,11 +479,14 @@ class WalletRepository @Inject constructor(
         productId: String,
         purchaseToken: String,
         session: AuthSessionLease
-    ): Result<CoinPurchaseVerification> = withContext(Dispatchers.IO) {
-        runCatching {
-            session.requireCurrent()
-            val token = authService.getAccessTokenForAccountAwait(requireNotNull(session.accountId))
-                ?: throw IllegalStateException("No hay token de acceso")
+    ): Result<CoinPurchaseVerification> = accountScopedCall(session, { account ->
+        check(supabaseConfig.isConfigured) { "Las compras no están configuradas para este entorno." }
+        require(productId.isNotBlank() && purchaseToken.isNotBlank() && purchaseToken.length <= 4096) { "La referencia de compra no es válida." }
+        authService.ensureValidAccessToken().getOrThrow()
+        session.requireCurrent()
+        authService.getAccessTokenForAccountAwait(account)
+    }) { _, token ->
+        withContext(Dispatchers.IO) {
             session.requireCurrent()
             val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/verify_google_play_purchase") {
                 restHeaders(token)
@@ -477,16 +502,22 @@ class WalletRepository @Inject constructor(
             }
             val value = decodeFirstObject(body)
                 ?: throw IllegalStateException("La verificación no devolvió un resultado")
-            val verified = CoinPurchaseVerification(
-                status = value.string("status") ?: "unknown",
-                credited = value.boolean("credited"),
-                coins = value.int("coins"),
-                balanceDiamonds = value.int("balance_diamonds")
-            )
-            if (verified.status == "credited") {
-                publishPurchaseResult(session) { _coinBalance.value = verified.balanceDiamonds.coerceAtLeast(0) }
+            val status = value.string("status")
+            val credited = value["credited"]?.jsonPrimitive?.booleanOrNull
+            val coins = value["coins"]?.jsonPrimitive?.intOrNull
+            check(status in setOf("pending", "credited") && credited != null && coins != null && coins >= 0) {
+                "El servidor no confirmó el estado de la compra."
             }
-            verified
+            val balance = if (status == "credited") value["balance_diamonds"]?.jsonPrimitive?.intOrNull else 0
+            check(balance != null && balance >= 0) { "La confirmación no contiene un saldo válido." }
+            check(if (status == "pending") !credited && coins == 0 else if (credited) coins > 0 else coins == 0) {
+                "La confirmación de monedas no es válida."
+            }
+            val verified = CoinPurchaseVerification(status!!, credited, coins, balance)
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            session.requireCurrent()
+            if (verified.status == "credited") publishPurchaseResult(session) { _coinBalance.value = balance }
+            Result.success(verified)
         }
     }
 

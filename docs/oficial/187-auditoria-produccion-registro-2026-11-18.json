@@ -1,0 +1,394 @@
+{
+  "mandate": "2026-11-18",
+  "status": "in-progress",
+  "productionReady": false,
+  "baseFeatureCommit": "56e55094f2a66f578cac9009aaf602186da001c7",
+  "stableBranches": [
+    "main",
+    "feature/live-gifts"
+  ],
+  "branchNote": "live-gifts es el nombre usado por el propietario; la ref existente es feature/live-gifts. No se crea ni renombra otra rama sin necesidad.",
+  "markets": {
+    "source": "owner-confirmed-2026-11-18",
+    "scope": "all-countries-enabled-in-google-play-console",
+    "consoleExportVerified": false,
+    "priority": "Peru; additional jurisdictions subject to applicable scope"
+  },
+  "coverageSnapshot": {
+    "source": "docs/oficial/review-coverage.json",
+    "generatedAtUtc": "2026-11-18T13:38:15.877896+00:00",
+    "counts": {
+      "pending": 3589,
+      "partial": 264,
+      "code-read": 813
+    },
+    "meaning": "Inventario y lecturas de código; no certifica recorridos ni producción."
+  },
+  "modules": [
+    {
+      "name": "Inicio, navegación y sesión",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Registro, acceso y recuperación",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Perfiles y configuración",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Publicaciones, comentarios y reacciones",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Mensajes privados",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Grupos y comunidades",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Llamadas, salas de voz y LIVE",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Videos y multimedia",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Búsqueda y enlaces compartidos",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Notificaciones",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Seguidores, amistades y bloqueos",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Reportes y moderación",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Privacidad, menores y consentimientos",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Monedero, compras y creadores",
+      "status": "partial-runtime-validation; further known risks remain",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false,
+      "sourceReadPaths": [
+        "app/src/main/java/conectate/com/data/repository/WalletRepository.kt",
+        "app/src/main/java/conectate/com/presentation/wallet/WalletViewModel.kt",
+        "app/src/main/java/conectate/com/presentation/wallet/GooglePlayBillingController.kt",
+        "app/src/main/java/conectate/com/presentation/wallet/PlayPurchaseQueue.kt",
+        "app/src/main/java/conectate/com/presentation/wallet/CoinsAndPaymentsScreen.kt",
+        "app/src/main/java/conectate/com/presentation/wallet/GooglePlayRechargeDialog.kt",
+        "app/src/test/java/conectate/com/presentation/wallet/WalletHistoryInteractionTest.kt",
+        "app/src/test/java/conectate/com/presentation/wallet/WalletRefreshVisitTest.kt",
+        "app/src/test/java/conectate/com/data/repository/BillingCapabilitiesContractTest.kt",
+        "app/src/test/java/conectate/com/data/repository/PurchaseConfirmationContractTest.kt",
+        "app/src/test/java/conectate/com/presentation/wallet/GooglePlayControllerLifetimeTest.kt",
+        "app/src/test/java/conectate/com/presentation/wallet/PlayQueueVisitTest.kt"
+      ]
+    },
+    {
+      "name": "Juegos, recomendaciones y asistente",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "API, base de datos y permisos",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Web y su integración",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Dependencias, secretos y configuración",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Rendimiento medido y dispositivos",
+      "status": "pending-current-validation",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    },
+    {
+      "name": "Políticas, obligaciones por mercado y salida de producción",
+      "status": "official-source-research-in-progress; owner information incomplete",
+      "sourceReadComplete": false,
+      "flowsVerified": false,
+      "deviceVerified": false,
+      "productionDeployed": false
+    }
+  ],
+  "findings": [
+    {
+      "id": "N001",
+      "severity": "high",
+      "description": "Estados de saldo y disponibilidad conservados entre visitas de cuenta",
+      "evidenceReport": "188",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N002",
+      "severity": "high",
+      "description": "Carga secuencial sin plazo que bloquea secciones independientes",
+      "evidenceReport": "188",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N003",
+      "severity": "medium",
+      "description": "Respuestas inválidas o fallidas tratadas como compras deshabilitadas",
+      "evidenceReport": "188",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N004",
+      "severity": "medium",
+      "description": "Mensajes técnicos de SDK o servidor expuestos en la interfaz de compra",
+      "evidenceReport": "189",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N005",
+      "severity": "high",
+      "description": "Callbacks y consultas del controlador después de su cierre",
+      "evidenceReport": "189",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N006",
+      "severity": "high",
+      "description": "Cola anterior bloquea o modifica la verificación de la visita nueva",
+      "evidenceReport": "189",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N007",
+      "severity": "medium",
+      "description": "Controladores de compra del padre y modal activos al mismo tiempo",
+      "evidenceReport": "189",
+      "evidenceKind": "code-read; physical UI pending",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N008",
+      "severity": "high",
+      "description": "ACK incompleto de compra puede confirmar monedas o publicar saldo cero",
+      "evidenceReport": "189",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N009",
+      "severity": "high",
+      "description": "Ausencia de callback de Google Play mantiene la consulta sin finalización",
+      "evidenceReport": "189",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N010",
+      "severity": "high",
+      "description": "Precio mostrado no vinculado al cargo cuando cambia el catálogo",
+      "evidenceReport": "191 (in preparation)",
+      "evidenceKind": "runtime-controlled; existing request contract",
+      "status": "reproduced-awaiting-fix",
+      "published": false
+    },
+    {
+      "id": "N011",
+      "severity": "high",
+      "description": "Replay de regalo devuelve saldo anterior a otra transacción",
+      "evidenceReport": "191 (in preparation)",
+      "evidenceKind": "runtime-controlled; existing request contract",
+      "status": "reproduced-awaiting-fix",
+      "published": false
+    }
+  ],
+  "release": {
+    "versionCodeObserved": 183,
+    "versionNameObserved": "9.1.43",
+    "productionBuildVerifiedForThisMandate": false,
+    "newApkDelivered": false
+  },
+  "externalRequirements": [
+    "Verificar la lista efectiva de países y la pista habilitada de Play Console.",
+    "Identificar entidad responsable, domicilio, representación y contactos legales aplicables sin inventarlos.",
+    "Validación jurídica profesional por mercado; no se declara cumplimiento del100%.",
+    "Ensayos físicos, cuentas de prueba y servicios de terceros separados de mocks."
+  ],
+  "evidence": [
+    {
+      "kind": "jvm-controlled",
+      "path": "2026-11-18-mobile-audit188-refresh/candidate-final",
+      "tests": 226,
+      "passed": 226,
+      "scope": "Six real production sources, Compose, five new classes and wallet regressions; not device or production certification"
+    },
+    {
+      "kind": "server-controlled",
+      "path": "2026-11-18-mobile-audit189-billing/server-coin-flow.log",
+      "exitCodeObserved": 0,
+      "sha256": "096b4016d07f5b25543945801f5ca38cb1838c99f309ffdea52d75c415f87048",
+      "scope": "Fake database pool and provider; no real purchases"
+    },
+    {
+      "kind": "gradle-full",
+      "path": "2026-11-18-mobile-audit188-refresh/gradle-full-restarted",
+      "status": "passed",
+      "counts": {
+        "tests": 3475,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 580
+      },
+      "logSha256": "3f168237bc69cee7c1c76ff197c0bcc08c4772e7cb6a9db1280658e01486a587",
+      "startedAt": "2026-11-18T17:15:43.837172+00:00",
+      "finishedAt": "2026-11-18T17:31:43.733317+00:00",
+      "inputsStable": true,
+      "foreignChangesPreserved": true
+    },
+    {
+      "kind": "server-controlled",
+      "path": "2026-11-18-mobile-audit191-gift-quotes/reference-current-contract.json",
+      "tests": 3,
+      "failures": 2,
+      "scope": "Current unchanged RPC body, fake pool, changed stored price and prior receipt replay; no actual charges"
+    }
+  ],
+  "findingCounts": {
+    "scope": "New findings for this mandate; historical test failures are not defect counts",
+    "critical": 0,
+    "high": 8,
+    "medium": 3,
+    "low": 0,
+    "total": 11
+  },
+  "responsibleController": {
+    "confirmedEmail": "administracion@novvinapp.com",
+    "legalName": null,
+    "country": null,
+    "serviceAddress": null,
+    "source": "Owner says no registered entity, name or commercial premises; only email confirmed. No identity/address invented.",
+    "status": "needs-owner-and-legal-definition; not a requirement to own an office"
+  },
+  "risks": [
+    {
+      "id": "R01",
+      "status": "open",
+      "description": "Identificación del responsable, domicilios y representación aplicable sin verificar."
+    },
+    {
+      "id": "R02",
+      "status": "investigating",
+      "description": "Consentimiento/edad por mercado: la política indica13 años; faltan pruebas y análisis de requisitos regionales."
+    },
+    {
+      "id": "R04",
+      "status": "pending",
+      "description": "Orden de actualizaciones de saldo concurrentes con regalos, compras y otros dispositivos."
+    },
+    {
+      "id": "R05",
+      "status": "pending",
+      "description": "Compilación de producción del commit exacto y ensayos físicos; checkouts antiguos contienen cambios ajenos y se preservan."
+    }
+  ]
+}
