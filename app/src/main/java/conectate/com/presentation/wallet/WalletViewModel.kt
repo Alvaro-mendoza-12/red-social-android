@@ -90,6 +90,8 @@ class WalletViewModel @Inject constructor(
 
     private val _historyLoadingMore = MutableStateFlow(false)
     val historyLoadingMore: StateFlow<Boolean> = _historyLoadingMore.asStateFlow()
+    internal val historyStatus get() = walletRepository.historyStatus
+    private var historyLoad: Any? = null
 
     private var payoutOwner = creatorPayoutRepository.captureSession()
     private val mutableGiftSession = MutableStateFlow(payoutOwner)
@@ -445,11 +447,34 @@ class WalletViewModel @Inject constructor(
     }
 
     fun loadMoreTransactions() {
-        if (_historyLoadingMore.value || !transactionsHasMore.value) return
-        viewModelScope.launch(Dispatchers.IO) {
-            _historyLoadingMore.value = true
-            walletRepository.fetchTransactionHistory(reset = false)
+        if (!transactionsHasMore.value || !_historyLoadingMore.compareAndSet(false, true)) return
+        val owner = creatorPayoutRepository.captureSession()
+        val operation = Any()
+        historyLoad = operation
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                owner.requireCurrent()
+                walletRepository.fetchTransactionHistory(reset = false)
+            } finally { finishHistoryLoad(operation) }
+        }
+        job.invokeOnCompletion { finishHistoryLoad(operation) }
+        job.start()
+    }
+
+    private fun finishHistoryLoad(operation: Any) {
+        if (historyLoad === operation) {
+            historyLoad = null
             _historyLoadingMore.value = false
+        }
+    }
+
+    fun retryTransactionHistory() {
+        val owner = creatorPayoutRepository.captureSession()
+        val status = historyStatus.value
+        val append = status.owner?.sameVisit(owner) == true && status.retryAppend
+        viewModelScope.launch {
+            owner.requireCurrent()
+            walletRepository.fetchTransactionHistory(reset = !append)
         }
     }
 

@@ -102,6 +102,13 @@ class WalletRepository @Inject constructor(
     private val _transactionsHasMore = MutableStateFlow(false)
     val transactionsHasMore: StateFlow<Boolean> = _transactionsHasMore.asStateFlow()
 
+    private val historyLock = Any()
+    private class HistoryRead(val reset: Boolean, val offset: Int)
+    private var historyRead: HistoryRead? = null
+    private var historyOffset = 0
+    private val mutableHistoryStatus = MutableStateFlow(WalletHistoryStatus())
+    internal val historyStatus = mutableHistoryStatus.asStateFlow()
+
     private var walletOwner: AuthSessionLease? = null
 
     @Synchronized
@@ -111,8 +118,13 @@ class WalletRepository @Inject constructor(
             walletOwner = session
             _coinBalance.value = 0
             _coinDebt.value = 0
-            _transactions.value = emptyList()
-            _transactionsHasMore.value = false
+            synchronized(historyLock) {
+                historyRead = null
+                historyOffset = 0
+                _transactions.value = emptyList()
+                _transactionsHasMore.value = false
+                mutableHistoryStatus.value = WalletHistoryStatus(owner = session)
+            }
         }
         return session
     }
@@ -181,52 +193,120 @@ class WalletRepository @Inject constructor(
         }
     }
 
-    suspend fun fetchTransactionHistory(reset: Boolean = true) = withContext(Dispatchers.IO) {
-        runCatching {
-            val session = walletSession()
-            val userId = session.accountId ?: return@runCatching
-            if (!supabaseConfig.isConfigured) return@runCatching
-            val token = authService.getAccessTokenForAccountAwait(userId)
-                ?: throw IllegalStateException("No hay token de acceso")
-            val pageSize = 50
-            val offset = if (reset) 0 else _transactions.value.size
-            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/wallet_transactions") {
-                restHeaders(token)
-                parameter("user_id", "eq.$userId")
-                parameter("select", "*")
-                parameter("order", "created_at.desc")
-                parameter("limit", (pageSize + 1).toString())
-                parameter("offset", offset.toString())
+    suspend fun fetchTransactionHistory(reset: Boolean = true): Result<Unit> {
+        // Capture ownership and reserve the page before dispatching credentials or HTTP.
+        val session = walletSession()
+        if (session.accountId == null) return Result.failure(IllegalStateException("Inicia sesión para consultar el historial."))
+        var request: HistoryRead? = null
+        val reserved = authService.commitForAccountLease(session) {
+            synchronized(historyLock) {
+                if (reset || (historyRead == null && mutableHistoryStatus.value.loaded && _transactionsHasMore.value)) {
+                    request = HistoryRead(reset, if (reset) 0 else historyOffset)
+                    historyRead = request
+                    mutableHistoryStatus.value = mutableHistoryStatus.value.copy(loading = true, error = null)
+                }
             }
-            if (!response.status.isSuccess()) {
-                throw IllegalStateException("No se pudo cargar el historial: ${response.status}")
-            }
-            val decoded = decodeObjects(response.bodyAsText())
-            val page = decoded.take(pageSize).mapNotNull { value ->
-                val id = value.string("id").orEmpty()
-                if (id.isBlank()) return@mapNotNull null
-                val direction = value.string("direction").orEmpty()
-                val rawAmount = value.int("amount_diamonds")
-                WalletTransaction(
-                    id = id,
-                    type = value.string("transaction_type") ?: value.string("type") ?: "movimiento",
-                    amountDiamonds = if (direction == "debit" && rawAmount > 0) -rawAmount else rawAmount,
-                    balanceAfterDiamonds = value.int("balance_after").takeIf { value.containsKey("balance_after") }
-                        ?: value.int("balance_after_diamonds"),
-                    description = value.string("description"),
-                    createdAt = value.string("created_at"),
-                    status = value.string("status") ?: "confirmed",
-                    providerReference = value.string("provider_reference")
-                        ?: value.string("provider_order_id")
-                )
-            }
-            authService.commitForAccountLease(session) {
-                _transactions.value = if (reset) page else (_transactions.value + page).distinctBy { it.id }
-                _transactionsHasMore.value = decoded.size > pageSize
-            }
-        }.onFailure { error ->
-            Log.w(TAG, "Unable to fetch wallet transaction history", error)
         }
+        if (!reserved) session.requireCurrent()
+        val read = request ?: return Result.success(Unit)
+        try {
+            val result = try {
+                kotlinx.coroutines.withTimeout(15_000) {
+                    accountScopedCall(session, { userId ->
+                        check(supabaseConfig.isConfigured) { "El monedero no está configurado para este entorno." }
+                        authService.ensureValidAccessToken().getOrThrow()
+                        session.requireCurrent()
+                        requireHistoryRead(read)
+                        authService.getAccessTokenForAccountAwait(userId)
+                    }) { userId, token ->
+                        withContext(Dispatchers.IO) {
+                            requireHistoryRead(read)
+                            session.requireCurrent()
+                            val response = supabaseConfig.httpClient.get("${supabaseConfig.supabaseUrl}/rest/v1/wallet_transactions") {
+                                restHeaders(token)
+                                parameter("user_id", "eq.$userId")
+                                parameter("select", "*")
+                                parameter("order", "created_at.desc")
+                                parameter("limit", "51")
+                                parameter("offset", read.offset.toString())
+                            }
+                            check(response.status.isSuccess()) { "No se pudo cargar el historial (${response.status.value})." }
+                            val parsed = supabaseConfig.json.parseToJsonElement(response.bodyAsText())
+                            val objects = when (parsed) {
+                                is JsonArray -> parsed.map { it as? JsonObject ?: error("El historial contiene movimientos inválidos.") }
+                                is JsonObject -> listOf(parsed) // Imported REST servers may return a single row.
+                                else -> error("El servidor no confirmó el historial.")
+                            }
+                            val decoded = objects.map { value -> value.toWalletTransaction(userId) }
+                            val page = decoded.take(50)
+                            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                            session.requireCurrent()
+                            checkHistoryPublication(session, read) {
+                                _transactions.value = (if (read.reset) page else _transactions.value + page).distinctBy { it.id }
+                                _transactionsHasMore.value = decoded.size > 50
+                                historyOffset = read.offset + page.size
+                                mutableHistoryStatus.value = WalletHistoryStatus(
+                                    loaded = true, loading = true, owner = session,
+                                    transactions = _transactions.value, hasMore = _transactionsHasMore.value,
+                                )
+                            }
+                            Result.success(Unit)
+                        }
+                    }
+                }
+            } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                session.requireCurrent()
+                Result.failure(IllegalStateException("La consulta del historial tardó demasiado. Reintenta.", timeout))
+            }
+            result.onFailure { failure ->
+                checkHistoryPublication(session, read) {
+                    mutableHistoryStatus.value = mutableHistoryStatus.value.copy(
+                        error = "No se pudieron actualizar los movimientos. Comprueba la conexión y reintenta.",
+                        retryAppend = !read.reset,
+                    )
+                }
+                Log.w(TAG, "Unable to fetch wallet transaction history", failure)
+            }
+            return result
+        } finally {
+            authService.commitForAccountLease(session) {
+                synchronized(historyLock) {
+                    if (historyRead === read) {
+                        historyRead = null
+                        mutableHistoryStatus.value = mutableHistoryStatus.value.copy(loading = false)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun requireHistoryRead(read: HistoryRead) = synchronized(historyLock) {
+        if (historyRead !== read) throw kotlinx.coroutines.CancellationException("Otra actualización reemplazó esta consulta del historial.")
+    }
+
+    private fun checkHistoryPublication(session: AuthSessionLease, read: HistoryRead, mutation: () -> Unit) {
+        val published = authService.commitForAccountLease(session) {
+            synchronized(historyLock) { requireHistoryRead(read); mutation() }
+        }
+        if (!published) session.requireCurrent()
+    }
+
+    private fun JsonObject.toWalletTransaction(owner: String): WalletTransaction {
+        val id = string("id") ?: error("El movimiento no tiene referencia.")
+        check(!containsKey("user_id") || string("user_id").equals(owner, ignoreCase = true)) { "El movimiento pertenece a otra cuenta." }
+        val amount = this["amount_diamonds"]?.jsonPrimitive?.intOrNull
+        val balance = (this["balance_after"] ?: this["balance_after_diamonds"])?.jsonPrimitive?.intOrNull
+        check(amount != null && amount != Int.MIN_VALUE && balance != null && balance >= 0) { "El movimiento no contiene importes válidos." }
+        return WalletTransaction(
+            id = id,
+            type = string("transaction_type") ?: string("type") ?: "movimiento",
+            amountDiamonds = if (string("direction") == "debit" && amount > 0) -amount else amount,
+            balanceAfterDiamonds = balance,
+            description = string("description"), createdAt = string("created_at"),
+            status = string("status") ?: "confirmed",
+            providerReference = string("provider_reference") ?: string("provider_order_id"),
+        )
     }
 
     fun currentAccountId(): String? = authService.getCurrentUserId()?.trim()?.takeIf { it.isNotBlank() }
@@ -530,3 +610,13 @@ class WalletRepository @Inject constructor(
         }.getOrNull()
     }
 }
+
+internal data class WalletHistoryStatus(
+    val loaded: Boolean = false,
+    val loading: Boolean = false,
+    val error: String? = null,
+    val retryAppend: Boolean = false,
+    val owner: AuthSessionLease? = null,
+    val transactions: List<WalletTransaction> = emptyList(),
+    val hasMore: Boolean = false,
+)
