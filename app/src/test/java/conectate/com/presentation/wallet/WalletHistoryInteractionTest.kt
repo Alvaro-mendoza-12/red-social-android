@@ -23,6 +23,7 @@ class WalletHistoryInteractionTest {
     private val payouts = mockk<CreatorPayoutRepository>()
     private lateinit var model: WalletViewModel
     private var calls = 0
+    private var initialReset = true
     private val resets = mutableListOf<Boolean>()
     private val history = MutableStateFlow(WalletHistoryStatus())
     private var response: suspend () -> Result<Unit> = { Result.success(Unit) }
@@ -35,7 +36,10 @@ class WalletHistoryInteractionTest {
         every { wallet.transactionsHasMore } returns MutableStateFlow(true)
         every { wallet.historyStatus } returns history
         coEvery { wallet.fetchBalance() } coAnswers { awaitCancellation() }
-        coEvery { wallet.fetchTransactionHistory(any()) } coAnswers { calls++; resets += firstArg<Boolean>(); response() }
+        coEvery { wallet.fetchTransactionHistory(any()) } coAnswers {
+            if (firstArg<Boolean>() && initialReset) { initialReset = false; awaitCancellation() }
+            calls++; resets += firstArg<Boolean>(); response()
+        }
         val program = mockk<CreatorProgramRepository>()
         coEvery { program.loadDashboard() } returns Result.success(CreatorProgramDashboard())
         every { payouts.captureSession() } answers { guard.captureAccountLease { "a" } }
@@ -43,6 +47,7 @@ class WalletHistoryInteractionTest {
         every { payouts.publish(any(), any()) } answers { guard.commitForLease(firstArg(), secondArg()) }
         coEvery { payouts.summary(any()) } returns Result.success(CreatorPayoutSummary())
         model = WalletViewModel(wallet, program, payouts); store.put("wallet", model)
+        dispatcher.scheduler.runCurrent()
     }
     @After fun stop() = runBlocking {
         val job = model.viewModelScope.coroutineContext[Job]!!

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T13:38:15.877896+00:00",
-  "baseCommit": "9c79c1bb8c95225eedebf270175f703f0b5ca656",
+  "generatedAtUtc": "2026-11-18T17:32:16.619949+00:00",
+  "baseCommit": "56e55094f2a66f578cac9009aaf602186da001c7",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3589,
+    "pending": 3591,
     "partial": 264,
-    "code-read": 813
+    "code-read": 820
   },
   "countsByPhase": {
     "android": {
-      "pending": 1438,
+      "pending": 1436,
       "partial": 117,
-      "code-read": 565
+      "code-read": 572
     },
     "documentation": {
-      "pending": 664,
+      "pending": 668,
       "code-read": 61,
       "partial": 20
     },
@@ -8695,9 +8695,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/WalletRepository.kt",
       "phase": "android",
-      "gitBlobId": "7c4b462d41b7ccf82176527af1c8e9de2c760f84",
+      "gitBlobId": "78737eb4d860e9d110ce3512a02be99da101746b",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/186-historial-confirmado-paginacion-y-visitas-2026-11-18.md",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13451,9 +13451,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/CoinsAndPaymentsScreen.kt",
       "phase": "android",
-      "gitBlobId": "bb3a8578a92c95cf5fe2a4c0b90f2eac771ab888",
+      "gitBlobId": "e96c4c528b185f25b6758d863a511a6db62bc43e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/186-historial-confirmado-paginacion-y-visitas-2026-11-18.md",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13531,14 +13531,18 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/GooglePlayBillingController.kt",
       "phase": "android",
-      "gitBlobId": "828a51f56a61607fc7387f4ddb2b5d82499d86ce",
-      "reviewStatus": "pending"
+      "gitBlobId": "a552c5fbbda1271ff13b6b722f9a31559d36d12f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/GooglePlayRechargeDialog.kt",
       "phase": "android",
-      "gitBlobId": "feb7c62e3398dd20d150269e503fa3e14eea6fd9",
-      "reviewStatus": "pending"
+      "gitBlobId": "6c46abf42b37124c979a4c07b373b3c578092edd",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/PlayBillingPolicy.kt",
@@ -13549,9 +13553,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/PlayPurchaseQueue.kt",
       "phase": "android",
-      "gitBlobId": "d92432548145de71e193ad2845ee4af56f337370",
+      "gitBlobId": "56e535c8720ab7f9ecca45b1200e113a57034133",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13563,9 +13567,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/WalletViewModel.kt",
       "phase": "android",
-      "gitBlobId": "6b3f39d97be5c9645f505b7627e25837049f5a12",
+      "gitBlobId": "a3919905cd6a093bcc8a5b281dfc2915dc6cb870",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/186-historial-confirmado-paginacion-y-visitas-2026-11-18.md",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15823,6 +15827,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/BillingCapabilitiesContractTest.kt",
+      "phase": "android",
+      "gitBlobId": "667eec45376d6c7da08e9f87d93c2da45570d4fa",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/CallCollisionPolicyTest.kt",
       "phase": "android",
       "gitBlobId": "4c073f3477b95b7c9d802c1caed2257b99a3404c",
@@ -16125,6 +16137,14 @@
       "phase": "android",
       "gitBlobId": "4ee6a494194cd609ae51b2140b19b868e4c6fc3b",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/PurchaseConfirmationContractTest.kt",
+      "phase": "android",
+      "gitBlobId": "2429924d65fe784fb9877d8212ba4eec1720cdf7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/SessionWriteGuardTest.kt",
@@ -18321,6 +18341,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/wallet/GooglePlayControllerLifetimeTest.kt",
+      "phase": "android",
+      "gitBlobId": "eefa32dbc64b0d4a04376efcea2af1d34232351e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/wallet/PlayBillingPolicyTest.kt",
       "phase": "android",
       "gitBlobId": "41cf21e729bf2816031ec22b42f6b8a3b7247d5e",
@@ -18335,6 +18363,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/wallet/PlayQueueVisitTest.kt",
+      "phase": "android",
+      "gitBlobId": "412c5141e0e247b372e595a58a3d92eb98b211d4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/wallet/WalletEarningsSessionTest.kt",
       "phase": "android",
       "gitBlobId": "9e8253e7c940b02bd6e49675802ba511c1c1eedf",
@@ -18345,9 +18381,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/wallet/WalletHistoryInteractionTest.kt",
       "phase": "android",
-      "gitBlobId": "528c92cf5ce64ebf00ff7df8d658da4f1730580f",
+      "gitBlobId": "620fd72682ee0bc1f6c6d9137ee2e119a0dcfbf6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/186-historial-confirmado-paginacion-y-visitas-2026-11-18.md",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18370,6 +18406,14 @@
       "gitBlobId": "198face88e8d9adbe74685d0c88e373de7aafd06",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/185-escritura-efectiva-y-reintentos-tras-limpieza-fallida-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/wallet/WalletRefreshVisitTest.kt",
+      "phase": "android",
+      "gitBlobId": "0a435f1450f91ed4df0d5c9338ae28a6ce3b025a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21780,6 +21824,30 @@
       "file": "docs/oficial/186-historial-confirmado-paginacion-y-visitas-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "df3751663d9445c45febc8ea0c702c1accf141ee",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "2bcdf7396c2dee8cc7682173b396eca10c176b9b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
+      "phase": "documentation",
+      "gitBlobId": "28eb79ee23bf487d4a919c6c9dc368eef7fc7449",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/188-refresco-sesion-y-disponibilidad-confirmada-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "b6994dffe7c143dc34889e702c308044b6a3fb5c",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/189-compras-ciclo-confirmacion-y-errores-seguros-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "39d47407c1d8c94998df8a252d0465af447efd12",
       "reviewStatus": "pending"
     },
     {

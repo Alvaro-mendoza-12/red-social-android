@@ -23,11 +23,12 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -63,12 +64,15 @@ class WalletViewModel @Inject constructor(
 
     private val _billingCapabilities = MutableStateFlow(BillingCapabilities())
     val billingCapabilities: StateFlow<BillingCapabilities> = _billingCapabilities.asStateFlow()
+    private val mutableBillingLoadError = MutableStateFlow<String?>(null)
+    val billingLoadError = mutableBillingLoadError.asStateFlow()
 
     private val _billingMessage = MutableStateFlow<String?>(null)
     val billingMessage: StateFlow<String?> = _billingMessage.asStateFlow()
 
     private val _billingVerifying = MutableStateFlow(false)
     val billingVerifying: StateFlow<Boolean> = _billingVerifying.asStateFlow()
+    private val purchaseQueue = PlayPurchaseQueue(viewModelScope) { busy -> _billingVerifying.value = busy }
 
     private val _creatorDashboard = MutableStateFlow(CreatorProgramDashboard())
     val creatorDashboard: StateFlow<CreatorProgramDashboard> = _creatorDashboard.asStateFlow()
@@ -94,6 +98,11 @@ class WalletViewModel @Inject constructor(
     private var historyLoad: Any? = null
 
     private var payoutOwner = creatorPayoutRepository.captureSession()
+    private var refreshOwner = payoutOwner
+    private var refreshGeneration = 0L
+    private var refreshJob: Job? = null
+    private val mutableRefreshState = MutableStateFlow(WalletRefreshState(owner = payoutOwner))
+    internal val refreshState = mutableRefreshState.asStateFlow()
     private val mutableGiftSession = MutableStateFlow(payoutOwner)
     internal val giftSession = mutableGiftSession.asStateFlow()
     internal val accountSession get() = giftSession
@@ -114,9 +123,18 @@ class WalletViewModel @Inject constructor(
         refreshEarnings()
         refreshPayouts()
         viewModelScope.launch {
+            combine(coinBalance, coinDebt) { _, _ -> Unit }.collect {
+                val owner = creatorPayoutRepository.captureSession()
+                if (refreshOwner.sameVisit(owner)) creatorPayoutRepository.publish(owner) {
+                    mutableRefreshState.value = mutableRefreshState.value.copy(balance = coinBalance.value, debt = coinDebt.value)
+                }
+            }
+        }
+        viewModelScope.launch {
             creatorPayoutRepository.observeSessionVisits().collect {
                 val current = creatorPayoutRepository.captureSession()
                 if (!payoutOwner.sameVisit(current)) {
+                    resetRefreshSession(current)
                     resetGiftSession(current)
                     resetEarningsSession(current)
                     payoutOperations.onSessionChanged(current)
@@ -124,6 +142,7 @@ class WalletViewModel @Inject constructor(
                     _payoutSummary.value = null
                     _payoutMessage.value = null
                     if (current.isCurrent()) {
+                        refresh()
                         refreshPayouts()
                         refreshEarnings()
                     }
@@ -133,27 +152,95 @@ class WalletViewModel @Inject constructor(
     }
 
     fun refresh() {
+        val owner = creatorPayoutRepository.captureSession()
+        resetRefreshSession(owner)
+        if (!owner.isCurrent()) return
         if (!_loading.compareAndSet(false, true)) return
-        viewModelScope.launch(Dispatchers.IO) {
+        val request = ++refreshGeneration
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
             try {
-                val balance = walletRepository.fetchBalance()
-                (balance.exceptionOrNull() as? CancellationException)?.let { throw it }
-                balance.onSuccess {
-                    _walletLastUpdatedAt.value = Instant.now().toString()
-                    _error.compareAndSet(WALLET_REFRESH_ERROR, null)
-                }.onFailure { _error.value = WALLET_REFRESH_ERROR }
-                walletRepository.fetchAvailableGifts()
-                walletRepository.fetchTransactionHistory()
-                walletRepository.fetchBillingCapabilities()
-                    .onSuccess { _billingCapabilities.value = it }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (_: Exception) {
-                _error.value = WALLET_REFRESH_ERROR
-            } finally {
-                _loading.value = false
-            }
+                supervisorScope {
+                    launch {
+                        val result = refreshSection(owner) { walletRepository.fetchBalance() }
+                        publishRefresh(owner, request) {
+                            result.onSuccess {
+                                _walletLastUpdatedAt.value = Instant.now().toString()
+                                mutableRefreshState.value = mutableRefreshState.value.copy(
+                                    confirmedAt = _walletLastUpdatedAt.value, balance = coinBalance.value, debt = coinDebt.value,
+                                )
+                                _error.compareAndSet(WALLET_REFRESH_ERROR, null)
+                            }.onFailure { _error.value = WALLET_REFRESH_ERROR }
+                        }
+                    }
+                    launch { refreshSection(owner) { walletRepository.fetchAvailableGifts() } }
+                    // The repository has its own 15s deadline and publishes history failures.
+                    launch { refreshSection(owner, timeoutMs = 20_000) { walletRepository.fetchTransactionHistory() } }
+                    launch {
+                        val result = refreshSection(owner) { walletRepository.fetchBillingCapabilities() }
+                        publishRefresh(owner, request) {
+                            result.onSuccess { _billingCapabilities.value = it; mutableBillingLoadError.value = null }
+                                .onFailure {
+                                    _billingCapabilities.value = BillingCapabilities()
+                                    mutableBillingLoadError.value = "No se pudo consultar la disponibilidad de compras. Comprueba la conexión y reintenta."
+                                }
+                            mutableRefreshState.value = mutableRefreshState.value.copy(
+                                capabilities = _billingCapabilities.value, billingError = mutableBillingLoadError.value,
+                            )
+                        }
+                    }
+                }
+            } finally { finishRefresh(request) }
         }
+        refreshJob = job
+        job.invokeOnCompletion { finishRefresh(request) }
+        if (refreshGeneration == request) job.start() else job.cancel()
+    }
+
+    private suspend fun <T> refreshSection(owner: AuthSessionLease, timeoutMs: Long = 15_000, read: suspend () -> Result<T>): Result<T> {
+        return try {
+            withTimeout(timeoutMs) {
+                owner.requireCurrent()
+                val result = read()
+                currentCoroutineContext().ensureActive()
+                owner.requireCurrent()
+                (result.exceptionOrNull() as? CancellationException)?.let { throw it }
+                result
+            }
+        } catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            owner.requireCurrent()
+            // A section deadline or a superseded history page does not cancel its siblings.
+            Result.failure(cancelled)
+        } catch (failure: Exception) {
+            currentCoroutineContext().ensureActive()
+            owner.requireCurrent()
+            Result.failure(failure)
+        }
+    }
+
+    private fun publishRefresh(owner: AuthSessionLease, request: Long, mutation: () -> Unit) {
+        if (refreshGeneration == request) creatorPayoutRepository.publish(owner, mutation)
+    }
+
+    private fun finishRefresh(request: Long) {
+        if (refreshGeneration == request) { refreshJob = null; _loading.value = false }
+    }
+
+    private fun resetRefreshSession(owner: AuthSessionLease) {
+        if (refreshOwner.sameVisit(owner)) return
+        refreshOwner = owner
+        refreshGeneration++
+        val previous = refreshJob
+        refreshJob = null
+        previous?.cancel()
+        purchaseQueue.cancelPending()
+        _loading.value = false
+        _walletLastUpdatedAt.value = null
+        _billingCapabilities.value = BillingCapabilities()
+        mutableBillingLoadError.value = null
+        _billingMessage.value = null
+        _error.value = null
+        mutableRefreshState.value = WalletRefreshState(owner = owner)
     }
 
     fun sendGift(receiverId: String, liveStreamId: String, gift: VirtualGift, isPublic: Boolean) =
@@ -161,6 +248,7 @@ class WalletViewModel @Inject constructor(
 
     internal fun sendGift(session: AuthSessionLease, receiverId: String, liveStreamId: String, gift: VirtualGift, isPublic: Boolean) {
         if (!session.isCurrent() || activeGift?.owner?.isCurrent() == true) return
+        resetRefreshSession(session)
         resetGiftSession(session)
         val limits = _billingCapabilities.value.giftLimits
         val pending = hasPendingGift(receiverId, liveStreamId, gift.id, isPublic)
@@ -271,14 +359,13 @@ class WalletViewModel @Inject constructor(
         _error.value = null
     }
 
-    private val purchaseQueue = PlayPurchaseQueue(viewModelScope) { busy -> _billingVerifying.value = busy }
-
     fun verifyGooglePlayPurchase(accountId: String, productId: String, purchaseToken: String) {
         val session = walletRepository.purchaseSession()
         if (!accountId.equals(session.accountId, ignoreCase = true) || !session.isCurrent()) return
+        resetRefreshSession(session)
         purchaseQueue.submit(accountId, purchaseToken) {
             if (!session.isCurrent()) return@submit
-            val result = walletRepository.verifyGooglePlayPurchase(productId, purchaseToken, session)
+            val result = refreshSection(session) { walletRepository.verifyGooglePlayPurchase(productId, purchaseToken, session) }
             walletRepository.publishPurchaseResult(session) {
                 _billingMessage.value = result.fold(
                     onSuccess = { verified ->
@@ -289,19 +376,47 @@ class WalletViewModel @Inject constructor(
                             else -> "Google Play devolvió un estado no reconocido."
                         }
                     },
-                    onFailure = { it.message ?: "No se pudo verificar la compra con Google Play." }
+                    onFailure = { billingFailureMessage(it) }
                 )
+                mutableRefreshState.value = mutableRefreshState.value.copy(billingMessage = _billingMessage.value)
             }
-            if (result.isSuccess && session.isCurrent()) walletRepository.fetchBalance()
+            if (result.isSuccess && session.isCurrent()) refreshSection(session) { walletRepository.fetchBalance() }
         }
     }
 
     fun showBillingMessage(message: String) {
-        _billingMessage.value = message
+        showBillingMessage(creatorPayoutRepository.captureSession(), message)
+    }
+
+    internal fun showBillingMessage(owner: AuthSessionLease, message: String) {
+        if (!owner.isCurrent()) return
+        resetRefreshSession(owner)
+        creatorPayoutRepository.publish(owner) {
+            _billingMessage.value = message
+            mutableRefreshState.value = mutableRefreshState.value.copy(billingMessage = message)
+        }
+    }
+
+    private fun billingFailureMessage(error: Throwable): String {
+        val code = error.message.orEmpty()
+        return when {
+            code.contains("GOOGLE_PLAY_ACCOUNT_MISMATCH") || code.contains("GOOGLE_PLAY_PURCHASE_ALREADY_CLAIMED") ->
+                "Esta compra corresponde a otra cuenta. Abre la cuenta con la que la hiciste para comprobarla."
+            code.contains("GOOGLE_PLAY_PURCHASE_REFUNDED") -> "La compra fue reembolsada y ya no permite acreditar monedas."
+            code.contains("GOOGLE_PLAY_BILLING_DISABLED") -> "Las compras no están disponibles en este momento. Inténtalo más tarde."
+            else -> "No se pudo verificar la compra. Comprueba la conexión y reintenta; se revisará sin duplicar las monedas."
+        }
     }
 
     fun clearBillingMessage() {
-        _billingMessage.value = null
+        clearBillingMessage(creatorPayoutRepository.captureSession())
+    }
+
+    internal fun clearBillingMessage(owner: AuthSessionLease) {
+        creatorPayoutRepository.publish(owner) {
+            _billingMessage.value = null
+            mutableRefreshState.value = mutableRefreshState.value.copy(billingMessage = null)
+        }
     }
 
     fun consumeReceipt() {
@@ -480,3 +595,13 @@ class WalletViewModel @Inject constructor(
 
     fun currentAccountId(): String = walletRepository.currentAccountId().orEmpty()
 }
+
+internal data class WalletRefreshState(
+    val owner: AuthSessionLease?,
+    val balance: Int = 0,
+    val debt: Int = 0,
+    val confirmedAt: String? = null,
+    val capabilities: BillingCapabilities = BillingCapabilities(),
+    val billingError: String? = null,
+    val billingMessage: String? = null,
+)
