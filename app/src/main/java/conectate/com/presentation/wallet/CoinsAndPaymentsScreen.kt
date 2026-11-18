@@ -47,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import conectate.com.data.model.WalletTransaction
+import conectate.com.data.repository.WalletHistoryStatus
 import conectate.com.presentation.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -73,8 +75,14 @@ fun CoinsAndPaymentsScreen(
     val balance by viewModel.coinBalance.collectAsStateWithLifecycle()
     val debt by viewModel.coinDebt.collectAsStateWithLifecycle()
     val capabilities by viewModel.billingCapabilities.collectAsStateWithLifecycle()
-    val transactions by viewModel.transactions.collectAsStateWithLifecycle()
-    val transactionsHasMore by viewModel.transactionsHasMore.collectAsStateWithLifecycle()
+    val historyOwner by viewModel.accountSession.collectAsStateWithLifecycle()
+    val historyState by viewModel.historyStatus.collectAsStateWithLifecycle()
+    val history = if (historyOwner.isCurrent() && historyState.owner?.sameVisit(historyOwner) == true) historyState else WalletHistoryStatus()
+    LaunchedEffect(historyOwner) {
+        if (historyOwner.isCurrent() && historyState.owner?.sameVisit(historyOwner) != true) viewModel.retryTransactionHistory()
+    }
+    val transactions = history.transactions
+    val transactionsHasMore = history.hasMore
     val historyLoadingMore by viewModel.historyLoadingMore.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val lastUpdatedAt by viewModel.walletLastUpdatedAt.collectAsStateWithLifecycle()
@@ -85,14 +93,15 @@ fun CoinsAndPaymentsScreen(
     val context = LocalContext.current
     val activity = remember(context) { context.findActivityForBilling() }
     val accountId = viewModel.currentAccountId()
-    var showRecharge by remember { mutableStateOf(false) }
-    var showLimits by remember { mutableStateOf(false) }
-    var selectedReceipt by remember { mutableStateOf<WalletTransaction?>(null) }
+    var showRecharge by remember(historyOwner) { mutableStateOf(false) }
+    var showLimits by remember(historyOwner) { mutableStateOf(false) }
+    var selectedReceipt by remember(historyOwner) { mutableStateOf<WalletTransaction?>(null) }
     var playProducts by remember(capabilities.products) { mutableStateOf<List<PlayCoinProduct>>(emptyList()) }
     var catalogIssues by remember(capabilities.products) { mutableStateOf<List<PlayCatalogIssue>>(emptyList()) }
     var catalogLoading by remember(capabilities.enabled) { mutableStateOf(capabilities.enabled) }
-    val spending = remember(transactions, transactionsHasMore) {
-        calculateWalletSpend(transactions, hasMore = transactionsHasMore)
+    val spending = remember(transactions, transactionsHasMore, history) {
+        val snapshot = calculateWalletSpend(transactions, hasMore = transactionsHasMore)
+        snapshot.copy(historyComplete = snapshot.historyComplete && history.loaded && !history.loading && history.error == null)
     }
 
     val billingController = remember(capabilities.enabled, capabilities.products, accountId) {
@@ -265,6 +274,17 @@ fun CoinsAndPaymentsScreen(
                 SectionTitle("Historial y recibos", "Compras, regalos, ajustes y reembolsos")
             }
 
+            history.error?.let { message ->
+                item {
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(message)
+                            OutlinedButton(onClick = viewModel::retryTransactionHistory, enabled = !history.loading) { Text("Reintentar historial") }
+                        }
+                    }
+                }
+            }
+
             if (transactions.isEmpty()) {
                 item {
                     Surface(
@@ -272,15 +292,23 @@ fun CoinsAndPaymentsScreen(
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Text(
-                            if (loading) "Actualizando movimientos…" else "Todavía no hay movimientos para mostrar.",
+                            when {
+                                history.loading -> "Actualizando movimientos…"
+                                history.error != null -> "No se pudo confirmar el historial."
+                                !history.loaded -> "El historial todavía no está confirmado."
+                                else -> "Todavía no hay movimientos para mostrar."
+                            },
                             modifier = Modifier.fillMaxWidth().padding(18.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    if (!history.loaded && !history.loading && history.error == null) {
+                        OutlinedButton(onClick = viewModel::retryTransactionHistory, enabled = historyOwner.isCurrent()) { Text("Cargar historial") }
+                    }
                 }
             } else {
                 items(transactions, key = { it.id }) { transaction ->
-                    Card(onClick = { selectedReceipt = transaction }, shape = RoundedCornerShape(16.dp)) {
+                    Card(onClick = { if (historyOwner.isCurrent()) selectedReceipt = transaction }, shape = RoundedCornerShape(16.dp)) {
                         ListItem(
                             leadingContent = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
                             headlineContent = {
@@ -320,10 +348,10 @@ fun CoinsAndPaymentsScreen(
                 item {
                     OutlinedButton(
                         onClick = viewModel::loadMoreTransactions,
-                        enabled = !historyLoadingMore,
+                        enabled = !history.loading && !historyLoadingMore,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        if (historyLoadingMore) {
+                        if (history.loading || historyLoadingMore) {
                             CircularProgressIndicator(Modifier.size(18.dp))
                             Spacer(Modifier.size(8.dp))
                         }
@@ -335,7 +363,7 @@ fun CoinsAndPaymentsScreen(
             if (transactions.isNotEmpty()) {
                 item {
                     OutlinedButton(
-                        onClick = { exportWalletHistory(context, transactions) },
+                        onClick = { if (historyOwner.isCurrent()) exportWalletHistory(context, transactions) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null)
@@ -422,7 +450,7 @@ fun CoinsAndPaymentsScreen(
         )
     }
 
-    selectedReceipt?.let { transaction ->
+    selectedReceipt?.takeIf { historyOwner.isCurrent() }?.let { transaction ->
         AlertDialog(
             onDismissRequest = { selectedReceipt = null },
             icon = { Icon(Icons.AutoMirrored.Filled.ReceiptLong, contentDescription = null) },
