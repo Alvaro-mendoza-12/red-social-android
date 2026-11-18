@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T23:31:53.631655+00:00",
-  "baseCommit": "7fcb2d6a20714f9d56bd7385cb873e34e9f8cc1f",
+  "generatedAtUtc": "2026-11-18T23:32:11.499821+00:00",
+  "baseCommit": "0602120e5df1eefa6180fd22a6a999ab1fe9b5ec",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3594,
+    "pending": 3595,
     "partial": 263,
-    "code-read": 824
+    "code-read": 825
   },
   "countsByPhase": {
     "android": {
       "pending": 1436,
       "partial": 116,
-      "code-read": 575
+      "code-read": 576
     },
     "documentation": {
-      "pending": 671,
+      "pending": 672,
       "code-read": 61,
       "partial": 20
     },
@@ -12453,9 +12453,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/search/SearchUsersViewModel.kt",
       "phase": "android",
-      "gitBlobId": "045ab46be32699f60f642333010c3b3ef2ff6151",
+      "gitBlobId": "a2fd967c8926f68890659c3fb94d7bd3310558ed",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "evidence": "docs/oficial/193-busqueda-por-visita-de-cuenta-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17859,6 +17859,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/search/SearchAccountVisitTest.kt",
+      "phase": "android",
+      "gitBlobId": "9e47c3dac25a3307d584dd636c30965255e47824",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/193-busqueda-por-visita-de-cuenta-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/search/SearchDiscoveryTest.kt",
       "phase": "android",
       "gitBlobId": "79c6e4241d1d11eecc74fb364845a121d94891a9",
@@ -21845,13 +21853,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "95d92ae2049c01d3a6824dab29e8d8e198ad69af",
+      "gitBlobId": "db32ebf3a136807c78d522af32e64eb7c0e579b9",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "09b14f5c64d0a673132bcc977d3f68c8e24b6221",
+      "gitBlobId": "240737ca559fcf90dd19589b62c7c3c413bd2a04",
       "reviewStatus": "pending"
     },
     {
@@ -21881,13 +21889,19 @@
     {
       "file": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "fb2d2c9f53b1dd945c812b1b024bd82196197878",
+      "gitBlobId": "88d22e63560b6601eb0d461368fc6582713a6966",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/192-orden-de-respuestas-de-saldo-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "f1ee0a785d89427bb89f972b5d00cdc264018e0f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/193-busqueda-por-visita-de-cuenta-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "109523f81d6112fe40d262909985c896c96eb2c5",
       "reviewStatus": "pending"
     },
     {
