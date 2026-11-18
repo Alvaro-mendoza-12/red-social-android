@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T23:32:11.499821+00:00",
-  "baseCommit": "0602120e5df1eefa6180fd22a6a999ab1fe9b5ec",
+  "generatedAtUtc": "2026-11-18T23:41:14.648621+00:00",
+  "baseCommit": "bd22573a12fbd19d9bb6452ee9bd4475cc3079e5",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3595,
+    "pending": 3596,
     "partial": 263,
-    "code-read": 825
+    "code-read": 826
   },
   "countsByPhase": {
     "android": {
       "pending": 1436,
       "partial": 116,
-      "code-read": 576
+      "code-read": 577
     },
     "documentation": {
-      "pending": 672,
+      "pending": 673,
       "code-read": 61,
       "partial": 20
     },
@@ -13411,9 +13411,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveViewModel.kt",
       "phase": "android",
-      "gitBlobId": "4598f604b78e837a49ea7868b475acff8cb2af96",
+      "gitBlobId": "66a33dc2ac9eed795e00033e5428e390c79ade4a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/194-entrada-y-salida-vigentes-de-salas-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18333,6 +18333,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/voicerooms/VoiceRoomEntryLifetimeTest.kt",
+      "phase": "android",
+      "gitBlobId": "e9598d4a9032377db4352cfcd3c995035bfa0ae3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/194-entrada-y-salida-vigentes-de-salas-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/voicerooms/VoiceRoomWebLinkTest.kt",
       "phase": "android",
       "gitBlobId": "e58a360fc6a07786b851b8ab66dd095827cabeaf",
@@ -21853,13 +21861,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "db32ebf3a136807c78d522af32e64eb7c0e579b9",
+      "gitBlobId": "2a68132aacf2c1867071a1e336da284c51bf12a6",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "240737ca559fcf90dd19589b62c7c3c413bd2a04",
+      "gitBlobId": "e8a5f743541ee3c5cbe6faa141b9598e137584ce",
       "reviewStatus": "pending"
     },
     {
@@ -21902,6 +21910,12 @@
       "file": "docs/oficial/193-busqueda-por-visita-de-cuenta-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "109523f81d6112fe40d262909985c896c96eb2c5",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/194-entrada-y-salida-vigentes-de-salas-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "7bd87ad667f66c95637aa689d17f7fe8a8d2500f",
       "reviewStatus": "pending"
     },
     {
