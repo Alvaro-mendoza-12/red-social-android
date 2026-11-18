@@ -23,7 +23,7 @@ class CreatorPayoutRetryStore @Inject constructor(@ApplicationContext context: C
     internal suspend fun save(account: String, attempt: PendingCreatorPayout) = withContext(Dispatchers.IO) {
         require(attempt.amountMinor > 0)
         UUID.fromString(attempt.key)
-        if (!preferences.edit().putString(storageKey(account), serialize(attempt)).commit()) {
+        if (!commitAttempt(preferences.edit().putString(storageKey(account), serialize(attempt)))) {
             throw IOException("No se pudo guardar el intento de retiro. No se envió la solicitud.")
         }
     }
@@ -31,12 +31,19 @@ class CreatorPayoutRetryStore @Inject constructor(@ApplicationContext context: C
     internal suspend fun clear(account: String, expectedKey: String) = withContext(Dispatchers.IO) {
         // Do not remove a replacement attempt if cleanup is ever resumed after a later write.
         val previous = read(account)
-        if (previous?.key == expectedKey && !preferences.edit().remove(storageKey(account)).commit()) {
+        if (previous?.key == expectedKey && !commitAttempt(preferences.edit().remove(storageKey(account)))) {
             // A failed commit may already have changed the in-memory map. Retain the
             // old attempt there too so a retry cannot silently allocate a fresh key.
-            preferences.edit().putString(storageKey(account), serialize(previous)).commit()
+            commitAttempt(preferences.edit().putString(storageKey(account), serialize(previous)))
             throw IOException("No se pudo limpiar el intento de retiro confirmado.")
         }
+    }
+
+    private fun commitAttempt(editor: android.content.SharedPreferences.Editor): Boolean {
+        val marker = "__payout_attempt_write"
+        val previous = preferences.getString(marker, null)?.toLongOrNull() ?: 0L
+        // Force a real write on API24/25, which may skip an unchanged pending value.
+        return editor.putString(marker, (previous + 1L).toString()).commit()
     }
 
     private fun serialize(attempt: PendingCreatorPayout): String =

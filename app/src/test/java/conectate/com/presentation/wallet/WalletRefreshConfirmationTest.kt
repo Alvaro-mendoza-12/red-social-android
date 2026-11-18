@@ -1,6 +1,7 @@
 package conectate.com.presentation.wallet
 
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.*
 import conectate.com.data.repository.*
 import conectate.com.data.supabase.AuthSessionMutationGuard
@@ -52,7 +53,13 @@ class WalletRefreshConfirmationTest {
     private suspend fun finished() {
         withTimeout(5000) { entered.await(); model.loading.first { !it } }
     }
-    @After fun close() { store.clear(); Dispatchers.resetMain() }
+    @After fun close(): Unit = runBlocking {
+        val job = if (::model.isInitialized) model.viewModelScope.coroutineContext[Job] else null
+        try {
+            store.clear()
+            withTimeout(5000) { job?.join() }
+        } finally { Dispatchers.resetMain() }
+    }
 
     @Test fun aFailedFirstLoadCannotDisplayASuccessfulRefreshTime() = runBlocking {
         reply = Result.failure(java.io.IOException("offline")); create(); finished()

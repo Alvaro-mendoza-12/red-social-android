@@ -62,11 +62,32 @@ class WalletRepository @Inject constructor(
     private val giftSendCoordinator = GiftSendCoordinator(
         read = { giftAttempts.getString(it, null) },
         write = { operation, key ->
+            val previous = giftAttempts.getString(operation, null)
             val editor = giftAttempts.edit()
             if (key == null) editor.remove(operation) else editor.putString(operation, key)
-            check(editor.commit()) { "No se pudo guardar la confirmación del regalo. Reintenta." }
+            // API24/25 may skip an identical commit even after a failed disk write.
+            // Change metadata in the same transaction while retaining the original UUID.
+            advanceGiftWrite(editor)
+            if (!editor.commit()) {
+                if (key == null && previous != null) {
+                    // A failed removal already changed memory. Restore the retry identity
+                    // before reporting failure, even if disk remains temporarily unavailable.
+                    runCatching {
+                        val restore = giftAttempts.edit().putString(operation, previous)
+                        advanceGiftWrite(restore)
+                        check(restore.commit()) { "No se pudo restaurar la clave pendiente del regalo." }
+                    }
+                }
+                error("No se pudo guardar la confirmación del regalo. Reintenta.")
+            }
         },
     )
+    private fun advanceGiftWrite(editor: android.content.SharedPreferences.Editor) {
+        val marker = "__gift_attempt_write"
+        val previous = giftAttempts.getString(marker, null)?.toLongOrNull() ?: 0L
+        editor.putString(marker, (previous + 1L).toString())
+    }
+
     val coinBalance: StateFlow<Int> = _coinBalance.asStateFlow()
 
     private val _coinDebt = MutableStateFlow(0)
