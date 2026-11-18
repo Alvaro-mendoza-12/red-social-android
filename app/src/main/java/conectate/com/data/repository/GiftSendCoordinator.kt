@@ -16,10 +16,11 @@ internal class GiftSendCoordinator(
     suspend fun <T> execute(operation: String, proposedKey: String, send: suspend (String) -> T): Result<T> {
         if (!sending.tryLock()) return Result.failure(IllegalStateException("Ya se está confirmando un regalo."))
         return try {
-            val key = read(operation)?.takeIf { it.isNotBlank() } ?: proposedKey.also {
-                require(it.isNotBlank())
-                write(operation, it)
-            }
+            val key = read(operation)?.takeIf { it.isNotBlank() } ?: proposedKey
+            require(key.isNotBlank())
+            // A failed SharedPreferences commit can still update its in-memory value.
+            // Confirm durability on every attempt, including retries of an existing key.
+            write(operation, key)
             val receipt = send(key)
             write(operation, null)
             Result.success(receipt)

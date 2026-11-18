@@ -211,7 +211,7 @@ class WalletRepository @Inject constructor(
     fun currentAccountId(): String? = authService.getCurrentUserId()?.trim()?.takeIf { it.isNotBlank() }
 
     fun hasPendingGift(receiverId: String, liveStreamId: String, giftId: String, isPublic: Boolean): Boolean {
-        val accountId = currentAccountId() ?: return false
+        val accountId = authService.captureAccountLease().accountId ?: return false
         return giftSendCoordinator.hasPending(giftOperationKey(accountId, receiverId, liveStreamId, giftId, isPublic))
     }
 
@@ -221,88 +221,91 @@ class WalletRepository @Inject constructor(
         liveStreamId: String? = null,
         isPublic: Boolean = true,
         idempotencyKey: String
-    ): Result<GiftReceipt> = withContext(Dispatchers.IO) {
-        runCatching {
-            if (!supabaseConfig.isConfigured) {
-                throw IllegalStateException("La tienda de regalos no está configurada para este entorno")
-            }
+    ): Result<GiftReceipt> = sendGift(walletSession(), receiverId, giftId, liveStreamId, isPublic, idempotencyKey)
 
+    internal suspend fun sendGift(
+        session: AuthSessionLease,
+        receiverId: String,
+        giftId: String,
+        liveStreamId: String?,
+        isPublic: Boolean,
+        idempotencyKey: String,
+    ): Result<GiftReceipt> = accountScopedCall(session, { senderId ->
+        check(supabaseConfig.isConfigured) { "La tienda de regalos no está configurada para este entorno" }
+        authService.ensureValidAccessToken().getOrThrow()
+        session.requireCurrent()
+        authService.getAccessTokenForAccountAwait(senderId)
+    }) { senderId, token ->
+        withContext(Dispatchers.IO) {
+            session.requireCurrent()
             val cleanReceiverId = receiverId.trim()
             val cleanGiftId = giftId.trim()
             val cleanLiveStreamId = liveStreamId?.trim().orEmpty()
-            val session = walletSession()
-            val senderId = session.accountId
-                ?: throw IllegalStateException("No hay una sesion activa")
-            val token = authService.getAccessTokenForAccountAwait(senderId)
-                ?: throw IllegalStateException("No hay token de acceso")
-
-            if (cleanReceiverId.isBlank()) {
-                throw IllegalArgumentException("No se encontro el receptor del regalo")
-            }
-            if (cleanGiftId.isBlank()) {
-                throw IllegalArgumentException("Selecciona un regalo valido")
-            }
+            require(cleanReceiverId.isNotBlank()) { "No se encontró el receptor del regalo" }
+            require(cleanGiftId.isNotBlank()) { "Selecciona un regalo válido" }
 
             val gift = _availableGifts.value.firstOrNull { it.id == cleanGiftId }
                 ?: fetchGiftById(token, cleanGiftId)
-            val canonicalCost = gift?.priceDiamonds ?: 0
-            if (canonicalCost <= 0) {
-                throw IllegalArgumentException("El regalo seleccionado no tiene precio valido")
-            }
-            giftSendCoordinator.execute(
+                ?: throw IllegalArgumentException("GIFT_NOT_FOUND")
+            check(gift.priceDiamonds > 0) { "El regalo seleccionado no tiene precio válido" }
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            session.requireCurrent()
+            val result = giftSendCoordinator.execute(
                 operation = giftOperationKey(senderId, cleanReceiverId, cleanLiveStreamId, cleanGiftId, isPublic),
                 proposedKey = idempotencyKey,
             ) { durableKey ->
-            val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/send_virtual_gift") {
-                restHeaders(token)
-                contentType(ContentType.Application.Json)
-                header(HttpHeaders.Prefer, "return=representation")
-                setBody(buildJsonObject {
-                    put("p_sender_id", senderId)
-                    put("p_receiver_id", cleanReceiverId)
-                    put("p_gift_id", cleanGiftId)
-                    put("p_idempotency_key", durableKey)
-                    put("p_is_public", isPublic)
-                    put("p_message", JsonNull)
-                    if (cleanLiveStreamId.isBlank()) {
-                        put("p_live_stream_id", JsonNull)
-                    } else {
-                        put("p_live_stream_id", cleanLiveStreamId)
-                    }
-                })
-            }
-            val body = response.bodyAsText()
-            if (!response.status.isSuccess()) {
-                throw IllegalStateException(
-                    parseSupabaseError(body) ?: "No se pudo enviar el regalo (${response.status.value})"
+                // The journal can block or fail. Recheck after its durable write, before any charge request.
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                session.requireCurrent()
+                val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/send_virtual_gift") {
+                    restHeaders(token)
+                    contentType(ContentType.Application.Json)
+                    header(HttpHeaders.Prefer, "return=representation")
+                    setBody(buildJsonObject {
+                        put("p_sender_id", senderId)
+                        put("p_receiver_id", cleanReceiverId)
+                        put("p_gift_id", cleanGiftId)
+                        put("p_idempotency_key", durableKey)
+                        put("p_is_public", isPublic)
+                        put("p_message", JsonNull)
+                        put("p_live_stream_id", cleanLiveStreamId.takeIf { it.isNotBlank() })
+                    })
+                }
+                val body = response.bodyAsText()
+                if (!response.status.isSuccess()) {
+                    throw IllegalStateException(parseSupabaseError(body) ?: "No se pudo enviar el regalo (${response.status.value})")
+                }
+                val receipt = decodeFirstObject(body)
+                    ?: throw IllegalStateException("El servidor no devolvió el comprobante del regalo")
+                val transactionId = receipt.string("transaction_id")?.takeIf { it.isNotBlank() }
+                    ?: throw IllegalStateException("El comprobante del regalo no es válido")
+                val newBalance = receipt["sender_balance_diamonds"]?.jsonPrimitive?.intOrNull
+                check(newBalance != null && newBalance >= 0) { "El comprobante no contiene un saldo confirmado válido" }
+                // Imported servers may omit these fields. If supplied, they must acknowledge this intent.
+                check(!receipt.containsKey("ok") || receipt["ok"]?.jsonPrimitive?.booleanOrNull == true) { "El servidor no confirmó el regalo" }
+                check(!receipt.containsKey("receiver_id") || receipt.string("receiver_id").equals(cleanReceiverId, ignoreCase = true)) { "El comprobante corresponde a otro destinatario" }
+                check(!receipt.containsKey("gift_id") || receipt.string("gift_id") == cleanGiftId) { "El comprobante corresponde a otro regalo" }
+                check(!receipt.containsKey("live_stream_id") || receipt.string("live_stream_id").orEmpty().equals(cleanLiveStreamId, ignoreCase = true)) { "El comprobante corresponde a otro directo" }
+                check(!receipt.containsKey("is_public") || receipt["is_public"]?.jsonPrimitive?.booleanOrNull == isPublic) { "El comprobante tiene otra visibilidad" }
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                session.requireCurrent()
+                GiftReceipt(
+                    transactionId = transactionId,
+                    liveStreamId = cleanLiveStreamId.takeIf { it.isNotBlank() },
+                    senderId = senderId,
+                    senderName = receipt.string("sender_name").orEmpty().ifBlank { "Usuario" },
+                    receiverId = cleanReceiverId,
+                    gift = gift,
+                    senderBalanceDiamonds = newBalance,
+                    isPublic = isPublic,
+                    idempotentReplay = receipt.string("idempotent_replay")?.toBooleanStrictOrNull() ?: false
                 )
             }
-
-            val receipt = decodeFirstObject(body)
-                ?: throw IllegalStateException("El servidor no devolvió el comprobante del regalo")
-            val transactionId = receipt.string("transaction_id")?.takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("El comprobante del regalo no es válido")
-            val newBalance = receipt["sender_balance_diamonds"]?.jsonPrimitive?.intOrNull
-                ?: throw IllegalStateException("El comprobante no contiene el saldo confirmado")
-            authService.commitForAccountLease(session) { _coinBalance.value = newBalance.coerceAtLeast(0) }
-            GiftReceipt(
-                transactionId = transactionId,
-                liveStreamId = receipt.string("live_stream_id") ?: cleanLiveStreamId.takeIf { it.isNotBlank() },
-                senderId = senderId,
-                senderName = receipt.string("sender_name").orEmpty().ifBlank { "Usuario" },
-                receiverId = cleanReceiverId,
-                gift = gift ?: VirtualGift(
-                    id = cleanGiftId,
-                    name = receipt.string("gift_name").orEmpty().ifBlank { "Regalo Novvin" },
-                    imageUrl = receipt.string("gift_image_url"),
-                    animationUrl = receipt.string("gift_animation_url"),
-                    priceDiamonds = canonicalCost
-                ),
-                senderBalanceDiamonds = newBalance,
-                isPublic = receipt.string("is_public")?.toBooleanStrictOrNull() ?: isPublic,
-                idempotentReplay = receipt.string("idempotent_replay")?.toBooleanStrictOrNull() ?: false
-            )
-            }.getOrThrow()
+            kotlinx.coroutines.currentCoroutineContext().ensureActive()
+            session.requireCurrent()
+            result.onSuccess { receipt ->
+                authService.commitForAccountLease(session) { _coinBalance.value = receipt.senderBalanceDiamonds }
+            }
         }
     }
 
