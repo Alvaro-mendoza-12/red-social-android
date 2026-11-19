@@ -79,6 +79,8 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 
 - [209](209-altura-estable-de-fotos-en-el-feed-2026-11-19.md) reproduce dos saltos de altura en Compose. La candidata conserva la posición posterior en tres proporciones y al cambiar de página. Seis controles de tamaño y tipo aprobados.
 
+- [208](208-candidata-android-y-activacion-api-2026-11-19.md) registra APK/AAB 9.1.43/183 de `5806a0cafb50`, 14 controles aprobados, 56 casos JVM Release aprobados y ensayo de emulador inconcluso. La candidata de API se comprobó en aislamiento y su activación sigue pendiente.
+
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 
 ## Continuidad y criterios de cierre

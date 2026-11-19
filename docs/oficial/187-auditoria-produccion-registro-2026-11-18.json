@@ -475,8 +475,38 @@
   "release": {
     "versionCodeObserved": 183,
     "versionNameObserved": "9.1.43",
-    "productionBuildVerifiedForThisMandate": false,
-    "newApkDelivered": false
+    "productionBuildVerifiedForThisMandate": true,
+    "newApkDelivered": true,
+    "latestVerifiedCandidate": {
+      "source": "5806a0cafb504237a05304d439be0160ec9007dd",
+      "tree": "285a9b820d68d2dbe1fbfbedbd3ef00776b6fdcb",
+      "artifacts": {
+        ".apk": {
+          "name": "Novvin-9.1.43-183-5806a0cafb50.apk",
+          "bytes": 221746357,
+          "sha256": "6dab6ce7a5c31dd1c61a8ccffc99abc354bf41fba19ed112fa6df968d5c3ebef"
+        },
+        ".aab": {
+          "name": "Novvin-9.1.43-183-5806a0cafb50.aab",
+          "bytes": 133137799,
+          "sha256": "f11fd2bba33fe5437b8e0244ae7331b0884e7df47472c4e03e41d61d9a182285"
+        }
+      },
+      "binaryChecks": 14,
+      "lintWarnings": 346,
+      "gradleReleaseTests": {
+        "tests": 56,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 11
+      },
+      "emulatorPassed": false,
+      "emulatorAttempts": 2,
+      "productionReady": false
+    },
+    "distributed": false,
+    "latestVerifiedCandidateIncludesAllCurrentAndroidChanges": false
   },
   "externalRequirements": [
     "Verificar la lista efectiva de países y la pista habilitada de Play Console.",
@@ -725,6 +755,31 @@
         "composePixelRender": 3
       },
       "scope": "Android feed image stage, fixed position after decode and mixed carousel selection"
+    },
+    {
+      "kind": "production-binary-validation",
+      "path": "2026-11-18-mobile-release-check/5806a0cafb50",
+      "source": "5806a0cafb504237a05304d439be0160ec9007dd",
+      "checksPassed": 14,
+      "releaseUnitTests": {
+        "tests": 56,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 11
+      },
+      "emulatorPassed": false,
+      "distributed": false
+    },
+    {
+      "kind": "inactive-ubuntu-candidate",
+      "path": "2026-11-19-production-gift-v2-candidate/ubuntu-combined-candidate",
+      "moduleTests": [
+        28,
+        24
+      ],
+      "postgresLoopbackScenarios": 4,
+      "deployed": false
     }
   ],
   "findingCounts": {
