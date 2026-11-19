@@ -57,7 +57,8 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 - 195: dos pantallas reales compiladas con Kotlin y Compose, ocho casos de políticas aprobados. Recreación interactiva y reintento en dispositivo pendientes.
 - 196: dos casos de referencia fallaron y los quince casos de las tres suites Node aprobaron tras el cambio. El despliegue en Ubuntu sigue pendiente.
 - 197: nueve pruebas Python y verificación de la firma del APK y AAB 9.1.43/183 del commit Android193. Los controles restantes y las pruebas de dispositivo tienen resultados separados.
-- 198: dos fallos de referencia y 19 pruebas Node aprobadas, incluido el filtrado en ambos sentidos. No se enviaron avisos reales. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
+- 198: dos fallos de referencia y 19 pruebas Node aprobadas, incluido el filtrado en ambos sentidos. No se enviaron avisos reales.
+- [199](199-verificacion-de-la-candidata-android-183-2026-11-18.md): Release del commit193 compila y pasa 14 controles de APK/AAB. Lint dio cero errores y 346 advertencias. La medición de dispositivo quedó pendiente para la siguiente candidata Android. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 
