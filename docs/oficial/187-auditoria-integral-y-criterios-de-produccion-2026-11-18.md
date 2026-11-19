@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-Se registran veintidós familias nuevas: ninguna crítica confirmada en esta selección, quince altas y siete medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+Se registran veintiséis familias nuevas: ninguna crítica confirmada en esta selección, diecisiete altas y nueve medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -40,6 +40,10 @@ Se registran veintidós familias nuevas: ninguna crítica confirmada en esta sel
 | N020 | Media | El verificador de firmas del AAB fallaba al leer la salida de Java en Windows en español | [197](197-verificacion-de-firmas-android-en-windows-2026-11-18.md): localización y lectura robusta; APK y AAB de 193 verificados para firma |
 | N021 | Alta | Los avisos de cumpleaños omiten los bloqueos entre amistades | [198](198-bloqueos-y-avisos-de-cumpleanos-2026-11-18.md): aplica los bloqueos en ambos sentidos antes de reservar la entrega; despliegue pendiente |
 | N022 | Media | El arranque en frío de Android 183 fue más lento que 182 en ambas rondas | [201](201-validacion-android-183-acceso-y-arranque-2026-11-18.md): medido en emulador; atribución y contraste físico pendientes |
+| N023 | Alta | El cierre de una llamada podía asociar su historial o resumen a otra visita de cuenta | [200](200-resultado-y-cuenta-de-llamadas-2026-11-18.md): corrección y pruebas locales. Ensayos físicos pendientes |
+| N024 | Media | El historial perdía la condición de llamada contestada y su duración al colgar en reconexión | [200](200-resultado-y-cuenta-de-llamadas-2026-11-18.md): corrección y pruebas locales. Ensayos físicos pendientes |
+| N025 | Media | La espera al resolver el chat podía aumentar la duración guardada y cambiar la hora de cierre | [200](200-resultado-y-cuenta-de-llamadas-2026-11-18.md): corrección y pruebas locales. Ensayos físicos pendientes |
+| N026 | Alta | La primera respuesta de una llamada colectiva podía enviar una cancelación general | [202](202-primera-respuesta-llamadas-colectivas-2026-11-18.md): corrección y pruebas locales. Ensayos físicos pendientes |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -61,6 +65,9 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 - 198: dos fallos de referencia y 19 pruebas Node aprobadas, incluido el filtrado en ambos sentidos. No se enviaron avisos reales.
 - [199](199-verificacion-de-la-candidata-android-183-2026-11-18.md): Release del commit193 compila y pasa 14 controles de APK/AAB. Lint dio cero errores y 346 advertencias. La medición de dispositivo quedó pendiente para la siguiente candidata Android.
 - [201](201-validacion-android-183-acceso-y-arranque-2026-11-18.md): Release del commit Android195 pasa los 14 controles. Lint cero errores y 346 advertencias. Se registran dos rondas de arranque y el resultado independiente del ensayo de acceso. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
+
+- [200](200-resultado-y-cuenta-de-llamadas-2026-11-18.md): 8 fallos de referencia en 9 casos y 41 pruebas JVM aprobadas. El intento Gradle Audit con 2.304 MiB terminó en compilación por falta de heap del compilador. La repetición de Gradle sobre la revisión integrada queda pendiente del turno compartido con los ensayos de emulador.
+- [202](202-primera-respuesta-llamadas-colectivas-2026-11-18.md): 2 fallos en 3 controles nuevos de referencia, 44 JVM de la candidata integrada y 67 casos del servidor con base sintética.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 

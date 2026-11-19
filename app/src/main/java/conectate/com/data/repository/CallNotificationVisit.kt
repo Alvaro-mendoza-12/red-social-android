@@ -10,6 +10,9 @@ internal class CallNotificationVisit private constructor(
     val target: CallNotificationTarget,
     private val account: AuthSessionLease,
 ) {
+    fun accountForCall(callId: String): AuthSessionLease? =
+        account.takeIf { target.callId.equals(callId.trim(), ignoreCase = true) }
+
     fun matches(requested: CallNotificationTarget?, activeCallId: String?): Boolean =
         requested != null && target.visitId == requested.visitId &&
             target.callId.equals(requested.callId.trim(), ignoreCase = true) &&

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-19T00:12:35.742019+00:00",
-  "baseCommit": "afbeae26d4134062f9aa30ee44ad09800f692d2c",
+  "generatedAtUtc": "2026-11-19T04:38:29.077985+00:00",
+  "baseCommit": "4d6c30fa43f6276b755fe732805560f39624a09a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3596,
+    "pending": 3600,
     "partial": 263,
-    "code-read": 830
+    "code-read": 832
   },
   "countsByPhase": {
     "android": {
       "pending": 1435,
       "partial": 117,
-      "code-read": 577
+      "code-read": 579
     },
     "documentation": {
-      "pending": 677,
+      "pending": 681,
       "code-read": 61,
       "partial": 20
     },
@@ -8169,17 +8169,17 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/CallNotificationVisit.kt",
       "phase": "android",
-      "gitBlobId": "0a9e5787c381883adb852e9615155174889aeeef",
+      "gitBlobId": "8dc47ff0df59da42222ba8d1363af9f974005ca4",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "evidence": "docs/oficial/200-resultado-y-cuenta-de-llamadas-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/CallRepository.kt",
       "phase": "android",
-      "gitBlobId": "776e5a9d4f1688c591c38796c4ca120a7728e153",
+      "gitBlobId": "5ed9d86a8826d5f395e611b23fab36eb000d54cd",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/200-resultado-y-cuenta-de-llamadas-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15849,6 +15849,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/data/repository/CallGroupAcceptanceTest.kt",
+      "phase": "android",
+      "gitBlobId": "fbc4738d1371f1fff446cf6eb687c661805285c6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/200-resultado-y-cuenta-de-llamadas-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/repository/CallHistoryAccountStorageTest.kt",
       "phase": "android",
       "gitBlobId": "d8e5ec620226fdae0830140815419466626e9b55",
@@ -15866,6 +15874,14 @@
       "gitBlobId": "17c458b5cdffb8c624dbb6bba788e903fdd48240",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/CallOutcomePersistenceTest.kt",
+      "phase": "android",
+      "gitBlobId": "b2c65efd865c4052600c4c8b45c4a88b4b117d9f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/200-resultado-y-cuenta-de-llamadas-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21863,13 +21879,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "3d7bbc8c8f0f38e1673a5eef349786c06e437209",
+      "gitBlobId": "8e2717e18b7900a4586abd1bdd3925e84c8698c9",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "f7fdbb4b4ef9f3b74032f72fad60a91a8b8878a8",
+      "gitBlobId": "419468f1b40edbbcf5d842cfb7458283e67177cf",
       "reviewStatus": "pending"
     },
     {
@@ -21923,7 +21939,7 @@
     {
       "file": "docs/oficial/195-restauracion-del-registro-en-android-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "04a9fdb4e4b4ce65182118e244f1c95d4f0b639d",
+      "gitBlobId": "35133bbb958a5c433f313339fe2be1bd276938d7",
       "reviewStatus": "pending"
     },
     {
@@ -21945,9 +21961,33 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/199-verificacion-de-la-candidata-android-183-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "7930d021d0ef2935310d460a7a3d67324114084c",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/20-integridad-reintentos-mensajes-2026-09-10.md",
       "phase": "documentation",
       "gitBlobId": "a5d0f626389b875cace5837181dc364ee7037443",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/200-resultado-y-cuenta-de-llamadas-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "667bde799ac10c888a1a7a75df2b6e0b67ff27ae",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/201-validacion-android-183-acceso-y-arranque-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "77caac6dad8e8a1790ff75fa7fb7696792b7319c",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/202-primera-respuesta-llamadas-colectivas-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "113f476c49cb61d98fd92c7af080ad5666d087bd",
       "reviewStatus": "pending"
     },
     {

@@ -30,6 +30,7 @@ import conectate.com.data.signaling.MediaSignalingFallback
 import conectate.com.data.signaling.isCurrentMediaSignalingSession
 import conectate.com.data.signaling.attachSignalingAffinity
 import conectate.com.data.supabase.AuthService
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.data.webrtc.WebRTCManager
 import conectate.com.data.service.CallCancellationGuard
@@ -44,8 +45,11 @@ import io.github.jan.supabase.realtime.RealtimeChannel
 import io.github.jan.supabase.realtime.broadcast
 import io.github.jan.supabase.realtime.broadcastFlow
 import io.github.jan.supabase.realtime.channel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
@@ -186,6 +190,7 @@ class CallRepository @Inject constructor(
     private var callSetupTiming: CallSetupTiming? = null
     private var callSetupMetricCallId: String? = null
 
+    // Keep ringing invitees reachable when the host ends an already connected call.
     private val pendingInvitees = mutableSetOf<String>()
 
     fun getCurrentCallId(): String? = _activeCall.value?.callId
@@ -348,24 +353,6 @@ class CallRepository @Inject constructor(
                     if (call.connectionState == CallConnectionState.RINGING_OUTGOING) {
                         callTonePlayer.stopRingback()
                         clearOutgoingRingTimeout()
-                        
-                        // FIX: Cancel all OTHER pending invitees so they don't ring forever
-                        val otherInvitees = pendingInvitees.filter { it != fromUserId }
-                        if (otherInvitees.isNotEmpty()) {
-                            scope.launch {
-                                otherInvitees.forEach { target ->
-                                    runCatching {
-                                        sendCallResponse(
-                                            targetUserId = target,
-                                            callId = callId,
-                                            action = "cancel",
-                                            fromUserId = authService.getCurrentUserId() ?: ""
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                        pendingInvitees.retainAll(setOf(fromUserId))
 
                         _activeCall.value = call.copy(connectionState = CallConnectionState.CONNECTING)
                         scheduleConnectingTimeout(callId)
@@ -1929,7 +1916,6 @@ class CallRepository @Inject constructor(
         )
         recordCallSetupSuccess(call)
         clearConnectingTimeout()
-        pendingInvitees.clear()
         clearOutgoingRingTimeout()
         callTonePlayer.stopRingback()
     }
@@ -2001,6 +1987,8 @@ class CallRepository @Inject constructor(
         discardPreparedIncomingSocket()
         val callSnapshot = _activeCall.value
         if (callSnapshot?.connectionState == CallConnectionState.ENDED) return
+        val endedAtEpochMs = System.currentTimeMillis()
+        val outcomeAccount = callSnapshot?.let { notificationVisit?.accountForCall(it.callId) }
         callSnapshot?.let { callCancellationGuard.mark(it.callId) }
         // Invalidate delayed audio work before disconnecting/resetting native media.
         _activeCall.value = callSnapshot?.copy(connectionState = CallConnectionState.ENDED)
@@ -2011,19 +1999,21 @@ class CallRepository @Inject constructor(
                 }
             }
         }
-        var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         callTonePlayer.stopRingback()
         clearOutgoingRingTimeout()
         clearConnectingTimeout()
         callSnapshot?.let { recordCallSetupFailureIfPending(it, reason) }
-        if (callSnapshot != null) {
+        if (callSnapshot != null && outcomeAccount != null) {
             scope.launch {
                 try {
                     persistCallOutcome(
                         callSnapshot = callSnapshot,
-                        currentUserId = currentUserId,
+                        accountLease = outcomeAccount,
+                        endedAtEpochMs = endedAtEpochMs,
                         reason = reason
                     )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (error: Exception) {
                     logBestEffortFailure(
                         operation = "persistCallOutcome(reason=$reason)",
@@ -2304,26 +2294,23 @@ class CallRepository @Inject constructor(
 
     private suspend fun persistCallOutcome(
         callSnapshot: ActiveCall,
-        currentUserId: String,
+        accountLease: AuthSessionLease,
+        endedAtEpochMs: Long,
         reason: String
     ) {
-        var normalizedContextType = callSnapshot.contextType.trim().lowercase().ifBlank { "dm" }
-        val resolvedConversationId = resolveConversationIdForHistory(callSnapshot)
-        var wasConnected =
-            callSnapshot.connectionState == CallConnectionState.CONNECTED && callSnapshot.startedAtEpochMs != null
-        val durationMs = if (wasConnected) {
-            (System.currentTimeMillis() - (callSnapshot.startedAtEpochMs ?: System.currentTimeMillis()))
-                .coerceAtLeast(0L)
-        } else {
-            null
+        val ownerId = accountLease.accountId ?: return
+        val normalizedContextType = callSnapshot.contextType.trim().lowercase().ifBlank { "dm" }
+        val durationLabel = callSnapshot.startedAtEpochMs?.let { startedAt ->
+            formatCallDuration((endedAtEpochMs - startedAt).coerceAtLeast(0L))
         }
-        val durationLabel = durationMs?.let(::formatCallDuration)
-        var direction = if (callSnapshot.initiatorUserId.equals(currentUserId, ignoreCase = true)) {
+        val conversationId = resolveConversationIdForHistory(callSnapshot, accountLease, normalizedContextType)
+        val isOutgoing = callSnapshot.initiatorUserId.equals(ownerId, ignoreCase = true)
+        val direction = if (isOutgoing) {
             CallHistoryDirection.OUTGOING
         } else {
             CallHistoryDirection.INCOMING
         }
-        var historyTitle = when (normalizedContextType) {
+        val historyTitle = when (normalizedContextType) {
             "dm" -> callSnapshot.peerName?.trim()?.ifBlank { null } ?: callSnapshot.title.ifBlank { "Llamada" }
             else -> callSnapshot.title.ifBlank { "Llamada" }
         }
@@ -2339,31 +2326,27 @@ class CallRepository @Inject constructor(
                 title = historyTitle,
                 subtitle = historySubtitle,
                 contextType = normalizedContextType,
-                contextId = when (normalizedContextType) {
-                    "dm" -> resolvedConversationId ?: callSnapshot.contextId?.trim()?.ifBlank { null }
-                    else -> callSnapshot.contextId?.trim()?.ifBlank { null }
-                },
+                contextId = conversationId,
                 peerUserId = callSnapshot.peerUserId?.trim()?.ifBlank { null },
                 peerName = callSnapshot.peerName?.trim()?.ifBlank { null } ?: historyTitle,
                 peerAvatarUrl = callSnapshot.peerAvatarUrl,
                 direction = direction,
-                status = mapCallHistoryStatus(reason, wasConnected),
+                status = mapCallHistoryStatus(reason, durationLabel != null),
                 statusLabel = if (durationLabel != null) {
                     "Llamada completada • $durationLabel"
                 } else {
                     reason.ifBlank { "Llamada finalizada" }
                 },
-                isVideo = callSnapshot.isVideo
+                isVideo = callSnapshot.isVideo,
+                timestampEpochMs = endedAtEpochMs,
             ),
-            ownerId = currentUserId
+            ownerId = ownerId
         )
 
-        if (!callSnapshot.initiatorUserId.equals(currentUserId, ignoreCase = true)) {
-            return
-        }
+        if (!isOutgoing || !accountLease.isCurrent() || conversationId == null) return
 
         val callKindLabel = if (callSnapshot.isVideo) "Videollamada" else "Llamada de voz"
-        var content = if (durationLabel != null) {
+        val content = if (durationLabel != null) {
             "$callKindLabel • duración $durationLabel"
         } else {
             reason.ifBlank { "Llamada finalizada" }
@@ -2371,25 +2354,25 @@ class CallRepository @Inject constructor(
 
         when (normalizedContextType) {
             "dm" -> {
-                var chatId = resolvedConversationId ?: return
                 messageRepository.sendMessage(
-                    chatId = chatId,
+                    accountLease = accountLease,
+                    chatId = conversationId,
                     content = content,
                     mediaType = "call"
                 )
             }
             "group" -> {
-                var groupId = callSnapshot.contextId?.trim()?.ifBlank { null } ?: return
                 groupRepository.sendGroupMessage(
-                    groupId = groupId,
+                    accountLease = accountLease,
+                    groupId = conversationId,
                     content = content,
                     contentType = "call"
                 )
             }
             "community" -> {
-                var communityId = callSnapshot.contextId?.trim()?.ifBlank { null } ?: return
                 communityRepository.sendCommunityMessage(
-                    communityId = communityId,
+                    accountLease = accountLease,
+                    communityId = conversationId,
                     content = content,
                     contentType = "call"
                 )
@@ -2430,27 +2413,30 @@ class CallRepository @Inject constructor(
         )
     }
 
-    private suspend fun resolveConversationIdForHistory(callSnapshot: ActiveCall): String? {
-        var normalizedContextType = callSnapshot.contextType.trim().lowercase().ifBlank { "dm" }
-        if (normalizedContextType != "dm") {
-            return callSnapshot.contextId?.trim()?.ifBlank { null }
-        }
+    private suspend fun resolveConversationIdForHistory(
+        callSnapshot: ActiveCall,
+        accountLease: AuthSessionLease,
+        contextType: String,
+    ): String? {
+        val savedContextId = callSnapshot.contextId?.trim()?.ifBlank { null }
+        if (contextType != "dm") return savedContextId
+        val fallbackChatId = savedContextId?.takeUnless { it.startsWith("placeholder_", ignoreCase = true) }
+        val peerUserId = callSnapshot.peerUserId?.trim()?.ifBlank { null }
+        if (peerUserId == null || !accountLease.isCurrent()) return fallbackChatId
 
-        var peerUserId = callSnapshot.peerUserId?.trim()?.ifBlank { null }
-        if (!peerUserId.isNullOrBlank()) {
-            return messageRepository.getOrCreateChat(peerUserId)
+        return try {
+            messageRepository.getOrCreateChat(accountLease, peerUserId)
                 .getOrNull()
                 ?.id
                 ?.trim()
                 ?.ifBlank { null }
-                ?: callSnapshot.contextId
-                    ?.trim()
-                    ?.takeIf { it.isNotBlank() && !it.startsWith("placeholder_", ignoreCase = true) }
+                ?.takeIf { accountLease.isCurrent() }
+                ?: fallbackChatId
+        } catch (cancelled: CancellationException) {
+            currentCoroutineContext().ensureActive()
+            if (accountLease.isCurrent()) throw cancelled
+            fallbackChatId
         }
-
-        return callSnapshot.contextId
-            ?.trim()
-            ?.takeIf { it.isNotBlank() && !it.startsWith("placeholder_", ignoreCase = true) }
     }
 
     private fun mapCallHistoryStatus(reason: String, wasConnected: Boolean): CallHistoryStatus {

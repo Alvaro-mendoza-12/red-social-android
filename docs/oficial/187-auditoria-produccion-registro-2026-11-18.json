@@ -398,6 +398,42 @@
       "evidenceKind": "device-emulator-measured",
       "status": "open-profiling-and-physical-check",
       "published": true
+    },
+    {
+      "id": "N023",
+      "severity": "high",
+      "description": "El cierre de una llamada podía asociar su historial o resumen a otra visita de cuenta",
+      "evidenceReport": "200",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N024",
+      "severity": "medium",
+      "description": "El historial perdía la condición de llamada contestada y su duración al colgar en reconexión",
+      "evidenceReport": "200",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N025",
+      "severity": "medium",
+      "description": "La espera al resolver el chat podía aumentar la duración guardada y cambiar la hora de cierre",
+      "evidenceReport": "200",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N026",
+      "severity": "high",
+      "description": "La primera respuesta de una llamada colectiva podía enviar una cancelación general",
+      "evidenceReport": "202",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
     }
   ],
   "release": {
@@ -596,6 +632,28 @@
         "scope": "Offline x86_64 API 36 emulator, six samples per version in each order"
       },
       "play": "not submitted"
+    },
+    {
+      "kind": "gradle-focused",
+      "path": "2026-11-18-mobile-audit200-call-outcome/gradle",
+      "counts": {
+        "tests": 0,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "classes": 0
+      },
+      "logSha256": "8a9d540aa72083db6678dffc7fd608b36f21a82b346c0bdafa52a2a5171bb87e",
+      "status": "interrupted-compiler-heap",
+      "scope": "Android call outcome before group acceptance"
+    },
+    {
+      "kind": "jvm-and-server-controlled",
+      "path": "2026-11-18-mobile-audit202-group-call",
+      "tests": 44,
+      "passed": 44,
+      "serverCases": 67,
+      "scope": "Integrated Kotlin sources and synthetic database call contract"
     }
   ],
   "findingCounts": {
