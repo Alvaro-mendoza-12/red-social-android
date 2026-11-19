@@ -15,6 +15,7 @@ from verify_android_release import (  # noqa: E402
     is_verified_apksigner_output,
     is_verified_jarsigner_output,
     normalize_certificate_fingerprint,
+    run_command,
 )
 
 
@@ -45,6 +46,12 @@ class VerifyAndroidReleaseTest(unittest.TestCase):
         expected = "CD" * 32
         output = f"SHA1: 00:11\nSHA256: {':'.join(['CD'] * 32)}\n"
         self.assertEqual(expected, extract_certificate_fingerprint(output))
+
+    def test_reads_ascii_fingerprint_with_native_encoded_tool_output(self) -> None:
+        command = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'\\xfa\\nSHA256: ' + b'A' * 64)"]
+        result = run_command(command)
+        self.assertEqual(0, result.returncode)
+        self.assertEqual("A" * 64, extract_certificate_fingerprint(result.stdout))
 
     def test_detects_verified_apksigner_output(self) -> None:
         output = "Verifies\nNumber of signers: 1\n"

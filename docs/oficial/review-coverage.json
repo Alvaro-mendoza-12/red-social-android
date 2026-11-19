@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-19T00:03:09.291537+00:00",
-  "baseCommit": "112c0b3788d9fafd19b35eeef16df4c831227ef0",
+  "generatedAtUtc": "2026-11-19T00:06:52.392636+00:00",
+  "baseCommit": "9bbd02cee24d11f84145ab8feb242232a76cfaf4",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,8 +11,8 @@
   },
   "counts": {
     "pending": 3596,
-    "partial": 264,
-    "code-read": 827
+    "partial": 263,
+    "code-read": 829
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 577
     },
     "documentation": {
-      "pending": 675,
+      "pending": 676,
       "code-read": 61,
       "partial": 20
     },
@@ -31,9 +31,9 @@
       "partial": 35
     },
     "tooling-and-other": {
-      "pending": 150,
-      "partial": 12,
-      "code-read": 17
+      "pending": 149,
+      "partial": 11,
+      "code-read": 19
     },
     "web": {
       "partial": 80,
@@ -21863,13 +21863,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "dda4a3f53278482539981ec0f982cc9f6e92029b",
+      "gitBlobId": "2ae2ca8fe67e60e8072300a6fd4836a2e8092117",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "033ef1d7a4911601c1714476a8aa438e3153d004",
+      "gitBlobId": "c23e262c450f499464aea14f234eac10a75d2d2c",
       "reviewStatus": "pending"
     },
     {
@@ -21930,6 +21930,12 @@
       "file": "docs/oficial/196-privacidad-de-secciones-del-perfil-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "a1ae6ea07f430d7cf861956bf785b75e4d97c14b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/197-verificacion-de-firmas-android-en-windows-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "7c20affd344852f30b2a91f34d9f6e0e3de47466",
       "reviewStatus": "pending"
     },
     {
@@ -30293,8 +30299,10 @@
     {
       "file": "tools/tests/test_verify_android_release.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "f09bbb66842c3ec416d21ace8ee4406726b6228e",
-      "reviewStatus": "pending"
+      "gitBlobId": "3daaa984420fa3453dbf3ec8617a4c7ff53cf228",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/197-verificacion-de-firmas-android-en-windows-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/tests/test_verify_r8_release.py",
@@ -30319,9 +30327,9 @@
     {
       "file": "tools/verify_android_release.py",
       "phase": "tooling-and-other",
-      "gitBlobId": "b7f6040ca259e8048630d5ef7d321eaa701e2d2a",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "gitBlobId": "aa9f9f8a23af47e0e5fcbd29e9f4d78c5d6a1da8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/197-verificacion-de-firmas-android-en-windows-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

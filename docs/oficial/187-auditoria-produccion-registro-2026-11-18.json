@@ -371,6 +371,15 @@
       "evidenceKind": "source-read",
       "status": "open-client-and-server-migration",
       "published": true
+    },
+    {
+      "id": "N020",
+      "severity": "medium",
+      "description": "Fallaba la firma del AAB al decodificar keytool en Windows en español",
+      "evidenceReport": "197",
+      "evidenceKind": "actual-signed-artifacts",
+      "status": "fixed-actual-signatures-verified",
+      "published": true
     }
   ],
   "release": {
@@ -497,15 +506,22 @@
       "passed": 15,
       "path": "2026-11-18-mobile-audit196-profile-visibility/regression.log",
       "scope": "Profile section projection and editing with synthetic profiles; deployment pending."
+    },
+    {
+      "kind": "production-artifact-signature",
+      "tests": 9,
+      "passed": 9,
+      "path": "2026-11-18-mobile-audit197-signature-locale",
+      "scope": "Exact Android193 APK and AAB verified with the expected upload certificate. Cryptographic signature check on unmodified artifacts."
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
     "high": 14,
-    "medium": 5,
+    "medium": 6,
     "low": 0,
-    "total": 19
+    "total": 20
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",
