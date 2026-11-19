@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-19T00:06:52.392636+00:00",
-  "baseCommit": "9bbd02cee24d11f84145ab8feb242232a76cfaf4",
+  "generatedAtUtc": "2026-11-19T00:12:35.742019+00:00",
+  "baseCommit": "afbeae26d4134062f9aa30ee44ad09800f692d2c",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -12,7 +12,7 @@
   "counts": {
     "pending": 3596,
     "partial": 263,
-    "code-read": 829
+    "code-read": 830
   },
   "countsByPhase": {
     "android": {
@@ -21,13 +21,13 @@
       "code-read": 577
     },
     "documentation": {
-      "pending": 676,
+      "pending": 677,
       "code-read": 61,
       "partial": 20
     },
     "server": {
-      "pending": 843,
-      "code-read": 73,
+      "pending": 842,
+      "code-read": 74,
       "partial": 35
     },
     "tooling-and-other": {
@@ -21863,13 +21863,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "2ae2ca8fe67e60e8072300a6fd4836a2e8092117",
+      "gitBlobId": "3d7bbc8c8f0f38e1673a5eef349786c06e437209",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "c23e262c450f499464aea14f234eac10a75d2d2c",
+      "gitBlobId": "f7fdbb4b4ef9f3b74032f72fad60a91a8b8878a8",
       "reviewStatus": "pending"
     },
     {
@@ -21936,6 +21936,12 @@
       "file": "docs/oficial/197-verificacion-de-firmas-android-en-windows-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "7c20affd344852f30b2a91f34d9f6e0e3de47466",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/198-bloqueos-y-avisos-de-cumpleanos-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "99dd75db4da7b0c65196bee3862125fb13555104",
       "reviewStatus": "pending"
     },
     {
@@ -24491,9 +24497,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "2ee2f6a4846802e63450fa76f1e7812a1e881bab",
+      "gitBlobId": "5aa55189e0b4c9166c3d41c9597da3cd95ec4a58",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/196-privacidad-de-secciones-del-perfil-2026-11-18.md",
+      "evidence": "docs/oficial/198-bloqueos-y-avisos-de-cumpleanos-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25565,8 +25571,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/birthday-notification-privacy.test.js",
       "phase": "server",
-      "gitBlobId": "4054cb5a51c5f23e6166314bb688e7d9122b0e7c",
-      "reviewStatus": "pending"
+      "gitBlobId": "f3080076e0b59e838fe132244b8cdc6bd53012e3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/198-bloqueos-y-avisos-de-cumpleanos-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/bottle-reception.test.js",
