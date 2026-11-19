@@ -470,6 +470,15 @@
       "evidenceKind": "runtime-controlled",
       "status": "fixed-unit-validated-device-pending",
       "published": true
+    },
+    {
+      "id": "N031",
+      "severity": "high",
+      "description": "Dos sesiones de una cuenta podían aceptar la misma llamada y una respuesta tardía podía cerrarla",
+      "published": true,
+      "evidenceReport": "211",
+      "evidenceKind": "http-real-postgres-local",
+      "status": "fixed-server-validated-locally-deployment-and-device-pending"
     }
   ],
   "release": {
@@ -789,6 +798,15 @@
       "receiversPerExchange": 2,
       "physicalDevices": 0,
       "turnRelayExercised": false
+    },
+    {
+      "kind": "concurrent-call-answer-http",
+      "path": "2026-11-19-mobile-audit211-call-answer-session/postgres-race",
+      "database": "PostgreSQL 17 loopback",
+      "rounds": 3,
+      "registeredSessions": 2,
+      "unitChecks": 76,
+      "deployed": false
     }
   ],
   "findingCounts": {

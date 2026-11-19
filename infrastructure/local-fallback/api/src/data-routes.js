@@ -8279,7 +8279,7 @@ function registerDataRoutes(app, {
         return res.status(403).json({ error: 'SERVER_MANAGED_NOTIFICATION' })
       }
 
-      const validatedAlert = await callAccessStore.validateAlert(user, req.body || {})
+      const validatedAlert = await callAccessStore.validateAlert({ ...user, callAuthSessionId: req.auth?.sid }, req.body || {})
       const notification = await createLocalNotification(pool, {
         recipientId: validatedAlert.recipientId || recipientId,
         actorId: identity.displayUserId,

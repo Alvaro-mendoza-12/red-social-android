@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-19T20:12:54.810828+00:00",
-  "baseCommit": "1be1464275cd77bb4a43e0af37d9ec155cefbcdc",
+  "generatedAtUtc": "2026-11-19T20:19:49.932722+00:00",
+  "baseCommit": "95af6a1276459a2ece911f9cb2a6ea7b321bdc82",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3599,
-    "partial": 264,
-    "code-read": 841
+    "pending": 3600,
+    "partial": 265,
+    "code-read": 840
   },
   "countsByPhase": {
     "android": {
@@ -21,14 +21,14 @@
       "code-read": 588
     },
     "documentation": {
-      "pending": 687,
+      "pending": 688,
       "code-read": 61,
       "partial": 20
     },
     "server": {
       "pending": 842,
-      "code-read": 74,
-      "partial": 35
+      "code-read": 73,
+      "partial": 36
     },
     "tooling-and-other": {
       "pending": 149,
@@ -21917,13 +21917,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "587659291225361b130728560398c59591e69db3",
+      "gitBlobId": "e7cebb27d01dbe1cb6b0cb0b64cf5043591592ad",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "c4a50fc7946d616f4b30dc1c1530521f370e8298",
+      "gitBlobId": "69cdbfcb7be73d8e7c3fca24c73d8d332c98a3a1",
       "reviewStatus": "pending"
     },
     {
@@ -22062,6 +22062,12 @@
       "file": "docs/oficial/210-medios-y-reconexion-en-tres-recorridos-2026-11-19.md",
       "phase": "documentation",
       "gitBlobId": "521029e96dc97591752deffa48ae283f3a3d1032",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/211-aceptacion-de-llamadas-por-sesion-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "110a3a7ddd6e678bdc1033099edb624521830ac7",
       "reviewStatus": "pending"
     },
     {
@@ -24491,9 +24497,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/call-access-store.js",
       "phase": "server",
-      "gitBlobId": "d3eef0d39b8bfbdad5397426c1bd86f1848674b3",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "gitBlobId": "d6f7d3988867f4550226c108dd1396424091f12f",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/211-aceptacion-de-llamadas-por-sesion-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24611,9 +24617,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "5aa55189e0b4c9166c3d41c9597da3cd95ec4a58",
+      "gitBlobId": "70e0ef2a83a1f9811eb81233fdd180be01b27ccd",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/198-bloqueos-y-avisos-de-cumpleanos-2026-11-18.md",
+      "evidence": "docs/oficial/211-aceptacion-de-llamadas-por-sesion-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25707,9 +25713,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/call-access-store.test.js",
       "phase": "server",
-      "gitBlobId": "ec99ddf5f54a5994a9a964bcabb7b3240744dced",
+      "gitBlobId": "f6c6f54b9f658bb2a0aff454242b0a2a1eabce91",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "evidence": "docs/oficial/211-aceptacion-de-llamadas-por-sesion-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

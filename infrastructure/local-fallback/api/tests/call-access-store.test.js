@@ -34,7 +34,12 @@ function fixture(kind = 'dm') {
     if (text.startsWith('INSERT INTO fallback_call_invitees')) {
       const existing = invitees.get(key(params[0], params[1]));
       const accepted = text.includes("'owner','accepted'") || text.includes("'member','accepted'");
-      invitees.set(key(params[0], params[1]), { role: existing?.role || (text.includes("'owner'") ? 'owner' : 'member'), state: accepted ? 'accepted' : 'invited', updated_at: new Date().toISOString() }); return { rows: [] };
+      const answerSessionId = accepted && existing?.state === 'accepted' ? existing.answer_session_id : (accepted ? params[2] : null);
+      invitees.set(key(params[0], params[1]), {
+        role: existing?.role || (text.includes("'owner'") ? 'owner' : 'member'),
+        state: accepted ? 'accepted' : 'invited', answer_session_id: answerSessionId, updated_at: new Date().toISOString(),
+      });
+      return { rows: [] };
     }
     if (text.startsWith('SELECT id::text') && text.includes('FROM fallback_call_sessions')) return { rows: sessions.has(params[0]) ? [{ ...sessions.get(params[0]) }] : [] };
     if (text.startsWith('SELECT user_id FROM fallback_call_invitees')) return { rows: [...invitees.entries()]
@@ -52,7 +57,7 @@ function fixture(kind = 'dm') {
     if (text.startsWith('UPDATE fallback_call_invitees')) { invitees.get(key(params[0], params[1])).state = params[2]; return { rows: [] }; }
     if (text.startsWith('SELECT c.id::text')) {
       const session = sessions.get(params[0]), actor = invitees.get(key(params[0], params[1])), recipient = invitees.get(key(params[0], params[2]));
-      return { rows: session && actor && recipient ? [{ ...session, actor_state: actor.state, recipient_state: recipient.state, recipient_updated_at: recipient.updated_at }] : [] };
+      return { rows: session && actor && recipient ? [{ ...session, actor_state: actor.state, actor_answer_session_id: actor.answer_session_id, recipient_state: recipient.state, recipient_updated_at: recipient.updated_at }] : [] };
     }
     throw new Error(`UNHANDLED_SYNTHETIC_SQL:${text.slice(0, 100)}`);
   }, async connect() { return { query: database.query, release() {} }; } };
@@ -64,6 +69,31 @@ function fixture(kind = 'dm') {
 async function rejected(action, code = 'CALL_ACCESS_DENIED') { await assert.rejects(action, error => error.code === code); }
 async function run() {
   let cases = 0;
+  {
+    const f = fixture();
+    const phone = { id: B, callAuthSessionId: C }, tablet = { id: B, callAuthSessionId: D };
+    await f.prepare();
+    await f.store.accept(phone, CALL);
+    assert.equal((await f.store.accept(phone, CALL)).state, 'active'); cases++;
+    await rejected(() => f.store.accept(tablet, CALL), 'CALL_ANSWERED_ELSEWHERE'); cases++;
+    await rejected(() => f.store.access(tablet, CALL), 'CALL_ANSWERED_ELSEWHERE'); cases++;
+    await rejected(() => f.store.leave(tablet, CALL, 'missed'), 'CALL_ANSWERED_ELSEWHERE'); cases++;
+    const response = { type: 'call_response', targetId: CALL, recipientId: A, extraData: { call_action: 'accept' } };
+    await rejected(() => f.store.validateAlert(tablet, response), 'CALL_ANSWERED_ELSEWHERE'); cases++;
+    assert.equal((await f.store.validateAlert(phone, response)).targetId, CALL); cases++;
+    assert.equal((await f.store.access(phone, CALL)).allowed, true); cases++;
+    assert.equal((await f.store.leave(phone, CALL, 'end')).left, true); cases++;
+  }
+  {
+    const f = fixture('group'); await f.prepare(); await f.store.accept({ id: B }, CALL);
+    await f.store.invite({ id: A }, CALL, { inviteeIds: [D] });
+    await f.store.accept({ id: D, callAuthSessionId: A }, CALL);
+    await f.store.leave({ id: D, callAuthSessionId: A }, CALL, 'end');
+    await f.store.invite({ id: A }, CALL, { inviteeIds: [D] });
+    await f.store.accept({ id: D, callAuthSessionId: C }, CALL);
+    assert.equal((await f.store.access({ id: D, callAuthSessionId: C }, CALL)).allowed, true); cases++;
+  }
+
   {
     const f = fixture(); await f.prepare(); await f.store.accept({ id: B }, CALL);
     await f.store.invite({ id: A }, CALL, { inviteeIds: [C] });

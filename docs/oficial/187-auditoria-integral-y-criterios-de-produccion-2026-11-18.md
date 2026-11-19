@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-El registro reúne 30 familias en esta continuación, con 0 críticas, 19 altas, 11 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+El registro reúne 31 familias en esta continuación, con 0 críticas, 20 altas, 11 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -48,6 +48,7 @@ El registro reúne 30 familias en esta continuación, con 0 críticas, 19 altas,
 | N028 | Media | Una operación cancelada podía dejar bloqueado el indicador de inicio de llamada | [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra corrección y prueba local. Ensayos físicos pendientes |
 | N029 | Alta | Android mostraba el cumpleaños de un perfil ajeno marcado con la opción privada heredada nadie | [207](207-privacidad-y-formato-de-cumpleanos-2026-11-19.md) protege la pantalla y admite día y mes. La proyección de N019 sigue abierta |
 | N030 | Media | La ficha del feed cambiaba de altura tras decodificar una foto o pasar de página en la galería | [209](209-altura-estable-de-fotos-en-el-feed-2026-11-19.md) reserva el espacio al medir la ficha. Regresión comprobada con Compose |
+| N031 | Alta | Dos sesiones de una cuenta podían aceptar la misma llamada y una respuesta tardía podía cerrarla | [211](211-aceptacion-de-llamadas-por-sesion-2026-11-19.md) vincula la respuesta a la sesión ganadora. Faltan distribución y prueba física |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -82,6 +83,8 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 - [208](208-candidata-android-y-activacion-api-2026-11-19.md) registra APK/AAB 9.1.43/183 de `5806a0cafb50`, 14 controles aprobados, 56 casos JVM Release aprobados y ensayo de emulador inconcluso. La candidata de API se comprobó en aislamiento y su activación sigue pendiente.
 
 - [210](210-medios-y-reconexion-en-tres-recorridos-2026-11-19.md) registra seis intercambios de audio y video con señalización real y extremos Chromium aislados, al entrar y al reconectar una sala de voz, una llamada y un directo. Quedan pendientes Android físico y relé TURN.
+
+- [211](211-aceptacion-de-llamadas-por-sesion-2026-11-19.md) registra tres carreras de aceptación entre dos sesiones de una cuenta y 76 controles de llamadas. Los reintentos de la ganadora conservan el acceso tras renovar el token.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 
