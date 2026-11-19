@@ -353,6 +353,24 @@
       "evidenceKind": "source-read",
       "status": "open-client-and-server-migration",
       "published": true
+    },
+    {
+      "id": "N018",
+      "severity": "high",
+      "description": "Las secciones de perfil con visibilidad nobody se convierten en públicas",
+      "evidenceReport": "196",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-server-unit-validated-deployment-pending",
+      "published": true
+    },
+    {
+      "id": "N019",
+      "severity": "high",
+      "description": "La respuesta pública de cumpleaños incluye el año completo de nacimiento",
+      "evidenceReport": "196",
+      "evidenceKind": "source-read",
+      "status": "open-client-and-server-migration",
+      "published": true
     }
   ],
   "release": {
@@ -472,15 +490,22 @@
       "passed": 8,
       "path": "2026-11-18-mobile-audit195-registration/candidate",
       "scope": "Both actual Android auth screens compiled. Policy tests passed. Interactive restoration and network retry pending."
+    },
+    {
+      "kind": "server-controlled",
+      "tests": 15,
+      "passed": 15,
+      "path": "2026-11-18-mobile-audit196-profile-visibility/regression.log",
+      "scope": "Profile section projection and editing with synthetic profiles; deployment pending."
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
-    "high": 12,
+    "high": 14,
     "medium": 5,
     "low": 0,
-    "total": 17
+    "total": 19
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",

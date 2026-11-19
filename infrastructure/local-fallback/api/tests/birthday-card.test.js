@@ -1,7 +1,7 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const { birthdayCardContent } = require('../src/birthday-card')
-const { profileForViewer, normalizeProfileSectionVisibility, profilePatchFromBody, previewFromMessage } = require('../src/data-routes')
+const { profileForViewer, normalizeProfileForPublic, normalizeProfileSectionVisibility, profilePatchFromBody, previewFromMessage } = require('../src/data-routes')
 const value = { version: 1, kind: 'birthday', message: ' ¡Feliz cumpleaños! 🎂 ', theme: 'confetti' }
 test('birthday letters canonicalize only supported content', () => {
   assert.deepEqual(JSON.parse(birthdayCardContent(JSON.stringify({ ...value, url: 'https://invalid.example' }))), { ...value, message: value.message.trim() })
@@ -29,9 +29,28 @@ test('presentation edits keep education, workplace and birthday privacy', () => 
 })
 
 test('public profile projection retains birthday before applying viewer privacy', () => {
- const {normalizeProfileForPublic}=require('../src/data-routes')
  const raw=normalizeProfileForPublic({id:'profile-birthday',birth_date:'2000-10-17',profile_section_visibility:{birthday:'only_me'}})
  assert.equal(raw.birth_date,'2000-10-17')
  assert.equal(profileForViewer(raw).birth_date,'')
  assert.equal(profileForViewer(raw,{viewerIsTarget:true}).birth_date,'2000-10-17')
+})
+
+test('a hidden birthday stays private in the imported profile projection', () => {
+  const profile = normalizeProfileForPublic({
+    id: 'profile-birthday',
+    birth_date: '2000-02-29',
+    profileSectionVisibility: { birthday: 'nobody' },
+  })
+  assert.equal(profileForViewer(profile).birth_date, '')
+  assert.equal(profileForViewer(profile, { isFollowing: true }).birth_date, '')
+  assert.equal(profileForViewer(profile, { viewerIsTarget: true }).birth_date, '2000-02-29')
+})
+
+test('saving profile visibility preserves the meaning of nobody and connections', () => {
+  const visibility = profilePatchFromBody({
+    profile_section_visibility: { birthday: ' Nobody ', education: 'nobody', career: 'connections' },
+  }).profile_section_visibility
+  assert.equal(visibility.birthday, 'only_me')
+  assert.equal(visibility.education, 'only_me')
+  assert.equal(visibility.career, 'followers')
 })

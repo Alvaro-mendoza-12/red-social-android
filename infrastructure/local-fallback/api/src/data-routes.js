@@ -4300,6 +4300,7 @@ function normalizeProfileSectionVisibility(value) {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
   return Object.fromEntries(profileSectionIds.map((section) => {
     const raw = cleanText(source[section], 20).toLowerCase()
+    if (raw === 'nobody') return [section, 'only_me']
     const normalized = raw === 'connections' ? 'followers' : raw
     return [section, new Set(['everyone', 'followers', 'only_me']).has(normalized) ? normalized : 'everyone']
   }))
