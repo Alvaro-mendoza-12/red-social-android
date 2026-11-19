@@ -15008,11 +15008,13 @@ async function processBirthdayNotifications(
           })
           .filter((alias) => alias && !actorAliases.has(alias))))
         const recipientUsers = await fallbackUsersByProfileAliases(pool, recipientAliases)
+        const blockedIds = recipientUsers.size ? await blockedProfileIds(pool, { ids: actorAliases }) : new Set()
 
         for (const recipientAlias of recipientAliases) {
           const recipientUser = recipientUsers.get(recipientAlias)
           if (!recipientUser) continue
           const recipientIdentity = userIdentity(recipientUser)
+          if (recipientIdentity.values.some(id => blockedIds.has(id))) continue
           const recipientId = recipientIdentity.displayUserId
           if (['followers', 'connections'].includes(birthdayUser.birthday_visibility) || ['followers', 'connections'].includes(birthdayUser.profile_visibility)) {
             const followed = await pool.query(`SELECT 1 FROM fallback_follows WHERE lower(follower_id) = ANY($1::text[]) AND lower(following_id) = ANY($2::text[]) LIMIT 1`, [Array.from(recipientIdentity.ids), Array.from(actorAliases)])

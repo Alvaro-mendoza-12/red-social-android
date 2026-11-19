@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-Se registran veinte familias nuevas: ninguna crítica confirmada en esta selección, catorce altas y seis medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+Se registran veintiuna familias nuevas: ninguna crítica confirmada en esta selección, quince altas y seis medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -38,6 +38,7 @@ Se registran veinte familias nuevas: ninguna crítica confirmada en esta selecci
 | N018 | Alta | El servidor interpreta «Nadie» como «Todos» al leer y guardar secciones del perfil | [196](196-privacidad-de-secciones-del-perfil-2026-11-18.md): mantiene el ajuste privado; despliegue pendiente |
 | N019 | Alta | El perfil compartido entrega el año de nacimiento donde solo se muestra el día y mes | [196](196-privacidad-de-secciones-del-perfil-2026-11-18.md): documentado; migración de la respuesta y sus consumidores pendiente |
 | N020 | Media | El verificador de firmas del AAB fallaba al leer la salida de Java en Windows en español | [197](197-verificacion-de-firmas-android-en-windows-2026-11-18.md): localización y lectura robusta; APK y AAB de 193 verificados para firma |
+| N021 | Alta | Los avisos de cumpleaños omiten los bloqueos entre amistades | [198](198-bloqueos-y-avisos-de-cumpleanos-2026-11-18.md): aplica los bloqueos en ambos sentidos antes de reservar la entrega; despliegue pendiente |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -55,7 +56,8 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 - 194: seis fallos en siete casos de referencia. Candidata con 37 casos dirigidos aprobados. Compilación y pruebas físicas de esta corrección pendientes.
 - 195: dos pantallas reales compiladas con Kotlin y Compose, ocho casos de políticas aprobados. Recreación interactiva y reintento en dispositivo pendientes.
 - 196: dos casos de referencia fallaron y los quince casos de las tres suites Node aprobaron tras el cambio. El despliegue en Ubuntu sigue pendiente.
-- 197: nueve pruebas Python y verificación de la firma del APK y AAB 9.1.43/183 del commit Android193. Los controles restantes y las pruebas de dispositivo tienen resultados separados. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
+- 197: nueve pruebas Python y verificación de la firma del APK y AAB 9.1.43/183 del commit Android193. Los controles restantes y las pruebas de dispositivo tienen resultados separados.
+- 198: dos fallos de referencia y 19 pruebas Node aprobadas, incluido el filtrado en ambos sentidos. No se enviaron avisos reales. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 

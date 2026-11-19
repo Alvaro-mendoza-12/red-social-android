@@ -380,6 +380,15 @@
       "evidenceKind": "actual-signed-artifacts",
       "status": "fixed-actual-signatures-verified",
       "published": true
+    },
+    {
+      "id": "N021",
+      "severity": "high",
+      "description": "El trabajador de cumpleaños reserva avisos entre cuentas con un bloqueo activo",
+      "evidenceReport": "198",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-server-unit-validated-deployment-pending",
+      "published": true
     }
   ],
   "release": {
@@ -513,15 +522,22 @@
       "passed": 9,
       "path": "2026-11-18-mobile-audit197-signature-locale",
       "scope": "Exact Android193 APK and AAB verified with the expected upload certificate. Cryptographic signature check on unmodified artifacts."
+    },
+    {
+      "kind": "server-controlled",
+      "tests": 19,
+      "passed": 19,
+      "path": "2026-11-18-mobile-audit198-birthday-blocks/regression.log",
+      "scope": "Both sides of a block, local/migrated IDs, birthday privacy and profile activity. No push sent."
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
-    "high": 14,
+    "high": 15,
     "medium": 6,
     "low": 0,
-    "total": 20
+    "total": 21
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",
