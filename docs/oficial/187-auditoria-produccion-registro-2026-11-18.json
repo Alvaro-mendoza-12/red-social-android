@@ -654,6 +654,17 @@
       "passed": 44,
       "serverCases": 67,
       "scope": "Integrated Kotlin sources and synthetic database call contract"
+    },
+    {
+      "kind": "android-emulator-perfetto",
+      "path": "2026-11-18-mobile-release-check/725a4141561d/emulator-startup-trace/analysis.json",
+      "traces": 4,
+      "scope": "Process startup stage, bindApplication, main thread CPU and first frame under offline hardware emulation",
+      "artProfileComparisonPassed": true,
+      "registrationRetryPassed": false,
+      "artReceipt": "emulator-startup-art-compiled-retry/result.json",
+      "registrationReceipt": "emulator-registration-restoration-retry/result.json",
+      "availabilityReceipt": "username-availability-https-proof.json"
     }
   ],
   "findingCounts": {
