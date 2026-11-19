@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-18T23:58:17.102165+00:00",
-  "baseCommit": "2fdea82bfa4f060ff0c0d891e250caa378186b50",
+  "generatedAtUtc": "2026-11-19T00:03:09.291537+00:00",
+  "baseCommit": "112c0b3788d9fafd19b35eeef16df4c831227ef0",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -12,7 +12,7 @@
   "counts": {
     "pending": 3596,
     "partial": 264,
-    "code-read": 826
+    "code-read": 827
   },
   "countsByPhase": {
     "android": {
@@ -21,13 +21,13 @@
       "code-read": 577
     },
     "documentation": {
-      "pending": 674,
+      "pending": 675,
       "code-read": 61,
       "partial": 20
     },
     "server": {
-      "pending": 844,
-      "code-read": 72,
+      "pending": 843,
+      "code-read": 73,
       "partial": 35
     },
     "tooling-and-other": {
@@ -21863,13 +21863,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "22a12ae7d70d57b6a0caa85b9836177489fc5725",
+      "gitBlobId": "dda4a3f53278482539981ec0f982cc9f6e92029b",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "4dc5ffdb64726973f498f7fce524fe49b6e37bd1",
+      "gitBlobId": "033ef1d7a4911601c1714476a8aa438e3153d004",
       "reviewStatus": "pending"
     },
     {
@@ -21924,6 +21924,12 @@
       "file": "docs/oficial/195-restauracion-del-registro-en-android-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "04a9fdb4e4b4ce65182118e244f1c95d4f0b639d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/196-privacidad-de-secciones-del-perfil-2026-11-18.md",
+      "phase": "documentation",
+      "gitBlobId": "a1ae6ea07f430d7cf861956bf785b75e4d97c14b",
       "reviewStatus": "pending"
     },
     {
@@ -24479,9 +24485,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "bb63f527b4e54d94b7273eccd949958c1ddc19e1",
+      "gitBlobId": "2ee2f6a4846802e63450fa76f1e7812a1e881bab",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/196-privacidad-de-secciones-del-perfil-2026-11-18.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25545,8 +25551,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/birthday-card.test.js",
       "phase": "server",
-      "gitBlobId": "ab9411174767ba937d79e01b144e502bd01cb2f3",
-      "reviewStatus": "pending"
+      "gitBlobId": "c4c8d1e849dd7cc22338e5cca4b18d1c620179fe",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/196-privacidad-de-secciones-del-perfil-2026-11-18.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/birthday-notification-privacy.test.js",
