@@ -84,7 +84,7 @@ def find_apksigner(requested: str) -> str | None:
 
 
 def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, capture_output=True, text=True, check=False)
+    return subprocess.run(command, capture_output=True, encoding="utf-8", errors="replace", check=False)
 
 
 def sha256_file(path: Path) -> str:
@@ -134,12 +134,14 @@ def main() -> int:
         if shutil.which(args.jarsigner) is None or shutil.which(args.keytool) is None:
             print("A JDK with jarsigner and keytool is required to verify Android App Bundles.")
             return 1
-        verification = run_command([args.jarsigner, "-verify", "-verbose", "-certs", str(artifact)])
+        # The output checks below use the English tool messages.
+        english = ["-J-Duser.language=en", "-J-Duser.country=US"]
+        verification = run_command([args.jarsigner, *english, "-verify", "-verbose", "-certs", str(artifact)])
         verification_output = "\n".join(part for part in (verification.stdout, verification.stderr) if part)
         if verification.returncode != 0 or not is_verified_jarsigner_output(verification_output):
             print("AAB signature verification failed: the artifact is unsigned or has an invalid signature.")
             return 1
-        certificate = run_command([args.keytool, "-printcert", "-jarfile", str(artifact)])
+        certificate = run_command([args.keytool, *english, "-printcert", "-jarfile", str(artifact)])
         certificate_output = "\n".join(part for part in (certificate.stdout, certificate.stderr) if part)
         if certificate.returncode != 0:
             print("Unable to read the release signing certificate.")
