@@ -45,7 +45,7 @@ class CallGroupAcceptanceTest {
 
         init {
             every { supabase.isLocalFallbackPrimary } returns true
-            coEvery { control.leave(any(), any()) } returns Result.success(Unit)
+            coEvery { control.leave(any(), any(), any()) } returns Result.success(Unit)
             activeCall.value = ActiveCall(callId, "Llamada de prueba", "host",
                 CallConnectionState.RINGING_OUTGOING, contextType = contextType, peerUserId = "first")
             ReflectionHelpers.setField(repository, "scope", scope.backgroundScope)
@@ -76,7 +76,7 @@ class CallGroupAcceptanceTest {
         fixture.acceptFirst()
         runCurrent()
         assertEquals(CallConnectionState.CONNECTING, fixture.repository.activeCall.value?.connectionState)
-        coVerify(exactly = 0) { fixture.control.leave(fixture.callId, "cancel") }
+        coVerify(exactly = 0) { fixture.control.leave(any(), fixture.callId, "cancel") }
         assertEquals(setOf("first", "second"), fixture.pending)
     }
 
@@ -94,6 +94,6 @@ class CallGroupAcceptanceTest {
         fixture.acceptFirst()
         runCurrent()
         assertEquals(CallConnectionState.CONNECTING, fixture.repository.activeCall.value?.connectionState)
-        coVerify(exactly = 0) { fixture.control.leave(any(), any()) }
+        coVerify(exactly = 0) { fixture.control.leave(any(), any(), any()) }
     }
 }

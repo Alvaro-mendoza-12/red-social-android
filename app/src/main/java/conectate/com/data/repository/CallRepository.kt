@@ -409,7 +409,7 @@ class CallRepository @Inject constructor(
     ): Result<String> = withContext(Dispatchers.IO) {
         withCallStartup { claimMedia ->
         val notificationAccount = authService.captureAccountLease()
-        var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+        val currentUserId = notificationAccount.accountId.orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
         if (!claimMedia()) return@withContext Result.failure(IllegalStateException(interactiveMediaGate.conflictMessage()))
@@ -424,7 +424,7 @@ class CallRepository @Inject constructor(
         var callId = UUID.randomUUID().toString()
         pendingInvitees.clear()
         pendingInvitees.addAll(invitedUserIds.map { it.trim() }.filter { it.isNotBlank() }.distinct())
-        callControlClient.prepare(callId, normalizedContextType, normalizedContextId, pendingInvitees.toList())
+        callControlClient.prepare(notificationAccount, callId, normalizedContextType, normalizedContextId, pendingInvitees.toList())
             .getOrElse { return@withContext Result.failure(it) }
         val outgoingVisit = CallNotificationVisit.capture(callId, notificationAccount)
             ?: return@withContext Result.failure(IllegalStateException("La cuenta cambió. Inicia la llamada de nuevo."))
@@ -475,6 +475,7 @@ class CallRepository @Inject constructor(
                     when (ctxType) {
                         "group" -> {
                             groupRepository.sendGroupMessage(
+                                accountLease = notificationAccount,
                                 groupId = ctxId,
                                 content = "Llamada de grupo iniciada",
                                 contentType = "call_start",
@@ -483,6 +484,7 @@ class CallRepository @Inject constructor(
                         }
                         "community" -> {
                             communityRepository.sendCommunityMessage(
+                                accountLease = notificationAccount,
                                 communityId = ctxId,
                                 content = "Llamada de comunidad iniciada",
                                 contentType = "call_start",
@@ -513,11 +515,11 @@ class CallRepository @Inject constructor(
             targets.forEach { target -> launch {
                 if (!canRefreshCallMedia(_activeCall.value, callId)) return@launch
                 runCatching {
-                    sendCallInvite(target, invite)
+                    sendCallInvite(notificationAccount, target, invite)
                     // The HTTP request can finish after hangup. Deliver cancellation
                     // again so that a delayed invite cannot leave the recipient ringing.
                     if (!canRefreshCallMedia(_activeCall.value, callId)) {
-                        sendCallResponse(target, callId, "cancel", currentUserId)
+                        sendCallResponse(notificationAccount, target, callId, "cancel")
                     }
                 }
                     .onFailure { error ->
@@ -562,12 +564,12 @@ class CallRepository @Inject constructor(
     ): Result<Unit> = withContext(Dispatchers.IO) {
         withCallStartup { claimMedia ->
         val notificationAccount = authService.captureAccountLease()
-        var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+        val currentUserId = notificationAccount.accountId.orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         if (_activeCall.value != null) return@withContext Result.failure(Exception("Ya hay una llamada activa"))
         if (!claimMedia()) return@withContext Result.failure(IllegalStateException(interactiveMediaGate.conflictMessage()))
 
-        callControlClient.accept(callId.trim()).getOrElse { return@withContext Result.failure(it) }
+        callControlClient.accept(notificationAccount, callId.trim()).getOrElse { return@withContext Result.failure(it) }
         var profile = loadUserProfileQuick(currentUserId)
         var myName = profile?.displayName
             ?: profile?.username
@@ -641,7 +643,7 @@ class CallRepository @Inject constructor(
             dismissIncomingInvite()
             return@withContext Result.failure(Exception("Esta llamada ya finalizó."))
         }
-        var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+        val currentUserId = notificationAccount.accountId.orEmpty()
         if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
         _activeCall.value?.let { active ->
             return@withContext if (active.callId.equals(invite.callId, ignoreCase = true) &&
@@ -650,7 +652,7 @@ class CallRepository @Inject constructor(
         }
         if (!claimMedia()) return@withContext Result.failure(IllegalStateException(interactiveMediaGate.conflictMessage()))
 
-        callControlClient.accept(invite.callId).getOrElse { return@withContext Result.failure(it) }
+        callControlClient.accept(notificationAccount, invite.callId).getOrElse { return@withContext Result.failure(it) }
 
         val incomingVisit = CallNotificationVisit.capture(invite.callId, notificationAccount)
             ?: return@withContext Result.failure(IllegalStateException("La cuenta cambió. Contesta desde la cuenta correspondiente."))
@@ -705,10 +707,10 @@ class CallRepository @Inject constructor(
                 if (callCancellationGuard.contains(invite.callId) ||
                     !_activeCall.value?.callId.equals(invite.callId, ignoreCase = true)) return@launch
                 sendCallResponse(
+                    account = notificationAccount,
                     targetUserId = invite.callerUserId,
                     callId = invite.callId,
                     action = "accept",
-                    fromUserId = currentUserId
                 )
             }.onFailure { error ->
                 logBestEffortFailure(
@@ -750,6 +752,8 @@ class CallRepository @Inject constructor(
     }
 
     suspend fun declineIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
+        val account = authService.captureAccountLease()
+        val ownerId = account.accountId ?: return@withContext Result.failure(Exception("Sesión no válida"))
         callCancellationGuard.mark(invite.callId)
         IncomingCallForegroundService.stop(context, invite.callId)
         val incoming = _incomingInvite.value
@@ -763,11 +767,8 @@ class CallRepository @Inject constructor(
                 discardPreparedIncomingSocket()
             }
         }
-        var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
-        if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
-
         try {
-            recordIncomingInviteOutcome(invite, "Llamada rechazada")
+            recordIncomingInviteOutcome(invite, "Llamada rechazada", ownerId)
         } catch (error: Exception) {
             logBestEffortFailure(
                 operation = "recordIncomingInviteOutcome(decline)",
@@ -778,10 +779,10 @@ class CallRepository @Inject constructor(
         scope.launch {
             runCatching {
                 sendCallResponse(
+                    account = account,
                     targetUserId = invite.callerUserId,
                     callId = invite.callId,
                     action = "decline",
-                    fromUserId = currentUserId
                 )
             }.onFailure { error ->
                 logBestEffortFailure(
@@ -799,57 +800,31 @@ class CallRepository @Inject constructor(
     }
 
     private fun hangupCurrentCall(): Result<Unit> {
-        var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
-        var call = _activeCall.value ?: return Result.success(Unit)
+        val call = _activeCall.value ?: return Result.success(Unit)
+        val account = notificationVisit?.accountForCall(call.callId)
+        val ringing = call.connectionState == CallConnectionState.RINGING_OUTGOING
+        val action = if (ringing) "cancel" else "end"
         callTonePlayer.stopRingback()
 
-        if (call.connectionState == CallConnectionState.RINGING_OUTGOING) {
-            // Cancel pending invites (best-effort)
-            var invitees = pendingInvitees.toList()
+        if (account != null) {
+            // Capture the recipients before endCallInternal clears them.
+            val targets = if (ringing) pendingInvitees.toList() else buildEndSignalTargets(account.accountId.orEmpty())
             scope.launch {
-                invitees.forEach { target ->
+                targets.forEach { target ->
                     runCatching {
-                        sendCallResponse(
-                            targetUserId = target,
-                            callId = call.callId,
-                            action = "cancel",
-                            fromUserId = currentUserId
-                        )
+                        sendCallResponse(account, target, call.callId, action)
                     }.onFailure { error ->
                         logBestEffortFailure(
-                            operation = "sendCallResponse(cancel)",
+                            operation = "sendCallResponse($action)",
                             throwable = error,
                             callId = call.callId
                         )
                     }
                 }
             }
-            endCallInternal(reason = "Llamada cancelada")
-            return Result.success(Unit)
         }
 
-        // Capture before endCallInternal clears the participant/invitation state.
-        val targets = buildEndSignalTargets(currentUserId)
-        scope.launch {
-            targets.forEach { target ->
-                runCatching {
-                    sendCallResponse(
-                        targetUserId = target,
-                        callId = call.callId,
-                        action = "end",
-                        fromUserId = currentUserId
-                    )
-                }.onFailure { error ->
-                    logBestEffortFailure(
-                        operation = "sendCallResponse(end)",
-                        throwable = error,
-                        callId = call.callId
-                    )
-                }
-            }
-        }
-
-        endCallInternal(reason = "Llamada finalizada")
+        endCallInternal(reason = if (ringing) "Llamada cancelada" else "Llamada finalizada")
         return Result.success(Unit)
     }
 
@@ -1127,14 +1102,14 @@ class CallRepository @Inject constructor(
 
     /** Reject a second or third call without stopping the active call's audio or ringback. */
     suspend fun rejectIncomingWhileBusy(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
-        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
-        if (currentUserId.isBlank()) return@withContext Result.failure(Exception("Sesión no válida"))
+        val account = authService.captureAccountLease()
+        if (account.accountId == null) return@withContext Result.failure(Exception("Sesión no válida"))
         runCatching {
             sendCallResponse(
+                account = account,
                 targetUserId = invite.callerUserId,
                 callId = invite.callId,
                 action = "decline",
-                fromUserId = currentUserId,
                 notificationAction = "busy"
             )
         }
@@ -1144,16 +1119,16 @@ class CallRepository @Inject constructor(
     fun yieldOutgoingCallToIncoming(invite: CallInvite): Boolean {
         if (incomingCallDisposition(invite) != IncomingCallDisposition.YIELD_OUTGOING) return false
         val losingCall = _activeCall.value ?: return false
-        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
+        val account = notificationVisit?.accountForCall(losingCall.callId)
         val losingTargets = pendingInvitees.toList()
-        scope.launch {
+        if (account != null) scope.launch {
             losingTargets.forEach { target ->
                 runCatching {
                     sendCallResponse(
+                        account = account,
                         targetUserId = target,
                         callId = losingCall.callId,
                         action = "cancel",
-                        fromUserId = currentUserId,
                         notificationAction = "collision"
                     )
                 }.onFailure { error ->
@@ -1226,9 +1201,11 @@ class CallRepository @Inject constructor(
         }
     }
 
-    private suspend fun sendCallInvite(targetUserId: String, invite: CallInvite) {
+    private suspend fun sendCallInvite(account: AuthSessionLease, targetUserId: String, invite: CallInvite) {
+        account.requireCurrent()
         val callCreatedAt = java.time.Instant.now().toString()
         val notificationResult = notificationRepository.sendNotification(
+            lease = account,
             recipientId = targetUserId.trim(),
             type = "call_invite",
             targetId = invite.callId,
@@ -1262,6 +1239,7 @@ class CallRepository @Inject constructor(
                 blockUntilSubscribed = true
             )
 
+            account.requireCurrent()
             channel.broadcast(
                 event = "call_invite",
                 message = CallInviteBroadcastPayload(
@@ -1277,23 +1255,28 @@ class CallRepository @Inject constructor(
             )
             delay(200)
             channel.unsubscribe()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("CallRepository", "Failed to send call invite", e)
         }
     }
 
     private suspend fun sendCallResponse(
+        account: AuthSessionLease,
         targetUserId: String,
         callId: String,
         action: String,
-        fromUserId: String,
         notificationAction: String = action
     ) {
-        if (action == "accept") callControlClient.accept(callId).getOrThrow()
-        else callControlClient.leave(callId, notificationAction).getOrThrow()
+        account.requireCurrent()
+        val fromUserId = checkNotNull(account.accountId)
+        // Accept is already confirmed before media startup and response notification.
+        if (action != "accept") callControlClient.leave(account, callId, notificationAction).getOrThrow()
         if (supabaseConfig.isLocalFallbackPrimary) {
             val notificationType = if (action == "accept") "call_response" else "call_cancel"
             notificationRepository.sendNotification(
+                lease = account,
                 recipientId = targetUserId.trim(),
                 type = notificationType,
                 targetId = callId,
@@ -1318,6 +1301,7 @@ class CallRepository @Inject constructor(
         if (action == "cancel" || action == "end" || action == "decline") {
             runCatching {
                 notificationRepository.sendNotification(
+                    lease = account,
                     recipientId = targetUserId.trim(),
                     type = "call_cancel",
                     targetId = callId,
@@ -1352,6 +1336,7 @@ class CallRepository @Inject constructor(
                 blockUntilSubscribed = true
             )
 
+            account.requireCurrent()
             channel.broadcast(
                 event = "call_response",
                 message = CallResponseBroadcastPayload(
@@ -1362,6 +1347,8 @@ class CallRepository @Inject constructor(
             )
             delay(800)
             channel.unsubscribe()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("CallRepository", "Failed to send call response", e)
         }
@@ -1992,9 +1979,9 @@ class CallRepository @Inject constructor(
         callSnapshot?.let { callCancellationGuard.mark(it.callId) }
         // Invalidate delayed audio work before disconnecting/resetting native media.
         _activeCall.value = callSnapshot?.copy(connectionState = CallConnectionState.ENDED)
-        if (callSnapshot != null && releaseServerSession) {
+        if (callSnapshot != null && releaseServerSession && outcomeAccount != null) {
             pendingCallLeaveJob = scope.launch {
-                callControlClient.leave(callSnapshot.callId).onFailure { error ->
+                callControlClient.leave(outcomeAccount, callSnapshot.callId).onFailure { error ->
                     logBestEffortFailure("releaseCallSession", error, callSnapshot.callId)
                 }
             }
@@ -2080,7 +2067,6 @@ class CallRepository @Inject constructor(
         clearOutgoingRingTimeout()
         outgoingRingTimeoutJob = scope.launch {
             delay(OUTGOING_RING_TIMEOUT_MS)
-            var currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
             var active = _activeCall.value ?: return@launch
             if (!active.callId.equals(callId, ignoreCase = true)) return@launch
             if (active.connectionState != CallConnectionState.RINGING_OUTGOING &&
@@ -2088,25 +2074,20 @@ class CallRepository @Inject constructor(
                 return@launch
             }
 
-            var invitees = pendingInvitees.toList()
-            scope.launch {
-            invitees.forEach { target ->
-                runCatching {
-                    sendCallResponse(
-                        targetUserId = target,
-                        callId = active.callId,
-                        action = "cancel",
-                        fromUserId = currentUserId,
-                        notificationAction = "missed"
-                    )
-                }.onFailure { error ->
-                    logBestEffortFailure(
-                        operation = "sendCallResponse(missed-timeout)",
-                        throwable = error,
-                        callId = active.callId
-                    )
+            val account = notificationVisit?.accountForCall(active.callId)
+            val invitees = pendingInvitees.toList()
+            if (account != null) scope.launch {
+                invitees.forEach { target ->
+                    runCatching {
+                        sendCallResponse(account, target, active.callId, "cancel", notificationAction = "missed")
+                    }.onFailure { error ->
+                        logBestEffortFailure(
+                            operation = "sendCallResponse(missed-timeout)",
+                            throwable = error,
+                            callId = active.callId
+                        )
+                    }
                 }
-            }
             }
             endCallInternal(reason = "Llamada no contestada")
         }
@@ -2382,9 +2363,9 @@ class CallRepository @Inject constructor(
 
     private suspend fun recordIncomingInviteOutcome(
         invite: CallInvite,
-        reason: String
+        reason: String,
+        ownerId: String? = authService.getCurrentUserId(),
     ) {
-        val ownerId = authService.getCurrentUserId()
         var normalizedContextType = invite.contextType.trim().lowercase().ifBlank { "dm" }
         var historyTitle = when (normalizedContextType) {
             "dm" -> invite.callerName.ifBlank { invite.title.ifBlank { "Llamada" } }

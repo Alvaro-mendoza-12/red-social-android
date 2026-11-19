@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-Se registran veintiséis familias nuevas: ninguna crítica confirmada en esta selección, diecisiete altas y nueve medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+El registro reúne 28 familias en esta continuación, con 0 críticas, 18 altas, 10 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -44,6 +44,8 @@ Se registran veintiséis familias nuevas: ninguna crítica confirmada en esta se
 | N024 | Media | El historial perdía la condición de llamada contestada y su duración al colgar en reconexión | [200](200-resultado-y-cuenta-de-llamadas-2026-11-18.md): corrección y pruebas locales. Ensayos físicos pendientes |
 | N025 | Media | La espera al resolver el chat podía aumentar la duración guardada y cambiar la hora de cierre | [200](200-resultado-y-cuenta-de-llamadas-2026-11-18.md): corrección y pruebas locales. Ensayos físicos pendientes |
 | N026 | Alta | La primera respuesta de una llamada colectiva podía enviar una cancelación general | [202](202-primera-respuesta-llamadas-colectivas-2026-11-18.md): corrección y pruebas locales. Ensayos físicos pendientes |
+| N027 | Alta | Una operación de llamada podía usar otra visita durante la renovación o aceptar su respuesta tardía | [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra corrección y prueba local. Ensayos físicos pendientes |
+| N028 | Media | Una operación cancelada podía dejar bloqueado el indicador de inicio de llamada | [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra corrección y prueba local. Ensayos físicos pendientes |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -68,6 +70,8 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 
 - [200](200-resultado-y-cuenta-de-llamadas-2026-11-18.md): 8 fallos de referencia en 9 casos y 41 pruebas JVM aprobadas. El intento Gradle Audit con 2.304 MiB terminó en compilación por falta de heap del compilador. La repetición de Gradle sobre la revisión integrada queda pendiente del turno compartido con los ensayos de emulador.
 - [202](202-primera-respuesta-llamadas-colectivas-2026-11-18.md): 2 fallos en 3 controles nuevos de referencia, 44 JVM de la candidata integrada y 67 casos del servidor con base sintética.
+
+- [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra cuatro fallos de referencia en seis controles HTTP y el indicador bloqueado de inicio. La candidata integrada aprobó 51 JVM.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 

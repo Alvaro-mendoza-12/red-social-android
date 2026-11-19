@@ -434,6 +434,24 @@
       "evidenceKind": "runtime-controlled",
       "status": "fixed-unit-validated-device-pending",
       "published": true
+    },
+    {
+      "id": "N027",
+      "severity": "high",
+      "description": "Una operación de llamada podía usar otra visita durante la renovación o aceptar su respuesta tardía",
+      "evidenceReport": "205",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
+    },
+    {
+      "id": "N028",
+      "severity": "medium",
+      "description": "Una operación cancelada podía dejar bloqueado el indicador de inicio de llamada",
+      "evidenceReport": "205",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
     }
   ],
   "release": {
@@ -665,6 +683,13 @@
       "artReceipt": "emulator-startup-art-compiled-retry/result.json",
       "registrationReceipt": "emulator-registration-restoration-retry/result.json",
       "availabilityReceipt": "username-availability-https-proof.json"
+    },
+    {
+      "kind": "jvm-and-http-engine-controlled",
+      "path": "2026-11-18-mobile-audit205-call-account/candidate-final",
+      "tests": 51,
+      "passed": 51,
+      "scope": "Kotlin and Compose sources, Ktor MockEngine and call regressions"
     }
   ],
   "findingCounts": {

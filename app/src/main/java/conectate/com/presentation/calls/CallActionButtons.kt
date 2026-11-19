@@ -75,24 +75,27 @@ class CallLauncherViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _uiState.value = CallLaunchUiState(isStarting = true)
-            callRepository.startOutgoingCall(
-                title = title,
-                invitedUserIds = invitees,
-                contextType = contextType,
-                contextId = contextId,
-                isVideo = isVideo
-            ).fold(
-                onSuccess = { callId ->
-                    if (isVideo) callRepository.toggleVideo(true)
-                    _uiState.value = CallLaunchUiState()
-                    _navigation.send(callId)
-                },
-                onFailure = { error ->
-                    _uiState.value = CallLaunchUiState(
-                        error = error.message ?: "No se pudo iniciar la llamada."
-                    )
-                }
-            )
+            try {
+                callRepository.startOutgoingCall(
+                    title = title,
+                    invitedUserIds = invitees,
+                    contextType = contextType,
+                    contextId = contextId,
+                    isVideo = isVideo
+                ).fold(
+                    onSuccess = { callId ->
+                        if (isVideo) callRepository.toggleVideo(true)
+                        _navigation.send(callId)
+                    },
+                    onFailure = { error ->
+                        _uiState.value = _uiState.value.copy(
+                            error = error.message ?: "No se pudo iniciar la llamada."
+                        )
+                    }
+                )
+            } finally {
+                _uiState.value = _uiState.value.copy(isStarting = false)
+            }
         }
     }
 

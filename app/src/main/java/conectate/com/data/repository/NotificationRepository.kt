@@ -650,8 +650,19 @@ class NotificationRepository @Inject constructor(
         content: String? = null,
         extraData: kotlinx.serialization.json.JsonObject = buildJsonObject {},
         expectedAccountId: String? = null,
+    ): Result<Unit> = sendNotification(
+        authService.captureAccountLease(), recipientId, type, targetId, content, extraData, expectedAccountId,
+    )
+
+    internal suspend fun sendNotification(
+        lease: AuthSessionLease,
+        recipientId: String,
+        type: String,
+        targetId: String? = null,
+        content: String? = null,
+        extraData: kotlinx.serialization.json.JsonObject = buildJsonObject {},
+        expectedAccountId: String? = null,
     ): Result<Unit> {
-        val lease = authService.captureAccountLease()
         return try {
             val actorId = lease.accountId ?: return Result.failure(Exception("Inicia sesión para continuar."))
             if (expectedAccountId != null && !actorId.equals(expectedAccountId, ignoreCase = true))
