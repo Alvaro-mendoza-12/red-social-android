@@ -21,6 +21,30 @@ La referencia 182 corresponde a `b834cf0ff3465e26cce9198431afb3175b60196d`. Su p
 
 La v183 arrancó más despacio en las dos rondas. Queda abierta la atribución del coste y su contraste en un Android físico. La muestra mide el primer fotograma de la actividad fuera de red.
 
+## Trazas de arranque
+
+Se capturaron cuatro arranques en frío con GPU del host, modo avión y Perfetto. Cada captura se asoció con el PID de Novvin y pasó el control de pérdidas del trazado. Las duraciones de las fases anidadas se muestran de forma independiente.
+
+| Versión | Primer fotograma (ms) | Inicio de `bindApplication` (ms) | Duración de `bindApplication` (ms) | Tramo `doFrame` observado (ms) | CPU del hilo principal (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 182, traza 1 | 2124 | 734 | 495 | 253 | 456 |
+| 182, traza 2 | 1105 | 229 | 261 | 231 | 354 |
+| 183, traza 1 | 4832 | 2152 | 762 | 570 | 522 |
+| 183, traza 2 | 3793 | 1064 | 1019 | 580 | 741 |
+
+En la 183, `bindApplication` empezó más tarde y duró más en las dos capturas. También creció el tiempo del primer fotograma. La apertura de DEX tardó 77–174 ms en la 182 y 122–443 ms en la 183. La variación entre capturas dejó abierta la atribución a una función concreta.
+
+[Método de captura con Perfetto en Android](https://perfetto.dev/docs/learning-more/android).
+En el emulador alternativo, `dexopt` confirmó `speed-profile` en ambos APK. La mediana fue 1554 ms para la 182 y 2962 ms para la 183. Este contraste de ART usa un perfil de emulador propio. [Método de medición de perfiles ART](https://developer.android.com/topic/performance/baselineprofiles/manually-create-measure).
+
+## Restauración del registro
+
+El identificador ficticio se comprobó antes de entrar a la etapa final. Tras recrear el proceso sin conexión se conservó esa etapa y apareció «Reintentar comprobación». El primer reintento tras reactivar Wi-Fi mantuvo el error. Falta repetir con una conexión validada desde Android antes de pulsar el control. Se preservaron ambos estados de la pantalla y el recibo. No se envió el alta.
+
+Una consulta independiente de disponibilidad desde Windows devolvió HTTP 200 con TLS válido y el identificador ficticio esperado en 154 ms. El recibo conserva esta lectura separada del ensayo en Android.
+
 ## Evidencia y pendientes
 
 El recibo de compilación, las comprobaciones de binarios y los intentos de dispositivo conservan sus propios resultados bajo `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-release-check/725a4141561d/`. La recreación de la etapa final de registro con conexión, el uso físico de micrófono y la sesión autenticada de extremo a extremo siguen en el registro de la auditoría. También siguen pendientes el despliegue de los cambios del servidor a Ubuntu y la entrega en Google Play.
+
+Las ramas estables incorporaron después las correcciones de llamadas del commit `4196f510e21301a2dfd31f4615a263a0f1bd70a4`. La APK y el AAB de esta ficha conservan su huella y su alcance del commit `725a4141561d`.
