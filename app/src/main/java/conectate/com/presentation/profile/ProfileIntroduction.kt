@@ -13,12 +13,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import conectate.com.data.model.User
 import java.time.LocalDate
+import java.time.MonthDay
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-internal fun profileBirthdayLabel(value: String?): String? = runCatching {
-    LocalDate.parse(value).format(DateTimeFormatter.ofPattern("d 'de' MMMM", Locale.forLanguageTag("es")))
-}.getOrNull()
+internal val profileBirthdayFormatter = DateTimeFormatter.ofPattern("d 'de' MMMM", Locale.forLanguageTag("es"))
+
+private fun isProfileBirthdayPrivate(visibility: String?): Boolean =
+    when (visibility?.trim()?.lowercase(Locale.ROOT)) {
+        "only_me", "nobody" -> true
+        else -> false
+    }
+
+internal fun visibleProfileBirthday(value: String?, visibility: String?, isOwnProfile: Boolean): MonthDay? {
+    if (!isOwnProfile && isProfileBirthdayPrivate(visibility)) return null
+    val date = value?.trim() ?: return null
+    return runCatching {
+        if (date.startsWith("--")) MonthDay.parse(date) else MonthDay.from(LocalDate.parse(date))
+    }.getOrNull()
+}
 
 @Composable
 internal fun ProfileIntroduction(user: User, isOwnProfile: Boolean, onEdit: () -> Unit, onBirthday: () -> Unit) {
@@ -43,8 +56,8 @@ internal fun ProfileIntroduction(user: User, isOwnProfile: Boolean, onEdit: () -
             ProfileSocialLinks(user.social_links)
         }
         // Birthday is intentionally the last presentation section. The API also removes hidden dates.
-        val visible = isOwnProfile || user.profile_section_visibility["birthday"] != "only_me"
-        val birthday = if (visible) profileBirthdayLabel(user.birth_date) else null
+        val visibility = user.profile_section_visibility["birthday"]
+        val birthday = visibleProfileBirthday(user.birth_date, visibility, isOwnProfile)
         if (birthday == null && isOwnProfile) {
             OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) {
                 Icon(Icons.Default.Cake, null); Spacer(Modifier.width(8.dp)); Text("Añadir mi cumpleaños")
@@ -53,11 +66,12 @@ internal fun ProfileIntroduction(user: User, isOwnProfile: Boolean, onEdit: () -
         if (birthday != null) {
             Surface(shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = .5f)) {
                 Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ProfileIntroductionRow(Icons.Default.Cake, "Cumpleaños", birthday)
-                    if (isOwnProfile && user.profile_section_visibility["birthday"] == "only_me")
+                    ProfileIntroductionRow(Icons.Default.Cake, "Cumpleaños", birthday.format(profileBirthdayFormatter))
+                    if (isOwnProfile && isProfileBirthdayPrivate(visibility))
                         Text("Solo tú puedes verlo", style = MaterialTheme.typography.labelMedium)
-                    val isToday = runCatching { LocalDate.parse(user.birth_date).let { it.month == LocalDate.now().month && it.dayOfMonth == LocalDate.now().dayOfMonth } }.getOrDefault(false)
-                    if (!isOwnProfile && isToday) Button(onClick = onBirthday) { Text("Felicítalo ahora") }
+                    if (!isOwnProfile && birthday == MonthDay.now()) {
+                        Button(onClick = onBirthday) { Text("Felicítalo ahora") }
+                    }
                 }
             }
         }

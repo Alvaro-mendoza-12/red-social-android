@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-19T04:55:48.455813+00:00",
-  "baseCommit": "f465c112f54bf8bfcc5f37a874360e16a9e41415",
+  "generatedAtUtc": "2026-11-19T05:03:07.829976+00:00",
+  "baseCommit": "0470542c5f1bab0a82ea9c83fe5281766bd02a0b",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3599,
+    "pending": 3598,
     "partial": 264,
-    "code-read": 835
+    "code-read": 837
   },
   "countsByPhase": {
     "android": {
-      "pending": 1433,
+      "pending": 1431,
       "partial": 118,
-      "code-read": 582
+      "code-read": 584
     },
     "documentation": {
-      "pending": 682,
+      "pending": 683,
       "code-read": 61,
       "partial": 20
     },
@@ -12205,8 +12205,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileIntroduction.kt",
       "phase": "android",
-      "gitBlobId": "dea6ffa78af55a9f966c37218ceb5e305edc89aa",
-      "reviewStatus": "pending"
+      "gitBlobId": "18bdf7a1b2d416490c5153e22f81c374620bbbfd",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/207-privacidad-y-formato-de-cumpleanos-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileMessageButton.kt",
@@ -17805,8 +17807,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/ProfileBirthdayTest.kt",
       "phase": "android",
-      "gitBlobId": "9fd5de9cc80c158c6a5a6b410dec41507221006d",
-      "reviewStatus": "pending"
+      "gitBlobId": "5888f732c0597170843b155efad601c1759b11de",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/207-privacidad-y-formato-de-cumpleanos-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/ProfileContentSubscriptionsTest.kt",
@@ -21899,13 +21903,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "bd761e53824aeff060a4d204df123a00e4c12b86",
+      "gitBlobId": "b88daf0cfaa7dee7e289615364c644949c1da58e",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "b74006f606bcecb8689a0a3436144ad21d6aa346",
+      "gitBlobId": "f67a6a29793ae5da0c6e03e3cecd3da7b90f9715",
       "reviewStatus": "pending"
     },
     {
@@ -22014,6 +22018,12 @@
       "file": "docs/oficial/205-sesion-de-controles-de-llamada-2026-11-18.md",
       "phase": "documentation",
       "gitBlobId": "f8fc581fdddda6999253115ee2bb74bc6cddfc39",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/207-privacidad-y-formato-de-cumpleanos-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "193833092b750f3f8bd9250e659e2790371bb085",
       "reviewStatus": "pending"
     },
     {

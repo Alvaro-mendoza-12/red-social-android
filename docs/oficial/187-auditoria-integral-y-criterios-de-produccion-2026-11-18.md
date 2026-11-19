@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-El registro reúne 28 familias en esta continuación, con 0 críticas, 18 altas, 10 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+El registro reúne 29 familias en esta continuación, con 0 críticas, 19 altas, 10 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -46,6 +46,7 @@ El registro reúne 28 familias en esta continuación, con 0 críticas, 18 altas,
 | N026 | Alta | La primera respuesta de una llamada colectiva podía enviar una cancelación general | [202](202-primera-respuesta-llamadas-colectivas-2026-11-18.md): corrección y pruebas locales. Ensayos físicos pendientes |
 | N027 | Alta | Una operación de llamada podía usar otra visita durante la renovación o aceptar su respuesta tardía | [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra corrección y prueba local. Ensayos físicos pendientes |
 | N028 | Media | Una operación cancelada podía dejar bloqueado el indicador de inicio de llamada | [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra corrección y prueba local. Ensayos físicos pendientes |
+| N029 | Alta | Android mostraba el cumpleaños de un perfil ajeno marcado con la opción privada heredada nadie | [207](207-privacidad-y-formato-de-cumpleanos-2026-11-19.md) protege la pantalla y admite día y mes. La proyección de N019 sigue abierta |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -72,6 +73,8 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 - [202](202-primera-respuesta-llamadas-colectivas-2026-11-18.md): 2 fallos en 3 controles nuevos de referencia, 44 JVM de la candidata integrada y 67 casos del servidor con base sintética.
 
 - [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra cuatro fallos de referencia en seis controles HTTP y el indicador bloqueado de inicio. La candidata integrada aprobó 51 JVM.
+
+- [207](207-privacidad-y-formato-de-cumpleanos-2026-11-19.md) registra dos fallos de referencia en seis controles y seis casos aprobados. La salida del año de nacimiento en la API de perfil sigue pendiente en N019.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 

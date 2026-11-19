@@ -452,6 +452,15 @@
       "evidenceKind": "runtime-controlled",
       "status": "fixed-unit-validated-device-pending",
       "published": true
+    },
+    {
+      "id": "N029",
+      "severity": "high",
+      "description": "Android mostraba el cumpleaños de un perfil ajeno marcado con la opción privada heredada nadie",
+      "evidenceReport": "207",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
     }
   ],
   "release": {
@@ -690,6 +699,13 @@
       "tests": 51,
       "passed": 51,
       "scope": "Kotlin and Compose sources, Ktor MockEngine and call regressions"
+    },
+    {
+      "kind": "jvm-controlled",
+      "path": "2026-11-18-mobile-audit207-profile-birthday/candidate",
+      "tests": 6,
+      "passed": 6,
+      "scope": "Android profile date visibility and reduced birthday representation"
     }
   ],
   "findingCounts": {
