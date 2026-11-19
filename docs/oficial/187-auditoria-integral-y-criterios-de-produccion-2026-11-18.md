@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-Se registran veintiuna familias nuevas: ninguna crítica confirmada en esta selección, quince altas y seis medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+Se registran veintidós familias nuevas: ninguna crítica confirmada en esta selección, quince altas y siete medias. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -39,6 +39,7 @@ Se registran veintiuna familias nuevas: ninguna crítica confirmada en esta sele
 | N019 | Alta | El perfil compartido entrega el año de nacimiento donde solo se muestra el día y mes | [196](196-privacidad-de-secciones-del-perfil-2026-11-18.md): documentado; migración de la respuesta y sus consumidores pendiente |
 | N020 | Media | El verificador de firmas del AAB fallaba al leer la salida de Java en Windows en español | [197](197-verificacion-de-firmas-android-en-windows-2026-11-18.md): localización y lectura robusta; APK y AAB de 193 verificados para firma |
 | N021 | Alta | Los avisos de cumpleaños omiten los bloqueos entre amistades | [198](198-bloqueos-y-avisos-de-cumpleanos-2026-11-18.md): aplica los bloqueos en ambos sentidos antes de reservar la entrega; despliegue pendiente |
+| N022 | Media | El arranque en frío de Android 183 fue más lento que 182 en ambas rondas | [201](201-validacion-android-183-acceso-y-arranque-2026-11-18.md): medido en emulador; atribución y contraste físico pendientes |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -58,7 +59,8 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 - 196: dos casos de referencia fallaron y los quince casos de las tres suites Node aprobaron tras el cambio. El despliegue en Ubuntu sigue pendiente.
 - 197: nueve pruebas Python y verificación de la firma del APK y AAB 9.1.43/183 del commit Android193. Los controles restantes y las pruebas de dispositivo tienen resultados separados.
 - 198: dos fallos de referencia y 19 pruebas Node aprobadas, incluido el filtrado en ambos sentidos. No se enviaron avisos reales.
-- [199](199-verificacion-de-la-candidata-android-183-2026-11-18.md): Release del commit193 compila y pasa 14 controles de APK/AAB. Lint dio cero errores y 346 advertencias. La medición de dispositivo quedó pendiente para la siguiente candidata Android. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
+- [199](199-verificacion-de-la-candidata-android-183-2026-11-18.md): Release del commit193 compila y pasa 14 controles de APK/AAB. Lint dio cero errores y 346 advertencias. La medición de dispositivo quedó pendiente para la siguiente candidata Android.
+- [201](201-validacion-android-183-acceso-y-arranque-2026-11-18.md): Release del commit Android195 pasa los 14 controles. Lint cero errores y 346 advertencias. Se registran dos rondas de arranque y el resultado independiente del ensayo de acceso. El antiguo checkout de validación tiene modificaciones ajenas y no se sobrescribe; la preparación de una copia limpia se documentará antes de usarla.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 

@@ -389,6 +389,15 @@
       "evidenceKind": "runtime-controlled",
       "status": "fixed-server-unit-validated-deployment-pending",
       "published": true
+    },
+    {
+      "id": "N022",
+      "severity": "medium",
+      "description": "Arranque en frío más lento en Android 183 en dos rondas de emulador",
+      "evidenceReport": "201",
+      "evidenceKind": "device-emulator-measured",
+      "status": "open-profiling-and-physical-check",
+      "published": true
     }
   ],
   "release": {
@@ -551,15 +560,51 @@
       ],
       "device": "separate pending attempt",
       "play": "not submitted"
+    },
+    {
+      "kind": "production-binary-validation",
+      "head": "725a4141561dfdad3e3f2e63fc50c8ed6b93c614",
+      "path": "2026-11-18-mobile-release-check/725a4141561d/verification/result.json",
+      "checksPassed": 14,
+      "lintErrors": 0,
+      "lintWarnings": 346,
+      "artifacts": [
+        {
+          "name": "Novvin-9.1.43-183-725a4141561d.apk",
+          "bytes": 221746357,
+          "sha256": "b202db437496118ef86c7ff32a2b5aaf32eb1a27abf7d7d948c0738a3371a659"
+        },
+        {
+          "name": "Novvin-9.1.43-183-725a4141561d.aab",
+          "bytes": 133134523,
+          "sha256": "5778c95e3b8a66021a26c7cc53b7e4c02986ed6e7c64d3afedece29aef5945ef"
+        }
+      ],
+      "device": {
+        "loginRestorationPassed": true,
+        "loginEvidencePath": "emulator-auth-hardware/result.json",
+        "startupColdMs": [
+          [
+            2543.5,
+            4148.0
+          ],
+          [
+            2203.0,
+            3126.0
+          ]
+        ],
+        "scope": "Offline x86_64 API 36 emulator, six samples per version in each order"
+      },
+      "play": "not submitted"
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
     "high": 15,
-    "medium": 6,
+    "medium": 7,
     "low": 0,
-    "total": 21
+    "total": 22
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",
