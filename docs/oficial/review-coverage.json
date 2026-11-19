@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-19T05:03:07.829976+00:00",
-  "baseCommit": "0470542c5f1bab0a82ea9c83fe5281766bd02a0b",
+  "generatedAtUtc": "2026-11-19T11:24:48.641669+00:00",
+  "baseCommit": "5806a0cafb504237a05304d439be0160ec9007dd",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3598,
+    "pending": 3596,
     "partial": 264,
-    "code-read": 837
+    "code-read": 841
   },
   "countsByPhase": {
     "android": {
-      "pending": 1431,
+      "pending": 1428,
       "partial": 118,
-      "code-read": 584
+      "code-read": 588
     },
     "documentation": {
-      "pending": 683,
+      "pending": 684,
       "code-read": 61,
       "partial": 20
     },
@@ -5151,8 +5151,10 @@
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/PostPhotoScalingDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "50318beaf5879cdbdf3bc46d6dbc2d1eb267008e",
-      "reviewStatus": "pending"
+      "gitBlobId": "aba4e2b92e8c343f7b772e71720da1fe1e0af284",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/209-altura-estable-de-fotos-en-el-feed-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/components/ProfileAnimatedAvatarDeviceTest.kt",
@@ -10241,14 +10243,18 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/PostMediaGallery.kt",
       "phase": "android",
-      "gitBlobId": "d503a38c3c7aab10c6844521e491d344bbcfd1c8",
-      "reviewStatus": "pending"
+      "gitBlobId": "81c9b17f3b9bccf0c1ec78d5f465b60ca85868aa",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/209-altura-estable-de-fotos-en-el-feed-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/PostMediaTile.kt",
       "phase": "android",
-      "gitBlobId": "44b21d8b624d5295d03741e915cd8824702641bd",
-      "reviewStatus": "pending"
+      "gitBlobId": "70caaae9537331be8ff3b7d6a3295adc399c3649",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/209-altura-estable-de-fotos-en-el-feed-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/ProfileAmbientBackground.kt",
@@ -16987,6 +16993,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/components/PostMediaStageHeightTest.kt",
+      "phase": "android",
+      "gitBlobId": "feab63c0ea9faf48617004ddd6dab98736539a99",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/209-altura-estable-de-fotos-en-el-feed-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/components/PostMediaTypeTest.kt",
       "phase": "android",
       "gitBlobId": "f291e64a66174d244c1411d9279eac88a68b330c",
@@ -21903,13 +21917,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "b88daf0cfaa7dee7e289615364c644949c1da58e",
+      "gitBlobId": "e0044dbb6c73363a0d387902349bc4efba9c6402",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "f67a6a29793ae5da0c6e03e3cecd3da7b90f9715",
+      "gitBlobId": "df56295f0fedc611921a25eb69f8796cebf15bad",
       "reviewStatus": "pending"
     },
     {
@@ -22024,6 +22038,12 @@
       "file": "docs/oficial/207-privacidad-y-formato-de-cumpleanos-2026-11-19.md",
       "phase": "documentation",
       "gitBlobId": "193833092b750f3f8bd9250e659e2790371bb085",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/209-altura-estable-de-fotos-en-el-feed-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "f4f745cae1950c2a2a4eb9441653458254f0cc97",
       "reviewStatus": "pending"
     },
     {

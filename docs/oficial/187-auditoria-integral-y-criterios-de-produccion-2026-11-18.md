@@ -14,7 +14,7 @@ El propietario confirmó solamente el correo administracion@novvinapp.com y expl
 
 ## Hallazgos de esta continuación
 
-El registro reúne 29 familias en esta continuación, con 0 críticas, 19 altas, 10 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+El registro reúne 30 familias en esta continuación, con 0 críticas, 19 altas, 11 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -47,6 +47,7 @@ El registro reúne 29 familias en esta continuación, con 0 críticas, 19 altas,
 | N027 | Alta | Una operación de llamada podía usar otra visita durante la renovación o aceptar su respuesta tardía | [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra corrección y prueba local. Ensayos físicos pendientes |
 | N028 | Media | Una operación cancelada podía dejar bloqueado el indicador de inicio de llamada | [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra corrección y prueba local. Ensayos físicos pendientes |
 | N029 | Alta | Android mostraba el cumpleaños de un perfil ajeno marcado con la opción privada heredada nadie | [207](207-privacidad-y-formato-de-cumpleanos-2026-11-19.md) protege la pantalla y admite día y mes. La proyección de N019 sigue abierta |
+| N030 | Media | La ficha del feed cambiaba de altura tras decodificar una foto o pasar de página en la galería | [209](209-altura-estable-de-fotos-en-el-feed-2026-11-19.md) reserva el espacio al medir la ficha. Regresión comprobada con Compose |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 
@@ -75,6 +76,8 @@ Las correcciones tienen evidencia controlada, recibos Gradle y publicación prop
 - [205](205-sesion-de-controles-de-llamada-2026-11-18.md) registra cuatro fallos de referencia en seis controles HTTP y el indicador bloqueado de inicio. La candidata integrada aprobó 51 JVM.
 
 - [207](207-privacidad-y-formato-de-cumpleanos-2026-11-19.md) registra dos fallos de referencia en seis controles y seis casos aprobados. La salida del año de nacimiento en la API de perfil sigue pendiente en N019.
+
+- [209](209-altura-estable-de-fotos-en-el-feed-2026-11-19.md) reproduce dos saltos de altura en Compose. La candidata conserva la posición posterior en tres proporciones y al cambiar de página. Seis controles de tamaño y tipo aprobados.
 
 Los logs y recibos están fuera del repositorio en `D:/Novvin-Entregas/evidencias/2026-11-18-mobile-audit188-refresh/` y `2026-11-18-mobile-audit189-billing/`. La última APK histórica no incluye automáticamente estas correcciones.
 

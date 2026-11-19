@@ -461,6 +461,15 @@
       "evidenceKind": "runtime-controlled",
       "status": "fixed-unit-validated-device-pending",
       "published": true
+    },
+    {
+      "id": "N030",
+      "severity": "medium",
+      "description": "La ficha del feed cambiaba de altura tras decodificar una foto o pasar de página en la galería",
+      "evidenceReport": "209",
+      "evidenceKind": "runtime-controlled",
+      "status": "fixed-unit-validated-device-pending",
+      "published": true
     }
   ],
   "release": {
@@ -706,6 +715,16 @@
       "tests": 6,
       "passed": 6,
       "scope": "Android profile date visibility and reduced birthday representation"
+    },
+    {
+      "kind": "jvm-controlled",
+      "path": "2026-11-19-mobile-audit209-feed-layout",
+      "tests": {
+        "sizingAndMediaType": 6,
+        "composeLayout": 2,
+        "composePixelRender": 3
+      },
+      "scope": "Android feed image stage, fixed position after decode and mixed carousel selection"
     }
   ],
   "findingCounts": {

@@ -33,7 +33,6 @@ internal fun postMediaType(url: String): String {
 internal fun PostMediaTile(
     url: String,
     modifier: Modifier = Modifier,
-    onAspectRatio: (Float) -> Unit = {},
     onOpen: () -> Unit,
 ) {
     if (postMediaType(url) == "video") {
@@ -62,12 +61,7 @@ internal fun PostMediaTile(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
                 onLoading = { status = PostImageStatus.Loading },
-                onSuccess = { success ->
-                    status = PostImageStatus.Ready
-                    val drawable = success.result.drawable
-                    if (drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0)
-                        onAspectRatio(drawable.intrinsicWidth.toFloat() / drawable.intrinsicHeight)
-                },
+                onSuccess = { status = PostImageStatus.Ready },
                 onError = { status = PostImageStatus.Failed },
             )
             when (status) {

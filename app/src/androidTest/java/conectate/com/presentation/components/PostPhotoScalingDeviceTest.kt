@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.net.Uri
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
-import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -92,44 +92,45 @@ class PostPhotoScalingDeviceTest {
         val sizes = listOf(160 to 400, 400 to 160, 240 to 240, 100 to 1000, 1000 to 100)
         val fixtures = sizes.map { (w, h) -> photo(w, h) }
         val source = mutableStateOf(Uri.fromFile(fixtures.first()).toString())
-        val reportedRatio = AtomicReference<Float?>()
         try {
             compose.setContent {
                 MaterialTheme {
-                    PostMediaTile(source.value, Modifier.size(240.dp).testTag("scaled_photo"),
-                        onAspectRatio = reportedRatio::set, onOpen = {})
+                    PostMediaTile(source.value, Modifier.size(240.dp).testTag("scaled_photo")) {}
                 }
             }
             fixtures.forEachIndexed { index, file ->
-                if (index > 0) compose.runOnIdle { reportedRatio.set(null); source.value = Uri.fromFile(file).toString() }
-                compose.waitUntil(10_000) {
-                    reportedRatio.get()?.let { kotlin.math.abs(it - sizes[index].first.toFloat() / sizes[index].second) < .001f } == true
-                }
+                if (index > 0) compose.runOnIdle { source.value = Uri.fromFile(file).toString() }
                 awaitLoaded()
                 assertFourCorners("scaled_photo", sizes[index].first.toFloat() / sizes[index].second)
             }
         } finally { fixtures.forEach { check(it.name.startsWith("post-photo-scaling-")); it.delete() } }
     }
 
-    @Test fun theGalleryAdaptsToEachPhotoAndKeepsTallPhotosWithinTheWindow() {
+    @Test fun loadingDifferentPhotoShapesKeepsTheFollowingContentInPlace() {
         val fixtures = listOf(photo(160, 400), photo(240, 240), photo(400, 160))
-        val source = mutableStateOf(Uri.fromFile(fixtures.first()).toString())
-        val heights = mutableListOf<Float>()
+        val missing = File(fixtures.first().parentFile, "${fixtures.first().name}-missing")
+        val source = mutableStateOf(Uri.fromFile(missing).toString())
         try {
             compose.setContent {
                 MaterialTheme {
-                    Box(Modifier.width(280.dp)) { PostMediaGallery(listOf(source.value), 500.dp) {} }
+                    Column(Modifier.width(280.dp)) {
+                        PostMediaGallery(listOf(source.value), 500.dp) {}
+                        Box(Modifier.size(8.dp).testTag("following_content"))
+                    }
                 }
             }
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithContentDescription("No se pudo cargar la imagen").fetchSemanticsNodes().isNotEmpty()
+            }
+            fun followingTop() = compose.onNodeWithTag("following_content").fetchSemanticsNode().boundsInRoot.top
+            val before = followingTop()
+            assertEquals(210f, stageHeightDp(), 1f)
             fixtures.forEachIndexed { index, file ->
                 compose.runOnIdle { source.value = Uri.fromFile(file).toString() }
                 awaitLoaded()
                 assertFourCorners("post_media_stage", listOf(.4f, 1f, 2.5f)[index])
-                heights += stageHeightDp()
+                assertEquals("The next item must keep its position after decoding", before, followingTop(), 0f)
             }
-            assertTrue("Portrait, square and landscape must have different natural heights: $heights",
-                heights[0] > heights[1] && heights[1] > heights[2])
-            assertTrue("Tall content must fit within the viewport budget", heights.all { it in 80f..500f })
         } finally { fixtures.forEach { check(it.name.startsWith("post-photo-scaling-")); it.delete() } }
     }
 
@@ -148,7 +149,7 @@ class PostPhotoScalingDeviceTest {
             assertFourCorners("post_media_stage", .4f)
             compose.onNodeWithTag("post_media_stage").performTouchInput { swipeLeft() }
             awaitLoaded()
-            compose.waitUntil(10_000) { stageHeightDp() < before - 40 }
+            assertEquals("Swiping must keep the stage height", before, stageHeightDp(), 0f)
             assertFourCorners("post_media_stage", 2.5f)
             compose.onNodeWithTag("post_media_stage").performTouchInput { click() }
             compose.runOnIdle { assertEquals(1, opened) }

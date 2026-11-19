@@ -8,8 +8,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -17,29 +15,23 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Photo proportions belong to each source, including mixed-format carousel pages. */
+/** Keep the feed slot stable while Coil fits each source inside it. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun PostMediaGallery(urls: List<String>, viewportHeight: Dp, onOpen: (Int) -> Unit) {
     if (urls.isEmpty()) return
-    val ratios = remember(urls) { mutableStateMapOf<String, Float>() }
     val pager = rememberPagerState(pageCount = { urls.size })
-    val selected = pager.settledPage.coerceIn(urls.indices)
-    val selectedUrl = urls[selected]
-    val aspectRatio = ratios[selectedUrl] ?: (4f / 3f)
-    val photoHeightLimit = (viewportHeight * .72f).coerceIn(160.dp, 760.dp)
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val height = if (postMediaType(selectedUrl) == "video") 300.dp.coerceAtMost(photoHeightLimit)
-            else (maxWidth / aspectRatio).coerceIn(120.dp, photoHeightLimit)
+        val height = postMediaStageHeight(urls.first(), maxWidth, viewportHeight)
         Column(Modifier.fillMaxWidth()) {
             Box(Modifier.fillMaxWidth().height(height).testTag("post_media_stage")) {
                 if (urls.size == 1) {
-                    PostMediaTile(urls[0], Modifier.fillMaxSize(), onAspectRatio = { ratios[urls[0]] = it }) { onOpen(0) }
+                    PostMediaTile(urls[0], Modifier.fillMaxSize()) { onOpen(0) }
                 } else {
                     HorizontalPager(pager, modifier = Modifier.fillMaxSize()) { page ->
                         val url = urls[page]
-                        PostMediaTile(url, Modifier.fillMaxSize(), onAspectRatio = { ratios[url] = it }) { onOpen(page) }
+                        PostMediaTile(url, Modifier.fillMaxSize()) { onOpen(page) }
                     }
                 }
             }
@@ -56,5 +48,15 @@ internal fun PostMediaGallery(urls: List<String>, viewportHeight: Dp, onOpen: (I
                 }
             }
         }
+    }
+}
+
+// Feed posts carry URLs without dimensions. The cover determines the slot before loading.
+internal fun postMediaStageHeight(coverUrl: String, width: Dp, viewportHeight: Dp): Dp {
+    val heightLimit = (viewportHeight * .72f).coerceIn(160.dp, 760.dp)
+    return if (postMediaType(coverUrl) == "video") {
+        300.dp.coerceAtMost(heightLimit)
+    } else {
+        (width * .75f).coerceIn(120.dp, heightLimit)
     }
 }
