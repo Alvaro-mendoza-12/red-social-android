@@ -529,6 +529,28 @@
       "passed": 19,
       "path": "2026-11-18-mobile-audit198-birthday-blocks/regression.log",
       "scope": "Both sides of a block, local/migrated IDs, birthday privacy and profile activity. No push sent."
+    },
+    {
+      "kind": "production-binary-validation",
+      "head": "1aa044aaddb9b97294c0ce52d97df64389ea05c7",
+      "path": "2026-11-18-mobile-release-check/1aa044aaddb9/verification/result.json",
+      "checksPassed": 14,
+      "lintErrors": 0,
+      "lintWarnings": 346,
+      "artifacts": [
+        {
+          "name": "Novvin-9.1.43-183-1aa044aaddb9.apk",
+          "bytes": 221746357,
+          "sha256": "c5936ae71c2549d27d1fe1f76de6e5bbc3d272b35532a4389ffbc2454371d887"
+        },
+        {
+          "name": "Novvin-9.1.43-183-1aa044aaddb9.aab",
+          "bytes": 133124673,
+          "sha256": "53a045ac732cdd4a9688beab801ec647605377de7707458ed4d94d2785a6cf8b"
+        }
+      ],
+      "device": "separate pending attempt",
+      "play": "not submitted"
     }
   ],
   "findingCounts": {
