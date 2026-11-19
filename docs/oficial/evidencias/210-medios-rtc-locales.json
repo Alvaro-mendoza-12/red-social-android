@@ -1,0 +1,214 @@
+{
+  "source": "eba72cdce26d81653652badf5235a9bd62f30717",
+  "environment": "Chromium headless, PostgreSQL 17, API y señalización aisladas en loopback",
+  "data": "Tono sintético de 440 Hz y video sintético de 160 × 120; recepción en ambos extremos",
+  "samples": [
+    {
+      "namespace": "/",
+      "ordinal": 1,
+      "elapsedMs": 901,
+      "received": [
+        {
+          "receivedPcmRms": 0.19511809602874758,
+          "estimatedToneHz": 445.3125,
+          "audioPackets": 17,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        },
+        {
+          "receivedPcmRms": 0.19520943884830205,
+          "estimatedToneHz": 421.875,
+          "audioPackets": 15,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        }
+      ]
+    },
+    {
+      "namespace": "/",
+      "ordinal": 2,
+      "elapsedMs": 565,
+      "received": [
+        {
+          "receivedPcmRms": 0.19522353438245643,
+          "estimatedToneHz": 421.875,
+          "audioPackets": 11,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        },
+        {
+          "receivedPcmRms": 0.19553943884791827,
+          "estimatedToneHz": 421.875,
+          "audioPackets": 16,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        }
+      ]
+    },
+    {
+      "namespace": "/call",
+      "ordinal": 3,
+      "elapsedMs": 704,
+      "received": [
+        {
+          "receivedPcmRms": 0.19417729240837808,
+          "estimatedToneHz": 445.3125,
+          "audioPackets": 16,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        },
+        {
+          "receivedPcmRms": 0.19481264828369013,
+          "estimatedToneHz": 445.3125,
+          "audioPackets": 21,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 4,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        }
+      ]
+    },
+    {
+      "namespace": "/call",
+      "ordinal": 4,
+      "elapsedMs": 737,
+      "received": [
+        {
+          "receivedPcmRms": 0.19395449442833906,
+          "estimatedToneHz": 445.3125,
+          "audioPackets": 17,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        },
+        {
+          "receivedPcmRms": 0.1935001523370598,
+          "estimatedToneHz": 445.3125,
+          "audioPackets": 22,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 4,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        }
+      ]
+    },
+    {
+      "namespace": "/live",
+      "ordinal": 5,
+      "elapsedMs": 711,
+      "received": [
+        {
+          "receivedPcmRms": 0.19517284721672423,
+          "estimatedToneHz": 421.875,
+          "audioPackets": 17,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        },
+        {
+          "receivedPcmRms": 0.1948022882219232,
+          "estimatedToneHz": 421.875,
+          "audioPackets": 21,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        }
+      ]
+    },
+    {
+      "namespace": "/live",
+      "ordinal": 6,
+      "elapsedMs": 600,
+      "received": [
+        {
+          "receivedPcmRms": 0.19499526109428822,
+          "estimatedToneHz": 445.3125,
+          "audioPackets": 17,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        },
+        {
+          "receivedPcmRms": 0.19507712821441095,
+          "estimatedToneHz": 421.875,
+          "audioPackets": 16,
+          "audioEnergy": 0,
+          "videoFramesDecoded": 3,
+          "videoWidth": 160,
+          "videoHeight": 120,
+          "codec": "video/VP8",
+          "transportPair": "succeeded",
+          "connection": "connected"
+        }
+      ]
+    }
+  ],
+  "steps": {
+    "initdb": 0,
+    "start": 0,
+    "createdb": 0,
+    "schema": 0,
+    "10-bootstrap-runtime-role.sql": 0,
+    "15-runtime-import-read.sql": 0,
+    "apiHealth": 200,
+    "20-storage-read-legacy.sql": 0,
+    "22-storage-import-trigger-guard.sql": 0,
+    "16-runtime-import-mutations.sql": 0,
+    "signalingHealth": 200,
+    "normal-flows": 0,
+    "stop": 0
+  },
+  "harnessSha256": {
+    "rtc-tone.cjs": "a25d412e44324221e96b85c92beada470f446d1563c780dfffbda04fc8595d7e",
+    "media-tone.cjs": "9e05bdac7a29dcc07d46e13bc73ddc14a28593a74b9023fa1d49511544dfdcf8",
+    "run-media-tone.py": "e29c2020aea4ca5390eb024ab3d37908b1185b1e69d2a71334517c89e96087cf",
+    "media-input-440hz.wav": "513838b154a695ddb8c6a5a3a1d24a2691be09b9629111aaabba5b0e71a8264e"
+  }
+}

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-19T15:40:18.751790+00:00",
-  "baseCommit": "eba72cdce26d81653652badf5235a9bd62f30717",
+  "generatedAtUtc": "2026-11-19T20:12:54.810828+00:00",
+  "baseCommit": "1be1464275cd77bb4a43e0af37d9ec155cefbcdc",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3597,
+    "pending": 3599,
     "partial": 264,
     "code-read": 841
   },
@@ -21,7 +21,7 @@
       "code-read": 588
     },
     "documentation": {
-      "pending": 685,
+      "pending": 687,
       "code-read": 61,
       "partial": 20
     },
@@ -21917,13 +21917,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "264a7506734c281daa78500372f7624efd4831b3",
+      "gitBlobId": "587659291225361b130728560398c59591e69db3",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "55936c03a2f1d033ca7162a3fc76c2c3e1537907",
+      "gitBlobId": "c4a50fc7946d616f4b30dc1c1530521f370e8298",
       "reviewStatus": "pending"
     },
     {
@@ -22056,6 +22056,12 @@
       "file": "docs/oficial/21-videos-social-conectividad-2026-09-10.md",
       "phase": "documentation",
       "gitBlobId": "ff05fec4b699ddbf1c02228288ecdb39d770737e",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/210-medios-y-reconexion-en-tres-recorridos-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "521029e96dc97591752deffa48ae283f3a3d1032",
       "reviewStatus": "pending"
     },
     {
@@ -22931,6 +22937,12 @@
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/121-dominio-live-y-prompt-auditoria-2026-11-12.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/evidencias/210-medios-rtc-locales.json",
+      "phase": "documentation",
+      "gitBlobId": "f12e0eb3e785802438bd2c515867b9621ec1eff6",
+      "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/evidencias/auditoria-movil-antigravity-2026-10-30.json",

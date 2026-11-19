@@ -780,6 +780,15 @@
       ],
       "postgresLoopbackScenarios": 4,
       "deployed": false
+    },
+    {
+      "kind": "isolated-rtc-media",
+      "path": "docs/oficial/evidencias/210-medios-rtc-locales.json",
+      "source": "eba72cdce26d81653652badf5235a9bd62f30717",
+      "exchanges": 6,
+      "receiversPerExchange": 2,
+      "physicalDevices": 0,
+      "turnRelayExercised": false
     }
   ],
   "findingCounts": {
