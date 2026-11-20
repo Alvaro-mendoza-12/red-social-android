@@ -114,6 +114,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
+      # The shared project file also configures the bootstrap database container.
+      POSTGRES_PASSWORD: ""
       DATABASE_URL: ${FALLBACK_API_DATABASE_URL:?Set FALLBACK_API_DATABASE_URL for the restricted runtime role}
       STORAGE_ROOT: /data/storage
       STORAGE_ACCEL_PREFIX: /_novvin_storage
@@ -286,7 +288,9 @@ services:
       network: host
     restart: unless-stopped
     env_file:
-      - .env
+      # Additional process settings belong to this service's private file.
+      - path: ./secrets/signaling.env
+        required: false
     environment:
       NODE_ENV: production
       PORT: 3003
@@ -301,6 +305,49 @@ services:
       LIVE_INTERNAL_EVENTS_TOKEN: ${LIVE_INTERNAL_EVENTS_TOKEN:?LIVE_INTERNAL_EVENTS_TOKEN is required}
       SIGNALING_LIVE_STATE_TTL_SECONDS: ${SIGNALING_LIVE_STATE_TTL_SECONDS:-86400}
       SIGNALING_LIVE_HOST_LEASE_SECONDS: ${SIGNALING_LIVE_HOST_LEASE_SECONDS:-45}
+      # Optional settings come from the Compose project environment.
+      CINEMA_ALLOWED_MEDIA_HOSTS:
+      DEBUG:
+      FALLBACK_API_URL:
+      HTTP_RATE_LIMIT_PER_MINUTE:
+      LIVE_MAX_GUESTS:
+      NODE_EXTRA_CA_CERTS:
+      NODE_OPTIONS:
+      SIGNALING_LISTEN_HOST:
+      SIGNALING_LIVE_STATE_PREFIX:
+      SIGNALING_LIVE_TERMINATION_LOCK_MS:
+      SIGNALING_NODE_LIVENESS_SECONDS:
+      SIGNALING_REDIS_CHANNEL_PREFIX:
+      SIGNALING_REDIS_CONNECT_TIMEOUT_MS:
+      SIGNALING_REDIS_MAX_RECONNECT_ATTEMPTS:
+      SIGNALING_REDIS_PASSWORD:
+      SIGNALING_REDIS_SESSION_PREFIX:
+      SIGNALING_REDIS_SHARDED_PUBSUB:
+      SIGNALING_REDIS_STREAM_MAX_LENGTH:
+      SIGNALING_REDIS_STREAM_NAME:
+      SOCKET_EVENT_RATE_LIMIT_PER_MINUTE:
+      SOCKET_RATE_LIMIT_PER_MINUTE:
+      STUN_STATIC_URLS:
+      STUN_URLS:
+      TURN_ENABLE_TCP:
+      TURN_ENABLE_TLS:
+      TURN_ENABLE_UDP:
+      TURN_EXTERNAL_IP:
+      TURN_HOST:
+      TURN_PORT:
+      TURN_REALM:
+      TURN_SECRET:
+      TURN_STATIC_CREDENTIAL:
+      TURN_STATIC_URLS:
+      TURN_STATIC_USERNAME:
+      TURN_TLS_PORT:
+      TURN_TTL_SECONDS:
+      TURN_URLS:
+      TZ:
+      UBUNTU_API_URL:
+      VITE_FALLBACK_API_URL:
+      VOICE_EMPTY_ROOM_GRACE_MS:
+      VOICE_PRESENCE_HEARTBEAT_MS:
     secrets:
       - signaling_redis_password
     read_only: true
@@ -364,7 +411,9 @@ services:
     container_name: conectate-local-fallback-realtime-main
     restart: unless-stopped
     env_file:
-      - .env
+      # Additional process settings belong to this service's private file.
+      - path: ./secrets/realtime.env
+        required: false
     environment:
       NODE_ENV: production
       PORT: 3002
@@ -373,6 +422,21 @@ services:
       REALTIME_INTERNAL_SECRET: ${REALTIME_INTERNAL_SECRET:?REALTIME_INTERNAL_SECRET is required}
       REALTIME_REDIS_URL: ${REALTIME_REDIS_URL:-redis://signaling-redis:6379}
       REALTIME_REDIS_PASSWORD_FILE: /run/secrets/signaling_redis_password
+      # Optional settings come from the Compose project environment.
+      DEBUG:
+      LOCAL_FALLBACK_API_URL:
+      NODE_EXTRA_CA_CERTS:
+      NODE_OPTIONS:
+      REALTIME_LISTEN_HOST:
+      REALTIME_MAX_CONNECTIONS:
+      REALTIME_MAX_CONNECTIONS_PER_IP:
+      REALTIME_REDIS_BLOCK_MS:
+      REALTIME_REDIS_PASSWORD:
+      REALTIME_REDIS_STREAM_MAXLEN:
+      REALTIME_REDIS_STREAM_NAME:
+      REDIS_PASSWORD:
+      SIGNALING_REDIS_PASSWORD_FILE:
+      TZ:
     secrets:
       - signaling_redis_password
     read_only: true
