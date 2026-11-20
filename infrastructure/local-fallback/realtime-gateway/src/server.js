@@ -236,7 +236,8 @@ function subscriptionAuthorizationUrl(channel) {
   return null
 }
 
-async function maySubscribeToChannel(token, allowedUserIds, channel) {
+// A temporary API failure cannot establish or revoke a membership.
+async function checkChannelAccess(token, allowedUserIds, channel) {
   for (const prefix of ['user:', 'random-chat-user:']) {
     if (channel.startsWith(prefix)) {
       return allowedUserIds.has(channel.slice(prefix.length).trim().toLowerCase())
@@ -251,11 +252,16 @@ async function maySubscribeToChannel(token, allowedUserIds, channel) {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     })
+    if (response.status === 408 || response.status === 429 || response.status >= 500) return null
     return response.ok
   } catch (error) {
     console.warn('[realtime] channel authorization failed:', error.message)
-    return false
+    return null
   }
+}
+
+async function maySubscribeToChannel(token, allowedUserIds, channel) {
+  return (await checkChannelAccess(token, allowedUserIds, channel)) === true
 }
 
 function safeJsonParse(text) {
@@ -290,7 +296,9 @@ async function revalidateSocket(ws) {
     if (!ids) return ws.close(4401, 'SESSION_EXPIRED')
     setSocketUserIds(ws, ids)
     for (const channel of [...ws._rooms]) {
-      if (!(await maySubscribeToChannel(ws._token, ids, channel))) {
+      const allowed = await checkChannelAccess(ws._token, ids, channel)
+      if (allowed === null) return ws.close(1013, 'CHANNEL_CHECK_UNAVAILABLE')
+      if (!allowed) {
         removeSocketChannel(ws, channel)
         send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL', channel })
       }
@@ -401,7 +409,9 @@ wss.on('connection', (ws, req) => {
       }
       ws._pendingSubscriptions++
       try {
-        if (!(await maySubscribeToChannel(ws._token, allowedUserIds, channel))) {
+        const allowed = await checkChannelAccess(ws._token, allowedUserIds, channel)
+        if (allowed === null) return ws.close(1013, 'CHANNEL_CHECK_UNAVAILABLE')
+        if (!allowed) {
           return send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL', channel })
         }
         if (ws.readyState !== WebSocket.OPEN || Date.now() >= ws._validatedUntil) return
