@@ -1,5 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs');
+const {randomBytes}=require('node:crypto');
 const {Pool}=require('pg');
 const {CONTENT_FUNCTION_STATEMENTS}=require('../src/storage-content-schema');
 const {sourceUrls}=require('../src/storage-content-read');
@@ -21,7 +22,8 @@ test('PostgreSQL content URL arrays preserve policy and transactional boundaries
     assert.notDeepEqual(actual,sourceUrls('posts',row));assert.deepEqual(actual,[row.media_urls]);
    });
   }
-  await admin.query('CREATE ROLE content_array_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS');
+  const runtimePassword=randomBytes(32).toString('hex');
+  await admin.query(`CREATE ROLE content_array_runtime LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${runtimePassword}'`);
   await admin.query('CREATE ROLE novvin_storage_binding_writer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS');
   await admin.query('CREATE SCHEMA novvin_storage_guard');
   await install(CONTENT_FUNCTION_STATEMENTS[0]);await install(protectedSql);
@@ -30,7 +32,10 @@ test('PostgreSQL content URL arrays preserve policy and transactional boundaries
   await admin.query('REVOKE ALL ON SCHEMA novvin_storage_guard FROM PUBLIC,content_array_runtime');
   await admin.query('GRANT USAGE ON SCHEMA novvin_storage_guard TO novvin_storage_binding_writer');
   await admin.query('REVOKE ALL ON FUNCTION novvin_storage_guard.novvin_storage_content_urls(text,jsonb) FROM PUBLIC,content_array_runtime');
-  const runtimeUrl=new URL(url);runtimeUrl.username='content_array_runtime';runtime=new Pool({connectionString:runtimeUrl.toString(),max:1});
+  const runtimeUrl=new URL(url);
+  runtimeUrl.username='content_array_runtime';
+  runtimeUrl.password=runtimePassword;
+  runtime=new Pool({connectionString:runtimeUrl.toString(),max:1});
   await t.test('serialized arrays match JavaScript selection for native and imported descriptors',async()=>{
    for(const table of ['posts','fallback_posts'])for(const media_urls of [JSON.stringify([trusted,second]),JSON.stringify([trusted,42,null]),'  '+JSON.stringify([trusted])+'  ']){
     const row={media_urls};const expected=sourceUrls(table,row);

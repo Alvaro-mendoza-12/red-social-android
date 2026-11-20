@@ -27,6 +27,7 @@ async function fixture(t, { scannerAction, readinessAction, poolAction } = {}) {
   let pool = new Pool({ connectionString, max: 4, options: '-c search_path=' + schema + ',public' })
   const appName = 'backfill_lease_' + crypto.randomUUID().replaceAll('-', '')
   const workerRole = 'backfill_runtime_' + crypto.randomUUID().replaceAll('-', '')
+  const workerPassword = crypto.randomBytes(32).toString('hex')
   const owner = crypto.randomUUID()
   await pool.query(`CREATE TABLE fallback_storage_objects(id uuid PRIMARY KEY,bucket_id text NOT NULL,name text NOT NULL,
     owner_id uuid,content_type text,size_bytes bigint,public_url text,local_path text,metadata jsonb,
@@ -34,11 +35,13 @@ async function fixture(t, { scannerAction, readinessAction, poolAction } = {}) {
     CREATE TABLE fallback_resumable_uploads(id uuid PRIMARY KEY,owner_id uuid,state text,upload_length bigint,expires_at timestamptz);
     CREATE TABLE linked_messages(id uuid PRIMARY KEY,object_id uuid REFERENCES fallback_storage_objects(id),url text,visibility text);`)
   await ensureStorageScanSchema(pool); await ensureStorageUploadAdmissionSchema(pool)
-  await admin.query('CREATE ROLE ' + workerRole + ' LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS')
+  await admin.query(`CREATE ROLE ${workerRole} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${workerPassword}'`)
   await admin.query('GRANT USAGE ON SCHEMA ' + schema + ' TO ' + workerRole)
   await pool.query('GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA ' + schema + ' TO ' + workerRole)
   await pool.end()
-  const workerUrl = new URL(connectionString); workerUrl.username = workerRole
+  const workerUrl = new URL(connectionString)
+  workerUrl.username = workerRole
+  workerUrl.password = workerPassword
   pool = new Pool({connectionString:workerUrl.toString(),max:4,options:'-c search_path='+schema+',public'})
   const leasePool = new Pool({connectionString:workerUrl.toString(),max:7,options:'-c search_path='+schema+',public',application_name:appName})
   leasePool.on('error', () => {})
