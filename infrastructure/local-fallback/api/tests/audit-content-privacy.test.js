@@ -42,7 +42,8 @@ function fixture({ tables = {}, imported = {}, compat = {}, follows = [], overri
     }
     const nativeName = sql.match(/FROM (?:"public"\.)?"?fallback_([a-z_]+)"?\s/)
     if (nativeName) {
-      const rows = tables[nativeName[1]] || []
+      let rows = tables[nativeName[1]] || []
+      if (sql.includes('group_id IS NOT NULL')) rows = rows.filter(row => row.group_id != null)
       return { rows: sql.includes('to_jsonb(t)') ? rows.filter(row => String(row.id).toLowerCase() === params[0]).map(row => ({ row })) : rows }
     }
     throw new Error('Unexpected fixture SQL: ' + sql)

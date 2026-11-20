@@ -46,9 +46,16 @@ app.use(helmet())
 app.use((req, res, next) => {
   const supplied = String(req.headers['x-correlation-id'] || req.headers['x-request-id'] || '').trim()
   const correlationId = /^[a-zA-Z0-9._:-]{8,80}$/.test(supplied) ? supplied : crypto.randomUUID()
+  const rawTrace = String(req.headers.traceparent || '').trim()
+  const traceMatch = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i.exec(rawTrace)
+  const traceparent = traceMatch && !/^0+$/.test(traceMatch[1]) && !/^0+$/.test(traceMatch[2])
+    ? `00-${traceMatch[1].toLowerCase()}-${crypto.randomBytes(8).toString('hex')}-${traceMatch[3].toLowerCase()}`
+    : `00-${crypto.randomBytes(16).toString('hex')}-${crypto.randomBytes(8).toString('hex')}-01`
   req.correlationId = correlationId
+  req.traceparent = traceparent
   res.set('x-correlation-id', correlationId)
   res.set('x-request-id', correlationId)
+  res.set('traceparent', traceparent)
   next()
 })
 app.get('/', (_req, res) => res.json({ ok: true, service: serviceName, version }))

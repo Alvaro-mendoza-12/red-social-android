@@ -3,6 +3,7 @@ const express = require('express')
 const {
   createApiMetricsCollector,
   createRequestObservabilityMiddleware,
+  parseOrCreateTraceparent,
   routeName,
   safeErrorLogDetails,
 } = require('../src/request-observability')
@@ -58,15 +59,28 @@ async function run() {
     assert.equal(routeName({ observabilityRoute: '/rest/v1/rpc/:operation', route: { path: /^\/rpc\/(.*)$/ } }),
       '/rest/v1/rpc/:operation')
     assert.equal(routeName({ observabilityRoute: '/users/private-value?secret=hidden' }), 'unmatched')
+    metrics.recordLoadShed()
     const snapshot = metrics.snapshot()
     assert.equal(snapshot.requestsTotal, 1)
     assert.equal(snapshot.status2xx, 1)
     assert.equal(snapshot.slowRequestsTotal, 1)
+    assert.equal(snapshot.loadShedTotal, 1)
     assert.equal(snapshot.latencyP50Ms >= 100, true)
     assert.equal(snapshot.dbPool.total, 4)
     const promText = metrics.formatPrometheus()
     assert.match(promText, /novvin_api_requests_total 1/)
+    assert.match(promText, /novvin_api_load_shed_total 1/)
     assert.match(promText, /novvin_api_db_pool_connections\{state="total"\} 4/)
+
+    const validTrace = parseOrCreateTraceparent('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01')
+    assert.equal(validTrace.traceId, '4bf92f3577b34da6a3ce929d0e0e4736')
+    assert.equal(validTrace.parentSpanId, '00f067aa0ba902b7')
+    assert.notEqual(validTrace.spanId, '00f067aa0ba902b7')
+    assert.match(validTrace.traceparent, /^00-4bf92f3577b34da6a3ce929d0e0e4736-[0-9a-f]{16}-01$/)
+
+    const rejectedZeroTrace = parseOrCreateTraceparent('00-00000000000000000000000000000000-0000000000000000-01')
+    assert.notEqual(rejectedZeroTrace.traceId, '00000000000000000000000000000000')
+    assert.equal(rejectedZeroTrace.parentSpanId, null)
   } finally {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
   }

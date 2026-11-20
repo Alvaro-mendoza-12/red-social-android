@@ -8,9 +8,9 @@ groups:
       - alert: NovvinApiHighErrorRate5xx
         expr: |
           (
-            rate(novvin_api_requests_total{status_class="5xx"}[5m])
+            rate(novvin_api_responses_total{class="5xx"}[5m])
             /
-            clamp_min(sum(rate(novvin_api_requests_total[5m])), 0.1)
+            clamp_min(rate(novvin_api_requests_total[5m]), 0.1)
           ) > 0.01
         for: 2m
         labels:
@@ -19,6 +19,16 @@ groups:
         annotations:
           summary: "NOVVIN API 5xx error rate above 1%"
           description: "API 5xx ratio exceeded 1% over 5 minutes ({{ $value | humanizePercentage }})."
+
+      - alert: NovvinApiLoadSheddingActive
+        expr: increase(novvin_api_load_shed_total[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+          service: novvin-api
+        annotations:
+          summary: "NOVVIN API load shedding triggered on non-critical reads"
+          description: "API shed {{ $value }} non-critical read requests in 5m to protect DB pool capacity."
 
       - alert: NovvinApiLatencyP95Degraded
         expr: novvin_api_latency_ms{quantile="0.95"} > 500

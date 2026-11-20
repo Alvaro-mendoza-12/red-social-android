@@ -680,6 +680,7 @@ async function localChats(pool, limit = 5000) {
 
 async function localChatParticipants(pool, chatIds = []) {
   const ids = Array.from(cleanSet(chatIds))
+  const allUuids = ids.length > 0 && ids.every((id) => Boolean(validUuid(id)))
   const { rows } = await pool.query(
     `SELECT
         chat_id::text,
@@ -692,7 +693,7 @@ async function localChatParticipants(pool, chatIds = []) {
         is_favorite,
         cleared_at
      FROM fallback_chat_participants
-     WHERE ($1::text[] = '{}'::text[] OR lower(chat_id::text) = ANY($1::text[]))
+     WHERE ${allUuids ? 'chat_id = ANY($1::uuid[])' : "($1::text[] = '{}'::text[] OR lower(chat_id::text) = ANY($1::text[]))"}
      ORDER BY joined_at DESC
      LIMIT 10000`,
     [ids],
@@ -1237,6 +1238,7 @@ async function localCollectionRoomsByIds(pool, kind, roomIds) {
   const cleanKind = String(kind || '').trim().toLowerCase()
   const ids = Array.from(cleanSet(roomIds))
   if (!['group', 'community'].includes(cleanKind) || ids.length === 0) return []
+  const allUuids = ids.every((id) => Boolean(validUuid(id)))
   const { rows } = await pool.query(
     `SELECT
         id::text,
@@ -1255,7 +1257,7 @@ async function localCollectionRoomsByIds(pool, kind, roomIds) {
         updated_at
      FROM fallback_collection_rooms
      WHERE room_kind = $1
-       AND lower(id::text) = ANY($2::text[])`,
+       AND ${allUuids ? 'id = ANY($2::uuid[])' : 'lower(id::text) = ANY($2::text[])'}`,
     [cleanKind, ids],
   )
   return rows.map(normalizeImportedRow)
@@ -1264,6 +1266,7 @@ async function localCollectionRoomsByIds(pool, kind, roomIds) {
 async function localChatsByIds(pool, chatIds) {
   const ids = Array.from(cleanSet(chatIds))
   if (ids.length === 0) return []
+  const allUuids = ids.every((id) => Boolean(validUuid(id)))
   const { rows } = await pool.query(
     `SELECT
         id::text,
@@ -1278,7 +1281,7 @@ async function localChatsByIds(pool, chatIds) {
         created_at,
         updated_at
      FROM fallback_chats
-     WHERE lower(id::text) = ANY($1::text[])
+     WHERE ${allUuids ? 'id = ANY($1::uuid[])' : 'lower(id::text) = ANY($1::text[])'}
      ORDER BY updated_at DESC`,
     [ids],
   )
@@ -3085,6 +3088,43 @@ function enrichNotificationTarget(notification, indexes) {
   }
 }
 
+async function filterRecipientsEligibleForMessagePush(pool, rawRecipientIds) {
+  const recipients = Array.from(cleanSet(rawRecipientIds))
+  if (recipients.length === 0) return []
+  const { pushNotificationsStatus } = require('./push-notifications')
+  if (!pushNotificationsStatus().configured) return []
+  const { rows } = await pool.query(
+    `WITH targets AS (
+       SELECT unnest($1::text[]) AS target_id
+     ),
+     resolved AS (
+       SELECT t.target_id,
+              u.id AS local_id,
+              u.supabase_user_id,
+              COALESCE(o.profile->>'break_mode', o.profile->>'breakMode', 'off') AS break_mode
+       FROM targets t
+       LEFT JOIN fallback_users u
+         ON lower(u.id::text) = t.target_id
+         OR lower(COALESCE(u.supabase_user_id::text, '')) = t.target_id
+       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+     )
+     SELECT DISTINCT r.target_id
+     FROM resolved r
+     WHERE lower(COALESCE(r.break_mode, 'off')) NOT IN ('mute', 'hidden')
+       AND EXISTS (
+         SELECT 1
+         FROM fallback_fcm_tokens fcm
+         WHERE lower(fcm.user_id) IN (
+           r.target_id,
+           lower(COALESCE(r.local_id::text, '')),
+           lower(COALESCE(r.supabase_user_id::text, ''))
+         )
+       )`,
+    [recipients],
+  )
+  return rows.map((row) => normalizeId(row.target_id)).filter(Boolean)
+}
+
 async function createLocalNotification(pool, input) {
   const recipientId = normalizeId(input?.recipientId || input?.recipient_id || '')
   const actorId = normalizeId(input?.actorId || input?.actor_id || '')
@@ -3092,16 +3132,19 @@ async function createLocalNotification(pool, input) {
   if (!recipientId || !type || recipientId === actorId) return null
   if (isRetiredNotification({ ...input, type })) return null
 
-  const breakState = await pool.query(
-    `SELECT COALESCE(o.profile->>'break_mode', o.profile->>'breakMode', 'off') AS break_mode
-     FROM fallback_users u
-     LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
-     WHERE lower(u.id::text) = $1 OR lower(COALESCE(u.supabase_user_id::text, '')) = $1
-     LIMIT 1`,
-    [recipientId],
-  )
-  const breakMode = normalizeId(breakState.rows[0]?.break_mode || 'off')
-  if (breakMode === 'mute' || breakMode === 'hidden') return null
+  if (input?.breakModeChecked !== true) {
+    const isRecipientUuid = Boolean(validUuid(recipientId))
+    const breakState = await pool.query(
+      `SELECT COALESCE(o.profile->>'break_mode', o.profile->>'breakMode', 'off') AS break_mode
+       FROM fallback_users u
+       LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
+       WHERE ${isRecipientUuid ? '(u.id = $1::uuid OR u.supabase_user_id = $1::uuid)' : "lower(u.id::text) = $1 OR lower(COALESCE(u.supabase_user_id::text, '')) = $1"}
+       LIMIT 1`,
+      [recipientId],
+    )
+    const breakMode = normalizeId(breakState.rows[0]?.break_mode || 'off')
+    if (breakMode === 'mute' || breakMode === 'hidden') return null
+  }
 
   const targetId = cleanText(input?.targetId || input?.target_id, 160) || null
   const targetType = cleanText(input?.targetType || input?.target_type, 80) || null
@@ -5294,11 +5337,12 @@ async function loadCollectionRoomAccess(pool, user, kind, roomId, { allowPrivate
   if (!config || !cleanRoomId) return null
 
   const identity = userIdentity(user)
-  const [importedRooms, importedMembers, localRooms, localMembers] = await Promise.all([
+  const [importedRooms, importedMembers, localRooms, localMembers, membershipState] = await Promise.all([
     importedRowsByFieldValues(pool, config.roomTable, ['id'], [cleanRoomId], 4),
     importedRowsByFieldValues(pool, config.memberTable, [config.roomKey, 'room_id'], [cleanRoomId], 10_000),
     localCollectionRoomsByIds(pool, config.kind, [cleanRoomId]),
     localCollectionMembersByRoomIds(pool, config.kind, [cleanRoomId], 10_000),
+    loadCollectionMembershipState(pool, config.kind, cleanRoomId, identity.ids),
   ])
   const rooms = mergeRowsById([...importedRooms, ...localRooms])
     .filter((row) => {
@@ -5314,7 +5358,6 @@ async function loadCollectionRoomAccess(pool, user, kind, roomId, { allowPrivate
   const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
   const isMember = roomMembers.some((row) => identity.ids.has(memberUserId(row)))
   const isPublicRoom = boolOf(room, ['is_public', 'public'], config.kind === 'community')
-  const membershipState = await loadCollectionMembershipState(pool, config.kind, cleanRoomId, identity.ids)
   const retainedAccess = allowRetainedHistory && membershipState.history.canReadHistory
   if (membershipState.denied && !allowPrivatePreview && !retainedAccess) return null
   const hasAccess = membershipState.member || retainedAccess || isPublicRoom || allowPrivatePreview
@@ -5627,7 +5670,7 @@ function mapVoiceRoom(row, profilesById, participantCount, participantRows = [])
   const creatorProfile = creatorId ? profilesById.get(creatorId) : null
   const id = voiceRoomId(row)
   // Presence is live state. Historical CSV counters must never appear as listeners.
-  const count = Math.max(0, Number(participantCount || 0))
+  const count = Math.max(0, Number.isFinite(Number(participantCount)) ? Number(participantCount) : 0)
   const mode = voiceRoomMode(row)
   const speakerIds = participantRows
     .filter((participant) => ['moderator', 'speaker'].includes(voiceParticipantRole(participant, mode)))
@@ -5755,6 +5798,10 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_chat_hidden_user
      ON fallback_chat_hidden(lower(user_id), hidden_at DESC)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_chat_hidden_chat_user
+     ON fallback_chat_hidden(lower(chat_id::text), lower(user_id))`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_nicknames (
@@ -6474,6 +6521,10 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_collection_members_user
      ON fallback_collection_members(room_kind, lower(user_id), lower(room_id))`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_collection_members_room
+     ON fallback_collection_members(room_kind, lower(room_id), joined_at ASC)`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_collection_invites (
@@ -8887,6 +8938,7 @@ function registerDataRoutes(app, {
         if (!visible(sharedBy)) return res.status(404).json({ error: 'PROFILE_NOT_FOUND' })
       }
       let creatorVisible = () => false
+      let candidateProfiles = []
       const readCandidates = async candidateReadLimit => {
         if (sharedBy) {
           const groups = await profilePostShareCandidates(pool, sharingProfileIds, candidateReadLimit, {
@@ -8896,6 +8948,7 @@ function registerDataRoutes(app, {
           })
           const ownerIds = cleanSet(groups.flat().filter(row => !row.missing_share).map(postOwnerId))
           const profiles = await publicProfilesByIds(pool, ownerIds)
+          candidateProfiles = profiles
           const deniedIds = await deniedPublicCreatorIds(pool, { profiles, ownerIds, viewerIds: identity.ids })
           creatorVisible = publicCreatorVisibility({ profiles, viewerIds: identity.ids, followingIds, deniedIds })
           return groups
@@ -8915,6 +8968,7 @@ function registerDataRoutes(app, {
         const groups = await Promise.all([importedPostRead, fallbackPostRead])
         const ownerIds = cleanSet(groups.flat().map(postOwnerId))
         const profiles = await publicProfilesByIds(pool, ownerIds)
+        candidateProfiles = profiles
         const deniedIds = await deniedPublicCreatorIds(pool, { profiles, ownerIds, viewerIds: identity.ids })
         creatorVisible = publicCreatorVisibility({ profiles, viewerIds: identity.ids, followingIds, deniedIds })
         // Preserve the unfiltered source sizes: hidden rows must not signal exhaustion.
@@ -8931,12 +8985,14 @@ function registerDataRoutes(app, {
         ...identity.values,
         ...pagePosts.map((row) => postOwnerId(row)),
       ])
-      const [publicProfiles, engagement] = await Promise.all([
-        publicProfilesByIds(pool, authorIds),
+      const alreadyLoadedById = indexProfiles(candidateProfiles)
+      const missingAuthorIds = Array.from(authorIds).filter((id) => !alreadyLoadedById.has(id))
+      const [extraProfiles, engagement] = await Promise.all([
+        missingAuthorIds.length > 0 ? publicProfilesByIds(pool, missingAuthorIds) : Promise.resolve([]),
         readPostEngagement(postIds, identity),
       ])
 
-      const profilesById = indexProfiles(publicProfiles)
+      const profilesById = indexProfiles([...candidateProfiles, ...extraProfiles])
       const items = pagePosts.map((row) => ({ ...enrichPost(
           row,
           profilesById,
@@ -9608,7 +9664,8 @@ function registerDataRoutes(app, {
         return res.status(400).json({ error: 'POST_REACTION_INVALID' })
       }
       const limit = Math.max(1, Math.min(Number(req.query.limit) || 100, 200))
-      const offset = Math.max(0, Number(req.query.offset) || 0)
+      const rawOffset = Number(req.query.offset)
+      const offset = Math.max(0, Math.min(Math.floor(Number.isFinite(rawOffset) ? rawOffset : 0), 10_000))
       const identity = userIdentity(user)
       const [importedLikes, importedReactions, fallbackReactions] = await Promise.all([
         importedRowsByFieldValues(pool, 'post_likes', ['post_id', 'postId'], [postId], 50_000),
@@ -11667,13 +11724,25 @@ function registerDataRoutes(app, {
 
       const config = collectionConfig(messageCollectionFromRequest(req))
       const roomId = normalizeId(req.params.roomId)
-      const content = String(req.body?.content || '').trim()
-      const contentType = String(req.body?.contentType || 'text').trim() || 'text'
+      if (
+        (req.body?.content != null && typeof req.body.content !== 'string') ||
+        (req.body?.contentType != null && typeof req.body.contentType !== 'string') ||
+        (req.body?.mediaUrl != null && typeof req.body.mediaUrl !== 'string') ||
+        (req.body?.thumbnailUrl != null && typeof req.body.thumbnailUrl !== 'string') ||
+        (req.body?.thumbnail_url != null && typeof req.body.thumbnail_url !== 'string')
+      ) {
+        return res.status(400).json({ error: 'INVALID_MESSAGE_PAYLOAD' })
+      }
+      const content = String(req.body?.content || '').trim().slice(0, 16_000)
+      const contentType = String(req.body?.contentType || 'text').trim().slice(0, 40) || 'text'
       if (contentType.toLowerCase().startsWith('system_')) return res.status(400).json({ error: 'RESERVED_MESSAGE_TYPE' })
       if (contentType === 'raffle') return res.status(400).json({ error: 'RAFFLE_CREATE_ENDPOINT_REQUIRED' })
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
       const thumbnailUrl = String(req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim()
-      const mediaSize = Math.max(0, Number(req.body?.mediaSize || 0))
+      const rawMediaSize = Number(req.body?.mediaSize)
+      const mediaSize = Number.isFinite(rawMediaSize) && rawMediaSize > 0
+        ? Math.min(Math.floor(rawMediaSize), 2_147_483_647)
+        : 0
       const replyToId = String(req.body?.replyToId || '').trim() || null
       const pollId = String(req.body?.pollId || '').trim() || null
       const isForwarded = Boolean(req.body?.isForwarded || req.body?.is_forwarded)
@@ -11803,10 +11872,15 @@ function registerDataRoutes(app, {
           message: roomMessage,
           recipientIds: roomRecipients,
         })
+        const allCandidateRecipients = Array.from(new Set([...notificationRecipients, ...mentionedRecipients]))
+        // Pre-filter break_mode and active FCM tokens in a single batch query instead
+        // of launching N parallel per-member lookups onto the PostgreSQL pool.
+        const pushRecipients = await filterRecipientsEligibleForMessagePush(pool, allCandidateRecipients)
         await Promise.all(
-          Array.from(new Set([...notificationRecipients, ...mentionedRecipients])).map((participantId) =>
+          pushRecipients.map((participantId) =>
             createLocalNotificationBestEffort(pool, {
               recipientId: participantId,
+              breakModeChecked: true,
               actorId: identity.displayUserId,
               actorName: user.display_name || user.email || 'Usuario',
               actorAvatarUrl: user.avatar_url || '',
@@ -14433,11 +14507,23 @@ function registerDataRoutes(app, {
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
       const chatId = normalizeId(req.params.chatId)
-      const content = String(req.body?.content || '').trim()
-      const contentType = String(req.body?.contentType || 'text').trim() || 'text'
+      if (
+        (req.body?.content != null && typeof req.body.content !== 'string') ||
+        (req.body?.contentType != null && typeof req.body.contentType !== 'string') ||
+        (req.body?.mediaUrl != null && typeof req.body.mediaUrl !== 'string') ||
+        (req.body?.thumbnailUrl != null && typeof req.body.thumbnailUrl !== 'string') ||
+        (req.body?.thumbnail_url != null && typeof req.body.thumbnail_url !== 'string')
+      ) {
+        return res.status(400).json({ error: 'INVALID_MESSAGE_PAYLOAD' })
+      }
+      const content = String(req.body?.content || '').trim().slice(0, 16_000)
+      const contentType = String(req.body?.contentType || 'text').trim().slice(0, 40) || 'text'
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
       const thumbnailUrl = String(req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim()
-      const mediaSize = Math.max(0, Number(req.body?.mediaSize || 0))
+      const rawMediaSize = Number(req.body?.mediaSize)
+      const mediaSize = Number.isFinite(rawMediaSize) && rawMediaSize > 0
+        ? Math.min(Math.floor(rawMediaSize), 2_147_483_647)
+        : 0
       const replyToId = String(req.body?.replyToId || '').trim() || null
       const isForwarded = Boolean(req.body?.isForwarded || req.body?.is_forwarded)
       const forwardedFromMessageId = cleanText(req.body?.forwardedFromMessageId || req.body?.forwarded_from_message_id, 80) || null
@@ -14527,10 +14613,12 @@ function registerDataRoutes(app, {
         }).catch((error) => {
           console.error('[friend-request] realtime relay failed', safeErrorLogDetails(error))
         })
+        const pushRecipients = await filterRecipientsEligibleForMessagePush(pool, recipientList)
         await Promise.all(
-          recipientList.map((recipientId) =>
+          pushRecipients.map((recipientId) =>
             createLocalNotificationBestEffort(pool, {
               recipientId,
+              breakModeChecked: true,
               actorId: identity.displayUserId,
               actorName: user.display_name || user.email || 'Usuario',
               actorAvatarUrl: user.avatar_url || '',

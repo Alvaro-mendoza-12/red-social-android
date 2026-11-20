@@ -14,6 +14,7 @@ async function publishRealtimeEvent(channel, payload, options = {}) {
     const internalSecret = String(process.env.REALTIME_INTERNAL_SECRET || '').trim()
     const excludeSessionId = String(options?.excludeSessionId || '').trim()
     const correlationId = String(options?.correlationId || '').trim()
+    const traceparent = String(options?.traceparent || '').trim()
     const response = await fetch(`${base}/internal/publish`, {
       method: 'POST',
       signal: AbortSignal.timeout(5_000),
@@ -21,6 +22,7 @@ async function publishRealtimeEvent(channel, payload, options = {}) {
         'Content-Type': 'application/json',
         ...(internalSecret ? { Authorization: `Bearer ${internalSecret}` } : {}),
         ...(correlationId ? { 'x-correlation-id': correlationId } : {}),
+        ...(traceparent ? { traceparent } : {}),
       },
       body: JSON.stringify({
         channel: cleanChannel,

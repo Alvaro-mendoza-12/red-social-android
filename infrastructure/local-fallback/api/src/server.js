@@ -54,7 +54,6 @@ const { collectSystemHealth, loadReleaseMetadata } = require('./system-health')
 const {
   boundedInteger,
   constantTimeSecretEqual,
-  createRateLimitMiddleware,
   isTrustedProxyAddress,
   parseCorsOrigins,
   requestIpAddress,
@@ -73,6 +72,7 @@ const { processDueNotificationDigests } = require('./notification-digest-routes'
 const {
   createApiMetricsCollector,
   createRequestObservabilityMiddleware,
+  parseOrCreateTraceparent,
   safeErrorLogDetails,
 } = require('./request-observability')
 const { publicApiError } = require('./public-api-error')
@@ -232,7 +232,7 @@ app.use(cors({
   origin: corsOrigins === '*' ? true : corsOrigins,
   credentials: true,
   exposedHeaders: [
-    'x-request-id', 'x-correlation-id', 'server-timing', 'x-response-time', 'location',
+    'x-request-id', 'x-correlation-id', 'traceparent', 'server-timing', 'x-response-time', 'location',
     'content-range', 'accept-ranges', 'content-length', 'etag',
     'tus-resumable', 'tus-version', 'tus-extension', 'tus-max-size',
     'upload-length', 'upload-offset', 'upload-expires', 'upload-object-path', 'upload-state',
@@ -240,21 +240,89 @@ app.use(cors({
 }))
 app.use('/v1/surveys/assets', express.json({ limit: '6mb' }))
 app.use(express.json({ limit: '1mb' }))
+
+// Reject raw NUL bytes (\u0000, which PostgreSQL UTF-8 rejects with 22021) and
+// excessively deep JSON nesting across every route before DB or handler work.
+function inspectInputSafety(value, depth = 0, budget = { remaining: 5_000 }) {
+  if (depth > 48) return 'PAYLOAD_TOO_DEEPLY_NESTED'
+  if (value === null || value === undefined) return null
+  if (typeof value === 'string') {
+    return value.includes('\u0000') ? 'INVALID_NULL_BYTE' : null
+  }
+  if (typeof value !== 'object') return null
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      if (--budget.remaining < 0) return null
+      const err = inspectInputSafety(value[i], depth + 1, budget)
+      if (err) return err
+    }
+    return null
+  }
+  for (const key of Object.keys(value)) {
+    if (--budget.remaining < 0) return null
+    if (key.includes('\u0000')) return 'INVALID_NULL_BYTE'
+    const err = inspectInputSafety(value[key], depth + 1, budget)
+    if (err) return err
+  }
+  return null
+}
+
+app.use((req, res, next) => {
+  const bodyError = inspectInputSafety(req.body)
+  if (bodyError) return res.status(400).json({ error: bodyError })
+  const queryError = inspectInputSafety(req.query)
+  if (queryError) return res.status(400).json({ error: queryError })
+  return next()
+})
 app.use((req, res, next) => {
   const supplied = String(req.headers['x-correlation-id'] || req.headers['x-request-id'] || '').trim()
   const requestId = /^[a-zA-Z0-9._:-]{8,80}$/.test(supplied)
     ? supplied
     : crypto.randomUUID()
+  const trace = parseOrCreateTraceparent(req.headers.traceparent)
   req.requestId = requestId
   req.correlationId = requestId
+  req.traceId = trace.traceId
+  req.traceparent = trace.traceparent
   res.set('x-request-id', requestId)
   res.set('x-correlation-id', requestId)
+  res.set('traceparent', trace.traceparent)
   next()
 })
 app.use(createRequestObservabilityMiddleware({
   slowRequestMs: boundedInteger(process.env.SLOW_REQUEST_LOG_MS, 1_500, 100, 60_000),
   metrics: apiMetrics,
 }))
+
+// Graceful load shedding: when the PostgreSQL pool queue exceeds safe capacity,
+// shed non-critical discovery/feed/search GET reads cleanly with 503 + Retry-After
+// so critical messaging, call signaling, auth and health routes stay responsive.
+const dbPoolMaxConfigured = boundedInteger(process.env.DATABASE_POOL_MAX, 20, 4, 100)
+const dbPoolLoadShedWaiting = process.env.DB_POOL_LOAD_SHED_WAITING === '0'
+  ? 0
+  : boundedInteger(process.env.DB_POOL_LOAD_SHED_WAITING, Math.max(120, dbPoolMaxConfigured * 6), 10, 5_000)
+const sheddableReadPrefixes = [
+  '/v1/data/feed',
+  '/v1/data/search',
+  '/v1/data/recommendations',
+  '/v1/data/socialization',
+  '/v1/data/videos',
+  '/v1/data/proximity',
+]
+app.use((req, res, next) => {
+  if (dbPoolLoadShedWaiting > 0 && req.method === 'GET' && Number(pool.waitingCount || 0) >= dbPoolLoadShedWaiting) {
+    const reqPath = String(req.path || '')
+    if (sheddableReadPrefixes.some((prefix) => reqPath === prefix || reqPath.startsWith(`${prefix}/`))) {
+      apiMetrics.recordLoadShed()
+      res.set('Retry-After', '1')
+      return res.status(503).json({
+        error: 'SERVICE_OVERLOADED',
+        retryAfterSeconds: 1,
+      })
+    }
+  }
+  return next()
+})
 app.use(canonicalStorageResponseMiddleware)
 
 const authIpKey = (req) => `ip:${requestIpAddress(req)}`
@@ -425,7 +493,7 @@ app.use([
 }))
 
 // Authenticated write anti-flood protection keyed by verified JWT subject (or IP fallback).
-// Uses fast bounded in-memory windows so normal messaging/social traffic adds zero DB latency.
+// Uses the shared PostgreSQL fixed-window limiter so limits remain authoritative across replicas.
 const bearerActorKey = (req) => {
   const header = String(req.headers.authorization || '').trim()
   const match = header.match(/^Bearer\s+(.+)$/i)
@@ -444,8 +512,10 @@ app.use([
   '/v1/data/messages/chats/:chatId/messages',
   '/v1/data/messages/groups/:roomId/messages',
   '/v1/data/messages/communities/:roomId/messages',
-], createRateLimitMiddleware({
-  limit: boundedInteger(process.env.MESSAGE_WRITE_RATE_LIMIT_PER_MINUTE, 120, 10, 2000),
+], createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'data:message-write',
+  limit: boundedInteger(process.env.MESSAGE_WRITE_RATE_LIMIT_PER_MINUTE, 120, 10, 5000),
   windowMs: 60_000,
   code: 'MESSAGE_RATE_LIMITED',
   key: bearerActorKey,
@@ -455,7 +525,9 @@ app.use([
 app.use([
   '/v1/data/calls/prepare',
   '/v1/data/calls/:callId/invite',
-], createRateLimitMiddleware({
+], createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'data:call-initiate',
   limit: boundedInteger(process.env.CALL_INITIATE_RATE_LIMIT_PER_MINUTE, 30, 5, 500),
   windowMs: 60_000,
   code: 'CALL_RATE_LIMITED',
@@ -467,7 +539,9 @@ app.use([
   '/v1/data/reports/users',
   '/v1/data/reports/content',
   '/v1/data/videos/comments/:commentId/report',
-], createRateLimitMiddleware({
+], createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'data:report-submit',
   limit: boundedInteger(process.env.REPORT_SUBMIT_RATE_LIMIT_PER_10_MINUTES, 20, 3, 200),
   windowMs: 10 * 60_000,
   code: 'REPORT_RATE_LIMITED',
@@ -483,8 +557,10 @@ app.use([
   '/v1/data/videos/:videoId/comments',
   '/v1/data/videos/:videoId/reaction',
   '/v1/data/notifications',
-], createRateLimitMiddleware({
-  limit: boundedInteger(process.env.SOCIAL_WRITE_RATE_LIMIT_PER_MINUTE, 120, 10, 2000),
+], createDistributedRateLimitMiddleware({
+  pool,
+  scope: 'data:social-write',
+  limit: boundedInteger(process.env.SOCIAL_WRITE_RATE_LIMIT_PER_MINUTE, 120, 10, 5000),
   windowMs: 60_000,
   code: 'SOCIAL_WRITE_RATE_LIMITED',
   key: bearerActorKey,

@@ -145,6 +145,11 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
   if (digestDeferred) {
     return { sent: 0, failed: 0, deferred: true }
   }
+  // Avoid acquiring DB transactions and queueing message-push slots when
+  // Firebase Cloud Messaging is not configured in this environment.
+  if (!initializeFirebase()) {
+    return { sent: 0, failed: 0, disabled: true }
+  }
   const scope = notificationMessageScope(notification, extraData)
   if (scope !== undefined) {
     if (!scope || !notification?.recipient_id) return { sent: 0, failed: 0, suppressed: true }

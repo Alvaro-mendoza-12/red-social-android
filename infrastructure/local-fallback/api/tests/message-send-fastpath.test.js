@@ -140,3 +140,14 @@ test('call accept and decline routes trigger multi-device session resolution cal
   assert.equal(events[1].event, 'handled_elsewhere')
   assert.equal(events[1].action, 'end')
 })
+
+test('DM and group/community message sends validate string types and prevent NaN media_size crashes', () => {
+  const srcDir = path.join(__dirname, '..', 'src')
+  const dataRoutes = fs.readFileSync(path.join(srcDir, 'data-routes.js'), 'utf8')
+  const serverSource = fs.readFileSync(path.join(srcDir, 'server.js'), 'utf8')
+  const matches = dataRoutes.match(/INVALID_MESSAGE_PAYLOAD/g) || []
+  assert.ok(matches.length >= 2, 'Both DM and collection message send routes must reject non-string content/contentType payloads')
+  assert.doesNotMatch(dataRoutes, /Number\(req\.body\?\.mediaSize \|\| 0\)/, 'mediaSize must guard against NaN instead of passing NaN to PostgreSQL BIGINT')
+  assert.match(serverSource, /INVALID_NULL_BYTE/, 'API server must reject raw NUL bytes before PostgreSQL UTF-8 queries')
+  assert.match(serverSource, /PAYLOAD_TOO_DEEPLY_NESTED/, 'API server must reject excessively nested JSON payloads')
+})

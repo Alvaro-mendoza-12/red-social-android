@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T01:34:52.878483+00:00",
-  "baseCommit": "e43080c7fb80d3fcf37c898eff4b741ec80c3fbb",
+  "generatedAtUtc": "2026-11-20T02:27:05.587094+00:00",
+  "baseCommit": "d23ea5e84208aa4ec86196e61ce0400c646a5e39",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,8 +11,8 @@
   },
   "counts": {
     "pending": 3576,
-    "partial": 264,
-    "code-read": 877
+    "partial": 263,
+    "code-read": 880
   },
   "countsByPhase": {
     "android": {
@@ -22,18 +22,18 @@
     },
     "documentation": {
       "pending": 691,
-      "code-read": 63,
+      "code-read": 64,
       "partial": 20
     },
     "server": {
       "pending": 838,
-      "code-read": 82,
-      "partial": 34
+      "code-read": 83,
+      "partial": 33
     },
     "tooling-and-other": {
       "pending": 146,
       "partial": 13,
-      "code-read": 21
+      "code-read": 22
     },
     "web": {
       "partial": 76,
@@ -22169,6 +22169,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "8ac13e1f8e651b0f31280de6d56671c6d1a85296",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/22-live-regalos-y-validacion-2026-09-12.md",
       "phase": "documentation",
       "gitBlobId": "f6fb72852cd4a8def820dcaea72779c01a577bdd",
@@ -24715,9 +24723,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "0a08831864aa42806cf830c8d1520256fcefed7c",
+      "gitBlobId": "178e1b198adc0406010285c45803b109cb28f3be",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24949,9 +24957,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/message-deletion-policy.js",
       "phase": "server",
-      "gitBlobId": "ea6431b0cce8d46b0a7e0538ee6f5b4343ba32db",
+      "gitBlobId": "df139d787dc3dc813c00244e1c76ac66c7c509ea",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25245,9 +25253,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/push-notifications.js",
       "phase": "server",
-      "gitBlobId": "0f0d076bae497d5061c8d488690275f3af910eb3",
+      "gitBlobId": "3d6087898f784e72aafeda63b95bcb6070df65c0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25271,9 +25279,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/realtime-publish.js",
       "phase": "server",
-      "gitBlobId": "d23b6849490a575632f1ec5f389ecc6a6ba66f31",
+      "gitBlobId": "c2edbbb0eefdaa03e6127d1dcea235db8c47d28e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25291,9 +25299,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/request-observability.js",
       "phase": "server",
-      "gitBlobId": "c962699d0f31b076d99776e9bc79c8ee437f604d",
+      "gitBlobId": "8bcd6271de10552cd8f68f64a2b87624290f9e62",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25329,9 +25337,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "c72c47548600cf1fd36b5976be86627ed585480c",
+      "gitBlobId": "d9bb6e77c7366b358a2f4c4043dc3bfbf3bc298f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25749,9 +25757,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/audit-content-privacy.test.js",
       "phase": "server",
-      "gitBlobId": "fc3c5548bff356fd18c0531af76de452a9aa0b9d",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "gitBlobId": "9243ab0a9940716289e616cdcc5c0c6b939dbaca",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26359,9 +26367,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/message-send-fastpath.test.js",
       "phase": "server",
-      "gitBlobId": "e1f725097582bad8d7af014b0717dd99ad43da6c",
+      "gitBlobId": "4c54b3f25ad4936689f62aec31467d3955b25603",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26855,9 +26863,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/request-observability.test.js",
       "phase": "server",
-      "gitBlobId": "12e3065dc0ad3da2c0b86b96b54bdd1709b37a0d",
+      "gitBlobId": "a9702aae9ae21d627a84f393cc0f9ec551ea4c6b",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27589,9 +27597,9 @@
     {
       "file": "infrastructure/local-fallback/monitoring/alerts.novvin.yml",
       "phase": "server",
-      "gitBlobId": "027f4367e3691fd4aa6044dfc4c35e32231165cd",
+      "gitBlobId": "effc497e9746e16c8d39260ab5373e1d9a20ba52",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27611,9 +27619,9 @@
     {
       "file": "infrastructure/local-fallback/nginx/default.conf",
       "phase": "server",
-      "gitBlobId": "dfd1842826cae4fc05c0b7ed4d4762d6b5a918b7",
+      "gitBlobId": "74598a5a883c57606f1cbe069b999d4dfe153267",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27675,9 +27683,9 @@
     {
       "file": "infrastructure/local-fallback/realtime-gateway/src/server.js",
       "phase": "server",
-      "gitBlobId": "e5a24d0aa40e35948f7acf9d07c43dae7f77be38",
+      "gitBlobId": "d79a592a31536f411debe6ce3ded750750ce5e4d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -30393,6 +30401,14 @@
       "phase": "tooling-and-other",
       "gitBlobId": "55208c315f1502e053fe6c0a307e340f2ba46af1",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/loadtest/run-certification-deep-suite.mjs",
+      "phase": "tooling-and-other",
+      "gitBlobId": "102215007add2adb9c64d48cb0edbeed81a316ca",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/loadtest/run-isolated-capacity-suite.mjs",

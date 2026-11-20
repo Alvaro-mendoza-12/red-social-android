@@ -251,13 +251,15 @@ async function refreshChatSummary(db, chatId) {
     catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error }
     finally { client.release() }
   }
+  const normalizedChatId = clean(chatId)
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalizedChatId)
   const result = await db.query(`SELECT * FROM fallback_messages WHERE lower(chat_id)=$1
-    ORDER BY created_at DESC, id DESC LIMIT 1 FOR SHARE`, [clean(chatId)])
+    ORDER BY created_at DESC, id DESC LIMIT 1 FOR SHARE`, [normalizedChatId])
   const latest = redactDeletedMessage(result.rows[0])
   await db.query(`UPDATE fallback_chats SET last_message=$2, last_message_at=$3,
-    last_message_sender_id=$4, last_message_id=$5, updated_at=NOW() WHERE lower(id::text)=$1
+    last_message_sender_id=$4, last_message_id=$5, updated_at=NOW() WHERE ${isUuid ? 'id=$1::uuid' : 'lower(id::text)=$1'}
     AND (last_message_at IS NULL OR $3::timestamptz IS NULL OR last_message_at <= $3::timestamptz)`,
-  [clean(chatId), messagePreview(latest), latest?.created_at || null, latest?.sender_id || null, latest?.id || null])
+  [normalizedChatId, messagePreview(latest), latest?.created_at || null, latest?.sender_id || null, latest?.id || null])
   return latest || null
 }
 

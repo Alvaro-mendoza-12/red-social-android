@@ -1,5 +1,35 @@
+const crypto = require('crypto')
 const { monitorEventLoopDelay } = require('perf_hooks')
 const { stableKey } = require('./request-security')
+
+const W3C_TRACEPARENT_RE = /^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/i
+
+function parseOrCreateTraceparent(rawHeader) {
+  const value = String(rawHeader || '').trim()
+  const match = W3C_TRACEPARENT_RE.exec(value)
+  if (match && !/^0+$/.test(match[1]) && !/^0+$/.test(match[2])) {
+    const traceId = match[1].toLowerCase()
+    const parentSpanId = match[2].toLowerCase()
+    const flags = match[3].toLowerCase()
+    const spanId = crypto.randomBytes(8).toString('hex')
+    return {
+      traceId,
+      parentSpanId,
+      spanId,
+      flags,
+      traceparent: `00-${traceId}-${spanId}-${flags}`,
+    }
+  }
+  const traceId = crypto.randomBytes(16).toString('hex')
+  const spanId = crypto.randomBytes(8).toString('hex')
+  return {
+    traceId,
+    parentSpanId: null,
+    spanId,
+    flags: '01',
+    traceparent: `00-${traceId}-${spanId}-01`,
+  }
+}
 
 function elapsedMilliseconds(startedAt) {
   return Number(process.hrtime.bigint() - startedAt) / 1_000_000
@@ -21,6 +51,7 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
     status4xx: 0,
     status5xx: 0,
     rateLimitedTotal: 0,
+    loadShedTotal: 0,
     slowRequestsTotal: 0,
   }
   const routeCounters = new Map()
@@ -34,6 +65,9 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
   return {
     beginRequest() {
       counters.inFlight += 1
+    },
+    recordLoadShed() {
+      counters.loadShedTotal += 1
     },
     endRequest({ route, statusCode, durationMs, slow }) {
       counters.inFlight = Math.max(0, counters.inFlight - 1)
@@ -71,6 +105,7 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
         status4xx: counters.status4xx,
         status5xx: counters.status5xx,
         rateLimitedTotal: counters.rateLimitedTotal,
+        loadShedTotal: counters.loadShedTotal,
         slowRequestsTotal: counters.slowRequestsTotal,
         latencyP50Ms: percentile(slice, 0.5),
         latencyP95Ms: percentile(slice, 0.95),
@@ -99,6 +134,8 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
         `novvin_api_responses_total{class="5xx"} ${s.status5xx}`,
         '# TYPE novvin_api_rate_limited_total counter',
         `novvin_api_rate_limited_total ${s.rateLimitedTotal}`,
+        '# TYPE novvin_api_load_shed_total counter',
+        `novvin_api_load_shed_total ${s.loadShedTotal}`,
         '# TYPE novvin_api_slow_requests_total counter',
         `novvin_api_slow_requests_total ${s.slowRequestsTotal}`,
         '# TYPE novvin_api_latency_ms gauge',
@@ -184,6 +221,7 @@ function createRequestObservabilityMiddleware(options = {}) {
       logger.warn('[api] slow request', {
         requestId: req.requestId,
         correlationId: req.correlationId || req.requestId,
+        traceId: req.traceId || null,
         method: req.method,
         route,
         status: res.statusCode,
@@ -201,6 +239,7 @@ function createRequestObservabilityMiddleware(options = {}) {
 module.exports = {
   createApiMetricsCollector,
   createRequestObservabilityMiddleware,
+  parseOrCreateTraceparent,
   routeName,
   safeErrorLogDetails,
 }
