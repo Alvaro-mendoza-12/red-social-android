@@ -151,7 +151,7 @@ docker compose config --quiet
 
 if [ "$SKIP_BUILD" = false ]; then
   echo "==> Construyendo imagenes sin interrumpir los contenedores actuales"
-  docker compose build db signaling-redis api ai-chatbot survey-antivirus signaling realtime-gateway edge
+  docker compose build db signaling-redis office-preview api ai-chatbot survey-antivirus signaling realtime-gateway edge
 fi
 
 echo "==> Verificando dependencias de estado antes de actualizar"
@@ -197,6 +197,10 @@ VALUES (:'migration_filename', :'migration_checksum');
 SQL
   echo "MIGRATION_APPLIED=$filename"
 done
+
+# Reuse an unchanged converter and finish its health check before switching the API.
+docker compose up -d --no-deps office-preview
+wait_service office-preview 180
 
 for service in ai-chatbot realtime-gateway api signaling edge; do
   echo "==> Actualizando $service"

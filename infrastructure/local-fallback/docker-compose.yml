@@ -191,7 +191,7 @@ services:
         max-file: "3"
 
   office-preview:
-    image: gotenberg/gotenberg:9.9.1-libreoffice@sha256:3d5fd268be20a7935d3e624770161080b615d9086548a2b501f44f388710529b
+    build: ./office-preview
     restart: unless-stopped
     read_only: true
     tmpfs:
