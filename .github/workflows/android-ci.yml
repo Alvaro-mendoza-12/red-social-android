@@ -17,6 +17,8 @@ jobs:
   quality-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      NOVVIN_CI_FIXTURE: "true"
 
     steps:
       - name: Checkout
@@ -49,6 +51,11 @@ jobs:
         shell: bash
         run: |
           echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+          install -D -m 600 .github/fixtures/android-google-services.json app/src/debug/google-services.json
+          mkdir -p keystores
+          keytool -genkeypair -noprompt -storetype JKS -keystore keystores/debug.keystore \
+            -storepass android -keypass android -alias androiddebugkey -keyalg RSA \
+            -keysize 2048 -validity 2 -dname "CN=Novvin CI Debug"
 
       - name: Prepare CI secrets file
         shell: bash
@@ -97,6 +104,8 @@ jobs:
     needs: quality-gate
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      NOVVIN_CI_FIXTURE: "true"
 
     steps:
       - name: Checkout
@@ -126,6 +135,7 @@ jobs:
         shell: bash
         run: |
           echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+          install -D -m 600 .github/fixtures/android-google-services.json app/src/release/google-services.json
 
       - name: Prepare CI secrets file
         shell: bash
