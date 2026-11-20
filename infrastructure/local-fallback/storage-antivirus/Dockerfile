@@ -1,6 +1,6 @@
-FROM node:22.23.4-alpine
+FROM node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
 
-RUN apk add --no-cache --upgrade 'zlib>=1.3.2-r1' clamav-daemon clamav \
+RUN apk add --no-cache --upgrade 'zlib>=1.4-r0' 'libssl3>=3.5.9-r1' 'libcrypto3>=3.5.9-r1' clamav-daemon clamav \
   && addgroup -S -g 10001 novvin \
   && adduser -S -D -H -u 10001 -G novvin novvin
 
