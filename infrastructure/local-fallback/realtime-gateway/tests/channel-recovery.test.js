@@ -68,9 +68,14 @@ test('a device can reconnect after a temporary identity or membership lookup fai
 
   membershipStatus = 200
   const restored = await subscribe()
+  // This authorized device uses its gateway's clock, even if the sender's
+  // clock is ahead. Keep the sender timestamp for client-side ordering.
+  const senderTime = Date.now() + 10 * 60 * 1000
   const next = once(restored, 'message', { signal: AbortSignal.timeout(5000) })
-  assert.equal(broadcastLocal(channel, { text: 'after recovery' }), 1)
-  assert.equal(JSON.parse((await next)[0]).payload.text, 'after recovery')
+  assert.equal(broadcastLocal(channel, { text: 'after recovery' }, { ts: senderTime }), 1)
+  const event = JSON.parse((await next)[0])
+  assert.equal(event.payload.text, 'after recovery')
+  assert.equal(event.ts, new Date(senderTime).toISOString())
 
   // A confirmed end of membership still removes only this subscription.
   membershipStatus = 404

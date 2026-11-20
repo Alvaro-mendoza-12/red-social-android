@@ -479,13 +479,14 @@ function broadcastLocal(channel, payload, options = {}) {
   const userSet = targetUserId ? userSockets.get(targetUserId) : null
   if ((!directSet || directSet.size === 0) && (!userSet || userSet.size === 0)) return 0
 
-  const now = Number.isFinite(Number(options?.ts)) ? Number(options.ts) : Date.now()
+  const now = Date.now()
+  const eventTime = Number.isFinite(Number(options?.ts)) ? Number(options.ts) : now
   const serialized = JSON.stringify({
     type: 'event',
     channel,
     payload,
     ...(options?.eventId ? { eventId: String(options.eventId) } : {}),
-    ts: new Date(now).toISOString(),
+    ts: new Date(eventTime).toISOString(),
   })
 
   const recipients = directSet && userSet
