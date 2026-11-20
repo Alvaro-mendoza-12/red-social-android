@@ -10,6 +10,7 @@ const {Pool} = require('pg')
 const bcrypt = require('bcrypt')
 const express = require('express')
 const {requireBcryptPasswordLength} = require('../src/new-password-policy')
+const {publishWebSessionsRevoked} = require('../src/web-session-events')
 
 const connectionString = process.env.NOVVIN_PASSWORD_RESET_TEST_DATABASE_URL
 const sourceFile = process.env.NOVVIN_PASSWORD_RESET_TEST_SOURCE || path.join(__dirname,'../src/server.js')
@@ -44,26 +45,33 @@ async function fixture(t, failure = '', twoFactor = false) {
     CREATE TABLE fallback_account_recovery_cases(id uuid,user_id uuid,two_factor_reset boolean,status text);
     CREATE TABLE fallback_totp_recovery_codes(user_id uuid);
     CREATE TABLE fallback_totp_factors(user_id uuid);
-    CREATE TABLE fixture_sessions(user_id uuid,revoked boolean);
+    CREATE TABLE fixture_sessions(id uuid PRIMARY KEY,user_id uuid,revoked boolean);
   `)
   await pool.query('INSERT INTO fallback_users(id,email,password_hash) VALUES($1,$2,$3)',[userId,'qa169@example.invalid',await bcrypt.hash(originalPassword,4)])
   const grant = crypto.randomBytes(32).toString('hex')
   await pool.query(`INSERT INTO fallback_password_reset_tokens(id,user_id,token_hash,expires_at)
     VALUES($1,$2,$3,NOW()+interval '5 minutes')`,[crypto.randomUUID(),userId,hash(grant)])
   await pool.query('INSERT INTO fallback_password_reset_email_codes(user_id) VALUES($1)',[userId])
-  await pool.query('INSERT INTO fixture_sessions(user_id,revoked) VALUES($1,false)',[userId])
+  const sessionId = crypto.randomUUID()
+  await pool.query('INSERT INTO fixture_sessions(id,user_id,revoked) VALUES($1,$2,false)',[sessionId,userId])
   const app = express()
   app.use(express.json())
   let sessionAttempts = 0, auditAttempts = 0
   const logged = []
+  const revocationEvents = []
   vm.runInNewContext(route,{
     app,pool,userSelectColumns:selectColumns,bcrypt,requireBcryptPasswordLength,
     isWebClientRequest:()=>false,requireTrustedWebSessionRequest:()=>true,
     hashPasswordResetToken:hash,
     revokeAllUserSessions:async(id,client)=>{
       if(failure==='precommit')throw new Error('QA169 before COMMIT')
-      await client.query('UPDATE fixture_sessions SET revoked=true WHERE user_id=$1',[id])
+      const {rows} = await client.query('UPDATE fixture_sessions SET revoked=true WHERE user_id=$1 RETURNING id',[id])
+      return rows
     },
+    publishWebSessionsRevoked:(id,sessions)=>publishWebSessionsRevoked(id,sessions,async (channel,event)=>{
+      revocationEvents.push({channel,event})
+      return true
+    }),
     hydrateUserRow:async row=>{if(failure==='hydrate')throw new Error('QA169 hydration unavailable');return row},
     sanitizeUser:row=>({id:row.id,email:row.email}),
     recordAudit:async()=>{auditAttempts++;if(failure==='audit')throw new Error('QA169_FAKE_SENSITIVE_MARKER')},
@@ -98,7 +106,7 @@ async function fixture(t, failure = '', twoFactor = false) {
     ])
     return {newPassword:await bcrypt.compare(nextPassword,user.password_hash),oldPassword:await bcrypt.compare(originalPassword,user.password_hash),consumed:Boolean(token.consumed_at),sessionsRevoked:session.revoked,emailCodeConsumed:Boolean(code.consumed_at)}
   }
-  return {pool,request,snapshot,logs:logged,get sessionAttempts(){return sessionAttempts},get auditAttempts(){return auditAttempts}}
+  return {pool,request,snapshot,sessionId,revocationEvents,logs:logged,get sessionAttempts(){return sessionAttempts},get auditAttempts(){return auditAttempts}}
 }
 
 for(const failure of ['hydrate','second-factor','session','cookie'])test(`committed password remains acknowledged after ${failure} failure`,{skip:!connectionString},async t=>{
@@ -124,6 +132,7 @@ test('ordinary confirmation keeps the existing successful session contract',{ski
   assert.equal(response.body.accessToken,'qa169-access')
   assert.equal(response.body.requiresSignIn,undefined)
   assert.equal(current.sessionAttempts,1)
+  assert.deepEqual(current.revocationEvents,[{channel:'user:'+userId,event:{event:'web_sessions_revoked',sessionIds:[current.sessionId]}}])
 })
 test('enabled second factor still prevents session issue',{skip:!connectionString},async t=>{
   const current=await fixture(t,'',true)
@@ -139,6 +148,7 @@ test('precommit failure rolls back password, grants and session revocation witho
   assert.equal(response.status,500)
   assert.equal(response.body.passwordChanged,undefined)
   assert.deepEqual(await current.snapshot(),{newPassword:false,oldPassword:true,consumed:false,sessionsRevoked:false,emailCodeConsumed:false})
+  assert.deepEqual(current.revocationEvents,[])
 })
 test('expired grant cannot change any state or manufacture a receipt',{skip:!connectionString},async t=>{
   const current=await fixture(t)
