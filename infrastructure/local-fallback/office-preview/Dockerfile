@@ -48,9 +48,24 @@ RUN set -eu; \
     mkdir /xml-out; \
     cp ../libxml2_*+novvin232.1_*.deb /xml-out/
 
+FROM office AS eot-package
+USER root
+WORKDIR /eot-packages
+
+# Download only libeot for the native architecture from the signed Debian snapshot.
+RUN set -eu; \
+    echo 'deb [signed-by=/usr/share/keyrings/debian-archive-keyring.gpg check-valid-until=no] https://snapshot.debian.org/archive/debian/20261120T060000Z sid main' > /tmp/eot.list; \
+    snapshot_apt() { apt-get -o Dir::Etc::sourcelist=/tmp/eot.list -o Dir::Etc::sourceparts=- -o Dir::State::lists=/tmp/eot-lists -o Acquire::Retries=3 -o APT::Update::Error-Mode=any "$@"; }; \
+    mkdir -p /tmp/eot-lists/partial; \
+    snapshot_apt update; \
+    snapshot_apt download 'libeot0=1:0.0.4-1'; \
+    test "$(dpkg-deb -f ./*.deb Architecture)" = "$(dpkg --print-architecture)"; \
+    test "$(dpkg-deb -f ./*.deb Version)" = '1:0.0.4-1'
+
 FROM office
 USER root
 RUN --mount=type=bind,from=curl-build,source=/out,target=/tmp/curl-packages \
     --mount=type=bind,from=xml-build,source=/xml-out,target=/tmp/xml-packages \
-    dpkg -i /tmp/curl-packages/*.deb /tmp/xml-packages/*.deb && apt-get check && test -z "$(dpkg --audit)"
+    --mount=type=bind,from=eot-package,source=/eot-packages,target=/tmp/eot-packages \
+    dpkg -i /tmp/curl-packages/*.deb /tmp/xml-packages/*.deb /tmp/eot-packages/*.deb && apt-get check && test -z "$(dpkg --audit)"
 USER gotenberg
