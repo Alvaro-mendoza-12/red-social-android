@@ -67,7 +67,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run quality gate
-        run: ./gradlew --no-daemon --stacktrace :app:qualityGateDebug
+        run: ./gradlew --no-daemon --stacktrace -I .github/gradle/android-unit-ci.init.gradle :app:qualityGateDebug
 
       - name: Test release and security tooling
         run: python -m unittest discover -s tools/tests -p 'test_*.py'
@@ -92,6 +92,7 @@ jobs:
             app/build/reports/lint-results-debug.html
             app/build/reports/lint-results-debug.xml
             app/build/reports/tests/testDebugUnitTest
+            app/build/reports/ci/last-started-test.txt
             app/build/test-results/testDebugUnitTest
             build/reports/security/sql_security_audit.md
             build/reports/security/sql_security_audit.json

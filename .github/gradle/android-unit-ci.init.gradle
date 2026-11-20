@@ -1,0 +1,24 @@
+import org.gradle.api.tasks.testing.Test
+
+gradle.beforeProject { project ->
+    if (project.path != ':app') return
+    project.tasks.withType(Test).configureEach { task ->
+        if (task.name != 'testDebugUnitTest') return
+
+        // Robolectric and native Android tests share process state until the worker exits.
+        task.maxParallelForks = 1
+        task.maxHeapSize = '768m'
+        task.forkEvery = 10
+        task.jvmArgs '-XX:MaxMetaspaceSize=512m'
+
+        def marker = project.layout.buildDirectory.file('reports/ci/last-started-test.txt')
+        task.doFirst {
+            def file = marker.get().asFile
+            file.parentFile.mkdirs()
+            file.setText('Waiting for the first test\n', 'UTF-8')
+        }
+        task.beforeTest { test ->
+            marker.get().asFile.setText("${test.className} > ${test.name}\n", 'UTF-8')
+        }
+    }
+}
