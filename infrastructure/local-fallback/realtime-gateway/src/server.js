@@ -179,27 +179,31 @@ function verifyToken(token) {
   }
 }
 
-async function resolveUserIds(token, payload) {
-  const ids = new Set([String(payload?.sub || '').trim().toLowerCase()].filter(Boolean))
+function isTemporaryAccessFailure(status) {
+  return status === 408 || status === 429 || status >= 500
+}
+
+async function resolveSocketUserIds(ws, payload, deniedCode, deniedReason) {
   try {
     const response = await fetch(`${localFallbackApiUrl}/v1/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${ws._token}` },
       signal: AbortSignal.timeout(5_000),
     })
-    if (!response.ok) return null
-
-    const body = await response.json()
-    const user = body?.user || {}
-    const userIds = [user.id, user.supabaseUserId]
-    userIds.forEach((value) => {
-      const id = String(value || '').trim().toLowerCase()
-      if (id) ids.add(id)
-    })
-    return ids
+    if (response.ok) {
+      const { user } = await response.json()
+      if (typeof user?.id === 'string' && user.id.trim()) {
+        return new Set([payload.sub, user.id, user.supabaseUserId]
+          .map(value => String(value || '').trim().toLowerCase()).filter(Boolean))
+      }
+    } else if (!isTemporaryAccessFailure(response.status)) {
+      ws.close(deniedCode, deniedReason)
+      return null
+    }
   } catch (error) {
     console.warn('[realtime] canonical user identity could not be resolved:', error.message)
-    return null
   }
+  ws.close(1013, 'IDENTITY_CHECK_UNAVAILABLE')
+  return null
 }
 
 function subscriptionAuthorizationUrl(channel) {
@@ -252,7 +256,7 @@ async function checkChannelAccess(token, allowedUserIds, channel) {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     })
-    if (response.status === 408 || response.status === 429 || response.status >= 500) return null
+    if (isTemporaryAccessFailure(response.status)) return null
     return response.ok
   } catch (error) {
     console.warn('[realtime] channel authorization failed:', error.message)
@@ -292,8 +296,9 @@ async function revalidateSocket(ws) {
   ws._revalidating = true
   try {
     const payload = verifyToken(ws._token)
-    const ids = payload ? await resolveUserIds(ws._token, payload) : null
-    if (!ids) return ws.close(4401, 'SESSION_EXPIRED')
+    if (!payload) return ws.close(4401, 'SESSION_EXPIRED')
+    const ids = await resolveSocketUserIds(ws, payload, 4401, 'SESSION_EXPIRED')
+    if (!ids || ws.readyState !== WebSocket.OPEN) return
     setSocketUserIds(ws, ids)
     for (const channel of [...ws._rooms]) {
       const allowed = await checkChannelAccess(ws._token, ids, channel)
@@ -352,27 +357,28 @@ wss.on('connection', (ws, req) => {
     ws._token = token
     ws._sessionId = String(payload.sid || '')
     ws._userId = String(payload.sub)
-    ws._identityReady = resolveUserIds(token, payload).then((ids) => {
-    if (!ids || ws.readyState !== WebSocket.OPEN || !verifyToken(token)) {
-      gatewayMetrics.authFailures += 1
-      ws.close(4403, 'ACCOUNT_NOT_ACTIVE')
-      return null
-    }
-    setSocketUserIds(ws, ids)
-    ws._authenticated = true
+    // The handshake now has a signed token. The canonical lookup has its own deadline.
     clearTimeout(authenticationTimeout)
-    ws._validatedUntil = Math.min(payload.exp * 1000, Date.now() + AUTH_RECHECK_MS + 10_000)
-    const expire = () => {
-      const remaining = payload.exp * 1000 - Date.now()
-      if (remaining <= 0) return ws.close(4401, 'SESSION_EXPIRED')
-      expiryTimer = setTimeout(expire, Math.min(remaining, 2_147_483_647))
-      expiryTimer.unref()
-    }
-    expire()
-    recheckTimer = setInterval(() => { void revalidateSocket(ws) }, AUTH_RECHECK_MS)
-    recheckTimer.unref()
-    send(ws, { type: 'connected', userId: ws._userId, service: serviceName, version })
-    return ids
+    ws._identityReady = resolveSocketUserIds(ws, payload, 4403, 'ACCOUNT_NOT_ACTIVE').then((ids) => {
+      if (!ids || ws.readyState !== WebSocket.OPEN || !verifyToken(token)) {
+        gatewayMetrics.authFailures += 1
+        if (ws.readyState === WebSocket.OPEN) ws.close(4401, 'SESSION_EXPIRED')
+        return null
+      }
+      setSocketUserIds(ws, ids)
+      ws._authenticated = true
+      ws._validatedUntil = Math.min(payload.exp * 1000, Date.now() + AUTH_RECHECK_MS + 10_000)
+      const expire = () => {
+        const remaining = payload.exp * 1000 - Date.now()
+        if (remaining <= 0) return ws.close(4401, 'SESSION_EXPIRED')
+        expiryTimer = setTimeout(expire, Math.min(remaining, 2_147_483_647))
+        expiryTimer.unref()
+      }
+      expire()
+      recheckTimer = setInterval(() => { void revalidateSocket(ws) }, AUTH_RECHECK_MS)
+      recheckTimer.unref()
+      send(ws, { type: 'connected', userId: ws._userId, service: serviceName, version })
+      return ids
     })
     return ws._identityReady
   }
