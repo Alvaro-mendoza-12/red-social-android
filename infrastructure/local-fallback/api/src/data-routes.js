@@ -9055,10 +9055,7 @@ function registerDataRoutes(app, {
       })
       const pagePosts = page.items
       const postIds = pagePosts.map((row) => textOf(row, ['id'], '')).filter(Boolean)
-      const authorIds = cleanSet([
-        ...identity.values,
-        ...pagePosts.map((row) => postOwnerId(row)),
-      ])
+      const authorIds = cleanSet(pagePosts.map(postOwnerId))
       const alreadyLoadedById = indexProfiles(candidateProfiles)
       const missingAuthorIds = Array.from(authorIds).filter((id) => !alreadyLoadedById.has(id))
       const [extraProfiles, engagement] = await Promise.all([
