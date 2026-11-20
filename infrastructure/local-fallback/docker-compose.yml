@@ -435,9 +435,11 @@ services:
       start_period: 10s
 
   # Pooler opcional en modo transacción para escalar API a múltiples réplicas
-  # sin agotar max_connections de PostgreSQL (activar con: docker compose --profile scale up -d pgbouncer).
+  # sin agotar max_connections de PostgreSQL (activar con: docker compose --profile scale up --build -d pgbouncer).
   pgbouncer:
-    image: edoburu/pgbouncer:v1.23.1-p3
+    build: ./pgbouncer
+    image: novvin-pgbouncer:1.26.1-alpine-r1
+    pull_policy: never
     container_name: conectate-local-fallback-pgbouncer-main
     restart: unless-stopped
     profiles: ["scale"]
