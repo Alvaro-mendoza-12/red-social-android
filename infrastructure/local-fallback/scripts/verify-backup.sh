@@ -3,6 +3,11 @@ set -Eeuo pipefail
 umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+files_only=0
+if [[ "${1:-}" == --files-only ]]; then
+  files_only=1
+  shift
+fi
 BACKUP_DIR="${1:-${BACKUP_ROOT:-$HOME/conectate-backups}/latest}"
 
 BACKUP_DIR="$(readlink -f "$BACKUP_DIR")"
@@ -86,6 +91,10 @@ if [ -s ai-chatbot-data.tar.gz ]; then
   tar -tzf ai-chatbot-data.tar.gz >/dev/null
 else
   echo "WARN: copia heredada sin estado de Novvin"
+fi
+if (( files_only )); then
+  echo "BACKUP_FILES_VERIFIED=$BACKUP_DIR"
+  exit 0
 fi
 cd "$ROOT_DIR"
 docker compose exec -T db pg_restore --list < "$BACKUP_DIR/postgres.dump" >/dev/null

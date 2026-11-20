@@ -88,11 +88,13 @@ No restaurar sobre produccion sin conservar primero una copia del estado averiad
 1. Detener escrituras o poner la API en mantenimiento.
 2. Crear una copia de emergencia si PostgreSQL responde.
 3. Verificar el backup elegido con `verify-backup.sh <ruta>`.
-4. Ejecutar `restore-drill.sh <ruta>`.
+4. Para una copia con `roles-no-passwords.sql`, ejecutar `scripts/restore-drill-isolated.sh --with-roles <ruta>` en el servidor de ensayo con la imagen PostgreSQL local. Este modo comprueba los archivos, crea un clúster temporal sin red y restaura la base con los propietarios, las concesiones y la configuración archivados. Para una copia histórica sin roles, `scripts/restore-drill-isolated.sh <ruta>` ensaya el esquema y los datos.
 5. Restaurar en una base permanente separada y validar usuarios, conteos y archivos.
 6. Cambiar la API solamente despues de la aceptacion funcional.
 
 El reemplazo destructivo de produccion no se automatiza deliberadamente.
+
+Si Compose está detenido, `scripts/verify-backup.sh --files-only <ruta>` verifica el conjunto de archivos, sus tamaños declarados, las huellas y ambos archivos tar cuando están presentes. El ensayo aislado posterior abre y restaura el volcado PostgreSQL. Para validar el servicio completo, aprovisionar de nuevo la credencial del rol de la API, restaurar el almacenamiento bajo su ruta lógica original y leer por HTTP un archivo conocido con una sesión de prueba.
 
 ## 8. Endpoint publico dinamico
 

@@ -48,13 +48,15 @@ function backup(t, version) {
     }).join(''))
   }
   checksums(files)
-  function verify(ok) {
-    const r = spawnSync('bash', [script, archive], { env: { ...process.env, PATH: bin + ':' + process.env.PATH }, encoding: 'utf8' })
+  function verify(ok, filesOnly = false) {
+    const args = filesOnly ? [script, '--files-only', archive] : [script, archive]
+    const r = spawnSync('bash', args, { env: { ...process.env, PATH: bin + ':' + process.env.PATH }, encoding: 'utf8' })
     assert.equal(r.error, undefined)
     assert.equal(r.status === 0, ok, r.stdout + r.stderr)
-    assert.equal(r.stdout.includes('BACKUP_VERIFIED='), ok)
+    assert.equal(r.stdout.includes('BACKUP_VERIFIED='), ok && !filesOnly)
+    assert.equal(r.stdout.includes('BACKUP_FILES_VERIFIED='), ok && filesOnly)
   }
-  return { files, metadata, write, checksums, verify, archive }
+  return { files, metadata, write, checksums, verify, archive, bin }
 }
 
 for (const version of [0, 1, 2, 3]) {
@@ -93,4 +95,56 @@ test('requires the full role-backup artifact set even after metadata is lost', l
   fs.unlinkSync(path.join(a.archive, 'ai-chatbot-data.tar.gz'))
   a.checksums(a.files.filter(name => name !== 'ai-chatbot-data.tar.gz'))
   a.verify(false)
+})
+test('checks files with Compose unavailable and distinguishes the full verification result', linux, t => {
+  const a = backup(t, 3)
+  fs.writeFileSync(path.join(a.bin, 'docker'), '#!/bin/sh\nexit 1\n', { mode: 0o700 })
+  a.verify(true, true)
+  a.verify(false)
+  a.write('postgres.dump', 'incomplete')
+  a.verify(false, true)
+})
+
+test('the isolated role drill preserves grants and stops before restoring data on a role error', linux, t => {
+  const a = backup(t, 3)
+  const drill = path.join(path.dirname(script), 'restore-drill-isolated.sh')
+  const roles = path.join(a.bin, 'applied.sql')
+  const restoreArgs = path.join(a.bin, 'restore.args')
+  const otherStatements = 'ALTER ROLE conectate SUPERUSER;\nCREATE ROLE fixture;\n'
+  fs.writeFileSync(path.join(a.bin, 'docker'), `#!/bin/sh
+case "$*" in
+  "image inspect"*) echo image ;;
+  *"--entrypoint id"*) echo 70 ;;
+  "run --detach"*)
+    while [ "$1" != "--name" ]; do shift; done
+    echo "$2" > "$TRACE/name" ;;
+  *"/proc/1/comm"*) exit 0 ;;
+  *"--single-transaction"*) cat > "$TRACE/applied.sql"; test "$ROLE_ERROR" = 0 ;;
+  *"pg_restore"*) echo "$*" > "$TRACE/restore.args"; cat >/dev/null ;;
+  *"psql"*) echo 8 ;;
+  "inspect --format"*) cat "$TRACE/name" ;;
+  *) exit 0 ;;
+esac
+`, { mode: 0o700 })
+  for (const failure of ['none', 'missing bootstrap entry', 'role SQL error']) {
+    const sql = (failure === 'missing bootstrap entry' ? '' : 'CREATE ROLE conectate;\n') + otherStatements
+    a.write('roles-no-passwords.sql', sql)
+    a.write('metadata.json', JSON.stringify({ ...a.metadata, rolesBytes: Buffer.byteLength(sql) }))
+    a.checksums(a.files)
+    fs.rmSync(restoreArgs, { force: true })
+    const r = spawnSync('bash', [drill, '--with-roles', a.archive], { encoding: 'utf8', env: {
+      ...process.env, PATH: a.bin + ':' + process.env.PATH, TRACE: a.bin, ROLE_ERROR: failure === 'role SQL error' ? '1' : '0',
+    } })
+    const diagnostic = r.stdout.match(/^RESTORE_DIAGNOSTIC_DIR=(.+)$/m)?.[1]
+    assert.ok(diagnostic && path.dirname(diagnostic) === '/tmp' && path.basename(diagnostic).startsWith('novvin-restore-check.'))
+    t.after(() => fs.rmSync(diagnostic, { recursive: true, force: true }))
+    assert.equal(fs.readFileSync(roles, 'utf8'), otherStatements)
+    assert.equal(r.status === 0, failure === 'none', r.stdout + r.stderr)
+    assert.equal(fs.existsSync(restoreArgs), failure === 'none')
+    if (failure === 'none') {
+      const args = fs.readFileSync(restoreArgs, 'utf8')
+      assert.match(args, /--exit-on-error .*--create/)
+      assert.doesNotMatch(args, /--no-owner|--no-privileges/)
+    }
+  }
 })
