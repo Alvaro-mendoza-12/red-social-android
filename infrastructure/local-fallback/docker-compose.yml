@@ -193,6 +193,10 @@ services:
   office-preview:
     image: gotenberg/gotenberg:9.9.1-libreoffice@sha256:3d5fd268be20a7935d3e624770161080b615d9086548a2b501f44f388710529b
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=1g,mode=1777
+      - /home/gotenberg:rw,nosuid,nodev,noexec,size=128m,uid=1001,gid=1001,mode=0700
     environment:
       LIBREOFFICE_AUTO_START: "true"
       LIBREOFFICE_DENY_LIST: ".*"
