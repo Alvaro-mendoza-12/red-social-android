@@ -75,10 +75,35 @@ docker compose exec -T db pg_isready -U conectate -d conectate_fallback >/dev/nu
 docker compose exec -T api sh -lc 'test -r /data/storage'
 
 echo "==> Exportando PostgreSQL"
+# The dump and the list of media it references must see exactly the same rows.
+# Keep the exporting psql session open until pg_dump has used its snapshot.
+catalog_dir="$(mktemp -d -- "$TEMP_DIR/.catalog.XXXXXXXX")"
+db_client=(docker compose exec -T db psql -XqAt --set=ON_ERROR_STOP=1 -U conectate -d conectate_fallback)
+coproc CATALOG { "${db_client[@]}"; }
+catalog_pid=$CATALOG_PID
+exec {catalog_reader}<&"${CATALOG[0]}"
+catalog_writer=${CATALOG[1]}
+printf '%s\n' 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;' 'SELECT pg_export_snapshot();' >&"$catalog_writer"
+IFS= read -r snapshot <&"$catalog_reader"
+[[ "$snapshot" =~ ^[[:xdigit:]]+-[[:xdigit:]]+-[[:digit:]]+$ ]] || { echo "ERROR: invalid database snapshot" >&2; exit 1; }
 docker compose exec -T db pg_dump \
   -U conectate -d conectate_fallback \
-  --format=custom --compress=6 \
+  --snapshot="$snapshot" --format=custom --compress=6 \
   > "$TEMP_DIR/postgres.dump"
+cat >&"$catalog_writer" <<'SQL'
+COPY (
+  SELECT id, coalesce(nullif(btrim(local_path), ''), '/data/storage/' ||
+           CASE WHEN object_revision IS NULL THEN bucket_id || '/' || name
+                ELSE '.objects/' || left(object_revision::text, 2) || '/' || object_revision || '.blob' END),
+         size_bytes, scan_sha256, xmin::text
+  FROM public.fallback_storage_objects
+) TO STDOUT WITH (FORMAT csv);
+COMMIT;
+\q
+SQL
+cat <&"$catalog_reader" > "$catalog_dir/expected.csv"
+wait "$catalog_pid"
+exec {catalog_reader}<&-
 
 # pg_dump does not include cluster roles. Store role flags/memberships without
 # authentication hashes; recovered login passwords must be provisioned separately.
@@ -107,6 +132,13 @@ test -s "$TEMP_DIR/storage.tar.gz"
 test -s "$TEMP_DIR/ai-chatbot-data.tar.gz"
 docker compose exec -T db pg_restore --list < "$TEMP_DIR/postgres.dump" >/dev/null
 tar -tzf "$TEMP_DIR/storage.tar.gz" >/dev/null
+# Historical objects lack a content digest. Catch replacements, even of equal
+# size, by comparing the captured tuple version after the archive was closed.
+"${db_client[@]}" -c "COPY (SELECT id, xmin::text FROM public.fallback_storage_objects WHERE nullif(scan_sha256, '') IS NULL) TO STDOUT WITH (FORMAT csv)" > "$catalog_dir/current.csv"
+python3 "$ROOT_DIR/scripts/verify-backup-storage.py" \
+  "$catalog_dir/expected.csv" "$catalog_dir/current.csv" "$TEMP_DIR/storage.tar.gz"
+rm -- "$catalog_dir/expected.csv" "$catalog_dir/current.csv"
+rmdir -- "$catalog_dir"
 tar -tzf "$TEMP_DIR/ai-chatbot-data.tar.gz" >/dev/null
 
 (

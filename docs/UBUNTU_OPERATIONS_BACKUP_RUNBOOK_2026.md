@@ -36,6 +36,10 @@ La VM es un entorno beta. Un Cloudflare Quick Tunnel permite pruebas externas si
 
 La copia local no protege frente a la perdida del disco anfitrion. En la mini PC, `BACKUP_ROOT` debe apuntar a un segundo disco y debe existir una copia adicional desconectada periodicamente.
 
+El productor toma el catálogo de medios y el volcado de la misma instantánea de PostgreSQL. Antes de avanzar `latest`, comprueba que el tar contiene cada objeto catalogado, su tamaño y, cuando existe, su SHA-256 registrado. Para los objetos históricos sin huella, también comprueba si la fila se modificó o desapareció durante la copia. Una inserción posterior a la instantánea puede quedar como archivo adicional sin referencia en esa base.
+
+Si el servicio informa `storage mismatch`, la copia anterior sigue en `latest`. Consultar el registro del servicio y reintentar cuando termine la escritura. Si persiste el fallo, contrastar las filas y archivos en un entorno privado y comprobar la antigüedad de la última copia válida antes de usarla. El control usa Python 3 con SQLite y espacio temporal en el disco del respaldo para los catálogos. Los objetos históricos sin huella requieren un ensayo de lectura con contenido conocido para comprobar su identidad.
+
 ## 4. Instalacion inicial
 
 Desde PowerShell de Windows:
