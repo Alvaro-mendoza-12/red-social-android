@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T14:00:31.543440+00:00",
-  "baseCommit": "f4cce71c542514f1550f4db096502a346c694824",
+  "generatedAtUtc": "2026-11-20T15:10:57.875411+00:00",
+  "baseCommit": "4dee378b4adf7af14c0f049880990319a1d6ec54",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3435,
+    "pending": 3436,
     "code-read": 1047,
-    "partial": 273
+    "partial": 275
   },
   "countsByPhase": {
     "android": {
@@ -21,18 +21,18 @@
       "code-read": 612
     },
     "documentation": {
-      "pending": 694,
+      "pending": 696,
       "code-read": 67,
       "partial": 20
     },
     "server": {
-      "pending": 727,
-      "code-read": 204,
-      "partial": 43
+      "pending": 726,
+      "code-read": 203,
+      "partial": 45
     },
     "tooling-and-other": {
       "pending": 137,
-      "code-read": 42,
+      "code-read": 43,
       "partial": 9
     },
     "web": {
@@ -63,11 +63,19 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": ".github/gradle/android-unit-ci.init.gradle",
+      "phase": "tooling-and-other",
+      "gitBlobId": "6fb630adf8b8a36031d98bdc8e8d379f256e34e9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/226-capacidad-conmutacion-y-ci-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": ".github/workflows/android-ci.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "fc60095aeb235a925579cc53f1018688ff297a29",
+      "gitBlobId": "cc85aa1fb7cb63e7dbd37cbfe92c537bf76ba44e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "evidence": "docs/oficial/226-capacidad-conmutacion-y-ci-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22285,6 +22293,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/226-capacidad-conmutacion-y-ci-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "24beec5d22a51edab1235719fb8af099bd224a37",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/23-multimedia-offline-y-restauracion-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "d22eca229741a92edd67245371999039798bf76f",
@@ -23168,6 +23182,12 @@
       "file": "docs/oficial/evidencias/225-conversor-y-controles-de-integracion.json",
       "phase": "documentation",
       "gitBlobId": "82f470bcc3d38150ec89ae2ffc2b1cd183509a18",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/226-capacidad-conmutacion-y-ci.json",
+      "phase": "documentation",
+      "gitBlobId": "181147352fba2b6b4a697df03d4999fac2fe2c5f",
       "reviewStatus": "pending"
     },
     {
@@ -25575,9 +25595,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "f172ca776048a7717b584deb743a7a784c20a379",
+      "gitBlobId": "bdfa0fa4f994c02b243161ea63d4fe0eab7a0090",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/226-capacidad-conmutacion-y-ci-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25763,9 +25783,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/storage-upload-admission.js",
       "phase": "server",
-      "gitBlobId": "422d68a12408433afdf2a31641ba4d9c05e338fe",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "gitBlobId": "59c15ce9b5fd97626425ad17572a0ce36f450b14",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/226-capacidad-conmutacion-y-ci-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25829,9 +25849,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/system-health.js",
       "phase": "server",
-      "gitBlobId": "b0854b1b88138a460e0acf4ab7bee5c32139e93d",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "gitBlobId": "05c50db903ce6780c5f145f7f970977d6c2383be",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/226-capacidad-conmutacion-y-ci-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26307,9 +26327,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/database-pool-errors.test.js",
       "phase": "server",
-      "gitBlobId": "f269be7bc75509c538b6d40f9f6e83b8efa53104",
+      "gitBlobId": "f0f1201efc3a97643710d92b3caf842cdebfa764",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/226-capacidad-conmutacion-y-ci-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27549,8 +27569,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/system-health.test.js",
       "phase": "server",
-      "gitBlobId": "7fc6e69e0b6766f611a8954f507624fda053d720",
-      "reviewStatus": "pending"
+      "gitBlobId": "e153e2955c2cfc710a8df377f76b2976597d72e9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/226-capacidad-conmutacion-y-ci-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/two-factor.test.js",

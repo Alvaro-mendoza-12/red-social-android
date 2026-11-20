@@ -1,0 +1,1940 @@
+{
+  "testedSource": "77b507f020a4ee15138df2ee77cbf71cd494d011",
+  "engineeringEnd": "4dee378b4adf7af14c0f049880990319a1d6ec54",
+  "checkedUtc": "2026-11-20T15:10:41.122774+00:00",
+  "engineeringCommits": [
+    {
+      "sha": "7508e4371d933d936a4b2cba13b9e1f2be2ce034",
+      "subject": "Bound Android CI test workers and retain the last started test",
+      "files": [
+        ".github/gradle/android-unit-ci.init.gradle",
+        ".github/workflows/android-ci.yml"
+      ]
+    },
+    {
+      "sha": "a85ac235ebbca766b087de40b0e05724decec4b5",
+      "subject": "Handle PostgreSQL disconnects throughout storage pool checkouts",
+      "files": [
+        "infrastructure/local-fallback/api/src/storage-upload-admission.js",
+        "infrastructure/local-fallback/api/tests/database-pool-errors.test.js"
+      ]
+    },
+    {
+      "sha": "4dee378b4adf7af14c0f049880990319a1d6ec54",
+      "subject": "Reject database outages and read-only replicas in API readiness",
+      "files": [
+        "infrastructure/local-fallback/api/src/server.js",
+        "infrastructure/local-fallback/api/src/system-health.js",
+        "infrastructure/local-fallback/api/tests/system-health.test.js"
+      ]
+    }
+  ],
+  "soak": {
+    "backendSource": "77b507f020a4ee15138df2ee77cbf71cd494d011",
+    "environment": "WSL2 Ubuntu 24.04, 2 API and 2 realtime, round-robin calls and recipient gateways, PostgreSQL 16.15, Ubuntu Redis 7.0.15, two CPU affinity shared with local generator, loopback, ordinary quotas",
+    "redisStreamEntries": 16300,
+    "arrivalModel": "Open arrivals. Ten synthetic accounts, five WebSocket recipients distributed between the gateways. Two API, two Realtime, Redis and PostgreSQL on WSL2. Application and generator on two logical CPUs. Eight admitted operations in flight and three seconds for delivery.",
+    "stages": {
+      "smoke": {
+        "passed": true,
+        "actualDurationSeconds": 45,
+        "stopReason": "completed",
+        "arrivals": {
+          "planned": 180,
+          "dispatched": 180,
+          "late": 0,
+          "atCapacity": 0,
+          "notScheduledAfterStop": 0,
+          "peakInFlight": 1
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 45,
+          "received": 45,
+          "missed": 0
+        },
+        "totals": {
+          "totalReqs": 180,
+          "total2xx": 180,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 0
+        },
+        "sampleCount": 3,
+        "operations": {
+          "feed": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          },
+          "profile": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          },
+          "message": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "201": 45
+            }
+          },
+          "notifications": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          }
+        },
+        "exit": 0,
+        "requestedSeconds": 45,
+        "requestedRps": 4,
+        "availableMiBMin": 6805.1,
+        "peakRssMiB": {
+          "realtime1": 74.9,
+          "realtime2": 83.9,
+          "api1": 138.6,
+          "api2": 158.2
+        }
+      },
+      "sustained": {
+        "passed": true,
+        "actualDurationSeconds": 2700,
+        "stopReason": "completed",
+        "arrivals": {
+          "planned": 32400,
+          "dispatched": 32400,
+          "late": 0,
+          "atCapacity": 0,
+          "notScheduledAfterStop": 0,
+          "peakInFlight": 2
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 8100,
+          "received": 8100,
+          "missed": 0
+        },
+        "totals": {
+          "totalReqs": 32400,
+          "total2xx": 32400,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 0
+        },
+        "sampleCount": 180,
+        "operations": {
+          "feed": {
+            "attempted": 8100,
+            "passed": 8100,
+            "statuses": {
+              "200": 8100
+            }
+          },
+          "profile": {
+            "attempted": 8100,
+            "passed": 8100,
+            "statuses": {
+              "200": 8100
+            }
+          },
+          "message": {
+            "attempted": 8100,
+            "passed": 8100,
+            "statuses": {
+              "201": 8100
+            }
+          },
+          "notifications": {
+            "attempted": 8100,
+            "passed": 8100,
+            "statuses": {
+              "200": 8100
+            }
+          }
+        },
+        "exit": 0,
+        "requestedSeconds": 2700,
+        "requestedRps": 12,
+        "availableMiBMin": 6676.9,
+        "peakRssMiB": {
+          "realtime1": 89.3,
+          "realtime2": 100.2,
+          "api1": 170.2,
+          "api2": 172.6
+        }
+      }
+    },
+    "perOperation": {
+      "smoke": {
+        "windows": 3,
+        "windowSha256": "f8d9234a1de8d665ad5e8ad7af4859fdcb77ada27cbdc249c2abcdad3d32cb6b",
+        "httpByOperation": {
+          "feed": {
+            "total": 45,
+            "p50Ms": {
+              "medianWindow": 8.13,
+              "maxWindow": 8.74
+            },
+            "p95Ms": {
+              "medianWindow": 11.05,
+              "maxWindow": 12.81
+            },
+            "p99Ms": {
+              "medianWindow": 11.05,
+              "maxWindow": 12.81
+            },
+            "maxMs": {
+              "medianWindow": 11.05,
+              "maxWindow": 12.81
+            }
+          },
+          "profile": {
+            "total": 45,
+            "p50Ms": {
+              "medianWindow": 11.77,
+              "maxWindow": 13.82
+            },
+            "p95Ms": {
+              "medianWindow": 16.39,
+              "maxWindow": 21.7
+            },
+            "p99Ms": {
+              "medianWindow": 16.39,
+              "maxWindow": 21.7
+            },
+            "maxMs": {
+              "medianWindow": 16.39,
+              "maxWindow": 21.7
+            }
+          },
+          "message": {
+            "total": 45,
+            "p50Ms": {
+              "medianWindow": 33.39,
+              "maxWindow": 34.55
+            },
+            "p95Ms": {
+              "medianWindow": 58.93,
+              "maxWindow": 66.98
+            },
+            "p99Ms": {
+              "medianWindow": 58.93,
+              "maxWindow": 66.98
+            },
+            "maxMs": {
+              "medianWindow": 58.93,
+              "maxWindow": 66.98
+            }
+          },
+          "notifications": {
+            "total": 45,
+            "p50Ms": {
+              "medianWindow": 7.74,
+              "maxWindow": 9.23
+            },
+            "p95Ms": {
+              "medianWindow": 10.59,
+              "maxWindow": 18.99
+            },
+            "p99Ms": {
+              "medianWindow": 10.59,
+              "maxWindow": 18.99
+            },
+            "maxMs": {
+              "medianWindow": 10.59,
+              "maxWindow": 18.99
+            }
+          }
+        },
+        "windowsWithMissedReceipts": [],
+        "windowsWithDbWait": 0,
+        "lastRealtime": [
+          {
+            "streamReadErrors": 0,
+            "streamPublishErrors": 0,
+            "slowConsumerDrops": 0,
+            "streamEventsPublished": 54,
+            "streamEventsReceived": 46
+          },
+          {
+            "streamReadErrors": 0,
+            "streamPublishErrors": 0,
+            "slowConsumerDrops": 0,
+            "streamEventsPublished": 46,
+            "streamEventsReceived": 54
+          }
+        ]
+      },
+      "sustained": {
+        "windows": 180,
+        "windowSha256": "4af00ba4a2226467c7636123f93a084eac8759f156223c7decf334dc5ecc9390",
+        "httpByOperation": {
+          "feed": {
+            "total": 8100,
+            "p50Ms": {
+              "medianWindow": 6.62,
+              "maxWindow": 8.46
+            },
+            "p95Ms": {
+              "medianWindow": 9.55,
+              "maxWindow": 17.11
+            },
+            "p99Ms": {
+              "medianWindow": 12.02,
+              "maxWindow": 39.55
+            },
+            "maxMs": {
+              "medianWindow": 12.02,
+              "maxWindow": 39.55
+            }
+          },
+          "profile": {
+            "total": 8100,
+            "p50Ms": {
+              "medianWindow": 7.86,
+              "maxWindow": 9.93
+            },
+            "p95Ms": {
+              "medianWindow": 12.44,
+              "maxWindow": 19.4
+            },
+            "p99Ms": {
+              "medianWindow": 15.52,
+              "maxWindow": 54.84
+            },
+            "maxMs": {
+              "medianWindow": 15.52,
+              "maxWindow": 54.84
+            }
+          },
+          "message": {
+            "total": 8100,
+            "p50Ms": {
+              "medianWindow": 24.18,
+              "maxWindow": 39.44
+            },
+            "p95Ms": {
+              "medianWindow": 31.8,
+              "maxWindow": 61.15
+            },
+            "p99Ms": {
+              "medianWindow": 42.89,
+              "maxWindow": 108.79
+            },
+            "maxMs": {
+              "medianWindow": 42.89,
+              "maxWindow": 108.79
+            }
+          },
+          "notifications": {
+            "total": 8100,
+            "p50Ms": {
+              "medianWindow": 6.66,
+              "maxWindow": 8.3
+            },
+            "p95Ms": {
+              "medianWindow": 9.42,
+              "maxWindow": 14.44
+            },
+            "p99Ms": {
+              "medianWindow": 11.76,
+              "maxWindow": 37.91
+            },
+            "maxMs": {
+              "medianWindow": 11.76,
+              "maxWindow": 37.91
+            }
+          }
+        },
+        "windowsWithMissedReceipts": [],
+        "windowsWithDbWait": 0,
+        "lastRealtime": [
+          {
+            "streamReadErrors": 0,
+            "streamPublishErrors": 0,
+            "slowConsumerDrops": 0,
+            "streamEventsPublished": 8154,
+            "streamEventsReceived": 8146
+          },
+          {
+            "streamReadErrors": 0,
+            "streamPublishErrors": 0,
+            "slowConsumerDrops": 0,
+            "streamEventsPublished": 8146,
+            "streamEventsReceived": 8154
+          }
+        ]
+      }
+    },
+    "hostCpu": {
+      "basis": "Five-second process CPU samples on the WSL2 lab. 100% is one logical CPU. PostgreSQL totals count processes observed in both samples. PSI is guest-wide.",
+      "seconds": 2788.1,
+      "groups": {
+        "api": {
+          "samples": 555,
+          "median": 9.15,
+          "p95": 11.77,
+          "max": 89.56
+        },
+        "realtime": {
+          "samples": 555,
+          "median": 1.99,
+          "p95": 2.79,
+          "max": 11.17
+        },
+        "postgres": {
+          "samples": 555,
+          "median": 5.18,
+          "p95": 6.37,
+          "max": 7.78
+        },
+        "redis": {
+          "samples": 555,
+          "median": 0.4,
+          "p95": 0.6,
+          "max": 0.8
+        },
+        "generator": {
+          "samples": 547,
+          "median": 2.59,
+          "p95": 3.59,
+          "max": 5.19
+        }
+      },
+      "pressure": {
+        "cpuPressureAvg10": {
+          "samples": 555,
+          "median": 1.17,
+          "p95": 1.7,
+          "max": 2.61
+        },
+        "ioPressureAvg10": {
+          "samples": 555,
+          "median": 1.29,
+          "p95": 2.8,
+          "max": 35.08
+        },
+        "memoryPressureAvg10": {
+          "samples": 555,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        }
+      }
+    },
+    "apiAndRealtimeMetrics": {
+      "observedWindows": 180,
+      "seconds": 2700,
+      "sourceWindowsSha256": "4af00ba4a2226467c7636123f93a084eac8759f156223c7decf334dc5ecc9390",
+      "apis": [
+        {
+          "instanceIndex": 1,
+          "observedWindows": 180,
+          "missingWindows": 0,
+          "countersAndSamples": {
+            "slowRequestsTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitedTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "loadShedTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitPgFallbacks": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitRedisHits": {
+              "first": 79,
+              "latest": 4107,
+              "median": 2094.0,
+              "max": 4107
+            },
+            "eventLoopLagP95Ms": {
+              "first": 20.74,
+              "latest": 20.77,
+              "median": 20.77,
+              "max": 20.79
+            },
+            "memoryRssBytes": {
+              "first": 138149888,
+              "latest": 178360320,
+              "median": 176713728.0,
+              "max": 178360320
+            },
+            "memoryHeapUsedBytes": {
+              "first": 43156776,
+              "latest": 57438280,
+              "median": 54523624.0,
+              "max": 64310264
+            }
+          },
+          "dbPool": {
+            "total": {
+              "first": 6,
+              "latest": 3,
+              "median": 3.0,
+              "max": 6
+            },
+            "idle": {
+              "first": 6,
+              "latest": 3,
+              "median": 3.0,
+              "max": 6
+            },
+            "waiting": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            }
+          },
+          "redisQuotaConfiguredWindows": 180,
+          "redisQuotaReadyWindows": 180
+        },
+        {
+          "instanceIndex": 2,
+          "observedWindows": 180,
+          "missingWindows": 0,
+          "countersAndSamples": {
+            "slowRequestsTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitedTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "loadShedTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitPgFallbacks": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitRedisHits": {
+              "first": 46,
+              "latest": 4073,
+              "median": 2061.5,
+              "max": 4073
+            },
+            "eventLoopLagP95Ms": {
+              "first": 20.71,
+              "latest": 20.76,
+              "median": 20.76,
+              "max": 20.76
+            },
+            "memoryRssBytes": {
+              "first": 150933504,
+              "latest": 180969472,
+              "median": 178401280.0,
+              "max": 180969472
+            },
+            "memoryHeapUsedBytes": {
+              "first": 51061696,
+              "latest": 49345280,
+              "median": 54712812.0,
+              "max": 64643136
+            }
+          },
+          "dbPool": {
+            "total": {
+              "first": 5,
+              "latest": 3,
+              "median": 3.0,
+              "max": 6
+            },
+            "idle": {
+              "first": 4,
+              "latest": 3,
+              "median": 3.0,
+              "max": 6
+            },
+            "waiting": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            }
+          },
+          "redisQuotaConfiguredWindows": 180,
+          "redisQuotaReadyWindows": 180
+        }
+      ],
+      "gateways": [
+        {
+          "instanceIndex": 1,
+          "observedWindows": 180,
+          "missingWindows": 0,
+          "countersAndSamples": {
+            "activeConnections": {
+              "first": 3,
+              "latest": 0,
+              "median": 3.0,
+              "max": 3
+            },
+            "authenticatedConnections": {
+              "first": 3,
+              "latest": 0,
+              "median": 3.0,
+              "max": 3
+            },
+            "streamEventsReceived": {
+              "first": 92,
+              "latest": 8146,
+              "median": 4123.0,
+              "max": 8146
+            },
+            "streamEventsPublished": {
+              "first": 98,
+              "latest": 8154,
+              "median": 4128.0,
+              "max": 8154
+            },
+            "slowConsumerDrops": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "streamPublishErrors": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "streamReadErrors": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitDrops": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "eventLoopLagP95Ms": {
+              "first": 20.45,
+              "latest": 20.5,
+              "median": 20.5,
+              "max": 20.5
+            },
+            "memoryRssBytes": {
+              "first": 78893056,
+              "latest": 93024256,
+              "median": 88412160.0,
+              "max": 93343744
+            },
+            "memoryHeapUsedBytes": {
+              "first": 14070880,
+              "latest": 20885064,
+              "median": 17555552.0,
+              "max": 22335848
+            }
+          },
+          "redisConnectedWindows": 180,
+          "redisReaderReadyWindows": 180,
+          "busModes": [
+            "redis-streams"
+          ]
+        },
+        {
+          "instanceIndex": 2,
+          "observedWindows": 180,
+          "missingWindows": 0,
+          "countersAndSamples": {
+            "activeConnections": {
+              "first": 2,
+              "latest": 0,
+              "median": 2.0,
+              "max": 2
+            },
+            "authenticatedConnections": {
+              "first": 2,
+              "latest": 0,
+              "median": 2.0,
+              "max": 2
+            },
+            "streamEventsReceived": {
+              "first": 98,
+              "latest": 8154,
+              "median": 4128.0,
+              "max": 8154
+            },
+            "streamEventsPublished": {
+              "first": 92,
+              "latest": 8146,
+              "median": 4123.0,
+              "max": 8146
+            },
+            "slowConsumerDrops": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "streamPublishErrors": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "streamReadErrors": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitDrops": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "eventLoopLagP95Ms": {
+              "first": 20.46,
+              "latest": 20.5,
+              "median": 20.5,
+              "max": 20.5
+            },
+            "memoryRssBytes": {
+              "first": 89075712,
+              "latest": 97558528,
+              "median": 101367808.0,
+              "max": 104882176
+            },
+            "memoryHeapUsedBytes": {
+              "first": 14637264,
+              "latest": 17041008,
+              "median": 17184616.0,
+              "max": 22227728
+            }
+          },
+          "redisConnectedWindows": 180,
+          "redisReaderReadyWindows": 180,
+          "busModes": [
+            "redis-streams"
+          ]
+        }
+      ]
+    },
+    "checkpointOverlap": {
+      "scheduledCheckpoints": [
+        {
+          "startUtc": "2026-11-20T14:10:05.666000+00:00",
+          "endUtc": "2026-11-20T14:12:57.447000+00:00",
+          "syncSeconds": 5.267,
+          "writeSeconds": 166.417,
+          "syncFiles": 1426
+        },
+        {
+          "startUtc": "2026-11-20T14:15:05.548000+00:00",
+          "endUtc": "2026-11-20T14:15:18.236000+00:00",
+          "syncSeconds": 0.106,
+          "writeSeconds": 12.514,
+          "syncFiles": 21
+        },
+        {
+          "startUtc": "2026-11-20T14:20:05.336000+00:00",
+          "endUtc": "2026-11-20T14:20:18.428000+00:00",
+          "syncSeconds": 0.105,
+          "writeSeconds": 12.916,
+          "syncFiles": 18
+        },
+        {
+          "startUtc": "2026-11-20T14:25:05.526000+00:00",
+          "endUtc": "2026-11-20T14:25:21.912000+00:00",
+          "syncSeconds": 0.092,
+          "writeSeconds": 16.243,
+          "syncFiles": 20
+        },
+        {
+          "startUtc": "2026-11-20T14:30:06.010000+00:00",
+          "endUtc": "2026-11-20T14:30:19.156000+00:00",
+          "syncSeconds": 0.077,
+          "writeSeconds": 13.014,
+          "syncFiles": 18
+        },
+        {
+          "startUtc": "2026-11-20T14:35:06.194000+00:00",
+          "endUtc": "2026-11-20T14:35:23.612000+00:00",
+          "syncSeconds": 0.036,
+          "writeSeconds": 17.34,
+          "syncFiles": 20
+        },
+        {
+          "startUtc": "2026-11-20T14:40:06.670000+00:00",
+          "endUtc": "2026-11-20T14:40:21.878000+00:00",
+          "syncSeconds": 0.043,
+          "writeSeconds": 15.13,
+          "syncFiles": 20
+        },
+        {
+          "startUtc": "2026-11-20T14:45:06.974000+00:00",
+          "endUtc": "2026-11-20T14:45:22.781000+00:00",
+          "syncSeconds": 0.038,
+          "writeSeconds": 15.729,
+          "syncFiles": 18
+        },
+        {
+          "startUtc": "2026-11-20T14:50:06.880000+00:00",
+          "endUtc": "2026-11-20T14:50:26.524000+00:00",
+          "syncSeconds": 0.033,
+          "writeSeconds": 19.565,
+          "syncFiles": 17
+        }
+      ],
+      "stages": {
+        "smoke": {
+          "windows": 3,
+          "largestHttp": {
+            "endUtc": "2026-11-20T14:06:09.323000+00:00",
+            "p99HttpMs": 66.98,
+            "maxHttpMs": 66.98,
+            "wsMaxMs": 132.48,
+            "functionalFailuresCumulative": 0,
+            "checkpointSyncOverlap": []
+          },
+          "largestHttpP99": {
+            "endUtc": "2026-11-20T14:06:09.323000+00:00",
+            "p99HttpMs": 66.98,
+            "maxHttpMs": 66.98,
+            "wsMaxMs": 132.48,
+            "functionalFailuresCumulative": 0,
+            "checkpointSyncOverlap": []
+          },
+          "largestWs": {
+            "endUtc": "2026-11-20T14:06:09.323000+00:00",
+            "p99HttpMs": 66.98,
+            "maxHttpMs": 66.98,
+            "wsMaxMs": 132.48,
+            "functionalFailuresCumulative": 0,
+            "checkpointSyncOverlap": []
+          },
+          "overlapWindows": []
+        },
+        "sustained": {
+          "windows": 180,
+          "largestHttp": {
+            "endUtc": "2026-11-20T14:08:58.478000+00:00",
+            "p99HttpMs": 59.22,
+            "maxHttpMs": 108.79,
+            "wsMaxMs": 111.77,
+            "functionalFailuresCumulative": 0,
+            "checkpointSyncOverlap": []
+          },
+          "largestHttpP99": {
+            "endUtc": "2026-11-20T14:23:29.125000+00:00",
+            "p99HttpMs": 85.64,
+            "maxHttpMs": 96.94,
+            "wsMaxMs": 111.03,
+            "functionalFailuresCumulative": 0,
+            "checkpointSyncOverlap": []
+          },
+          "largestWs": {
+            "endUtc": "2026-11-20T14:08:58.478000+00:00",
+            "p99HttpMs": 59.22,
+            "maxHttpMs": 108.79,
+            "wsMaxMs": 111.77,
+            "functionalFailuresCumulative": 0,
+            "checkpointSyncOverlap": []
+          },
+          "overlapWindows": [
+            {
+              "endUtc": "2026-11-20T14:12:58.642000+00:00",
+              "p99HttpMs": 44.82,
+              "maxHttpMs": 86.97,
+              "wsMaxMs": 92.6,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                0
+              ]
+            },
+            {
+              "endUtc": "2026-11-20T14:15:28.747000+00:00",
+              "p99HttpMs": 34.65,
+              "maxHttpMs": 60.18,
+              "wsMaxMs": 63,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                1
+              ]
+            },
+            {
+              "endUtc": "2026-11-20T14:20:28.992000+00:00",
+              "p99HttpMs": 39.9,
+              "maxHttpMs": 52.03,
+              "wsMaxMs": 61.81,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                2
+              ]
+            },
+            {
+              "endUtc": "2026-11-20T14:25:29.209000+00:00",
+              "p99HttpMs": 31.25,
+              "maxHttpMs": 34.46,
+              "wsMaxMs": 44.8,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                3
+              ]
+            },
+            {
+              "endUtc": "2026-11-20T14:30:29.435000+00:00",
+              "p99HttpMs": 34.42,
+              "maxHttpMs": 37.65,
+              "wsMaxMs": 41.39,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                4
+              ]
+            },
+            {
+              "endUtc": "2026-11-20T14:35:29.666000+00:00",
+              "p99HttpMs": 31.96,
+              "maxHttpMs": 34.57,
+              "wsMaxMs": 37.24,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                5
+              ]
+            },
+            {
+              "endUtc": "2026-11-20T14:40:29.868000+00:00",
+              "p99HttpMs": 28.82,
+              "maxHttpMs": 29.69,
+              "wsMaxMs": 33.94,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                6
+              ]
+            },
+            {
+              "endUtc": "2026-11-20T14:45:30.095000+00:00",
+              "p99HttpMs": 50.93,
+              "maxHttpMs": 59.03,
+              "wsMaxMs": 61.57,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                7
+              ]
+            },
+            {
+              "endUtc": "2026-11-20T14:50:30.292000+00:00",
+              "p99HttpMs": 35.08,
+              "maxHttpMs": 37.22,
+              "wsMaxMs": 40.48,
+              "functionalFailuresCumulative": 0,
+              "checkpointSyncOverlap": [
+                8
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "comparison": {
+      "soak": {
+        "passed": false,
+        "actualDurationSeconds": 489,
+        "stopReason": "circuit_breaker_functional_threshold_8",
+        "arrivals": {
+          "planned": 43200,
+          "dispatched": 7572,
+          "late": 0,
+          "atCapacity": 80,
+          "notScheduledAfterStop": 35548,
+          "peakInFlight": 8
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 1896,
+          "received": 1881,
+          "missed": 15
+        },
+        "totals": {
+          "totalReqs": 7572,
+          "total2xx": 7572,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 15
+        },
+        "sampleCount": 33,
+        "operations": {
+          "feed": {
+            "attempted": 1893,
+            "passed": 1893,
+            "statuses": {
+              "200": 1893
+            }
+          },
+          "profile": {
+            "attempted": 1896,
+            "passed": 1896,
+            "statuses": {
+              "200": 1896
+            }
+          },
+          "message": {
+            "attempted": 1896,
+            "passed": 1896,
+            "statuses": {
+              "201": 1896
+            }
+          },
+          "notifications": {
+            "attempted": 1887,
+            "passed": 1887,
+            "statuses": {
+              "200": 1887
+            }
+          }
+        },
+        "exit": 1,
+        "requestedSeconds": 2700,
+        "requestedRps": 16,
+        "availableMiBMin": 6330.3,
+        "peakRssMiB": {
+          "realtime1": 86.2,
+          "realtime2": 86.8,
+          "api1": 168.5,
+          "api2": 168.4
+        }
+      },
+      "control": {
+        "passed": false,
+        "actualDurationSeconds": 720,
+        "stopReason": "completed",
+        "arrivals": {
+          "planned": 11520,
+          "dispatched": 11515,
+          "late": 0,
+          "atCapacity": 5,
+          "notScheduledAfterStop": 0,
+          "peakInFlight": 8
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 2879,
+          "received": 2879,
+          "missed": 0
+        },
+        "totals": {
+          "totalReqs": 11515,
+          "total2xx": 11515,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 0
+        },
+        "sampleCount": 48,
+        "operations": {
+          "feed": {
+            "attempted": 2878,
+            "passed": 2878,
+            "statuses": {
+              "200": 2878
+            }
+          },
+          "profile": {
+            "attempted": 2880,
+            "passed": 2880,
+            "statuses": {
+              "200": 2880
+            }
+          },
+          "message": {
+            "attempted": 2879,
+            "passed": 2879,
+            "statuses": {
+              "201": 2879
+            }
+          },
+          "notifications": {
+            "attempted": 2878,
+            "passed": 2878,
+            "statuses": {
+              "200": 2878
+            }
+          }
+        },
+        "exit": 1,
+        "requestedSeconds": 720,
+        "requestedRps": 16,
+        "availableMiBMin": 6726.5,
+        "peakRssMiB": {
+          "realtime1": 87.2,
+          "realtime2": 87.4,
+          "api1": 167.2,
+          "api2": 168.3
+        }
+      }
+    },
+    "sixteenInFlightControl": {
+      "source": "77b507f020a4ee15138df2ee77cbf71cd494d011",
+      "limit": 16,
+      "stages": {
+        "smoke": {
+          "passed": true,
+          "actualDurationSeconds": 45,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 180,
+            "dispatched": 180,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 1
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 45,
+            "received": 45,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 180,
+            "total2xx": 180,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 3,
+          "operations": {
+            "feed": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            },
+            "profile": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            },
+            "message": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "201": 45
+              }
+            },
+            "notifications": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 45,
+          "requestedRps": 4,
+          "availableMiBMin": 6779.4,
+          "peakRssMiB": {
+            "realtime1": 74.7,
+            "realtime2": 75.0,
+            "api1": 154.2,
+            "api2": 156.7
+          }
+        },
+        "sustained": {
+          "passed": true,
+          "actualDurationSeconds": 720,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 11520,
+            "dispatched": 11520,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 2
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 2880,
+            "received": 2880,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 11520,
+            "total2xx": 11520,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 48,
+          "operations": {
+            "feed": {
+              "attempted": 2880,
+              "passed": 2880,
+              "statuses": {
+                "200": 2880
+              }
+            },
+            "profile": {
+              "attempted": 2880,
+              "passed": 2880,
+              "statuses": {
+                "200": 2880
+              }
+            },
+            "message": {
+              "attempted": 2880,
+              "passed": 2880,
+              "statuses": {
+                "201": 2880
+              }
+            },
+            "notifications": {
+              "attempted": 2880,
+              "passed": 2880,
+              "statuses": {
+                "200": 2880
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 720,
+          "requestedRps": 16,
+          "availableMiBMin": 6648.7,
+          "peakRssMiB": {
+            "realtime1": 86.8,
+            "realtime2": 90.5,
+            "api1": 169.2,
+            "api2": 169.6
+          }
+        }
+      },
+      "redisStreamEntries": 5860
+    }
+  },
+  "postgresqlFailover": {
+    "commit": "77b507f020a4ee15138df2ee77cbf71cd494d011",
+    "topology": "Dedicated WSL2 PostgreSQL 16.15 primary and physical synchronous standby, both loopback; one persistent API and Realtime process, internal TCP relay explicitly switched after fencing and promotion",
+    "fsync": true,
+    "synchronousCommit": "on",
+    "standbySyncBeforeStop": true,
+    "oldPrimaryFenced": true,
+    "preciseOutage": "immediate stop of the owned temporary primary data directory",
+    "standbyPromoted": true,
+    "preCutAcks": 13,
+    "inFlightResult": [
+      500,
+      false
+    ],
+    "recoveryPopulationBeforeReplay": 13,
+    "duringOutageWriteStatus": 500,
+    "duringOutageReadyStatus": 500,
+    "existingRecipientSessionStillValid": true,
+    "logicalIdsAfterReplay": 29,
+    "uniqueVisibleMessages": 29,
+    "acknowledgedMessagesLost": 0,
+    "duplicates": 0,
+    "ledgerCountAndDigest": "37:805c867d5c868a833ed557e5a53ae5a9",
+    "apiRoleSuperuser": false,
+    "apiAndGatewayStayedRunning": true,
+    "durationMs": {
+      "fence": 106,
+      "promoted": 327,
+      "ready": 391,
+      "existingSessionRead": 422,
+      "verifiedWritesThroughLastReplay": 950
+    },
+    "labProcessesStopped": true
+  },
+  "uploadPool": {
+    "admission": {
+      "exit": 0,
+      "logSha256": "31c9501007b19fd04162d1a09d8c6fe662127fc8d8504d9d67d5d72a7db8102f",
+      "pass": 17,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "interruption": {
+      "exit": 0,
+      "logSha256": "40993dec87af71bb310705968e61ab0c0793eca74eebff80d4e89a1273a41ec4"
+    },
+    "image": "PostgreSQL 16.15 in a dedicated temporary database and Linux Node 22.23.5",
+    "sourceRawSha256": "58244a42e0b72bc1b2e96bb934b06cea47d8af6d43c72807d2919d4a5cfbf24a",
+    "sourceBlobLf": "59c15ce9b5fd97626425ad17572a0ce36f450b14",
+    "labStopped": true
+  },
+  "ciWorker": {
+    "gradle": "8.13",
+    "java": "Temurin 17.0.16",
+    "initSha256": "4781c81fa9148aaca87db82136b2e7a624de32c445df2074fcc64b4bb16e860b",
+    "privateOnly": true,
+    "trials": {
+      "previous-crash": {
+        "exit": 1,
+        "elapsedSeconds": 29.86,
+        "marker": null,
+        "sha256Log": "6a6480dbd8e76d0947900ff0c4982f3342f1672c293ff4e6eddac639b20f9fdc"
+      },
+      "current-crash": {
+        "exit": 1,
+        "elapsedSeconds": 6.2,
+        "marker": "fixture.AbruptExit > intentionalWorkerExit",
+        "sha256Log": "37db13f7ddea44101bfacc4a42169e02a27b599869a30dd70344f9d09d4b4e6a"
+      },
+      "current-health": {
+        "exit": 0,
+        "elapsedSeconds": 7.97,
+        "marker": "fixture.Passing22 > ordinary",
+        "sha256Log": "3188b4e4bde7a911f8e05730b42a31f04aaaa996b40e3c9b96aa5d7737959575",
+        "classes": 23,
+        "workerLoads": [
+          10,
+          10,
+          3
+        ],
+        "maxHeapBytes": [
+          805306368
+        ],
+        "junitCases": 23
+      }
+    }
+  },
+  "previousGitHubRuns": [
+    {
+      "branchAndWorkflow": "feature/live-gifts Web and service quality",
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44749402830",
+      "result": "success",
+      "jobs": {
+        "web": "success",
+        "chatbot": "success",
+        "Channel point redemption transactions": "success",
+        "api": "success",
+        "signaling": "success",
+        "realtime": "success"
+      }
+    },
+    {
+      "branchAndWorkflow": "main Web and service quality",
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44749402888",
+      "result": "success",
+      "jobs": {
+        "web": "success",
+        "Channel point redemption transactions": "success",
+        "realtime": "success",
+        "signaling": "success",
+        "chatbot": "success",
+        "api": "success"
+      }
+    },
+    {
+      "branchAndWorkflow": "feature/live-gifts Android Quality Gate",
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44749403168",
+      "result": "failure",
+      "jobs": {
+        "backend-contracts": "success",
+        "client-and-realtime-contracts": "success",
+        "quality-gate": "failure",
+        "release-smoke": "skipped"
+      }
+    },
+    {
+      "branchAndWorkflow": "main Android Quality Gate",
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44749402635",
+      "result": "success",
+      "jobs": {
+        "client-and-realtime-contracts": "success",
+        "backend-contracts": "success",
+        "quality-gate": "success",
+        "release-smoke": "success"
+      }
+    }
+  ],
+  "previousDeployment": {
+    "git": {
+      "refs/heads/feature/live-gifts": "77b507f020a4ee15138df2ee77cbf71cd494d011",
+      "refs/heads/main": "77b507f020a4ee15138df2ee77cbf71cd494d011"
+    },
+    "vercel": [
+      {
+        "state": "CANCELED",
+        "target": "production",
+        "ref": "main",
+        "sha": "77b507f020a4ee15138df2ee77cbf71cd494d011"
+      },
+      {
+        "state": "CANCELED",
+        "target": null,
+        "ref": "feature/live-gifts",
+        "sha": "77b507f020a4ee15138df2ee77cbf71cd494d011"
+      }
+    ],
+    "aliases": {
+      "checkedUtc": "2026-11-20T14:01:21.0709703+00:00",
+      "domains": [
+        {
+          "domain": "www.novvinapp.com",
+          "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+          "state": "READY",
+          "target": "production"
+        },
+        {
+          "domain": "novvinapp.com",
+          "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+          "state": "READY",
+          "target": "production"
+        },
+        {
+          "domain": "red-social-android.vercel.app",
+          "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+          "state": "READY",
+          "target": "production"
+        }
+      ]
+    }
+  },
+  "office": {
+    "build": {
+      "ubuntuArchive": "resolute-proposed",
+      "libreofficeVersion": "4:26.2.7.3-0ubuntu0.26.04.1",
+      "forcedSourcePackages": [
+        "fonts-opensymbol",
+        "libreoffice-base-core",
+        "libreoffice-calc",
+        "libreoffice-common",
+        "libreoffice-core",
+        "libreoffice-draw",
+        "libreoffice-impress",
+        "libreoffice-math",
+        "libreoffice-style-colibre",
+        "libreoffice-uiconfig-calc",
+        "libreoffice-uiconfig-common",
+        "libreoffice-uiconfig-draw",
+        "libreoffice-uiconfig-impress",
+        "libreoffice-uiconfig-math",
+        "libreoffice-uiconfig-writer",
+        "libreoffice-writer",
+        "libuno-cppu3t64",
+        "libuno-cppuhelpergcc3-3t64",
+        "libuno-purpenvhelpergcc3-3t64",
+        "libuno-sal3t64",
+        "libuno-salhelpergcc3-3t64",
+        "uno-libs-private",
+        "ure"
+      ],
+      "archiveBytes": 1308874240,
+      "seconds": 87.4,
+      "published": false
+    },
+    "productEntryPoint": {
+      "transport": "Private native Docker Engine and Compose, isolated Linux network namespace; API uses its normal DNS route to the converter, a restricted DB login and its production entrypoint. Test secrets and files only.",
+      "engine": "29.1.3",
+      "compose": "2.40.3+ds1-0ubuntu1~24.04.1",
+      "postgres": "postgres (PostgreSQL) 16.16",
+      "migrations": 37,
+      "apiUid": "10001",
+      "allExpectedContent": true,
+      "apiReadinessCapabilities": 25,
+      "sourceImages": {
+        "db": {
+          "buildAndExportSeconds": 61.5,
+          "imageId": "a342523698d611abbd86c56016a30ade6faabd73fcd7323d1ffca0aee66f227e",
+          "sha": "dd9582f56645f5885353c35949cb733af410dbe0",
+          "archiveBytes": 303675904,
+          "command": [
+            "postgres"
+          ]
+        },
+        "api": {
+          "buildAndExportSeconds": 161.3,
+          "imageId": "6de8b048b911fccbc51a873c198e50db8bbc32cc6d9d150a479c950b67507668",
+          "sha": "dd9582f56645f5885353c35949cb733af410dbe0",
+          "archiveBytes": 827923456,
+          "command": [
+            "./scripts/start-with-antivirus.sh"
+          ]
+        }
+      }
+    },
+    "pixelComparison": [
+      {
+        "format": "docx",
+        "page": 1,
+        "pixelCount": 484704,
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      {
+        "format": "docx",
+        "page": 2,
+        "pixelCount": 484704,
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      {
+        "format": "xlsx",
+        "page": 1,
+        "pixelCount": 501832,
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      {
+        "format": "xlsx",
+        "page": 2,
+        "pixelCount": 501832,
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      {
+        "format": "pptx",
+        "page": 1,
+        "pixelCount": 388800,
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      },
+      {
+        "format": "pptx",
+        "page": 2,
+        "pixelCount": 388800,
+        "differentPixels": 0,
+        "maxChannelDelta": 0
+      }
+    ],
+    "ratings": {
+      "medium": 87,
+      "high": 57,
+      "low": 13,
+      "unrated": 17,
+      "critical": 1
+    },
+    "exactStatements": {
+      "under_investigation": 42,
+      "affected": 16
+    },
+    "canonicalVexRevision": "e0002e1e7efd69cfd765691383b0c2b704bf682d",
+    "sourcePackageDelta": {
+      "libreoffice": {
+        "before": "4:26.2.6.3-0ubuntu0.26.04.2",
+        "after": "4:26.2.7.3-0ubuntu0.26.04.1"
+      }
+    },
+    "stableChannel": {
+      "vendor": "Canonical Launchpad primary archive",
+      "asOfUtc": "2026-11-20T14:40:04.596545+00:00",
+      "package": "libreoffice",
+      "suite": "resolute",
+      "testedVersion": "4:26.2.7.3-0ubuntu0.26.04.1",
+      "matchingPockets": [
+        "Proposed"
+      ],
+      "rows": [
+        {
+          "pocket": "Release",
+          "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libreoffice&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=8",
+          "sha256": "1468caa97f48473d318d32e9e9aa256503bdd03c76587759b265aa8e42977d59",
+          "total": 1,
+          "publications": [
+            {
+              "source": "libreoffice",
+              "version": "4:26.2.2.2-0ubuntu1",
+              "published": "2026-03-24T13:35:25.606216+00:00",
+              "status": "Published",
+              "selfLink": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18270196"
+            }
+          ]
+        },
+        {
+          "pocket": "Updates",
+          "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libreoffice&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=8",
+          "sha256": "fe0f243edc7b5f80c397968f29fff3afa06191dd1d3788eec0b067fe202b0f21",
+          "total": 1,
+          "publications": [
+            {
+              "source": "libreoffice",
+              "version": "4:26.2.6.3-0ubuntu0.26.04.2",
+              "published": "2026-10-05T17:12:39.970469+00:00",
+              "status": "Published",
+              "selfLink": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18816458"
+            }
+          ]
+        },
+        {
+          "pocket": "Security",
+          "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libreoffice&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=8",
+          "sha256": "c9a71c5ea58fd963b89667c1f54113cb4f66d0064522d016070ad10ea0426400",
+          "total": 1,
+          "publications": [
+            {
+              "source": "libreoffice",
+              "version": "4:26.2.6.3-0ubuntu0.26.04.2",
+              "published": "2026-10-05T12:55:47.781280+00:00",
+              "status": "Published",
+              "selfLink": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18816142"
+            }
+          ]
+        },
+        {
+          "pocket": "Proposed",
+          "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libreoffice&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=8",
+          "sha256": "e27e3aba92494f30b1785135cab247b5ab8ce5ad159f1fb6a230fab198ea3e81",
+          "total": 1,
+          "publications": [
+            {
+              "source": "libreoffice",
+              "version": "4:26.2.7.3-0ubuntu0.26.04.1",
+              "published": "2026-11-10T17:28:38.360219+00:00",
+              "status": "Published",
+              "selfLink": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18944614"
+            }
+          ]
+        }
+      ]
+    },
+    "debianProposedIndex": {
+      "checkedUtc": "2026-11-20T14:43:51.206681+00:00",
+      "suite": "trixie-proposed-updates",
+      "releaseDate": "Fri, 20 Nov 2026 08:20:44 UTC",
+      "releaseUrl": "https://deb.debian.org/debian/dists/trixie-proposed-updates/InRelease",
+      "trustedImageKeyringSha256": "506b815cbb32d9b6066b4a2aa524071e071761e7e7f68c3ac74f3061ba852017",
+      "gpgvExit": 0,
+      "releaseSha256": "4a4df63f9d3404af9471c7ffc4dbaf91d40ffb179fd3f7de70a8ba029c4c83d8",
+      "sourcesPath": "main/source/Sources.xz",
+      "sourcesSha256": "b360a355f56b61113ae6f1f2a3f6b54b7d6692127cfb2e6e21ca7eb221ac10af",
+      "sourcesBytes": 246940,
+      "libxml2ProposedVersions": []
+    },
+    "vendorFixedRanges": [
+      {
+        "id": "UBUNTU-CVE-2026-100101",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-101351",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-101352",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-101353",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-101892",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-101929",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-101930",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-101933",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-104007",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-104692",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-104920",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-104933",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-108169",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-18563",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-18564",
+        "upstreamFixed": "26.2.6"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-18565",
+        "upstreamFixed": "26.2.7/26.8.1"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-18566",
+        "upstreamFixed": "26.2.6"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-63266",
+        "upstreamFixed": "26.2.5/26.8.0"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-63267",
+        "upstreamFixed": "26.2.5/26.8.0"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-63268",
+        "upstreamFixed": "26.2.5/26.8.0"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-63269",
+        "upstreamFixed": "26.2.5/26.8.0"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-63270",
+        "upstreamFixed": "26.2.5/26.8.0"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-63277",
+        "upstreamFixed": "26.2.5/26.8.0"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-76181",
+        "upstreamFixed": "26.2.6/26.8.1"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-84234",
+        "upstreamFixed": "26.2.7/26.8.1"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-84443",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-87932",
+        "upstreamFixed": "26.2.7/26.8.1"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-97892",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-97894",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-97999",
+        "upstreamFixed": "26.2.7/26.8.2"
+      },
+      {
+        "id": "UBUNTU-CVE-2026-98100",
+        "upstreamFixed": "26.2.7/26.8.2"
+      }
+    ]
+  },
+  "host": {
+    "public": {
+      "status": 200,
+      "backendReady": true,
+      "caps": 25,
+      "release": {
+        "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+      },
+      "elapsedMs": 2468,
+      "checkedUtc": "2026-11-20T14:38:23.571592+00:00",
+      "tls": "TLSv1.3"
+    },
+    "private": {
+      "status": 200,
+      "backendReady": true,
+      "caps": 25,
+      "release": {
+        "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+      },
+      "elapsedMs": 62,
+      "checkedUtc": "2026-11-20T14:38:23.737627+00:00",
+      "tls": "TLSv1.3"
+    }
+  },
+  "android": {
+    "version": "9.1.43",
+    "versionCode": 183,
+    "appTree": "f23a5acdeff618fc1713a91ec51ac95461ae1ca7",
+    "size": 221779125,
+    "embeddedCommit": "1018190bbdb125f48bf6445a0007439710aefdf6",
+    "apkSha256": "178947cef4a905530d1f8b41f26fdfe777c2518b61d5c676c6896d6b29b6a21d",
+    "pathsUnchanged": [
+      "app",
+      "gradle",
+      "buildSrc",
+      "build-logic",
+      "gradlew",
+      "gradlew.bat",
+      "settings.gradle",
+      "settings.gradle.kts",
+      "gradle.properties",
+      "build.gradle",
+      "build.gradle.kts"
+    ]
+  },
+  "historicalLocalJvm": {
+    "tests": 3553,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": 592,
+    "failedCases": [],
+    "gradleExit": 0,
+    "source": "1018190bbdb125f48bf6445a0007439710aefdf6",
+    "elapsedSeconds": 2086.32
+  },
+  "evidenceFileHashes": {
+    "migrated-steady225.json": "fa137cf665d056d475b579804a17608ca01dc549e252dcdf61b6c93475e4feb6",
+    "migrated-steady-routes225.json": "1bbf1a3fb1040ad43c3c44e5a38a4c4cf7e184d64cfeb120bc43b0e177d21f96",
+    "steady-telemetry225.json": "013b14125df701cf6408c63b28b896ea7d5d6911e098a6a5c8ddc8018bc6842d",
+    "primary-failover226.json": "1a0fef84fe28a051c4741525b016b2d63dca2c101160295f240872329c7356f1",
+    "storage-qualification226.json": "c5d621b231adbf548633551545da6d94ed2f85bfbb0159c95510c4a78d5a83fa",
+    "worker-qualification226.json": "5ba3fd487915e6f4fdc63e7d6c047b10422b089785bec9c75433bf0e53ae175c",
+    "storage-pool-before226.log": "7d071517509edcf355a03aab8392bd56b7be0c024a4c549a5d786e490a207435",
+    "storage-pool-green226.log": "32d276ac1f7d578e9d44f5828b363132cee7f8d24277ee187cba0041df848726",
+    "next-package-proof225.json": "c23408f447e0b5bf40d79fedc2e7bc8ba551adac06d88ddbb0e64455efa7a086",
+    "rich-pixel-diff225.json": "065edf311d3edaad66dc21945a9356ad4f30dafde0aee508cc87ede7579adbb9",
+    "ubuntu-vex225.json": "8fe6bb0a96c419b9f3b95336883f42b2fc7363fd2cf44827c4515bfda2c85c1d",
+    "vendor-availability226.json": "074c8b69ae3e0222968af90263b1e536b4051192d57935922472a908d9087548",
+    "host-delivery225.json": "b5d4922eb34a2365c4c630a40f39991821aad07f388fbb9d1cb3fa4b95c79755",
+    "debian-proposed226.json": "4068e6173c6ab0eb1f05351bfa02342269e4f68e38fcd2d8caf95b29ae1f27e6",
+    "operational-windows226.json": "402890e37fd24b5e6159f9002c504d94b3c8b906b5db98ddcdecf76efe90fd0b",
+    "migrated-concurrency226.json": "a956a5c9dc70fdac8275e25c6ba11ea6ab3ca2af5ce0e8a6b69d8a02857849d7",
+    "readonly-baseline226.json": "92b57ea210493fa2025a64fc4f7534e9070bf317af0c0efbd7a3c57edbdac702",
+    "readonly-candidate226.json": "c9739eabc43713bd4cbaf4e258e75c77023bde138a9a1c45e9dcc6c5235fd576"
+  },
+  "databaseReadiness": {
+    "before": {
+      "commit": "77b507f020a4ee15138df2ee77cbf71cd494d011",
+      "topology": "Dedicated WSL2 PostgreSQL 16.15 primary and physical synchronous standby, both loopback; one persistent API and Realtime process, internal TCP relay explicitly switched after fencing and promotion",
+      "fsync": true,
+      "synchronousCommit": "on",
+      "standbySyncBeforeStop": true,
+      "oldPrimaryFenced": true,
+      "preciseOutage": "immediate stop of the owned temporary primary data directory",
+      "standbyPromoted": true,
+      "preCutAcks": 13,
+      "inFlightResult": [
+        500,
+        false
+      ],
+      "recoveryPopulationBeforeReplay": 13,
+      "duringOutageWriteStatus": 500,
+      "duringOutageReadyStatus": 500,
+      "existingRecipientSessionStillValid": true,
+      "logicalIdsAfterReplay": 29,
+      "uniqueVisibleMessages": 29,
+      "acknowledgedMessagesLost": 0,
+      "duplicates": 0,
+      "ledgerCountAndDigest": "37:805c867d5c868a833ed557e5a53ae5a9",
+      "apiRoleSuperuser": false,
+      "apiAndGatewayStayedRunning": true,
+      "durationMs": {
+        "fence": 106,
+        "promoted": 504,
+        "ready": 624,
+        "existingSessionRead": 690,
+        "verifiedWritesThroughLastReplay": 1532
+      },
+      "connectedToReadableStandbyBeforePromotion": true,
+      "readonlyProbe": {
+        "status": 200,
+        "error": null,
+        "databaseTime": true
+      },
+      "labVariant": "baseline",
+      "labProcessesStopped": true
+    },
+    "candidate": {
+      "topology": "Dedicated WSL2 PostgreSQL 16.15 primary and physical synchronous standby, both loopback; one persistent API and Realtime process, internal TCP relay explicitly switched after fencing and promotion",
+      "fsync": true,
+      "synchronousCommit": "on",
+      "standbySyncBeforeStop": true,
+      "oldPrimaryFenced": true,
+      "preciseOutage": "immediate stop of the owned temporary primary data directory",
+      "standbyPromoted": true,
+      "preCutAcks": 13,
+      "inFlightResult": [
+        500,
+        false
+      ],
+      "recoveryPopulationBeforeReplay": 13,
+      "duringOutageWriteStatus": 500,
+      "duringOutageReadyStatus": 503,
+      "existingRecipientSessionStillValid": true,
+      "logicalIdsAfterReplay": 29,
+      "uniqueVisibleMessages": 29,
+      "acknowledgedMessagesLost": 0,
+      "duplicates": 0,
+      "ledgerCountAndDigest": "37:805c867d5c868a833ed557e5a53ae5a9",
+      "apiRoleSuperuser": false,
+      "apiAndGatewayStayedRunning": true,
+      "durationMs": {
+        "fence": 104,
+        "promoted": 372,
+        "ready": 433,
+        "existingSessionRead": 475,
+        "verifiedWritesThroughLastReplay": 1155
+      },
+      "connectedToReadableStandbyBeforePromotion": true,
+      "readonlyProbe": {
+        "status": 503,
+        "error": "DATABASE_UNAVAILABLE",
+        "databaseTime": false
+      },
+      "labVariant": "candidate",
+      "sourceBase": "77b507f020a4ee15138df2ee77cbf71cd494d011",
+      "testedFileSha256": {
+        "server.js": "43f7f5f1fe911543b27b0477d025a49d91e713baefa0c85d99ebb9cefba31016",
+        "system-health.js": "569e037adfa3ab1898a768802e0212324e6390b15d7a2185a49f69d61e9c684a",
+        "storage-upload-admission.js": "58244a42e0b72bc1b2e96bb934b06cea47d8af6d43c72807d2919d4a5cfbf24a"
+      },
+      "labProcessesStopped": true
+    },
+    "verifiedProductCommit": "4dee378b4adf7af14c0f049880990319a1d6ec54"
+  }
+}
