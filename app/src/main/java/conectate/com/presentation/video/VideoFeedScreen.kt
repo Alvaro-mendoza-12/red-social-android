@@ -746,35 +746,24 @@ fun VideoFeedScreen(
                 minimumBufferedAheadMs = (reserveMs * playbackSpeed.coerceAtLeast(1f)).toLong(),
             )
         }
-        while (!hasBufferForPreload(starting = true)) delay(100L)
-
         val byteBudget = when (performanceProfile.tier) {
             conectate.com.util.VideoDeviceTier.LOW -> 384L * 1024L
             conectate.com.util.VideoDeviceTier.BALANCED -> 768L * 1024L
             conectate.com.util.VideoDeviceTier.HIGH -> 1L * 1024L * 1024L
         }
         val timeBudgetMs = if (isCellular) 1_500L else 3_500L
-        neighbourUrls.forEach { url ->
-            if (!hasBufferForPreload(starting = true)) return@LaunchedEffect
-            kotlinx.coroutines.coroutineScope {
-                val preload = launch {
-                    try {
-                        conectate.com.util.VideoCache.preloadStart(
-                            context = context.applicationContext,
-                            url = url,
-                            byteCount = byteBudget,
-                            timeoutMs = timeBudgetMs,
-                        )
-                    } catch (error: java.io.IOException) {
-                        // Best effort. The selected clip keeps its normal playback path.
-                        if (conectate.com.BuildConfig.DEBUG) {
-                            android.util.Log.d("FeedPlaybackAudit", "preload_failed=${error.javaClass.simpleName}")
-                        }
-                    }
-                }
-                while (preload.isActive) {
-                    delay(120L)
-                    if (!hasBufferForPreload(starting = false)) preload.cancel()
+        preloadFeedNeighbours(neighbourUrls, timeBudgetMs, ::hasBufferForPreload) { url, remainingMs ->
+            try {
+                conectate.com.util.VideoCache.preloadStart(
+                    context = context.applicationContext,
+                    url = url,
+                    byteCount = byteBudget,
+                    timeoutMs = remainingMs,
+                )
+            } catch (error: java.io.IOException) {
+                // Best effort. The selected clip keeps its normal playback path.
+                if (conectate.com.BuildConfig.DEBUG) {
+                    android.util.Log.d("FeedPlaybackAudit", "preload_failed=${error.javaClass.simpleName}")
                 }
             }
         }
