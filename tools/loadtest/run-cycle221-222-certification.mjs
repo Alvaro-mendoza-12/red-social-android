@@ -17,6 +17,7 @@
  *  5. Cycle 221–222 Security & Business Rules Matrix E2E Verification
  */
 import assert from 'node:assert/strict'
+import { createReceiptDeadline } from './staging-chat-delivery.mjs'
 import { spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -1194,10 +1195,6 @@ async function main() {
       try {
         for (let i = 0; i < count; i += 1) {
           const msgId = crypto.randomUUID()
-          let resolveSame
-          let resolveCross
-          const samePromise = new Promise((r) => { resolveSame = r })
-          const crossPromise = new Promise((r) => { resolveCross = r })
           const tSend = performance.now()
 
           const matchesMessage = (ev) => {
@@ -1205,20 +1202,16 @@ async function main() {
             if (ev.channel === `user:${dmRecipient.id}` && ev.payload?.message?.id === msgId) return true
             return false
           }
-          const onSame = (ev) => {
-            if (matchesMessage(ev)) {
-              wsSameNode.listeners.delete(onSame)
-              resolveSame(ev.receivedAtMs - tSend)
+          function listenForReceipt(listeners) {
+            const receipt = createReceiptDeadline(tSend, () => listeners.delete(onEvent))
+            function onEvent(event) {
+              if (matchesMessage(event)) receipt.finish(event.receivedAtMs)
             }
+            listeners.add(onEvent)
+            return receipt
           }
-          const onCross = (ev) => {
-            if (matchesMessage(ev)) {
-              wsCrossNode.listeners.delete(onCross)
-              resolveCross(ev.receivedAtMs - tSend)
-            }
-          }
-          wsSameNode.listeners.add(onSame)
-          wsCrossNode.listeners.add(onCross)
+          const local = listenForReceipt(wsSameNode.listeners)
+          const remote = listenForReceipt(wsCrossNode.listeners)
 
           const endpoint = kind === 'dm'
             ? `${api1Url}/v1/data/messages/chats/${targetId}/messages`
@@ -1230,8 +1223,8 @@ async function main() {
           })
           if (res.status !== 201 || res.json?.message?.id !== msgId) {
             errors += 1
-            wsSameNode.listeners.delete(onSame)
-            wsCrossNode.listeners.delete(onCross)
+            local.finish(null)
+            remote.finish(null)
             continue
           }
           backendAckSamples.push(res.ms)
@@ -1239,12 +1232,7 @@ async function main() {
           if (Number.isFinite(st.access)) accessSamples.push(st.access)
           if (Number.isFinite(st.persist)) persistSamples.push(st.persist)
 
-          const [sameMs, crossMs] = await Promise.all([
-            Promise.race([samePromise, new Promise((r) => setTimeout(() => r(null), 3_000))]),
-            Promise.race([crossPromise, new Promise((r) => setTimeout(() => r(null), 3_000))]),
-          ])
-          wsSameNode.listeners.delete(onSame)
-          wsCrossNode.listeners.delete(onCross)
+          const [sameMs, crossMs] = await Promise.all([local.received, remote.received])
           if (sameMs !== null) sameNodeWsSamples.push(sameMs)
           if (crossMs !== null) crossNodeWsSamples.push(crossMs)
         }
@@ -1258,6 +1246,7 @@ async function main() {
       return {
         kind,
         samplesRequested: count,
+        deliveryDeadlineMsFromSend: 3000,
         backgroundConcurrentFeedUsers: backgroundLoad,
         backgroundFeed,
         errors,

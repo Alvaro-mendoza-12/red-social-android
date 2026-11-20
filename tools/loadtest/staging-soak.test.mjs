@@ -8,6 +8,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import test from 'node:test'
+import { createReceiptDeadline } from './staging-chat-delivery.mjs'
 import { runStagingArrivals } from './staging-arrivals.mjs'
 import { setTimeout as wait } from 'node:timers/promises'
 
@@ -181,4 +182,23 @@ test('in-flight limit accounts for dropped slots and drains the last request', a
   assert.equal(result.peakInFlight, 1)
   assert.equal(result.dispatched, 1)
   assert.equal(result.atCapacity + result.late, 3)
+})
+
+test('late observations fail even before a delayed timer callback runs', async () => {
+  const started = performance.now() - 4000
+  let cleaned = 0
+  const receipt = createReceiptDeadline(started, () => { cleaned++ })
+  receipt.finish(started + 3001)
+  receipt.finish(started + 2500)
+  assert.equal(await receipt.received, null)
+  assert.equal(cleaned, 1)
+})
+
+test('a timely recipient event stays valid while the sender waits for its ACK', async () => {
+  const started = performance.now() - 4000
+  let cleaned = false
+  const receipt = createReceiptDeadline(started, () => { cleaned = true })
+  receipt.finish(started + 3000)
+  assert.equal(await receipt.received, 3000)
+  assert.equal(cleaned, true)
 })

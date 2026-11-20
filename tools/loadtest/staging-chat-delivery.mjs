@@ -2,6 +2,23 @@ import { createRequire } from 'node:module'
 
 const gatewayRequire = createRequire(new URL('../../infrastructure/local-fallback/realtime-gateway/package.json', import.meta.url))
 
+// Measure from the send even if the HTTP ACK or the event loop is delayed.
+export function createReceiptDeadline(started, onFinish, timeoutMs = 3000) {
+  let resolve
+  const received = new Promise(done => { resolve = done })
+  const remaining = Math.max(0, Math.ceil(started + timeoutMs - performance.now()))
+  const timer = setTimeout(() => finish(null), remaining)
+  function finish(observed) {
+    if (!resolve) return
+    clearTimeout(timer)
+    onFinish()
+    const elapsed = observed === null ? null : observed - started
+    resolve(elapsed !== null && elapsed >= 0 && elapsed <= timeoutMs ? elapsed : null)
+    resolve = null
+  }
+  return { received, finish }
+}
+
 // Each observer represents one recipient device and listens to one chat channel.
 // Keep only messages currently awaiting delivery, including events racing the HTTP ACK.
 async function observeChat(url, pair) {
@@ -49,15 +66,9 @@ async function observeChat(url, pair) {
   return {
     expect(id, started) {
       if (!ready) return Promise.resolve(null)
-      return new Promise(resolve => {
-        function finish(received) {
-          clearTimeout(timer)
-          pending.delete(id)
-          resolve(received === null ? null : received - started)
-        }
-        const timer = setTimeout(() => finish(null), 3000)
-        pending.set(id, finish)
-      })
+      const receipt = createReceiptDeadline(started, () => pending.delete(id))
+      pending.set(id, receipt.finish)
+      return receipt.received
     },
     cancel(id) { pending.get(id)?.(null) },
     close() { ws.terminate() },
