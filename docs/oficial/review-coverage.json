@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T19:39:46.207156+00:00",
-  "baseCommit": "c750d82bdda01a264b5b0fec660ed53f2ccad70c",
+  "generatedAtUtc": "2026-11-20T21:08:43.721698+00:00",
+  "baseCommit": "014488ec83c9abf504f02e40c6378dca45923805",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3443,
-    "code-read": 1054,
+    "pending": 3445,
+    "code-read": 1056,
     "partial": 280
   },
   "countsByPhase": {
     "android": {
       "pending": 1403,
       "partial": 124,
-      "code-read": 612
+      "code-read": 614
     },
     "documentation": {
-      "pending": 709,
+      "pending": 711,
       "code-read": 67,
       "partial": 21
     },
@@ -5108,6 +5108,14 @@
       "gitBlobId": "795fa911eb0078302a85197e578994464a5e8278",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/androidTest/java/conectate/com/performance/FeedNeighbourPreloadDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "c87bd253fe5ff9516e2f5c1e3ae7eb95ed499546",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/234-precarga-del-feed-tras-recuperar-el-buffer-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13209,9 +13217,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
       "phase": "android",
-      "gitBlobId": "95b27bea19cae501815e695fc3f6a828cf76aacf",
+      "gitBlobId": "51c1fbb2c1a7ac3c5f44f571d1c7989c92fc65e9",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/234-precarga-del-feed-tras-recuperar-el-buffer-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13309,9 +13317,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoPreloadPolicy.kt",
       "phase": "android",
-      "gitBlobId": "b0aec6c21be73564ec518e356dbb1dc627e60725",
+      "gitBlobId": "247561af87c4d449ea4edc5c74aa710003a598dc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "evidence": "docs/oficial/234-precarga-del-feed-tras-recuperar-el-buffer-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18277,6 +18285,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/video/FeedNeighbourPreloadTest.kt",
+      "phase": "android",
+      "gitBlobId": "7f0741fec63a1e1b7f29591579d27bb2679ad1fc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/234-precarga-del-feed-tras-recuperar-el-buffer-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/video/FeedPlaybackPolicyTest.kt",
       "phase": "android",
       "gitBlobId": "51a180889588fda5c0d80fd1af032a95f0844334",
@@ -22349,6 +22365,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/234-precarga-del-feed-tras-recuperar-el-buffer-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "7ee3937bd148129fb1de71ef003e3e9700e352c2",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/24-musica-privacidad-y-plan-gamer-hub-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "4b6363478b08ea9abd1dec49c858af09a3e904bc",
@@ -23274,6 +23296,12 @@
       "file": "docs/oficial/evidencias/233-fuentes-incrustadas-del-conversor-office.json",
       "phase": "documentation",
       "gitBlobId": "ad2d4c500a2a0fbf03cf4263f8071bf2d2c8e6bd",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/234-precarga-del-feed-tras-recuperar-el-buffer.json",
+      "phase": "documentation",
+      "gitBlobId": "4bbeab1b45c92017ebc330a7a98b456dc85409dd",
       "reviewStatus": "pending"
     },
     {
