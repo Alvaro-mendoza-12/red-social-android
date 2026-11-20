@@ -6,6 +6,7 @@ const path = require('path')
 const { publishRealtimeEvent } = require('./realtime-publish')
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
+const { revisionFilePath } = require('./storage-scan-coordinator')
 const {
   ADMIN_ACCESS_RANK,
   ADMIN_CAPABILITY,
@@ -813,11 +814,12 @@ async function lockHardDeleteTables(client) {
 
 function storagePathForRow(row, storageRoot) {
   const root = path.resolve(storageRoot)
-  const expectedPath = path.resolve(root, String(row?.bucket_id || ''), String(row?.name || ''))
+  const logicalPath = path.resolve(root, String(row?.bucket_id || ''), String(row?.name || ''))
+  const expectedPath = row?.object_revision ? revisionFilePath(root, row.object_revision) : logicalPath
   const filePath = path.resolve(String(row?.local_path || '').trim() || expectedPath)
   if (
-    expectedPath === root ||
-    !expectedPath.startsWith(`${root}${path.sep}`) ||
+    logicalPath === root ||
+    !logicalPath.startsWith(`${root}${path.sep}`) ||
     filePath !== expectedPath
   ) {
     throw hardDeleteError('HARD_DELETE_STORAGE_PATH_OUTSIDE_ROOT', 500)
@@ -1224,7 +1226,7 @@ async function executeAdminHardDelete(options) {
     // an upload or relationship cannot appear between discovery and deletion.
     await lockHardDeleteTables(client)
     const storage = await client.query(
-      `SELECT id::text, bucket_id, name, local_path
+      `SELECT id::text, bucket_id, name, local_path, object_revision
        FROM fallback_storage_objects
        WHERE owner_id = $1::uuid
           OR (

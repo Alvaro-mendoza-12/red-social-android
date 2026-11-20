@@ -3,6 +3,7 @@ const crypto = require('crypto')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
+const { revisionFilePath } = require('../src/storage-scan-coordinator')
 const {
   executeAdminHardDelete,
   hardDeleteConfirmation,
@@ -37,6 +38,7 @@ function hardDeletePool({
   isTestAccount = true,
   isSuspended = false,
   storageRow,
+  failUserDelete = false,
   restoredAuth = false,
 } = {}) {
   const statements = []
@@ -72,7 +74,10 @@ function hardDeletePool({
       }
       if (sql.includes("FROM information_schema.tables")) return { rows: [] }
       if (sql.includes('FROM fallback_storage_objects') && sql.includes('FOR UPDATE')) {
-        return { rows: storageRow ? [storageRow] : [], rowCount: storageRow ? 1 : 0 }
+        if (!storageRow) return { rows: [], rowCount: 0 }
+        const projected = { ...storageRow }
+        if (!sql.split(' FROM ')[0].includes('object_revision')) delete projected.object_revision
+        return { rows: [projected], rowCount: 1 }
       }
       if (sql.startsWith('SELECT id::text FROM fallback_') || sql.startsWith('SELECT DISTINCT c.id::text')) {
         return { rows: [], rowCount: 0 }
@@ -84,7 +89,10 @@ function hardDeletePool({
       if (sql.startsWith('SELECT EXISTS(SELECT 1 FROM fallback_users')) {
         return { rows: [{ user_row: false, storage_rows: false, profile_override: false, web_sessions: false, moderation_rows: false }] }
       }
-      if (sql.startsWith('DELETE FROM fallback_users')) return { rows: [], rowCount: 1 }
+      if (sql.startsWith('DELETE FROM fallback_users')) {
+        if (failUserDelete) throw new Error('fixture transaction interrupted')
+        return { rows: [], rowCount: 1 }
+      }
       if (/^(DELETE|UPDATE|INSERT)/.test(sql)) return { rows: [], rowCount: 1 }
       throw new Error(`Consulta no contemplada por el fixture: ${sql}`)
     },
@@ -424,6 +432,35 @@ async function testFakeAccountHardDelete() {
       assert.ok(state >= 0 && state < user, `${table} must be purged before aliases disappear`)
     }
 
+
+    const revision = crypto.randomUUID()
+    const revisionPath = revisionFilePath(storageRoot, revision)
+    const revisionRow = { id: 'revised-avatar', bucket_id: 'avatars', name: objectName,
+      object_revision: revision, local_path: revisionPath }
+    await fs.promises.mkdir(path.dirname(revisionPath), { recursive: true })
+    await fs.promises.writeFile(revisionPath, 'approved-avatar')
+    // A legacy file at the logical name is distinct from the scanned revision.
+    await fs.promises.writeFile(objectPath, 'legacy-file')
+    for (const failUserDelete of [true, false]) {
+      const revised = hardDeletePool({ storageRow: revisionRow, failUserDelete })
+      const operation = executeAdminHardDelete({
+        actorIdentity: { localUserId: ADMIN_ID, displayUserId: ADMIN_ID },
+        confirmation: `ELIMINAR ${TARGET_ID}`,
+        pool: revised.pool,
+        reason: 'Prueba de objeto escaneado',
+        storageRoot,
+        targetId: TARGET_ID,
+      })
+      if (failUserDelete) {
+        await assert.rejects(operation, /fixture transaction interrupted/)
+        assert.strictEqual(await fs.promises.readFile(revisionPath, 'utf8'), 'approved-avatar')
+        assert.ok(revised.statements.includes('ROLLBACK'))
+      } else {
+        assert.strictEqual((await operation).mediaRemoved, 1)
+        assert.strictEqual(fs.existsSync(revisionPath), false)
+      }
+      assert.strictEqual(await fs.promises.readFile(objectPath, 'utf8'), 'legacy-file')
+    }
 
     const protectedFixture = hardDeletePool({ isTestAccount: false })
     await assert.rejects(
