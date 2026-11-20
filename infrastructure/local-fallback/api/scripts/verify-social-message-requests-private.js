@@ -14,15 +14,18 @@ const pool=new Pool({connectionString:process.env.DATABASE_URL,max:5})
 const cases=[]
 const check=async(name,fn)=>{const began=performance.now();await fn();cases.push({name,passed:true,durationMs:Math.round((performance.now()-began)*100)/100})}
 const uid=()=>crypto.randomUUID()
-let fixtures=[]
 async function main(){
   const {rows:db}=await pool.query('SELECT current_database() AS name')
   assert.match(db[0].name,/^novvin_(?:social|request)_/)
   await ensureDirectMessageRequestPolicy(pool)
   const A=uid(),B=uid(),C=uid(),alias=uid()
-  fixtures=[A,B,C]
   await pool.query(`INSERT INTO fallback_users(id,email,display_name,supabase_user_id)
     VALUES($1,$4,'Solicitud A',$7),($2,$5,'Solicitud B',NULL),($3,$6,'Solicitud C',NULL)`,[A,B,C,`${A}@fixture.invalid`,`${B}@fixture.invalid`,`${C}@fixture.invalid`,alias])
+  const newRecipient=async()=>{
+    const id=uid()
+    await pool.query('INSERT INTO fallback_users(id,email,display_name) VALUES($1,$2,$3)',[id,`${id}@fixture.invalid`,'Destinatario de prueba'])
+    return id
+  }
   const chat=async(a=A,b=B,legacy=false)=>{
     const id=uid()
     await pool.query('INSERT INTO fallback_chats(id,participants,is_group,intro_policy_started_at) VALUES($1,$2,FALSE,CASE WHEN $3 THEN NULL ELSE NOW() END)',[id,[a,b],legacy]);return id
@@ -44,10 +47,11 @@ async function main(){
     await send(first,alias,firstId)
     assert.equal(Number((await pool.query('SELECT count(*) n FROM fallback_messages WHERE chat_id=$1',[first])).rows[0].n),1)
   })
-  await check('recipient response accepts conversation without adding a friendship',async()=>{
+  await check('recipient response accepts the conversation and its pending friendship',async()=>{
     await send(first,B);await send(first,A)
     assert.equal((await state(first,A)).status,'open')
-    assert.equal(Number((await pool.query('SELECT count(*) n FROM fallback_friends WHERE sender_id=ANY($1::text[])',[fixtures])).rows[0].n),0)
+    const {rows}=await pool.query('SELECT status FROM fallback_friends WHERE sender_id=$1 AND receiver_id=$2',[alias,B])
+    assert.deepEqual(rows,[{status:'accepted'}])
   })
   await check('concurrent first sends from the same user commit only one message',async()=>{
     const id=await chat(A,C)
@@ -64,8 +68,8 @@ async function main(){
     }finally{clients.forEach(c=>c.release())}
   })
   await check('opposite concurrent first messages form a valid replied conversation',async()=>{
-    const id=await chat(A,B)
-    await Promise.all([send(id,A),send(id,B)])
+    const recipient=await newRecipient(),id=await chat(A,recipient)
+    await Promise.all([send(id,A),send(id,recipient)])
     assert.equal((await state(id,A)).status,'open')
     assert.equal(Number((await pool.query('SELECT count(*) n FROM fallback_messages WHERE chat_id=$1',[id])).rows[0].n),2)
   })
@@ -75,16 +79,16 @@ async function main(){
     finally{await pool.query('DELETE FROM fallback_user_blocks WHERE blocker_id=$1 AND blocked_id=$2',[B,A])}
   })
   await check('outsiders cannot insert or inspect a request, even in legacy conversations',async()=>{
-    const id=await chat(A,B,true)
+    const id=await chat(A,await newRecipient(),true)
     assert.equal((await state(id,C)).status,'unavailable')
     await assert.rejects(send(id,C),/CHAT_PARTICIPANT_REQUIRED/)
     await send(id,A);await assert.rejects(send(id,A),/MESSAGE_REQUEST_PENDING/)
   })
   await check('imported legacy conversations with replies remain open; unilateral history stays pending',async()=>{
-    const id=await chat(A,B,true)
+    const recipient=await newRecipient(),id=await chat(A,recipient,true)
     await pool.query("INSERT INTO fallback_compat_rows(table_name,row_id,row) VALUES('messages',$1,$2::jsonb)",[uid(),JSON.stringify({chat_id:id,sender_id:alias})])
     assert.equal((await state(id,A)).status,'pending_outgoing')
-    await pool.query("INSERT INTO fallback_compat_rows(table_name,row_id,row) VALUES('messages',$1,$2::jsonb)",[uid(),JSON.stringify({chat_id:id,sender_id:B})])
+    await pool.query("INSERT INTO fallback_compat_rows(table_name,row_id,row) VALUES('messages',$1,$2::jsonb)",[uid(),JSON.stringify({chat_id:id,sender_id:recipient})])
     assert.equal((await state(id,A)).status,'open');await send(id,A);await send(id,A)
   })
   await check('mutual following is trusted but a unilateral follow is not',async()=>{
@@ -115,21 +119,21 @@ async function main(){
     return {status,payload}
   }
   await check('sender cannot accept their own request; outsiders cannot decide',async()=>{
-    const id=await chat();await send(id,A)
+    const id=await chat(A,await newRecipient());await send(id,A)
     assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',A,id,'accept')).status,409)
     assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',C,id,'accept')).status,404)
   })
   await check('recipient explicitly accepts, repeated accept is idempotent',async()=>{
-    const id=await chat();await send(id,A)
-    for(let i=0;i<2;i++)assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',B,id,'accept')).payload.status,'open')
+    const recipient=await newRecipient(),id=await chat(A,recipient);await send(id,A)
+    for(let i=0;i<2;i++)assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',recipient,id,'accept')).payload.status,'open')
     await send(id,A)
   })
   await check('rejection prevents subsequent messages and cannot be changed by the sender',async()=>{
-    const id=await chat();await send(id,A)
-    assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',B,id,'reject')).payload.status,'rejected')
+    const recipient=await newRecipient(),id=await chat(A,recipient);await send(id,A)
+    assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',recipient,id,'reject')).payload.status,'rejected')
     await assert.rejects(send(id,A),/MESSAGE_REQUEST_REJECTED/)
     assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',A,id,'accept')).status,409)
-    assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',B,id,'reject')).status,200)
+    assert.equal((await invoke('POST','/v1/data/messages/chats/:chatId/request',recipient,id,'reject')).status,200)
   })
   await check('group conversations are outside the one-to-one introduction policy',async()=>{
     const id=await chat();await pool.query('UPDATE fallback_chats SET is_group=TRUE WHERE id=$1',[id])
@@ -137,11 +141,12 @@ async function main(){
   })
   // Mention tests persist only private-clone notifications; pushes/realtime are
   // disabled by the runner. No production account is messaged or created.
-  await pool.query("INSERT INTO fallback_profile_overrides(user_id,profile) VALUES($1,$2::jsonb),($3,$4::jsonb)",[A,JSON.stringify({username:'fixture_actor',display_name:'Actor'}),B,JSON.stringify({username:'fixture_recipient',display_name:'Recipient'})])
+  const actorName='qa_a_'+A.slice(0,8),recipientName='qa_b_'+B.slice(0,8)
+  await pool.query("INSERT INTO fallback_profile_overrides(user_id,profile) VALUES($1,$2::jsonb),($3,$4::jsonb)",[A,JSON.stringify({username:actorName,display_name:'Actor'}),B,JSON.stringify({username:recipientName,display_name:'Recipient'})])
   const actor=(await pool.query('SELECT * FROM fallback_users WHERE id=$1',[A])).rows[0]
   const identity={displayUserId:alias,values:[A,alias],ids:new Set([A,alias])}
   const post={id:uid(),user_id:alias,visibility:'public'}
-  const mentions=async(visibility='public')=>notifyPublicMentions(pool,{content:'@fixture_recipient @fixture_recipient @fixture_actor',targetId:post.id,actor,identity,type:'mention_post',publication:{...post,visibility}})
+  const mentions=async(visibility='public')=>notifyPublicMentions(pool,{content:`@${recipientName} @${recipientName} @${actorName}`,targetId:post.id,actor,identity,type:'mention_post',publication:{...post,visibility}})
   await check('post mention persists once per recipient with exact post navigation metadata',async()=>{
     await mentions()
     const {rows}=await pool.query('SELECT * FROM fallback_notifications WHERE target_id=$1',[post.id])
