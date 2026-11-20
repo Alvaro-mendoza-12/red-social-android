@@ -102,3 +102,38 @@ test('a busy renderer rejects parallel work and releases its slot afterwards', a
     assert.equal((await fetch(base+'/v1/documents/preview',{method:'POST',body:officeForm()})).status,200)
   })
 })
+
+test('a renderer maintenance response releases the upstream connection before the next conversion', async t => {
+  const { once } = require('node:events')
+  const http = require('node:http')
+  let first = true
+  let closed
+  const disconnected = new Promise(resolve => { closed = resolve })
+  const converter = http.createServer((req, res) => {
+    req.resume()
+    if (first) {
+      first = false
+      res.once('close', closed)
+      res.writeHead(503)
+      res.write('maintenance')
+    } else {
+      res.end('%PDF-1.7\nrestored')
+    }
+  })
+  converter.listen(0, '127.0.0.1')
+  await once(converter, 'listening')
+  t.after(() => { converter.closeAllConnections(); converter.close() })
+  await withServer(fetch, async base => {
+    const preview = () => fetch(base + '/v1/documents/preview', { method: 'POST', body: officeForm() })
+    assert.equal((await preview()).status, 503)
+    let timeout
+    try {
+      await Promise.race([disconnected, new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('upstream response still open')), 2000)
+      })])
+    } finally { clearTimeout(timeout) }
+    const next = await preview()
+    assert.equal(next.status, 200)
+    assert.match(await next.text(), /restored/)
+  }, undefined, { rendererUrl: 'http://127.0.0.1:' + converter.address().port })
+})

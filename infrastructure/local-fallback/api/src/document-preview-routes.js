@@ -65,8 +65,12 @@ function registerDocumentPreviewRoutes(app, { authRequired, rateLimit = (_, __, 
       const response = await fetchImpl(`${String(rendererUrl).replace(/\/+$/, '')}/forms/libreoffice/convert`, {
         method: 'POST', body: form, signal: controller.signal, redirect: 'error',
       })
-      if (!response.ok) return res.status(response.status === 400 ? 422 : 503)
-        .json({ error: response.status === 400 ? 'OFFICE_DOCUMENT_UNREADABLE' : 'OFFICE_PREVIEW_UNAVAILABLE' })
+      if (!response.ok) {
+        // The error body is private and unused. Release its HTTP connection.
+        controller.abort()
+        return res.status(response.status === 400 ? 422 : 503)
+          .json({ error: response.status === 400 ? 'OFFICE_DOCUMENT_UNREADABLE' : 'OFFICE_PREVIEW_UNAVAILABLE' })
+      }
       const pdf = await boundedPdf(response)
       if (!res.destroyed) res.type('application/pdf').set('X-Content-Type-Options', 'nosniff')
         .set('Content-Disposition', 'inline; filename="preview.pdf"').send(pdf)
