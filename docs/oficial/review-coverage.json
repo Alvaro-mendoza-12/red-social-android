@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T05:56:09.753502+00:00",
-  "baseCommit": "98b0ba635f6e82282810368ffe4d77fe6e78db8a",
+  "generatedAtUtc": "2026-11-20T11:28:40.212717+00:00",
+  "baseCommit": "a8c638f7cb9c8cb768a96ecf2eb21587887e7386",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,35 +10,35 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3458,
-    "partial": 241,
-    "code-read": 1026
+    "pending": 3439,
+    "partial": 266,
+    "code-read": 1038
   },
   "countsByPhase": {
     "android": {
-      "pending": 1409,
-      "code-read": 607,
-      "partial": 119
+      "pending": 1403,
+      "partial": 123,
+      "code-read": 613
     },
     "documentation": {
-      "pending": 690,
+      "pending": 692,
       "code-read": 67,
       "partial": 20
     },
     "server": {
-      "pending": 742,
-      "code-read": 194,
-      "partial": 21
+      "pending": 736,
+      "code-read": 195,
+      "partial": 35
     },
     "tooling-and-other": {
       "pending": 135,
-      "partial": 8,
+      "partial": 11,
       "code-read": 40
     },
     "web": {
-      "partial": 73,
-      "pending": 482,
-      "code-read": 118
+      "partial": 77,
+      "pending": 473,
+      "code-read": 123
     }
   },
   "files": [
@@ -1049,8 +1049,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/ProfileStatusBadges.test.tsx",
       "phase": "web",
-      "gitBlobId": "96bb73921b4f0cdcbf1441f6ffed0751fb60449b",
-      "reviewStatus": "pending"
+      "gitBlobId": "be94d08558afc50cb8ba98ae2a91bffaff88b49e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/PromotionEditor.test.tsx",
@@ -1641,8 +1643,10 @@
     {
       "file": "NoWing-web/src/__tests__/core/profileVisits.test.ts",
       "phase": "web",
-      "gitBlobId": "e70fa89ca871467adba72281a8a9544d0c6135bf",
-      "reviewStatus": "pending"
+      "gitBlobId": "1360f616b0843e25d161a56e7125ca5ba1c411d0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/promotionCatalogEvents.test.ts",
@@ -2227,7 +2231,7 @@
       "phase": "web",
       "gitBlobId": "c7cccb9ed7df0f184d3acf3cb13640d24c6f0659",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2444,7 +2448,9 @@
       "file": "NoWing-web/src/components/PostPhotoGallery.tsx",
       "phase": "web",
       "gitBlobId": "cc5afc520428030ba815460595fba531674deb8e",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/PostReactionPicker.tsx",
@@ -2468,7 +2474,9 @@
       "file": "NoWing-web/src/components/ProfileIdentityMarks.tsx",
       "phase": "web",
       "gitBlobId": "5bf43cb84eab823332e542a9191193085b7b29ab",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/ProfileMediaButton.tsx",
@@ -2485,8 +2493,10 @@
     {
       "file": "NoWing-web/src/components/ProfileStatusBadges.tsx",
       "phase": "web",
-      "gitBlobId": "0e1d8da969aea9f0a71367b54bd62048dfbc5407",
-      "reviewStatus": "pending"
+      "gitBlobId": "48da18e27117d9d825a7a741e461fac6cf221f08",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/ProfileTools.tsx",
@@ -2602,8 +2612,8 @@
       "file": "NoWing-web/src/components/StreamingMedia.tsx",
       "phase": "web",
       "gitBlobId": "5aed7e7677013428a22dd0cc23b3f5c4f53862c4",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2725,7 +2735,7 @@
       "phase": "web",
       "gitBlobId": "b35e3881b0288cb434e2614ab786b0e2619eedb3",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3045,8 +3055,10 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "ca7a29a75cd6915e64e795f83600d50103d18b53",
-      "reviewStatus": "pending"
+      "gitBlobId": "0691ed445bf4aabf6d5fc092398866ca2abc240a",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/fallbackRpc.ts",
@@ -3307,8 +3319,10 @@
     {
       "file": "NoWing-web/src/core/profileVisits.ts",
       "phase": "web",
-      "gitBlobId": "b9351ace7075e5c4e23a2ef37f51021505264e07",
-      "reviewStatus": "pending"
+      "gitBlobId": "014624b8d099eb1ffe79f37b865da3b71552c041",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/promotionCatalogEvents.ts",
@@ -3334,7 +3348,9 @@
       "file": "NoWing-web/src/core/publicProfileSummaries.ts",
       "phase": "web",
       "gitBlobId": "dd6f8971bb118dd4d7a676640844a87b3bdc9583",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/pwa/ServiceWorker.ts",
@@ -3445,7 +3461,7 @@
       "phase": "web",
       "gitBlobId": "1d4d1fb368ae46470071237683a672340f35245b",
       "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3924,8 +3940,8 @@
       "file": "NoWing-web/src/features/profile/AccountSettingsPage.tsx",
       "phase": "web",
       "gitBlobId": "6fffda58b552c1124a091e6130797133a04ec2e3",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3947,14 +3963,16 @@
       "phase": "web",
       "gitBlobId": "34e353cedae090028a588ab8832a7f5883fd2ee9",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/profile/PublicProfilePage.tsx",
       "phase": "web",
-      "gitBlobId": "82b1cbaf58d8951501ad69aaa36071e4b64764bc",
-      "reviewStatus": "pending"
+      "gitBlobId": "afcfbe5f1d9181dbf83630a2fb4d47b74b70e3ef",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/profile/accountSettings.css",
@@ -4368,8 +4386,8 @@
       "file": "NoWing-web/src/ui/novvin/ProfileHeader.tsx",
       "phase": "web",
       "gitBlobId": "100c5b82e8d2bcdadcdf8e1ccfb7e4578da73103",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4440,7 +4458,9 @@
       "file": "NoWing-web/src/ui/novvin/profileIdentity.ts",
       "phase": "web",
       "gitBlobId": "29cf8df2edc2ab3ccdccb94e9a002943b3be46d7",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/public-home.css",
@@ -4597,10 +4617,8 @@
     {
       "file": "NoWing-web/vercel.json",
       "phase": "web",
-      "gitBlobId": "36c6779d916da3e151c40621f0bc5bb01731d497",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "21efe9b1a632247e4e9c12be7bde24624c2b86a4",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/vite.config.ts",
@@ -4797,9 +4815,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "94222f548cf5b1c1e8ff267ceebb0a96955a0762",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "gitBlobId": "67c05e9e2502f51501d494891dec0720dbd43e58",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -5071,6 +5089,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/androidTest/java/conectate/com/performance/FeedNeighbourFrameDeviceTest.kt",
+      "phase": "android",
+      "gitBlobId": "795fa911eb0078302a85197e578994464a5e8278",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/androidTest/java/conectate/com/performance/OwnedVideoLoadingDeviceTest.kt",
       "phase": "android",
       "gitBlobId": "eb4206c4d72dce5eb41a357534479eb7a7c3fe8e",
@@ -5337,8 +5363,10 @@
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/messages/ChatScrollFrameMetricsDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "7c0784f8fac91d7862bccd0ec43d2de1bc73f26b",
-      "reviewStatus": "pending"
+      "gitBlobId": "e18a8b207160c3cd8aae87f021dc62fbd1ecc08a",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/messages/ChatWorkspaceStoreTest.kt",
@@ -8559,20 +8587,26 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/OfflineVideoDownloadWorker.kt",
       "phase": "android",
-      "gitBlobId": "c52d2686290715bc6e0249d80311f6d0c75e5655",
-      "reviewStatus": "pending"
+      "gitBlobId": "f37320c2f10e10c45d7a8af2bd9173f465527f93",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/OfflineVideoPrefetchCoordinator.kt",
       "phase": "android",
-      "gitBlobId": "482f52d647b90f1fa345c7aeaa3d430883bdf829",
-      "reviewStatus": "pending"
+      "gitBlobId": "e6111835dc23bfc7b797f4f3707caab7e06b0bb2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/OfflineVideoRepository.kt",
       "phase": "android",
-      "gitBlobId": "365e36fce32e4b0a37d099480776fb58eb3b6fc5",
-      "reviewStatus": "pending"
+      "gitBlobId": "953493e251e34757a392c27096eb90e6ef4e7b6f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/OwnedChatHide.kt",
@@ -12346,7 +12380,9 @@
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileVisitRecorder.kt",
       "phase": "android",
       "gitBlobId": "a6423aaf23e7fbeb20288a5299e91a922f9d1418",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileVisitorsContent.kt",
@@ -13015,6 +13051,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/video/FeedVideoPlayer.kt",
+      "phase": "android",
+      "gitBlobId": "d7725c789c4d20cc848c792fc07e34d47d927d96",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/video/FeedVideoSeekBar.kt",
       "phase": "android",
       "gitBlobId": "a472899701d0c399c8e50b31b79e7d6e32d21548",
@@ -13151,9 +13195,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
       "phase": "android",
-      "gitBlobId": "fcbe1c81de1cf45fd658132ba9b8ee3d1e0b56b1",
+      "gitBlobId": "95b27bea19cae501815e695fc3f6a828cf76aacf",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13313,8 +13357,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/videos/OfflineVideosScreen.kt",
       "phase": "android",
-      "gitBlobId": "fbe768a5a4c67bc837c754e4b2db474d7702a503",
-      "reviewStatus": "pending"
+      "gitBlobId": "d9872d91b551b2824a86a38d4a0774823371f7d3",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/videos/VideoCommentFilterControls.kt",
@@ -14121,9 +14167,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/VideoCache.kt",
       "phase": "android",
-      "gitBlobId": "e61be71168ec8f1823ef9e6497bf647bb292ccb0",
+      "gitBlobId": "e326ad5ac1bbe4c6934b958980b51b4a71661f08",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16201,6 +16247,22 @@
       "phase": "android",
       "gitBlobId": "ab7b264fa30ffebc01fa29a2284c65a41dccac17",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/OfflineVideoLibraryVisitTest.kt",
+      "phase": "android",
+      "gitBlobId": "b1eb3f5b1f8c3be69ea08dafcf27ab41fdb9271e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/OfflineVideoReplenishmentTest.kt",
+      "phase": "android",
+      "gitBlobId": "2335b07315c988d412be6b056bc7b16f34d95448",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/OwnedChatHideTest.kt",
@@ -18575,9 +18637,9 @@
     {
       "file": "app/src/test/java/conectate/com/services/CallForegroundSessionTest.kt",
       "phase": "android",
-      "gitBlobId": "c0270f285c86553addde3b9365cbd94fe06b8146",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "gitBlobId": "3351c6385a83fae4def205be50f6c17e6ada4b32",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18897,9 +18959,9 @@
     {
       "file": "app/src/test/java/conectate/com/util/VideoCachePrefetchRaceTest.kt",
       "phase": "android",
-      "gitBlobId": "500f30a983bed6f377c0c276712b82832782ccee",
+      "gitBlobId": "a85b53cdd4d53aba465efaa5aa89d3aec3c3ccc0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22205,6 +22267,12 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "ea36aa4b566b767ca86d48ce7c864dd6d2df6810",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/23-multimedia-offline-y-restauracion-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "d22eca229741a92edd67245371999039798bf76f",
@@ -23079,6 +23147,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/evidencias/224-certificacion-independiente.json",
+      "phase": "documentation",
+      "gitBlobId": "30825a912e968c23348aeef4741fb957fe0e66fd",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/evidencias/auditoria-movil-antigravity-2026-10-30.json",
       "phase": "documentation",
       "gitBlobId": "93a51e276abd25d91337fbd4bad6d40a6f979be0",
@@ -23795,8 +23869,10 @@
     {
       "file": "infrastructure/local-fallback/ai-chatbot/Dockerfile",
       "phase": "server",
-      "gitBlobId": "57d761e816604c0939d208c8e96bc4a16ee1660a",
-      "reviewStatus": "pending"
+      "gitBlobId": "fc50fb440520fcede41be13926f989a511629c08",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/ai-chatbot/data/guides.json",
@@ -23943,9 +24019,9 @@
     {
       "file": "infrastructure/local-fallback/api/Dockerfile",
       "phase": "server",
-      "gitBlobId": "fadf29501c49f054e06a91a0313e7e7733ffba83",
+      "gitBlobId": "b64426c41a83801f1bc168ceed394b59941182fc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24155,7 +24231,7 @@
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-community-profiles-events-e2e.js",
       "phase": "server",
-      "gitBlobId": "39e57b2b91065ed904a95b3b4aae36e067d6bb3a",
+      "gitBlobId": "d52e033e009f03111ca43a1526692d4ddb22805b",
       "reviewStatus": "pending"
     },
     {
@@ -24632,8 +24708,8 @@
       "file": "infrastructure/local-fallback/api/src/call-access-store.js",
       "phase": "server",
       "gitBlobId": "97d611a8170ebd2eb9df1e3d587f2ade4e8c2600",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24759,8 +24835,18 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "704d1a01608c1e35e8845ab2791aec979c6ebed3",
-      "reviewStatus": "pending"
+      "gitBlobId": "b0546a75ed7cc1f0af3744e8711150940fb388dd",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/database-pool-errors.js",
+      "phase": "server",
+      "gitBlobId": "77d8f5c5a90b1cdef293749b9aed4871aea3153a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/database-role-policy.js",
@@ -24795,17 +24881,17 @@
     {
       "file": "infrastructure/local-fallback/api/src/distributed-rate-limit.js",
       "phase": "server",
-      "gitBlobId": "18b75c409c3dc13fc227fe0aa3f2835044711927",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "gitBlobId": "b63b511916314329632aff39908b23306fde3459",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/document-preview-routes.js",
       "phase": "server",
-      "gitBlobId": "c98c1753bf4b839b90d4b351064e33cd756da3ac",
+      "gitBlobId": "b6f4b390a40e21c59476167360084814c587341a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24891,7 +24977,7 @@
       "phase": "server",
       "gitBlobId": "85df788597612eaeb22f576ad6cccc7873d5b77e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25048,8 +25134,8 @@
       "file": "infrastructure/local-fallback/api/src/message-markers-routes.js",
       "phase": "server",
       "gitBlobId": "513919c1d8c257784f2e81707fd645f25aea7872",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25393,7 +25479,7 @@
       "phase": "server",
       "gitBlobId": "5ae4c80d86c12be54c8d37331f5a41d245a7c329",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25422,8 +25508,8 @@
       "file": "infrastructure/local-fallback/api/src/request-observability.js",
       "phase": "server",
       "gitBlobId": "ac43244ab9b82cefe3eb52a8c2444d232d7da907",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25467,8 +25553,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "a0bf894d56730729de3259e3b729bbcb446d00f8",
-      "reviewStatus": "pending"
+      "gitBlobId": "f172ca776048a7717b584deb743a7a784c20a379",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/social-promotions.js",
@@ -25639,7 +25727,7 @@
       "phase": "server",
       "gitBlobId": "de92a88808eb414be380e5a494faf5582086129e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26185,6 +26273,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/database-pool-errors.test.js",
+      "phase": "server",
+      "gitBlobId": "f269be7bc75509c538b6d40f9f6e83b8efa53104",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/database-role-policy.test.js",
       "phase": "server",
       "gitBlobId": "fef2e1beb01c109eb20cf4221a613477e7905866",
@@ -26231,8 +26327,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/document-preview-routes.test.js",
       "phase": "server",
-      "gitBlobId": "0abf3d32a091878b58362f3dc8f93abadaa09f0e",
-      "reviewStatus": "pending"
+      "gitBlobId": "21473c3985b237c115108b1ccc19274aa1a5325f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/economic-provenance.test.js",
@@ -27067,10 +27165,8 @@
     {
       "file": "infrastructure/local-fallback/api/tests/redis-rate-limit.test.js",
       "phase": "server",
-      "gitBlobId": "58aa80cdb56c41fde371523d41b98db3828f7d98",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "023e70fd2b79c172b7dd67b8eb91302291c1fc9a",
+      "reviewStatus": "pending"
     },
     {
       "file": "infrastructure/local-fallback/api/tests/request-observability.test.js",
@@ -27439,9 +27535,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/video-public-attribution.test.js",
       "phase": "server",
-      "gitBlobId": "39fa93988a1838d50b4403586c6804d827b6d151",
+      "gitBlobId": "36066a8ddf750db225a3fabdc9d8d63f7900b272",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27504,6 +27600,14 @@
       "gitBlobId": "b64968257ff7385f7aeffe7420f0c02e2cf1b27b",
       "reviewStatus": "partial",
       "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/db/Dockerfile",
+      "phase": "server",
+      "gitBlobId": "2e952ab8d301126bcda7cc59f3a4b1ba2806eb7c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27787,6 +27891,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "infrastructure/local-fallback/docker-compose.staging-replicas.yml",
+      "phase": "server",
+      "gitBlobId": "4287d8e57dbc1f5df223c80c7bfedf2eb3bdcc69",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/docker-compose.storage-antivirus.yml",
       "phase": "server",
       "gitBlobId": "97fe344a83c8381f561871a981e53ba630f28067",
@@ -27795,9 +27907,9 @@
     {
       "file": "infrastructure/local-fallback/docker-compose.yml",
       "phase": "server",
-      "gitBlobId": "27a718355ccb1c4c63d941aab769562dadcf9792",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "gitBlobId": "ed7f020d3723e71746d6c9443155ad0f25361511",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27813,33 +27925,51 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/monitoring/alerts.novvin.test.yml",
+      "phase": "server",
+      "gitBlobId": "8589d022c238b797342abf49e43b7bb41033ca1d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/monitoring/alerts.novvin.yml",
       "phase": "server",
-      "gitBlobId": "5fdf42de7facf28c2178ec96ba8a45868482704e",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "gitBlobId": "881c7a090c98b75c02f1a4745b8f6f6b2505e78d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/monitoring/prometheus.local-fallback.yml",
       "phase": "server",
-      "gitBlobId": "330651cda0223dee3d078002d28e97d45cbd8e54",
+      "gitBlobId": "dfba46e7f85ddb3531f8a6a420d5c95b3802aa83",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/nginx/Dockerfile",
       "phase": "server",
-      "gitBlobId": "e9cd50fc5e5320d850c662cb90cbb8a6bbdc2c34",
-      "reviewStatus": "pending"
+      "gitBlobId": "975692a9442ad2e7b0afab14c4f304ad9e41587d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/nginx/default.conf",
       "phase": "server",
       "gitBlobId": "74598a5a883c57606f1cbe069b999d4dfe153267",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/pgbouncer/Dockerfile",
+      "phase": "server",
+      "gitBlobId": "ef5a9332762db89d7833aa0795abf4699e01ec6f",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27877,9 +28007,9 @@
     {
       "file": "infrastructure/local-fallback/realtime-gateway/Dockerfile",
       "phase": "server",
-      "gitBlobId": "0299277b8611240878f8d2dfc8c26050df09fef6",
+      "gitBlobId": "9e9e86d722585fabb90ac98ae57421790939fe4b",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27897,10 +28027,8 @@
     {
       "file": "infrastructure/local-fallback/realtime-gateway/package.json",
       "phase": "server",
-      "gitBlobId": "2c8faa7bfbcbb98c71bcd1c7916a30e4cbbc0b76",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "ae740b4785ce0d1a3549de370d8d86fdf0fced9f",
+      "reviewStatus": "pending"
     },
     {
       "file": "infrastructure/local-fallback/realtime-gateway/src/redis-resp-client.js",
@@ -27913,9 +28041,25 @@
     {
       "file": "infrastructure/local-fallback/realtime-gateway/src/server.js",
       "phase": "server",
-      "gitBlobId": "2b6d85ebb68de78081cc6a75ea212a223059c859",
+      "gitBlobId": "8e4d6fbd69453cf782debc819a29c1b5605edec5",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/realtime-gateway/tests/channel-recovery.test.js",
+      "phase": "server",
+      "gitBlobId": "2fe16212817ca17458dc404007543ca781dff0b8",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/realtime-gateway/tests/redis-stream-read-recovery.test.js",
+      "phase": "server",
+      "gitBlobId": "b6fffb43644d061a0b8989d37c926d1db031e5fe",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27929,9 +28073,17 @@
     {
       "file": "infrastructure/local-fallback/realtime-gateway/tests/server.test.js",
       "phase": "server",
-      "gitBlobId": "bc76510cb2e1805352a160b648247fecd181ddea",
+      "gitBlobId": "83f78a0d6eb5b60812a7c0dfb06d9f45c0b35b4c",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/redis/Dockerfile",
+      "phase": "server",
+      "gitBlobId": "40122c3c5f8a6a2fa3c05babda80b6a4af611759",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27973,9 +28125,9 @@
     {
       "file": "infrastructure/local-fallback/scripts/deploy-stack-safely.sh",
       "phase": "server",
-      "gitBlobId": "a182801d19e01896b9d17fc15fdea78e8af0f3a6",
+      "gitBlobId": "7bdc9fd32df4ac7e38aaf99d5ac93ab26725154f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28115,9 +28267,9 @@
     {
       "file": "infrastructure/local-fallback/scripts/restore-drill-isolated.sh",
       "phase": "server",
-      "gitBlobId": "c8cd2c0b811a4aae1356c59a5b3293cb415c81aa",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/149-host-respaldo-y-mantenimiento-acotado-2026-11-15.md",
+      "gitBlobId": "8edf361ce49f1b77a9265a5f64068218cac0ae8e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28311,14 +28463,18 @@
     {
       "file": "infrastructure/local-fallback/scripts/verify-webrtc-four-flows.js",
       "phase": "server",
-      "gitBlobId": "316a92ee3f5fa415cd7539173edf1040461e99aa",
-      "reviewStatus": "pending"
+      "gitBlobId": "60d4ae38cdef0ce923b60fb332a171ff6d9a7373",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/storage-antivirus/Dockerfile",
       "phase": "server",
-      "gitBlobId": "cd4b2e6ff1dd964a9cbd622d7eb66b331240fdad",
-      "reviewStatus": "pending"
+      "gitBlobId": "1d6f5aa1e19c9c2d4cc1b365a2dd3b4cc8ed523f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/storage-antivirus/clamd.conf",
@@ -28353,8 +28509,10 @@
     {
       "file": "infrastructure/local-fallback/survey-antivirus/Dockerfile",
       "phase": "server",
-      "gitBlobId": "dc0886b0563ddbde7569792bbb5d78c642a22b8a",
-      "reviewStatus": "pending"
+      "gitBlobId": "bcba8e5a832e1e3f9c879a63f414a05804736479",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/survey-antivirus/README.md",
@@ -28815,8 +28973,10 @@
     {
       "file": "signaling-server/Dockerfile",
       "phase": "tooling-and-other",
-      "gitBlobId": "462a1da05988058b4c0cb9cf52076a0c2edfbf29",
-      "reviewStatus": "pending"
+      "gitBlobId": "ef286423e1936a17ddd34b18ab5f552ac161c20e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/call-join-policy.js",
@@ -28853,9 +29013,9 @@
     {
       "file": "signaling-server/index.js",
       "phase": "tooling-and-other",
-      "gitBlobId": "e6e7f4092891f51606b4f83d9e0e123cb98e5761",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "gitBlobId": "d01bebe0fbabcaa6c1c48865ccbf34a1af5b6d73",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -30681,9 +30841,9 @@
     {
       "file": "tools/loadtest/run-cycle221-222-certification.mjs",
       "phase": "tooling-and-other",
-      "gitBlobId": "9356e450e834000aa23eac7d2d601a95d48bbb0c",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "gitBlobId": "84cffe44f29833f7804339150c7c78ef81ccf0ea",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -30697,9 +30857,33 @@
     {
       "file": "tools/loadtest/run-ubuntu-staging-soak.mjs",
       "phase": "tooling-and-other",
-      "gitBlobId": "94daae17e60141356362025904e3db672f6ad8bb",
+      "gitBlobId": "09b6a516e8f91a148a76c077f398281be0880143",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "tools/loadtest/staging-arrivals.mjs",
+      "phase": "tooling-and-other",
+      "gitBlobId": "74d9e490a589be5acffd59f55e9d78f6e0e2086a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "tools/loadtest/staging-chat-delivery.mjs",
+      "phase": "tooling-and-other",
+      "gitBlobId": "cbf0c56bf0351324f1a03f8e12776e1b823c1881",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "tools/loadtest/staging-soak.test.mjs",
+      "phase": "tooling-and-other",
+      "gitBlobId": "e196cf01d526fe1bb793ee5ef29b73f0dd8d716b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -30921,10 +31105,8 @@
     {
       "file": "vercel.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "3c32f3d4185a5ca4287781b1d8315a0b29d5645e",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "2078ee3caa547e67609acb6f78bb303e12d0d355",
+      "reviewStatus": "pending"
     }
   ]
 }
