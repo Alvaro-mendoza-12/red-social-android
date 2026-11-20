@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "check": "node --check src/server.js && node --check tests/server.test.js",
-    "test": "node tests/server.test.js && node --test tests/channel-recovery.test.js"
+    "test": "node tests/server.test.js && node --test tests/channel-recovery.test.js tests/redis-stream-read-recovery.test.js"
   },
   "engines": {
     "node": ">=20"

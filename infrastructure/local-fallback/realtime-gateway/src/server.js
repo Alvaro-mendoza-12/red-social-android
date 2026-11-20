@@ -40,6 +40,7 @@ const gatewayMetrics = {
   streamEventsReceived: 0,
   streamDuplicatesSkipped: 0,
   streamPublishErrors: 0,
+  streamReadErrors: 0,
 }
 
 if (!jwtSecret || jwtSecret.length < 32) {
@@ -540,6 +541,8 @@ function createRedisStreamBus() {
   let stopped = false
   let loopRunning = false
   let lastStreamId = null
+  let retryTimer
+  let retryDelayMs = 250
 
   pubClient.on('error', (error) => {
     console.warn('[realtime-redis-pub] degraded:', error?.code || error?.message || 'REDIS_ERROR')
@@ -568,6 +571,7 @@ function createRedisStreamBus() {
           ['XREAD', 'COUNT', '100', 'BLOCK', String(realtimeRedisBlockMs), 'STREAMS', realtimeRedisStreamName, lastStreamId],
           { timeoutMs: realtimeRedisBlockMs + 4_000 },
         )
+        retryDelayMs = 250
         if (!Array.isArray(response)) continue
         for (const streamEntry of response) {
           const entries = Array.isArray(streamEntry?.[1]) ? streamEntry[1] : []
@@ -594,14 +598,23 @@ function createRedisStreamBus() {
       }
     } catch (error) {
       if (!stopped) {
+        gatewayMetrics.streamReadErrors += 1
         console.warn('[realtime-redis-sub] read loop interrupted:', error?.code || error?.message || 'REDIS_ERROR')
       }
     } finally {
       loopRunning = false
+      // Redis can reject a command while keeping the connection open. In
+      // that case there is no new ready event to restart the reader.
+      if (!stopped && subClient.isReady()) {
+        retryTimer = setTimeout(readLoop, retryDelayMs)
+        retryTimer.unref()
+        retryDelayMs = Math.min(retryDelayMs * 2, 5000)
+      }
     }
   }
 
   subClient.on('ready', () => {
+    clearTimeout(retryTimer)
     void readLoop()
   })
 
@@ -652,6 +665,7 @@ function createRedisStreamBus() {
     },
     async close() {
       stopped = true
+      clearTimeout(retryTimer)
       await Promise.all([pubClient.close(), subClient.close()])
     },
   }
@@ -751,6 +765,7 @@ app.get('/internal/metrics', (req, res) => {
     streamEventsReceived: gatewayMetrics.streamEventsReceived,
     streamDuplicatesSkipped: gatewayMetrics.streamDuplicatesSkipped,
     streamPublishErrors: gatewayMetrics.streamPublishErrors,
+    streamReadErrors: gatewayMetrics.streamReadErrors,
     slowConsumerDrops: gatewayMetrics.slowConsumerDrops,
     rateLimitDrops: gatewayMetrics.rateLimitDrops,
     connectionLimitRejections: gatewayMetrics.connectionLimitRejections,
@@ -781,6 +796,10 @@ app.get('/internal/metrics', (req, res) => {
     `novvin_realtime_stream_events_received_total ${snapshot.streamEventsReceived}`,
     '# TYPE novvin_realtime_stream_duplicates_skipped_total counter',
     `novvin_realtime_stream_duplicates_skipped_total ${snapshot.streamDuplicatesSkipped}`,
+    '# TYPE novvin_realtime_stream_read_errors_total counter',
+    `novvin_realtime_stream_read_errors_total ${snapshot.streamReadErrors}`,
+    '# TYPE novvin_realtime_stream_publish_errors_total counter',
+    `novvin_realtime_stream_publish_errors_total ${snapshot.streamPublishErrors}`,
     '# TYPE novvin_realtime_redis_connected gauge',
     `novvin_realtime_redis_connected ${snapshot.redisConnected ? 1 : 0}`,
     '# TYPE novvin_realtime_slow_consumer_drops_total counter',
