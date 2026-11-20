@@ -6,7 +6,7 @@ set -Eeuo pipefail
 BACKUP_DIR="$(readlink -f "${1:?Provide the directory of a verified backup}")"
 test -d "$BACKUP_DIR"
 test -s "$BACKUP_DIR/postgres.dump"
-IMAGE="postgres:16.15-alpine"
+IMAGE="postgres:16.16-alpine@sha256:1d5b02d3a9941fbd52437db4107f8c52d6297dac553ca1e5c299ebb3756b4857"
 docker image inspect "$IMAGE" >/dev/null
 DRILL_NAME="novvin-restore-check-$(date -u +%Y%m%d%H%M%S)-$$"
 DRILL_LABEL="novvin.restore-check=$DRILL_NAME"
