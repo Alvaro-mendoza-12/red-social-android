@@ -180,6 +180,17 @@ async function run() {
   await bothDownMiddleware({ method: 'POST' }, responseRecorder(), (err) => { forwarded = err })
   assert.equal(forwarded, dbDownError)
 
+  // A zero PTTL is a valid Redis reading at the very end of the existing window.
+  const expiring = createDistributedRateLimitMiddleware({
+    pool: pgPool,
+    redisClient: { isReady: () => true, sendCommand: async () => [3, 0] },
+    scope: 'data:message-write', limit: 2, windowMs: 60_000,
+  })
+  const ending = responseRecorder()
+  await expiring({ method: 'POST' }, ending, () => assert.fail('The current window still denies this request'))
+  assert.equal(ending.statusCode, 429)
+  assert.equal(ending.headers['retry-after'], '1')
+
   console.log('redis rate limit & RESP2 protocol tests passed')
 }
 

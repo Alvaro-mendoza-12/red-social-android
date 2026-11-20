@@ -9,10 +9,10 @@
  *  1. Refuses to run unless NOVVIN_STAGING_ISOLATED=true is explicitly set.
  *  2. Blocks known production domains (novvin.app, conectate.com, supabase.co, etc.).
  *  3. Blocks non-loopback targets unless NOVVIN_ALLOW_NON_LOOPBACK_STAGING_HOST=true.
- *  4. Circuit-breaker auto-stop if unexpected 5xx or network errors exceed threshold.
- *  5. Clean SIGINT / SIGTERM handling that always writes soak-summary.json.
+ *  4. Stop at the configured error budget and fail on any incorrect business response.
+ *  5. SIGINT / SIGTERM during the measured workload drains in-flight operations and writes a failed summary.
  *
- * Example (2 hours, 50 concurrent users, 30s telemetry):
+ * Example (2 hours, 50 workers sharing 10 synthetic accounts, 30s telemetry):
  *   NOVVIN_STAGING_ISOLATED=true \
  *   STAGING_API_URLS=http://127.0.0.1:3080,http://127.0.0.1:3081 \
  *   STAGING_REALTIME_URLS=http://127.0.0.1:3002,http://127.0.0.1:3003 \
@@ -23,12 +23,20 @@
  *   SOAK_DURATION_HOURS=2 \
  *   SOAK_CONCURRENCY=50 \
  *   node tools/loadtest/run-ubuntu-staging-soak.mjs
+ *
+ * SOAK_DURATION_SECONDS selects a shorter smoke run. SOAK_WS_CLIENTS opens
+ * recipient chat subscriptions. Set SOAK_ARRIVAL_RPS for a fixed arrival
+ * rate with SOAK_CONCURRENCY as the maximum number of in-flight operations.
  */
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { setTimeout as wait } from 'node:timers/promises'
+import { observeStagingChats } from './staging-chat-delivery.mjs'
+import { runStagingArrivals } from './staging-arrivals.mjs'
 
 const FORBIDDEN_PRODUCTION_HOST_PATTERNS = [
+  /(^|\.)novvinapp\.com$/i,
   /(^|\.)novvin\.app$/i,
   /(^|\.)conectate\.com$/i,
   /(^|\.)supabase\.co$/i,
@@ -61,11 +69,15 @@ function validateStagingTargets(urls) {
     try {
       parsed = new URL(rawUrl)
     } catch {
-      console.error(`REFUSED: Invalid target URL "${rawUrl}".`)
+      console.error('REFUSED: Invalid target URL.')
+      process.exit(2)
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) {
+      console.error('REFUSED: Expected an HTTP(S) service URL without credentials, query or fragment.')
       process.exit(2)
     }
     for (const pattern of FORBIDDEN_PRODUCTION_HOST_PATTERNS) {
-      if (pattern.test(parsed.hostname)) {
+      if (pattern.test(parsed.hostname.replace(/\.$/, ''))) {
         console.error(`REFUSED: Target host "${parsed.hostname}" matches forbidden production domain pattern ${pattern}.`)
         process.exit(2)
       }
@@ -89,15 +101,34 @@ const adminToken = String(process.env.STAGING_ADMIN_SYNC_TOKEN || '').trim()
 const realtimeSecret = String(process.env.STAGING_REALTIME_INTERNAL_SECRET || '').trim()
 const liveToken = String(process.env.STAGING_LIVE_INTERNAL_TOKEN || '').trim()
 
-const durationHours = Math.max(0.01, Math.min(Number(process.env.SOAK_DURATION_HOURS || 2), 12))
-const concurrency = Math.max(5, Math.min(Number(process.env.SOAK_CONCURRENCY || 50), 500))
-const sampleIntervalSec = Math.max(5, Math.min(Number(process.env.SOAK_SAMPLE_INTERVAL_SEC || 30), 300))
-const max5xxAbort = Math.max(5, Math.min(Number(process.env.SOAK_MAX_5XX_ABORT || 25), 500))
-const maxNetErrAbort = Math.max(10, Math.min(Number(process.env.SOAK_MAX_NET_ERR_ABORT || 50), 1000))
+function setting(name, fallback, min, max, integer = true) {
+  const value = Number(process.env[name] ?? fallback)
+  if (!Number.isFinite(value) || (integer && !Number.isInteger(value)) || value < min || value > max) {
+    throw new Error(`Invalid ${name}: expected ${min}..${max}`)
+  }
+  return value
+}
+
+if (!apiUrls.length) throw new Error('At least one staging API is required')
+if (process.env.SOAK_DURATION_SECONDS && process.env.SOAK_DURATION_HOURS) throw new Error('Choose one duration unit')
+const durationSeconds = process.env.SOAK_DURATION_SECONDS !== undefined
+  ? setting('SOAK_DURATION_SECONDS', 7200, 1, 43200)
+  : setting('SOAK_DURATION_HOURS', 2, 0.01, 12, false) * 3600
+const durationHours = durationSeconds / 3600
+const concurrency = setting('SOAK_CONCURRENCY', 50, 5, 500)
+const accountCount = setting('SOAK_ACCOUNTS', 10, 2, 100)
+const sampleIntervalSec = setting('SOAK_SAMPLE_INTERVAL_SEC', 30, 1, 300)
+const max5xxAbort = setting('SOAK_MAX_5XX_ABORT', 25, 1, 500)
+const maxNetErrAbort = setting('SOAK_MAX_NET_ERR_ABORT', 50, 1, 1000)
+const maxFunctionalAbort = setting('SOAK_MAX_FUNCTIONAL_FAILURES', 25, 1, 1000)
+const wsClients = setting('SOAK_WS_CLIENTS', 0, 0, 100)
+const arrivalRate = setting('SOAK_ARRIVAL_RPS', 0, 0, 2000)
+if (wsClients > 0 && !realtimeUrls.length) throw new Error('SOAK_WS_CLIENTS requires a Realtime URL')
 const outDir = path.resolve(process.env.SOAK_OUTPUT_DIR || './soak-staging-output')
 fs.mkdirSync(outDir, { recursive: true })
 const jsonlPath = path.join(outDir, `soak-${Date.now()}.jsonl`)
-const summaryPath = path.join(outDir, 'soak-summary.json')
+const summaryPath = path.resolve(process.env.SOAK_REPORT_PATH || path.join(outDir, 'soak-summary.json'))
+fs.mkdirSync(path.dirname(summaryPath), { recursive: true })
 
 function percentiles(samples) {
   if (!samples.length) return { count: 0, avgMs: 0, p50Ms: 0, p95Ms: 0, p99Ms: 0, maxMs: 0 }
@@ -117,7 +148,7 @@ function percentiles(samples) {
 async function timedFetch(url, options = {}) {
   const started = performance.now()
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(options.timeoutMs || 15_000), ...options })
+    const res = await fetch(url, { signal: AbortSignal.timeout(options.timeoutMs || 15_000), ...options, redirect: 'manual' })
     const text = await res.text()
     let json = null
     try { json = text ? JSON.parse(text) : null } catch {}
@@ -134,23 +165,22 @@ async function fetchMetrics(url, headers) {
 }
 
 async function seedStagingUsers() {
-  const count = Math.max(10, Math.min(concurrency, 40))
   const tag = Date.now().toString(36)
   const users = []
-  for (let i = 0; i < count; i += 1) {
+  for (let i = 0; i < accountCount; i += 1) {
     const email = `soak_${tag}_${i}@staging.novvin.invalid`
     const reg = await timedFetch(`${apiUrl}/v1/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email,
-        password: 'StagingSoakPassword220!',
+        password: crypto.randomBytes(24).toString('base64url') + 'aA1!',
         displayName: `Soak User ${i}`,
         username: `soak_${tag}_${i}`.slice(0, 22),
       }),
     })
-    if (!reg.ok || !reg.json?.accessToken) {
-      throw new Error(`Staging user seed failed at ${i}: HTTP ${reg.status} ${reg.text}`)
+    if (!reg.ok || !reg.json?.accessToken || !reg.json?.user?.id) {
+      throw new Error(`Staging user seed failed at ${i}: HTTP ${reg.status}`)
     }
     users.push({ id: reg.json.user.id, token: reg.json.accessToken })
   }
@@ -162,7 +192,22 @@ async function seedStagingUsers() {
       body: JSON.stringify({ participantId: users[i * 2 + 1].id }),
     })
     const cid = r.json?.chat?.id || r.json?.id
-    if (cid) chatIds.push({ id: cid, a: users[i * 2], b: users[i * 2 + 1] })
+    if (!r.ok || !cid) throw new Error(`Staging chat seed failed at ${i}: HTTP ${r.status}`)
+    const chatUrl = `${apiUrl}/v1/data/messages/chats/${cid}`
+    const id = crypto.randomUUID()
+    const intro = await timedFetch(chatUrl + '/messages', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${users[i * 2].token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, content: 'Staging introduction', contentType: 'text' }),
+    })
+    if (intro.status !== 201 || intro.json?.message?.id !== id) throw new Error(`Staging introduction failed at ${i}: HTTP ${intro.status}`)
+    const accept = await timedFetch(chatUrl + '/request', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${users[i * 2 + 1].token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'accept' }),
+    })
+    if (!accept.ok || accept.json?.status !== 'open') throw new Error(`Staging recipient acceptance failed at ${i}: HTTP ${accept.status}`)
+    chatIds.push({ id: cid, a: users[i * 2], b: users[i * 2 + 1] })
   }
   return { users, chatIds }
 }
@@ -175,16 +220,26 @@ async function main() {
   }
 
   const { users, chatIds } = await seedStagingUsers()
+  const recipients = await observeStagingChats(realtimeUrls, chatIds, wsClients)
+  const delivery = { clients: wsClients, expected: 0, received: 0, missed: 0 }
   const durationMs = Math.round(durationHours * 3600 * 1000)
-  const startedAt = Date.now()
+  const startedAt = performance.now()
   const deadline = startedAt + durationMs
-  const samples = []
+  let sampleCount = 0
+  let firstRss = null
+  let lastRss = null
+  let rssSamples = 0
+  let firstP95 = null
+  let lastP95 = null
   let totalReqs = 0
   let total2xx = 0
   let total429 = 0
   let totalLoadShed503 = 0
   let totalUnexpected5xx = 0
   let totalNetworkErrors = 0
+  let totalFunctionalFailures = 0
+  const operations = Object.fromEntries(['feed', 'profile', 'message', 'notifications'].map(name =>
+    [name, { attempted: 0, passed: 0, statuses: {} }]))
   let stop = false
   let stopReason = 'completed'
   let rrCounter = 0
@@ -193,119 +248,195 @@ async function main() {
   process.on('SIGTERM', () => { stop = true; stopReason = 'SIGTERM' })
 
   let windowLatencies = []
+  let windowDeliveryLatencies = []
   let windowCount = 0
   let windowStart = performance.now()
 
-  const workers = Array.from({ length: concurrency }, async (_, idx) => {
+  let arrivals = null
+  async function issue(idx, step) {
     const user = users[idx % users.length]
     const pair = chatIds[idx % chatIds.length]
     const authHdr = { Authorization: `Bearer ${user.token}` }
-    let step = 0
-    while (!stop && Date.now() < deadline) {
-      step += 1
-      const targetApi = apiUrls[(rrCounter++) % apiUrls.length]
-      const mod = (idx + step) % 4
-      let res
-      if (mod === 0) {
-        res = await timedFetch(`${targetApi}/v1/data/feed?limit=20`, { headers: authHdr })
-      } else if (mod === 1) {
-        const target = users[(idx + 1) % users.length]
-        res = await timedFetch(`${targetApi}/v1/data/profiles/${target.id}`, { headers: authHdr })
-      } else if (mod === 2 && pair) {
-        res = await timedFetch(`${targetApi}/v1/data/messages/chats/${pair.id}/messages`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${pair.a.token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: crypto.randomUUID(), content: `soak-msg-${idx}-${step}`, contentType: 'text' }),
-        })
-      } else {
-        res = await timedFetch(`${targetApi}/v1/data/notifications?limit=15`, { headers: authHdr })
+    const targetApi = apiUrls[(rrCounter++) % apiUrls.length]
+    const mod = (idx + step) % 4
+    let res
+    let valid
+    let operation
+    let missingDelivery = false
+    if (mod === 0) {
+      operation = operations.feed
+      res = await timedFetch(`${targetApi}/v1/data/feed?limit=20`, { headers: authHdr })
+      valid = res.status === 200 && Array.isArray(res.json?.items)
+    } else if (mod === 1) {
+      operation = operations.profile
+      const target = users[(idx + 1) % users.length]
+      res = await timedFetch(`${targetApi}/v1/data/profiles/${target.id}`, { headers: authHdr })
+      valid = res.status === 200 && res.json?.profile?.id === target.id
+    } else if (mod === 2) {
+      operation = operations.message
+      const id = crypto.randomUUID()
+      const reception = recipients.expect(pair.id, id)
+      res = await timedFetch(`${targetApi}/v1/data/messages/chats/${pair.id}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${pair.a.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, content: `soak-msg-${idx}-${step}`, contentType: 'text' }),
+      })
+      valid = res.status === 201 && res.json?.message?.id === id
+      if (!valid) reception.cancel()
+      const observed = await reception.received
+      if (valid) {
+        delivery.expected += observed.length
+        for (const ms of observed) {
+          if (ms === null) {
+            missingDelivery = true
+            delivery.missed += 1
+          } else {
+            delivery.received += 1
+            windowDeliveryLatencies.push(ms)
+          }
+        }
       }
-      totalReqs += 1
-      windowCount += 1
-      windowLatencies.push(res.ms)
-      if (res.status === 0) totalNetworkErrors += 1
-      else if (res.status === 503 && res.json?.error === 'SERVICE_OVERLOADED') totalLoadShed503 += 1
-      else if (res.status >= 500) totalUnexpected5xx += 1
-      else if (res.status === 429) total429 += 1
-      else if (res.status >= 200 && res.status < 300) total2xx += 1
-
-      if (totalUnexpected5xx >= max5xxAbort) {
-        stop = true
-        stopReason = `circuit_breaker_5xx_threshold_${max5xxAbort}`
-        break
-      }
-      if (totalNetworkErrors >= maxNetErrAbort) {
-        stop = true
-        stopReason = `circuit_breaker_network_error_threshold_${maxNetErrAbort}`
-        break
-      }
-      await new Promise((r) => setTimeout(r, 150))
+    } else {
+      operation = operations.notifications
+      res = await timedFetch(`${targetApi}/v1/data/notifications?limit=15`, { headers: authHdr })
+      valid = res.status === 200 && Array.isArray(res.json?.items)
     }
-  })
+    operation.attempted += 1
+    operation.statuses[res.status] = (operation.statuses[res.status] || 0) + 1
+    if (valid) operation.passed += 1
+    if (!valid || missingDelivery) totalFunctionalFailures += 1
+    totalReqs += 1
+    windowCount += 1
+    windowLatencies.push(res.ms)
+    if (res.status === 0) totalNetworkErrors += 1
+    else if (res.status === 503 && res.json?.error === 'SERVICE_OVERLOADED') totalLoadShed503 += 1
+    else if (res.status >= 500) totalUnexpected5xx += 1
+    else if (res.status === 429) total429 += 1
+    else if (res.status >= 200 && res.status < 300) total2xx += 1
 
-  const sampler = (async () => {
-    while (!stop && Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, sampleIntervalSec * 1000))
-      const elapsedSec = Math.round((Date.now() - startedAt) / 1000)
-      const winSec = Math.max(0.001, (performance.now() - windowStart) / 1000)
-      const rps = Number((windowCount / winSec).toFixed(1))
-      const pct = percentiles(windowLatencies)
-      windowLatencies = []
-      windowCount = 0
-      windowStart = performance.now()
+    if (totalUnexpected5xx >= max5xxAbort) {
+      stop = true
+      stopReason = `circuit_breaker_5xx_threshold_${max5xxAbort}`
+      return
+    }
+    if (totalNetworkErrors >= maxNetErrAbort) {
+      stop = true
+      stopReason = `circuit_breaker_network_error_threshold_${maxNetErrAbort}`
+      return
+    }
+    if (totalFunctionalFailures >= maxFunctionalAbort) {
+      stop = true
+      stopReason = `circuit_breaker_functional_threshold_${maxFunctionalAbort}`
+      return
+    }
+  }
 
-      const [apiMetricsList, rtMetricsList, sigMetricsList] = await Promise.all([
-        Promise.all(
-          apiUrls.map((u) =>
-            realtimeSecret
-              ? fetchMetrics(u, { Authorization: `Bearer ${realtimeSecret}` })
-              : adminToken
-                ? fetchMetrics(u, { 'x-admin-sync-token': adminToken })
-                : Promise.resolve(null),
-          ),
-        ),
-        Promise.all(
-          realtimeUrls.map((u) =>
-            realtimeSecret ? fetchMetrics(u, { Authorization: `Bearer ${realtimeSecret}` }) : Promise.resolve(null),
-          ),
-        ),
-        Promise.all(
-          signalingUrls.map((u) =>
-            liveToken ? fetchMetrics(u, { 'x-live-internal-token': liveToken }) : Promise.resolve(null),
-          ),
-        ),
-      ])
-      const apiM = apiMetricsList[0] || null
-      const rtM = rtMetricsList[0] || null
-      const sigM = sigMetricsList[0] || null
-      const entry = {
-        ts: new Date().toISOString(),
-        elapsedSeconds: elapsedSec,
-        windowRps: rps,
-        latency: pct,
-        cumulative: { totalReqs, total2xx, total429, totalLoadShed503, totalUnexpected5xx, totalNetworkErrors },
-        api: apiM,
-        apiInstances: apiMetricsList.filter(Boolean),
-        realtime: rtM,
-        realtimeInstances: rtMetricsList.filter(Boolean),
-        signaling: sigM,
-        signalingInstances: sigMetricsList.filter(Boolean),
+  async function runWorkload() {
+    if (arrivalRate) {
+      arrivals = await runStagingArrivals({
+        rate: arrivalRate, concurrency, start: startedAt, durationMs, stopped: () => stop,
+        issue: index => issue(index % concurrency, 1 + Math.floor(index / concurrency)),
+      })
+      return
+    }
+    await Promise.all(Array.from({ length: concurrency }, async (_, idx) => {
+      let step = 0
+      while (!stop && performance.now() < deadline) {
+        await issue(idx, ++step)
+        if (!stop) await wait(150)
       }
-      samples.push(entry)
-      fs.appendFileSync(jsonlPath, `${JSON.stringify(entry)}\n`, 'utf8')
-      console.log(`[staging-soak] t=${elapsedSec}s rps=${rps} p95=${pct.p95Ms}ms p99=${pct.p99Ms}ms 5xx=${totalUnexpected5xx} apiRssMB=${apiM ? (apiM.memoryRssBytes / 1048576).toFixed(1) : 'n/a'}`)
+    }))
+  }
+
+  async function sampleWindow() {
+    const elapsedSec = Math.round((performance.now() - startedAt) / 1000)
+    const winSec = Math.max(0.001, (performance.now() - windowStart) / 1000)
+    const rps = Number((windowCount / winSec).toFixed(1))
+    const pct = percentiles(windowLatencies)
+    const wsDelivery = percentiles(windowDeliveryLatencies)
+    windowDeliveryLatencies = []
+    const cumulative = { totalReqs, total2xx, total429, totalLoadShed503, totalUnexpected5xx, totalNetworkErrors, totalFunctionalFailures }
+    windowLatencies = []
+    windowCount = 0
+    windowStart = performance.now()
+
+    const [apiMetricsList, rtMetricsList, sigMetricsList] = await Promise.all([
+      Promise.all(
+        apiUrls.map((u) =>
+          realtimeSecret
+            ? fetchMetrics(u, { Authorization: `Bearer ${realtimeSecret}` })
+            : adminToken
+              ? fetchMetrics(u, { 'x-admin-sync-token': adminToken })
+              : Promise.resolve(null),
+        ),
+      ),
+      Promise.all(
+        realtimeUrls.map((u) =>
+          realtimeSecret ? fetchMetrics(u, { Authorization: `Bearer ${realtimeSecret}` }) : Promise.resolve(null),
+        ),
+      ),
+      Promise.all(
+        signalingUrls.map((u) =>
+          liveToken ? fetchMetrics(u, { 'x-live-internal-token': liveToken }) : Promise.resolve(null),
+        ),
+      ),
+    ])
+    const apiM = apiMetricsList[0] || null
+    const rtM = rtMetricsList[0] || null
+    const sigM = sigMetricsList[0] || null
+    const entry = {
+      ts: new Date().toISOString(),
+      elapsedSeconds: elapsedSec,
+      windowRps: rps,
+      latency: pct,
+      wsDelivery,
+      cumulative,
+      api: apiM,
+      apiInstances: apiMetricsList.filter(Boolean),
+      realtime: rtM,
+      realtimeInstances: rtMetricsList.filter(Boolean),
+      signaling: sigM,
+      signalingInstances: sigMetricsList.filter(Boolean),
+    }
+    sampleCount += 1
+    if (apiM?.memoryRssBytes > 0) {
+      firstRss ??= apiM.memoryRssBytes
+      lastRss = apiM.memoryRssBytes
+      rssSamples += 1
+    }
+    firstP95 ??= pct.p95Ms
+    lastP95 = pct.p95Ms
+    fs.appendFileSync(jsonlPath, `${JSON.stringify(entry)}\n`, 'utf8')
+    console.log(`[staging-soak] t=${elapsedSec}s rps=${rps} p95=${pct.p95Ms}ms p99=${pct.p99Ms}ms 5xx=${totalUnexpected5xx} apiRssMB=${apiM ? (apiM.memoryRssBytes / 1048576).toFixed(1) : 'n/a'}`)
+  }
+
+  const samplingDone = new AbortController()
+  const sampler = (async () => {
+    while (!samplingDone.signal.aborted) {
+      try {
+        await wait(sampleIntervalSec * 1000, undefined, { signal: samplingDone.signal })
+      } catch (error) {
+        if (error.name === 'AbortError') break
+        throw error
+      }
+      if (windowCount) await sampleWindow()
     }
   })()
 
-  await Promise.all([...workers, sampler])
+  try {
+    await runWorkload()
+  } finally {
+    samplingDone.abort()
+    recipients.close()
+    await sampler
+  }
+  if (windowCount) await sampleWindow()
 
-  const rssSeries = samples.map((s) => s.api?.memoryRssBytes || 0).filter((v) => v > 0)
-  const memoryDriftMB = rssSeries.length >= 2
-    ? Number(((rssSeries.at(-1) - rssSeries[0]) / 1048576).toFixed(1))
+  const memoryDriftMB = rssSamples >= 2
+    ? Number(((lastRss - firstRss) / 1048576).toFixed(1))
     : null
-  const p95Series = samples.map((s) => s.latency?.p95Ms || 0).filter((v) => v > 0)
-  const p95DriftMs = p95Series.length >= 2
-    ? Number((p95Series.at(-1) - p95Series[0]).toFixed(2))
+  const p95DriftMs = sampleCount >= 2
+    ? Number((lastP95 - firstP95).toFixed(2))
     : null
 
   const summary = {
@@ -315,14 +446,22 @@ async function main() {
     targetRealtimeUrls: realtimeUrls,
     targetSignalingUrls: signalingUrls,
     requestedDurationHours: durationHours,
-    actualDurationSeconds: Math.round((Date.now() - startedAt) / 1000),
+    actualDurationSeconds: Math.round((performance.now() - startedAt) / 1000),
     concurrency,
-    totals: { totalReqs, total2xx, total429, totalLoadShed503, totalUnexpected5xx, totalNetworkErrors },
-    sampleCount: samples.length,
+    totals: { totalReqs, total2xx, total429, totalLoadShed503, totalUnexpected5xx, totalNetworkErrors, totalFunctionalFailures },
+    operations,
+    delivery,
+    sampleCount,
+    workload: arrivalRate ? 'constant-arrival-rate' : 'closed-loop',
+    arrivalRate,
+    arrivals,
+    syntheticAccounts: users.length,
+    droppedArrivalIterations: arrivals ? arrivals.late + arrivals.atCapacity : null,
     apiRssDriftMB: memoryDriftMB,
     p95DriftMs,
     jsonlFile: jsonlPath,
-    passed: totalUnexpected5xx === 0 && totalNetworkErrors === 0 && stopReason === 'completed',
+    passed: totalFunctionalFailures === 0 && Object.values(operations).every(op => op.passed > 0) &&
+      (wsClients === 0 || delivery.expected > 0) && (!arrivals || arrivals.dispatched === arrivals.planned) && stopReason === 'completed',
   }
   fs.writeFileSync(summaryPath, JSON.stringify(summary, null, 2), 'utf8')
   console.log(JSON.stringify(summary, null, 2))
@@ -330,6 +469,9 @@ async function main() {
 }
 
 main().catch((err) => {
+  fs.writeFileSync(summaryPath, JSON.stringify({
+    completedAt: new Date().toISOString(), passed: false, stopReason: 'runner_failed',
+  }, null, 2), 'utf8')
   console.error('[staging-soak] FATAL:', err)
-  process.exit(1)
+  process.exitCode = 1
 })

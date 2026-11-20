@@ -1,0 +1,48 @@
+rule_files:
+  - alerts.novvin.yml
+
+evaluation_interval: 15s
+tests:
+  - name: Per-instance 5xx ratios and scrape outages
+    interval: 15s
+    input_series:
+      - series: 'novvin_api_requests_total{job="novvin-api",instance="a"}'
+        values: '0+100x35'
+      - series: 'novvin_api_responses_total{job="novvin-api",instance="a",class="5xx"}'
+        values: '0+5x35'
+      - series: 'novvin_api_requests_total{job="novvin-api",instance="b"}'
+        values: '0+100x35'
+      - series: 'novvin_api_responses_total{job="novvin-api",instance="b",class="5xx"}'
+        values: '0+1x35'
+      - series: 'up{job="novvin-api",instance="a"}'
+        values: '1x35'
+      - series: 'up{job="novvin-signaling",instance="c"}'
+        values: '1 0x10 1x24'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: NovvinApiHighErrorRate5xx
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: NovvinApiHighErrorRate5xx
+        exp_alerts:
+          - exp_labels:
+              job: novvin-api
+              instance: a
+              service: novvin-api
+              severity: critical
+            exp_annotations:
+              summary: NOVVIN API 5xx error rate above 1%
+              description: API 5xx ratio exceeded 1% over 5 minutes (5%).
+      - eval_time: 2m30s
+        alertname: NovvinMetricsTargetDown
+        exp_alerts:
+          - exp_labels:
+              job: novvin-signaling
+              instance: c
+              severity: critical
+            exp_annotations:
+              summary: NOVVIN metrics endpoint unreachable
+              description: Prometheus has been unable to scrape novvin-signaling at c for two minutes.
+      - eval_time: 5m
+        alertname: NovvinMetricsTargetDown
+        exp_alerts: []

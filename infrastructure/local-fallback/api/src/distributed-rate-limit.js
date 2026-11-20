@@ -55,7 +55,7 @@ async function consumeRedisFixedWindow({
     throw err
   }
   const count = Number(reply[0] || 0)
-  const ttlMs = Number(reply[1] || windowMs)
+  const ttlMs = Number(reply[1] ?? windowMs)
   const retryAfterSeconds = Math.max(1, Math.ceil(Math.max(ttlMs, 1) / 1000))
   return {
     allowed: count > 0 && count <= limit,

@@ -105,7 +105,7 @@ async function cleanup() {
 
 async function run() {
   try {
-    const owner = await register(ownerEmail, 'Propietario de eventos')
+    const owner = await register(ownerEmail, 'Organizador')
     const member = await register(memberEmail, 'Miembro de eventos')
     memberId = member.id
     const created = await jsonRequest('/v1/data/messages/communities', {

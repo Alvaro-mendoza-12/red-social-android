@@ -2,6 +2,18 @@
 # Calibrated against real isolated load/stress measurements (Audit 213).
 
 groups:
+  - name: novvin.scrape
+    interval: 15s
+    rules:
+      - alert: NovvinMetricsTargetDown
+        expr: up{job=~"novvin-(api|realtime-gateway|signaling)"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NOVVIN metrics endpoint unreachable"
+          description: "Prometheus has been unable to scrape {{ $labels.job }} at {{ $labels.instance }} for two minutes."
+
   - name: novvin.api.slo
     interval: 15s
     rules:
@@ -9,7 +21,7 @@ groups:
         expr: |
           (
             rate(novvin_api_responses_total{class="5xx"}[5m])
-            /
+            / ignoring(class)
             clamp_min(rate(novvin_api_requests_total[5m]), 0.1)
           ) > 0.01
         for: 2m
