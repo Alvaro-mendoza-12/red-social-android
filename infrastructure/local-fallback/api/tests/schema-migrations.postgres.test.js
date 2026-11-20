@@ -28,8 +28,14 @@ test('PostgreSQL applies each migration and its checksum atomically', { skip: !c
       await client.connect()
       clients.push(client)
       await client.query(runner)
+      if (i === 0) await client.query('GRANT INSERT ON fallback_schema_migrations TO PUBLIC')
     }
     const [first, second] = clients
+    const publicGrants = await first.query(`
+      SELECT acl.privilege_type FROM pg_class c, LATERAL aclexplode(c.relacl) acl
+      WHERE c.oid = 'public.fallback_schema_migrations'::regclass AND acl.grantee = 0
+    `)
+    assert.deepEqual(publicGrants.rows, [])
     async function apply(client, filename, bytes) {
       const result = await client.query('SELECT pg_temp.apply_schema_migration($1, $2) AS outcome', [filename, Buffer.from(bytes)])
       return result.rows[0].outcome

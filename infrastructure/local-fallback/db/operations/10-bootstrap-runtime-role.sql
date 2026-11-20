@@ -21,6 +21,11 @@ DO $$ DECLARE obj RECORD; BEGIN
     WHERE n.nspname='public' AND c.relkind IN ('r','p','S','v','m','f')
       AND NOT EXISTS(SELECT 1 FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
     ORDER BY CASE WHEN c.relkind='S' THEN 1 ELSE 0 END,c.relname LOOP
+    IF obj.relname='fallback_schema_migrations' THEN
+      ALTER TABLE public.fallback_schema_migrations OWNER TO CURRENT_USER;
+      REVOKE ALL ON public.fallback_schema_migrations FROM PUBLIC,novvin_api;
+      CONTINUE;
+    END IF;
     EXECUTE format('ALTER %s public.%I OWNER TO novvin_api',
       CASE obj.relkind WHEN 'S' THEN 'SEQUENCE' WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW'
         WHEN 'f' THEN 'FOREIGN TABLE' ELSE 'TABLE' END,obj.relname);

@@ -6,6 +6,19 @@ CREATE TABLE IF NOT EXISTS public.fallback_schema_migrations (
   checksum_sha256 TEXT NOT NULL,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+-- Older role bootstraps transferred every public table to the API role.
+DO $ledger$
+BEGIN
+  IF (SELECT tableowner FROM pg_catalog.pg_tables
+      WHERE schemaname = 'public' AND tablename = 'fallback_schema_migrations') = 'novvin_api' THEN
+    ALTER TABLE public.fallback_schema_migrations OWNER TO CURRENT_USER;
+  END IF;
+  IF to_regrole('novvin_api') IS NOT NULL THEN
+    REVOKE ALL ON public.fallback_schema_migrations FROM novvin_api;
+  END IF;
+END;
+$ledger$;
+REVOKE ALL ON public.fallback_schema_migrations FROM PUBLIC;
 COMMIT;
 
 CREATE FUNCTION pg_temp.apply_schema_migration(migration_name text, source_bytes bytea)
