@@ -520,6 +520,9 @@ dependencies {
     coreLibraryDesugaring(libs.android.desugar.jdk.libs)
 
     constraints {
+        implementation("com.google.guava:guava:33.7.2-android") {
+            because("CVE-2026-102554: use the corrected Android library")
+        }
         implementation("com.google.protobuf:protobuf-javalite:3.25.9") {
             because("CVE-2024-7254: bound recursion when parsing unknown Protobuf fields")
         }
