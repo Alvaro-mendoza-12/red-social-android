@@ -1,6 +1,7 @@
 const assert = require('assert/strict')
 const express = require('express')
 const {
+  createApiMetricsCollector,
   createRequestObservabilityMiddleware,
   routeName,
   safeErrorLogDetails,
@@ -22,14 +23,17 @@ async function run() {
   assert.equal(developmentLog.message, privateDiagnostic)
   assert.equal(developmentLog.messageRef, productionLog.messageRef)
 
+  const metrics = createApiMetricsCollector({ pool: { totalCount: 4, idleCount: 3, waitingCount: 0 } })
   const app = express()
   app.use((req, _res, next) => {
     req.requestId = 'request-observability-test'
+    req.correlationId = 'request-observability-test'
     next()
   })
   app.use(createRequestObservabilityMiddleware({
     slowRequestMs: 100,
     logger: { warn: (...args) => warnings.push(args) },
+    metrics,
   }))
   app.get('/items/:id', async (_req, res) => {
     await new Promise((resolve) => setTimeout(resolve, 120))
@@ -54,6 +58,15 @@ async function run() {
     assert.equal(routeName({ observabilityRoute: '/rest/v1/rpc/:operation', route: { path: /^\/rpc\/(.*)$/ } }),
       '/rest/v1/rpc/:operation')
     assert.equal(routeName({ observabilityRoute: '/users/private-value?secret=hidden' }), 'unmatched')
+    const snapshot = metrics.snapshot()
+    assert.equal(snapshot.requestsTotal, 1)
+    assert.equal(snapshot.status2xx, 1)
+    assert.equal(snapshot.slowRequestsTotal, 1)
+    assert.equal(snapshot.latencyP50Ms >= 100, true)
+    assert.equal(snapshot.dbPool.total, 4)
+    const promText = metrics.formatPrometheus()
+    assert.match(promText, /novvin_api_requests_total 1/)
+    assert.match(promText, /novvin_api_db_pool_connections\{state="total"\} 4/)
   } finally {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())))
   }

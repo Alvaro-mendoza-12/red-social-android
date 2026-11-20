@@ -62,3 +62,10 @@ for (const content of ['', '   ', 'Estrella', 'https://storage.invalid/private/s
   assert.equal(sticker.body, 'Sticker')
   assert.equal(sticker.content, content, 'Notification formatting must not mutate the replicated message')
 }
+const cancelElsewhere = buildData(
+  { type: 'call_cancel', recipient_id: 'account-2', target_id: 'call-99', target_type: 'call' },
+  { call_action: 'answered_elsewhere', exclude_session_id: 'session-winner-1' },
+)
+assert.equal(cancelElsewhere.call_action, 'answered_elsewhere')
+assert.equal(cancelElsewhere.call_id, 'call-99')
+assert.equal(cancelElsewhere.exclude_session_id, undefined, 'Internal session exclusion hint must not leak into FCM data')

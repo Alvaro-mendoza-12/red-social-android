@@ -13,6 +13,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -50,8 +51,10 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.input.pointer.pointerInput
@@ -194,6 +197,7 @@ fun VoiceRoomActiveScreen(
     val isCinemaMode = cinemaState?.isCinemaMode == true
     
     var showEditDialog by remember { mutableStateOf(false) }
+    var showShareSheet by remember { mutableStateOf(false) }
     if (showSoundSettings) {
         AlertDialog(onDismissRequest = { showSoundSettings = false }, title = { Text("Sonidos de la sala") },
             text = { Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -274,14 +278,8 @@ fun VoiceRoomActiveScreen(
                     },
                     actions = {
                         IconButton(onClick = {
-                            room?.id?.let(::voiceRoomShareLink)?.let { link ->
-                                val share = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, "Te invito a una sala de voz en Novvin: $link")
-                                }
-                                runCatching { context.startActivity(Intent.createChooser(share, "Compartir sala")) }
-                                    .onFailure { android.widget.Toast.makeText(context, "No se pudo abrir Compartir", android.widget.Toast.LENGTH_SHORT).show() }
-                            }
+                            viewModel.prepareShareDestinations()
+                            showShareSheet = true
                         }) { Icon(Icons.Default.Share, contentDescription = "Compartir sala") }
                         IconButton(onClick = {
                             room?.id?.let(::voiceRoomShareLink)?.let { link ->
@@ -484,6 +482,54 @@ fun VoiceRoomActiveScreen(
                             showEditDialog = false
                         },
                         onDismiss = { showEditDialog = false }
+                    )
+                }
+
+                if (showShareSheet) {
+                    val activeRoom = room!!
+                    val roomCode = activeRoom.readableId?.takeIf { it.isNotBlank() } ?: activeRoom.id
+                    val shareLink = voiceRoomShareLink(activeRoom.id).orEmpty()
+                    ShareVoiceRoomBottomSheet(
+                        roomName = activeRoom.name,
+                        roomCode = roomCode,
+                        shareLink = shareLink,
+                        viewModel = viewModel,
+                        onShareExternal = {
+                            val shareText = if (shareLink.isNotBlank()) {
+                                "Te invito a la sala de voz ${activeRoom.name} en Novvin: $shareLink"
+                            } else {
+                                "Te invito a la sala de voz ${activeRoom.name} en Novvin. ID de sala: $roomCode"
+                            }
+                            val share = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, shareText)
+                            }
+                            runCatching { context.startActivity(Intent.createChooser(share, "Compartir sala")) }
+                                .onFailure {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "No se pudo abrir Compartir",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                        },
+                        onCopyLink = {
+                            val valueToCopy = shareLink.ifBlank { roomCode }
+                            clipboardScope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(ClipData.newPlainText("Enlace de sala", valueToCopy))
+                                )
+                                android.widget.Toast.makeText(
+                                    context,
+                                    if (shareLink.isNotBlank()) "Enlace copiado" else "ID copiado",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onDismiss = {
+                            showShareSheet = false
+                            viewModel.clearShareState()
+                        }
                     )
                 }
 
@@ -1127,16 +1173,27 @@ fun ParticipantCard(
                  ownerId = participant.id,
                  imageUrl = participant.avatarUrl,
                  size = 80.dp,
-                 showBorder = participant.isSpeaking,
-                 borderColor = MaterialTheme.colorScheme.primary,
-                 borderWidth = 3.dp
+                 showBorder = false
              )
+
+             if (participant.isSpeaking && !participant.isMuted) {
+                 VoiceSpeakingBadge(
+                     size = 24.dp,
+                     iconSize = 14.dp,
+                     modifier = Modifier
+                         .align(Alignment.TopStart)
+                         .offset(x = (-3).dp, y = (-3).dp)
+                         .zIndex(8f)
+                         .testTag("voice_participant_speaking_badge")
+                 )
+             }
              
              if (participant.isMuted) {
                  Box(
                      modifier = Modifier
                          .align(Alignment.BottomEnd)
                          .offset(x = 4.dp, y = 4.dp)
+                         .zIndex(8f)
                          .testTag("voice_participant_muted_badge")
                          .background(MaterialTheme.colorScheme.surface, CircleShape)
                          .padding(2.dp)
@@ -1768,19 +1825,25 @@ fun ParticipantCinemaCard(participant: conectate.com.data.model.VoiceParticipant
         modifier = Modifier.width(60.dp)
     ) {
         Box(
-            modifier = Modifier
-                .size(50.dp)
-                .clip(CircleShape)
-                .background(if (participant.isSpeaking) MaterialTheme.colorScheme.primary else Color.Gray)
+            modifier = Modifier.size(50.dp),
+            contentAlignment = Alignment.Center
         ) {
             CircularProfileImage(
                 ownerId = participant.id,
                 imageUrl = participant.avatarUrl,
                 size = 50.dp,
-                showBorder = participant.isSpeaking,
-                borderColor = Color.White,
-                borderWidth = 2.dp
+                showBorder = false
             )
+            if (participant.isSpeaking && !participant.isMuted) {
+                VoiceSpeakingBadge(
+                    size = 18.dp,
+                    iconSize = 11.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = (-2).dp, y = (-2).dp)
+                        .zIndex(8f)
+                )
+            }
         }
         Text(
             text = participant.name,
@@ -1790,6 +1853,44 @@ fun ParticipantCinemaCard(participant: conectate.com.data.model.VoiceParticipant
             fontWeight = FontWeight.Medium,
             modifier = Modifier.padding(top = 4.dp)
         )
+    }
+}
+
+@Composable
+private fun VoiceSpeakingBadge(
+    size: androidx.compose.ui.unit.Dp,
+    iconSize: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier
+) {
+    val pulseTransition = rememberInfiniteTransition(label = "voiceSpeakingPulse")
+    val pulseScale by pulseTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 650, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "voiceSpeakingScale"
+    )
+    Box(
+        modifier = modifier
+            .scale(pulseScale)
+            .background(MaterialTheme.colorScheme.surface, CircleShape)
+            .padding(2.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .background(Color(0xFF22C55E), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.GraphicEq,
+                contentDescription = "Hablando",
+                tint = Color.White,
+                modifier = Modifier.size(iconSize)
+            )
+        }
     }
 }
 
@@ -2103,7 +2204,9 @@ fun FloatingReaction(reaction: ReactionEvent) {
                 val frame = progress.value
                 translationY = -rise * frame
                 translationX = kotlin.math.sin(frame * kotlin.math.PI.toFloat() * 2 + seed % 6) * drift
-                alpha = ((1f - frame) / .2f).coerceIn(0f, 1f)
+                val enterAlpha = (frame / 0.12f).coerceIn(0f, 1f)
+                val exitAlpha = ((1f - frame) / 0.25f).coerceIn(0f, 1f)
+                alpha = minOf(enterAlpha, exitAlpha)
                 scaleX = .94f + frame * .1f
                 scaleY = scaleX
             }
@@ -2227,6 +2330,284 @@ fun InviteUserItem(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
             ) {
                 Text("Enviar por chat")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ShareVoiceRoomBottomSheet(
+    roomName: String,
+    roomCode: String,
+    shareLink: String,
+    viewModel: VoiceRoomActiveViewModel,
+    onShareExternal: () -> Unit,
+    onCopyLink: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val destinations by viewModel.shareDestinations.collectAsStateWithLifecycle()
+    val selectedKeys by viewModel.selectedShareKeys.collectAsStateWithLifecycle()
+    val isLoadingDestinations by viewModel.isLoadingShareDestinations.collectAsStateWithLifecycle()
+    val isSending by viewModel.isSendingShareInvites.collectAsStateWithLifecycle()
+    val shareNotice by viewModel.shareNotice.collectAsStateWithLifecycle()
+    val query by viewModel.inviteQuery.collectAsStateWithLifecycle()
+    val searchUsers by viewModel.inviteResults.collectAsStateWithLifecycle()
+    val isSearchingUsers by viewModel.isSearchingInvites.collectAsStateWithLifecycle()
+
+    val trimmedQuery = query.trim()
+    val filteredDestinations = remember(destinations, trimmedQuery) {
+        if (trimmedQuery.isBlank()) {
+            destinations
+        } else {
+            destinations.filter { dest ->
+                dest.title.contains(trimmedQuery, ignoreCase = true) ||
+                    dest.subtitle.contains(trimmedQuery, ignoreCase = true)
+            }
+        }
+    }
+    val userSearchItems = remember(searchUsers, destinations, trimmedQuery) {
+        if (trimmedQuery.length < 2) {
+            emptyList()
+        } else {
+            val existingTitles = destinations.map { it.title.trim().lowercase() }.toSet()
+            searchUsers.map { user ->
+                VoiceShareDestination(
+                    key = "user:${user.id}",
+                    id = user.id,
+                    kind = VoiceShareKind.USER,
+                    title = user.displayName,
+                    subtitle = if (user.displayName.trim().lowercase() in existingTitles) "Contacto de Novvin" else "Usuario · Chat directo",
+                    avatarUrl = user.avatarUrl,
+                )
+            }
+        }
+    }
+    val visibleItems = remember(filteredDestinations, userSearchItems) {
+        (filteredDestinations + userSearchItems).distinctBy { it.key }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.86f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Compartir sala de voz",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "$roomName · ID $roomCode",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Cerrar compartir")
+                }
+            }
+
+            // 1. Opciones externas arriba
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onShareExternal,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Otras apps", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                OutlinedButton(
+                    onClick = onCopyLink,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Copiar enlace", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+
+            HorizontalDivider()
+
+            // 2. Conversaciones recientes y usuarios dentro de Novvin
+            Text(
+                text = "Invitar en Novvin (chats, grupos y comunidades)",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            OutlinedTextField(
+                value = query,
+                onValueChange = { viewModel.onInviteQueryChanged(it) },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Buscar chats, grupos, comunidades o usuarios…") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            if (!shareNotice.isNullOrBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = shareNotice.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+            }
+
+            if (isLoadingDestinations && visibleItems.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                }
+            } else if (visibleItems.isEmpty() && !isSearchingUsers) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (trimmedQuery.isBlank()) {
+                            "Aún no tienes conversaciones recientes. Escribe un nombre para buscar."
+                        } else {
+                            "No se encontraron chats, grupos, comunidades ni usuarios."
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                androidx.compose.foundation.lazy.LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(visibleItems, key = { it.key }) { item ->
+                        val isSelected = item.key in selectedKeys
+                        Surface(
+                            onClick = { viewModel.toggleShareSelection(item.key) },
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            },
+                            border = if (isSelected) {
+                                BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                            } else {
+                                null
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                CircularProfileImage(
+                                    ownerId = item.id,
+                                    imageUrl = item.avatarUrl,
+                                    size = 42.dp,
+                                    showBorder = false
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = item.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = item.subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = { viewModel.toggleShareSelection(item.key) }
+                                )
+                            }
+                        }
+                    }
+                    if (isSearchingUsers) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = { viewModel.sendShareInvites(shareLink) },
+                enabled = selectedKeys.isNotEmpty() && !isSending,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                if (isSending) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Enviando invitaciones…")
+                } else {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        if (selectedKeys.isEmpty()) {
+                            "Selecciona conversaciones para invitar"
+                        } else if (selectedKeys.size == 1) {
+                            "Enviar invitación (1)"
+                        } else {
+                            "Enviar invitaciones (${selectedKeys.size})"
+                        }
+                    )
+                }
             }
         }
     }

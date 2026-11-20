@@ -75,3 +75,23 @@ test('a new peer joining while screen sharing receives the screen rather than th
     expect(addTrack.mock.calls.some(([track])=>track===camera)).toBe(false)
   } finally {Object.defineProperty(globalThis,'RTCPeerConnection',{configurable:true,value:originalPeer})}
 })
+
+test('switchCamera replaces the camera track across peers and stops the previous camera track', async () => {
+  const { manager, camera, sender, previews } = fixture(), backCamera = new Track('video')
+  const getUserMedia = jest.fn(async () => new Stream([backCamera]))
+  Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } })
+  await manager.switchCamera()
+  expect(getUserMedia).toHaveBeenCalledWith({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+  expect(sender.track).toBe(backCamera)
+  expect(camera.stop).toHaveBeenCalled()
+  expect(previews.at(-1)?.getVideoTracks()).toEqual([backCamera])
+})
+
+test('answered_elsewhere ends the local call quietly without notifying remote or issuing leave', async () => {
+  const { manager, internal } = fixture()
+  const endedEvents: Array<{ reason: string; notifyRemote: boolean }> = []
+  manager.onCallEnd((reason, event) => { endedEvents.push({ reason, notifyRemote: event.notifyRemote }) })
+  await manager.receiveResponse('test-call', 'answered_elsewhere')
+  expect(internal.callState.currentCallId).toBeNull()
+  expect(endedEvents).toEqual([{ reason: 'answered_elsewhere', notifyRemote: false }])
+})

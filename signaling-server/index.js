@@ -1,6 +1,7 @@
 require('dotenv').config();
 const crypto = require('crypto');
 const http = require('http');
+const { monitorEventLoopDelay } = require('perf_hooks');
 const { Server } = require('socket.io');
 
 const PORT = Number(process.env.PORT || 3001);
@@ -102,7 +103,16 @@ const maxLiveGuests = clampInt(process.env.LIVE_MAX_GUESTS, 6, 1, 8);
 const liveInternalEventsToken = String(process.env.LIVE_INTERNAL_EVENTS_TOKEN || '').trim();
 const signalingInstanceId = crypto.randomUUID();
 const allowedOrigins = parseAllowedOrigins(process.env.SIGNALING_ALLOWED_ORIGINS);
+const MAX_RATE_LIMIT_BUCKETS = 25_000;
 const rateLimitBuckets = new Map();
+const reactionLastSentAt = new Map();
+const signalingEventLoopMonitor = monitorEventLoopDelay({ resolution: 20 });
+signalingEventLoopMonitor.enable();
+const signalingMetrics = {
+    startedAtMs: Date.now(),
+    rateLimitRejections: 0,
+    reactionThrottled: 0,
+};
 const diagnosticSalt = crypto.randomBytes(32);
 // Socket.IO adapters can serialize socket.data during cross-node socket lookups.
 // Keep bearer tokens process-local so they can never enter Redis or a remote
@@ -137,15 +147,15 @@ if (String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production' && 
 // Periodic cleanup to prevent memory leaks from inactive rate limit buckets
 setInterval(() => {
     const now = Date.now();
-    for (const [key, timestamps] of rateLimitBuckets.entries()) {
-        const fresh = timestamps.filter(t => now - t < 60000);
-        if (fresh.length === 0) {
+    for (const [key, entry] of rateLimitBuckets.entries()) {
+        if (!entry || now >= entry.expiresAt) {
             rateLimitBuckets.delete(key);
-        } else {
-            rateLimitBuckets.set(key, fresh);
         }
     }
-}, 5 * 60 * 1000).unref();
+    for (const [key, lastAt] of reactionLastSentAt.entries()) {
+        if (now - lastAt > 60_000) reactionLastSentAt.delete(key);
+    }
+}, 60 * 1000).unref();
 
 if (allowedOrigins.size === 0) {
     console.warn('[SOCKET_DEBUG] [WARN] SIGNALING_ALLOWED_ORIGINS not set. Only local browser origins and native clients without Origin header will be allowed.');
@@ -271,16 +281,57 @@ function diagnosticError(error) {
 
 function consumeRateLimitToken(bucket, key, limit, windowMs) {
     const now = Date.now();
-    const compositeKey = `${bucket}:${key}`;
-    const window = rateLimitBuckets.get(compositeKey) || [];
-    const fresh = window.filter((timestamp) => now - timestamp < windowMs);
-    if (fresh.length >= limit) {
-        rateLimitBuckets.set(compositeKey, fresh);
+    const compositeKey = `${bucket}:${String(key || 'unknown').slice(0, 160)}`;
+    let entry = rateLimitBuckets.get(compositeKey);
+    if (!entry || now >= entry.expiresAt) {
+        if (!entry && rateLimitBuckets.size >= MAX_RATE_LIMIT_BUCKETS) {
+            const oldestKey = rateLimitBuckets.keys().next().value;
+            if (oldestKey !== undefined) rateLimitBuckets.delete(oldestKey);
+        }
+        entry = { count: 0, expiresAt: now + windowMs };
+        rateLimitBuckets.set(compositeKey, entry);
+    }
+    if (entry.count >= limit) {
+        signalingMetrics.rateLimitRejections += 1;
         return false;
     }
-    fresh.push(now);
-    rateLimitBuckets.set(compositeKey, fresh);
+    entry.count += 1;
     return true;
+}
+
+function allowUserReaction(scopeKey, userId) {
+    const now = Date.now();
+    const key = `${scopeKey}:${userId}`;
+    const previous = reactionLastSentAt.get(key) || 0;
+    if (now - previous < 500) {
+        signalingMetrics.reactionThrottled += 1;
+        return false;
+    }
+    if (!consumeRateLimitToken('user-reaction', key, 30, 60_000)) {
+        signalingMetrics.reactionThrottled += 1;
+        return false;
+    }
+    if (reactionLastSentAt.size >= MAX_RATE_LIMIT_BUCKETS && !reactionLastSentAt.has(key)) {
+        const oldestKey = reactionLastSentAt.keys().next().value;
+        if (oldestKey !== undefined) reactionLastSentAt.delete(oldestKey);
+    }
+    reactionLastSentAt.set(key, now);
+    return true;
+}
+
+function sanitizeReactionEmoji(raw) {
+    const value = String(raw || '').trim();
+    if (!value || value.length > 16) return '';
+    return value;
+}
+
+function isInternalMetricsAuthorized(req) {
+    const expected = liveInternalEventsToken;
+    const isProd = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+    if (!expected) return !isProd;
+    const supplied = String(req.headers['x-live-internal-token'] || extractBearerToken(req.headers.authorization) || '').trim();
+    if (!supplied || Buffer.byteLength(supplied) !== Buffer.byteLength(expected)) return false;
+    return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
 }
 
 function enforceHttpRateLimit(req, res, bucket, limit = httpRateLimitPerMinute) {
@@ -699,6 +750,61 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    if (req.method === 'GET' && requestUrl.pathname === '/internal/metrics') {
+        if (!isInternalMetricsAuthorized(req)) {
+            sendJson(req, res, 401, { ok: false, error: 'UNAUTHORIZED' });
+            return;
+        }
+        const mem = process.memoryUsage();
+        const voiceSockets = io?.sockets?.sockets?.size || 0;
+        const callSockets = callIo?.sockets?.size || 0;
+        const liveSockets = liveIo?.sockets?.size || 0;
+        const snapshot = {
+            service: 'novvin-signaling-server',
+            instanceId: signalingInstanceId,
+            uptimeSeconds: Math.round((Date.now() - signalingMetrics.startedAtMs) / 1000),
+            voiceSockets,
+            callSockets,
+            liveSockets,
+            totalSockets: voiceSockets + callSockets + liveSockets,
+            activeVoiceRooms: rooms.size,
+            activeCallRooms: calls.size,
+            activeLiveRooms: lives.size,
+            rateLimitBucketCount: rateLimitBuckets.size,
+            rateLimitRejections: signalingMetrics.rateLimitRejections,
+            reactionThrottled: signalingMetrics.reactionThrottled,
+            eventLoopLagP95Ms: Number((signalingEventLoopMonitor.percentile(95) / 1e6).toFixed(2)),
+            memoryRssBytes: mem.rss,
+            memoryHeapUsedBytes: mem.heapUsed,
+        };
+        if (requestUrl.searchParams.get('format') === 'json') {
+            sendJson(req, res, 200, { ok: true, metrics: snapshot });
+            return;
+        }
+        const lines = [
+            '# TYPE novvin_signaling_sockets_total gauge',
+            `novvin_signaling_sockets_total ${snapshot.totalSockets}`,
+            '# TYPE novvin_signaling_voice_rooms gauge',
+            `novvin_signaling_voice_rooms ${snapshot.activeVoiceRooms}`,
+            '# TYPE novvin_signaling_call_rooms gauge',
+            `novvin_signaling_call_rooms ${snapshot.activeCallRooms}`,
+            '# TYPE novvin_signaling_live_rooms gauge',
+            `novvin_signaling_live_rooms ${snapshot.activeLiveRooms}`,
+            '# TYPE novvin_signaling_rate_limit_rejections_total counter',
+            `novvin_signaling_rate_limit_rejections_total ${snapshot.rateLimitRejections}`,
+            '# TYPE novvin_signaling_reaction_throttled_total counter',
+            `novvin_signaling_reaction_throttled_total ${snapshot.reactionThrottled}`,
+            '# TYPE novvin_signaling_event_loop_lag_p95_ms gauge',
+            `novvin_signaling_event_loop_lag_p95_ms ${snapshot.eventLoopLagP95Ms}`,
+            '# TYPE novvin_signaling_memory_rss_bytes gauge',
+            `novvin_signaling_memory_rss_bytes ${snapshot.memoryRssBytes}`,
+        ];
+        setSecurityHeaders(res);
+        res.writeHead(200, { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' });
+        res.end(`${lines.join('\n')}\n`);
+        return;
+    }
+
     if (req.method === 'GET' && requestUrl.pathname === '/turn-credentials') {
         if (!enforceHttpRateLimit(req, res, 'turn-credentials', 90)) {
             return;
@@ -1110,8 +1216,14 @@ async function refreshVoiceParticipantAccess(socket, roomId) {
             : null;
         const memoryParticipant = rooms.get(roomId)?.get(socket.id);
         if (memoryParticipant && persisted) {
-            memoryParticipant.role = String(persisted.role || 'speaker').toLowerCase();
-            memoryParticipant.isMuted = Boolean(persisted.is_muted);
+            const nextRole = String(persisted.role || 'speaker').toLowerCase();
+            memoryParticipant.role = nextRole;
+            const recentLocalMute = Number(memoryParticipant.lastLocalMuteChangeAt || 0) > Date.now() - 5_000;
+            if (nextRole === 'audience') {
+                memoryParticipant.isMuted = true;
+            } else if (!recentLocalMute) {
+                memoryParticipant.isMuted = Boolean(persisted.is_muted);
+            }
             memoryParticipant.handRaised = Boolean(persisted.hand_raised);
             setVoiceParticipantSocketData(socket, memoryParticipant);
         }
@@ -1276,12 +1388,16 @@ io.on('connection', (socket) => {
         console.log(`[SOCKET_DEBUG] [ROOMS] Active room count: ${rooms.size}`);
         void setParticipantCount(roomId, participantCount);
 
-        // Notify others in the room
+        // Notify others in the room with the authoritative mute/stage state
+        const joinedParticipant = rooms.get(roomId)?.get(socket.id);
         socket.to(roomId).emit('user-joined', {
             socketId: socket.id,
             userId: userId,
             name: name,
             avatarUrl: avatarUrl,
+            isMuted: joinedParticipant ? Boolean(joinedParticipant.isMuted) : Boolean(data.isMuted),
+            role: joinedParticipant?.role || 'speaker',
+            handRaised: Boolean(joinedParticipant?.handRaised),
             captionsEnabled: false
         });
 
@@ -1366,10 +1482,15 @@ io.on('connection', (socket) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'reaction');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
+        const emoji = sanitizeReactionEmoji(data?.emoji);
+        if (!emoji) return;
+        if (!allowUserReaction(`room:${roomId}`, userId)) return;
+        const reactionId = String(data?.reactionId || '').trim().slice(0, 64) || crypto.randomUUID();
         io.to(roomId).emit('reaction', {
-            ...data,
+            roomId,
             userId,
-            reactionId: data?.reactionId || crypto.randomUUID(),
+            emoji,
+            reactionId,
             timestamp: Number(data?.timestamp) || Date.now()
         });
     });
@@ -1526,16 +1647,21 @@ io.on('connection', (socket) => {
         const roomId = requireJoinedScope(socket, 'joinedRoomIds', data?.roomId, 'room', 'mute-state');
         const userId = requireSocketUser(socket, data.userId);
         if (!roomId || !userId) return;
-        if (data?.isMuted === false && !(await refreshVoiceParticipantAccess(socket, roomId))) {
+        const nextMuted = Boolean(data?.isMuted);
+        if (!nextMuted && !(await refreshVoiceParticipantAccess(socket, roomId))) {
             socket.emit('voice-stage-denied', { roomId, action: 'unmute', error: 'VOICE_STAGE_AUDIENCE_MUTED' });
             return;
         }
         const participant = rooms.get(roomId)?.get(socket.id);
         if (participant) {
-            participant.isMuted = Boolean(data?.isMuted);
+            participant.isMuted = nextMuted;
+            participant.lastLocalMuteChangeAt = Date.now();
             setVoiceParticipantSocketData(socket, participant);
+            void persistVoiceRoomJoin(socket, roomId, participant).catch((error) => {
+                console.warn(`[SOCKET_DEBUG] [VOICE] Could not persist mute-state for roomRef=${diagnosticRef(roomId)}:`, diagnosticError(error));
+            });
         }
-        socket.to(roomId).emit('mute-state', { ...data, userId });
+        socket.to(roomId).emit('mute-state', { ...data, userId, isMuted: nextMuted });
     });
 
     safeSocketOn(socket, 'media-status', async (data) => {
@@ -1767,10 +1893,15 @@ callIo.on('connection', (socket) => {
         const callId = requireJoinedScope(socket, 'joinedCallIds', data?.callId, 'call', 'reaction');
         const userId = requireSocketUser(socket, data.userId);
         if (!callId || !userId) return;
+        const emoji = sanitizeReactionEmoji(data?.emoji);
+        if (!emoji) return;
+        if (!allowUserReaction(`call:${callId}`, userId)) return;
+        const reactionId = String(data?.reactionId || '').trim().slice(0, 64) || crypto.randomUUID();
         socket.to(callId).emit('reaction', {
-            ...data,
+            callId,
             userId,
-            reactionId: data?.reactionId || crypto.randomUUID(),
+            emoji,
+            reactionId,
             timestamp: Number(data?.timestamp) || Date.now()
         });
     });

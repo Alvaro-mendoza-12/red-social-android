@@ -38,6 +38,19 @@ internal class ProfileVisitorsLoader(
         mutableState.value = ProfileVisitorsState(loading = actor != null)
     }
 
+    /** Clears transient errors and stale rows when leaving the visitors sheet so re-entry refreshes cleanly. */
+    fun clearTransientState() {
+        ++revision
+        job?.cancel()
+        job = null
+        mutableState.value = ProfileVisitorsState(
+            items = emptyList(),
+            loading = false,
+            error = null,
+            enabled = mutableState.value.enabled,
+        )
+    }
+
     fun refresh(enabled: Boolean) {
         val actor = currentAccount()
         val ticket = ++revision

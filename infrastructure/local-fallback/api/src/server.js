@@ -54,6 +54,7 @@ const { collectSystemHealth, loadReleaseMetadata } = require('./system-health')
 const {
   boundedInteger,
   constantTimeSecretEqual,
+  createRateLimitMiddleware,
   isTrustedProxyAddress,
   parseCorsOrigins,
   requestIpAddress,
@@ -69,7 +70,11 @@ const {
   processDueScheduledMessageJobs,
 } = require('./scheduled-message-jobs')
 const { processDueNotificationDigests } = require('./notification-digest-routes')
-const { createRequestObservabilityMiddleware, safeErrorLogDetails } = require('./request-observability')
+const {
+  createApiMetricsCollector,
+  createRequestObservabilityMiddleware,
+  safeErrorLogDetails,
+} = require('./request-observability')
 const { publicApiError } = require('./public-api-error')
 const { receiveRecoveryEvidence, ensureRecoveryEvidenceSchema, persistRecoveryEvidence, registerRecoveryEvidenceDownload } = require('./recovery-evidence')
 const { createPasswordResetMailer } = require('./password-reset-mailer')
@@ -191,7 +196,7 @@ const pool = new Pool({
   // Keep conservative defaults for a single mini-PC, but allow production to
   // tune concurrency without changing code. Bounds protect PostgreSQL from an
   // accidental value that would exhaust all available connections.
-  max: boundedInteger(process.env.DATABASE_POOL_MAX, 10, 4, 100),
+  max: boundedInteger(process.env.DATABASE_POOL_MAX, 20, 4, 100),
   min: boundedInteger(process.env.DATABASE_POOL_MIN, 0, 0, 20),
   idleTimeoutMillis: boundedInteger(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS, 30_000, 5_000, 300_000),
   connectionTimeoutMillis: boundedInteger(process.env.DATABASE_POOL_CONNECTION_TIMEOUT_MS, 10_000, 1_000, 60_000),
@@ -217,6 +222,8 @@ function logDatabasePoolError(error) {
 // The pool discards that client and establishes a fresh connection on demand.
 pool.on('error', logDatabasePoolError)
 
+const apiMetrics = createApiMetricsCollector({ pool })
+
 const app = express()
 app.disable('x-powered-by')
 app.set('trust proxy', (address) => isTrustedProxyAddress(address))
@@ -225,7 +232,7 @@ app.use(cors({
   origin: corsOrigins === '*' ? true : corsOrigins,
   credentials: true,
   exposedHeaders: [
-    'x-request-id', 'server-timing', 'x-response-time', 'location',
+    'x-request-id', 'x-correlation-id', 'server-timing', 'x-response-time', 'location',
     'content-range', 'accept-ranges', 'content-length', 'etag',
     'tus-resumable', 'tus-version', 'tus-extension', 'tus-max-size',
     'upload-length', 'upload-offset', 'upload-expires', 'upload-object-path', 'upload-state',
@@ -234,16 +241,19 @@ app.use(cors({
 app.use('/v1/surveys/assets', express.json({ limit: '6mb' }))
 app.use(express.json({ limit: '1mb' }))
 app.use((req, res, next) => {
-  const supplied = String(req.headers['x-request-id'] || '').trim()
+  const supplied = String(req.headers['x-correlation-id'] || req.headers['x-request-id'] || '').trim()
   const requestId = /^[a-zA-Z0-9._:-]{8,80}$/.test(supplied)
     ? supplied
     : crypto.randomUUID()
   req.requestId = requestId
+  req.correlationId = requestId
   res.set('x-request-id', requestId)
+  res.set('x-correlation-id', requestId)
   next()
 })
 app.use(createRequestObservabilityMiddleware({
   slowRequestMs: boundedInteger(process.env.SLOW_REQUEST_LOG_MS, 1_500, 100, 60_000),
+  metrics: apiMetrics,
 }))
 app.use(canonicalStorageResponseMiddleware)
 
@@ -412,6 +422,73 @@ app.use([
   code: 'STORAGE_UPLOAD_RATE_LIMITED',
   key: authIpKey,
   methods: ['POST', 'PUT', 'PATCH', 'DELETE'],
+}))
+
+// Authenticated write anti-flood protection keyed by verified JWT subject (or IP fallback).
+// Uses fast bounded in-memory windows so normal messaging/social traffic adds zero DB latency.
+const bearerActorKey = (req) => {
+  const header = String(req.headers.authorization || '').trim()
+  const match = header.match(/^Bearer\s+(.+)$/i)
+  if (match?.[1]) {
+    try {
+      const payload = verifyLegacyUserToken(match[1].trim())
+      if (payload?.sub) return `user:${String(payload.sub).trim().toLowerCase()}`
+    } catch {
+      // Unverified or expired token falls back to IP limiting before authRequired rejects it.
+    }
+  }
+  return authIpKey(req)
+}
+
+app.use([
+  '/v1/data/messages/chats/:chatId/messages',
+  '/v1/data/messages/groups/:roomId/messages',
+  '/v1/data/messages/communities/:roomId/messages',
+], createRateLimitMiddleware({
+  limit: boundedInteger(process.env.MESSAGE_WRITE_RATE_LIMIT_PER_MINUTE, 120, 10, 2000),
+  windowMs: 60_000,
+  code: 'MESSAGE_RATE_LIMITED',
+  key: bearerActorKey,
+  methods: ['POST'],
+}))
+
+app.use([
+  '/v1/data/calls/prepare',
+  '/v1/data/calls/:callId/invite',
+], createRateLimitMiddleware({
+  limit: boundedInteger(process.env.CALL_INITIATE_RATE_LIMIT_PER_MINUTE, 30, 5, 500),
+  windowMs: 60_000,
+  code: 'CALL_RATE_LIMITED',
+  key: bearerActorKey,
+  methods: ['POST'],
+}))
+
+app.use([
+  '/v1/data/reports/users',
+  '/v1/data/reports/content',
+  '/v1/data/videos/comments/:commentId/report',
+], createRateLimitMiddleware({
+  limit: boundedInteger(process.env.REPORT_SUBMIT_RATE_LIMIT_PER_10_MINUTES, 20, 3, 200),
+  windowMs: 10 * 60_000,
+  code: 'REPORT_RATE_LIMITED',
+  key: bearerActorKey,
+  methods: ['POST'],
+}))
+
+app.use([
+  '/v1/data/feed/posts',
+  '/v1/data/feed/posts/:postId/comments',
+  '/v1/data/feed/posts/:postId/reaction',
+  '/v1/data/videos',
+  '/v1/data/videos/:videoId/comments',
+  '/v1/data/videos/:videoId/reaction',
+  '/v1/data/notifications',
+], createRateLimitMiddleware({
+  limit: boundedInteger(process.env.SOCIAL_WRITE_RATE_LIMIT_PER_MINUTE, 120, 10, 2000),
+  windowMs: 60_000,
+  code: 'SOCIAL_WRITE_RATE_LIMITED',
+  key: bearerActorKey,
+  methods: ['POST'],
 }))
 
 const userSelectColumns = `
@@ -1026,15 +1103,49 @@ function requestUserAgent(req) {
   return cleanText(req.headers['user-agent'] || '', 500) || null
 }
 
-async function touchWebSessionForAuth(auth, req) {
-  const sessionId = String(auth?.sid || '').trim()
-  // Legacy JWTs without a session cannot be revoked after password reset.
-  if (!sessionId) return false
-  if (!isUuidText(sessionId) || !isUuidText(auth?.sub)) return false
+const sessionTouchIntervalMs = boundedInteger(
+  process.env.SESSION_TOUCH_INTERVAL_MS,
+  60_000,
+  5_000,
+  600_000,
+)
+const recentSessionTouchAt = new Map()
 
-  if (String(auth?.client || '').trim().toLowerCase() !== 'web') {
-    const { rows } = await pool.query(
-      `UPDATE fallback_auth_sessions
+function shouldPersistSessionTouch(sessionKey, dbLastTouchedAt) {
+  const now = Date.now()
+  const localLast = recentSessionTouchAt.get(sessionKey) || 0
+  if (now - localLast < sessionTouchIntervalMs) {
+    return false
+  }
+  const dbLast = dbLastTouchedAt ? new Date(dbLastTouchedAt).getTime() : 0
+  if (Number.isFinite(dbLast) && now - dbLast < sessionTouchIntervalMs) {
+    recentSessionTouchAt.set(sessionKey, dbLast)
+    return false
+  }
+  if (recentSessionTouchAt.size >= 50_000) {
+    const oldestKey = recentSessionTouchAt.keys().next().value
+    if (oldestKey !== undefined) recentSessionTouchAt.delete(oldestKey)
+  }
+  recentSessionTouchAt.set(sessionKey, now)
+  return true
+}
+
+function scheduleThrottledSessionTouch({ isWeb, sessionId, userId, ipAddress, userAgent, dbLastTouchedAt }) {
+  const sessionKey = `${isWeb ? 'web' : 'auth'}:${sessionId}`
+  if (!shouldPersistSessionTouch(sessionKey, dbLastTouchedAt)) {
+    return
+  }
+  const sql = isWeb
+    ? `UPDATE fallback_web_sessions
+       SET last_seen_at = NOW(),
+           ip_address = COALESCE($3, ip_address),
+           user_agent = COALESCE($4, user_agent),
+           updated_at = NOW()
+       WHERE id = $1
+         AND user_id = $2
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())`
+    : `UPDATE fallback_auth_sessions
        SET last_used_at = NOW(),
            ip_address = COALESCE($3, ip_address),
            user_agent = COALESCE($4, user_agent),
@@ -1042,28 +1153,72 @@ async function touchWebSessionForAuth(auth, req) {
        WHERE id = $1
          AND user_id = $2
          AND revoked_at IS NULL
-         AND expires_at > NOW()
-       RETURNING id`,
-      [sessionId, auth.sub, requestIpAddress(req), requestUserAgent(req)],
-    )
-    return Boolean(rows[0])
+         AND expires_at > NOW()`
+  pool.query(sql, [sessionId, userId, ipAddress, userAgent]).catch(() => {
+    recentSessionTouchAt.delete(sessionKey)
+  })
+}
+
+async function touchWebSessionForAuth(auth, req) {
+  const sessionId = String(auth?.sid || '').trim()
+  // Legacy JWTs without a session cannot be revoked after password reset.
+  if (!sessionId) return false
+  if (!isUuidText(sessionId) || !isUuidText(auth?.sub)) return false
+
+  const isWeb = String(auth?.client || '').trim().toLowerCase() === 'web'
+  const prefetched = req?._authSessionRow
+  if (
+    prefetched &&
+    prefetched.sessionId === sessionId &&
+    prefetched.userId === String(auth.sub) &&
+    prefetched.isWeb === isWeb
+  ) {
+    if (!prefetched.active) return false
+    scheduleThrottledSessionTouch({
+      isWeb,
+      sessionId,
+      userId: auth.sub,
+      ipAddress: requestIpAddress(req),
+      userAgent: requestUserAgent(req),
+      dbLastTouchedAt: prefetched.lastTouchedAt,
+    })
+    return true
   }
 
-  const { rows } = await pool.query(
-    `UPDATE fallback_web_sessions
-     SET last_seen_at = NOW(),
-         ip_address = COALESCE($3, ip_address),
-         user_agent = COALESCE($4, user_agent),
-         updated_at = NOW()
-     WHERE id = $1
-       AND user_id = $2
-       AND revoked_at IS NULL
-       AND (expires_at IS NULL OR expires_at > NOW())
-     RETURNING id`,
-    [sessionId, auth.sub, requestIpAddress(req), requestUserAgent(req)],
-  )
+  // Lock-free PK read preserves 0ms revocation visibility while avoiding a
+  // PostgreSQL row write-lock on every concurrent request from the same user.
+  const { rows } = isWeb
+    ? await pool.query(
+      `SELECT id, last_seen_at AS last_touched_at
+       FROM fallback_web_sessions
+       WHERE id = $1
+         AND user_id = $2
+         AND revoked_at IS NULL
+         AND (expires_at IS NULL OR expires_at > NOW())
+       LIMIT 1`,
+      [sessionId, auth.sub],
+    )
+    : await pool.query(
+      `SELECT id, last_used_at AS last_touched_at
+       FROM fallback_auth_sessions
+       WHERE id = $1
+         AND user_id = $2
+         AND revoked_at IS NULL
+         AND expires_at > NOW()
+       LIMIT 1`,
+      [sessionId, auth.sub],
+    )
 
-  return Boolean(rows[0])
+  if (!rows[0]) return false
+  scheduleThrottledSessionTouch({
+    isWeb,
+    sessionId,
+    userId: auth.sub,
+    ipAddress: requestIpAddress(req),
+    userAgent: requestUserAgent(req),
+    dbLastTouchedAt: rows[0].last_touched_at,
+  })
+  return true
 }
 
 function bearerTokenFromRequest(req) {
@@ -1072,21 +1227,96 @@ function bearerTokenFromRequest(req) {
 }
 
 async function authenticateClientRequest(req) {
+  let verifiedAuth = null
   return authenticateClientSession({
     token: bearerTokenFromRequest(req),
-    verifyToken: (token) => jwt.verify(token, jwtSecret, {
-      issuer: serviceName,
-      audience: 'conectate-clients',
-    }),
+    verifyToken: (token) => {
+      verifiedAuth = jwt.verify(token, jwtSecret, {
+        issuer: serviceName,
+        audience: 'conectate-clients',
+      })
+      return verifiedAuth
+    },
     userExists: async (userId) => {
+      if (!isUuidText(userId)) return false
+      const sessionId = String(verifiedAuth?.sid || '').trim()
+      const hasValidSessionUuid = isUuidText(sessionId)
+      const isWeb = String(verifiedAuth?.client || '').trim().toLowerCase() === 'web'
+      const sessionJoin = hasValidSessionUuid
+        ? (isWeb
+          ? `LEFT JOIN fallback_web_sessions s
+               ON s.id = $2::uuid
+              AND s.user_id = u.id
+              AND s.revoked_at IS NULL
+              AND (s.expires_at IS NULL OR s.expires_at > NOW())`
+          : `LEFT JOIN fallback_auth_sessions s
+               ON s.id = $2::uuid
+              AND s.user_id = u.id
+              AND s.revoked_at IS NULL
+              AND s.expires_at > NOW()`)
+        : ''
+      const sessionSelect = hasValidSessionUuid
+        ? (isWeb
+          ? ', s.id AS _active_session_id, s.last_seen_at AS _session_last_touched_at'
+          : ', s.id AS _active_session_id, s.last_used_at AS _session_last_touched_at')
+        : ', NULL::uuid AS _active_session_id, NULL::timestamptz AS _session_last_touched_at'
+      const params = hasValidSessionUuid ? [userId, sessionId] : [userId]
       const { rows } = await pool.query(
-        `SELECT 1
-         FROM fallback_users
-         WHERE id = $1::uuid
+        `SELECT u.id,
+                u.email,
+                u.display_name,
+                u.avatar_url,
+                u.supabase_user_id,
+                u.sync_source,
+                u.sync_status,
+                u.created_at,
+                u.updated_at,
+                u.last_login_at
+                ${sessionSelect},
+                EXISTS(
+                  SELECT 1
+                  FROM fallback_profile_moderation m
+                  WHERE (
+                    lower(m.user_id) = lower(u.id::text)
+                    OR (u.supabase_user_id IS NOT NULL AND lower(m.user_id) = lower(u.supabase_user_id::text))
+                  )
+                    AND m.is_suspended = TRUE
+                    AND (
+                      COALESCE(m.suspended_until, m.suspension_end_date) IS NULL
+                      OR COALESCE(m.suspended_until, m.suspension_end_date) > NOW()
+                    )
+                ) AS _has_active_suspension
+         FROM fallback_users u
+         ${sessionJoin}
+         WHERE u.id = $1::uuid
          LIMIT 1`,
-        [userId],
+        params,
       )
-      return Boolean(rows[0])
+      const row = rows[0]
+      if (!row) return false
+      req._currentUser = {
+        id: row.id,
+        email: row.email,
+        display_name: row.display_name,
+        avatar_url: row.avatar_url,
+        supabase_user_id: row.supabase_user_id,
+        sync_source: row.sync_source,
+        sync_status: row.sync_status,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        last_login_at: row.last_login_at,
+      }
+      req._hasActiveSuspension = Boolean(row._has_active_suspension)
+      if (hasValidSessionUuid) {
+        req._authSessionRow = {
+          sessionId,
+          userId: String(userId),
+          isWeb,
+          active: Boolean(row._active_session_id),
+          lastTouchedAt: row._session_last_touched_at || null,
+        }
+      }
+      return true
     },
     touchSession: (auth) => touchWebSessionForAuth(auth, req),
   })
@@ -1095,7 +1325,9 @@ async function authenticateClientRequest(req) {
 async function authRequired(req, res, next) {
   try {
     req.auth = await authenticateClientRequest(req)
-    const suspension = await findActiveSuspension(pool, req.auth.sub)
+    const suspension = req._hasActiveSuspension === false
+      ? null
+      : await findActiveSuspension(pool, req.auth.sub)
     if (suspension) {
       return res.status(403).json({
         ...accountSuspendedPayload(suspension),
@@ -1756,6 +1988,24 @@ app.get('/health', (_req, res) => {
     time: new Date().toISOString(),
     pushNotifications: pushNotificationsStatus(),
   })
+})
+
+app.get('/internal/metrics', (req, res) => {
+  const internalSecret = String(process.env.REALTIME_INTERNAL_SECRET || '').trim()
+  const providedBearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+  const providedAdmin = String(req.headers['x-admin-token'] || '').trim()
+  const authorized =
+    (internalSecret.length >= 16 && constantTimeSecretEqual(providedBearer, internalSecret)) ||
+    (adminSyncToken.length >= 32 && constantTimeSecretEqual(providedAdmin, adminSyncToken)) ||
+    (!isProduction && !internalSecret && adminSyncToken.length < 32)
+  if (!authorized) {
+    return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+  }
+  if (String(req.query?.format || '').toLowerCase() === 'json') {
+    return res.json({ ok: true, service: serviceName, version, metrics: apiMetrics.snapshot() })
+  }
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+  return res.send(apiMetrics.formatPrometheus())
 })
 
 app.get('/ready', async (_req, res, next) => {

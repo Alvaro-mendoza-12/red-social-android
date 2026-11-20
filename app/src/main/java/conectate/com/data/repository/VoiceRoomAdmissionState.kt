@@ -38,3 +38,21 @@ internal fun applyVoiceAdmissionState(
         )
     }
 }
+
+/**
+ * Reconciles self mute state against a periodic server snapshot without allowing
+ * stale DB reads right after a local unmute to flip the UI indicator back to muted,
+ * while never unmuting a locally muted mic or a non-publishing audience participant.
+ */
+internal fun reconcileSelfVoiceMuteState(
+    serverMuted: Boolean,
+    locallyMuted: Boolean,
+    canPublish: Boolean,
+    msSinceLastLocalToggle: Long,
+    localToggleGraceMs: Long = 5_000L,
+): Boolean {
+    if (!canPublish) return true
+    if (locallyMuted) return true
+    if (msSinceLastLocalToggle in 0L..localToggleGraceMs) return false
+    return serverMuted
+}

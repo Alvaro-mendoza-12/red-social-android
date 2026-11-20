@@ -1711,10 +1711,10 @@ class GroupRepository @Inject constructor(
                     )
             )
             ) { sessionWriteGuard.requireValid(session) }
-            PendingMessageSyncScheduler.enqueue(context, "group_message_pending")
             sessionWriteGuard.requireValid(session)
             updateGroupMessageInFlow(cleanId, msg)
             onQueued()
+            PendingMessageSyncScheduler.enqueue(context, "group_message_pending", initialDelaySeconds = 3L)
             if (!isSessionSnapshotValid(session, "group-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)

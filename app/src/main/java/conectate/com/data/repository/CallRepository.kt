@@ -164,6 +164,9 @@ class CallRepository @Inject constructor(
     private val _incomingInvite = MutableStateFlow<CallInvite?>(null)
     val incomingInvite: StateFlow<CallInvite?> = _incomingInvite.asStateFlow()
 
+    private val _incomingStatusNotice = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val incomingStatusNotice: SharedFlow<String> = _incomingStatusNotice.asSharedFlow()
+
     private val _endedCallSummary = MutableStateFlow<CallEndedSummary?>(null)
     val endedCallSummary: StateFlow<CallEndedSummary?> = _endedCallSummary.asStateFlow()
 
@@ -191,7 +194,7 @@ class CallRepository @Inject constructor(
     private var callSetupMetricCallId: String? = null
 
     // Keep ringing invitees reachable when the host ends an already connected call.
-    private val pendingInvitees = mutableSetOf<String>()
+    private val pendingInvitees: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
     fun getCurrentCallId(): String? = _activeCall.value?.callId
 
@@ -335,6 +338,31 @@ class CallRepository @Inject constructor(
 
     fun handleExternalCallResponse(callId: String, action: String, fromUserId: String) {
         val safeAction = action.trim().lowercase()
+        val isOtherDeviceEvent = safeAction == "answered_elsewhere" || safeAction == "handled_elsewhere"
+        val wasRingingThisCall = _incomingInvite.value?.callId.equals(callId, ignoreCase = true)
+        val hasAcceptedActiveCall = _activeCall.value?.callId.equals(callId, ignoreCase = true)
+        if (isOtherDeviceEvent) {
+            // Another session of this account already answered or resolved the call.
+            // Never tear down the winning device's own active call if a legacy FCM echoes back.
+            if (!hasAcceptedActiveCall) {
+                callCancellationGuard.mark(callId)
+                synchronized(this) {
+                    if (preparedIncomingSocket?.context?.callId.equals(callId, ignoreCase = true) ||
+                        preparedIncomingSocketFailureContext?.callId.equals(callId, ignoreCase = true)) {
+                        discardPreparedIncomingSocket()
+                    }
+                }
+                IncomingCallForegroundService.stop(context, callId)
+                callTonePlayer.stopIncomingRingtone()
+                if (wasRingingThisCall) {
+                    dismissIncomingInvite()
+                    if (safeAction == "answered_elsewhere") {
+                        _incomingStatusNotice.tryEmit("Llamada respondida en otro dispositivo")
+                    }
+                }
+            }
+            return
+        }
         if (safeAction in setOf("cancel", "decline", "busy", "end", "ended", "collision", "missed")) {
             callCancellationGuard.mark(callId)
             synchronized(this) {
@@ -344,7 +372,7 @@ class CallRepository @Inject constructor(
                 }
             }
             IncomingCallForegroundService.stop(context, callId)
-            if (_incomingInvite.value?.callId.equals(callId, ignoreCase = true)) dismissIncomingInvite()
+            if (wasRingingThisCall) dismissIncomingInvite()
         }
         var call = _activeCall.value
         if (call != null && call.callId == callId) {
@@ -629,6 +657,53 @@ class CallRepository @Inject constructor(
         callTonePlayer.stopRingback()
         Result.success(Unit)
         }
+    }
+
+    suspend fun inviteParticipantToActiveCall(targetUserId: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val cleanTarget = targetUserId.trim()
+        if (cleanTarget.isBlank()) return@withContext Result.failure(IllegalArgumentException("Selecciona a una persona válida."))
+        val account = authService.captureAccountLease()
+        val currentUserId = account.accountId.orEmpty()
+        if (currentUserId.isBlank()) return@withContext Result.failure(IllegalStateException("Sesión no válida."))
+        if (cleanTarget.equals(currentUserId, ignoreCase = true)) {
+            return@withContext Result.failure(IllegalArgumentException("No puedes invitarte a ti mismo."))
+        }
+        val active = _activeCall.value
+            ?: return@withContext Result.failure(IllegalStateException("No hay una llamada activa."))
+        if (!active.initiatorUserId.equals(currentUserId, ignoreCase = true)) {
+            return@withContext Result.failure(IllegalStateException("Solo quien inició la llamada puede invitar personas."))
+        }
+        if (active.connectionState == CallConnectionState.RINGING_OUTGOING) {
+            return@withContext Result.failure(IllegalStateException("Espera a que la llamada conecte antes de invitar a más personas."))
+        }
+        if (_participants.value.any { it.userId.equals(cleanTarget, ignoreCase = true) }) {
+            return@withContext Result.failure(IllegalStateException("Esta persona ya está en la llamada."))
+        }
+        callControlClient.invite(account, active.callId, cleanTarget).getOrElse { error ->
+            return@withContext Result.failure(error)
+        }
+        pendingInvitees.add(cleanTarget)
+        val callerName = authService.getCurrentUserDisplayName() ?: "Usuario"
+        val invite = CallInvite(
+            callId = active.callId,
+            title = active.title.ifBlank { callerName },
+            callerUserId = currentUserId,
+            callerName = callerName,
+            callerAvatarUrl = null,
+            contextType = active.contextType,
+            contextId = if (active.contextType == "dm") null else active.contextId,
+            isVideo = active.isVideo,
+        )
+        runCatching {
+            sendCallInvite(account, cleanTarget, invite)
+        }.onFailure { error ->
+            logBestEffortFailure(
+                operation = "inviteParticipantToActiveCall(targetUserId=$cleanTarget)",
+                throwable = error,
+                callId = active.callId,
+            )
+        }
+        Result.success(Unit)
     }
 
     suspend fun acceptIncomingCall(invite: CallInvite): Result<Unit> = withContext(Dispatchers.IO) {
@@ -946,9 +1021,8 @@ class CallRepository @Inject constructor(
         val incoming = _incomingInvite.value
         if (
             incoming?.callId.equals(callId, ignoreCase = true) &&
-            action.trim().lowercase() in setOf("cancel", "decline", "missed", "ended")
+            action.trim().lowercase() in setOf("cancel", "decline", "missed", "ended", "answered_elsewhere", "handled_elsewhere")
         ) {
-            _incomingInvite.value = null
             callTonePlayer.stopIncomingRingtone()
         }
         handleExternalCallResponse(

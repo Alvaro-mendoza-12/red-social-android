@@ -2484,7 +2484,7 @@ class MessageRepository @Inject constructor(
                     cached.chat_id.trim().lowercase() != chatId.trim().lowercase())) {
                 return@withMessage Result.failure(IllegalArgumentException("Message belongs to another conversation"))
             }
-            val deletion = database.messageDeletionDao().get(id, session.accountId.orEmpty(), true)
+            val deletion = if (messageId != null) database.messageDeletionDao().get(id, session.accountId.orEmpty(), true) else null
             if (cached?.deleted_for_all == true || (deletion != null && deletion.state != "failed")) {
                 return@withMessage Result.failure(IllegalStateException("No se puede reenviar un mensaje eliminado"))
             }
@@ -2661,7 +2661,6 @@ class MessageRepository @Inject constructor(
                 )
                 messageDao.insertMessageOwned(optimisticEntity) { requireCurrentSession() }
                 recordSendStage("persisted")
-                PendingMessageSyncScheduler.enqueue(context, "direct_message_pending")
                 android.util.Log.d("MessageRepository", "✅ Optimistic Message saved to Room: ${msg.id}")
             } catch (error: CancellationException) {
                 throw error
@@ -2670,12 +2669,20 @@ class MessageRepository @Inject constructor(
                 return Result.failure(IllegalStateException("No se pudo guardar el mensaje en el dispositivo", error))
             }
 
+            // --- 2. UPDATE MEMORY (FLOW) BEFORE SCHEDULING BACKGROUND RECOVERY ---
+            requireCurrentSession()
+            addMessageToFlow(cleanId, msg)
+
             // Durable acceptance releases the composer before any delivery/network work.
             onQueued()
 
-            // --- 2. UPDATE MEMORY (FLOW) ---
-            requireCurrentSession()
-            addMessageToFlow(cleanId, msg)
+            // Schedule durable recovery with a brief head start while online so
+            // WorkManager does not contend with the in-flight foreground POST.
+            PendingMessageSyncScheduler.enqueue(
+                context = context,
+                reason = "direct_message_pending",
+                initialDelaySeconds = if (hasValidatedNetwork()) 3L else 0L
+            )
             val optimisticChats = _userChats.value.toMutableList()
             val optimisticChatIndex = optimisticChats.indexOfFirst {
                 it.chat.id.trim().lowercase() == cleanId

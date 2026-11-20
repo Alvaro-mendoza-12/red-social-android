@@ -386,6 +386,10 @@ class ProfileViewModel @Inject constructor(
         profileVisitorsLoader.refresh(enabled)
     }
 
+    fun clearProfileViewersTransientState() {
+        profileVisitorsLoader.clearTransientState()
+    }
+
     private companion object {
         const val PROFILE_LOAD_TIMEOUT_MS = 15_000L
     }

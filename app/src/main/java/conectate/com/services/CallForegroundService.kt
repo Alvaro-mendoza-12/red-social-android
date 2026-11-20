@@ -31,6 +31,7 @@ class CallForegroundService : Service() {
     lateinit var callRepository: CallForegroundSessionController
 
     private val serviceScope = newSafeScope("CallForegroundService", Dispatchers.Main)
+    private lateinit var mediaWakeLocks: ActiveMediaWakeLocks
     private var currentSessionId = ""
     private var currentCallId = ""
 
@@ -52,6 +53,7 @@ class CallForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        mediaWakeLocks = ActiveMediaWakeLocks(this, "Call")
         createNotificationChannel()
     }
 
@@ -110,6 +112,7 @@ class CallForegroundService : Service() {
             ServiceCompat.startForeground(this, 2, buildNotification(session), foregroundServiceType(session.isVideo))
             currentSessionId = session.sessionId
             currentCallId = session.callId
+            mediaWakeLocks.acquire()
         } catch (error: Exception) {
             android.util.Log.e("CallForegroundService", "Could not start foreground service", error)
             if (currentSessionId.isBlank()) stopSelf(startId)
@@ -125,6 +128,7 @@ class CallForegroundService : Service() {
         if (active != null && (!matches(active, callId, sessionId) || requireEnded)) return
         currentSessionId = ""
         currentCallId = ""
+        mediaWakeLocks.release()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf(startId)
     }
@@ -217,6 +221,7 @@ class CallForegroundService : Service() {
     override fun onDestroy() {
         currentSessionId = ""
         currentCallId = ""
+        if (::mediaWakeLocks.isInitialized) mediaWakeLocks.release()
         serviceScope.cancel()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

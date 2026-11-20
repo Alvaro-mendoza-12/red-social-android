@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -175,10 +176,13 @@ fun CircularProfileImage(
     val openMoment = if (showMomentRing && openMomentOnClick && momentViewed == null && activeMoment != null && momentAccess != null) {
         Modifier.clickable { momentAccess.open(activeMoment) }
     } else Modifier
-    Box(modifier = modifier.size(size).then(ring).then(openMoment).onGloballyPositioned { coordinates ->
+    Box(modifier = modifier.size(size).then(openMoment).onGloballyPositioned { coordinates ->
         val bounds = coordinates.boundsInWindow()
         visibleOnScreen.value = profileAvatarIsVisible(bounds, windowSize)
     }) {
+        // Apply the Momentos ring only around the avatar layer so the verification
+        // badge sibling remains crisp and unobstructed on top of the ring.
+        Box(modifier = Modifier.fillMaxSize().then(ring)) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -344,12 +348,14 @@ fun CircularProfileImage(
                 )
             }
         }
+        }
         
         if (isVerified) {
             Box(
                 modifier = Modifier
                     .size(size * 0.32f)
                     .align(Alignment.BottomEnd)
+                    .zIndex(10f)
                     .background(Color.White, CircleShape)
                     .padding(1.dp),
                 contentAlignment = Alignment.Center

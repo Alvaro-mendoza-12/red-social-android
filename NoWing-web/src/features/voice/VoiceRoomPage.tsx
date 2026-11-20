@@ -3,6 +3,7 @@ import { MovableVoicePanel } from '../../components/MovableVoicePanel'
 import { ReactionCloud } from '../../components/ReactionCloud'
 import { useReactionBursts } from '../../components/useReactionBursts'
 import { RoomVideo } from './RoomVideo'
+import { ShareVoiceRoomDialog } from './ShareVoiceRoomDialog'
 import { RoomChatPhoto } from './RoomChatPhoto'
 import { roomSocketReady } from './voiceMembership'
 import { voiceSocketAuth, voiceReconnectOptions } from './voiceSocketRecovery'
@@ -147,6 +148,7 @@ type ServerEvents = {
   'ice-candidate': (payload: IcePayload) => void
   'speaking-status': (payload: SpeakingPayload) => void
   'mute-state': (payload: MutePayload) => void
+  'voice-stage-state': (payload: { roomId?: string; role?: string; isMuted?: boolean; handRaised?: boolean }) => void
   'auth-error': (payload: { error?: string }) => void
 }
 
@@ -322,6 +324,8 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const [isJoining, setIsJoining] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [showShareDialog, setShowShareDialog] = useState(false)
+  const lastReactionSentAtRef = useRef(0)
   const [isDeafened, setIsDeafened] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [micAvailable, setMicAvailable] = useState(true)
@@ -1097,7 +1101,18 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       const muted = voiceBoolean(payload.isMuted)
       if (muted !== undefined) roomCues.mute(payload.userId, muted)
     })
-    socket.on('reaction', payload => { if ((!payload.roomId || payload.roomId === room.id) && payload.userId && payload.emoji) addVoiceReaction({ id: payload.reactionId || `${payload.userId}-${payload.timestamp}`, emoji: payload.emoji }) })
+    socket.on('voice-stage-state', payload => {
+      if (payload.roomId && payload.roomId !== room.id) return
+      const forcedMuted = payload.role === 'audience' || payload.isMuted === true
+      const effectiveMuted = mutedRef.current || forcedMuted
+      mutedRef.current = effectiveMuted
+      setIsMuted(effectiveMuted)
+      const localStream = webrtcManagerRef.current?.getLocalStream()
+      localStream?.getAudioTracks().forEach((track) => {
+        track.enabled = !effectiveMuted
+      })
+    })
+    socket.on('reaction', payload => { if ((!payload.roomId || payload.roomId === room.id) && payload.userId && payload.emoji) addVoiceReaction({ id: payload.reactionId || `${payload.userId}-${payload.timestamp}`, emoji: payload.emoji, userId: payload.userId }) })
     socket.on('media-status', payload => {
       if (payload.roomId && payload.roomId !== room.id) return
       setRemoteVisualSources(current => ({ ...current, [payload.userId]: payload.isScreenSharing ? 'screen' : payload.isCameraSharing ? 'camera' : 'none' }))
@@ -1160,12 +1175,21 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           throw new Error('Sala llena')
         }
 
-        if (room.groupId && !webrtcManagerRef.current) webrtcManagerRef.current = new WebRTCManager(user.id)
+        if (room.groupId) {
+          mutedRef.current = true
+          setIsMuted(true)
+          setMicAvailable(false)
+          if (!webrtcManagerRef.current) webrtcManagerRef.current = new WebRTCManager(user.id)
+        } else {
+          mutedRef.current = isMuted
+        }
         const micStarted = room.groupId ? false : await startLocalAudio()
-        if (room.groupId) setMicAvailable(false)
-        const nextMuted = !!room.groupId || isMuted || !micStarted
-        setIsMuted(nextMuted)
+        const nextMuted = !!room.groupId || mutedRef.current || !micStarted
         mutedRef.current = nextMuted
+        setIsMuted(nextMuted)
+        webrtcManagerRef.current?.getLocalStream()?.getAudioTracks().forEach((track) => {
+          track.enabled = !nextMuted
+        })
 
         const response = await joinFallbackVoiceRoom(room.id, {
           userName: displayName,
@@ -1623,15 +1647,16 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           <button className="ghost-btn" type="button" onClick={() => {
             void navigator.clipboard.writeText(voiceRoomShareUrl(room.id)).then(() => toast.success('Enlace de la sala copiado')).catch(() => toast.error('No se pudo copiar el enlace'))
           }}><Copy size={17} aria-hidden="true" />Copiar enlace</button>
-          <button className="ghost-btn" type="button" onClick={() => {
-            const url = voiceRoomShareUrl(room.id)
-            if (navigator.share) void navigator.share({ title: 'Sala de voz · Novvin', text: 'Te invito a una sala de voz en Novvin', url }).catch(error => {
-              if (!(error instanceof DOMException && error.name === 'AbortError')) toast.error('No se pudo compartir. Puedes copiar el enlace.')
-            })
-            else void navigator.clipboard.writeText(url).then(() => toast.success('Enlace copiado para compartir')).catch(() => toast.error('No se pudo copiar el enlace'))
-          }}><Share2 size={17} aria-hidden="true" />Compartir sala</button>
+          <button className="ghost-btn" type="button" onClick={() => setShowShareDialog(true)}><Share2 size={17} aria-hidden="true" />Compartir sala</button>
         </div>
       </header>
+      {showShareDialog ? (
+        <ShareVoiceRoomDialog
+          roomId={room.id}
+          roomTitle={room.title}
+          onClose={() => setShowShareDialog(false)}
+        />
+      ) : null}
 
       {cueAudioBlocked&&isJoined?<div role="status" className="voice-room-alert">El navegador requiere una pulsación para activar los avisos. <button className="ghost-btn" onClick={()=>void roomCues.prepare().then(ready=>setCueAudioBlocked(!ready))}>Habilitar sonidos</button></div>:null}
       {joinError ? (
@@ -1820,7 +1845,15 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           <button className="voice-control-btn" type="button" onClick={() => setCinemaMode(value => !value)} aria-pressed={cinemaMode} aria-label={cinemaMode ? 'Salir del modo cine' : 'Activar modo cine'} title={cinemaMode ? 'Salir del modo cine' : 'Modo cine'}>{cinemaMode ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}Modo cine</button>
           <button className="voice-control-btn" type="button" title={chatOpen ? 'Ocultar chat' : 'Mostrar chat'} aria-label={chatOpen ? 'Ocultar chat de la sala' : 'Mostrar chat de la sala'} aria-expanded={chatOpen} onClick={() => { setChatOpen(value => !value); window.setTimeout(() => document.querySelector('.voice-chat-section')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0) }}><MessageCircle size={18}/>Chat{chatUnread ? ` (${chatUnread})` : ''}</button>
           <button className="voice-control-btn" type="button" onClick={() => void openDeviceSettings()} aria-label="Ajustes de audio y video" aria-expanded={showDeviceSettings}><Settings size={18} />Ajustes</button>
-          {isJoined ? <RoomReactionMenu onReaction={emoji => { if (!room || !user || !roomSocketReady(socketRef.current, acceptedSocketRef.current)) return; const reactionId = crypto.randomUUID(); addVoiceReaction({ id: reactionId, emoji }); socketRef.current?.emit('reaction', { roomId: room.id, userId: user.id, emoji, reactionId, timestamp: Date.now() }) }} /> : null}
+          {isJoined ? <RoomReactionMenu onReaction={emoji => {
+            if (!room || !user || !roomSocketReady(socketRef.current, acceptedSocketRef.current)) return
+            const now = Date.now()
+            if (now - lastReactionSentAtRef.current < 700) return
+            lastReactionSentAtRef.current = now
+            const reactionId = crypto.randomUUID()
+            addVoiceReaction({ id: reactionId, emoji, userId: user.id })
+            socketRef.current?.emit('reaction', { roomId: room.id, userId: user.id, emoji, reactionId, timestamp: now })
+          }} /> : null}
           {!isJoined ? (
             <button className="voice-control-btn primary" type="button" onClick={() => void joinRoom()} disabled={isJoining}>
               <Headphones aria-hidden="true" size={18} />

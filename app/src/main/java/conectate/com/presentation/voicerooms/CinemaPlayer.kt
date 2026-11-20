@@ -86,7 +86,26 @@ import java.net.URI
 import java.util.Locale
 import kotlin.math.abs
 
-private fun forceCinemaSpeakerOutput(audioManager: AudioManager) {
+private fun hasExternalAudioHeadset(audioManager: AudioManager): Boolean {
+    val externalTypes = buildSet {
+        add(AudioDeviceInfo.TYPE_WIRED_HEADSET)
+        add(AudioDeviceInfo.TYPE_WIRED_HEADPHONES)
+        add(AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
+        add(AudioDeviceInfo.TYPE_BLUETOOTH_SCO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            add(AudioDeviceInfo.TYPE_USB_HEADSET)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            add(AudioDeviceInfo.TYPE_BLE_HEADSET)
+        }
+    }
+    return audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in externalTypes }
+}
+
+private fun configureCinemaOutput(audioManager: AudioManager) {
+    // Respect wired, USB and Bluetooth headsets so cinema audio does not leak
+    // back into the microphone or override the user's chosen audio route.
+    if (hasExternalAudioHeadset(audioManager)) return
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         audioManager.availableCommunicationDevices.firstOrNull {
             it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
@@ -113,7 +132,7 @@ fun CinemaPlayer(
     val latestOnSync by rememberUpdatedState(onSync)
     var isFullscreen by remember { mutableStateOf(false) }
     var showControls by remember { mutableStateOf(true) }
-    var localVolume by remember { mutableFloatStateOf(0.8f) }
+    var localVolume by remember { mutableFloatStateOf(0.55f) }
     var retryKey by remember { mutableIntStateOf(0) }
     var isBuffering by remember { mutableStateOf(false) }
     var playbackError by remember { mutableStateOf<String?>(null) }
@@ -121,10 +140,13 @@ fun CinemaPlayer(
     var playerPositionMs by remember { mutableLongStateOf(0L) }
     var playerDurationMs by remember { mutableLongStateOf(0L) }
 
+    // Route shared video on USAGE_MEDIA instead of USAGE_VOICE_COMMUNICATION so
+    // Android/WebRTC AEC does not misclassify movie audio as far-end speech and
+    // muffle the user's microphone during double-talk.
     val audioAttributes = remember {
         AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-            .setUsage(C.USAGE_VOICE_COMMUNICATION)
+            .setUsage(C.USAGE_MEDIA)
             .build()
     }
 
@@ -183,7 +205,7 @@ fun CinemaPlayer(
         playbackError = null
         isBuffering = true
         val audioManager = context.getSystemService(android.content.Context.AUDIO_SERVICE) as AudioManager
-        runCatching { forceCinemaSpeakerOutput(audioManager) }
+        runCatching { configureCinemaOutput(audioManager) }
         val safeHost = runCatching { URI(validation.normalizedUrl.orEmpty()).host }.getOrNull().orEmpty()
         Log.i(TAG, "Preparing cinema media from host=$safeHost")
 

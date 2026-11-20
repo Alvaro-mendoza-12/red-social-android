@@ -1632,10 +1632,20 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   useEffect(() => {
-    const update = () => { void loadChat({ silent: true }) }
+    const update = (event: Event) => {
+      const detail = (event as CustomEvent<{ scope?: string; room?: string; action?: string; message?: GenericRow }>).detail
+      if (detail?.scope && detail?.room) {
+        if (detail.scope !== 'chat' || detail.room !== cleanChatId) return
+        if (detail.message && detail.action !== 'cancelled' && textOf(detail.message, ['id'], '')) {
+          upsertMessageInState(mapMessage(detail.message))
+          return
+        }
+      }
+      void loadChat({ silent: true })
+    }
     window.addEventListener('novvin:outbox-changed', update)
     return () => window.removeEventListener('novvin:outbox-changed', update)
-  }, [loadChat])
+  }, [cleanChatId, loadChat, upsertMessageInState])
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

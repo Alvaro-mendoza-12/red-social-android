@@ -30,7 +30,7 @@ internal object SettingsDirectory {
         "Cambio rápido de cuenta" to "cuentas agregar cambiar sesion",
         "Administración" to "admin moderacion reportes",
         "Información de la versión" to "version actualizacion compilacion",
-        "General" to "cerrar sesion salir",
+        "Cerrar sesión" to "cerrar sesion salir desconectar cuenta",
     )
 
     fun matches(title: String, query: String): Boolean {

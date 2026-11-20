@@ -62,7 +62,16 @@ async function operation<T>(store: string, write: boolean, fn: (store: IDBObject
 const all = <T,>(store: string) => operation<T[]>(store, false, s => s.getAll())
 const put = (store: string, value: object, guard?: () => void) => operation(store, true, s => s.put(value), guard)
 const remove = (store: string, id: string, guard?: () => void) => operation(store, true, s => s.delete(id), guard)
-function changed(owner: string) { window.dispatchEvent(new CustomEvent('novvin:outbox-changed', { detail: { owner } })) }
+export type OutboxChangeDetail = {
+  owner: string
+  scope?: Scope
+  room?: string
+  action?: 'enqueued' | 'delivered' | 'edited' | 'failed' | 'retry' | 'cancelled'
+  message?: GenericRow
+}
+function changed(owner: string, extra?: Omit<OutboxChangeDetail, 'owner'>) {
+  window.dispatchEvent(new CustomEvent<OutboxChangeDetail>('novvin:outbox-changed', { detail: { owner, ...extra } }))
+}
 export function isTransientOutboxError(error: unknown) {
   const code = String((error as { code?: string; message?: string })?.code || (error as Error)?.message || '')
   if (['COMMUNITY_WEEKLY_MESSAGE_LIMIT_REACHED', 'COMMUNITY_DAILY_MESSAGE_LIMIT_REACHED'].includes(code)) return false
@@ -106,7 +115,7 @@ export async function retryPendingWebMessage(id: string) {
   requireOwner(owner)
   if (!item || item.owner !== owner) throw new Error('Este envío ya no está pendiente en este navegador. Actualiza la conversación para comprobarlo.')
   item.state = 'pending'; item.retryAt = 0; item.failureMessage = undefined
-  await put('messages', item); changed(owner)
+  await put('messages', item); changed(owner, { scope: item.scope, room: item.room, action: 'retry', message: await optimistic(item) })
   await flushWebOutbox()
 }
 export async function cancelPendingWebMessage(scope: Scope, room: string, id: string): Promise<GenericRow | null> {
@@ -134,7 +143,7 @@ export async function cancelPendingWebMessage(scope: Scope, room: string, id: st
     requireCurrent()
     if (cached) await cacheConversation(scope, room, { ...cached, messages: ((cached.messages || []) as GenericRow[]).filter(row => row.id !== id) }, owner, identity)
     requireCurrent()
-    changed(owner); return message
+    changed(owner, { scope, room, action: 'cancelled', message }); return message
   }
   const cancelled=await withConversationLock(owner, scope, room+'/'+outboxDeliveryLane(previous), true, cancel)
   requireCurrent()
@@ -162,7 +171,7 @@ export async function editPendingWebMessage(scope: Scope, room: string, id: stri
     item.payload = { ...item.payload, content }; item.updatedAt = messagingNowIso(getRuntimeBackendUrl())
     await put('messages', item); requireOwner(owner)
     const message = await optimistic(item)
-    notifyInboxMessage(item.senderId || owner, scope, room, message); changed(owner)
+    notifyInboxMessage(item.senderId || owner, scope, room, message); changed(owner, { scope, room, action: 'edited', message })
     return message
   }
   // A delivery can have reached the server while its local row is still present.
@@ -215,16 +224,17 @@ async function deliver(item: Pending) {
   await remove('messages', item.id)
   clearOutboxProgress(item.owner,item.id)
   if (media.startsWith(pendingPrefix)) await remove('files', media.slice(pendingPrefix.length))
-  changed(item.owner)
+  changed(item.owner, { scope: item.scope, room: item.room, action: 'delivered', message: result.message })
   return result
 }
 export async function sendDurableWebMessage(scope: Scope, room: string, payload: Payload) {
   const owner = outboxOwner(); requireOwner(owner)
   const senderId = fallbackSessionToUser(readFallbackSession())?.id || owner
   const item: Pending = { id: payload.id || crypto.randomUUID(), owner, senderId, scope, room, payload, createdAt: messagingNowIso(getRuntimeBackendUrl()), state: 'pending', attempts: 0, retryAt: 0 }
-  await put('messages', item); requireOwner(owner); changed(owner)
+  await put('messages', item); requireOwner(owner)
   // Flush through the same durable path for both connected and disconnected sends.
   const message = await optimistic(item)
+  changed(owner, { scope, room, action: 'enqueued', message })
   notifyInboxMessage(senderId,scope,room,message)
   if (navigator.onLine) window.setTimeout(() => { void flushWebOutbox().catch(() => {}) }, 0)
   return { message }
@@ -251,7 +261,7 @@ export async function flushWebOutbox() {
           item.attempts += 1; item.state = isTransientOutboxError(error) ? 'pending' : 'failed'
           item.failureMessage = item.state==='failed' ? outboxFailureMessage(error) : undefined
           item.retryAt = Date.now() + Math.min(60000, 1000 * 2 ** Math.min(item.attempts, 6))
-          await put('messages', item); changed(owner)
+          await put('messages', item); changed(owner, { scope: item.scope, room: item.room, action: 'failed', message: await optimistic(item) })
           if (item.state === 'pending') return
         }
       }

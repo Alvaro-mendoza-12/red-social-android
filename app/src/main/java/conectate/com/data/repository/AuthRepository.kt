@@ -718,8 +718,8 @@ class AuthRepository @Inject constructor(
             }.onFailure { android.util.Log.w("AuthRepository", "Captured notification unlink failed", it) }
             runCatching { authService.clearLocalDataForAccountSwitch(userIdSnapshot, outgoing.generation) }
                 .onFailure { android.util.Log.w("AuthRepository", "Failed to clear local DB during forceLocalLogout", it) }
-            // Mark offline best-effort before SDK signOut potentially revokes the token.
-            if (!userIdSnapshot.isNullOrBlank() && !accessTokenSnapshot.isNullOrBlank() && !wasLocalFallbackSession) {
+            // Mark offline best-effort on both Ubuntu and legacy sessions before revocation.
+            if (!userIdSnapshot.isNullOrBlank() && !accessTokenSnapshot.isNullOrBlank()) {
                 runCatching {
                     userRepository.setOnlineStatusWithToken(userIdSnapshot, false, accessTokenSnapshot)
                 }.onFailure {

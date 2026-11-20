@@ -26,3 +26,18 @@ test('changing rooms clears the previous reactions and their pending cleanup', (
   unmount()
   expect(jest.getTimerCount()).toBe(0)
 })
+
+test('rapid reactions from the same participant keep only one visible at a time without timer leaks', () => {
+  jest.useFakeTimers()
+  const { result, unmount } = renderHook(() => useReactionBursts('room-burst'))
+  act(() => result.current.add({ id: 'r1', emoji: '🔥', userId: 'user-1' }))
+  act(() => result.current.add({ id: 'r2', emoji: '❤️', userId: 'user-1' }))
+  act(() => result.current.add({ id: 'r3', emoji: '👏', userId: 'user-2' }))
+  expect(result.current.items).toEqual([
+    { id: 'r2', emoji: '❤️', userId: 'user-1' },
+    { id: 'r3', emoji: '👏', userId: 'user-2' },
+  ])
+  expect(jest.getTimerCount()).toBe(2)
+  unmount()
+  expect(jest.getTimerCount()).toBe(0)
+})

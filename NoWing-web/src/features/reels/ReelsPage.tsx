@@ -57,6 +57,14 @@ import {
 import { shouldUseUbuntuBackend } from '../../core/ubuntuBackend'
 import { filterFriendFeedItems } from './reelFeedOrder'
 import { LiveFeedCard } from '../live/LiveStrip'
+import { useWebPreferences } from '../../core/webPreferences'
+
+function isConstrainedNetwork(): boolean {
+  const conn = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection
+  if (!conn) return false
+  if (conn.saveData) return true
+  return conn.effectiveType === '2g' || conn.effectiveType === 'slow-2g'
+}
 
 type ReelItem = {
   id: string
@@ -169,6 +177,8 @@ function ReelAvatar({ url, name, mediaType }: { url: string; name: string; media
 export function ReelFeedCard({
   item,
   eager,
+  preloadNext = false,
+  keepLoaded = true,
   currentUserId,
   onLike,
   onFavorite,
@@ -178,6 +188,8 @@ export function ReelFeedCard({
 }: {
   item: ReelItem
   eager: boolean
+  preloadNext?: boolean
+  keepLoaded?: boolean
   currentUserId?: string
   onLike: (item: ReelItem) => void
   onFavorite: (item: ReelItem) => void
@@ -193,10 +205,14 @@ export function ReelFeedCard({
   useEffect(() => { activeCallback.current = onActive; viewedCallback.current = onViewed }, [onActive, onViewed])
   const watch = useRef({ position: 0, seconds: 0, recorded: false })
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const [canLoad, setCanLoad] = useState(() => eager || typeof IntersectionObserver === 'undefined')
+  const [canLoad, setCanLoad] = useState(() => eager || preloadNext || typeof IntersectionObserver === 'undefined')
   const visibleRef = useRef(false)
   const userPausedRef = useRef(false)
   const [visible, setVisible] = useState(false)
+  const shouldAttachSource = (canLoad || preloadNext || visible) && keepLoaded
+  useEffect(() => {
+    if (preloadNext && !canLoad) setCanLoad(true)
+  }, [preloadNext, canLoad])
   useEffect(() => {
     const node = videoRef.current
     if (!node || canLoad) return
@@ -300,9 +316,9 @@ export function ReelFeedCard({
           }
         }}
         aria-label={`Reproducir o pausar ${item.title}`}
-        preload={visible ? 'auto' : 'metadata'}
-        src={canLoad ? item.videoUrl : undefined}
-        poster={canLoad ? item.coverUrl || undefined : undefined}
+        preload={visible || preloadNext ? 'auto' : 'metadata'}
+        src={shouldAttachSource ? item.videoUrl : undefined}
+        poster={canLoad || preloadNext ? item.coverUrl || undefined : undefined}
       />
       <div className="reel-feed-shade" />
       {playbackError ? <div className="reel-media-status" role="status"><span>El video está tardando en cargar.</span><button className="ghost-btn" type="button" onClick={() => { userPausedRef.current = false; setPlaybackError(false); setBuffering(true); setPlaybackRetry(value => value + 1); videoRef.current?.load(); void videoRef.current?.play().catch(() => undefined) }}>Reintentar</button></div> : showBuffering && canLoad ? <div className="reel-media-status loading" role="status">Cargando video…</div> : null}
@@ -792,6 +808,9 @@ export function ReelsPage() {
   const [sharingVideo, setSharingVideo] = useState<ReelItem | null>(null)
   const [commentsVideo, setCommentsVideo] = useState<ReelItem | null>(null)
   const [feedMuted, setFeedMuted] = useState(true)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [webPreferences] = useWebPreferences()
+  const constrainPreload = webPreferences.lowDataMode || isConstrainedNetwork()
   const { user, isFallbackSession } = useAuth()
   const location = useLocation()
   const useUbuntu = shouldUseUbuntuBackend(isFallbackSession)
@@ -2123,10 +2142,13 @@ export function ReelsPage() {
                     if (useUbuntu && user) void fallbackApiJson('/v1/data/videos/' + encodeURIComponent(id) + '/view', { method: 'POST', expectedAccountId: user.id, body: '{}' }).catch(() => {})
                   }}
                   onActive={id => {
+                    setActiveIndex(index)
                     setCommentsVideo(current => current && current.id !== id ? visibleItems.find(entry => entry.id === id) || current : current)
                     if (useUbuntu && index >= visibleItems.length - 4) void loadRecommended()
                   }}
                   eager={index < 2}
+                  preloadNext={!constrainPreload && index === activeIndex + 1}
+                  keepLoaded={Math.abs(index - activeIndex) <= 3}
                   currentUserId={user?.id}
                   onLike={(video) => void toggleVideoLike(video)}
                   onFavorite={(video) => void toggleVideoFavorite(video)}

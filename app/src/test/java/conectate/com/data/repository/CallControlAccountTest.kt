@@ -109,4 +109,21 @@ class CallControlAccountTest {
         response = """{"error":"CALL_ACCOUNT_BUSY"}"""
         assertEquals("Ya hay otra llamada activa.", control.accept(owner, "call").exceptionOrNull()?.message)
     }
+
+    @Test fun answeredElsewhereConflictMapsToMultiDeviceNotice() = runBlocking {
+        status = HttpStatusCode.Conflict
+        response = """{"error":"CALL_ANSWERED_ELSEWHERE"}"""
+        assertEquals(
+            "Llamada respondida en otro dispositivo.",
+            control.accept(owner, "call").exceptionOrNull()?.message,
+        )
+    }
+
+    @Test fun currentAccountCanInviteAnotherParticipantToActiveCall() = runBlocking {
+        status = HttpStatusCode.OK
+        response = "{}"
+        control.invite(owner, "call-42", "peer-2").getOrThrow()
+        assertEquals(listOf("Bearer token-account-a"), tokens)
+        assertEquals(listOf("/v1/data/calls/call-42/invite"), paths)
+    }
 }

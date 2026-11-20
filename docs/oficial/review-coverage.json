@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T00:15:44.486991+00:00",
-  "baseCommit": "867af868bfd894f5ec52538e69a6efc1ecb39f5d",
+  "generatedAtUtc": "2026-11-20T01:34:52.878483+00:00",
+  "baseCommit": "e43080c7fb80d3fcf37c898eff4b741ec80c3fbb",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,35 +10,35 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3597,
-    "partial": 268,
-    "code-read": 843
+    "pending": 3576,
+    "partial": 264,
+    "code-read": 877
   },
   "countsByPhase": {
     "android": {
-      "pending": 1428,
-      "partial": 118,
-      "code-read": 588
+      "pending": 1416,
+      "partial": 121,
+      "code-read": 599
     },
     "documentation": {
       "pending": 691,
-      "code-read": 61,
+      "code-read": 63,
       "partial": 20
     },
     "server": {
-      "pending": 842,
-      "code-read": 73,
-      "partial": 36
+      "pending": 838,
+      "code-read": 82,
+      "partial": 34
     },
     "tooling-and-other": {
       "pending": 146,
       "partial": 13,
-      "code-read": 20
+      "code-read": 21
     },
     "web": {
-      "partial": 81,
-      "pending": 490,
-      "code-read": 101
+      "partial": 76,
+      "pending": 485,
+      "code-read": 112
     }
   },
   "files": [
@@ -1179,8 +1179,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/useReactionBursts.test.ts",
       "phase": "web",
-      "gitBlobId": "4a6b5b585daa6e4b02f9277e21d99afd71004d12",
-      "reviewStatus": "pending"
+      "gitBlobId": "a4f10cca4cbd337ed4b4a96e67ac28307c120acd",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/core/accentColor.test.ts",
@@ -1839,8 +1841,10 @@
     {
       "file": "NoWing-web/src/__tests__/features/calls/WebCallMedia.test.ts",
       "phase": "web",
-      "gitBlobId": "810390088119e3797a3f7d9aa3185e364016b22e",
-      "reviewStatus": "pending"
+      "gitBlobId": "d986964f75a0f3833ecf8a1f4a8603a484839cce",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/features/calls/WebCallParticipants.test.ts",
@@ -2723,8 +2727,10 @@
     {
       "file": "NoWing-web/src/components/postPhotoGallery.css",
       "phase": "web",
-      "gitBlobId": "7b844248d8b7d2d854cca6d4353552a958bef71a",
-      "reviewStatus": "pending"
+      "gitBlobId": "b35e3881b0288cb434e2614ab786b0e2619eedb3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/postReactionPicker.css",
@@ -2771,8 +2777,10 @@
     {
       "file": "NoWing-web/src/components/useReactionBursts.ts",
       "phase": "web",
-      "gitBlobId": "d5450e614393a4428b12bf7bf7094dbe212baaac",
-      "reviewStatus": "pending"
+      "gitBlobId": "e67ffdc0941a68d78f2a272551b9836b8dc10409",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/accentColor.ts",
@@ -3493,9 +3501,9 @@
     {
       "file": "NoWing-web/src/core/webOutbox.ts",
       "phase": "web",
-      "gitBlobId": "6b3e63e38ba9df2a917840b50f47b4fb53164332",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "gitBlobId": "659f2c686ec76784da7b057caf5c11efdeaddb08",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3523,9 +3531,9 @@
     {
       "file": "NoWing-web/src/features/calls/CallInterface.tsx",
       "phase": "web",
-      "gitBlobId": "74399e7bbe2ff6e8e6ed8eaaffccb2a2a391e3e2",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "gitBlobId": "c9e8b3990ad2dd06733c2f61f0fe731b3902451d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3547,9 +3555,9 @@
     {
       "file": "NoWing-web/src/features/calls/WebCallManager.ts",
       "phase": "web",
-      "gitBlobId": "4cb9d0280f5e32ee23340876f965fcf785c4a5e3",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "gitBlobId": "151be6d35c3317db173e2995397937e3c14797c6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3561,9 +3569,9 @@
     {
       "file": "NoWing-web/src/features/calls/callControl.ts",
       "phase": "web",
-      "gitBlobId": "643aabfd983d567f56f78c213ba2c6730ac46770",
+      "gitBlobId": "e46af8455eb0947041d99a685d0f9a581c35bb88",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/129-web-menu-plegable-e-invitaciones-de-llamada-2026-11-13.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3707,9 +3715,9 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "bb9c64d041d2c9c812ee4cd6b91a5b3173195f85",
+      "gitBlobId": "f485932fb1c3610f0b1dfa606e4f100734d96251",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3747,9 +3755,9 @@
     {
       "file": "NoWing-web/src/features/messages/RoomChatPage.tsx",
       "phase": "web",
-      "gitBlobId": "23e104b3cd137d7a327b71fbe816553a1caaf6af",
+      "gitBlobId": "b793d1eda766770c0dbdb93b53428cc8056d58a0",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3915,9 +3923,9 @@
     {
       "file": "NoWing-web/src/features/profile/AccountSettingsPage.tsx",
       "phase": "web",
-      "gitBlobId": "2d658389bd9f6dab8ae9a4ef2dd3fc538598f69e",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/123-rediseno-web-navegacion-y-controles-2026-11-12.md",
+      "gitBlobId": "6fffda58b552c1124a091e6130797133a04ec2e3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3977,9 +3985,9 @@
     {
       "file": "NoWing-web/src/features/reels/ReelsPage.tsx",
       "phase": "web",
-      "gitBlobId": "b9f1589655784578254aabdc74c2ee85e39a7d44",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/146-conectividad-rondas-y-asistente-2026-11-14.md",
+      "gitBlobId": "d3e6789095c60009b61081e61e7c41ac3d6b2a78",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4089,6 +4097,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/features/voice/ShareVoiceRoomDialog.tsx",
+      "phase": "web",
+      "gitBlobId": "bca347709b1cd09006f969e4ef6d13e501d44108",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/features/voice/VoiceRoomHost.tsx",
       "phase": "web",
       "gitBlobId": "d524e92746b1bc99848374e632613373de22270b",
@@ -4103,9 +4119,9 @@
     {
       "file": "NoWing-web/src/features/voice/VoiceRoomPage.tsx",
       "phase": "web",
-      "gitBlobId": "86d4c21bcdd8f0afcb57206098fbeb0f75330836",
+      "gitBlobId": "34c7ab5579b9a3be240cda4dd925f9cb5e5c066d",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4137,9 +4153,9 @@
     {
       "file": "NoWing-web/src/features/voice/voice.css",
       "phase": "web",
-      "gitBlobId": "087440d56991ca2ab4fef3f82f098e23c3bfb6d4",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "gitBlobId": "4c6a29a43778672047d7d63f855de1a7faf7cd9b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4189,9 +4205,9 @@
     {
       "file": "NoWing-web/src/layout/AppLayout.tsx",
       "phase": "web",
-      "gitBlobId": "2affa660263c6afc7f400fbb22a1eeb6ab8aba7b",
+      "gitBlobId": "a2f0ad50c08ac823f5177b5c3758ab49e3995a42",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/134-ultimo-mensaje-y-diagnostico-de-historial-2026-11-13.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4453,8 +4469,10 @@
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
       "phase": "web",
-      "gitBlobId": "0e726403ae08a6ec5e3e1a10e06cdf77fd0fa88b",
-      "reviewStatus": "pending"
+      "gitBlobId": "553933d95336a064133e6194c91b207bb4580377",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/ui/novvin/shell.css",
@@ -8113,8 +8131,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/AdvancedMessagingRepository.kt",
       "phase": "android",
-      "gitBlobId": "b5e1893639928598d8ceb63a5d1144187c13cf3a",
-      "reviewStatus": "pending"
+      "gitBlobId": "9cfc83533c99d636e848f0bb02eeb4a80e297879",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/AlgorithmRepository.kt",
@@ -8125,8 +8145,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/AuthRepository.kt",
       "phase": "android",
-      "gitBlobId": "ff2954025d4b850e479e93cab16066de7f262d0d",
-      "reviewStatus": "pending"
+      "gitBlobId": "8b910fd546697c1565640750286ee24875fe5da6",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/BadgeRepository.kt",
@@ -8145,9 +8167,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/CallControlClient.kt",
       "phase": "android",
-      "gitBlobId": "2fca694deecefa9370e72667a77f5e06cef1bc8d",
+      "gitBlobId": "6e1e2ba60e1158c4f6fbcfeb1fe243574c92ebb7",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/205-sesion-de-controles-de-llamada-2026-11-18.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8187,9 +8209,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/CallRepository.kt",
       "phase": "android",
-      "gitBlobId": "7c4dcff098d152fd085abb06a5db610b1184f3e0",
+      "gitBlobId": "9c17e63135c81768813ef46f4dfbe7a7386f0951",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/205-sesion-de-controles-de-llamada-2026-11-18.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8229,9 +8251,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/CommunityRepository.kt",
       "phase": "android",
-      "gitBlobId": "42659a1be5422f5b3805aa64d0f1072405826ad0",
+      "gitBlobId": "237e4039a43445fceb1bc38abe10b0738aaba22f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8313,9 +8335,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/GroupRepository.kt",
       "phase": "android",
-      "gitBlobId": "7a508055575fb1a73381095ab82d9cfd2b48fc33",
+      "gitBlobId": "78c9c98f8ab9f66cd9701b8af877d28cc4e8a8d1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8465,9 +8487,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/MessageRepository.kt",
       "phase": "android",
-      "gitBlobId": "a8f0e7ef9d4b1abe52bcd4152460db6508768780",
+      "gitBlobId": "ff9e0b110607c1bf095a00686dec248774f36e50",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8691,15 +8713,17 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/VoiceRoomAdmissionState.kt",
       "phase": "android",
-      "gitBlobId": "a7dcca85e6606ada2466512e8f61aeddfd5c1ef3",
-      "reviewStatus": "pending"
+      "gitBlobId": "4d91e946729b5096935af1398cd361f67f2d6659",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/VoiceRoomRepository.kt",
       "phase": "android",
-      "gitBlobId": "a4bd309210c6a0b0969dd145c4c210d351ccabe6",
+      "gitBlobId": "3fda17c6ac292424d9a0ece6565d835eaeb18fcd",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9341,8 +9365,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/sync/PendingMessageSyncScheduler.kt",
       "phase": "android",
-      "gitBlobId": "d88b0f1881b09799f848978f7d4e0d1a2b787585",
-      "reviewStatus": "pending"
+      "gitBlobId": "75e377ef3db003dc01836bbb71e1fc2188cbe09b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/sync/PushRegistrationWorker.kt",
@@ -9359,8 +9385,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/sync/SyncManager.kt",
       "phase": "android",
-      "gitBlobId": "615a36ffd6862d72b3ff6187a6fccda8cf56aaad",
-      "reviewStatus": "pending"
+      "gitBlobId": "bdd04bc28aad6c2a2bdcfc4d7110ff8d47db0818",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/sync/SyncWorker.kt",
@@ -9457,9 +9485,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/webrtc/WebRTCManager.kt",
       "phase": "android",
-      "gitBlobId": "6dafbc9dc6a884759e7beace70b2837cebdf682a",
+      "gitBlobId": "76583ad8b12ea620e71ae2b31fb183cdf6617b2e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9773,14 +9801,18 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/calls/CallInvitationOverlayHost.kt",
       "phase": "android",
-      "gitBlobId": "2129b136b9542c75b282b9bf69bba240f26b3c0b",
-      "reviewStatus": "pending"
+      "gitBlobId": "6d800f33d669ebff10cf59364852e2c985342ef9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/calls/CallScreen.kt",
       "phase": "android",
-      "gitBlobId": "2261ce2ddda21067dcd9cc915b5f5f0241145d4a",
-      "reviewStatus": "pending"
+      "gitBlobId": "81ef93b9d162b1ccdde5beca6709d32b52f71517",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/calls/CallVideoGrid.kt",
@@ -9791,8 +9823,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/calls/CallViewModel.kt",
       "phase": "android",
-      "gitBlobId": "744b3222a6a5384ecf33f0f7a492359711f72d48",
-      "reviewStatus": "pending"
+      "gitBlobId": "3cb45c979713ef2d3db87f329afc8542258c0e9f",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/calls/IncomingCallActivity.kt",
@@ -9995,9 +10029,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/CircularProfileImage.kt",
       "phase": "android",
-      "gitBlobId": "14dd2d581d532b810e786347598fad60d4c5d46b",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "gitBlobId": "b91e48f7b28da40b588b120676e3f3486bc9bfd9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12269,9 +12303,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "855668be7e74b98482dc2bc0cf3ddf8cd2b542c8",
+      "gitBlobId": "baa4705a25372f5107f14201dbc01782914cb9bd",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12299,9 +12333,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileViewModel.kt",
       "phase": "android",
-      "gitBlobId": "76ae20b2e8b9e2a85b10d1987fdd221257437648",
+      "gitBlobId": "cc18edb2b4db1f7da2140ae8d3954750ffb8a8a9",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12319,8 +12353,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileVisitorsLoader.kt",
       "phase": "android",
-      "gitBlobId": "6362b0b30aea74bd1caaf8842be924302098f748",
-      "reviewStatus": "pending"
+      "gitBlobId": "f1ef48720fb997a763aa78c8a72b9e560464e90a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/RecoveryEvidenceSection.kt",
@@ -12331,17 +12367,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/SettingsDirectory.kt",
       "phase": "android",
-      "gitBlobId": "dfa042f4f14d4a257155b63f959cd30d6cd37f0b",
+      "gitBlobId": "bac2dca6580a192b6ce9267f42dd55c130c1c042",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/SettingsScreen.kt",
       "phase": "android",
-      "gitBlobId": "6f9e7af18e55d59c1c123e7395a7526250528f16",
+      "gitBlobId": "19757a2e63bb8b6244411a2c8c0f225acee71585",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13111,9 +13147,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/video/VideoFeedScreen.kt",
       "phase": "android",
-      "gitBlobId": "bfd83269c336accd391efb9d61c0cb8a2ad26460",
+      "gitBlobId": "fcbe1c81de1cf45fd658132ba9b8ee3d1e0b56b1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13373,8 +13409,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/voicerooms/CinemaPlayer.kt",
       "phase": "android",
-      "gitBlobId": "9b8fe9eb3f7c9b7d68f0792b94f90985151acbae",
-      "reviewStatus": "pending"
+      "gitBlobId": "aad8b105f0c1bd2feaa1eac7aa5f22cdc31108f4",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/voicerooms/CinemaSourcePolicy.kt",
@@ -13423,17 +13461,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveScreen.kt",
       "phase": "android",
-      "gitBlobId": "b18c883964fa3553e395173f4129dafac72e1710",
+      "gitBlobId": "70ac0ba10e5f5079920eca67b0150f264d9cf341",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/voicerooms/VoiceRoomActiveViewModel.kt",
       "phase": "android",
-      "gitBlobId": "66a33dc2ac9eed795e00033e5428e390c79ade4a",
+      "gitBlobId": "299ce237e2496281e956ad23c32e3b3ef8cbd50e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/194-entrada-y-salida-vigentes-de-salas-2026-11-18.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13593,11 +13631,19 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/services/ActiveMediaWakeLocks.kt",
+      "phase": "android",
+      "gitBlobId": "557fd9c0c734d16f17f65b1c905d7ca6a59b3fe2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/services/CallForegroundService.kt",
       "phase": "android",
-      "gitBlobId": "639777d34bc48c36322fc60560d62485f53c3943",
+      "gitBlobId": "f378c908a4b0e4127ff1b7bca02a54215c57c68e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/140-notificaciones-visitas-llamadas-2026-11-14.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13623,9 +13669,9 @@
     {
       "file": "app/src/main/java/conectate/com/services/VoiceForegroundService.kt",
       "phase": "android",
-      "gitBlobId": "ade8e508e2438c6e873f2572443302ad5d4a1b4a",
+      "gitBlobId": "f885f2b84782095ffdbcd698665c1e0a04a292f9",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -14093,9 +14139,9 @@
     {
       "file": "app/src/main/java/conectate/com/util/VideoPerformanceProfile.kt",
       "phase": "android",
-      "gitBlobId": "224e42d9ab52e6d9608139353203a3f020ac2f4e",
+      "gitBlobId": "2bd8516385733fdefa43c1bf99d63e6db01fd573",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/145-medicion-movil-avatares-y-rutas-de-video-2026-11-15.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15863,9 +15909,9 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/CallControlAccountTest.kt",
       "phase": "android",
-      "gitBlobId": "91e5aa4ddc7b1a68cc6d2e95d4005b9638997fff",
+      "gitBlobId": "6f10e132098b2ec22550c547631462c4e4e7055e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/205-sesion-de-controles-de-llamada-2026-11-18.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16265,8 +16311,10 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/VoiceRoomAdmissionStateTest.kt",
       "phase": "android",
-      "gitBlobId": "8508d17a50b04f3448b301a2fcea05f3b58c00a4",
-      "reviewStatus": "pending"
+      "gitBlobId": "8d5c60c6379f8ee203a3d071f3c0501c89279ec0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/VoiceRoomDeletionRollbackTest.kt",
@@ -16677,6 +16725,14 @@
       "phase": "android",
       "gitBlobId": "02b1718a756e77ddf8ea4b3900fd724fc5d9a819",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/sync/SyncManagerOutboxFastPathTest.kt",
+      "phase": "android",
+      "gitBlobId": "9de9c422ecf56527bc97a24984264b0e51557d3e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/voice/VoiceRoomCuePolicyTest.kt",
@@ -17885,15 +17941,17 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/ProfileVisitorsLoaderTest.kt",
       "phase": "android",
-      "gitBlobId": "4712eb102d5411b4ac2c592bf609bc27b6f04411",
-      "reviewStatus": "pending"
+      "gitBlobId": "3265b3fe06578fcf9be9cbb0f8338f6593ff7947",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/SettingsDirectoryTest.kt",
       "phase": "android",
-      "gitBlobId": "e6786f4d5ebd191af0d42de9c546c560bf7e919e",
+      "gitBlobId": "0ef626ce48c6dc7a753c9e0854eb91c0b63d8526",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18397,9 +18455,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/voicerooms/VoiceRoomEntryLifetimeTest.kt",
       "phase": "android",
-      "gitBlobId": "e9598d4a9032377db4352cfcd3c995035bfa0ae3",
+      "gitBlobId": "b7f4990665e5290c760450524dda694f170f5361",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/194-entrada-y-salida-vigentes-de-salas-2026-11-18.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22077,6 +22135,22 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "d69feca40186ea3a478790ab65a319a6c35e2fda",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "44f177f36f5f955e1a032708a7baaaf606e8c4e0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/214-responsable-de-privacidad-y-candidata-android-2026-11-19.md",
       "phase": "documentation",
       "gitBlobId": "6ef88b973d6293b43fc0953a266435427020ef31",
@@ -24521,9 +24595,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/call-access-store.js",
       "phase": "server",
-      "gitBlobId": "d6f7d3988867f4550226c108dd1396424091f12f",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/211-aceptacion-de-llamadas-por-sesion-2026-11-19.md",
+      "gitBlobId": "97d611a8170ebd2eb9df1e3d587f2ade4e8c2600",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24641,9 +24715,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "70e0ef2a83a1f9811eb81233fdd180be01b27ccd",
+      "gitBlobId": "0a08831864aa42806cf830c8d1520256fcefed7c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/211-aceptacion-de-llamadas-por-sesion-2026-11-19.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25171,9 +25245,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/push-notifications.js",
       "phase": "server",
-      "gitBlobId": "2bbb762e9321454a74e33f279df0ef3b4a64d2bc",
+      "gitBlobId": "0f0d076bae497d5061c8d488690275f3af910eb3",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25197,8 +25271,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/realtime-publish.js",
       "phase": "server",
-      "gitBlobId": "846610413bc9d10655e04ace1f81ac34a5543271",
-      "reviewStatus": "pending"
+      "gitBlobId": "d23b6849490a575632f1ec5f389ecc6a6ba66f31",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/reconcile-storage-owners.js",
@@ -25215,9 +25291,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/request-observability.js",
       "phase": "server",
-      "gitBlobId": "e419ab40701e524813e78bfb639f657556b30262",
+      "gitBlobId": "c962699d0f31b076d99776e9bc79c8ee437f604d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25253,9 +25329,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "5b795fa11a73c33ba1417ef6843d98bf3d7f5698",
+      "gitBlobId": "c72c47548600cf1fd36b5976be86627ed585480c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26281,6 +26357,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/message-send-fastpath.test.js",
+      "phase": "server",
+      "gitBlobId": "e1f725097582bad8d7af014b0717dd99ad43da6c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/messaging-upload-policy.test.js",
       "phase": "server",
       "gitBlobId": "cb8ea0fae5cae4a9b8f9c62e88b2ae04a12d2ce3",
@@ -26719,9 +26803,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/push-notifications.test.js",
       "phase": "server",
-      "gitBlobId": "b406481f31f4827c27fccf52f7be0032f4b4130e",
+      "gitBlobId": "a80865adf3df4060e6b43687e6ffbcbaf7316e22",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26757,8 +26841,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/realtime-publish.test.js",
       "phase": "server",
-      "gitBlobId": "e9aff2e0784b36476f6704de0292fcf6b385f81d",
-      "reviewStatus": "pending"
+      "gitBlobId": "e8acc366bca30f89d3247c4f3486a29272ed4889",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/recovery-evidence.test.js",
@@ -26769,8 +26855,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/request-observability.test.js",
       "phase": "server",
-      "gitBlobId": "0e31d45b1f11721aa20bf743ca7bc694403ce94c",
-      "reviewStatus": "pending"
+      "gitBlobId": "12e3065dc0ad3da2c0b86b96b54bdd1709b37a0d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/request-security.test.js",
@@ -27499,6 +27587,22 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/monitoring/alerts.novvin.yml",
+      "phase": "server",
+      "gitBlobId": "027f4367e3691fd4aa6044dfc4c35e32231165cd",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/monitoring/prometheus.local-fallback.yml",
+      "phase": "server",
+      "gitBlobId": "330651cda0223dee3d078002d28e97d45cbd8e54",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/nginx/Dockerfile",
       "phase": "server",
       "gitBlobId": "e9cd50fc5e5320d850c662cb90cbb8a6bbdc2c34",
@@ -27507,8 +27611,10 @@
     {
       "file": "infrastructure/local-fallback/nginx/default.conf",
       "phase": "server",
-      "gitBlobId": "e0abf93509f9e55fb4e8a45ce442c6aaf50ad7a7",
-      "reviewStatus": "pending"
+      "gitBlobId": "dfd1842826cae4fc05c0b7ed4d4762d6b5a918b7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/r2-edge/worker.mjs",
@@ -27569,17 +27675,17 @@
     {
       "file": "infrastructure/local-fallback/realtime-gateway/src/server.js",
       "phase": "server",
-      "gitBlobId": "9f6ff108cb045f2132ac91db2b13fabd617ca804",
+      "gitBlobId": "e5a24d0aa40e35948f7acf9d07c43dae7f77be38",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/125-live-participacion-y-recuperacion-2026-11-13.md",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/realtime-gateway/tests/server.test.js",
       "phase": "server",
-      "gitBlobId": "15e5d34a53d2a20a0672f93dbacfb262e5325f6e",
-      "reviewStatus": "partial",
-      "evidence": "Novvin_Auditoria_Ecosistema/INFORME_AVANCE_CODEX.md",
+      "gitBlobId": "bc76510cb2e1805352a160b648247fecd181ddea",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28495,9 +28601,9 @@
     {
       "file": "signaling-server/index.js",
       "phase": "tooling-and-other",
-      "gitBlobId": "2876c1ae2eb638c14ff63feff827513a2e653b1d",
+      "gitBlobId": "996bfc8df9513bfb8e308af75ef43e1081a28d86",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -30287,6 +30393,14 @@
       "phase": "tooling-and-other",
       "gitBlobId": "55208c315f1502e053fe6c0a307e340f2ba46af1",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/loadtest/run-isolated-capacity-suite.mjs",
+      "phase": "tooling-and-other",
+      "gitBlobId": "367a2c7af201e9d2630fec2a38dc6aef34decb71",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/perf_budgets.json",

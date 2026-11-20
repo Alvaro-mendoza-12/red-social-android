@@ -157,6 +157,7 @@ class VoiceRoomRepository @Inject constructor(
 
     private val _currentParticipants = MutableStateFlow<List<VoiceParticipant>>(emptyList())
     @Volatile private var desiredSelfMuted = false
+    @Volatile private var lastLocalMuteChangeAtMs = 0L
     val currentParticipants = _currentParticipants.asStateFlow()
 
     private val _remoteVideoTracks = MutableStateFlow<Map<String, VideoTrack>>(emptyMap())
@@ -418,8 +419,9 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     private fun applyVoiceRoomState(room: VoiceRoom, participants: List<VoiceParticipant>) {
+        val currentUserId = authService.getCurrentUserId()?.trim()?.lowercase().orEmpty()
         val previousById = _currentParticipants.value.associateBy { it.id.trim().lowercase() }
-        val mergedParticipants = participants.map { participant ->
+        val mergedInitial = participants.map { participant ->
             val previous = previousById[participant.id.trim().lowercase()]
             if (participant.socketId.isBlank() && previous?.socketId?.isNotBlank() == true) {
                 participant.copy(socketId = previous.socketId)
@@ -428,22 +430,46 @@ class VoiceRoomRepository @Inject constructor(
             }
         }
         val enrichedRoom = normalizeRoomForUi(room).copy(
-            participantCount = mergedParticipants.size,
-            participantIds = mergedParticipants.map { it.id },
-            speakerIds = mergedParticipants
+            participantCount = mergedInitial.size,
+            participantIds = mergedInitial.map { it.id },
+            speakerIds = mergedInitial
                 .filter { it.role == VoiceStageRoles.MODERATOR || it.role == VoiceStageRoles.SPEAKER }
                 .map { it.id },
-            participantNames = mergedParticipants.associate { it.id to it.name },
-            raisedHandCount = mergedParticipants.count { it.handRaised }
+            participantNames = mergedInitial.associate { it.id to it.name },
+            raisedHandCount = mergedInitial.count { it.handRaised }
         )
+        val canPublish = canCurrentUserPublishMedia(enrichedRoom, mergedInitial)
+        val msSinceToggle = if (lastLocalMuteChangeAtMs > 0L) {
+            System.currentTimeMillis() - lastLocalMuteChangeAtMs
+        } else {
+            Long.MAX_VALUE
+        }
+        val mergedParticipants = mergedInitial.map { participant ->
+            if (currentUserId.isNotBlank() && participant.id.trim().lowercase() == currentUserId) {
+                val effectiveMuted = reconcileSelfVoiceMuteState(
+                    serverMuted = participant.isMuted,
+                    locallyMuted = desiredSelfMuted,
+                    canPublish = canPublish,
+                    msSinceLastLocalToggle = msSinceToggle,
+                )
+                desiredSelfMuted = effectiveMuted
+                participant.copy(isMuted = effectiveMuted)
+            } else {
+                participant
+            }
+        }
         _currentRoom.value = enrichedRoom
         _currentParticipants.value = mergedParticipants
         refreshParticipantAliases()
-        if (!canCurrentUserPublishMedia(enrichedRoom, mergedParticipants)) {
+        if (!canPublish) {
             toggleMute(true)
             if (_currentVideoMode.value != VideoMode.NONE) {
                 stopVideo()
             }
+        } else {
+            val effectiveMuted = isSelfMuted(mergedParticipants)
+            webRTCManager?.setAudioEnabled(!effectiveMuted)
+            updateVoiceForegroundService()
         }
     }
 
@@ -1358,7 +1384,20 @@ class VoiceRoomRepository @Inject constructor(
                 ?: getRoomById(roomLookupId).getOrThrow()
             joinMuted = joinMuted || !room.groupId.isNullOrBlank()
             desiredSelfMuted = joinMuted
+            lastLocalMuteChangeAtMs = 0L
             _currentRoom.value = normalizeRoomForUi(room)
+
+            // Seed self with initial role BEFORE evaluating canCurrentUserPublishMedia()
+            // so stage speakers/moderators and audience members configure audio accurately.
+            val self = conectate.com.data.model.VoiceParticipant(
+                id = userId,
+                name = displayName,
+                avatarUrl = avatarUrl,
+                isMuted = joinMuted,
+                role = initialVoiceParticipantRole(room, userId),
+                socketId = userId
+            )
+            _currentParticipants.value = listOf(self)
 
             // v21.0: Reverting seamless re-entry due to "Zombie Session" issues (Audio/Chat loss).
             // We will fallback to a clean reconnection cycle to safeguard functionality.
@@ -1378,8 +1417,9 @@ class VoiceRoomRepository @Inject constructor(
                 webRTCManager?.setRemoteAudioPlaybackEnabled(true)
                 // Removed setCurrentUser with empty socketId to avoid race condition with isPolite
 
-                prepareVoiceAudioSession(forceMicUnmute = !joinMuted && canCurrentUserPublishMedia())
-                webRTCManager?.setAudioEnabled(!joinMuted && canCurrentUserPublishMedia())
+                val canPublishOnJoin = canCurrentUserPublishMedia(_currentRoom.value, _currentParticipants.value)
+                prepareVoiceAudioSession(forceMicUnmute = !joinMuted && canPublishOnJoin)
+                webRTCManager?.setAudioEnabled(!joinMuted && canPublishOnJoin)
                 android.util.Log.d("VoiceRoomRepository", "✅ Audio mode set to COMM + Focus Requested")
             } catch (e: Exception) {
                 android.util.Log.e("VoiceRoomRepository", "❌ WebRTC Re-init failed: ${e.message}")
@@ -1393,17 +1433,6 @@ class VoiceRoomRepository @Inject constructor(
                     attributes = currentMetricAttributes(roomId = roomId)
                 )
             }
-
-            // Add self to participants
-            var self = conectate.com.data.model.VoiceParticipant(
-                id = userId,
-                name = displayName,
-                avatarUrl = avatarUrl,
-                isMuted = joinMuted,
-                role = initialVoiceParticipantRole(room, userId),
-                socketId = userId
-            )
-            _currentParticipants.value = listOf(self)
 
             // Signaling persists admission with the authenticated user, password
             // and actual socket ID before emitting room-joined. Do not register a
@@ -1547,8 +1576,14 @@ class VoiceRoomRepository @Inject constructor(
                 
                 // Merge self with updated Socket ID
                 _currentParticipants.update { current ->
-                    var self = current.find { it.id == userId } ?: conectate.com.data.model.VoiceParticipant(id = userId, name = name, socketId = sid)
-                    (current.filterNot { it.id == userId } + self.copy(socketId = sid)).distinctBy { it.socketId }
+                    var self = current.find { it.id.equals(userId, ignoreCase = true) }
+                        ?: conectate.com.data.model.VoiceParticipant(
+                            id = userId,
+                            name = name,
+                            isMuted = desiredSelfMuted,
+                            socketId = sid
+                        )
+                    (current.filterNot { it.id.equals(userId, ignoreCase = true) } + self.copy(socketId = sid)).distinctBy { it.socketId }
                 }
                 refreshParticipantAliases()
             }
@@ -1568,11 +1603,15 @@ class VoiceRoomRepository @Inject constructor(
                     )
                 }
                 if (!canCurrentUserPublishMedia()) {
+                    desiredSelfMuted = true
                     webRTCManager?.setAudioEnabled(false)
                     if (_currentVideoMode.value != VideoMode.NONE) stopVideo()
                 } else {
-                    webRTCManager?.setAudioEnabled(!isSelfMuted())
+                    val effectiveMuted = isSelfMuted()
+                    desiredSelfMuted = effectiveMuted
+                    webRTCManager?.setAudioEnabled(!effectiveMuted)
                 }
+                updateVoiceForegroundService()
             }
 
             createdSocket.on("room-joined") { args ->
@@ -1675,10 +1714,12 @@ class VoiceRoomRepository @Inject constructor(
                         id = uid, 
                         name = displayName, 
                         avatarUrl = data.optString("avatarUrl"), 
+                        role = normalizedVoiceParticipantRole(data.optString("role")),
+                        handRaised = data.optBoolean("handRaised", false),
                         socketId = sid,
                         isMuted = data.optBoolean("isMuted", true)
                     )
-                    (current.filterNot { it.socketId == sid || it.id == uid } + p).distinctBy { it.socketId }
+                    (current.filterNot { it.socketId == sid || it.id.equals(uid, ignoreCase = true) } + p).distinctBy { it.socketId }
                 }
                 refreshParticipantAliases()
                 
@@ -1729,7 +1770,7 @@ class VoiceRoomRepository @Inject constructor(
                 
                 val selfId = authService.getCurrentUserId()
                 val current = _currentParticipants.value
-                val selfParticipant = current.firstOrNull { it.id == selfId }
+                val selfParticipant = current.firstOrNull { it.id.equals(selfId, ignoreCase = true) }
                 val remoteParticipants = mutableListOf<conectate.com.data.model.VoiceParticipant>()
                 val remoteSocketIds = mutableSetOf<String>()
                 val rebuiltSharingStates = mutableMapOf<String, Pair<Boolean, Boolean>>()
@@ -1743,7 +1784,7 @@ class VoiceRoomRepository @Inject constructor(
                     if (sid.isBlank() || uid.isBlank()) continue
                     val participantName = p.optString("name", "Invitado")
 
-                    if (uid != selfId) {
+                    if (!uid.equals(selfId, ignoreCase = true)) {
                         remoteSocketIds += sid
                         remoteParticipants += conectate.com.data.model.VoiceParticipant(
                             id = uid,
@@ -1840,11 +1881,19 @@ class VoiceRoomRepository @Inject constructor(
                 if (uid.isBlank()) return@on
                 var isMuted = data.optBoolean("isMuted", false)
                 android.util.Log.d("VoiceRoomRepository", "🔇 Remote Mute State ($uid): $isMuted")
-                if (data.optString("roomId").isNotBlank() && data.optString("roomId") != roomId) return@on
-                roomCues.muted(uid, isMuted)
+                if (data.optString("roomId").isNotBlank() && !data.optString("roomId").equals(roomId, ignoreCase = true)) return@on
+                val selfId = authService.getCurrentUserId()?.trim().orEmpty()
+                val isSelf = selfId.isNotBlank() && uid.equals(selfId, ignoreCase = true)
+                val effectiveMuted = if (isSelf && !canCurrentUserPublishMedia()) true else isMuted
+                roomCues.muted(uid, effectiveMuted)
                 
                 _currentParticipants.update { current ->
-                    current.map { if (it.id == uid) it.copy(isMuted = isMuted) else it }
+                    current.map { if (it.id.equals(uid, ignoreCase = true)) it.copy(isMuted = effectiveMuted) else it }
+                }
+                if (isSelf) {
+                    desiredSelfMuted = effectiveMuted
+                    webRTCManager?.setAudioEnabled(!effectiveMuted && canCurrentUserPublishMedia())
+                    updateVoiceForegroundService()
                 }
             }
 
@@ -2479,6 +2528,7 @@ class VoiceRoomRepository @Inject constructor(
             // 3. Reset UI State
             _currentParticipants.value = emptyList()
             desiredSelfMuted = false
+            lastLocalMuteChangeAtMs = 0L
             _remoteVideoTracks.value = emptyMap()
             _peerConnectionStates.value = emptyMap()
             _signalingStates.value = emptyMap()
@@ -2522,10 +2572,12 @@ class VoiceRoomRepository @Inject constructor(
     }
 
     fun toggleMute(isMuted: Boolean) {
+        val currentUserId = authService.getCurrentUserId()?.trim().orEmpty()
         if (!isMuted && !canCurrentUserPublishMedia()) {
             desiredSelfMuted = true
+            lastLocalMuteChangeAtMs = System.currentTimeMillis()
             _currentParticipants.value = _currentParticipants.value.map {
-                if (it.id == authService.getCurrentUserId()) it.copy(isMuted = true) else it
+                if (it.id.equals(currentUserId, ignoreCase = true)) it.copy(isMuted = true) else it
             }
             webRTCManager?.setAudioEnabled(false)
             _lastConnectionError.value = "Solicita la palabra para activar el micrófono en este escenario."
@@ -2533,12 +2585,13 @@ class VoiceRoomRepository @Inject constructor(
             return
         }
         android.util.Log.d("VoiceRoomRepository", "🎤 NUCLEAR MUTE: $isMuted")
-        roomCues.muted(authService.getCurrentUserId().orEmpty(), isMuted)
+        roomCues.muted(currentUserId, isMuted)
         desiredSelfMuted = isMuted
+        lastLocalMuteChangeAtMs = System.currentTimeMillis()
         
         // 1. Update Participants UI
         _currentParticipants.value = _currentParticipants.value.map { 
-            if (it.id == authService.getCurrentUserId()) it.copy(isMuted = isMuted) else it
+            if (it.id.equals(currentUserId, ignoreCase = true)) it.copy(isMuted = isMuted) else it
         }
         
         if (!isMuted) {

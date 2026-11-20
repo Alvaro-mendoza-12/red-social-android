@@ -417,17 +417,18 @@ class AdvancedMessagingRepository @Inject constructor(
 
 
 
-    suspend fun applyAutoTranslation(chatId: String, text: String): String = withContext(Dispatchers.IO) {
-        var cleanText = text.trim()
-        if (cleanText.isBlank()) return@withContext cleanText
-        if (!SECURE_TRANSLATION_PROVIDER_ENABLED) return@withContext cleanText
-        var cleanChat = chatId.trim().lowercase()
-        var setting = translationCache[cleanChat]
-        var targetLang = normalizeLanguageCode(setting?.target_lang)
-        if (setting == null || !setting.enabled || targetLang == null) return@withContext cleanText
-        var sourceLang = resolveSourceLanguageCode()
-        if (sourceLang == targetLang) return@withContext cleanText
-        translateViaPrivateBackend(cleanText, sourceLang, targetLang)
+    suspend fun applyAutoTranslation(chatId: String, text: String): String {
+        val cleanText = text.trim()
+        if (cleanText.isBlank() || !SECURE_TRANSLATION_PROVIDER_ENABLED) return cleanText
+        val cleanChat = chatId.trim().lowercase()
+        val setting = translationCache[cleanChat]
+        val targetLang = normalizeLanguageCode(setting?.target_lang)
+        if (setting == null || !setting.enabled || targetLang == null) return cleanText
+        val sourceLang = resolveSourceLanguageCode()
+        if (sourceLang == targetLang) return cleanText
+        return withContext(Dispatchers.IO) {
+            translateViaPrivateBackend(cleanText, sourceLang, targetLang)
+        }
     }
 
 

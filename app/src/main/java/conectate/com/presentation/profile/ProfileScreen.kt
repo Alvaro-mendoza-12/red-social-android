@@ -525,11 +525,15 @@ fun ProfileScreen(
             val owner = (profileState as? ProfileUiState.Success)?.user
             viewModel.loadProfileViewers(owner?.profile_view_history_enabled == true)
         }
-        ModalBottomSheet(onDismissRequest = { showProfileViewers = false }) {
+        ModalBottomSheet(onDismissRequest = {
+            showProfileViewers = false
+            viewModel.clearProfileViewersTransientState()
+        }) {
             ProfileVisitorsContent(profileVisitorsState,
                 onRetry = { viewModel.loadProfileViewers(profileVisitorsState.enabled) },
                 onOpenProfile = { visitorId ->
                     showProfileViewers = false
+                    viewModel.clearProfileViewersTransientState()
                     (mainNavController ?: navController).navigate(Screen.UserProfile.createRoute(visitorId))
                 })
         }

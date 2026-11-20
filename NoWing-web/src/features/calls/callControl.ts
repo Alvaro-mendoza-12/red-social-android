@@ -16,6 +16,7 @@ export class CallControlError extends Error {
 }
 
 function callControlMessage(code: string): string {
+  if (code === 'CALL_ANSWERED_ELSEWHERE') return 'Llamada respondida en otro dispositivo.'
   if (code === 'CALL_ACCOUNT_BUSY') return 'Ya hay otra llamada activa en tu cuenta.'
   if (code === 'CALL_PARTICIPANT_LIMIT_REACHED') return 'La llamada ya está llena.'
   if (code === 'CALL_INVITE_EXPIRED') return 'La invitación venció. Pide que te inviten de nuevo.'

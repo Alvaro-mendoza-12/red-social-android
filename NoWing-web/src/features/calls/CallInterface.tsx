@@ -1,5 +1,5 @@
 import { SafeAvatar } from '../../components/SafeAvatar'
-import { Mic, MicOff, Video, VideoOff, MonitorUp, Phone, PhoneOff, Maximize, Minimize2, Settings, Volume2, VolumeX, UserRoundPlus } from 'lucide-react'
+import { Mic, MicOff, Video, VideoOff, SwitchCamera, MonitorUp, Phone, PhoneOff, Maximize, Minimize2, Settings, Volume2, VolumeX, UserRoundPlus } from 'lucide-react'
 import { CallInviteDialog } from './CallInviteDialog'
 import './calls.css'
 import { LiveStreamVideo } from '../../components/LiveStreamMedia'
@@ -149,6 +149,7 @@ export function CallInterface({
         setRemoteStream(null)
 
         if (reason === 'start_failed') return
+        if (reason === 'answered_elsewhere') setError('Llamada respondida en otro dispositivo.')
         navigationTimer = setTimeout(() => {
           navigate('/app/messages')
         }, 2000)
@@ -311,6 +312,14 @@ export function CallInterface({
     finally { setMediaBusy(false) }
   }
 
+  const switchCamera = async () => {
+    if (!callManager || mediaBusy) return
+    setMediaBusy(true); setError(null)
+    try { await callManager.switchCamera() }
+    catch { setError('No se pudo cambiar entre cámara frontal y trasera.') }
+    finally { setMediaBusy(false) }
+  }
+
   const toggleScreenShare = async () => {
     if (!callManager || mediaBusy) return
     setMediaBusy(true); setError(null)
@@ -441,6 +450,19 @@ export function CallInterface({
               >
                 {callState.isVideoEnabled ? <Video/> : <VideoOff/>}<span>Cámara</span>
               </button>
+
+              {callState.isVideoEnabled && !callState.isScreenSharing ? (
+                <button
+                  className="control-btn"
+                  type="button"
+                  onClick={() => void switchCamera()}
+                  disabled={mediaBusy}
+                  aria-label="Cambiar cámara"
+                  title="Cambiar entre cámara frontal y trasera"
+                >
+                  <SwitchCamera /><span>Girar</span>
+                </button>
+              ) : null}
               
               {typeof navigator.mediaDevices?.getDisplayMedia === 'function' ? <button
                 className={`control-btn ${callState.isScreenSharing ? 'screen-sharing' : ''}`}

@@ -3,6 +3,8 @@ package conectate.com.presentation.voicerooms
 import android.util.Log
 import androidx.lifecycle.ViewModelStore
 import conectate.com.data.model.VoiceRoom
+import conectate.com.data.repository.CommunityRepository
+import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.MessageRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.data.repository.VoiceConnectionState
@@ -43,6 +45,7 @@ class VoiceRoomEntryLifetimeTest {
     private val repository = mockk<VoiceRoomRepository>(relaxUnitFun = true)
     private val currentRoom = MutableStateFlow<VoiceRoom?>(null)
     private val session = MutableStateFlow(VoiceSessionState())
+    private val incomingReactions = MutableSharedFlow<ReactionEvent>(extraBufferCapacity = 8)
     private val events = mutableListOf<String>()
     private val pending = mutableListOf<CompletableDeferred<Unit>>()
     private lateinit var model: VoiceRoomActiveViewModel
@@ -69,7 +72,7 @@ class VoiceRoomEntryLifetimeTest {
         every { repository.cinemaState } returns MutableStateFlow(null)
         every { repository.incomingMessages } returns MutableSharedFlow()
         every { repository.deletedRoomMessages } returns MutableSharedFlow()
-        every { repository.incomingReactions } returns MutableSharedFlow()
+        every { repository.incomingReactions } returns incomingReactions
         every { repository.videoError } returns MutableStateFlow(null)
         every { repository.captionsEnabled } returns MutableStateFlow(false)
         every { repository.captionConsentUserIds } returns MutableStateFlow(emptySet())
@@ -91,7 +94,14 @@ class VoiceRoomEntryLifetimeTest {
             currentRoom.value = null
             session.value = VoiceSessionState()
         }
-        model = VoiceRoomActiveViewModel(repository, auth, mockk<UserRepository>(), mockk<MessageRepository>())
+        model = VoiceRoomActiveViewModel(
+            repository,
+            auth,
+            mockk<UserRepository>(),
+            mockk<MessageRepository>(),
+            mockk<GroupRepository>(relaxed = true),
+            mockk<CommunityRepository>(relaxed = true),
+        )
         store.put("voice", model)
         drain()
     }
@@ -209,5 +219,27 @@ class VoiceRoomEntryLifetimeTest {
         drain()
         assertEquals(listOf("join:old", "leave:start", "leave:end", "join:next"), events)
         assertEquals("next", model.room.value?.id)
+    }
+
+    @Test fun reactionsAllowAtMostOneVisiblePerUserAndThrottleRapidLocalSends() {
+        model.joinRoom("room-r")
+        drain()
+
+        // Remote user sends two reactions quickly -> only the latest stays visible for that user.
+        incomingReactions.tryEmit(ReactionEvent(id = "r1", emoji = "❤️", timestamp = 1_000L, userId = "peer-1"))
+        drain()
+        incomingReactions.tryEmit(ReactionEvent(id = "r2", emoji = "🔥", timestamp = 1_100L, userId = "peer-1"))
+        drain()
+        val peerReactions = model.activeReactions.value.filter { it.userId == "peer-1" }
+        assertEquals(1, peerReactions.size)
+        assertEquals("🔥", peerReactions.first().emoji)
+
+        // Rapid local sends within cooldown emit only once.
+        model.sendReaction("👏")
+        model.sendReaction("🎉")
+        drain()
+        val selfReactions = model.activeReactions.value.filter { it.userId == "listener" }
+        assertEquals(1, selfReactions.size)
+        assertEquals("👏", selfReactions.first().emoji)
     }
 }

@@ -78,4 +78,23 @@ class ProfileVisitorsLoaderTest {
         assertTrue(loader.state.value.loading)
         assertEquals(listOf(visitor), loader.state.value.items)
     }
+
+    @Test fun clearTransientStateCancelsPendingAndResetsStaleErrorsAndRows() = runTest {
+        var fail = true
+        val loader = ProfileVisitorsLoader(backgroundScope, { "owner" }, {
+            if (fail) Result.failure(IllegalStateException("timeout")) else Result.success(listOf(visitor))
+        })
+        loader.refresh(true); runCurrent()
+        assertNotNull(loader.state.value.error)
+
+        loader.clearTransientState()
+        assertFalse(loader.state.value.loading)
+        assertNull(loader.state.value.error)
+        assertTrue(loader.state.value.items.isEmpty())
+
+        fail = false
+        loader.refresh(true); runCurrent()
+        assertEquals(listOf(visitor), loader.state.value.items)
+        assertNull(loader.state.value.error)
+    }
 }

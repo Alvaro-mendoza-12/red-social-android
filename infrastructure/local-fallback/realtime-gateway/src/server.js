@@ -4,6 +4,7 @@ const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 const WebSocket = require('ws')
 const crypto = require('crypto')
+const { monitorEventLoopDelay } = require('perf_hooks')
 
 const serviceName = 'conectate-local-fallback-realtime-gateway'
 const version = '0.1.0'
@@ -14,6 +15,22 @@ const jwtSecret = String(process.env.JWT_SECRET || '')
 const jwtIssuer = String(process.env.JWT_ISSUER || 'conectate-local-fallback')
 const localFallbackApiUrl = String(process.env.LOCAL_FALLBACK_API_URL || 'http://api:3001').replace(/\/+$/, '')
 const internalSecret = String(process.env.REALTIME_INTERNAL_SECRET || '').trim()
+const MAX_TOTAL_CONNECTIONS = Math.max(100, Math.min(Number(process.env.REALTIME_MAX_CONNECTIONS || 10_000) || 10_000, 100_000))
+const MAX_CONNECTIONS_PER_IP = Math.max(5, Math.min(Number(process.env.REALTIME_MAX_CONNECTIONS_PER_IP || 200) || 200, 10_000))
+
+const eventLoopMonitor = monitorEventLoopDelay({ resolution: 20 })
+eventLoopMonitor.enable()
+
+const gatewayMetrics = {
+  startedAtMs: Date.now(),
+  eventsPublished: 0,
+  batchRequests: 0,
+  messagesDelivered: 0,
+  slowConsumerDrops: 0,
+  rateLimitDrops: 0,
+  connectionLimitRejections: 0,
+  authFailures: 0,
+}
 
 if (!jwtSecret || jwtSecret.length < 32) {
   if (isProduction) throw new Error('JWT_SECRET must be at least 32 characters in production')
@@ -26,6 +43,14 @@ if (isProduction && internalSecret.length < 32) {
 const app = express()
 app.disable('x-powered-by')
 app.use(helmet())
+app.use((req, res, next) => {
+  const supplied = String(req.headers['x-correlation-id'] || req.headers['x-request-id'] || '').trim()
+  const correlationId = /^[a-zA-Z0-9._:-]{8,80}$/.test(supplied) ? supplied : crypto.randomUUID()
+  req.correlationId = correlationId
+  res.set('x-correlation-id', correlationId)
+  res.set('x-request-id', correlationId)
+  next()
+})
 app.get('/', (_req, res) => res.json({ ok: true, service: serviceName, version }))
 app.get('/health', (_req, res) => res.json({ ok: true, service: serviceName, version, time: new Date().toISOString() }))
 
@@ -33,6 +58,71 @@ const server = http.createServer(app)
 const wss = new WebSocket.Server({ server, maxPayload: 32 * 1024, perMessageDeflate: false })
 const MAX_SUBSCRIPTIONS = 32
 const AUTH_RECHECK_MS = 60_000
+
+// O(1) fan-out indexes avoiding O(N_total_clients) full scans on every broadcast.
+const channelSubscribers = new Map()
+const userSockets = new Map()
+const ipConnections = new Map()
+
+function indexAdd(map, key, ws) {
+  if (!key) return
+  let set = map.get(key)
+  if (!set) {
+    set = new Set()
+    map.set(key, set)
+  }
+  set.add(ws)
+}
+
+function indexRemove(map, key, ws) {
+  if (!key) return
+  const set = map.get(key)
+  if (!set) return
+  set.delete(ws)
+  if (set.size === 0) map.delete(key)
+}
+
+function normalizeClientIp(req) {
+  const peer = String(req.socket?.remoteAddress || '').trim().toLowerCase().replace(/^::ffff:/, '')
+  const trustedProxy = peer === '127.0.0.1' || peer === '::1' || peer.startsWith('10.') || peer.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(peer)
+  if (trustedProxy) {
+    const cf = String(req.headers?.['cf-connecting-ip'] || '').trim().toLowerCase().replace(/^::ffff:/, '')
+    if (cf) return cf.slice(0, 120)
+  }
+  return (peer || 'unknown').slice(0, 120)
+}
+
+function setSocketUserIds(ws, nextIds) {
+  const previous = ws._userIds || new Set()
+  for (const oldId of previous) {
+    if (!nextIds.has(oldId)) indexRemove(userSockets, oldId, ws)
+  }
+  for (const nextId of nextIds) {
+    indexAdd(userSockets, nextId, ws)
+  }
+  ws._userIds = nextIds
+}
+
+function addSocketChannel(ws, channel) {
+  ws._rooms.add(channel)
+  indexAdd(channelSubscribers, channel, ws)
+}
+
+function removeSocketChannel(ws, channel) {
+  ws._rooms.delete(channel)
+  indexRemove(channelSubscribers, channel, ws)
+}
+
+function clearSocketIndexes(ws) {
+  if (ws._rooms) {
+    for (const channel of ws._rooms) indexRemove(channelSubscribers, channel, ws)
+    ws._rooms.clear()
+  }
+  if (ws._userIds) {
+    for (const uid of ws._userIds) indexRemove(userSockets, uid, ws)
+    ws._userIds.clear()
+  }
+}
 
 /**
  * Auth model:
@@ -150,10 +240,19 @@ function safeJsonParse(text) {
   }
 }
 
+function sendRaw(ws, serialized) {
+  if (ws.readyState !== WebSocket.OPEN) return false
+  if (ws.bufferedAmount > 512 * 1024) {
+    gatewayMetrics.slowConsumerDrops += 1
+    ws.close(4408, 'SLOW_CONSUMER')
+    return false
+  }
+  ws.send(serialized)
+  return true
+}
+
 function send(ws, obj) {
-  if (ws.readyState !== WebSocket.OPEN) return
-  if (ws.bufferedAmount > 512 * 1024) return ws.close(4408, 'SLOW_CONSUMER')
-  ws.send(JSON.stringify(obj))
+  return sendRaw(ws, JSON.stringify(obj))
 }
 
 async function revalidateSocket(ws) {
@@ -163,10 +262,10 @@ async function revalidateSocket(ws) {
     const payload = verifyToken(ws._token)
     const ids = payload ? await resolveUserIds(ws._token, payload) : null
     if (!ids) return ws.close(4401, 'SESSION_EXPIRED')
-    ws._userIds = ids
+    setSocketUserIds(ws, ids)
     for (const channel of [...ws._rooms]) {
       if (!(await maySubscribeToChannel(ws._token, ids, channel))) {
-        ws._rooms.delete(channel)
+        removeSocketChannel(ws, channel)
         send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL', channel })
       }
     }
@@ -177,6 +276,16 @@ async function revalidateSocket(ws) {
 }
 
 wss.on('connection', (ws, req) => {
+  const clientIp = normalizeClientIp(req)
+  const ipCount = ipConnections.get(clientIp) || 0
+  if (wss.clients.size > MAX_TOTAL_CONNECTIONS || ipCount >= MAX_CONNECTIONS_PER_IP) {
+    gatewayMetrics.connectionLimitRejections += 1
+    ws.close(4429, 'CONNECTION_LIMIT')
+    return
+  }
+  ipConnections.set(clientIp, ipCount + 1)
+
+  ws._clientIp = clientIp
   ws._rooms = new Set()
   ws._userId = null
   ws._userIds = new Set()
@@ -191,7 +300,10 @@ wss.on('connection', (ws, req) => {
   let recheckTimer
 
   const authenticationTimeout = setTimeout(() => {
-    if (!ws._authenticated) ws.close(4401, 'AUTHENTICATION_TIMEOUT')
+    if (!ws._authenticated) {
+      gatewayMetrics.authFailures += 1
+      ws.close(4401, 'AUTHENTICATION_TIMEOUT')
+    }
   }, 5_000)
 
   function authenticate(tokenValue) {
@@ -199,6 +311,7 @@ wss.on('connection', (ws, req) => {
     const token = String(tokenValue || '').trim()
     const payload = verifyToken(token)
     if (!payload?.sub) {
+      gatewayMetrics.authFailures += 1
       ws.close(4401, 'UNAUTHORIZED')
       return null
     }
@@ -207,10 +320,11 @@ wss.on('connection', (ws, req) => {
     ws._userId = String(payload.sub)
     ws._identityReady = resolveUserIds(token, payload).then((ids) => {
     if (!ids || ws.readyState !== WebSocket.OPEN || !verifyToken(token)) {
+      gatewayMetrics.authFailures += 1
       ws.close(4403, 'ACCOUNT_NOT_ACTIVE')
       return null
     }
-    ws._userIds = ids
+    setSocketUserIds(ws, ids)
     ws._authenticated = true
     clearTimeout(authenticationTimeout)
     ws._validatedUntil = Math.min(payload.exp * 1000, Date.now() + AUTH_RECHECK_MS + 10_000)
@@ -234,7 +348,10 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', async (raw) => {
     if (Date.now() - windowStartedAt >= 10_000) { windowStartedAt = Date.now(); messagesInWindow = 0 }
-    if (++messagesInWindow > 100) return ws.close(4429, 'RATE_LIMITED')
+    if (++messagesInWindow > 100) {
+      gatewayMetrics.rateLimitDrops += 1
+      return ws.close(4429, 'RATE_LIMITED')
+    }
     const msg = safeJsonParse(raw.toString('utf8'))
     if (!msg || typeof msg !== 'object') return
 
@@ -262,7 +379,7 @@ wss.on('connection', (ws, req) => {
           return send(ws, { type: 'error', error: 'FORBIDDEN_CHANNEL', channel })
         }
         if (ws.readyState !== WebSocket.OPEN || Date.now() >= ws._validatedUntil) return
-        ws._rooms.add(channel)
+        addSocketChannel(ws, channel)
         return send(ws, { type: 'subscribed', channel })
       } finally { ws._pendingSubscriptions-- }
     }
@@ -270,7 +387,7 @@ wss.on('connection', (ws, req) => {
     if (type === 'unsubscribe') {
       const channel = String(msg.channel || '').trim()
       if (!channel) return
-      ws._rooms.delete(channel)
+      removeSocketChannel(ws, channel)
       return send(ws, { type: 'unsubscribed', channel })
     }
 
@@ -287,29 +404,46 @@ wss.on('connection', (ws, req) => {
     clearInterval(recheckTimer)
     ws._authenticated = false
     ws._token = ''
-    ws._rooms.clear()
+    clearSocketIndexes(ws)
+    const remaining = (ipConnections.get(clientIp) || 1) - 1
+    if (remaining <= 0) ipConnections.delete(clientIp)
+    else ipConnections.set(clientIp, remaining)
   })
   ws.on('error', () => { ws.close() })
 })
 
-function broadcast(channel, payload) {
-  const message = {
+function broadcast(channel, payload, options = {}) {
+  gatewayMetrics.eventsPublished += 1
+  const excludeSessionId = String(options?.excludeSessionId || '').trim()
+  const targetUserId = channel.startsWith('user:')
+    ? channel.slice('user:'.length).trim().toLowerCase()
+    : ''
+  const directSet = channelSubscribers.get(channel)
+  const userSet = targetUserId ? userSockets.get(targetUserId) : null
+  if ((!directSet || directSet.size === 0) && (!userSet || userSet.size === 0)) return 0
+
+  const now = Date.now()
+  const serialized = JSON.stringify({
     type: 'event',
     channel,
     payload,
-    ts: new Date().toISOString(),
-  }
+    ts: new Date(now).toISOString(),
+  })
 
-  wss.clients.forEach((client) => {
-    if (client.readyState !== WebSocket.OPEN) return
-    if (!client._authenticated || Date.now() >= client._validatedUntil) return
-    const targetUserId = channel.startsWith('user:')
-      ? channel.slice('user:'.length).trim().toLowerCase()
-      : ''
-    const subscribedDirectly = Boolean(client._rooms?.has(channel))
+  const recipients = directSet && userSet
+    ? new Set([...directSet, ...userSet])
+    : (directSet || userSet)
+
+  let delivered = 0
+  for (const client of recipients) {
+    if (client.readyState !== WebSocket.OPEN) continue
+    if (!client._authenticated || now >= client._validatedUntil) continue
+    if (excludeSessionId && client._sessionId && client._sessionId === excludeSessionId) continue
     const matchesCanonicalUser = Boolean(targetUserId && client._userIds?.has(targetUserId))
-    if (!subscribedDirectly && !matchesCanonicalUser) return
-    send(client, message)
+    if (sendRaw(client, serialized)) {
+      delivered += 1
+      gatewayMetrics.messagesDelivered += 1
+    }
     // Revocation is committed in the API before this private event is sent.
     // Close this device only; other browser sessions of the same user stay open.
     if (matchesCanonicalUser && payload?.event === 'web_sessions_revoked' &&
@@ -317,29 +451,107 @@ function broadcast(channel, payload) {
       client._authenticated = false
       client.close(4401, 'WEB_SESSION_REVOKED')
     }
-  })
+  }
+  return delivered
 }
 
-/**
- * MVP: allow API to trigger events via HTTP:
- * POST /internal/publish { channel, payload }
- * This avoids DB triggers for now.
- */
-app.use(express.json({ limit: '256kb' }))
-app.post('/internal/publish', (req, res) => {
+function isInternalRequestAuthorized(req) {
   const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
   const expected = internalSecret
-  const authorized = !expected && !isProduction || (
+  return (!expected && !isProduction) || (
     Buffer.byteLength(supplied) === Buffer.byteLength(expected) &&
     supplied.length > 0 &&
     crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected))
   )
-  if (!authorized) return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+}
+
+/**
+ * MVP: allow API to trigger events via HTTP:
+ * POST /internal/publish { channel, payload, excludeSessionId? }
+ * POST /internal/publish-batch { events: [{ channel, payload, excludeSessionId? }] }
+ * This avoids DB triggers for now.
+ */
+app.use(express.json({ limit: '512kb' }))
+app.post('/internal/publish', (req, res) => {
+  if (!isInternalRequestAuthorized(req)) return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
   const channel = String(req.body?.channel || '').trim()
   if (!channel || channel.length > 256) return res.status(400).json({ ok: false, error: 'CHANNEL_REQUIRED' })
 
-  broadcast(channel, req.body?.payload ?? {})
+  broadcast(channel, req.body?.payload ?? {}, { excludeSessionId: req.body?.excludeSessionId })
   return res.json({ ok: true })
+})
+
+app.post('/internal/publish-batch', (req, res) => {
+  if (!isInternalRequestAuthorized(req)) return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+  const events = Array.isArray(req.body?.events) ? req.body.events : null
+  if (!events || events.length === 0 || events.length > 500) {
+    return res.status(400).json({ ok: false, error: 'EVENTS_BATCH_INVALID' })
+  }
+  gatewayMetrics.batchRequests += 1
+  let delivered = 0
+  for (const item of events) {
+    const channel = String(item?.channel || '').trim()
+    if (!channel || channel.length > 256) continue
+    broadcast(channel, item?.payload ?? {}, { excludeSessionId: item?.excludeSessionId })
+    delivered += 1
+  }
+  return res.json({ ok: true, delivered })
+})
+
+app.get('/internal/metrics', (req, res) => {
+  if (!isInternalRequestAuthorized(req)) return res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+  const mem = process.memoryUsage()
+  let authenticatedConnections = 0
+  for (const client of wss.clients) {
+    if (client.readyState === WebSocket.OPEN && client._authenticated) authenticatedConnections += 1
+  }
+  const snapshot = {
+    service: serviceName,
+    uptimeSeconds: Math.round((Date.now() - gatewayMetrics.startedAtMs) / 1000),
+    activeConnections: wss.clients.size,
+    authenticatedConnections,
+    indexedUsers: userSockets.size,
+    indexedChannels: channelSubscribers.size,
+    eventsPublished: gatewayMetrics.eventsPublished,
+    batchRequests: gatewayMetrics.batchRequests,
+    messagesDelivered: gatewayMetrics.messagesDelivered,
+    slowConsumerDrops: gatewayMetrics.slowConsumerDrops,
+    rateLimitDrops: gatewayMetrics.rateLimitDrops,
+    connectionLimitRejections: gatewayMetrics.connectionLimitRejections,
+    authFailures: gatewayMetrics.authFailures,
+    eventLoopLagP95Ms: Number((eventLoopMonitor.percentile(95) / 1e6).toFixed(2)),
+    memoryRssBytes: mem.rss,
+    memoryHeapUsedBytes: mem.heapUsed,
+  }
+  if (String(req.query?.format || '').toLowerCase() === 'json') {
+    return res.json({ ok: true, metrics: snapshot })
+  }
+  const lines = [
+    '# TYPE novvin_realtime_active_connections gauge',
+    `novvin_realtime_active_connections ${snapshot.activeConnections}`,
+    '# TYPE novvin_realtime_authenticated_connections gauge',
+    `novvin_realtime_authenticated_connections ${snapshot.authenticatedConnections}`,
+    '# TYPE novvin_realtime_indexed_users gauge',
+    `novvin_realtime_indexed_users ${snapshot.indexedUsers}`,
+    '# TYPE novvin_realtime_indexed_channels gauge',
+    `novvin_realtime_indexed_channels ${snapshot.indexedChannels}`,
+    '# TYPE novvin_realtime_events_published_total counter',
+    `novvin_realtime_events_published_total ${snapshot.eventsPublished}`,
+    '# TYPE novvin_realtime_messages_delivered_total counter',
+    `novvin_realtime_messages_delivered_total ${snapshot.messagesDelivered}`,
+    '# TYPE novvin_realtime_slow_consumer_drops_total counter',
+    `novvin_realtime_slow_consumer_drops_total ${snapshot.slowConsumerDrops}`,
+    '# TYPE novvin_realtime_rate_limit_drops_total counter',
+    `novvin_realtime_rate_limit_drops_total ${snapshot.rateLimitDrops}`,
+    '# TYPE novvin_realtime_connection_limit_rejections_total counter',
+    `novvin_realtime_connection_limit_rejections_total ${snapshot.connectionLimitRejections}`,
+    '# TYPE novvin_realtime_event_loop_lag_p95_ms gauge',
+    `novvin_realtime_event_loop_lag_p95_ms ${snapshot.eventLoopLagP95Ms}`,
+    '# TYPE novvin_realtime_memory_rss_bytes gauge',
+    `novvin_realtime_memory_rss_bytes ${snapshot.memoryRssBytes}`,
+  ]
+  res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+  return res.send(`${lines.join('\n')}\n`)
 })
 
 if (require.main === module) {

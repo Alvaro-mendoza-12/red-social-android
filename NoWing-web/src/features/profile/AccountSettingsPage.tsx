@@ -153,12 +153,12 @@ function isMissingColumnError(error: unknown): boolean {
 }
 
 export function AccountSettingsPage() {
-  const { user, isFallbackSession } = useAuth()
+  const { user, isFallbackSession, signOut } = useAuth()
   if (!user) return <StatusView title="Inicia sesión para ver tus ajustes" description="Selecciona tu cuenta para continuar." />
-  return <AccountSettingsForm key={`${isFallbackSession ? 'ubuntu' : 'legacy'}:${user.id}`} user={user} isFallbackSession={isFallbackSession} />
+  return <AccountSettingsForm key={`${isFallbackSession ? 'ubuntu' : 'legacy'}:${user.id}`} user={user} isFallbackSession={isFallbackSession} signOut={signOut} />
 }
 
-function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof useAuth>, 'user' | 'isFallbackSession'>) {
+function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnType<typeof useAuth>, 'user' | 'isFallbackSession' | 'signOut'>) {
   const location = useLocation()
   const navigate = useNavigate()
   const sections = ['perfil', 'privacidad', 'seguridad', 'acceso-qr', 'preferencias-web'] as const
@@ -198,6 +198,8 @@ function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof
   const [hasIsPrivate, setHasIsPrivate] = useState(false)
   const [hasProfileVisibility, setHasProfileVisibility] = useState(false)
   const [hasPrivacyAcceptance, setHasPrivacyAcceptance] = useState(false)
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
+  const [signingOut, setSigningOut] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -1292,6 +1294,58 @@ function AccountSettingsForm({ user, isFallbackSession }: Pick<ReturnType<typeof
           </label>
         </div>
       </article>
+
+      <article id="cerrar-sesion-ajustes" className="surface-card section-stack">
+        <div>
+          <h3>Sesión</h3>
+          <p>Cierra tu sesión en este dispositivo de forma segura y limpia tus datos privados locales.</p>
+        </div>
+        <div className="row-wrap">
+          <button
+            type="button"
+            className="ghost-btn danger"
+            disabled={signingOut}
+            onClick={() => setShowSignOutConfirm(true)}
+          >
+            {signingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
+          </button>
+        </div>
+      </article>
+
+      {showSignOutConfirm ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirm-signout-title">
+          <div className="surface-card section-stack" style={{ maxWidth: 420, margin: 'auto' }}>
+            <h3 id="confirm-signout-title">¿Cerrar sesión en Novvin?</h3>
+            <p>Se desconectará tu cuenta actual y se limpiará la sesión activa en este navegador.</p>
+            <div className="row-between">
+              <button
+                type="button"
+                className="ghost-btn"
+                disabled={signingOut}
+                onClick={() => setShowSignOutConfirm(false)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="primary-btn danger"
+                disabled={signingOut}
+                onClick={() => {
+                  setSigningOut(true)
+                  void signOut()
+                    .finally(() => {
+                      setSigningOut(false)
+                      setShowSignOutConfirm(false)
+                      navigate('/login', { replace: true })
+                    })
+                }}
+              >
+                {signingOut ? 'Cerrando…' : 'Sí, cerrar sesión'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }

@@ -18,8 +18,8 @@ import java.util.concurrent.TimeUnit
 object PendingMessageSyncScheduler {
     private const val UNIQUE_WORK_NAME = "pending_message_sync"
 
-    fun enqueue(context: Context, reason: String) {
-        val request = OneTimeWorkRequestBuilder<SyncWorker>()
+    fun enqueue(context: Context, reason: String, initialDelaySeconds: Long = 0L) {
+        val builder = OneTimeWorkRequestBuilder<SyncWorker>()
             .setInputData(workDataOf(SyncManager.SYNC_REASON_KEY to reason.take(80)))
             .setConstraints(
                 Constraints.Builder()
@@ -31,16 +31,22 @@ object PendingMessageSyncScheduler {
                 20,
                 TimeUnit.SECONDS,
             )
-            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .addTag(UNIQUE_WORK_NAME)
-            .build()
+
+        if (initialDelaySeconds > 0L) {
+            // Give the in-flight foreground POST a brief head start so WorkManager
+            // does not contend for Room locks and sockets on healthy connections.
+            builder.setInitialDelay(initialDelaySeconds, TimeUnit.SECONDS)
+        } else {
+            builder.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        }
 
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             UNIQUE_WORK_NAME,
             // A new intent can arrive after a worker's last empty-queue check.
             // KEEP loses that wake-up; appending schedules a pass after it finishes.
             ExistingWorkPolicy.APPEND_OR_REPLACE,
-            request,
+            builder.build(),
         )
     }
 }

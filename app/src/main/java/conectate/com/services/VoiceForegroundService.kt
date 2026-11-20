@@ -45,6 +45,7 @@ class VoiceForegroundService : Service() {
     private var notificationAccount: conectate.com.util.NotificationAccountTarget? = null
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private lateinit var mediaWakeLocks: ActiveMediaWakeLocks
     private var currentRoomId = ""
     private var currentRoomName = "Sala de voz"
     private var currentParticipantCount = 0
@@ -53,6 +54,7 @@ class VoiceForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        mediaWakeLocks = ActiveMediaWakeLocks(this, "Voice")
         createNotificationChannel()
     }
 
@@ -80,6 +82,7 @@ class VoiceForegroundService : Service() {
             }
 
             ACTION_STOP -> {
+                mediaWakeLocks.release()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -110,6 +113,7 @@ class VoiceForegroundService : Service() {
                 buildNotification(),
                 requestedType
             )
+            mediaWakeLocks.acquire()
         } catch (error: Exception) {
             android.util.Log.e("VoiceForegroundService", "Could not start foreground service", error)
             // En Android 14+, si no tenemos permisos para micrófono/cámara, Android lanza SecurityException.
@@ -209,6 +213,7 @@ class VoiceForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        if (::mediaWakeLocks.isInitialized) mediaWakeLocks.release()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 stopForeground(STOP_FOREGROUND_REMOVE)

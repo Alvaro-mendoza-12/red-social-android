@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -39,10 +40,13 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private val authService: AuthService,
     private val userRepository: conectate.com.data.repository.UserRepository,
     private val messageRepository: conectate.com.data.repository.MessageRepository,
+    private val groupRepository: conectate.com.data.repository.GroupRepository,
+    private val communityRepository: conectate.com.data.repository.CommunityRepository,
 ) : ViewModel() {
     private companion object {
         const val REACTION_VISIBLE_MS = 6_000L
         const val LOCAL_ECHO_WINDOW_MS = 3_000L
+        const val REACTION_SEND_COOLDOWN_MS = 700L
     }
 
     private val _room = MutableStateFlow<VoiceRoom?>(null)
@@ -133,7 +137,20 @@ class VoiceRoomActiveViewModel @Inject constructor(
     val voiceSummaryError = voiceRoomRepository.voiceSummaryError
     val isVoiceSummaryLoading = voiceRoomRepository.isVoiceSummaryLoading
     private val reactionExpiryJobs = mutableMapOf<String, Job>()
+    private var lastReactionSentAtMs = 0L
     private var videoActionJob: Job? = null
+
+    private val _shareDestinations = MutableStateFlow<List<VoiceShareDestination>>(emptyList())
+    val shareDestinations: StateFlow<List<VoiceShareDestination>> = _shareDestinations.asStateFlow()
+    private val _selectedShareKeys = MutableStateFlow<Set<String>>(emptySet())
+    val selectedShareKeys: StateFlow<Set<String>> = _selectedShareKeys.asStateFlow()
+    private val _isLoadingShareDestinations = MutableStateFlow(false)
+    val isLoadingShareDestinations: StateFlow<Boolean> = _isLoadingShareDestinations.asStateFlow()
+    private val _isSendingShareInvites = MutableStateFlow(false)
+    val isSendingShareInvites: StateFlow<Boolean> = _isSendingShareInvites.asStateFlow()
+    private val _shareNotice = MutableStateFlow<String?>(null)
+    val shareNotice: StateFlow<String?> = _shareNotice.asStateFlow()
+    private var shareLoadJob: Job? = null
 
     private val _inviteQuery = MutableStateFlow("")
     val inviteQuery: StateFlow<String> = _inviteQuery.asStateFlow()
@@ -595,11 +612,14 @@ class VoiceRoomActiveViewModel @Inject constructor(
         voiceRoomRepository.resolveUniversalLink(url)
 
     fun sendReaction(emoji: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastReactionSentAtMs < REACTION_SEND_COOLDOWN_MS) return
+        lastReactionSentAtMs = now
         val reaction = ReactionEvent(
             id = UUID.randomUUID().toString(),
             userId = getCurrentUserId(),
             emoji = emoji,
-            timestamp = System.currentTimeMillis()
+            timestamp = now
         )
         appendReaction(reaction)
         _room.value?.id?.let { roomId ->
@@ -610,7 +630,17 @@ class VoiceRoomActiveViewModel @Inject constructor(
     private fun appendReaction(reaction: ReactionEvent) {
         val enriched = reaction.copy(id = reaction.id.ifBlank { UUID.randomUUID().toString() })
         if (_activeReactions.value.any { it.id == enriched.id }) return
-        _activeReactions.value = (_activeReactions.value + enriched).distinctBy { it.id }.takeLast(12)
+        val normalizedUser = enriched.userId.trim().lowercase()
+        val withoutPreviousFromUser = if (normalizedUser.isNotBlank()) {
+            _activeReactions.value.filterNot { existing ->
+                val sameUser = existing.userId.trim().lowercase() == normalizedUser
+                if (sameUser) reactionExpiryJobs.remove(existing.id)?.cancel()
+                sameUser
+            }
+        } else {
+            _activeReactions.value
+        }
+        _activeReactions.value = (withoutPreviousFromUser + enriched).distinctBy { it.id }.takeLast(12)
         scheduleReactionExpiry(enriched)
     }
 
@@ -740,6 +770,164 @@ class VoiceRoomActiveViewModel @Inject constructor(
         inviteSearch.search(_inviteQuery.value)
     }
 
+    fun prepareShareDestinations() {
+        _shareNotice.value = null
+        shareLoadJob?.cancel()
+        shareLoadJob = viewModelScope.launch {
+            _isLoadingShareDestinations.value = true
+            val account = authService.getCurrentUserId()
+            val chats = runCatching { messageRepository.userChats.firstOrNull().orEmpty() }.getOrDefault(emptyList())
+            val groups = runCatching { groupRepository.getGroupsFlow().firstOrNull().orEmpty() }.getOrDefault(emptyList())
+            val communities = runCatching { communityRepository.getCommunitiesFlow().firstOrNull().orEmpty() }.getOrDefault(emptyList())
+            if (account != authService.getCurrentUserId()) {
+                _isLoadingShareDestinations.value = false
+                return@launch
+            }
+            val items = buildList {
+                chats.forEach { item ->
+                    val chatId = item.chat.id.trim()
+                    if (chatId.isBlank() || item.chat.is_group) return@forEach
+                    val title = item.nickname?.trim()?.takeIf(String::isNotBlank)
+                        ?: item.otherUserName?.trim()?.takeIf(String::isNotBlank)
+                        ?: "Chat"
+                    add(
+                        VoiceShareDestination(
+                            key = "chat:$chatId",
+                            id = chatId,
+                            kind = VoiceShareKind.CHAT,
+                            title = title,
+                            subtitle = "Chat directo",
+                            avatarUrl = item.otherUserImage?.takeIf(String::isNotBlank),
+                            sortKey = item.lastMessage?.created_at ?: item.chat.last_message_at ?: item.chat.updated_at,
+                        )
+                    )
+                }
+                groups.forEach { item ->
+                    if (item.group.is_deleted || !item.group.is_member) return@forEach
+                    val groupId = item.group.id.trim()
+                    if (groupId.isBlank()) return@forEach
+                    add(
+                        VoiceShareDestination(
+                            key = "group:$groupId",
+                            id = groupId,
+                            kind = VoiceShareKind.GROUP,
+                            title = item.group.name.ifBlank { "Grupo" },
+                            subtitle = "Grupo",
+                            avatarUrl = item.group.image?.takeIf(String::isNotBlank),
+                            sortKey = item.lastMessage?.created_at ?: item.group.last_message_at ?: item.group.created_at,
+                        )
+                    )
+                }
+                communities.forEach { item ->
+                    if (item.community.is_deleted) return@forEach
+                    val communityId = item.community.id.trim()
+                    if (communityId.isBlank()) return@forEach
+                    add(
+                        VoiceShareDestination(
+                            key = "community:$communityId",
+                            id = communityId,
+                            kind = VoiceShareKind.COMMUNITY,
+                            title = item.community.name.ifBlank { "Comunidad" },
+                            subtitle = "Comunidad",
+                            avatarUrl = item.community.image?.takeIf(String::isNotBlank),
+                            sortKey = item.lastMessage?.created_at ?: item.community.last_message_at ?: item.community.created_at,
+                        )
+                    )
+                }
+            }.sortedByDescending { it.sortKey }
+            _shareDestinations.value = items
+            _isLoadingShareDestinations.value = false
+        }
+    }
+
+    fun toggleShareSelection(key: String) {
+        val current = _selectedShareKeys.value
+        _selectedShareKeys.value = if (key in current) current - key else current + key
+    }
+
+    fun clearShareState() {
+        _selectedShareKeys.value = emptySet()
+        _shareNotice.value = null
+        onInviteQueryChanged("")
+    }
+
+    fun sendShareInvites(shareLink: String) {
+        val room = _room.value ?: return
+        val account = authService.getCurrentUserId() ?: return
+        if (_isSendingShareInvites.value) return
+        val selectedKeys = _selectedShareKeys.value
+        if (selectedKeys.isEmpty()) return
+
+        val knownDestinations = _shareDestinations.value.associateBy { it.key }
+        val knownUsers = inviteResults.value.associateBy { "user:${it.id}" }
+        val targets = selectedKeys.mapNotNull { key ->
+            knownDestinations[key] ?: knownUsers[key]?.let { user ->
+                VoiceShareDestination(
+                    key = key,
+                    id = user.id,
+                    kind = VoiceShareKind.USER,
+                    title = user.displayName,
+                    subtitle = "Usuario",
+                    avatarUrl = user.avatarUrl,
+                )
+            }
+        }
+        if (targets.isEmpty()) return
+
+        val inviteText = buildString {
+            append("Te invito a la sala de voz ${room.name}.\n")
+            append("ID de sala: ${room.readableId?.takeIf(String::isNotBlank) ?: room.id}")
+            if (shareLink.isNotBlank()) {
+                append("\nEnlace: $shareLink")
+            }
+        }
+
+        _isSendingShareInvites.value = true
+        _shareNotice.value = null
+        viewModelScope.launch {
+            var sentCount = 0
+            var failedCount = 0
+            for (target in targets) {
+                if (account != authService.getCurrentUserId()) break
+                val delivered = runCatching {
+                    kotlinx.coroutines.withTimeoutOrNull(15_000L) {
+                        when (target.kind) {
+                            VoiceShareKind.CHAT -> {
+                                messageRepository.sendMessage(target.id, inviteText).getOrThrow()
+                            }
+                            VoiceShareKind.GROUP -> {
+                                groupRepository.sendGroupMessage(target.id, inviteText).getOrThrow()
+                            }
+                            VoiceShareKind.COMMUNITY -> {
+                                communityRepository.sendCommunityMessage(target.id, inviteText).getOrThrow()
+                            }
+                            VoiceShareKind.USER -> {
+                                val chat = messageRepository.getOrCreateChat(target.id).getOrThrow()
+                                check(account == authService.getCurrentUserId())
+                                messageRepository.sendMessage(chat.id, inviteText).getOrThrow()
+                            }
+                        }
+                        true
+                    } == true
+                }.getOrDefault(false)
+                if (delivered) sentCount += 1 else failedCount += 1
+            }
+            if (account == authService.getCurrentUserId()) {
+                _selectedShareKeys.value = emptySet()
+                _shareNotice.value = when {
+                    sentCount > 0 && failedCount == 0 -> if (sentCount == 1) {
+                        "Invitación enviada a 1 conversación."
+                    } else {
+                        "Invitaciones enviadas a $sentCount conversaciones."
+                    }
+                    sentCount > 0 -> "Se enviaron $sentCount invitaciones ($failedCount pendientes de reintentar)."
+                    else -> "No se pudo enviar la invitación. Revisa tu conexión e intenta de nuevo."
+                }
+            }
+            _isSendingShareInvites.value = false
+        }
+    }
+
     fun inviteUser(user: UserInvite) {
         val room = _room.value ?: return
         val account = authService.getCurrentUserId() ?: return
@@ -763,6 +951,7 @@ class VoiceRoomActiveViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        shareLoadJob?.cancel()
         reactionExpiryJobs.values.forEach { it.cancel() }
         reactionExpiryJobs.clear()
         super.onCleared()
@@ -808,4 +997,21 @@ data class UserInvite(
     val id: String,
     val displayName: String,
     val avatarUrl: String? = null
+)
+
+enum class VoiceShareKind {
+    CHAT,
+    GROUP,
+    COMMUNITY,
+    USER,
+}
+
+data class VoiceShareDestination(
+    val key: String,
+    val id: String,
+    val kind: VoiceShareKind,
+    val title: String,
+    val subtitle: String,
+    val avatarUrl: String? = null,
+    val sortKey: String = "",
 )

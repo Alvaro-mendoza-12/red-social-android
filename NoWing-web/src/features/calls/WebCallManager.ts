@@ -137,6 +137,7 @@ export class WebCallManager {
   private ownSocketId = ''
   private localStream: MediaStream | null = null
   private screenTrack: MediaStreamTrack | null = null
+  private facingMode: 'user' | 'environment' = 'user'
   private mediaBusy = false
   private mediaRevision = 0
   private peerConnections = new Map<string, RTCPeerConnection>()
@@ -298,13 +299,19 @@ export class WebCallManager {
 
   async receiveResponse(callId: string, action: string): Promise<void> {
     if (this.callState.currentCallId !== callId || this.ended) return
+    if (action === 'answered_elsewhere' || action === 'handled_elsewhere') {
+      this.endCall(action)
+      return
+    }
     if (action === 'accept') { this.markAccepted(); return }
     if (!['decline', 'cancel', 'end', 'busy', 'missed', 'collision'].includes(action)) return
     // A declined extra invitation or one member leaving must not end the room.
     // Verify persisted access instead of trusting a legacy broadcast's action.
     try { await this.callControl.access(callId) }
     catch (error) {
-      if (error instanceof CallControlError && error.status === 404 && this.callState.currentCallId === callId) this.endCall(action)
+      if (error instanceof CallControlError && (error.status === 404 || error.status === 409) && this.callState.currentCallId === callId) {
+        this.endCall(error.code === 'CALL_ANSWERED_ELSEWHERE' ? 'answered_elsewhere' : action)
+      }
     }
   }
 
@@ -321,7 +328,7 @@ export class WebCallManager {
     const action: CallLeaveAction = reason === 'timeout' ? 'missed'
       : reason === 'rejected' ? 'decline'
       : this.callState.isOutgoingCall && !this.wasAccepted ? 'cancel' : 'end'
-    const replaced = reason === 'session_replaced'
+    const replaced = reason === 'session_replaced' || reason === 'answered_elsewhere' || reason === 'handled_elsewhere'
     const notifyRemote = !replaced && !['decline', 'cancel', 'end', 'busy', 'missed', 'collision', 'access_denied', 'auth_error'].includes(reason)
     const persisted = !callId || replaced ? Promise.resolve(false)
       : this.controlRequest.catch(() => undefined)
@@ -412,6 +419,44 @@ export class WebCallManager {
       }
       if (track) track.enabled = nextVideo
       this.callState = { ...this.callState, isVideoEnabled: nextVideo }
+      this.emitVideoState()
+      this.publishLocalPreview()
+      this.notifyCallStateChange()
+    } finally { this.mediaBusy = false }
+  }
+
+  async switchCamera(): Promise<void> {
+    const stream = this.localStream, revision = this.mediaRevision
+    if (!stream || !this.callState.currentCallId || !this.callState.isVideoEnabled || this.callState.isScreenSharing || this.mediaBusy) return
+    this.mediaBusy = true
+    const nextFacing = this.facingMode === 'user' ? 'environment' : 'user'
+    try {
+      const capture = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: nextFacing } },
+        audio: false,
+      })
+      const nextTrack = capture.getVideoTracks()[0] ?? null
+      if (!nextTrack || revision !== this.mediaRevision) {
+        capture.getTracks().forEach(value => value.stop())
+        return
+      }
+      const previousTracks = stream.getVideoTracks()
+      try {
+        await replacePeerTracks(this.peerConnections.values(), 'video', nextTrack, stream)
+      } catch (error) {
+        nextTrack.stop()
+        throw error
+      }
+      if (revision !== this.mediaRevision) {
+        nextTrack.stop()
+        return
+      }
+      previousTracks.forEach(value => {
+        stream.removeTrack(value)
+        value.stop()
+      })
+      stream.addTrack(nextTrack)
+      this.facingMode = nextFacing
       this.emitVideoState()
       this.publishLocalPreview()
       this.notifyCallStateChange()

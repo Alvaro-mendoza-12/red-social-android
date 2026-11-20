@@ -1,3 +1,4 @@
+import toast from 'react-hot-toast'
 import { useLegacyCallBroadcast } from '../features/calls/useLegacyCallBroadcast'
 import { VoiceRoomHost } from '../features/voice/VoiceRoomHost'
 import { LiveSessionHost } from '../features/live/LiveSessionHost'
@@ -476,7 +477,12 @@ export function AppLayout() {
           }
           if (event.payload?.event === 'call_response' || event.payload?.event === 'call_cancel') {
             const callId = String(event.payload.callId ?? '').trim()
+            const action = String(event.payload.action ?? '').trim().toLowerCase()
+            const wasRingingHere = Boolean(callId && incomingCallRef.current?.callId === callId)
             dismissIncomingCall(callId)
+            if (wasRingingHere && action === 'answered_elsewhere') {
+              toast('Llamada respondida en otro dispositivo')
+            }
           }
           if (event.payload?.event === 'call_invite') {
             const callId = String(event.payload.callId ?? '').trim()

@@ -42,4 +42,45 @@ class VoiceRoomAdmissionStateTest {
     @Test fun missingAccountDoesNotModifySnapshot() {
         assertSame(people, applyVoiceAdmissionState(people, "", "speaker", false, false, false))
     }
+
+    @Test fun recentLocalUnmuteIsNotOverwrittenByStaleServerSnapshot() {
+        assertFalse(
+            reconcileSelfVoiceMuteState(
+                serverMuted = true,
+                locallyMuted = false,
+                canPublish = true,
+                msSinceLastLocalToggle = 1_500L,
+            )
+        )
+    }
+
+    @Test fun staleGraceWindowNeverUnmutesLocalMuteOrAudience() {
+        assertTrue(
+            reconcileSelfVoiceMuteState(
+                serverMuted = false,
+                locallyMuted = true,
+                canPublish = true,
+                msSinceLastLocalToggle = 500L,
+            )
+        )
+        assertTrue(
+            reconcileSelfVoiceMuteState(
+                serverMuted = false,
+                locallyMuted = false,
+                canPublish = false,
+                msSinceLastLocalToggle = 500L,
+            )
+        )
+    }
+
+    @Test fun authoritativeServerMuteAppliesAfterLocalGraceWindow() {
+        assertTrue(
+            reconcileSelfVoiceMuteState(
+                serverMuted = true,
+                locallyMuted = false,
+                canPublish = true,
+                msSinceLastLocalToggle = 6_000L,
+            )
+        )
+    }
 }

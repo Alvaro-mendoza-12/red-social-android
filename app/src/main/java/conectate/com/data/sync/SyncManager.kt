@@ -197,14 +197,21 @@ class SyncManager @Inject constructor(
                 0
             }
 
-            if (stage.run { chatSyncDataSource.syncChats() }.isFailure) {
-                failures += "syncChats"
-            }
-            if (stage.run { groupSyncDataSource.syncGroups() }.isFailure) {
-                failures += "syncGroups"
-            }
-            if (stage.run { communitySyncDataSource.syncCommunities() }.isFailure) {
-                failures += "syncCommunities"
+            val isOutboxOnlyWakeup = reason.endsWith("_message_pending") ||
+                reason.endsWith("_poll_pending") ||
+                reason.endsWith("_delete_pending") ||
+                reason == "manual_message_retry"
+
+            if (!isOutboxOnlyWakeup) {
+                if (stage.run { chatSyncDataSource.syncChats() }.isFailure) {
+                    failures += "syncChats"
+                }
+                if (stage.run { groupSyncDataSource.syncGroups() }.isFailure) {
+                    failures += "syncGroups"
+                }
+                if (stage.run { communitySyncDataSource.syncCommunities() }.isFailure) {
+                    failures += "syncCommunities"
+                }
             }
 
             var durationMs = System.currentTimeMillis() - startedAt

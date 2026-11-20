@@ -1133,10 +1133,20 @@ export function RoomChatPage({ scope, roomId, embedded = false, focusRequest = 0
   }, [cleanRoomId, isMember, loadRoom, scope, upsertMessageInState, useUbuntu, user])
 
   useEffect(() => {
-    const update = () => { void loadRoom({ silent: true }) }
+    const update = (event: Event) => {
+      const detail = (event as CustomEvent<{ scope?: string; room?: string; action?: string; message?: GenericRow }>).detail
+      if (detail?.scope && detail?.room) {
+        if (detail.scope !== scope || detail.room !== cleanRoomId) return
+        if (detail.message && detail.action !== 'cancelled' && textOf(detail.message, ['id'], '')) {
+          upsertMessageInState(mapRoomMessage(detail.message))
+          return
+        }
+      }
+      void loadRoom({ silent: true })
+    }
     window.addEventListener('novvin:outbox-changed', update)
     return () => window.removeEventListener('novvin:outbox-changed', update)
-  }, [loadRoom])
+  }, [cleanRoomId, loadRoom, scope, upsertMessageInState])
 
   async function sendMessage(
     content: string,

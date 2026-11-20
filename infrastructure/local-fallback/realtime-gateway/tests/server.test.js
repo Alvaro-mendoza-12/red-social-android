@@ -172,6 +172,70 @@ async function run() {
   oversizedSocket.send('x'.repeat(40 * 1024))
   assert.equal(await oversizedClose, 1009, 'oversized frames are rejected')
 
+  const deviceC = new WebSocket(wsUrl, {headers:{Authorization:`Bearer ${deviceToken('phone-1')}`}})
+  const deviceD = new WebSocket(wsUrl, {headers:{Authorization:`Bearer ${deviceToken('phone-2')}`}})
+  await Promise.all([waitForMessage(deviceC,'connected'),waitForMessage(deviceD,'connected')])
+  let phone1Received = false
+  deviceC.on('message', (raw) => {
+    const parsed = JSON.parse(raw.toString('utf8'))
+    if (parsed.type === 'event' && parsed.payload?.action === 'answered_elsewhere') phone1Received = true
+  })
+  const otherDeviceEvent = waitForMessage(deviceD, 'event')
+  const excludedPublish = await originalFetch(`${baseUrl}/internal/publish`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.REALTIME_INTERNAL_SECRET}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      channel: 'user:user-a',
+      excludeSessionId: 'phone-1',
+      payload: { event: 'call_response', callId: 'call-1', action: 'answered_elsewhere' },
+    }),
+  })
+  assert.equal(excludedPublish.status, 200)
+  const receivedByOther = await otherDeviceEvent
+  assert.equal(receivedByOther.payload.action, 'answered_elsewhere')
+  await new Promise((resolve) => setTimeout(resolve, 60))
+  assert.equal(phone1Received, false, 'the accepting session must not receive answered_elsewhere')
+
+  const batchEventPromise = waitForMessage(deviceD, 'event')
+  const batchPublish = await originalFetch(`${baseUrl}/internal/publish-batch`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.REALTIME_INTERNAL_SECRET}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      events: [
+        { channel: 'feed:live', payload: { event: 'noop' } },
+        { channel: 'user:user-a', excludeSessionId: 'phone-1', payload: { event: 'message', action: 'created', chatId: 'chat-batch' } },
+      ],
+    }),
+  })
+  assert.equal(batchPublish.status, 200)
+  const batchResult = await batchPublish.json()
+  assert.equal(batchResult.delivered, 2)
+  assert.equal((await batchEventPromise).payload.chatId, 'chat-batch')
+
+  const unauthMetrics = await originalFetch(`${baseUrl}/internal/metrics`)
+  assert.equal(unauthMetrics.status, 401)
+  const authMetrics = await originalFetch(`${baseUrl}/internal/metrics?format=json`, {
+    headers: {
+      Authorization: `Bearer ${process.env.REALTIME_INTERNAL_SECRET}`,
+      'x-correlation-id': 'corr-test-12345',
+    },
+  })
+  assert.equal(authMetrics.status, 200)
+  assert.equal(authMetrics.headers.get('x-correlation-id'), 'corr-test-12345')
+  const metricsBody = await authMetrics.json()
+  assert.equal(metricsBody.ok, true)
+  assert.equal(metricsBody.metrics.activeConnections >= 2, true)
+  assert.equal(metricsBody.metrics.eventsPublished >= 3, true)
+
+  deviceC.close()
+  deviceD.close()
+
   console.log('realtime gateway authentication and authorization tests passed')
 }
 

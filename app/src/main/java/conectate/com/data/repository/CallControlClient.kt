@@ -48,8 +48,10 @@ class CallControlClient @Inject constructor(
                         Json.parseToJsonElement(body).jsonObject["error"]?.jsonPrimitive?.contentOrNull
                     }.getOrNull()
                     val message = when (code) {
+                        "CALL_ANSWERED_ELSEWHERE" -> "Llamada respondida en otro dispositivo."
                         "CALL_ACCOUNT_BUSY" -> "Ya hay otra llamada activa."
                         "CALL_PARTICIPANT_LIMIT_REACHED" -> "La llamada ya está llena."
+                        "CALL_INVITE_EXPIRED" -> "La invitación venció. Pide que te inviten de nuevo."
                         "CALL_REQUEST_INVALID" -> "Revisa los participantes de la llamada."
                         else -> "Esta llamada no está disponible. Intenta nuevamente."
                     }
@@ -79,6 +81,15 @@ class CallControlClient @Inject constructor(
 
     internal suspend fun accept(account: AuthSessionLease, callId: String): Result<Unit> =
         request(account, "$callId/accept", buildJsonObject {})
+
+    internal suspend fun invite(
+        account: AuthSessionLease,
+        callId: String,
+        inviteeId: String,
+    ): Result<Unit> =
+        request(account, "$callId/invite", buildJsonObject {
+            put("inviteeIds", JsonArray(listOf(JsonPrimitive(inviteeId))))
+        })
 
     internal suspend fun leave(account: AuthSessionLease, callId: String, action: String = "end"): Result<Unit> =
         request(account, "$callId/leave", buildJsonObject { put("action", action) })

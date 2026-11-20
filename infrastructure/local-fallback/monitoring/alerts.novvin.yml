@@ -1,0 +1,127 @@
+# NOVVIN Ubuntu Local-Fallback Stack — Production SLO & Capacity Alert Rules
+# Calibrated against real isolated load/stress measurements (Audit 213).
+
+groups:
+  - name: novvin.api.slo
+    interval: 15s
+    rules:
+      - alert: NovvinApiHighErrorRate5xx
+        expr: |
+          (
+            rate(novvin_api_requests_total{status_class="5xx"}[5m])
+            /
+            clamp_min(sum(rate(novvin_api_requests_total[5m])), 0.1)
+          ) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+          service: novvin-api
+        annotations:
+          summary: "NOVVIN API 5xx error rate above 1%"
+          description: "API 5xx ratio exceeded 1% over 5 minutes ({{ $value | humanizePercentage }})."
+
+      - alert: NovvinApiLatencyP95Degraded
+        expr: novvin_api_latency_ms{quantile="0.95"} > 500
+        for: 3m
+        labels:
+          severity: warning
+          service: novvin-api
+        annotations:
+          summary: "NOVVIN API p95 latency above 500ms"
+          description: "API rolling p95 latency is {{ $value }}ms for more than 3 minutes."
+
+      - alert: NovvinApiLatencyP99Critical
+        expr: novvin_api_latency_ms{quantile="0.99"} > 1500
+        for: 2m
+        labels:
+          severity: critical
+          service: novvin-api
+        annotations:
+          summary: "NOVVIN API p99 latency above 1500ms"
+          description: "API rolling p99 latency is {{ $value }}ms — check DB pool saturation and slow queries."
+
+      - alert: NovvinApiDbPoolSaturation
+        expr: novvin_api_db_pool_connections{state="waiting"} > 10
+        for: 1m
+        labels:
+          severity: warning
+          service: novvin-api
+        annotations:
+          summary: "PostgreSQL pool clients waiting in NOVVIN API"
+          description: "{{ $value }} queries are queued waiting for a DB pool connection."
+
+      - alert: NovvinApiEventLoopLagHigh
+        expr: novvin_api_event_loop_lag_p95_ms > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: novvin-api
+        annotations:
+          summary: "NOVVIN API Node.js event loop lag above 100ms"
+          description: "Event loop p95 lag reached {{ $value }}ms — CPU or synchronous work saturation."
+
+      - alert: NovvinApiRateLimitSpike
+        expr: rate(novvin_api_rate_limited_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+          service: novvin-api
+        annotations:
+          summary: "Elevated HTTP 429 rate-limit rejections in NOVVIN API"
+          description: "API is rejecting {{ $value }} req/s with 429 — possible abuse or misbehaving client."
+
+  - name: novvin.realtime.slo
+    interval: 15s
+    rules:
+      - alert: NovvinRealtimeSlowConsumerDrops
+        expr: increase(novvin_realtime_slow_consumer_drops_total[5m]) > 20
+        for: 2m
+        labels:
+          severity: warning
+          service: novvin-realtime-gateway
+        annotations:
+          summary: "Realtime Gateway disconnecting slow WebSocket consumers"
+          description: "{{ $value }} slow consumers were dropped in the last 5 minutes."
+
+      - alert: NovvinRealtimeConnectionLimitRejections
+        expr: increase(novvin_realtime_connection_limit_rejections_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: novvin-realtime-gateway
+        annotations:
+          summary: "Realtime Gateway rejecting WebSocket connections due to capacity cap"
+          description: "Connection cap reached ({{ $value }} rejections in 5m). Scale or raise REALTIME_MAX_CONNECTIONS."
+
+      - alert: NovvinRealtimeEventLoopLagHigh
+        expr: novvin_realtime_event_loop_lag_p95_ms > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: novvin-realtime-gateway
+        annotations:
+          summary: "Realtime Gateway event loop lag above 100ms"
+          description: "Realtime Gateway event loop p95 lag reached {{ $value }}ms."
+
+  - name: novvin.signaling.slo
+    interval: 15s
+    rules:
+      - alert: NovvinSignalingEventLoopLagHigh
+        expr: novvin_signaling_event_loop_lag_p95_ms > 100
+        for: 2m
+        labels:
+          severity: warning
+          service: novvin-signaling
+        annotations:
+          summary: "Signaling Server event loop lag above 100ms"
+          description: "Signaling event loop p95 lag reached {{ $value }}ms — WebRTC call/voice signaling may stall."
+
+      - alert: NovvinSignalingRateLimitSpike
+        expr: rate(novvin_signaling_rate_limit_rejections_total[5m]) > 2
+        for: 2m
+        labels:
+          severity: warning
+          service: novvin-signaling
+        annotations:
+          summary: "Elevated signaling rate-limit rejections"
+          description: "Signaling rejected {{ $value }} req/s over 5 minutes."

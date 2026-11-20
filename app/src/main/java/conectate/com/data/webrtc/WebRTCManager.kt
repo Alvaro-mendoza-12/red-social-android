@@ -2087,13 +2087,16 @@ class WebRTCManager(
 
     // --- MEDIA CONTROL ---
 
+    @Volatile private var currentCameraIsFront: Boolean = true
+    @Volatile private var cameraDisconnected: Boolean = false
+
     fun setVideoEnabled(enabled: Boolean) {
         executor.execute {
-            if (outgoingVideoEnabled == enabled && _localVideoTrackFlow.value != null == enabled) return@execute
+            if (outgoingVideoEnabled == enabled && _localVideoTrackFlow.value != null == enabled && (!enabled || !cameraDisconnected)) return@execute
             outgoingVideoEnabled = enabled
             if (enabled) {
-                if (_localVideoTrackFlow.value == null) {
-                    startVideo(isScreen = false)
+                if (_localVideoTrackFlow.value == null || cameraDisconnected) {
+                    startVideo(isScreen = false, isFront = currentCameraIsFront)
                 } else {
                     _localVideoTrackFlow.value?.setEnabled(true)
                 }
@@ -2107,24 +2110,33 @@ class WebRTCManager(
     fun switchCamera(onComplete: (Boolean) -> Unit = {}): Boolean {
         val capturer = videoCapturer as? CameraVideoCapturer ?: return false
         if (!cameraSwitchInProgress.compareAndSet(false, true)) return false
+        val targetFront = !currentCameraIsFront
         executor.execute {
             runCatching {
                 capturer.switchCamera(object : CameraVideoCapturer.CameraSwitchHandler {
                     override fun onCameraSwitchDone(isFrontCamera: Boolean) {
+                        currentCameraIsFront = isFrontCamera
+                        cameraDisconnected = false
                         cameraSwitchInProgress.set(false)
                         onComplete(true)
                     }
 
                     override fun onCameraSwitchError(errorDescription: String?) {
-                        cameraSwitchInProgress.set(false)
-                        Log.e("WebRTCManager", "Camera switch failed: ${errorDescription.orEmpty()}")
-                        onComplete(false)
+                        Log.w("WebRTCManager", "Camera switch failed (${errorDescription.orEmpty()}); rebuilding camera capturer for isFront=$targetFront")
+                        cameraDisconnected = true
+                        startVideo(isScreen = false, isFront = targetFront) { rebuilt ->
+                            cameraSwitchInProgress.set(false)
+                            onComplete(rebuilt)
+                        }
                     }
                 })
             }.onFailure { error ->
-                cameraSwitchInProgress.set(false)
-                Log.e("WebRTCManager", "Camera switch threw", error)
-                onComplete(false)
+                Log.w("WebRTCManager", "Camera switch threw; rebuilding camera capturer for isFront=$targetFront", error)
+                cameraDisconnected = true
+                startVideo(isScreen = false, isFront = targetFront) { rebuilt ->
+                    cameraSwitchInProgress.set(false)
+                    onComplete(rebuilt)
+                }
             }
         }
         return true
@@ -2229,8 +2241,11 @@ class WebRTCManager(
 
                 // Reconfiguring an existing camera in place avoids opening two
                 // camera devices concurrently, which fails on many OEM drivers.
+                // Rebuild when switching facing direction or recovering from an OS disconnect.
                 val existingCamera = previousCapturer as? CameraVideoCapturer
-                if (!isScreen && existingCamera != null && previousTrack != null) {
+                if (!isScreen && existingCamera != null && previousTrack != null &&
+                    currentCameraIsFront == isFront && !cameraDisconnected
+                ) {
                     val changed = runCatching {
                         existingCamera.changeCaptureFormat(finalWidth, finalHeight, fps)
                         previousTrack.setEnabled(true)
@@ -2488,6 +2503,27 @@ class WebRTCManager(
             add(Camera1Enumerator(true))
         }
 
+        val eventsHandler = object : CameraVideoCapturer.CameraEventsHandler {
+            override fun onCameraError(errorDescription: String?) {
+                Log.w("WebRTCManager", "Camera error: ${errorDescription.orEmpty()}")
+                cameraDisconnected = true
+            }
+            override fun onCameraDisconnected() {
+                Log.w("WebRTCManager", "Camera disconnected by system")
+                cameraDisconnected = true
+            }
+            override fun onCameraFreezed(errorDescription: String?) {
+                Log.w("WebRTCManager", "Camera frozen: ${errorDescription.orEmpty()}")
+            }
+            override fun onCameraOpening(cameraName: String?) {
+                cameraDisconnected = false
+            }
+            override fun onFirstFrameAvailable() {
+                cameraDisconnected = false
+            }
+            override fun onCameraClosed() = Unit
+        }
+
         enumerators.forEach { enumerator ->
             val preferredDevices = enumerator.deviceNames.filter {
                 if (isFront) enumerator.isFrontFacing(it) else enumerator.isBackFacing(it)
@@ -2495,11 +2531,13 @@ class WebRTCManager(
 
             preferredDevices.distinct().forEach { deviceName ->
                 val capturer = runCatching {
-                    if (enumerator is Camera2Enumerator) NovvinCamera2Capturer(context, deviceName, null)
-                    else enumerator.createCapturer(deviceName, null)
+                    if (enumerator is Camera2Enumerator) NovvinCamera2Capturer(context, deviceName, eventsHandler)
+                    else enumerator.createCapturer(deviceName, eventsHandler)
                 }.getOrNull()
                 if (capturer != null) {
-                    Log.i("WebRTCManager", "Using camera capturer: $deviceName (${enumerator.javaClass.simpleName})")
+                    currentCameraIsFront = enumerator.isFrontFacing(deviceName)
+                    cameraDisconnected = false
+                    Log.i("WebRTCManager", "Using camera capturer: $deviceName (${enumerator.javaClass.simpleName}, front=$currentCameraIsFront)")
                     return capturer
                 }
             }

@@ -56,7 +56,9 @@ fun CallInvitationOverlayHost(
                 if (result.isSuccess && callRepository.getCurrentCallId().equals(incoming.callId, ignoreCase = true)) {
                     navController.navigate(Screen.Call.createRoute(incoming.callId)) { launchSingleTop = true }
                 } else if (result.isFailure) {
-                    AppFeedbackBus.showError("No se pudo contestar la llamada. Intenta nuevamente.")
+                    val reason = result.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
+                        ?: "No se pudo contestar la llamada. Intenta nuevamente."
+                    AppFeedbackBus.showError(reason)
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -91,6 +93,12 @@ fun CallInvitationOverlayHost(
     LaunchedEffect(currentUserId) {
         currentUserId?.let { uid ->
             callRepository.ensureSubscribedToCallUserChannel(uid)
+        }
+    }
+
+    LaunchedEffect(callRepository) {
+        callRepository.incomingStatusNotice.collect { notice ->
+            if (notice.isNotBlank()) AppFeedbackBus.show(notice)
         }
     }
 

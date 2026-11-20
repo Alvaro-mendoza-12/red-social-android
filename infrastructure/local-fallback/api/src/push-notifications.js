@@ -76,6 +76,7 @@ function buildData(notification, extraData = {}) {
   }
 
   for (const [key, value] of Object.entries(extraData || {})) {
+    if (key === 'exclude_session_id') continue
     const serialized = stringValue(value)
     if (serialized !== null) data[key] = serialized
   }
@@ -185,6 +186,14 @@ async function sendCurrentPush(pool, notification, extraData) {
   const app = initializeFirebase()
   if (!app || !notification?.recipient_id) return { sent: 0, failed: 0, disabled: true }
 
+  const excludeSessionId = String(extraData?.exclude_session_id || '').trim().toLowerCase()
+  const excludeClause = excludeSessionId
+    ? '\n        AND (fcm.auth_session_id IS NULL OR lower(fcm.auth_session_id::text) <> $2)'
+    : ''
+  const queryParams = excludeSessionId
+    ? [notification.recipient_id, excludeSessionId]
+    : [notification.recipient_id]
+
   const { rows } = await pool.query(
     `WITH recipient_ids AS (
        SELECT lower($1::text) AS id
@@ -210,9 +219,9 @@ async function sendCurrentPush(pool, notification, extraData) {
            WHERE session.id=fcm.auth_session_id AND session.revoked_at IS NULL
              AND session.expires_at>NOW()
              AND lower(session.user_id::text) IN (SELECT id FROM recipient_ids WHERE id <> '')
-        ))
+        ))${excludeClause}
       ORDER BY fcm.updated_at DESC`,
-    [notification.recipient_id],
+    queryParams,
   )
   const tokens = [...new Set(rows.map((row) => String(row.token || '').trim()).filter(Boolean))]
   if (tokens.length === 0) return { sent: 0, failed: 0 }

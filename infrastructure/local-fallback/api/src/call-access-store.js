@@ -291,7 +291,7 @@ function createCallAccessStore({ pool, loadContext, now = () => Date.now() }) {
 }
 
 function registerCallAccessRoutes(app, dependencies) {
-  const { pool, authRequired, getCurrentUser } = dependencies;
+  const { pool, authRequired, getCurrentUser, onCallSessionResolved } = dependencies;
   const store = createCallAccessStore(dependencies);
   function route(operation) {
     return async (req, res, next) => {
@@ -307,11 +307,32 @@ function registerCallAccessRoutes(app, dependencies) {
       }
     };
   }
+  function notifyOtherSessions(event, user, callId, action) {
+    if (typeof onCallSessionResolved !== 'function') return;
+    void Promise.resolve(onCallSessionResolved({
+      event,
+      action,
+      callId: id(callId),
+      user,
+      sourceSessionId: user.callAuthSessionId,
+    })).catch(() => {});
+  }
   app.post('/v1/data/calls/prepare', authRequired, route((store, user, req) => store.prepare(user, req.body)));
   app.post('/v1/data/calls/:callId/invite', authRequired, route((store, user, req) => store.invite(user, req.params.callId, req.body)));
-  app.post('/v1/data/calls/:callId/accept', authRequired, route((store, user, req) => store.accept(user, req.params.callId)));
+  app.post('/v1/data/calls/:callId/accept', authRequired, route(async (store, user, req) => {
+    const result = await store.accept(user, req.params.callId);
+    notifyOtherSessions('answered_elsewhere', user, result.callId || req.params.callId, 'accept');
+    return result;
+  }));
   app.post('/v1/data/calls/:callId/access', authRequired, route((store, user, req) => store.access(user, req.params.callId)));
-  app.post('/v1/data/calls/:callId/leave', authRequired, route((store, user, req) => store.leave(user, req.params.callId, req.body?.action)));
+  app.post('/v1/data/calls/:callId/leave', authRequired, route(async (store, user, req) => {
+    const action = id(req.body?.action || 'end') || 'end';
+    const result = await store.leave(user, req.params.callId, action);
+    if (['decline', 'busy', 'cancel', 'end'].includes(action)) {
+      notifyOtherSessions('handled_elsewhere', user, result.callId || req.params.callId, action);
+    }
+    return result;
+  }));
   return store;
 }
 

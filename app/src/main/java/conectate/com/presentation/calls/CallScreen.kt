@@ -11,6 +11,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -36,21 +38,26 @@ import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import conectate.com.presentation.components.rememberRealtimeProgress
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -64,6 +71,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -98,6 +106,12 @@ fun CallScreen(
     val localVideoTrack by viewModel.localVideoTrack.collectAsStateWithLifecycle()
     val remoteVideoTracks by viewModel.remoteVideoTracks.collectAsStateWithLifecycle()
     val activeReactions by viewModel.activeReactions.collectAsStateWithLifecycle()
+    val inviteQuery by viewModel.inviteQuery.collectAsStateWithLifecycle()
+    val inviteCandidates by viewModel.inviteCandidates.collectAsStateWithLifecycle()
+    val isSearchingInvites by viewModel.isSearchingInvites.collectAsStateWithLifecycle()
+    val invitingUserId by viewModel.invitingUserId.collectAsStateWithLifecycle()
+    val inviteFeedback by viewModel.inviteFeedback.collectAsStateWithLifecycle()
+    var showInviteDialog by remember { mutableStateOf(false) }
     var currentUserId = viewModel.getCurrentUserId()
     val context = LocalContext.current
     var hasMicPermission by remember { mutableStateOf(viewModel.hasMicrophonePermission()) }
@@ -511,6 +525,20 @@ fun CallScreen(
                                     )
                                 }
                             }
+                            if (viewModel.canInviteParticipants()) {
+                                item {
+                                    IconButton(onClick = {
+                                        viewModel.prepareInviteCandidates()
+                                        showInviteDialog = true
+                                    }) {
+                                        Icon(
+                                            imageVector = Icons.Default.PersonAdd,
+                                            contentDescription = "Invitar personas",
+                                            tint = Color.White
+                                        )
+                                    }
+                                }
+                            }
                         }
 
                         Spacer(Modifier.width(6.dp))
@@ -532,6 +560,112 @@ fun CallScreen(
                 }
             }
         }
+    }
+
+    if (showInviteDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showInviteDialog = false
+                viewModel.clearInviteFeedback()
+            },
+            title = { Text("Invitar a la llamada") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = inviteQuery,
+                        onValueChange = { viewModel.onInviteQueryChanged(it) },
+                        label = { Text("Buscar por nombre o @usuario") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (!inviteFeedback.isNullOrBlank()) {
+                        Text(
+                            text = inviteFeedback.orEmpty(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    if (isSearchingInvites) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        }
+                    } else if (inviteCandidates.isEmpty()) {
+                        Text(
+                            text = if (inviteQuery.isBlank()) {
+                                "Escribe un nombre o @usuario para invitar a más personas."
+                            } else {
+                                "No se encontraron contactos disponibles."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 260.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(inviteCandidates, key = { it.userId }) { candidate ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProfileImage(
+                                        imageUrl = candidate.avatarUrl,
+                                        size = 38.dp,
+                                        showBorder = false
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = candidate.displayName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (candidate.handle.isNotBlank()) {
+                                            Text(
+                                                text = candidate.handle,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    TextButton(
+                                        onClick = { viewModel.inviteParticipant(candidate) },
+                                        enabled = invitingUserId == null
+                                    ) {
+                                        Text(
+                                            if (invitingUserId == candidate.userId) "Enviando…" else "Invitar"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showInviteDialog = false
+                    viewModel.clearInviteFeedback()
+                }) {
+                    Text("Cerrar")
+                }
+            }
+        )
     }
 }
 
@@ -723,11 +857,13 @@ private fun FloatingCallReaction(
         durationMillis = 5_000L
     )
     val offsetY = -205f * progress
-    val alpha = if (progress < 0.68f) {
+    val enterAlpha = (progress / 0.12f).coerceIn(0f, 1f)
+    val exitAlpha = if (progress < 0.68f) {
         1f
     } else {
         ((1f - progress) / 0.32f).coerceIn(0f, 1f)
     }
+    val alpha = minOf(enterAlpha, exitAlpha)
     val scale = 0.94f + (0.10f * progress)
 
     Box(

@@ -2611,10 +2611,10 @@ class CommunityRepository @Inject constructor(
                     )
                 )
             ) { sessionWriteGuard.requireValid(session) }
-            PendingMessageSyncScheduler.enqueue(context, "community_message_pending")
             sessionWriteGuard.requireValid(session)
             updateCommunityMessageInFlow(cleanId, msg)
             onQueued()
+            PendingMessageSyncScheduler.enqueue(context, "community_message_pending", initialDelaySeconds = 3L)
             if (!isSessionSnapshotValid(session, "community-foreground-resume")) return@withContext Result.failure(IllegalStateException("La cuenta cambió durante el envío."))
             val preview = buildConversationBackgroundPreview(contentType, finalContent)
                 ?: buildCallEventPreview(contentType, finalContent)

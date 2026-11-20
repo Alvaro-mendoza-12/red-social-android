@@ -21,4 +21,12 @@ class SettingsDirectoryTest {
         }
         assertFalse(SettingsDirectory.matches("Administración", "eliminar cuenta"))
     }
+
+    @Test fun logoutIsDirectlyDiscoverableWithoutGeneralCategory() {
+        for (query in listOf("cerrar sesion", "salir", "desconectar")) {
+            assertTrue(query, SettingsDirectory.hasMatches(query, includeAdmin = false))
+            assertTrue(query, SettingsDirectory.matches("Cerrar sesión", query))
+        }
+        assertFalse(SettingsDirectory.matches("General", "cerrar sesion"))
+    }
 }

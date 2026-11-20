@@ -763,7 +763,11 @@ fun VideoFeedScreen(
         fun hasBufferForPreload(starting: Boolean): Boolean {
             val scrolling = pagerState.isScrollInProgress
             if (starting && scrolling) return false
-            val reserveMs = performanceProfile.rebufferMs + if (starting) 1_500L else 250L
+            val reserveMs = if (starting) {
+                performanceProfile.rebufferMs.coerceAtMost(1_500) + 500L
+            } else {
+                performanceProfile.rebufferMs.coerceAtMost(1_000) + 250L
+            }
             return hasProtectedVisibleVideoBuffer(
                 currentMediaId = exoPlayer.currentMediaItem?.mediaId,
                 selectedVideoId = settledVideoId,
@@ -775,7 +779,7 @@ fun VideoFeedScreen(
                 minimumBufferedAheadMs = (reserveMs * playbackSpeed.coerceAtLeast(1f)).toLong(),
             )
         }
-        while (!hasBufferForPreload(starting = true)) delay(200L)
+        while (!hasBufferForPreload(starting = true)) delay(100L)
 
         val byteBudget = when (performanceProfile.tier) {
             conectate.com.util.VideoDeviceTier.LOW -> 384L * 1024L

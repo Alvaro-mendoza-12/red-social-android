@@ -837,17 +837,34 @@ async function localNicknames(pool, userId) {
   )
 }
 
-async function privateChatAccessContext(pool, chatId, identity) {
+async function privateChatAccessContext(pool, chatId, identity, { includeImportedPreferences = true } = {}) {
   const cleanChatId = normalizeId(chatId)
-  const [fallbackChatRows, importedChatRows, importedParticipants, fallbackParticipants] = await Promise.all([
+  const [fallbackChatRows, fallbackParticipants] = await Promise.all([
     localChatsByIds(pool, [cleanChatId]),
-    importedRowsByFieldValues(pool, 'chats', ['id'], [cleanChatId], 4),
-    importedRowsByFieldValues(pool, 'chat_participants', ['chat_id', 'chatId'], [cleanChatId], 10_000),
     localChatParticipants(pool, [cleanChatId]),
   ])
+  const localChat = fallbackChatRows.find((row) => normalizeId(textOf(row, ['id'], '')) === cleanChatId)
+  const localParticipantRows = fallbackParticipants.filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === cleanChatId)
+  const localHasAccess =
+    (localChat && rowParticipantsContain(localChat, identity.ids)) ||
+    localParticipantRows.some((row) => rowMatchesAny(row, ['user_id', 'profile_id'], identity.ids))
+  const localMemberIds = new Set([
+    ...localParticipantRows.map((row) => normalizeId(textOf(row, ['user_id', 'profile_id'], ''))),
+    ...arrayOf(localChat || {}, ['participants']).map(normalizeId),
+  ].filter(Boolean))
+
+  // Hot write paths (sending/editing/deleting messages) do not need legacy
+  // supabase_import preferences once local rows already establish full DM membership.
+  const needsImportedLookup = includeImportedPreferences || !localChat || !localHasAccess || localMemberIds.size < 2
+  const [importedChatRows, importedParticipants] = needsImportedLookup
+    ? await Promise.all([
+        importedRowsByFieldValues(pool, 'chats', ['id'], [cleanChatId], 4),
+        importedRowsByFieldValues(pool, 'chat_participants', ['chat_id', 'chatId'], [cleanChatId], 10_000),
+      ])
+    : [[], []]
   const chat = [...fallbackChatRows, ...importedChatRows]
     .find((row) => normalizeId(textOf(row, ['id'], '')) === cleanChatId)
-  const participantRows = [...importedParticipants, ...fallbackParticipants]
+  const participantRows = [...importedParticipants, ...localParticipantRows]
     .filter((row) => normalizeId(textOf(row, ['chat_id'], '')) === cleanChatId)
   const hasAccess =
     (chat && rowParticipantsContain(chat, identity.ids)) ||
@@ -3815,6 +3832,12 @@ async function autoVerifyLocalFollowerMilestone(pool, rawProfileId) {
 }
 
 async function getCurrentUser(pool, req) {
+  if (
+    req?._currentUser &&
+    String(req._currentUser.id || '').trim().toLowerCase() === String(req?.auth?.sub || '').trim().toLowerCase()
+  ) {
+    return req._currentUser
+  }
   const { rows } = await pool.query(
     `SELECT id,
             email,
@@ -7063,10 +7086,62 @@ function registerDataRoutes(app, {
   })
   const callAccessStore = require('./call-access-store').registerCallAccessRoutes(app, {
     pool, authRequired, getCurrentUser,
+    onCallSessionResolved: async ({ event, action, callId, user, sourceSessionId }) => {
+      if (!callId || !user) return
+      const identity = userIdentity(user)
+      const channels = Array.from(new Set(identity.values)).filter(Boolean)
+      const extraData = {
+        call_id: callId,
+        call_action: event,
+        original_action: action || '',
+        from_user_id: identity.displayUserId,
+        source_session_id: sourceSessionId || '',
+      }
+      const envelope = {
+        event: 'call_response',
+        callId,
+        action: event,
+        originalAction: action || '',
+        fromUserId: identity.displayUserId,
+        sourceSessionId: sourceSessionId || '',
+        extraData,
+      }
+      const { publishRealtimeEvent } = require('./realtime-publish')
+      await Promise.all(
+        channels.map((channelUserId) =>
+          publishRealtimeEvent(`user:${channelUserId}`, envelope, {
+            excludeSessionId: sourceSessionId,
+          }),
+        ),
+      )
+      try {
+        const { sendPushForNotification } = require('./push-notifications')
+        await sendPushForNotification(
+          pool,
+          {
+            id: crypto.randomUUID(),
+            type: 'call_cancel',
+            recipient_id: identity.displayUserId,
+            actor_id: identity.displayUserId,
+            actor_name: user.display_name || user.email || 'Usuario',
+            actor_avatar_url: user.avatar_url || '',
+            target_id: callId,
+            target_type: 'call',
+            content: event === 'answered_elsewhere' ? 'Llamada respondida en otro dispositivo' : 'Llamada finalizada en otro dispositivo',
+          },
+          {
+            ...extraData,
+            exclude_session_id: sourceSessionId || '',
+          },
+        )
+      } catch (error) {
+        console.warn('[calls] multi-device push relay failed', safeErrorLogDetails(error))
+      }
+    },
     loadContext: async (db, user, kind, contextId) => {
       const identity = userIdentity(user)
       if (kind === 'dm') {
-        const context = await privateChatAccessContext(db, contextId, identity)
+        const context = await privateChatAccessContext(db, contextId, identity, { includeImportedPreferences: false })
         if (!context.chat || !context.hasAccess) return null
         return { memberIds: recipientIdsForChat(context.chat, context.participantRows) }
       }
@@ -11607,22 +11682,21 @@ function registerDataRoutes(app, {
       const requestedChannelId = config?.kind === 'community'
         ? normalizeId(req.body?.channelId || req.body?.channel_id)
         : ''
-      const requestedId = validUuid(req.body?.id)
+      const requestedId = validUuid(req.body?.id || req.body?.clientMessageId || req.body?.client_message_id)
       if (!config || !roomId || (!content && !mediaUrl)) {
         return res.status(400).json({ error: 'ROOM_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
 
-      const existingRoom = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
-      if (!existingRoom) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
+      const roomAccess = await loadCollectionRoomAccess(pool, user, config.kind, roomId)
+      if (!roomAccess) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
 
-      const identity = userIdentity(user)
-      const roomRow = existingRoom.room || existingRoom.chat || {}
-      const myParticipant = (existingRoom.participants || []).find((participant) =>
-        identity.ids.has(normalizeId(participant.id)),
-      )
-      const myRole = String(myParticipant?.role || '').toLowerCase()
+      const identity = roomAccess.identity
+      const roomRow = roomAccess.room || {}
+      const roomMembers = roomAccess.roomMembers || []
+      const myMemberRow = roomMembers.find((row) => identity.ids.has(memberUserId(row)))
       const isCreator = rowMatchesAny(roomRow, ['creator_id', 'owner_id', 'user_id'], identity.ids)
-      if (!isCreator && !myParticipant) return res.status(403).json({ error: 'ROOM_ACCESS_DENIED' })
+      if (!isCreator && !myMemberRow) return res.status(403).json({ error: 'ROOM_ACCESS_DENIED' })
+      const myRole = normalizeCollectionRole(textOf(myMemberRow || {}, ['role'], 'member'), { isCreator })
       const isAdmin = isCollectionAdminRole(myRole, { isCreator })
       let selectedChannel = null
       if (config.kind === 'community') {
@@ -11691,16 +11765,20 @@ function registerDataRoutes(app, {
       if (!saved.inserted) {
         return res.json({ message: enrichCollectionMessage(normalizeImportedRow(saved.message), config, profilesById) })
       }
-      const roomRecipients = (existingRoom.participants || [])
-        .map((participant) => normalizeId(participant.id))
-        .filter((participantId) => participantId && !identity.ids.has(participantId))
-      const notificationRecipients = (existingRoom.participants || [])
-        .filter((participant) => {
-          const restUntil = toMillis(participant.restUntil)
-          return !restUntil || restUntil <= Date.now()
-        })
-        .map((participant) => normalizeId(participant.id))
-        .filter((participantId) => participantId && !identity.ids.has(participantId))
+      const roomRecipients = Array.from(new Set(
+        roomMembers
+          .map((row) => memberUserId(row))
+          .filter((participantId) => participantId && !identity.ids.has(participantId)),
+      ))
+      const notificationRecipients = Array.from(new Set(
+        roomMembers
+          .filter((row) => {
+            const restUntil = toMillis(textOf(row, ['rest_until', 'restUntil'], ''))
+            return !restUntil || restUntil <= Date.now()
+          })
+          .map((row) => memberUserId(row))
+          .filter((participantId) => participantId && !identity.ids.has(participantId)),
+      ))
       const mentionProfiles = content.includes('@') && contentType === 'text'
         ? await publicProfilesByIds(pool, roomRecipients) : []
       const mentionedIds = require('./collection-mentions').collectionMentionRecipients({
@@ -11717,46 +11795,52 @@ function registerDataRoutes(app, {
       }
       // Publicar primero el mensaje completo. Así Room puede recibirlo antes
       // que la notificación sea tocada y FCM queda como respaldo/wake-up.
-      await publishChatMessageEvent({
-        pool,
-        chatId: `room:${config.kind}:${roomId}`,
-        message: roomMessage,
-        recipientIds: roomRecipients,
+      // La respuesta 201 del emisor no espera el fan-out de notificaciones a N miembros.
+      const deliveryTask = (async () => {
+        await publishChatMessageEvent({
+          pool,
+          chatId: `room:${config.kind}:${roomId}`,
+          message: roomMessage,
+          recipientIds: roomRecipients,
+        })
+        await Promise.all(
+          Array.from(new Set([...notificationRecipients, ...mentionedRecipients])).map((participantId) =>
+            createLocalNotificationBestEffort(pool, {
+              recipientId: participantId,
+              actorId: identity.displayUserId,
+              actorName: user.display_name || user.email || 'Usuario',
+              actorAvatarUrl: user.avatar_url || '',
+              type: 'message',
+              targetId: roomId,
+              targetType: config.kind,
+              content: contentType === 'birthday_card' ? '🎂 Te envió una tarjeta de cumpleaños' : content || previewFromMessage({ content_type: contentType }),
+              extraData: {
+                [`${config.kind}_id`]: roomId,
+                // Identity comes from the authorized room, including when the
+                // recipient's account is inactive or its local cache is empty.
+                mentioned: String(mentionedRecipients.has(participantId)),
+                mention_context: mentionedRecipients.has(participantId) ? config.kind : '',
+                conversation_title: collectionRoomTitle(roomRow, config.titleFallback),
+                conversation_avatar: collectionRoomAvatar(roomRow) || '',
+                channel_id: textOf(rows[0], ['channel_id'], ''),
+                message_id: textOf(rows[0], ['id'], ''),
+                content_type: textOf(rows[0], ['content_type'], 'text'),
+                media_url: textOf(rows[0], ['media_url'], ''),
+                media_size: String(numberOf(rows[0], ['media_size'], 0)),
+                reply_to_id: textOf(rows[0], ['reply_to_id'], ''),
+                poll_id: textOf(rows[0], ['poll_id'], ''),
+                is_forwarded: String(boolOf(rows[0], ['is_forwarded'], false)),
+                forwarded_from_message_id: textOf(rows[0], ['forwarded_from_message_id'], ''),
+                forwarded_from_user_id: textOf(rows[0], ['forwarded_from_user_id'], ''),
+                created_at: textOf(rows[0], ['created_at'], ''),
+              },
+            }),
+          ),
+        )
+      })()
+      deliveryTask.catch((error) => {
+        console.error('[collection-message] post-commit fanout failed', safeErrorLogDetails(error))
       })
-      await Promise.all(
-        Array.from(new Set([...notificationRecipients, ...mentionedRecipients])).map((participantId) =>
-          createLocalNotificationBestEffort(pool, {
-            recipientId: participantId,
-            actorId: identity.displayUserId,
-            actorName: user.display_name || user.email || 'Usuario',
-            actorAvatarUrl: user.avatar_url || '',
-            type: 'message',
-            targetId: roomId,
-            targetType: config.kind,
-            content: contentType === 'birthday_card' ? '🎂 Te envió una tarjeta de cumpleaños' : content || previewFromMessage({ content_type: contentType }),
-            extraData: {
-              [`${config.kind}_id`]: roomId,
-              // Identity comes from the authorized room, including when the
-              // recipient's account is inactive or its local cache is empty.
-              mentioned: String(mentionedRecipients.has(participantId)),
-              mention_context: mentionedRecipients.has(participantId) ? config.kind : '',
-              conversation_title: collectionRoomTitle(roomRow, config.titleFallback),
-              conversation_avatar: collectionRoomAvatar(roomRow) || '',
-              channel_id: textOf(rows[0], ['channel_id'], ''),
-              message_id: textOf(rows[0], ['id'], ''),
-              content_type: textOf(rows[0], ['content_type'], 'text'),
-              media_url: textOf(rows[0], ['media_url'], ''),
-              media_size: String(numberOf(rows[0], ['media_size'], 0)),
-              reply_to_id: textOf(rows[0], ['reply_to_id'], ''),
-              poll_id: textOf(rows[0], ['poll_id'], ''),
-              is_forwarded: String(boolOf(rows[0], ['is_forwarded'], false)),
-              forwarded_from_message_id: textOf(rows[0], ['forwarded_from_message_id'], ''),
-              forwarded_from_user_id: textOf(rows[0], ['forwarded_from_user_id'], ''),
-              created_at: textOf(rows[0], ['created_at'], ''),
-            },
-          }),
-        ),
-      )
       res.status(201).json({ message: roomMessage })
     } catch (error) {
       next(error)
@@ -11778,19 +11862,17 @@ function registerDataRoutes(app, {
       return null
     }
 
-    const roomPayload = await loadCollectionRoomPayload(pool, user, config.kind, roomId)
-    if (!roomPayload) {
+    const roomAccess = await loadCollectionRoomAccess(pool, user, config.kind, roomId)
+    if (!roomAccess) {
       res.status(404).json({ error: 'ROOM_NOT_FOUND' })
       return null
     }
 
-    const identity = userIdentity(user)
-    const room = roomPayload.room || roomPayload.chat || {}
-    const participants = roomPayload.participants || []
+    const identity = roomAccess.identity
+    const room = roomAccess.room || {}
+    const roomMembers = roomAccess.roomMembers || []
     const isCreator = rowMatchesAny(room, ['creator_id', 'owner_id', 'user_id'], identity.ids)
-    const isMember = participants.some((participant) =>
-      identity.ids.has(normalizeId(participant.id || participant.user_id || participant.profile_id)),
-    )
+    const isMember = roomMembers.some((row) => identity.ids.has(memberUserId(row)))
     if (!isCreator && !isMember) {
       res.status(403).json({ error: 'ROOM_ACCESS_DENIED' })
       return null
@@ -11806,14 +11888,16 @@ function registerDataRoutes(app, {
       [config.kind, roomId, messageId],
     )
     const existing = rows[0] ? normalizeImportedRow(rows[0]) : null
-    if (!existing || !collectionHistoryAllows(roomPayload.historyAccess, existing) || existing.content_type === SYSTEM_MEMBERSHIP) {
+    if (!existing || !collectionHistoryAllows(roomAccess.historyAccess, existing) || existing.content_type === SYSTEM_MEMBERSHIP) {
       res.status(404).json({ error: 'MESSAGE_NOT_FOUND' })
       return null
     }
 
-    const recipientIds = participants
-      .map((participant) => normalizeId(participant.id || participant.user_id || participant.profile_id))
-      .filter((participantId) => participantId && !identity.ids.has(participantId))
+    const recipientIds = Array.from(new Set(
+      roomMembers
+        .map((row) => memberUserId(row))
+        .filter((participantId) => participantId && !identity.ids.has(participantId)),
+    ))
 
     return { user, identity, config, roomId, messageId, existing, recipientIds }
   }
@@ -14358,13 +14442,13 @@ function registerDataRoutes(app, {
       const isForwarded = Boolean(req.body?.isForwarded || req.body?.is_forwarded)
       const forwardedFromMessageId = cleanText(req.body?.forwardedFromMessageId || req.body?.forwarded_from_message_id, 80) || null
       const forwardedFromUserId = normalizeId(req.body?.forwardedFromUserId || req.body?.forwarded_from_user_id) || null
-      const requestedId = validUuid(req.body?.id)
+      const requestedId = validUuid(req.body?.id || req.body?.clientMessageId || req.body?.client_message_id)
       if (!chatId || (!content && !mediaUrl)) {
         return res.status(400).json({ error: 'CHAT_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
 
       const identity = userIdentity(user)
-      const accessContext = await privateChatAccessContext(pool, chatId, identity)
+      const accessContext = await privateChatAccessContext(pool, chatId, identity, { includeImportedPreferences: false })
       if (!accessContext.hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
       const blockRelationship = await blockRelationshipForChat(
         pool,
@@ -14409,13 +14493,15 @@ function registerDataRoutes(app, {
       })
       const insertedMessage = normalizeMessageRow(saved.message)
       if (!saved.inserted) return res.json({ message: insertedMessage })
-      await pool.query(
-        `DELETE FROM fallback_chat_hidden
-         WHERE lower(chat_id::text) = $1
-           AND lower(user_id) = $2`,
-        [chatId, senderId],
-      )
-      await refreshChatSummary(pool, chatId)
+      await Promise.all([
+        pool.query(
+          `DELETE FROM fallback_chat_hidden
+           WHERE lower(chat_id::text) = $1
+             AND lower(user_id) = $2`,
+          [chatId, senderId],
+        ),
+        refreshChatSummary(pool, chatId),
+      ])
       const recipientIds = new Set([
         ...accessContext.participantRows
           .map((row) => normalizeId(textOf(row, ['user_id', 'profile_id'], ''))),
@@ -14426,47 +14512,53 @@ function registerDataRoutes(app, {
       )
       // El evento autoritativo debe adelantarse a FCM para evitar que un
       // placeholder parcial pise citas o que el tap abra un chat aún vacío.
-      await publishChatMessageEvent({
-        pool,
-        chatId,
-        message: insertedMessage,
-        recipientIds: recipientList,
+      // El fan-out se ejecuta inmediatamente después del commit sin bloquear el 201 del emisor.
+      const deliveryTask = (async () => {
+        await publishChatMessageEvent({
+          pool,
+          chatId,
+          message: insertedMessage,
+          recipientIds: recipientList,
+        })
+        // The database guard persists the one-message introduction policy.
+        // Keep the legacy relay call compatible; the actual message owns the alert.
+        void publishAutomaticFriendRequest(pool, {
+          senderId, chatId, messageId: textOf(insertedMessage, ['id'], ''),
+        }).catch((error) => {
+          console.error('[friend-request] realtime relay failed', safeErrorLogDetails(error))
+        })
+        await Promise.all(
+          recipientList.map((recipientId) =>
+            createLocalNotificationBestEffort(pool, {
+              recipientId,
+              actorId: identity.displayUserId,
+              actorName: user.display_name || user.email || 'Usuario',
+              actorAvatarUrl: user.avatar_url || '',
+              type: 'message',
+              targetId: chatId,
+              targetType: 'chat',
+              content: content || previewFromMessage({ content_type: contentType }),
+              extraData: {
+                chat_id: chatId,
+                message_id: textOf(insertedMessage, ['id'], ''),
+                content_type: textOf(insertedMessage, ['content_type'], 'text'),
+                media_url: textOf(insertedMessage, ['media_url'], ''),
+                thumbnail_url: textOf(insertedMessage, ['thumbnail_url'], ''),
+                media_size: String(numberOf(insertedMessage, ['media_size'], 0)),
+                reply_to_id: textOf(insertedMessage, ['reply_to_id'], ''),
+                poll_id: textOf(insertedMessage, ['poll_id'], ''),
+                is_forwarded: String(boolOf(insertedMessage, ['is_forwarded'], false)),
+                forwarded_from_message_id: textOf(insertedMessage, ['forwarded_from_message_id'], ''),
+                forwarded_from_user_id: textOf(insertedMessage, ['forwarded_from_user_id'], ''),
+                created_at: textOf(insertedMessage, ['created_at'], ''),
+              },
+            }),
+          ),
+        )
+      })()
+      deliveryTask.catch((error) => {
+        console.error('[chat-message] post-commit fanout failed', safeErrorLogDetails(error))
       })
-      // The database guard persists the one-message introduction policy.
-      // Keep the legacy relay call compatible; the actual message owns the alert.
-      void publishAutomaticFriendRequest(pool, {
-        senderId, chatId, messageId: textOf(insertedMessage, ['id'], ''),
-      }).catch((error) => {
-        console.error('[friend-request] realtime relay failed', safeErrorLogDetails(error))
-      })
-      await Promise.all(
-        recipientList.map((recipientId) =>
-          createLocalNotificationBestEffort(pool, {
-            recipientId,
-            actorId: identity.displayUserId,
-            actorName: user.display_name || user.email || 'Usuario',
-            actorAvatarUrl: user.avatar_url || '',
-            type: 'message',
-            targetId: chatId,
-            targetType: 'chat',
-            content: content || previewFromMessage({ content_type: contentType }),
-            extraData: {
-              chat_id: chatId,
-              message_id: textOf(insertedMessage, ['id'], ''),
-              content_type: textOf(insertedMessage, ['content_type'], 'text'),
-              media_url: textOf(insertedMessage, ['media_url'], ''),
-              thumbnail_url: textOf(insertedMessage, ['thumbnail_url'], ''),
-              media_size: String(numberOf(insertedMessage, ['media_size'], 0)),
-              reply_to_id: textOf(insertedMessage, ['reply_to_id'], ''),
-              poll_id: textOf(insertedMessage, ['poll_id'], ''),
-              is_forwarded: String(boolOf(insertedMessage, ['is_forwarded'], false)),
-              forwarded_from_message_id: textOf(insertedMessage, ['forwarded_from_message_id'], ''),
-              forwarded_from_user_id: textOf(insertedMessage, ['forwarded_from_user_id'], ''),
-              created_at: textOf(insertedMessage, ['created_at'], ''),
-            },
-          }),
-        ),
-      )
       res.status(201).json({ message: insertedMessage })
     } catch (error) {
       const policyError = introPolicyError(error)

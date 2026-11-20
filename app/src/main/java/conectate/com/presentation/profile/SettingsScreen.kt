@@ -158,6 +158,7 @@ fun SettingsScreen(
     var showCloseAllWebSessionsDialog by remember { mutableStateOf(false) }
     var showBreakModeDialog by remember { mutableStateOf(false) }
     var showDeleteAccountDialog by remember { mutableStateOf(false) }
+    var showLogoutConfirmDialog by remember { mutableStateOf(false) }
     var adminNavigationError by remember { mutableStateOf<String?>(null) }
     var lastBackupRequest by remember { mutableStateOf(viewModel.lastAndroidBackupRequest()) }
     var settingsQuery by rememberSaveable { mutableStateOf("") }
@@ -1286,28 +1287,53 @@ fun SettingsScreen(
             }
 
 
-            // Section: General
-            SettingsSection(title = "General") {
+            if (settingsQuery.isBlank() || SettingsDirectory.matches("Cerrar sesión", settingsQuery)) {
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(8.dp))
                 Button(
-                    onClick = {
-                        authViewModel.forceLocalLogout()
-                        onLogout()
-                    },
+                    onClick = { showLogoutConfirmDialog = true },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cerrar Sesión")
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cerrar sesión")
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
-
-                // Account deletion requests are available in Cuenta y seguridad;
-                // the destructive operation is still performed by an administrator.
             }
         }
     }
 
+    }
+
+    if (showLogoutConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirmDialog = false },
+            title = { Text("¿Cerrar sesión en Novvin?") },
+            text = {
+                Text("Se cerrará tu sesión en este dispositivo, se actualizará tu estado a desconectado y se limpiarán los datos privados locales.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showLogoutConfirmDialog = false
+                        authViewModel.forceLocalLogout()
+                        onLogout()
+                    }
+                ) {
+                    Text("Cerrar sesión", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirmDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
     }
 
     if (showBreakModeDialog) {
