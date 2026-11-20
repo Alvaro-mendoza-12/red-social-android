@@ -62,6 +62,13 @@ test('CSV replacement, retries and profile updates are atomic per file', { skip:
     await Promise.all([importCsv(dir), importCsv(other)])
     const final = (await db.query('SELECT id FROM supabase_import.catalog ORDER BY id')).rows
     assert.ok(['x1,x2', 'y1,y2'].includes(final.map(row => row.id).join(',')))
+    await fs.writeFile(catalog, 'Name,Name,Name_2,"Display\nName"\nfirst,second,third,label\n')
+    await importCsv(dir)
+    const split = await db.query('SELECT name, name_2, name_2_2, display_name FROM supabase_import.catalog')
+    assert.deepEqual(split.rows, [{ name: 'first', name_2: 'second', name_2_2: 'third', display_name: 'label' }])
+    await fs.writeFile(catalog, 'Name,Name\n')
+    await importCsv(dir)
+    assert.deepEqual((await db.query('SELECT name, name_2 FROM supabase_import.catalog')).rows, [])
   } finally {
     await db.end()
     await fs.rm(dir, { recursive: true, force: true })

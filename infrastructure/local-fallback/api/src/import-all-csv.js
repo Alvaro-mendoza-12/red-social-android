@@ -114,18 +114,12 @@ function readCsv(filePath) {
 
   const records = parse(content, {
     bom: true,
-    columns: true,
     skip_empty_lines: true,
     trim: true,
     relax_column_count: true,
   })
 
-  const headerLine = content.split(/\r?\n/, 1)[0] || ''
-  const columns = parse(headerLine, {
-    bom: true,
-    relax_column_count: true,
-  })[0] || []
-
+  const columns = records.shift() || []
   return { records, columns }
 }
 
@@ -138,22 +132,22 @@ async function importRawTable(client, fileName, tableName, { records, columns })
     return { fileName, tableName, records: 0, columns: 0, skipped: true, reason: 'NO_COLUMNS' }
   }
 
-  const sanitizedColumns = []
-  const seen = new Map()
-  for (const original of columns) {
+  const usedNames = new Set()
+  const nextSuffix = new Map()
+  const sanitizedColumns = columns.map(original => {
     const base = sanitizeIdentifier(original)
-    const count = seen.get(base) || 0
-    seen.set(base, count + 1)
-    sanitizedColumns.push({
-      original,
-      name: count === 0 ? base : `${base}_${count + 1}`,
-    })
-  }
+    let name = base
+    let suffix = nextSuffix.get(base) || 2
+    while (usedNames.has(name)) name = `${base}_${suffix++}`
+    nextSuffix.set(base, suffix)
+    usedNames.add(name)
+    return name
+  })
 
   const fullTableName = `supabase_import.${quoteIdentifier(tableName)}`
   const stagingTable = `supabase_import.${quoteIdentifier('__novvin_csv_' + randomUUID())}`
   const columnSql = sanitizedColumns
-    .map((column) => `${quoteIdentifier(column.name)} TEXT`)
+    .map((name) => `${quoteIdentifier(name)} TEXT`)
     .join(',\n    ')
 
   await client.query(`
@@ -164,18 +158,13 @@ async function importRawTable(client, fileName, tableName, { records, columns })
     )
   `)
 
-  const dbColumns = ['__source_file', ...sanitizedColumns.map((column) => column.name)]
+  const dbColumns = ['__source_file', ...sanitizedColumns]
   const quotedColumns = dbColumns.map(quoteIdentifier).join(', ')
   const placeholders = dbColumns.map((_, index) => `$${index + 1}`).join(', ')
   const insertSql = `INSERT INTO ${stagingTable} (${quotedColumns}) VALUES (${placeholders})`
 
   for (const row of records) {
-    const values = [
-      fileName,
-      ...sanitizedColumns.map((column) =>
-        row[column.original] == null ? null : String(row[column.original]),
-      ),
-    ]
+    const values = [fileName, ...columns.map((_, index) => row[index] ?? null)]
     await client.query(insertSql, values)
   }
 
@@ -184,11 +173,12 @@ async function importRawTable(client, fileName, tableName, { records, columns })
   return { fileName, tableName, records: records.length, columns: sanitizedColumns.length, skipped: false }
 }
 
-async function importProfilesIntoFallback(client, records) {
+async function importProfilesIntoFallback(client, { columns, records }) {
   let imported = 0
   let skipped = 0
 
-  for (const row of records) {
+  for (const cells of records) {
+    const row = Object.fromEntries(columns.map((name, index) => [name, cells[index]]))
     const email = normalizeEmail(pick(row, ['email', 'user_email', 'primary_email']))
     const supabaseUserId = cleanText(pick(row, ['id', 'user_id', 'profile_id', 'supabase_user_id']), 80) || null
     const displayName = getDisplayName(row)
@@ -262,7 +252,7 @@ async function main() {
       await client.query('BEGIN')
       await client.query("SELECT pg_advisory_xact_lock(hashtext('novvin_csv_import'), hashtext($1))", [tableName])
       if (tableName === 'profiles') {
-        fallbackProfiles = await importProfilesIntoFallback(client, csv.records)
+        fallbackProfiles = await importProfilesIntoFallback(client, csv)
       }
       const rawResult = await importRawTable(client, file, tableName, csv)
       await client.query('COMMIT')
