@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T17:57:39.178019+00:00",
-  "baseCommit": "ae8e71e5a97aed7b0a71d76eb256f642a89c94c7",
+  "generatedAtUtc": "2026-11-20T18:13:10.673144+00:00",
+  "baseCommit": "922d8459cac4a74f0d39a3794e05af01eae38acf",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3437,
+    "pending": 3439,
     "code-read": 1052,
     "partial": 280
   },
@@ -21,7 +21,7 @@
       "code-read": 612
     },
     "documentation": {
-      "pending": 703,
+      "pending": 705,
       "code-read": 67,
       "partial": 21
     },
@@ -51,7 +51,7 @@
     {
       "file": ".gitattributes",
       "phase": "tooling-and-other",
-      "gitBlobId": "dfdb8b771ce07609491fa2e83698969fd917a135",
+      "gitBlobId": "8f4d70f2c1d23685e1c698b89af6e0b620c4f04b",
       "reviewStatus": "pending"
     },
     {
@@ -22331,6 +22331,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/231-actualizacion-con-huellas-historicas-de-migracion-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "6a09cebf57b486ad781044cecbe23c79eaaf85c1",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/24-musica-privacidad-y-plan-gamer-hub-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "4b6363478b08ea9abd1dec49c858af09a3e904bc",
@@ -23238,6 +23244,12 @@
       "file": "docs/oficial/evidencias/230-coherencia-de-medios-durante-el-respaldo.json",
       "phase": "documentation",
       "gitBlobId": "73ba2572c3848fa4c19a4b8e4d44c35aa998d860",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/231-actualizacion-con-huellas-historicas-de-migracion.json",
+      "phase": "documentation",
+      "gitBlobId": "56960276de15f5e19166d30bc9c448829f9b441c",
       "reviewStatus": "pending"
     },
     {
@@ -27355,9 +27367,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/schema-migrations.postgres.test.js",
       "phase": "server",
-      "gitBlobId": "6e85389405a9e170efef13d962291da12fcd472e",
+      "gitBlobId": "c40ca0f0eef8517ba928dc95aab9578917366d82",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "evidence": "docs/oficial/231-actualizacion-con-huellas-historicas-de-migracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28281,9 +28293,9 @@
     {
       "file": "infrastructure/local-fallback/scripts/apply-schema-migration.sql",
       "phase": "server",
-      "gitBlobId": "f18fee76004014a9857a4ca061cb2f6cbced6852",
+      "gitBlobId": "2508de37ade748b69ddffb1a018449f36a6d64bc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "evidence": "docs/oficial/231-actualizacion-con-huellas-historicas-de-migracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
