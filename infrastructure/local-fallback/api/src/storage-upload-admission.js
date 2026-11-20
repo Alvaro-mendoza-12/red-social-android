@@ -4,6 +4,8 @@ const fs = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
 const { Pool } = require('pg')
+const { monitorDatabasePoolErrors } = require('./database-pool-errors')
+const { safeErrorLogDetails } = require('./request-observability')
 const leasePools = new WeakMap()
 const finalizationPools = new WeakMap()
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
@@ -24,6 +26,15 @@ INSERT INTO fallback_storage_upload_reservations(id,owner_id,kind,input_bytes,re
   WHERE state IN ('uploading','finalizing') AND upload_length>0 AND upload_length<=536870912
   ON CONFLICT(id) DO NOTHING;`
 
+function createStoragePool(pool, max) {
+  const dedicated = new Pool({ ...pool.options, max, connectionTimeoutMillis: 2500,
+    idleTimeoutMillis: 30000, allowExitOnIdle: true })
+  monitorDatabasePoolErrors(dedicated, cause => {
+    console.error('[storage] database connection lost', safeErrorLogDetails(cause, { production: true }))
+  })
+  return dedicated
+}
+
 // Finalization holds a second advisory lock through the scanner promise.
 // Keep it off the API pool: two TUS finalizers plus two scans must not consume
 // all four API connections and starve authentication/control for two minutes.
@@ -32,8 +43,8 @@ async function acquireStorageFinalizationClient(pool) {
   let dedicated=finalizationPools.get(pool)
   if(!dedicated){
     const max=setting(process.env.STORAGE_PENDING_GLOBAL_SLOTS,6,1,64)
-    dedicated=new Pool({...pool.options,max,connectionTimeoutMillis:2500,idleTimeoutMillis:30000,allowExitOnIdle:true})
-    dedicated.on('error',()=>{});finalizationPools.set(pool,dedicated)
+    dedicated = createStoragePool(pool, max)
+    finalizationPools.set(pool, dedicated)
   }
   try{return await dedicated.connect()}
   catch{throw error('STORAGE_UPLOAD_FINALIZATION_UNAVAILABLE')}
@@ -83,8 +94,7 @@ function createStorageUploadAdmission({pool, root, globalBytes = process.env.STO
     leasePool=leasePools.get(pool)
     if(!leasePool) {
       if(!pool.options)throw error('STORAGE_UPLOAD_BUDGET_DATABASE_INVALID',500)
-      leasePool=new Pool({...pool.options,max:limits.globalSlots+1,connectionTimeoutMillis:2500,idleTimeoutMillis:30000,allowExitOnIdle:true})
-      leasePool.on('error',()=>{})
+      leasePool = createStoragePool(pool, limits.globalSlots + 1)
       leasePools.set(pool,leasePool)
     }
   }
