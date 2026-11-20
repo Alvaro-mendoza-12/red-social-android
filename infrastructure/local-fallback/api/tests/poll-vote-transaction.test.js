@@ -61,10 +61,15 @@ function fixture({ multiple = false, imported = [], closed = false, failInsert =
     }
     if (text.includes('FROM fallback_chats')) return { rows: [] }
     if (text.includes('FROM fallback_collection_chat_history') || text.includes('FROM fallback_collection_policies') || text.includes('FROM fallback_collection_history_grants')) return {rows:[]}
-    if (text.includes('FROM fallback_collection_rooms')) return {rows:[{id:roomId,room_kind:'group',creator_id:other}]}
-    if (text.includes('SELECT * FROM fallback_collection_members')) return {rows:params[0]==='group'?[{room_id:roomId,user_id:alias,joined_at:'2026-08-01T00:00:00Z'}]:[]}
-    if (text.startsWith('SELECT') && text.includes('FROM fallback_collection_members')) {
+    if (text.startsWith('SELECT room_id AS id') && text.includes('FROM fallback_collection_members')) {
       return { rows: params[0] === 'group' && params[1].includes(actor) ? [{ id: roomId }] : [] }
+    }
+    if (text.includes('FROM fallback_collection_rooms')) {
+      return { rows: params[0] === 'group' && params[1] === roomId ? [{id:roomId,room_kind:'group',creator_id:other}] : [] }
+    }
+    if (text.includes('FROM fallback_collection_members') && text.includes('ORDER BY joined_at')) {
+      return { rows: params[0] === 'group' && params[1] === roomId
+        ? [{room_id:roomId,group_id:roomId,community_id:roomId,user_id:alias,joined_at:'2026-08-01T00:00:00Z'}] : [] }
     }
     if (text.startsWith('DELETE FROM fallback_compat_rows')) {
       assert.match(text, /table_name = 'message_poll_votes'/)
