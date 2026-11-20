@@ -191,13 +191,14 @@ services:
         max-file: "3"
 
   office-preview:
-    image: gotenberg/gotenberg:8.40.0-libreoffice@sha256:ce2fc1d0a43de0ecc6bbaa2d1ec7b3df06384408dd74f5826c33eedfa4dec7ab
+    image: gotenberg/gotenberg:9.9.1-libreoffice@sha256:3d5fd268be20a7935d3e624770161080b615d9086548a2b501f44f388710529b
     restart: unless-stopped
     environment:
       LIBREOFFICE_AUTO_START: "true"
       LIBREOFFICE_DENY_LIST: ".*"
       API_DOWNLOAD_FROM_DENY_LIST: ".*"
       API_DISABLE_DOWNLOAD_FROM: "true"
+      WEBHOOK_DISABLE: "true"
       API_TIMEOUT: "30s"
       # 32 MiB file (33,554,432 bytes) plus multipart framing; API still caps files at 32 MiB.
       API_BODY_LIMIT: "35MB"
