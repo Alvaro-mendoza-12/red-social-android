@@ -4,11 +4,24 @@ const os = require('os')
 const path = require('path')
 const {
   collectSystemHealth,
+  readWritableDatabaseTime,
   normalizedBaseUrl,
   releaseMetadataFromText,
 } = require('../src/system-health')
+const { publicApiError } = require('../src/public-api-error')
 
 async function run() {
+  const databaseTime = new Date('2026-07-26T12:00:00Z')
+  assert.equal(await readWritableDatabaseTime({ async query() { return { rows: [{ now: databaseTime }] } } }), databaseTime)
+  for (const query of [
+    async () => ({ rows: [] }),
+    async () => { throw new Error('internal connection detail') },
+  ]) {
+    await assert.rejects(readWritableDatabaseTime({ query }), error => {
+      assert.deepEqual(publicApiError(error), { status: 503, code: 'DATABASE_UNAVAILABLE' })
+      return true
+    })
+  }
   assert.equal(normalizedBaseUrl(' https://api.example.test/// '), 'https://api.example.test')
   assert.equal(normalizedBaseUrl('not-a-url'), '')
   assert.deepEqual(

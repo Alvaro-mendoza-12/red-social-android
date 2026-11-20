@@ -51,7 +51,7 @@ const { accountSuspendedPayload, findActiveSuspension } = require('./account-sta
 const { appAdminHasCapability } = require('./admin-moderation-routes')
 const { ADMIN_CAPABILITY } = require('./admin-capabilities')
 const { canonicalStorageResponseMiddleware } = require('./storage-url-canonicalization')
-const { collectSystemHealth, loadReleaseMetadata } = require('./system-health')
+const { collectSystemHealth, loadReleaseMetadata, readWritableDatabaseTime } = require('./system-health')
 const {
   boundedInteger,
   constantTimeSecretEqual,
@@ -2151,7 +2151,7 @@ app.get('/internal/metrics', (req, res) => {
 app.get('/ready', async (_req, res, next) => {
   res.set('Cache-Control', 'no-store')
   try {
-    const { rows } = await pool.query('SELECT NOW() AS now')
+    const databaseTime = await readWritableDatabaseTime(pool)
     const release = await loadReleaseMetadata()
     const storageScan = await storageScanReadiness()
     res.json({
@@ -2187,7 +2187,7 @@ app.get('/ready', async (_req, res, next) => {
         'video_watch_later_v1',
         'video_collections_v1',
       ],
-      databaseTime: rows[0].now,
+      databaseTime,
       pushNotifications: pushNotificationsStatus(),
     })
   } catch (error) {

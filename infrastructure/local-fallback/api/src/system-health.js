@@ -3,6 +3,20 @@ const path = require('path')
 
 const DEFAULT_TIMEOUT_MS = 2_500
 
+async function readWritableDatabaseTime(pool) {
+  try {
+    const { rows } = await pool.query(
+      "SELECT NOW() AS now WHERE NOT current_setting('transaction_read_only')::boolean",
+    )
+    if (rows.length) return rows[0].now
+    throw new Error('Database connection is read-only')
+  } catch (cause) {
+    throw Object.assign(new Error('DATABASE_UNAVAILABLE', { cause }), {
+      code: 'DATABASE_UNAVAILABLE', status: 503, expose: true,
+    })
+  }
+}
+
 function positiveInteger(value, fallback, minimum = 250, maximum = 15_000) {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return fallback
@@ -195,6 +209,7 @@ async function collectSystemHealth({
 
 module.exports = {
   collectSystemHealth,
+  readWritableDatabaseTime,
   fetchHealth,
   loadReleaseMetadata,
   normalizedBaseUrl,
