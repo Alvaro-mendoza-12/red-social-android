@@ -40,11 +40,12 @@ test('a transient stream read error resumes at the last cursor on the same conne
   process.env.JWT_SECRET = randomBytes(32).toString('hex')
   process.env.REALTIME_INTERNAL_SECRET = randomBytes(32).toString('hex')
   const controller = new AbortController()
-  const deadline = setTimeout(() => controller.abort(), 4000)
-  t.after(() => clearTimeout(deadline))
   const resumed = once(observed, 'resumed', { signal: controller.signal })
   const { redisBus } = require('../src/server')
   t.after(() => redisBus.close())
+  // Bound reader recovery independently of cold Node module loading.
+  const deadline = setTimeout(() => controller.abort(), 4000)
+  t.after(() => clearTimeout(deadline))
   await resumed
   assert.equal(initialQueries, 1)
   assert.deepEqual(cursors, ['10-0', '10-0', '11-0'])
