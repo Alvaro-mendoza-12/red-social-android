@@ -1,6 +1,6 @@
 # 224 · Certificación interna independiente de NOVVIN
 
-20 de noviembre de 2026 · **NO APTA PARA PRODUCCIÓN**. El conversor de documentos conserva 13 avisos críticos y 119 altos en paquetes de distribución. La resistencia de dos horas pasó en Windows, con 55.185 de 55.185 entregas WebSocket. En la VM Ubuntu de dos CPU, la primera prueba larga se detuvo a los 693 s. El resultado de capacidad del servidor en servicio, su recuperación integral y los recorridos en teléfonos físicos siguen abiertos.
+20 de noviembre de 2026 · **NO APTA PARA PRODUCCIÓN**. El conversor de documentos conserva 13 avisos críticos y 119 altos en paquetes de distribución. La resistencia de dos horas pasó en Windows, con 55.185 de 55.185 entregas WebSocket. En la VM Ubuntu de dos CPU, los dos ensayos largos se detuvieron a los 693 y 2.025 s. En WSL2, una API y un gateway completaron 18 minutos a ocho llegadas por segundo. El resultado de capacidad del servidor en servicio, su recuperación integral y los recorridos en teléfonos físicos siguen abiertos.
 
 [Mediciones por escenario, percentiles, contadores y huellas](evidencias/224-certificacion-independiente.json). Los registros privados y los scripts de reproducción del laboratorio están en `D:/Novvin-Entregas/evidencias/2026-11-20-astra224`. Se emplearon cuentas sintéticas, puertos de loopback y almacenamiento desechable. Una prueba unitaria, una respuesta HTTP aceptada y un fotograma decodificado se registran por separado.
 
@@ -97,6 +97,10 @@ De 39 coincidencias del paquete fuente curl en OSV, la tabla de la versión base
 
 **Secretos en el repositorio.** Gitleaks 8.30.1 señaló 57 coincidencias de la regla genérica en el árbol completo de la candidata y cero en el diferencial de los 37 commits de ingeniería. La revisión por línea distinguió huellas, referencias de entrega, ejemplos de JWT truncados, datos de prueba y una lectura de variable de entorno. Ninguna de esas 57 líneas contenía una credencial utilizable. El JSON conserva ruta, línea y clasificación, sin los valores señalados.
 
+**Análisis estático independiente.** Semgrep Community Edition 1.186.0 aplicó seis carpetas de reglas a 1943 archivos de Android, Web, API, Realtime y Signaling en el árbol `a8c638f7`. Produjo 238 coincidencias y cuatro avisos de análisis parcial. Al examinar la alerta del cifrado Android se comprobó que el proveedor genera el IV al cifrar y que se recupera del mensaje al descifrar. La ingesta usa columnas de una lista cerrada y parámetros para los valores. El importador histórico escapaba identificadores y parametrizaba valores, pero dejaba datos parciales al fallar una fila. Esa incidencia de integridad se corrigió y se ensayó por separado. La repetición sobre las cuatro rutas de ejecución modificadas después produjo 12 coincidencias. El JSON conserva sus ubicaciones. La clasificación del resto sigue pendiente. [Reglas de Semgrep CE](https://github.com/semgrep/semgrep-rules/tree/a5ad1714f00c9f7fde980cab0ea1d6dc6d414fd2) · [Referencia del analizador](https://docs.semgrep.dev/cli-reference).
+
+Gitleaks también revisó los commits posteriores hasta `e14c7cc6`, incluido el primer informe. Registró cero coincidencias adicionales.
+
 Estas referencias delimitan los controles considerados y el trabajo pendiente. El ciclo no acredita cumplimiento completo de ningún estándar. [OWASP ASVS](https://asvs.owasp.org/) · [OWASP API Security](https://owasp.org/www-project-api-security/) · [OWASP WSTG](https://owasp.org/www-project-web-security-testing-guide/) · [OWASP MASVS y MASTG](https://mas.owasp.org/MASVS/04-Assessment_and_Certification/) · [NIST SSDF 1.1](https://csrc.nist.gov/pubs/sp/800/218/final).
 
 ## E. Funciones y experiencia
@@ -129,7 +133,13 @@ Estas referencias delimitan los controles considerados y el trabajo pendiente. E
 
 En Chromium, con un MP4 real y 240 vídeos ajenos más recientes, el enlace del vídeo anterior seguía visible en el perfil correcto.
 
+**Audio de Momentos y borrado administrativo. CORREGIDO.** Al retirar del Momento un audio escaneado, la API devolvía 200 y eliminaba su fila del catálogo, pero conservaba el archivo. La consulta devolvía la ruta sin el identificador de revisión que usa el almacenamiento inmutable. En la candidata desaparecieron el archivo histórico y el escaneado al retirarlos por sus respectivas rutas. La purga administrativa también buscaba el archivo en la ruta histórica. Ya usa la revisión cuando existe. En PostgreSQL 16.9, con el rol de ejecución y las operaciones de importación instaladas, la API retiró una cuenta sintética con su archivo y conservó la cuenta operadora. En una prueba adicional que interrumpió la transacción se recuperaron los bytes del archivo. El caso también comprobó un archivo distinto situado en la ruta lógica. Estas correcciones conservan la comprobación de identidad entre la fila y su ruta. Para cambiar de volumen físico sigue siendo necesario conservar el montaje lógico que se validó en la restauración.
+
 **Visitas y distintivos en la web.** Con dos cuentas sintéticas, un retraso de transporte y salida del perfil antes de que se dibujara, el código anterior envió una escritura y el propietario recibió una visita. En la candidata se observaron cero escrituras y cero visitas en ese recorrido. Al abrir el perfil y verlo sí apareció exactamente una visita en el historial del propietario. Se mostró también un Momento del autor. A 1.100 y 390 px de ancho, Chromium situó la insignia de 24 px del avatar y la de 18 px del nombre en primer plano al comprobar sus centros. La comprobación se hizo con el propietario de un Momento activo. Desde Ajustes, el botón de cierre recibió foco de teclado, Enter abrió la confirmación y el cierre llevó al acceso. Una regresión adicional impide que una visita nueva vuelva a dibujar una insignia de caché vencida mientras se actualiza el perfil.
+
+**Cabeceras de archivo. CORREGIDO.** Un CSV con dos columnas del mismo título devolvía el valor de la segunda en ambas. Una colisión entre nombres normalizados y una cabecera entrecomillada que ocupaba dos líneas también hacían fallar el importador. Con la candidata, PostgreSQL recuperó los dos valores originales por separado, las tres columnas en colisión y el valor de la cabecera multilínea. Una tabla con solo cabeceras se conservó vacía. Se repitió el ensayo PostgreSQL de reversión, reintento y concurrencia con estas variantes.
+
+**Importación CSV heredada. CORREGIDO.** Una fila dañada dejaba la primera fila nueva en lugar de la tabla anterior. Si fallaba el segundo perfil, quedaban la copia CSV nueva y una cuenta actualizada. La candidata prepara la tabla aparte y confirma el reemplazo y los cambios de perfiles en la misma transacción por archivo. Ambas pruebas conservaron las tablas previas y el fallo de los perfiles dejó cero cuentas parciales. El reintento válido importó 800 filas y el reintento de perfiles actualizó las dos cuentas. Dos ejecuciones simultáneas sobre el mismo nombre dejaron una versión completa. Se conserva la operación documentada de reaplicar los permisos de lectura a las tablas reemplazadas. [Contrato del rol de lectura](../../infrastructure/local-fallback/db/operations/15-runtime-import-read.sql).
 
 ## F. Infraestructura y operación
 
@@ -149,6 +159,23 @@ Una segunda recuperación incluyó los objetos. La API conserva la ruta absoluta
 
 **Almacenamiento y Nginx.** Una primera subida de PNG y otra de MP4 devolvieron 503 por falta de espacio. Se añadió únicamente a la VM un volumen ext4 de 17 GiB. Se cotejó la copia de los objetos y se mantuvo el punto lógico de montaje. Con 16.857.268.224 bytes libres, ambas subidas y lecturas devolvieron 200. La huella del PNG coincidió y el MP4 servido en modo progresivo midió 994.375 bytes. En ambos objetos Nginx devolvió exactamente los bytes 2–15 con 206 y conservó privadas las cabeceras internas de aceleración.
 
+**Una hora prevista, 2.025 s observados. NO APROBADO.** En la VM con dos API, dos Realtime y dos Signaling, el corte se produjo al acumular 12 fallos funcionales. De 3.600 llegadas planificadas a 1 req/s, se despacharon 94, 1.931 se perdieron por retraso del generador y 1.575 quedaron después del corte. Hubo 93 respuestas 2xx y un error de red. La API confirmó 25 mensajes y los destinatarios observaron 14 dentro del plazo. Se archivaron siete ventanas y los contadores por ruta. La mayor separación entre dos muestras de recursos del invitado fue de 544,37 s. La VM también mostró pausas del hipervisor. Estas condiciones impiden certificar el caudal del Ubuntu en servicio.
+
+**Restauraciones simultáneas. CORREGIDO.** Si fallaba la creación de la base temporal, el simulacro compartido intentaba retirarla de todos modos. La prueba de esa ruta observó una orden de retirada. Ahora cada ejecución identifica su base, registra si la creó y acusa los errores de restauración y de limpieza. Con PostgreSQL 16.15 en WSL2, dos simulacros empezaron el mismo segundo y restauraron una tabla en sendas bases. Una copia sintética truncada se rechazó. Quedaron cero bases temporales y las tres filas de origen. El adaptador de este ensayo pasó las órdenes de Compose a los clientes reales del clúster privado. La segunda prueba de Linux cubrió cuatro resultados del proceso, incluida una limpieza fallida.
+
+**Ubuntu en WSL2, llegadas fijas.** Una API, un Realtime, PostgreSQL 16.15 y el generador compartieron dos procesadores lógicos. Se utilizaron diez cuentas, cinco destinatarios, las cuotas ordinarias y entrega local. La última columna es la mediana del p95 HTTP de las ventanas. El JSON contiene los p50, p95 y p99 HTTP y WebSocket, el consumo de memoria y la espera del pool.
+
+| Req/s previstas | Segundos | Despachadas/planeadas | HTTP 2xx | Mensajes observados/esperados | p95 por ventana |
+|---:|---:|---:|---:|---:|---:|
+| 2 | 60 | 120/120 | 120 | 30/30 | 41.39 ms |
+| 8 | 90 | 720/720 | 720 | 180/180 | 30.23 ms |
+| 16 | 90 | 1440/1440 | 1440 | 360/360 | 28.91 ms |
+| 8 | 1080 | 8640/8640 | 8640 | 2160/2160 | 31.94 ms |
+
+**Dos API y dos gateways en WSL2.** Sobre `71761c0d`, con dos procesadores lógicos compartidos, PostgreSQL 16.15 y Redis 7.0.15 del repositorio Ubuntu, se midieron 360 s a 8 req/s. Se despacharon 2880/2880 solicitudes. Se recibieron 2880 respuestas 2xx y 720/720 mensajes dentro del plazo. El stream de Redis contenía 1540 entradas al terminar. La prueba distribuyó solicitudes y receptores entre las réplicas. El ingreso Nginx y Signaling quedaron fuera de esta topología.
+
+En estas 24 ventanas, la mediana del p95 fue de 26.62 ms en HTTP y 34.86 ms en entrega WebSocket. Los dos gateways registraron 766 y 774 eventos recibidos del stream, respectivamente. La espera máxima observada de clientes del pool fue 0. Los contadores completos conservan la diferencia entre eventos internos y mensajes de usuario.
+
 **Coste de las sondas y reinicio de réplica.** En las imágenes de API, Realtime y Signaling, iniciar Node para una sonda consumió entre 62 y 79 MiB RSS y entre 0,52 y 1,25 s. La sonda BusyBox requirió menos de 1 MiB y hasta 0,01 s. Ambas rechazaron la ruta ausente. Las seis réplicas quedaron saludables con el cambio. En el ensayo emparejado de Nginx, ambos bordes atendieron 12/12 antes, 11/12 durante la parada de una API y 12/12 después. El mayor tiempo durante la parada fue 6.008 ms con la configuración original y 2.015 ms con el límite de conexión de ensayo. La disponibilidad observada fue idéntica. Se conservó la configuración original. La parada de Realtime agotó 200 s en Docker y no permitió completar ese segundo par. Tras la recuperación se comprobaron nueve contenedores en ejecución y saludables. PgBouncer y TURN estaban detenidos tras sus ensayos opcionales.
 
 **Resultados recientes de las sondas.** En el servidor en servicio ambos ingresos aceptaron TLS 1.3, verificaron el nombre del certificado y devolvieron 200 en disponibilidad, con 25 capacidades y la revisión `cc6a022e`. Al ingreso privado le faltó la directiva de caché. En la candidata, las cuatro sondas de API y Realtime devuelven `Cache-Control: no-store`. También se verificó la cabecera en el HTTP 500 de la API al detener el PostgreSQL aislado.
@@ -157,13 +184,15 @@ Una segunda recuperación incluyó los objetos. La API conserva la ruta absoluta
 
 El registro del hipervisor durante el ensayo de resistencia contiene pausas de planificación de hasta unos 349 s. Algunas consultas del propio Docker también excedieron su plazo. Estas mediciones solo caracterizan esta VM y sus condiciones de ejecución.
 
+Se apagó por ACPI la VM privada del ensayo tras recuperar sus resúmenes, muestras y contadores. Se conservaron sus discos y los registros.
+
 ## G. Calidad, compilaciones y regresiones
 
 El ejecutor de staging registra HTTP por ruta, validez del cuerpo y del identificador, recepción WebSocket y una última ventana que incluye las solicitudes que estaban en curso. El planificador de llegadas fijas cuenta intentos planeados, despachados, tardíos, descartados por capacidad y pendientes tras un corte. En el modelo cerrado no existe un plan externo de llegadas. Aprobaron los 16 contratos, incluidos errores 401, 409, 429 y 503, ACK incoherente, receptor sin evento y límites del generador. El build Web con el origen de CI completó TypeScript, Vite, prerender y validación de 22 páginas públicas. Pasaron 208 suites de Jest con 1.344 casos, además de 21 casos del worker de medios y 72 de SEO. Las nueve suites focales de API cubrieron, entre otros, avisos de reacción, directorio de voz y el worker de eventos de comunidad.
 
 **Regresión Android completa.** Gradle ejecutó 3.553 pruebas en 592 suites con el código móvil `1018190b`. Hubo cero fallos, errores u omisiones. El proceso finalizó en 34 min 46 s. Esta repetición completa sustituye el primer intento interrumpido al evaluar la puerta de regresión Android.
 
-**Regresión web repetida.** La última compilación del árbol identificado en el JSON pasó TypeScript, Vite, prerender y validación de 22 páginas públicas. Jest dio 1.346 casos aprobados en 208 suites. Las pruebas Node cubrieron 129 casos.
+**Regresión web repetida.** La compilación más reciente de la Web, cuyo árbol se identifica en el JSON, pasó TypeScript, Vite, prerender y validación de 22 páginas públicas. Jest dio 1.346 casos aprobados en 208 suites. Las pruebas Node cubrieron 129 casos.
 
 **Android release interno.** La última APK privada es `Novvin-9.1.43-183-1018190b-internal.apk`, paquete `conectate.com`, versión 9.1.43 (183). El build duró 32 min 30 s. Se comprobó firma v2, identidad de paquete, SHA de código `1018190bbdb125f48bf6445a0007439710aefdf6` en DEX y coincidencia entre el archivo producido y la copia de entrega. Mide 221.779.125 bytes y su SHA-256 es `178947cef4a905530d1f8b41f26fdfe777c2518b61d5c676c6896d6b29b6a21d`. Incluye el presupuesto de precarga, la descarga sin conexión por cuenta, Guava corregido y el reproductor compartido que usa la pantalla de feed. La APK anterior del mismo número contenía `8bf70087`; ambas se distinguen por su hash. El JSON conserva sus resultados por separado.
 
@@ -177,7 +206,9 @@ El segundo push atómico dejó ambas ramas en `cf54b1073018335f41ffaeb65d156fa1c
 
 El tercer push atómico publicó hasta `9c98506e`. Se comprobaron en Vercel las dos solicitudes canceladas y los tres alias de producción en `4517f8d1`. El JSON contiene la lista de commits de ingeniería y los archivos modificados en cada uno.
 
-[Comparación de todos los cambios de ingeniería](https://github.com/Alvaro-mendoza-12/red-social-android/compare/4517f8d1...a8c638f7cb9c8cb768a96ecf2eb21587887e7386).
+[Comparación de todos los cambios de ingeniería](https://github.com/Alvaro-mendoza-12/red-social-android/compare/4517f8d1...e14c7cc66aa23aa738a04e976e15807978912bb9).
+
+El cuarto push publicó `bb331973` en ambas ramas. Se verificaron las dos cancelaciones y los tres alias productivos en `4517f8d1`. La última repetición funcional de servidor en `e14c7cc6` aprobó 81 casos de 18 archivos. También aprobó el caso PostgreSQL de concurrencia y reversión del CSV. Este último tramo cambió únicamente servidor, herramientas y pruebas. La Web y el código Android coinciden con los árboles compilados.
 
 ## I. Puertas de salida y reversión
 
@@ -201,7 +232,35 @@ El tercer push atómico publicó hasta `9c98506e`. Se comprobaron en Vercel las 
 | 16 | Riesgos documentados | VERIFICADO Y APROBADO para el alcance de este informe. |
 | 17 | Evidencia física y simulada diferenciada | VERIFICADO Y APROBADO. Los ensayos locales se identifican por entorno. |
 
-**Lanzamiento propuesto para una ventana autorizada.** Fijar SHA e imágenes, verificar firma/versionCode y conservar el artefacto previamente servido. Verificar copia cifrada de DB y almacenamiento, ensayo de restauración con rol de ejecución y una lectura autenticada. Recuperar los objetos bajo el mismo punto de montaje lógico y leer tanto un avatar como un adjunto con sus huellas. En una red de staging privada, ejecutar smoke y carga de llegadas fijas con las protecciones ordinarias, medir entrega WebSocket y probar la caída de una réplica mientras el ingreso atiende. Registrar en dos teléfonos los cambios de cámara, micrófono, Bluetooth, Doze y una llamada con TURN forzado. Verificar que Alertmanager recibe una alerta de ensayo y su resolución. El propietario decide la apertura y una eventual entrega gradual de Android cuando se cierren las puertas obligatorias.
+**Alcance de los 23 resultados solicitados**
+
+| Resultado | Estado y evidencia |
+|---|---|
+| 1. Resumen ejecutivo | NO APROBADO para lanzamiento. El dictamen y sus motivos encabezan el informe. |
+| 2. Arquitectura | VERIFICADO en las topologías de laboratorio de A y F. El primario, los objetos y el ingreso siguen siendo dependencias compartidas. |
+| 3. Vulnerabilidades | PENDIENTE. D registra los avisos de distribución sin resolver y el alcance de los análisis estáticos. |
+| 4. Correcciones | CORREGIDO en los casos con comprobación anterior y posterior, enumerados en el JSON por archivo y commit. |
+| 5. Rendimiento anterior y actual | VERIFICADO para las mezclas y el hardware medidos en B, C y F. |
+| 6. Capacidad sostenible | PENDIENTE en el Ubuntu de destino. Hay resultados acotados de dos horas en Windows y de llegadas fijas en WSL2. |
+| 7. Saturación | VERIFICADO hasta 1.500 trabajadores sintéticos en las ráfagas de B. Desde 250 hubo rechazos. |
+| 8. Recuperación | VERIFICADO en los ensayos de fila bloqueada, réplica, WAL, objetos y reversión. Falta la conmutación de la plataforma real. |
+| 9. Redis | VERIFICADO en Streams, interrupción temporal, reconexión y recuperación del valor AOF probados en C y F. |
+| 10. PostgreSQL | VERIFICADO en contención, rol, copia, restauración y reemplazo CSV ensayados. RPO y RTO del servicio siguen pendientes. |
+| 11. Mensajería | VERIFICADO en persistencia, idempotencia y escenarios concretos de entrega. La VM falló el plazo de recepción en F. |
+| 12. Multimedia | CORREGIDO en precarga, reproducción compartida, lectura y limpieza de archivos. Queda PENDIENTE la fluidez en teléfono físico. |
+| 13. Llamadas | VERIFICADO con cuentas sintéticas, medios decodificados y TURN. Siguen PENDIENTES audio, cámara y Bluetooth físicos. |
+| 14. Directos | VERIFICADO para la rehidratación, sesiones y estado probados en C. Quedan recorridos físicos pendientes. |
+| 15. Android | VERIFICADO el build firmado, la regresión JVM y los recorridos identificados del emulador. |
+| 16. Web | VERIFICADO el build, las suites y los recorridos de perfiles e invitado especificados en E y G. |
+| 17. Refactorización | CORREGIDO el trabajo redundante medido en el acceso al chat, la consulta del feed y los procesos de sonda. |
+| 18. Dependencias | CORREGIDO el conjunto de versiones indicado en D. El conversor conserva avisos pendientes. |
+| 19. Pruebas | VERIFICADO con recuentos y entornos distintos en B–G. La cobertura integral sigue abierta. |
+| 20. Archivos modificados | VERIFICADO mediante el inventario de rutas por commit en el JSON enlazado. |
+| 21. Commits | VERIFICADO en H y en el historial compartido de las dos ramas. |
+| 22. Riesgos pendientes | PENDIENTE la matriz de las 17 puertas de I. BLOQUEADA la inspección SSH del host por reautenticación del proveedor. |
+| 23. Preparación para producción | NO APROBADO. La candidata permanece fuera de producción. |
+
+**Lanzamiento propuesto para una ventana autorizada.** Fijar SHA e imágenes, verificar firma/versionCode y conservar el artefacto previamente servido. Verificar copia cifrada de DB y almacenamiento, ensayo de restauración con rol de ejecución y una lectura autenticada. Recuperar los objetos bajo el mismo punto de montaje lógico y leer tanto un avatar como un adjunto con sus huellas. En una red de staging privada, ejecutar smoke y carga de llegadas fijas con las protecciones ordinarias, medir entrega WebSocket y probar la caída de una réplica mientras el ingreso atiende. Registrar en dos teléfonos los cambios de cámara, micrófono, Bluetooth, Doze y una llamada con TURN forzado. Verificar la recepción de la alerta y de su resolución en la guardia del Ubuntu objetivo. El receptor aislado ya confirmó ambas. El propietario decide la apertura y una eventual entrega gradual de Android cuando se cierren las puertas obligatorias.
 
 **Ensayo efectivo de reversión de API.** Se inició la versión estable anterior `4517f8d1`, se abrió un chat y se conservó el mismo PostgreSQL 16.9, almacenamiento y sesión durante la transición a `d4afa761`. En la candidata se escribió otro mensaje y se subió un avatar. Al volver al ejecutable anterior, el destinatario mantuvo su sesión, el reintento no duplicó el segundo mensaje, el avatar conservó su huella y se aceptó una tercera escritura. Desde la parada hasta completar esas verificaciones pasaron 6,5 s en este laboratorio. La prueba cubre estas dos versiones compatibles de la API.
 

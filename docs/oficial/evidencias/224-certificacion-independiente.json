@@ -4384,7 +4384,7 @@
       "confirmedMembershipEnd": "channel removed, socket remains open, zero subsequent deliveries",
       "newRegressionPassed": true
     },
-    "sourceBeforeFinalEvidence": "a8c638f7cb9c8cb768a96ecf2eb21587887e7386",
+    "sourceBeforeFinalEvidence": "e14c7cc66aa23aa738a04e976e15807978912bb9",
     "scrapeRules": {
       "rulesParsed": 16,
       "configurationTests": "all passed",
@@ -6207,6 +6207,130 @@
           "max": 100.0
         },
         "largestResourceSampleGapSeconds": 318.51
+      },
+      "steady-1795172159": {
+        "passed": false,
+        "stopReason": "circuit_breaker_functional_threshold_12",
+        "requestedDurationHours": 1,
+        "actualDurationSeconds": 2025,
+        "concurrency": 8,
+        "syntheticAccounts": 10,
+        "arrivalRate": 1,
+        "workload": "constant-arrival-rate",
+        "arrivals": {
+          "planned": 3600,
+          "dispatched": 94,
+          "late": 1931,
+          "atCapacity": 0,
+          "notScheduledAfterStop": 1575,
+          "peakInFlight": 1
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 25,
+          "received": 14,
+          "missed": 11
+        },
+        "totals": {
+          "totalReqs": 94,
+          "total2xx": 93,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 1,
+          "totalFunctionalFailures": 12
+        },
+        "operations": {
+          "feed": {
+            "attempted": 21,
+            "passed": 21,
+            "statuses": {
+              "200": 21
+            }
+          },
+          "profile": {
+            "attempted": 24,
+            "passed": 24,
+            "statuses": {
+              "200": 24
+            }
+          },
+          "message": {
+            "attempted": 25,
+            "passed": 25,
+            "statuses": {
+              "201": 25
+            }
+          },
+          "notifications": {
+            "attempted": 24,
+            "passed": 23,
+            "statuses": {
+              "0": 1,
+              "200": 23
+            }
+          }
+        },
+        "sampleCount": 7,
+        "droppedArrivalIterations": 1931,
+        "apiRssDriftMB": 2.9,
+        "p95DriftMs": -239.95,
+        "summarySha256": "eb0e1a49061b85d52c0c2ca0c5862d59d467a5af96af7eafe6bb1d0b57453d3b",
+        "exit": 1,
+        "windowMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 50.29,
+              "median": 73.26,
+              "max": 136511.47
+            },
+            "p95Ms": {
+              "min": 73.9,
+              "median": 313.85,
+              "max": 136511.47
+            },
+            "p99Ms": {
+              "min": 73.9,
+              "median": 313.85,
+              "max": 136511.47
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 170.86,
+              "median": 234.82,
+              "max": 280.62
+            },
+            "p95Ms": {
+              "min": 243.59,
+              "median": 642.48,
+              "max": 773.81
+            },
+            "p99Ms": {
+              "min": 243.59,
+              "median": 642.48,
+              "max": 773.81
+            }
+          }
+        },
+        "samplesSha256": "0a93d304f332736fd6317c42abb6681336494a913c44ce55d8f25e2fa9e17c77",
+        "apiRssMiB": {
+          "min": 127.62,
+          "median": 129.83,
+          "max": 130.5
+        },
+        "maxApiPoolWait": 0,
+        "guestAvailableMiB": {
+          "min": 386,
+          "median": 409.0,
+          "max": 453
+        },
+        "guestCpuBusyPercent": {
+          "min": 0.18,
+          "median": 19.57,
+          "max": 100.0
+        },
+        "largestResourceSampleGapSeconds": 544.37
       }
     },
     "strictCrossNodeReceipts": {
@@ -6486,7 +6610,7 @@
     },
     "changes": {
       "base": "4517f8d164c83e390c7461a8b90412da29cde275",
-      "through": "a8c638f7cb9c8cb768a96ecf2eb21587887e7386",
+      "through": "e14c7cc66aa23aa738a04e976e15807978912bb9",
       "commits": [
         {
           "sha": "5d386c27724ad40c83164e4e6a67ea934072008d",
@@ -6801,6 +6925,46 @@
             "infrastructure/local-fallback/api/src/data-routes.js",
             "infrastructure/local-fallback/api/tests/video-public-attribution.test.js"
           ]
+        },
+        {
+          "sha": "d6a2e390df7fc0eca447eea26ceee037471ee924",
+          "subject": "Usa la revisión escaneada al retirar los archivos de una cuenta de prueba o suspendida",
+          "paths": [
+            "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+            "infrastructure/local-fallback/api/tests/admin-moderation-routes.test.js"
+          ]
+        },
+        {
+          "sha": "49f1e42e2d49eae03ec87755c5b7b3667c6a575d",
+          "subject": "Retira la revisión física del audio al quitar música de un Momento",
+          "paths": [
+            "infrastructure/local-fallback/api/src/moments-routes.js",
+            "infrastructure/local-fallback/api/tests/moment-rendered-storage-cleanup.test.js"
+          ]
+        },
+        {
+          "sha": "b68a08377d66acee86ec763f9878c94031a06137",
+          "subject": "Limita la limpieza del simulacro de restauración a la base creada por esa ejecución",
+          "paths": [
+            "infrastructure/local-fallback/api/tests/restore-drill-ownership.test.js",
+            "infrastructure/local-fallback/scripts/restore-drill.sh"
+          ]
+        },
+        {
+          "sha": "71761c0d4464d5c739534cbee1a7cec3fff719a1",
+          "subject": "Sustituye cada tabla CSV y sus perfiles en una sola transacción",
+          "paths": [
+            "infrastructure/local-fallback/api/src/import-all-csv.js",
+            "infrastructure/local-fallback/api/tests/csv-import-atomic.postgres.test.js"
+          ]
+        },
+        {
+          "sha": "e14c7cc66aa23aa738a04e976e15807978912bb9",
+          "subject": "Conserva por posición los campos CSV aunque sus encabezados coincidan",
+          "paths": [
+            "infrastructure/local-fallback/api/src/import-all-csv.js",
+            "infrastructure/local-fallback/api/tests/csv-import-atomic.postgres.test.js"
+          ]
         }
       ]
     },
@@ -6956,9 +7120,9 @@
           "peerCertSha256": "395ecd296a90130958095c58f3a548d40aaf47376b5e61936b530e9c6e123428"
         },
         "status": 200,
-        "elapsedMs": 2391,
+        "elapsedMs": 2297,
         "backendReady": true,
-        "databaseTime": "2026-11-20T10:43:59.989Z",
+        "databaseTime": "2026-11-20T11:53:39.626Z",
         "caps": 25,
         "release": {
           "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
@@ -6966,7 +7130,7 @@
         "contentType": "application/json; charset=utf-8",
         "cacheControl": "no-store",
         "hsts": "max-age=63072000; includeSubDomains; preload",
-        "checkedUtc": "2026-11-20T10:44:00.240843+00:00"
+        "checkedUtc": "2026-11-20T11:53:39.890374+00:00"
       },
       "private": {
         "tls": {
@@ -6976,9 +7140,9 @@
           "peerCertSha256": "b2725aabcd1e6f9d97e5b8de748f0f21302696d17018238234d036ca682e8708"
         },
         "status": 200,
-        "elapsedMs": 141,
+        "elapsedMs": 62,
         "backendReady": true,
-        "databaseTime": "2026-11-20T10:44:00.406Z",
+        "databaseTime": "2026-11-20T11:53:39.960Z",
         "caps": 25,
         "release": {
           "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
@@ -6986,7 +7150,7 @@
         "contentType": "application/json; charset=utf-8",
         "cacheControl": null,
         "hsts": "max-age=31536000; includeSubDomains",
-        "checkedUtc": "2026-11-20T10:44:00.495361+00:00"
+        "checkedUtc": "2026-11-20T11:53:40.049806+00:00"
       }
     },
     "stagingReplicaInventory": {
@@ -10599,6 +10763,145 @@
         "browserExit": 0
       }
     },
+    "profileVideoScope": {
+      "before": {
+        "commitBeforeWorkingCopy": "43cdce1f515ed3a9508d75195f9e739173793ea0",
+        "newerUnrelatedPerSource": 5005,
+        "expectedPublicRows": 3,
+        "expectedOwnerRows": 4,
+        "runs": [
+          {
+            "scenario": "initialBrowse",
+            "responseItems": 200,
+            "jsonBytes": 185211,
+            "ms": 94,
+            "knownRowsInOrder": [],
+            "http": 200
+          },
+          {
+            "scenario": "readerByCanonical",
+            "responseItems": 0,
+            "jsonBytes": 12,
+            "ms": 250,
+            "knownRowsInOrder": [],
+            "http": 200
+          },
+          {
+            "scenario": "readerByLegacy",
+            "responseItems": 0,
+            "jsonBytes": 12,
+            "ms": 203,
+            "knownRowsInOrder": [],
+            "http": 200
+          },
+          {
+            "scenario": "ownerByCanonical",
+            "responseItems": 0,
+            "jsonBytes": 12,
+            "ms": 172,
+            "knownRowsInOrder": [],
+            "http": 200
+          },
+          {
+            "scenario": "firstPage",
+            "responseItems": 0,
+            "jsonBytes": 12,
+            "ms": 172,
+            "knownRowsInOrder": [],
+            "http": 200
+          },
+          {
+            "scenario": "secondPage",
+            "responseItems": 0,
+            "jsonBytes": 12,
+            "ms": 172,
+            "knownRowsInOrder": [],
+            "http": 200
+          }
+        ]
+      },
+      "after": {
+        "commitBeforeWorkingCopy": "43cdce1f515ed3a9508d75195f9e739173793ea0",
+        "newerUnrelatedPerSource": 5005,
+        "expectedPublicRows": 3,
+        "expectedOwnerRows": 4,
+        "runs": [
+          {
+            "scenario": "initialBrowse",
+            "responseItems": 200,
+            "jsonBytes": 185211,
+            "ms": 109,
+            "knownRowsInOrder": [],
+            "http": 200
+          },
+          {
+            "scenario": "readerByCanonical",
+            "responseItems": 3,
+            "jsonBytes": 2802,
+            "ms": 250,
+            "knownRowsInOrder": [
+              1,
+              2,
+              3
+            ],
+            "http": 200
+          },
+          {
+            "scenario": "readerByLegacy",
+            "responseItems": 3,
+            "jsonBytes": 2802,
+            "ms": 187,
+            "knownRowsInOrder": [
+              1,
+              2,
+              3
+            ],
+            "http": 200
+          },
+          {
+            "scenario": "ownerByCanonical",
+            "responseItems": 4,
+            "jsonBytes": 3702,
+            "ms": 188,
+            "knownRowsInOrder": [
+              1,
+              4,
+              2,
+              3
+            ],
+            "http": 200
+          },
+          {
+            "scenario": "firstPage",
+            "responseItems": 2,
+            "jsonBytes": 1859,
+            "ms": 156,
+            "knownRowsInOrder": [
+              1,
+              2
+            ],
+            "http": 200
+          },
+          {
+            "scenario": "secondPage",
+            "responseItems": 1,
+            "jsonBytes": 954,
+            "ms": 172,
+            "knownRowsInOrder": [
+              3
+            ],
+            "http": 200
+          }
+        ]
+      },
+      "contractTests": 9,
+      "web": {
+        "newerUnrelated": 240,
+        "shown": true,
+        "targetLinkCorrect": true
+      },
+      "testedTree": "b5ab85898d7bcf70942e86907a5b961f5dd1c325"
+    },
     "upstreamCurlAdvisories": {
       "checkedUtc": "2026-11-20T11:13:39.718135+00:00",
       "reference": "https://curl.se/docs/vuln-8.21.0.html",
@@ -10766,18 +11069,18 @@
       }
     },
     "latestObservedSteadyWindow": {
-      "checkedUtc": "2026-11-20T11:18:56.030643+00:00",
+      "checkedUtc": "2026-11-20T11:41:02.469576+00:00",
       "name": "steady-1795172159",
-      "sampleLines": 5,
+      "sampleLines": 7,
       "latest": {
-        "elapsedSeconds": 1359,
+        "elapsedSeconds": 2025,
         "latency": {
-          "count": 15,
-          "avgMs": 133.83,
-          "p50Ms": 106.78,
-          "p95Ms": 591.16,
-          "p99Ms": 591.16,
-          "maxMs": 591.16
+          "count": 5,
+          "avgMs": 53.95,
+          "p50Ms": 64.76,
+          "p95Ms": 73.9,
+          "p99Ms": 73.9,
+          "maxMs": 73.9
         },
         "wsDelivery": {
           "count": 0,
@@ -10788,145 +11091,6 @@
           "maxMs": 0
         }
       }
-    },
-    "profileVideoScope": {
-      "before": {
-        "commitBeforeWorkingCopy": "43cdce1f515ed3a9508d75195f9e739173793ea0",
-        "newerUnrelatedPerSource": 5005,
-        "expectedPublicRows": 3,
-        "expectedOwnerRows": 4,
-        "runs": [
-          {
-            "scenario": "initialBrowse",
-            "responseItems": 200,
-            "jsonBytes": 185211,
-            "ms": 94,
-            "knownRowsInOrder": [],
-            "http": 200
-          },
-          {
-            "scenario": "readerByCanonical",
-            "responseItems": 0,
-            "jsonBytes": 12,
-            "ms": 250,
-            "knownRowsInOrder": [],
-            "http": 200
-          },
-          {
-            "scenario": "readerByLegacy",
-            "responseItems": 0,
-            "jsonBytes": 12,
-            "ms": 203,
-            "knownRowsInOrder": [],
-            "http": 200
-          },
-          {
-            "scenario": "ownerByCanonical",
-            "responseItems": 0,
-            "jsonBytes": 12,
-            "ms": 172,
-            "knownRowsInOrder": [],
-            "http": 200
-          },
-          {
-            "scenario": "firstPage",
-            "responseItems": 0,
-            "jsonBytes": 12,
-            "ms": 172,
-            "knownRowsInOrder": [],
-            "http": 200
-          },
-          {
-            "scenario": "secondPage",
-            "responseItems": 0,
-            "jsonBytes": 12,
-            "ms": 172,
-            "knownRowsInOrder": [],
-            "http": 200
-          }
-        ]
-      },
-      "after": {
-        "commitBeforeWorkingCopy": "43cdce1f515ed3a9508d75195f9e739173793ea0",
-        "newerUnrelatedPerSource": 5005,
-        "expectedPublicRows": 3,
-        "expectedOwnerRows": 4,
-        "runs": [
-          {
-            "scenario": "initialBrowse",
-            "responseItems": 200,
-            "jsonBytes": 185211,
-            "ms": 109,
-            "knownRowsInOrder": [],
-            "http": 200
-          },
-          {
-            "scenario": "readerByCanonical",
-            "responseItems": 3,
-            "jsonBytes": 2802,
-            "ms": 250,
-            "knownRowsInOrder": [
-              1,
-              2,
-              3
-            ],
-            "http": 200
-          },
-          {
-            "scenario": "readerByLegacy",
-            "responseItems": 3,
-            "jsonBytes": 2802,
-            "ms": 187,
-            "knownRowsInOrder": [
-              1,
-              2,
-              3
-            ],
-            "http": 200
-          },
-          {
-            "scenario": "ownerByCanonical",
-            "responseItems": 4,
-            "jsonBytes": 3702,
-            "ms": 188,
-            "knownRowsInOrder": [
-              1,
-              4,
-              2,
-              3
-            ],
-            "http": 200
-          },
-          {
-            "scenario": "firstPage",
-            "responseItems": 2,
-            "jsonBytes": 1859,
-            "ms": 156,
-            "knownRowsInOrder": [
-              1,
-              2
-            ],
-            "http": 200
-          },
-          {
-            "scenario": "secondPage",
-            "responseItems": 1,
-            "jsonBytes": 954,
-            "ms": 172,
-            "knownRowsInOrder": [
-              3
-            ],
-            "http": 200
-          }
-        ]
-      },
-      "contractTests": 9,
-      "web": {
-        "newerUnrelated": 240,
-        "shown": true,
-        "targetLinkCorrect": true
-      },
-      "testedTree": "b5ab85898d7bcf70942e86907a5b961f5dd1c325"
     },
     "gitleaks": {
       "version": "v8.30.1",
@@ -11300,6 +11464,2637 @@
           "byRule": {},
           "findings": []
         }
+      }
+    },
+    "wslNativeFixedArrival": {
+      "environment": "Ubuntu 24.04 WSL2, PostgreSQL 16.15, Node 22.23.5, 1 API, 1 realtime, local delivery, all processes pinned to two logical CPUs, separate generator process on same cores, ten synthetic accounts and five receivers",
+      "stages": {
+        "smoke": {
+          "passed": true,
+          "actualDurationSeconds": 60,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 120,
+            "dispatched": 120,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 1
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 30,
+            "received": 30,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 120,
+            "total2xx": 120,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 4,
+          "operations": {
+            "feed": {
+              "attempted": 30,
+              "passed": 30,
+              "statuses": {
+                "200": 30
+              }
+            },
+            "profile": {
+              "attempted": 30,
+              "passed": 30,
+              "statuses": {
+                "200": 30
+              }
+            },
+            "message": {
+              "attempted": 30,
+              "passed": 30,
+              "statuses": {
+                "201": 30
+              }
+            },
+            "notifications": {
+              "attempted": 30,
+              "passed": 30,
+              "statuses": {
+                "200": 30
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 60,
+          "requestedRps": 2,
+          "availableMiBMin": 7004.0,
+          "peakRssMiB": {
+            "realtime": 74.6,
+            "api": 137.5
+          }
+        },
+        "moderate": {
+          "passed": true,
+          "actualDurationSeconds": 90,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 720,
+            "dispatched": 720,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 1
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 180,
+            "received": 180,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 720,
+            "total2xx": 720,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 6,
+          "operations": {
+            "feed": {
+              "attempted": 180,
+              "passed": 180,
+              "statuses": {
+                "200": 180
+              }
+            },
+            "profile": {
+              "attempted": 180,
+              "passed": 180,
+              "statuses": {
+                "200": 180
+              }
+            },
+            "message": {
+              "attempted": 180,
+              "passed": 180,
+              "statuses": {
+                "201": 180
+              }
+            },
+            "notifications": {
+              "attempted": 180,
+              "passed": 180,
+              "statuses": {
+                "200": 180
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 90,
+          "requestedRps": 8,
+          "availableMiBMin": 6992.6,
+          "peakRssMiB": {
+            "realtime": 79.2,
+            "api": 165.1
+          }
+        },
+        "higher": {
+          "passed": true,
+          "actualDurationSeconds": 90,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 1440,
+            "dispatched": 1440,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 2
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 360,
+            "received": 360,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 1440,
+            "total2xx": 1440,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 6,
+          "operations": {
+            "feed": {
+              "attempted": 360,
+              "passed": 360,
+              "statuses": {
+                "200": 360
+              }
+            },
+            "profile": {
+              "attempted": 360,
+              "passed": 360,
+              "statuses": {
+                "200": 360
+              }
+            },
+            "message": {
+              "attempted": 360,
+              "passed": 360,
+              "statuses": {
+                "201": 360
+              }
+            },
+            "notifications": {
+              "attempted": 360,
+              "passed": 360,
+              "statuses": {
+                "200": 360
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 90,
+          "requestedRps": 16,
+          "availableMiBMin": 6953.6,
+          "peakRssMiB": {
+            "realtime": 85.7,
+            "api": 167.0
+          }
+        },
+        "sustained": {
+          "passed": true,
+          "actualDurationSeconds": 1080,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 8640,
+            "dispatched": 8640,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 2
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 2160,
+            "received": 2160,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 8640,
+            "total2xx": 8640,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 72,
+          "operations": {
+            "feed": {
+              "attempted": 2160,
+              "passed": 2160,
+              "statuses": {
+                "200": 2160
+              }
+            },
+            "profile": {
+              "attempted": 2160,
+              "passed": 2160,
+              "statuses": {
+                "200": 2160
+              }
+            },
+            "message": {
+              "attempted": 2160,
+              "passed": 2160,
+              "statuses": {
+                "201": 2160
+              }
+            },
+            "notifications": {
+              "attempted": 2160,
+              "passed": 2160,
+              "statuses": {
+                "200": 2160
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 1080,
+          "requestedRps": 8,
+          "availableMiBMin": 6239.7,
+          "peakRssMiB": {
+            "realtime": 92.3,
+            "api": 170.6
+          }
+        }
+      },
+      "source": "a8c638f7cb9c8cb768a96ecf2eb21587887e7386"
+    },
+    "wslNativeMeasurementWindows": {
+      "smoke": {
+        "sampleCount": 4,
+        "sampleSha256": "8e7a4a9804df130e6e3588233129972457359bf4bd1f1934af80de6062a3f705",
+        "windowsMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 9.82,
+              "median": 10.55,
+              "max": 11.26
+            },
+            "p95Ms": {
+              "min": 32.38,
+              "median": 41.39,
+              "max": 46.98
+            },
+            "p99Ms": {
+              "min": 35.1,
+              "median": 50.28,
+              "max": 54.67
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 34.92,
+              "median": 39.19,
+              "max": 41.33
+            },
+            "p95Ms": {
+              "min": 40.33,
+              "median": 56.99,
+              "max": 58.87
+            },
+            "p99Ms": {
+              "min": 40.33,
+              "median": 56.99,
+              "max": 58.87
+            }
+          }
+        },
+        "apiDbPoolMaxWaiting": 0,
+        "apiEventLoopLagP95Ms": {
+          "min": 20.64,
+          "median": 20.7,
+          "max": 20.81
+        },
+        "runnerWindowRps": {
+          "min": 2,
+          "median": 2.0,
+          "max": 2.1
+        }
+      },
+      "moderate": {
+        "sampleCount": 6,
+        "sampleSha256": "72f8f56ff278234f2f3159ab11b6c92f23dc1fc56cfcf0883e259b880a4ac1b4",
+        "windowsMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 7.25,
+              "median": 7.95,
+              "max": 8.8
+            },
+            "p95Ms": {
+              "min": 26.98,
+              "median": 30.23,
+              "max": 34.34
+            },
+            "p99Ms": {
+              "min": 31.68,
+              "median": 34.7,
+              "max": 38.3
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 27.12,
+              "median": 29.2,
+              "max": 34.31
+            },
+            "p95Ms": {
+              "min": 34.03,
+              "median": 38.43,
+              "max": 44.35
+            },
+            "p99Ms": {
+              "min": 37.96,
+              "median": 45.05,
+              "max": 46.36
+            }
+          }
+        },
+        "apiDbPoolMaxWaiting": 0,
+        "apiEventLoopLagP95Ms": {
+          "min": 20.68,
+          "median": 20.73,
+          "max": 20.73
+        },
+        "runnerWindowRps": {
+          "min": 7.9,
+          "median": 8.0,
+          "max": 8.1
+        }
+      },
+      "higher": {
+        "sampleCount": 6,
+        "sampleSha256": "0b1be25ee7ac751b87040f0029e12605b1c6f68287847208b2e74188cedb026d",
+        "windowsMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 6.46,
+              "median": 6.96,
+              "max": 7.02
+            },
+            "p95Ms": {
+              "min": 27.31,
+              "median": 28.91,
+              "max": 32.75
+            },
+            "p99Ms": {
+              "min": 32.96,
+              "median": 35.64,
+              "max": 37.72
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 28.02,
+              "median": 29.04,
+              "max": 29.74
+            },
+            "p95Ms": {
+              "min": 36.9,
+              "median": 39.79,
+              "max": 40.66
+            },
+            "p99Ms": {
+              "min": 40.53,
+              "median": 49.0,
+              "max": 67.44
+            }
+          }
+        },
+        "apiDbPoolMaxWaiting": 0,
+        "apiEventLoopLagP95Ms": {
+          "min": 20.74,
+          "median": 20.78,
+          "max": 20.81
+        },
+        "runnerWindowRps": {
+          "min": 16,
+          "median": 16.0,
+          "max": 16.1
+        }
+      },
+      "sustained": {
+        "sampleCount": 72,
+        "sampleSha256": "6acc463aec75df63b826ede241c5f0a5b4507b7d8dce6b36a335067116b6e13d",
+        "windowsMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 4.28,
+              "median": 7.12,
+              "max": 9.62
+            },
+            "p95Ms": {
+              "min": 22.54,
+              "median": 31.94,
+              "max": 208.01
+            },
+            "p99Ms": {
+              "min": 25.51,
+              "median": 39.62,
+              "max": 381.09
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 21.99,
+              "median": 30.32,
+              "max": 48.26
+            },
+            "p95Ms": {
+              "min": 27.24,
+              "median": 43.44,
+              "max": 384.06
+            },
+            "p99Ms": {
+              "min": 28.67,
+              "median": 50.41,
+              "max": 588.39
+            }
+          }
+        },
+        "apiDbPoolMaxWaiting": 0,
+        "apiEventLoopLagP95Ms": {
+          "min": 20.76,
+          "median": 20.76,
+          "max": 20.81
+        },
+        "runnerWindowRps": {
+          "min": 7.9,
+          "median": 8.0,
+          "max": 8.1
+        }
+      }
+    },
+    "fourthPublication": {
+      "attempts": [
+        {
+          "state": "CANCELED",
+          "target": null,
+          "ref": "feature/live-gifts",
+          "sha": "bb331973387b5cf329afcdb7936f0f0855aad8cb"
+        },
+        {
+          "state": "CANCELED",
+          "target": "production",
+          "ref": "main",
+          "sha": "bb331973387b5cf329afcdb7936f0f0855aad8cb"
+        }
+      ],
+      "productionAliases": [
+        {
+          "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+          "state": "READY",
+          "target": "production"
+        },
+        {
+          "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+          "state": "READY",
+          "target": "production"
+        },
+        {
+          "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+          "state": "READY",
+          "target": "production"
+        }
+      ]
+    },
+    "semgrep": {
+      "source": "a8c638f7cb9c8cb768a96ecf2eb21587887e7386",
+      "scan": "Semgrep Community Edition",
+      "version": "1.186.0",
+      "ruleRepository": "https://github.com/semgrep/semgrep-rules.git",
+      "rulesCommit": "a5ad1714f00c9f7fde980cab0ea1d6dc6d414fd2",
+      "ruleDirectories": [
+        "javascript/express/security",
+        "javascript/lang/security",
+        "typescript/react/security",
+        "typescript/lang/security",
+        "kotlin/lang/security",
+        "java/android/security"
+      ],
+      "exit": 0,
+      "seconds": 329.7,
+      "checkedUtc": "2026-11-20T11:36:22.722888+00:00",
+      "pathsScanned": 1943,
+      "errorCategories": [
+        {
+          "type": "PartialParsing",
+          "path": "NoWing-web/src/__tests__/components/QrCodeTile.test.tsx"
+        },
+        {
+          "type": "PartialParsing",
+          "path": "NoWing-web/src/layout/AppLayout.tsx"
+        },
+        {
+          "type": "PartialParsing",
+          "path": "NoWing-web/src/pages/feed/FeedPage.tsx"
+        },
+        {
+          "type": "PartialParsing",
+          "path": "app/src/main/java/conectate/com/presentation/live/LiveSessionViewModel.kt"
+        }
+      ],
+      "findings": [
+        {
+          "rule": "javascript.lang.security.audit.unsafe-dynamic-method",
+          "path": "NoWing-web/src/__tests__/components/ChatAttachmentVisibility.test.tsx",
+          "line": 17,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "NoWing-web/src/__tests__/core/chatClipboard.test.ts",
+          "line": 45,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "NoWing-web/src/__tests__/core/chatClipboard.test.ts",
+          "line": 82,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "NoWing-web/src/features/realtime/RealtimeManager.ts",
+          "line": 308,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "NoWing-web/src/features/realtime/RealtimeManager.ts",
+          "line": 321,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "NoWing-web/src/features/realtime/RealtimeManager.ts",
+          "line": 387,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "NoWing-web/src/ml/enterprise/WebAIMLSystem.tsx",
+          "line": 546,
+          "severity": "INFO"
+        },
+        {
+          "rule": "kotlin.lang.security.gcm-detection",
+          "path": "app/src/main/java/conectate/com/core/security/EncryptionManager.kt",
+          "line": 50,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.detect-insecure-websocket",
+          "path": "app/src/main/java/conectate/com/data/localfallback/UbuntuRealtimeClient.kt",
+          "line": 208,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 815,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 816,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 816,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 816,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 817,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 830,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 833,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 833,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 841,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 846,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 1136,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.express.security.injection.tainted-sql-string",
+          "path": "infrastructure/local-fallback/api/src/algorithm-content-ingestion.js",
+          "line": 198,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.express.security.injection.tainted-sql-string",
+          "path": "infrastructure/local-fallback/api/src/algorithm-content-ingestion.js",
+          "line": 214,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
+          "path": "infrastructure/local-fallback/api/src/content-moderation.js",
+          "line": 21,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-all-csv.js",
+          "line": 111,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.sqli.node-postgres-sqli",
+          "path": "infrastructure/local-fallback/api/src/import-all-csv.js",
+          "line": 161,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.sqli.node-postgres-sqli",
+          "path": "infrastructure/local-fallback/api/src/import-all-csv.js",
+          "line": 162,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.sqli.node-postgres-sqli",
+          "path": "infrastructure/local-fallback/api/src/import-all-csv.js",
+          "line": 186,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-csv.js",
+          "line": 191,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 91,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 91,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 92,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 92,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 93,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 93,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 203,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 221,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 226,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 229,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 231,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 231,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 233,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-supabase-storage.js",
+          "line": 237,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.express.security.express-data-exfiltration",
+          "path": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+          "line": 563,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.express.security.injection.tainted-sql-string",
+          "path": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+          "line": 618,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.express.security.express-data-exfiltration",
+          "path": "infrastructure/local-fallback/api/src/live-draw-guess-routes.js",
+          "line": 855,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.detect-insecure-websocket",
+          "path": "infrastructure/local-fallback/api/src/livekit-admin.js",
+          "line": 5,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.express.security.injection.tainted-sql-string",
+          "path": "infrastructure/local-fallback/api/src/message-markers-routes.js",
+          "line": 245,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/moment-music-renderer.js",
+          "line": 150,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/moment-music-renderer.js",
+          "line": 155,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.detect-child-process",
+          "path": "infrastructure/local-fallback/api/src/moment-music-renderer.js",
+          "line": 194,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/moment-music-renderer.js",
+          "line": 232,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/moment-music-renderer.js",
+          "line": 232,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/moment-music-renderer.js",
+          "line": 263,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/music-routes.js",
+          "line": 349,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/music-routes.js",
+          "line": 359,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/music-routes.js",
+          "line": 406,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/music-routes.js",
+          "line": 434,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/music-routes.js",
+          "line": 438,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/music-routes.js",
+          "line": 445,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/music-routes.js",
+          "line": 454,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/password-reset-mailer.js",
+          "line": 31,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-content-share.js",
+          "line": 27,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-content-share.js",
+          "line": 43,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-content-share.js",
+          "line": 46,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 50,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 56,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 58,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 66,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 127,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 128,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 128,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 130,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 135,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 135,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 137,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 139,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 143,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 144,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 148,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/public-profile-share.js",
+          "line": 149,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.express.security.audit.express-check-csurf-middleware-usage",
+          "path": "infrastructure/local-fallback/api/src/server.js",
+          "line": 251,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-redos",
+          "path": "infrastructure/local-fallback/api/src/socialization-local-fallback-source.js",
+          "line": 158,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-redos",
+          "path": "infrastructure/local-fallback/api/src/socialization-safe-candidate-provider.js",
+          "line": 96,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.express.security.injection.tainted-sql-string",
+          "path": "infrastructure/local-fallback/api/src/storage-content-read.js",
+          "line": 64,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.express.security.injection.tainted-sql-string",
+          "path": "infrastructure/local-fallback/api/src/storage-content-read.js",
+          "line": 69,
+          "severity": "ERROR"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 256,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 260,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 260,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 260,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 267,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 335,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 348,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 354,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 354,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 360,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 400,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 443,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.express.security.audit.express-path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 443,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-reference-audit.js",
+          "line": 443,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 87,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 88,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 352,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 361,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 361,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 364,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 385,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 385,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 389,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 389,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 421,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 421,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 422,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 422,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 422,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 422,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 428,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 428,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 432,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 432,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 432,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 432,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 432,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 432,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 432,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 432,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 434,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 434,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 434,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 434,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 438,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 438,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 438,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 438,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 597,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 617,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 785,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 801,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 804,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 886,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 976,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 984,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1053,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1054,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1054,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1055,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1055,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1070,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1103,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1266,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-dynamic-method",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1352,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-dynamic-method",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1366,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-dynamic-method",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1420,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1422,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1425,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1433,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1433,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1436,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1436,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1438,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1489,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1490,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1490,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1506,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1513,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1553,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1553,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1553,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1554,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1554,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1554,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1572,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1572,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1572,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1572,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1610,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1610,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1610,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1610,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1761,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1823,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1823,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1823,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1933,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1933,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1933,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1993,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1993,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1993,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 1993,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2012,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2012,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2012,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2012,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2078,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2121,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2149,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2164,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/storage-routes.js",
+          "line": 2192,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 39,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 47,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 48,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 50,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 51,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 51,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 55,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 55,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 55,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 64,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 64,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 65,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 71,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.html-in-template-string",
+          "path": "infrastructure/local-fallback/api/src/surveys/exports.js",
+          "line": 71,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.express.security.audit.express-check-csurf-middleware-usage",
+          "path": "infrastructure/local-fallback/realtime-gateway/src/server.js",
+          "line": 54,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.express.security.cors-misconfiguration",
+          "path": "signaling-server/index.js",
+          "line": 226,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 569,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 958,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 980,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 993,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1006,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1020,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1040,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1061,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1080,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1235,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1308,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1358,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1665,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 1852,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 2144,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 2165,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 2282,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 2299,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 2409,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 2675,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 2741,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 3238,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 3629,
+          "severity": "INFO"
+        },
+        {
+          "rule": "javascript.lang.security.audit.unsafe-formatstring",
+          "path": "signaling-server/index.js",
+          "line": 3718,
+          "severity": "INFO"
+        }
+      ],
+      "reviewedExamples": {
+        "encryption": "IV generated by Android Keystore/provider during encryption and recovered from ciphertext during decryption",
+        "importCsv": "quoted table/column names and bound CSV values; transaction integrity defect separately confirmed and corrected",
+        "algorithmIngestion": "literal list of columns compared with schema and bound LIMIT",
+        "signalingCors": "request origin checked against the configured allowlist; startup disallows wildcard under the production setting",
+        "otherMatches": "pending individual triage"
+      }
+    },
+    "semgrepFinalDelta": {
+      "source": "e14c7cc66aa23aa738a04e976e15807978912bb9",
+      "version": "1.186.0",
+      "rulesCommit": "a5ad1714f00c9f7fde980cab0ea1d6dc6d414fd2",
+      "ruleDirectories": [
+        "javascript/express/security",
+        "javascript/lang/security",
+        "bash"
+      ],
+      "exit": 0,
+      "paths": [
+        "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+        "infrastructure/local-fallback/api/src/import-all-csv.js",
+        "infrastructure/local-fallback/api/src/moments-routes.js",
+        "infrastructure/local-fallback/scripts/restore-drill.sh"
+      ],
+      "errors": [],
+      "findings": [
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 816,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 817,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 817,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 817,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 819,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 832,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 835,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 835,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 843,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 848,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.path-traversal.path-join-resolve-traversal",
+          "path": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
+          "line": 1138,
+          "severity": "WARNING"
+        },
+        {
+          "rule": "javascript.lang.security.audit.detect-non-literal-fs-filename",
+          "path": "infrastructure/local-fallback/api/src/import-all-csv.js",
+          "line": 112,
+          "severity": "WARNING"
+        }
+      ]
+    },
+    "gitleaksFinalRange": {
+      "from": "a8c638f7cb9c8cb768a96ecf2eb21587887e7386",
+      "to": "e14c7cc66aa23aa738a04e976e15807978912bb9",
+      "exit": 0,
+      "count": 0,
+      "items": []
+    },
+    "concurrentRestoreDrills": {
+      "engine": "PostgreSQL 16.15 Ubuntu WSL2",
+      "transport": "docker compose exec substituted by local postgres client dispatch in the private cluster",
+      "tests": {
+        "concurrentRestores": [
+          {
+            "exit": 0,
+            "verified": true,
+            "tables": 1,
+            "database": "conectate_restore_drill_20261120113746_7216"
+          },
+          {
+            "exit": 0,
+            "verified": true,
+            "tables": 1,
+            "database": "conectate_restore_drill_20261120113746_7217"
+          }
+        ],
+        "truncatedTestCopy": {
+          "exit": 1,
+          "verified": false,
+          "tables": 0,
+          "database": "conectate_restore_drill_20261120113746_7258"
+        },
+        "remainingScratchDatabases": 0,
+        "sourceRowsAfterDrills": 3
+      },
+      "scriptSha256": "c381420dbfe2f4382ba1007426dc9259a0b106ddbcae0d105200d30c20afd358"
+    },
+    "transactionalCsvImport": {
+      "before": {
+        "badCsv": {
+          "exit": 1,
+          "ms": 297,
+          "sqlState": "22021"
+        },
+        "rawAfterBad": "first",
+        "goodCsv": {
+          "exit": 0,
+          "ms": 719,
+          "sqlState": null
+        },
+        "validCsvRows": 800,
+        "failedProfileImport": {
+          "exit": 1,
+          "ms": 282,
+          "sqlState": "23514"
+        },
+        "profileTableRetained": false,
+        "canonicalRowsAfterFailure": 1,
+        "successfulProfileRetry": {
+          "exit": 0,
+          "ms": 328,
+          "sqlState": null
+        },
+        "canonicalRowsAfterRetry": 2,
+        "stagingTablesAfter": 0
+      },
+      "after": {
+        "badCsv": {
+          "exit": 1,
+          "ms": 313,
+          "sqlState": "22021"
+        },
+        "rawAfterBad": "previous",
+        "goodCsv": {
+          "exit": 0,
+          "ms": 562,
+          "sqlState": null
+        },
+        "validCsvRows": 800,
+        "failedProfileImport": {
+          "exit": 1,
+          "ms": 282,
+          "sqlState": "23514"
+        },
+        "profileTableRetained": true,
+        "canonicalRowsAfterFailure": 0,
+        "successfulProfileRetry": {
+          "exit": 0,
+          "ms": 406,
+          "sqlState": null
+        },
+        "canonicalRowsAfterRetry": 2,
+        "stagingTablesAfter": 0
+      }
+    },
+    "scannedMediaCleanup": {
+      "initial": {
+        "mode": "before",
+        "sourceBeforeEdits": "d6a2e390df7fc0eca447eea26ceee037471ee924",
+        "environment": "disposable PostgreSQL with ordinary HTTP sessions and synthetic storage fixtures",
+        "music": [
+          {
+            "scanned": false,
+            "http": 200,
+            "removed": true,
+            "catalogRows": 0,
+            "blobRemaining": false
+          },
+          {
+            "scanned": true,
+            "http": 200,
+            "removed": true,
+            "catalogRows": 0,
+            "blobRemaining": true
+          }
+        ],
+        "admin": {
+          "http": 500,
+          "success": null,
+          "code": "INTERNAL_ERROR",
+          "resolvedMedia": null,
+          "blobRemaining": true,
+          "targetRows": 1,
+          "operatorRows": 1
+        }
+      },
+      "qualified": {
+        "mode": "after",
+        "sourceBeforeEdits": "d6a2e390df7fc0eca447eea26ceee037471ee924",
+        "environment": "disposable PostgreSQL with ordinary HTTP sessions and synthetic storage fixtures",
+        "music": [
+          {
+            "scanned": false,
+            "http": 200,
+            "removed": true,
+            "catalogRows": 0,
+            "blobRemaining": false
+          },
+          {
+            "scanned": true,
+            "http": 200,
+            "removed": true,
+            "catalogRows": 0,
+            "blobRemaining": false
+          }
+        ],
+        "admin": {
+          "http": 200,
+          "success": true,
+          "code": null,
+          "resolvedMedia": 1,
+          "blobRemaining": false,
+          "targetRows": 0,
+          "operatorRows": 1
+        }
+      },
+      "initialDatabase": "PostgreSQL 17, initial fixture without operation 16 rolled back the administrative deletion",
+      "qualifiedDatabase": "PostgreSQL 16.9 with runtime role and official import/storage operations 10, 15, 16, 20 and 22",
+      "adminFixtureBefore": "HARD_DELETE_STORAGE_PATH_OUTSIDE_ROOT for a regular clean revision",
+      "rollbackUnitRestoredOriginalBytes": true,
+      "unrelatedLogicalFilePreserved": true
+    },
+    "finalBackendBusinessRegression": {
+      "source": "e14c7cc66aa23aa738a04e976e15807978912bb9",
+      "entryFiles": 18,
+      "tests": 81,
+      "passed": 81,
+      "failed": 0,
+      "skipped": 0,
+      "csvPostgresTestPassed": true,
+      "restoreLinuxFourModesPassed": true,
+      "webTreeUnchanged": true
+    },
+    "privateStageDisposition": {
+      "name": "novvin-astra224-stage",
+      "before": "running",
+      "after": "poweroff",
+      "mode": "ACPI guest shutdown, retained disks and evidence",
+      "utc": "2026-11-20T11:47:20.349780+00:00"
+    },
+    "csvHeaderRoundTrip": {
+      "before": {
+        "duplicates": {
+          "exit": 0,
+          "columns": [
+            "name",
+            "name_2"
+          ],
+          "values": [
+            {
+              "name": "right",
+              "name_2": "right"
+            }
+          ]
+        },
+        "collisions": {
+          "exit": 1
+        },
+        "quotedLine": {
+          "exit": 1
+        },
+        "headerOnly": {
+          "exit": 0,
+          "columns": [
+            "age",
+            "level"
+          ],
+          "values": []
+        }
+      },
+      "after": {
+        "duplicates": {
+          "exit": 0,
+          "columns": [
+            "name",
+            "name_2"
+          ],
+          "values": [
+            {
+              "name": "left",
+              "name_2": "right"
+            }
+          ]
+        },
+        "collisions": {
+          "exit": 0,
+          "columns": [
+            "name",
+            "name_2",
+            "name_2_2"
+          ],
+          "values": [
+            {
+              "name": "one",
+              "name_2": "two",
+              "name_2_2": "three"
+            }
+          ]
+        },
+        "quotedLine": {
+          "exit": 0,
+          "columns": [
+            "display_name",
+            "score"
+          ],
+          "values": [
+            {
+              "score": "7",
+              "display_name": "Ada"
+            }
+          ]
+        },
+        "headerOnly": {
+          "exit": 0,
+          "columns": [
+            "age",
+            "level"
+          ],
+          "values": []
+        }
+      }
+    },
+    "wslMultiFixedArrival": {
+      "environment": "WSL2 Ubuntu 24.04, 2 API and 2 realtime, round-robin calls and recipient gateways, PostgreSQL 16.15, Ubuntu Redis 7.0.15, two CPU affinity shared with local generator, loopback, ordinary quotas",
+      "stages": {
+        "smoke": {
+          "passed": true,
+          "actualDurationSeconds": 45,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 180,
+            "dispatched": 180,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 1
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 45,
+            "received": 45,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 180,
+            "total2xx": 180,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 3,
+          "operations": {
+            "feed": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            },
+            "profile": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            },
+            "message": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "201": 45
+              }
+            },
+            "notifications": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 45,
+          "requestedRps": 4,
+          "availableMiBMin": 6850.1,
+          "peakRssMiB": {
+            "realtime1": 75.4,
+            "realtime2": 75.2,
+            "api1": 137.0,
+            "api2": 159.0
+          }
+        },
+        "sustained": {
+          "passed": true,
+          "actualDurationSeconds": 360,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 2880,
+            "dispatched": 2880,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 1
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 720,
+            "received": 720,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 2880,
+            "total2xx": 2880,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 24,
+          "operations": {
+            "feed": {
+              "attempted": 720,
+              "passed": 720,
+              "statuses": {
+                "200": 720
+              }
+            },
+            "profile": {
+              "attempted": 720,
+              "passed": 720,
+              "statuses": {
+                "200": 720
+              }
+            },
+            "message": {
+              "attempted": 720,
+              "passed": 720,
+              "statuses": {
+                "201": 720
+              }
+            },
+            "notifications": {
+              "attempted": 720,
+              "passed": 720,
+              "statuses": {
+                "200": 720
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 360,
+          "requestedRps": 8,
+          "availableMiBMin": 6083.9,
+          "peakRssMiB": {
+            "realtime1": 81.9,
+            "realtime2": 87.8,
+            "api1": 166.3,
+            "api2": 165.9
+          }
+        }
+      },
+      "source": "71761c0d4464d5c739534cbee1a7cec3fff719a1",
+      "redisStreamEntries": 1540
+    },
+    "wslMultiMeasurementWindows": {
+      "smoke": {
+        "windows": 3,
+        "sha256": "1aa7372f2cfbfd45166a86356bd4cf07de794eac1911339833d198bba1f017a6",
+        "windowLatencyMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 9.48,
+              "median": 9.96,
+              "max": 11.19
+            },
+            "p95Ms": {
+              "min": 26.15,
+              "median": 30.4,
+              "max": 35.2
+            },
+            "p99Ms": {
+              "min": 28.24,
+              "median": 36.56,
+              "max": 52.19
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 27.39,
+              "median": 32.71,
+              "max": 34.56
+            },
+            "p95Ms": {
+              "min": 37.27,
+              "median": 45.51,
+              "max": 110.17
+            },
+            "p99Ms": {
+              "min": 37.27,
+              "median": 45.51,
+              "max": 110.17
+            }
+          }
+        },
+        "api": [
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 78,
+            "lastTotalRequests": 140
+          },
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 36,
+            "lastTotalRequests": 98
+          }
+        ],
+        "realtime": [
+          {
+            "messagesDelivered": 56,
+            "streamEventsPublished": 54,
+            "streamEventsReceived": 45,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          },
+          {
+            "messagesDelivered": 34,
+            "streamEventsPublished": 46,
+            "streamEventsReceived": 54,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          }
+        ]
+      },
+      "sustained": {
+        "windows": 24,
+        "sha256": "b84086aabae174feb74b4f1e75f408a147d107e565cfb6abcdeb59fd7f7cf680",
+        "windowLatencyMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 6.78,
+              "median": 7.62,
+              "max": 9.73
+            },
+            "p95Ms": {
+              "min": 22.74,
+              "median": 26.62,
+              "max": 33.76
+            },
+            "p99Ms": {
+              "min": 26.01,
+              "median": 30.59,
+              "max": 70.11
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 25.11,
+              "median": 27.66,
+              "max": 30.54
+            },
+            "p95Ms": {
+              "min": 30.26,
+              "median": 34.86,
+              "max": 73.24
+            },
+            "p99Ms": {
+              "min": 32,
+              "median": 43.66,
+              "max": 84.7
+            }
+          }
+        },
+        "api": [
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 228,
+            "lastTotalRequests": 1661
+          },
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 164,
+            "lastTotalRequests": 1587
+          }
+        ],
+        "realtime": [
+          {
+            "messagesDelivered": 956,
+            "streamEventsPublished": 774,
+            "streamEventsReceived": 766,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          },
+          {
+            "messagesDelivered": 574,
+            "streamEventsPublished": 766,
+            "streamEventsReceived": 774,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          }
+        ]
       }
     }
   },

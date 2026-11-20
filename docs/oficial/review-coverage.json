@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T11:28:40.212717+00:00",
-  "baseCommit": "a8c638f7cb9c8cb768a96ecf2eb21587887e7386",
+  "generatedAtUtc": "2026-11-20T11:54:33.279213+00:00",
+  "baseCommit": "e14c7cc66aa23aa738a04e976e15807978912bb9",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3439,
-    "partial": 266,
-    "code-read": 1038
+    "pending": 3436,
+    "partial": 271,
+    "code-read": 1039
   },
   "countsByPhase": {
     "android": {
       "pending": 1403,
-      "partial": 123,
-      "code-read": 613
+      "partial": 124,
+      "code-read": 612
     },
     "documentation": {
       "pending": 692,
@@ -26,9 +26,9 @@
       "partial": 20
     },
     "server": {
-      "pending": 736,
-      "code-read": 195,
-      "partial": 35
+      "pending": 733,
+      "code-read": 197,
+      "partial": 39
     },
     "tooling-and-other": {
       "pending": 135,
@@ -6832,8 +6832,8 @@
       "file": "app/src/main/java/conectate/com/core/security/EncryptionManager.kt",
       "phase": "android",
       "gitBlobId": "8ba911b946f4fbb420b31f967726b2ee654a4492",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22269,7 +22269,7 @@
     {
       "file": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "phase": "documentation",
-      "gitBlobId": "ea36aa4b566b767ca86d48ce7c864dd6d2df6810",
+      "gitBlobId": "3bf8b4265994862149898d19a92f1b2273166216",
       "reviewStatus": "pending"
     },
     {
@@ -23149,7 +23149,7 @@
     {
       "file": "docs/oficial/evidencias/224-certificacion-independiente.json",
       "phase": "documentation",
-      "gitBlobId": "30825a912e968c23348aeef4741fb957fe0e66fd",
+      "gitBlobId": "c66a9b772775431e37a237e2123684922e666630",
       "reviewStatus": "pending"
     },
     {
@@ -24595,9 +24595,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
       "phase": "server",
-      "gitBlobId": "4bad268b27ab4e08f1d8111ce17b2a4271ee8ee6",
+      "gitBlobId": "1f5f5c4f6cff5b3c537c9a0c764a3f73a99c49c7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24618,7 +24618,9 @@
       "file": "infrastructure/local-fallback/api/src/algorithm-content-ingestion.js",
       "phase": "server",
       "gitBlobId": "3ef6e2a288a7d4f3ab43b5695d513b950b997c5c",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/algorithm-imported-video-candidates.js",
@@ -24983,8 +24985,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/import-all-csv.js",
       "phase": "server",
-      "gitBlobId": "2e137f458d7b049f2faaa6b2d3419616e66ac47a",
-      "reviewStatus": "pending"
+      "gitBlobId": "aabb8c018bdee219ad4d62f2599c5b512aff0ce6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/import-csv.js",
@@ -25205,9 +25209,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/moments-routes.js",
       "phase": "server",
-      "gitBlobId": "f7cd4bb42461dad975b3aafb798c5f9f65f3d3c0",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "gitBlobId": "110b07788f618d1085cd76e79e92e6e2fce92149",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25228,8 +25232,8 @@
       "file": "infrastructure/local-fallback/api/src/music-routes.js",
       "phase": "server",
       "gitBlobId": "790bd1747fcc9e1c1e576ff08b30d4b0754a7fa8",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25624,8 +25628,8 @@
       "file": "infrastructure/local-fallback/api/src/storage-content-read.js",
       "phase": "server",
       "gitBlobId": "29d0c0c96d396bacc8aca1a00cfc15049b1f887f",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25734,8 +25738,8 @@
       "file": "infrastructure/local-fallback/api/src/storage-scan-coordinator.js",
       "phase": "server",
       "gitBlobId": "6646a7029ba2460ca7ed7aeb61bba79426444a2d",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25923,9 +25927,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/admin-moderation-routes.test.js",
       "phase": "server",
-      "gitBlobId": "038c254a641d797a1f67606f74c8fb6004575043",
+      "gitBlobId": "6b4d3bb6816dafe152cae8df8881737a5a89dd9c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/115-tiempo-real-y-cancelacion-amistades-2026-11-12.md",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26251,6 +26255,14 @@
       "phase": "server",
       "gitBlobId": "8e563fd64c4531cfa9d386701738ede116473af7",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/csv-import-atomic.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "163637c44e1c10aa9f050bca6a1746c7129474f5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/csv-import-compatibility.test.js",
@@ -26725,6 +26737,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/moment-rendered-storage-cleanup.test.js",
+      "phase": "server",
+      "gitBlobId": "c95b3f0a499738080606de7dc8673cfe5afd6632",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/moment-timestamp-contract.test.js",
       "phase": "server",
       "gitBlobId": "c0c6e83bc09aa59a154a9325b4fc047e7ec8860d",
@@ -27181,6 +27201,14 @@
       "phase": "server",
       "gitBlobId": "d51ad284fbb1cc5037850994e9c9f3f7686ddf19",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/restore-drill-ownership.test.js",
+      "phase": "server",
+      "gitBlobId": "3b08f8b3875b460d94f0ce2fe574763bf08c4da2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/retired-notifications.test.js",
@@ -28268,15 +28296,17 @@
       "file": "infrastructure/local-fallback/scripts/restore-drill-isolated.sh",
       "phase": "server",
       "gitBlobId": "8edf361ce49f1b77a9265a5f64068218cac0ae8e",
-      "reviewStatus": "partial",
+      "reviewStatus": "code-read",
       "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/restore-drill.sh",
       "phase": "server",
-      "gitBlobId": "79720b9dbd94336aa42f5a1ff7d77596aaa19acd",
-      "reviewStatus": "pending"
+      "gitBlobId": "a9cd191e3fbd9e89e18c41671406891443ff4078",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/run-playmatch-catalog-sync.sh",
