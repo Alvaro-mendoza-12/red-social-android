@@ -272,7 +272,7 @@ function createDistributedLiveState(redisClient, options = {}) {
             const normalizedLiveId = cleanString(liveId, 128);
             if (!normalizedLiveId) return false;
             await Promise.all([
-                redisClient.del(stateKey(normalizedLiveId), leaseKey(normalizedLiveId)),
+                redisClient.del([stateKey(normalizedLiveId), leaseKey(normalizedLiveId)]),
                 redisClient.sRem(activeKey, normalizedLiveId),
                 redisClient.zRem(deadlinesKey, normalizedLiveId)
             ]);

@@ -35,3 +35,30 @@ test('Redis enforces Live host lease contention atomically', { skip: !redisUrl }
     assert.equal(await storeA.releaseHostLease('live-1', 'instance-a:socket-a'), false);
     assert.equal(await storeB.releaseHostLease('live-1', 'instance-b:socket-b'), true);
 });
+
+test('ending a Live releases its host lease and clears only that Live', { skip: !redisUrl }, async (t) => {
+    const client = createClient({ url: redisUrl });
+    await client.connect();
+    const prefix = `novvin:test:live:${crypto.randomUUID()}:`;
+    t.after(async () => {
+        try {
+            const keys = await client.keys(`${prefix}*`);
+            if (keys.length) await client.del(keys);
+        } finally {
+            await client.quit();
+        }
+    });
+    const store = createDistributedLiveState(client, { env: { SIGNALING_LIVE_STATE_PREFIX: prefix } });
+    await store.save('ending', { host: { userId: 'host' } });
+    await store.renewHostLease('ending', 'first-owner');
+    await store.renewHostLease('ongoing', 'other-owner');
+    await store.scheduleHostDeadline('ending', Date.now() + 10_000);
+
+    assert.equal(await store.remove('ending'), true);
+    assert.equal(await store.load('ending'), null);
+    assert.deepEqual(await store.listActiveIds(), []);
+    assert.equal(await store.hostDeadline('ending'), null);
+    assert.equal(await store.hasHostLease('ending'), false);
+    assert.equal(await store.hasHostLease('ongoing'), true);
+    assert.equal(await store.renewHostLease('ending', 'next-owner'), true);
+});

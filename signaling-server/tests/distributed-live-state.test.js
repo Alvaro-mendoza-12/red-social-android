@@ -92,7 +92,7 @@ function createLeaseRedisFixture() {
         sAdd: async () => 1,
         sMembers: async () => [],
         sRem: async () => 1,
-        del: async (...keys) => keys.reduce((count, key) => count + (values.delete(key) ? 1 : 0), 0),
+        del: async (keys) => [keys].flat().reduce((count, key) => count + Number(values.delete(key)), 0),
         exists: async (key) => values.has(key) ? 1 : 0,
         zAdd: async () => 1,
         zRem: async () => 1,
@@ -163,6 +163,9 @@ test('persists snapshots and active membership through the Redis contract', asyn
     assert.equal(await store.hostDeadline('live-1'), 1234);
     assert.deepEqual(await store.dueHostDeadlines(1234), ['live-1']);
     assert.equal(await store.remove('live-1'), true);
+    assert.deepEqual(calls.find(([name]) => name === 'del'), [
+        'del', ['novvin:signaling:live:state:live-1', 'novvin:signaling:live:host-lease:live-1']
+    ]);
     assert.ok(calls.some(([name]) => name === 'set'));
     assert.ok(calls.some(([name]) => name === 'sAdd'));
 });

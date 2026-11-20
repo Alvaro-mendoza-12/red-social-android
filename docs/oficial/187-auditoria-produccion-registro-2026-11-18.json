@@ -479,6 +479,15 @@
       "evidenceReport": "211",
       "evidenceKind": "http-real-postgres-local",
       "status": "fixed-server-validated-locally-deployment-and-device-pending"
+    },
+    {
+      "id": "N032",
+      "severity": "medium",
+      "description": "El cierre de un directo conservaba la reserva Redis del anfitrión hasta su vencimiento",
+      "published": true,
+      "evidenceReport": "216",
+      "evidenceKind": "real-redis-7.4.8-local",
+      "status": "fixed-server-validated-locally-deployment-and-device-pending"
     }
   ],
   "release": {
@@ -820,15 +829,22 @@
       "offline": true,
       "physicalDevice": false,
       "distributed": false
+    },
+    {
+      "kind": "live-lease-removal-and-aof-restart",
+      "path": "2026-11-19-audit214/redis-lab",
+      "redisVersion": "7.4.8",
+      "restart": "orderly-local",
+      "deployed": false
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
     "high": 20,
-    "medium": 11,
+    "medium": 12,
     "low": 0,
-    "total": 31
+    "total": 32
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",

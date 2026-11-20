@@ -14,7 +14,7 @@ El 19 de noviembre el propietario confirmó que Alvaro Mendoza Marín es el resp
 
 ## Hallazgos de esta continuación
 
-El registro reúne 31 familias en esta continuación, con 0 críticas, 20 altas, 11 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
+El registro reúne 32 familias en esta continuación, con 0 críticas, 20 altas, 12 medias y 0 bajas. N001–N009 quedaron publicados con188/189. N010/N011 se corrigen en [191](191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md), con incorporación efectiva y migración del contrato heredado todavía pendientes. Esto no demuestra ausencia de problemas críticos en los módulos pendientes.
 
 | ID | Gravedad | Hallazgo | Corrección/evidencia |
 | --- | --- | --- | --- |
@@ -36,7 +36,7 @@ El registro reúne 31 familias en esta continuación, con 0 críticas, 20 altas,
 | N016 | Media | Las contraseñas de acceso y registro se guardan en el estado restaurable de Compose | [195](195-restauracion-del-registro-en-android-2026-11-18.md): contraseñas en memoria de la composición |
 | N017 | Alta | La ruta de alta crea cuentas antes de comprobar la elegibilidad por edad | [195](195-restauracion-del-registro-en-android-2026-11-18.md): documentado; migración de Android, web y otros flujos pendiente |
 | N018 | Alta | El servidor interpreta «Nadie» como «Todos» al leer y guardar secciones del perfil | [196](196-privacidad-de-secciones-del-perfil-2026-11-18.md): mantiene el ajuste privado; despliegue pendiente |
-| N019 | Alta | El perfil compartido entrega el año de nacimiento donde solo se muestra el día y mes | [196](196-privacidad-de-secciones-del-perfil-2026-11-18.md): documentado; migración de la respuesta y sus consumidores pendiente |
+| N019 | Alta | El perfil compartido entrega el año de nacimiento donde solo se muestra el día y mes | [196](196-privacidad-de-secciones-del-perfil-2026-11-18.md): documentado; [215](215-cumpleanos-sin-ano-en-perfiles-web-2026-11-19.md) incorpora el formato sin año en la web. Restan la respuesta del servidor y clientes anteriores |
 | N020 | Media | El verificador de firmas del AAB fallaba al leer la salida de Java en Windows en español | [197](197-verificacion-de-firmas-android-en-windows-2026-11-18.md): localización y lectura robusta; APK y AAB de 193 verificados para firma |
 | N021 | Alta | Los avisos de cumpleaños omiten los bloqueos entre amistades | [198](198-bloqueos-y-avisos-de-cumpleanos-2026-11-18.md): aplica los bloqueos en ambos sentidos antes de reservar la entrega; despliegue pendiente |
 | N022 | Media | El arranque en frío de Android 183 fue más lento que 182 en ambas rondas | [201](201-validacion-android-183-acceso-y-arranque-2026-11-18.md): medido en emulador; atribución y contraste físico pendientes |
@@ -49,6 +49,7 @@ El registro reúne 31 familias en esta continuación, con 0 críticas, 20 altas,
 | N029 | Alta | Android mostraba el cumpleaños de un perfil ajeno marcado con la opción privada heredada nadie | [207](207-privacidad-y-formato-de-cumpleanos-2026-11-19.md) protege la pantalla y admite día y mes. La proyección de N019 sigue abierta |
 | N030 | Media | La ficha del feed cambiaba de altura tras decodificar una foto o pasar de página en la galería | [209](209-altura-estable-de-fotos-en-el-feed-2026-11-19.md) reserva el espacio al medir la ficha. Regresión comprobada con Compose |
 | N031 | Alta | Dos sesiones de una cuenta podían aceptar la misma llamada y una respuesta tardía podía cerrarla | [211](211-aceptacion-de-llamadas-por-sesion-2026-11-19.md) vincula la respuesta a la sesión ganadora. Faltan distribución y prueba física |
+| N032 | Media | El cierre de un directo conservaba la reserva Redis del anfitrión hasta su vencimiento | [216](216-liberacion-del-anfitrion-en-redis-2026-11-19.md) verifica el cierre, otro directo en paralelo y la asignación inmediata en Redis 7.4.8 local. Activación pendiente |
 
 Las correcciones tienen evidencia controlada, recibos Gradle y publicación propia. La incorporación efectiva y las pruebas físicas se registran por separado. El registro no usa estos hallazgos para cerrar el monedero completo.
 

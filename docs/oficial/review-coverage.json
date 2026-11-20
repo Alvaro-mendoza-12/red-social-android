@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T00:15:17.716688+00:00",
-  "baseCommit": "e834b6dee9637bbc789e6fde4d5602208dd7def1",
+  "generatedAtUtc": "2026-11-20T00:15:44.486991+00:00",
+  "baseCommit": "867af868bfd894f5ec52538e69a6efc1ecb39f5d",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3599,
-    "partial": 266,
-    "code-read": 842
+    "pending": 3597,
+    "partial": 268,
+    "code-read": 843
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 588
     },
     "documentation": {
-      "pending": 690,
+      "pending": 691,
       "code-read": 61,
       "partial": 20
     },
@@ -31,9 +31,9 @@
       "partial": 36
     },
     "tooling-and-other": {
-      "pending": 149,
-      "partial": 11,
-      "code-read": 19
+      "pending": 146,
+      "partial": 13,
+      "code-read": 20
     },
     "web": {
       "partial": 81,
@@ -21923,13 +21923,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "a67eb9b95dc47a53425a766c049a15cadc594cc3",
+      "gitBlobId": "e2880783321996723012777037a3181d7ce64899",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "81fb7704aa1d233ad7c414cd4fdb3c58e98a18c2",
+      "gitBlobId": "5c17b1efd1324236705531b40a6625456709e08b",
       "reviewStatus": "pending"
     },
     {
@@ -22086,6 +22086,12 @@
       "file": "docs/oficial/215-cumpleanos-sin-ano-en-perfiles-web-2026-11-19.md",
       "phase": "documentation",
       "gitBlobId": "7b547be0ce9d603e40b81bd72fb641a2da36ae36",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/216-liberacion-del-anfitrion-en-redis-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "6e20031dd23309656aed780155aa043d025921e2",
       "reviewStatus": "pending"
     },
     {
@@ -28475,8 +28481,10 @@
     {
       "file": "signaling-server/distributed-live-state.js",
       "phase": "tooling-and-other",
-      "gitBlobId": "cec38cae4866b52d316882d634c277895e21068b",
-      "reviewStatus": "pending"
+      "gitBlobId": "b7b1a23d105cc2c484f36dd3434007e404cc3060",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/216-liberacion-del-anfitrion-en-redis-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/distributed-scope.js",
@@ -28579,14 +28587,18 @@
     {
       "file": "signaling-server/tests/distributed-live-state.redis.integration.test.js",
       "phase": "tooling-and-other",
-      "gitBlobId": "d14f8b8a7de35b65978f0c2efd3215f8f253b8d3",
-      "reviewStatus": "pending"
+      "gitBlobId": "1d6845d1f412df32e67a5974b94f24db92584926",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/216-liberacion-del-anfitrion-en-redis-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/tests/distributed-live-state.test.js",
       "phase": "tooling-and-other",
-      "gitBlobId": "13d7228ffdc77cdea1d6b6ce4b253d0de9f546c0",
-      "reviewStatus": "pending"
+      "gitBlobId": "905825b10dfc73e816887094ac6ee41e470e1887",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/216-liberacion-del-anfitrion-en-redis-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/tests/distributed-scope.test.js",
