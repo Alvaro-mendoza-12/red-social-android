@@ -401,7 +401,7 @@ services:
   # Se activa explícitamente con:
   #   docker compose --profile turn up -d coturn
   coturn:
-    image: coturn/coturn:4.6.3-r3
+    image: coturn/coturn:4.19.2-r0-alpine@sha256:974824bdefa8759b7aa4508daf5066fdd9f5411e925055b6132fb2904aecca01
     container_name: conectate-local-fallback-coturn-main
     restart: unless-stopped
     profiles: ["turn"]
@@ -419,9 +419,8 @@ services:
       - --static-auth-secret=${TURN_SECRET:?TURN_SECRET is required when the turn profile is enabled}
       - --fingerprint
       - --no-multicast-peers
-      - --no-cli
+      # In 4.19, the CLI and DTLS listeners are disabled by default.
       - --no-tls
-      - --no-dtls
       - --stale-nonce=600
       - --external-ip=${TURN_EXTERNAL_IP:-127.0.0.1}
     mem_limit: ${TURN_MEMORY_LIMIT:-512m}
