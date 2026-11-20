@@ -8,6 +8,7 @@ const express = require('express')
 const helmet = require('helmet')
 const jwt = require('jsonwebtoken')
 const { Pool } = require('pg')
+const { monitorDatabasePoolErrors } = require('./database-pool-errors')
 const { registerGuestModeRoutes } = require('./guest-mode-routes')
 const { registerPublicProfileShareRoutes } = require('./public-profile-share')
 const { registerDocumentPreviewRoutes } = require('./document-preview-routes')
@@ -217,11 +218,7 @@ function logDatabasePoolError(error) {
   })
 }
 
-// pg emits an `error` event when an idle connection is interrupted (for
-// example during a controlled PostgreSQL restart). Without a listener Node
-// treats it as an uncaught EventEmitter error and terminates the API process.
-// The pool discards that client and establishes a fresh connection on demand.
-pool.on('error', logDatabasePoolError)
+monitorDatabasePoolErrors(pool, logDatabasePoolError)
 
 const rateLimitRedisUrl = String(process.env.RATE_LIMIT_REDIS_URL || process.env.REDIS_URL || '').trim()
 const rateLimitRedisClient = rateLimitRedisUrl
