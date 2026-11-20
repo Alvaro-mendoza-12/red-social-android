@@ -23,6 +23,8 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowPowerManager
+import org.robolectric.util.ReflectionHelpers
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -57,6 +59,8 @@ class CallForegroundSessionTest {
         val service = Robolectric.buildService(CallForegroundService::class.java).get()
         val sessions = Sessions()
         service.callRepository = sessions
+        // This fixture supplies its own dependencies instead of running the Hilt onCreate.
+        ReflectionHelpers.setField(service, "mediaWakeLocks", ActiveMediaWakeLocks(service, "Call"))
         shadowOf(service.application).grantPermissions(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
         service.getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CallForegroundService.CHANNEL_ID, "Calls", NotificationManager.IMPORTANCE_LOW))
@@ -146,9 +150,12 @@ class CallForegroundSessionTest {
 
     @Test fun currentHangupEndsItsCallAndRemovesForeground() = withService { service, sessions ->
         start(service, sessions)
+        val wakeLock = requireNotNull(ShadowPowerManager.getLatestWakeLock())
+        assertTrue(wakeLock.isHeld)
         service.onStartCommand(action(service, 1), 0, 2); runCurrent()
         assertNull(sessions.current)
         assertEquals(listOf("visit-one"), sessions.closed)
+        assertFalse(wakeLock.isHeld)
         assertTrue(shadowOf(service).isStoppedBySelf)
         assertTrue(shadowOf(service).isForegroundStopped)
     }
@@ -184,9 +191,12 @@ class CallForegroundSessionTest {
 
     @Test fun currentStopAfterCallEndRemovesItsForeground() = withService { service, sessions ->
         start(service, sessions)
+        val wakeLock = requireNotNull(ShadowPowerManager.getLatestWakeLock())
+        assertTrue(wakeLock.isHeld)
         val owner = sessions.current!!
         sessions.current = null
         service.onStartCommand(command(service, CallForegroundService.ACTION_STOP, owner), 0, 2)
+        assertFalse(wakeLock.isHeld)
         assertTrue(shadowOf(service).isForegroundStopped)
         assertTrue(shadowOf(service).isStoppedBySelf)
     }
