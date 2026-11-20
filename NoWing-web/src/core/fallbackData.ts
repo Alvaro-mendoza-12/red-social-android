@@ -882,10 +882,11 @@ export type FallbackVideosResponse = {
   items: GenericRow[]
 }
 
-export async function loadFallbackVideos(limit = 80, offset = 0): Promise<FallbackVideosResponse> {
+export async function loadFallbackVideos(limit = 80, offset = 0, userId?: string): Promise<FallbackVideosResponse> {
   const params = new URLSearchParams()
   params.set('limit', String(limit))
   params.set('offset', String(offset))
+  if (userId) params.set('userId', userId)
   return fallbackApiJson<FallbackVideosResponse>(`/v1/data/videos?${params.toString()}`)
 }
 

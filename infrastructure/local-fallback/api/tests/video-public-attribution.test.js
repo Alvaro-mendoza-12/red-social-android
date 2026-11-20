@@ -24,3 +24,12 @@ test('normal titles, artist credits and public handles are preserved', () => {
     soundTitle: 'Café con lluvia',
   })
 })
+
+test('imported videos retain their public author across older owner fields', () => {
+  const profiles = new Map([['author', { display_name: 'Voz Coral' }]])
+  for (const field of ['userId', 'owner_id', 'author_id', 'creator_id', 'profile_id']) {
+    const video = enrichVideo({ id: 'v1', [field]: 'author' }, profiles, new Map(), new Set())
+    assert.equal(video.user_id, 'author')
+    assert.equal(video.user_name, 'Voz Coral')
+  }
+})

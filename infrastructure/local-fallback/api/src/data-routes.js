@@ -1888,6 +1888,8 @@ function mergeCountMaps(...maps) {
   return merged
 }
 
+const videoOwnerFields = ['user_id', 'userId', 'owner_id', 'author_id', 'creator_id', 'profile_id']
+
 function videoOwnerIds(row) {
   return cleanSet([
     textOf(row, ['user_id', 'userId', 'profile_id', 'author_id'], ''),
@@ -1967,7 +1969,7 @@ function playbackUrlWithVersion(rawUrl, row) {
 function enrichVideo(row, profilesById, likeCounts, likedVideoIds) {
   const id = textOf(row, ['id'], '')
   const reactionKey = normalizeId(id)
-  const userId = textOf(row, ['user_id', 'userId'], '')
+  const userId = textOf(row, videoOwnerFields, '')
   const profile = profilesById.get(normalizeId(userId)) || {}
   const cover = textOf(row, ['cover_url', 'thumbnail_url', 'coverUrl', 'thumbnailUrl'], '')
   const videoUrl = textOf(row, ['video_url', 'videoUrl', 'media_url', 'url'], '')
@@ -12754,6 +12756,16 @@ function registerDataRoutes(app, {
         if(!friendOwnerIds.size)return res.json({items:[]})
       }
       const feedSessionId = normalizeId(cleanText(req.query.feedSessionId || req.query.feed_session_id || '', 80))
+      const requestedOwnerIds = cleanSet([requestedUserId])
+      if (requestedUserId) {
+        for (const profile of await publicProfilesByIds(pool, requestedOwnerIds)) {
+          const aliases = profileAliasSet(profile)
+          if (aliases.has(requestedUserId)) aliases.forEach(alias => requestedOwnerIds.add(alias))
+        }
+      }
+      // Apply the owner filter before the per-source limit so other authors
+      // cannot push an entire profile's videos out of the candidate set.
+      const readOwnerIds = friendsOnly ? friendOwnerIds : requestedUserId && !requestedSoundId ? requestedOwnerIds : null
       const requiresBroadLegacyScan = Boolean(
         requestedUserId || requestedSharedBy || requestedFavoritedBy || searchQuery || requestedSoundId || followingOnly || friendsOnly,
       )
@@ -12769,8 +12781,8 @@ function registerDataRoutes(app, {
           ? 1_000
           : Math.min(1_000, Math.max(limit, offset + limit))
       const [importedVideos, fallbackVideos] = await Promise.all([
-        friendsOnly
-          ? importedRowsByFieldValues(pool,'videos',['user_id','userId','owner_id','author_id','creator_id'],Array.from(friendOwnerIds),candidateReadLimit)
+        readOwnerIds
+          ? importedRowsByFieldValues(pool, 'videos', videoOwnerFields, readOwnerIds, candidateReadLimit)
           : requestedSoundId
           ? importedRowsByFieldValues(
               pool,
@@ -12780,7 +12792,7 @@ function registerDataRoutes(app, {
               candidateReadLimit,
             )
           : importedRows(pool, 'videos', candidateReadLimit),
-        friendsOnly ? localVideosByOwnerIds(pool,friendOwnerIds,candidateReadLimit) : requestedSoundId
+        readOwnerIds ? localVideosByOwnerIds(pool, readOwnerIds, candidateReadLimit) : requestedSoundId
           ? localVideosBySoundIds(pool, [requestedSoundId])
           : localVideos(pool, candidateReadLimit),
       ])
@@ -12820,15 +12832,6 @@ function registerDataRoutes(app, {
           const aliases = profileAliasSet(profile)
           if (Array.from(aliases).some((alias) => followingOwnerIds.has(alias))) {
             aliases.forEach((alias) => followingOwnerIds.add(alias))
-          }
-        }
-      }
-      const requestedOwnerIds = cleanSet([requestedUserId])
-      if (requestedUserId) {
-        for (const profile of publicProfiles) {
-          const aliases = profileAliasSet(profile)
-          if (aliases.has(requestedUserId)) {
-            for (const alias of aliases) requestedOwnerIds.add(alias)
           }
         }
       }
@@ -12876,7 +12879,7 @@ function registerDataRoutes(app, {
         if (!searchQuery) return false
         if (deletedVideoIds.has(normalizeId(textOf(row, ['id'], '')))) return false
         if (!boolOf(row, ['is_public', 'isPublic'], true) && !rowMatchesAny(row, ['user_id', 'userId'], identity.ids)) return false
-        return creatorVisible(textOf(row, ['user_id', 'userId', 'owner_id', 'author_id', 'creator_id'], ''))
+        return creatorVisible(textOf(row, videoOwnerFields, ''))
       }).map((row) => normalizeId(textOf(row, ['id'], ''))))
       // Candidate membership and final video visibility stay independent of comment matches.
       const commentMatchIds = searchQuery.length >= 2
@@ -12885,9 +12888,9 @@ function registerDataRoutes(app, {
       const followingVisibleOwnerIds = new Set([...identity.ids, ...followingOwnerIds])
       let videos = mergedVideos.filter((row) => {
         if (deletedVideoIds.has(normalizeId(textOf(row, ['id'], '')))) return false
-        const ownerId = textOf(row, ['user_id', 'userId', 'owner_id', 'author_id', 'creator_id'], '')
+        const ownerId = textOf(row, videoOwnerFields, '')
         if (!creatorVisible(ownerId)) return false
-        if (friendsOnly && !rowMatchesAny(row,['user_id','userId','owner_id','author_id','creator_id'],friendOwnerIds))return false
+        if (friendsOnly && !rowMatchesAny(row,videoOwnerFields,friendOwnerIds))return false
         const isPublic = boolOf(row, ['is_public', 'isPublic'], true)
         if (requestedUserId && !ownerMatchesRequestedProfile(row, requestedOwnerIds)) return false
         if (requestedSoundId) {
@@ -12901,7 +12904,7 @@ function registerDataRoutes(app, {
           followingOnly &&
           !rowMatchesAny(
             row,
-            ['user_id', 'userId', 'owner_id', 'author_id', 'creator_id'],
+            videoOwnerFields,
             followingVisibleOwnerIds,
           )
         ) return false

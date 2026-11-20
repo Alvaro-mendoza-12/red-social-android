@@ -219,7 +219,7 @@ function PublicProfileView({ user, cleanProfileId, useFallback }: {
       try {
         const [profileResult, videoResult] = await Promise.allSettled([
           loadFallbackPublicProfile(cleanProfileId),
-          loadFallbackVideos(200, 0),
+          loadFallbackVideos(200, 0, cleanProfileId),
         ])
         if (profileResult.status === 'rejected') throw profileResult.reason
         const response = profileResult.value
@@ -228,7 +228,7 @@ function PublicProfileView({ user, cleanProfileId, useFallback }: {
         setVideos(
           videoItems
             .filter((row) =>
-              aliases.includes(textOf(row, ['user_id', 'userId', 'owner_id', 'author_id'], '')),
+              aliases.includes(textOf(row, ['user_id', 'userId', 'profile_id', 'author_id', 'owner_id', 'creator_id'], '').toLowerCase()),
             )
             .map((row) => ({
               id: textOf(row, ['id'], ''),
