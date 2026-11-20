@@ -1,0 +1,1544 @@
+{
+  "testedProductCommit": "c51bdcfb426c2cb40285bef477f04316372d2e52",
+  "engineeringEnd": "eddaad0cc189732daae03d6fb5b4639033718ccb",
+  "engineeringFiles": [
+    ".github/workflows/android-ci.yml"
+  ],
+  "previousGitHubChecks": [
+    {
+      "workflow": "Android Quality Gate",
+      "branch": "main",
+      "id": 44760746856,
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44760746856",
+      "conclusion": "success",
+      "jobs": {
+        "backend-contracts": {
+          "status": "success",
+          "steps": {}
+        },
+        "client-and-realtime-contracts": {
+          "status": "success",
+          "steps": {}
+        },
+        "quality-gate": {
+          "status": "success",
+          "steps": {
+            "Run quality gate": "success",
+            "Verify packaged Android startup classes": "success"
+          }
+        },
+        "release-smoke": {
+          "status": "success",
+          "steps": {
+            "Verify R8 runtime entry points": "success",
+            "Verify release bundle signature": "success",
+            "Verify 16 KiB page-size compatibility": "success",
+            "Check performance budgets": "success"
+          }
+        }
+      }
+    },
+    {
+      "workflow": "Android Quality Gate",
+      "branch": "feature/live-gifts",
+      "id": 44760746848,
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44760746848",
+      "conclusion": "failure",
+      "jobs": {
+        "quality-gate": {
+          "status": "failure",
+          "steps": {
+            "Run quality gate": null,
+            "Verify packaged Android startup classes": null
+          }
+        },
+        "client-and-realtime-contracts": {
+          "status": "success",
+          "steps": {}
+        },
+        "backend-contracts": {
+          "status": "success",
+          "steps": {}
+        },
+        "release-smoke": {
+          "status": "skipped",
+          "steps": {}
+        }
+      }
+    },
+    {
+      "workflow": "Web and service quality",
+      "branch": "main",
+      "id": 44760746736,
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44760746736",
+      "conclusion": "success",
+      "jobs": {
+        "web": {
+          "status": "success",
+          "steps": {}
+        },
+        "Channel point redemption transactions": {
+          "status": "success",
+          "steps": {
+            "Verify migration history, rollback and concurrent deployment on PostgreSQL": "success"
+          }
+        },
+        "api": {
+          "status": "success",
+          "steps": {}
+        },
+        "signaling": {
+          "status": "success",
+          "steps": {}
+        },
+        "realtime": {
+          "status": "success",
+          "steps": {}
+        },
+        "chatbot": {
+          "status": "success",
+          "steps": {}
+        }
+      }
+    },
+    {
+      "workflow": "Web and service quality",
+      "branch": "feature/live-gifts",
+      "id": 44760746841,
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44760746841",
+      "conclusion": "success",
+      "jobs": {
+        "Channel point redemption transactions": {
+          "status": "success",
+          "steps": {
+            "Verify migration history, rollback and concurrent deployment on PostgreSQL": "success"
+          }
+        },
+        "realtime": {
+          "status": "success",
+          "steps": {}
+        },
+        "web": {
+          "status": "success",
+          "steps": {}
+        },
+        "signaling": {
+          "status": "success",
+          "steps": {}
+        },
+        "api": {
+          "status": "success",
+          "steps": {}
+        },
+        "chatbot": {
+          "status": "success",
+          "steps": {}
+        }
+      }
+    }
+  ],
+  "diskFailure": {
+    "testedCommit": "c51bdcfb426c2cb40285bef477f04316372d2e52",
+    "runId": 44760746848,
+    "jobId": 136372284680,
+    "conclusion": "failure",
+    "annotationSummary": "System.IO.IOException: No space left on device while saving the GitHub runner diagnostic log.",
+    "annotationSha256": "f614d6f9c8bed3dbb4fd69130ad8916d949f8b6d281976de5c1f8005019c0e23",
+    "lastStep": "Run quality gate",
+    "qualityArtifactPresent": false,
+    "mainJunitArtifact": {
+      "artifactAvailable": true,
+      "sha256": "c87f4f4bd9aa4de357fa814f515568e395b20d02b7591e6e12ceb915ef37c64f",
+      "artifactId": 14643980891,
+      "runId": 44760746856,
+      "size": 1511662,
+      "markerPresent": true,
+      "lastStartedTest": "conectate.com.widgets.NovvinWidgetLayoutPolicyTest > large system fonts use labelled accessible icons without clipping text",
+      "xmlSuites": 592,
+      "counts": {
+        "tests": 3553,
+        "skipped": 0,
+        "failures": 0,
+        "errors": 0
+      },
+      "duplicateNameRows": 0,
+      "caseNamesSha256": "4099974578c4cef55643e3615a5dc9aa2e2238bbf8bd90d9300ddef1280f90f6",
+      "lintXmlPresent": true
+    }
+  },
+  "runnerFix": {
+    "unchangedOriginalStepsAndJobs": true,
+    "hostedLinuxGuard": true,
+    "samePreparationInBothJobs": true,
+    "testFilesystem": "dedicated private-namespace tmpfs and chroot with simulated runner tools",
+    "before": {
+      "freeBytes": 27381760,
+      "freeInodes": 3819
+    },
+    "first": {
+      "freeBytes": 29356032,
+      "freeInodes": 4063
+    },
+    "repeat": {
+      "freeBytes": 29356032,
+      "freeInodes": 4063
+    },
+    "syntheticTargetsRemoved": [
+      "usr/share/dotnet/sdk",
+      "opt/hostedtoolcache/CodeQL"
+    ],
+    "syntheticNeighborsPreserved": [
+      "usr/share/dotnet/shared",
+      "opt/hostedtoolcache/Java",
+      "usr/local/lib/android/sdk",
+      "home/runner/work/repository"
+    ],
+    "bashSha256": "ce1e31a1f9054183b47d76947332b814d2d15283826ad0985476d7ec053c6156"
+  },
+  "lowDiskTrials": {
+    "blocks": {
+      "unchangedOriginalStepsAndJobs": true,
+      "hostedLinuxGuard": true,
+      "samePreparationInBothJobs": true,
+      "testFilesystem": "dedicated private-namespace tmpfs and chroot with simulated runner tools",
+      "before": {
+        "freeBytes": 65536,
+        "freeInodes": 3818
+      },
+      "first": {
+        "freeBytes": 2039808,
+        "freeInodes": 4062
+      },
+      "repeat": {
+        "freeBytes": 2039808,
+        "freeInodes": 4062
+      },
+      "scarceResource": "blocks",
+      "reportBefore": "ENOSPC",
+      "reportAfter": "written",
+      "syntheticTargetsRemoved": [
+        "usr/share/dotnet/sdk",
+        "opt/hostedtoolcache/CodeQL"
+      ],
+      "syntheticNeighborsPreserved": [
+        "usr/share/dotnet/shared",
+        "opt/hostedtoolcache/Java",
+        "usr/local/lib/android/sdk",
+        "home/runner/work/repository"
+      ],
+      "bashSha256": "ce1e31a1f9054183b47d76947332b814d2d15283826ad0985476d7ec053c6156"
+    },
+    "inodes": {
+      "unchangedOriginalStepsAndJobs": true,
+      "hostedLinuxGuard": true,
+      "samePreparationInBothJobs": true,
+      "testFilesystem": "dedicated private-namespace tmpfs and chroot with simulated runner tools",
+      "before": {
+        "freeBytes": 27381760,
+        "freeInodes": 0
+      },
+      "first": {
+        "freeBytes": 29356032,
+        "freeInodes": 244
+      },
+      "repeat": {
+        "freeBytes": 29356032,
+        "freeInodes": 244
+      },
+      "scarceResource": "inodes",
+      "reportBefore": "ENOSPC",
+      "reportAfter": "written",
+      "syntheticTargetsRemoved": [
+        "usr/share/dotnet/sdk",
+        "opt/hostedtoolcache/CodeQL"
+      ],
+      "syntheticNeighborsPreserved": [
+        "usr/share/dotnet/shared",
+        "opt/hostedtoolcache/Java",
+        "usr/local/lib/android/sdk",
+        "home/runner/work/repository"
+      ],
+      "bashSha256": "ce1e31a1f9054183b47d76947332b814d2d15283826ad0985476d7ec053c6156"
+    }
+  },
+  "junit": {
+    "source": "c51bdcfb426c2cb40285bef477f04316372d2e52",
+    "byBranch": {
+      "main": {
+        "artifactAvailable": true,
+        "sha256": "c87f4f4bd9aa4de357fa814f515568e395b20d02b7591e6e12ceb915ef37c64f",
+        "artifactId": 14643980891,
+        "runId": 44760746856,
+        "size": 1511662,
+        "markerPresent": true,
+        "lastStartedTest": "conectate.com.widgets.NovvinWidgetLayoutPolicyTest > large system fonts use labelled accessible icons without clipping text",
+        "xmlSuites": 592,
+        "counts": {
+          "tests": 3553,
+          "skipped": 0,
+          "failures": 0,
+          "errors": 0
+        },
+        "duplicateNameRows": 0,
+        "caseNamesSha256": "4099974578c4cef55643e3615a5dc9aa2e2238bbf8bd90d9300ddef1280f90f6",
+        "lintXmlPresent": true
+      },
+      "feature": {
+        "artifactAvailable": false,
+        "runId": 44760746848,
+        "xmlSuites": null,
+        "counts": {},
+        "markerPresent": false,
+        "reason": "No report artifact. The GitHub runner recorded ENOSPC in its own diagnostic log."
+      }
+    }
+  },
+  "stagingLoad": {
+    "source": "c51bdcfb426c2cb40285bef477f04316372d2e52",
+    "concurrencyLimit": 16,
+    "stagingOnly": true,
+    "role": {
+      "ledgerCount": 37,
+      "apiRole": "novvin_api",
+      "superuser": false,
+      "source": "c51bdcfb426c2cb40285bef477f04316372d2e52"
+    },
+    "run": {
+      "environment": "WSL2 Ubuntu 24.04, 2 API and 2 realtime, round-robin calls and recipient gateways, PostgreSQL 16.15, Ubuntu Redis 7.0.15, two CPU affinity shared with local generator, loopback, ordinary quotas",
+      "stages": {
+        "smoke": {
+          "passed": true,
+          "actualDurationSeconds": 45,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 180,
+            "dispatched": 180,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 1
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 45,
+            "received": 45,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 180,
+            "total2xx": 180,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 3,
+          "operations": {
+            "feed": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            },
+            "profile": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            },
+            "message": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "201": 45
+              }
+            },
+            "notifications": {
+              "attempted": 45,
+              "passed": 45,
+              "statuses": {
+                "200": 45
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 45,
+          "requestedRps": 4,
+          "availableMiBMin": 6793.9,
+          "peakRssMiB": {
+            "realtime1": 74.9,
+            "realtime2": 74.5,
+            "api1": 160.8,
+            "api2": 159.4
+          }
+        },
+        "sustained": {
+          "passed": true,
+          "actualDurationSeconds": 2700,
+          "stopReason": "completed",
+          "arrivals": {
+            "planned": 43200,
+            "dispatched": 43200,
+            "late": 0,
+            "atCapacity": 0,
+            "notScheduledAfterStop": 0,
+            "peakInFlight": 6
+          },
+          "delivery": {
+            "clients": 5,
+            "expected": 10800,
+            "received": 10800,
+            "missed": 0
+          },
+          "totals": {
+            "totalReqs": 43200,
+            "total2xx": 43200,
+            "total429": 0,
+            "totalLoadShed503": 0,
+            "totalUnexpected5xx": 0,
+            "totalNetworkErrors": 0,
+            "totalFunctionalFailures": 0
+          },
+          "sampleCount": 180,
+          "operations": {
+            "feed": {
+              "attempted": 10800,
+              "passed": 10800,
+              "statuses": {
+                "200": 10800
+              }
+            },
+            "profile": {
+              "attempted": 10800,
+              "passed": 10800,
+              "statuses": {
+                "200": 10800
+              }
+            },
+            "message": {
+              "attempted": 10800,
+              "passed": 10800,
+              "statuses": {
+                "201": 10800
+              }
+            },
+            "notifications": {
+              "attempted": 10800,
+              "passed": 10800,
+              "statuses": {
+                "200": 10800
+              }
+            }
+          },
+          "exit": 0,
+          "requestedSeconds": 2700,
+          "requestedRps": 16,
+          "availableMiBMin": 6714.3,
+          "peakRssMiB": {
+            "realtime1": 91.3,
+            "realtime2": 91.5,
+            "api1": 173.9,
+            "api2": 171.2
+          }
+        }
+      },
+      "source": "c51bdcfb426c2cb40285bef477f04316372d2e52",
+      "redisStreamEntries": 20000
+    },
+    "routes": {
+      "smoke": {
+        "windows": 3,
+        "windowSha256": "7977987e11dfbaf556607e132a22059e847e7de3343c73f50cf6c573b7d307cf",
+        "httpByOperation": {
+          "feed": {
+            "total": 45,
+            "p50Ms": {
+              "medianWindow": 9.25,
+              "maxWindow": 9.36
+            },
+            "p95Ms": {
+              "medianWindow": 13.03,
+              "maxWindow": 16.88
+            },
+            "p99Ms": {
+              "medianWindow": 13.03,
+              "maxWindow": 16.88
+            },
+            "maxMs": {
+              "medianWindow": 13.03,
+              "maxWindow": 16.88
+            }
+          },
+          "profile": {
+            "total": 45,
+            "p50Ms": {
+              "medianWindow": 12.1,
+              "maxWindow": 12.29
+            },
+            "p95Ms": {
+              "medianWindow": 21.02,
+              "maxWindow": 25.89
+            },
+            "p99Ms": {
+              "medianWindow": 21.02,
+              "maxWindow": 25.89
+            },
+            "maxMs": {
+              "medianWindow": 21.02,
+              "maxWindow": 25.89
+            }
+          },
+          "message": {
+            "total": 45,
+            "p50Ms": {
+              "medianWindow": 26.88,
+              "maxWindow": 31.27
+            },
+            "p95Ms": {
+              "medianWindow": 33.83,
+              "maxWindow": 60.95
+            },
+            "p99Ms": {
+              "medianWindow": 33.83,
+              "maxWindow": 60.95
+            },
+            "maxMs": {
+              "medianWindow": 33.83,
+              "maxWindow": 60.95
+            }
+          },
+          "notifications": {
+            "total": 45,
+            "p50Ms": {
+              "medianWindow": 7.93,
+              "maxWindow": 8.51
+            },
+            "p95Ms": {
+              "medianWindow": 13.56,
+              "maxWindow": 15.48
+            },
+            "p99Ms": {
+              "medianWindow": 13.56,
+              "maxWindow": 15.48
+            },
+            "maxMs": {
+              "medianWindow": 13.56,
+              "maxWindow": 15.48
+            }
+          }
+        },
+        "windowsWithMissedReceipts": [],
+        "windowsWithDbWait": 0,
+        "lastRealtime": [
+          {
+            "streamReadErrors": 0,
+            "streamPublishErrors": 0,
+            "slowConsumerDrops": 0,
+            "streamEventsPublished": 52,
+            "streamEventsReceived": 48
+          },
+          {
+            "streamReadErrors": 0,
+            "streamPublishErrors": 0,
+            "slowConsumerDrops": 0,
+            "streamEventsPublished": 48,
+            "streamEventsReceived": 52
+          }
+        ]
+      },
+      "sustained": {
+        "windows": 180,
+        "windowSha256": "2e77f49dc26c5b7c1c085f4477c7c7eec57e51e4ddfadb48da4bd2619e8ef586",
+        "httpByOperation": {
+          "feed": {
+            "total": 10800,
+            "p50Ms": {
+              "medianWindow": 6.06,
+              "maxWindow": 7.9
+            },
+            "p95Ms": {
+              "medianWindow": 9.55,
+              "maxWindow": 15.37
+            },
+            "p99Ms": {
+              "medianWindow": 12.07,
+              "maxWindow": 43.42
+            },
+            "maxMs": {
+              "medianWindow": 12.07,
+              "maxWindow": 43.42
+            }
+          },
+          "profile": {
+            "total": 10800,
+            "p50Ms": {
+              "medianWindow": 7.03,
+              "maxWindow": 9.2
+            },
+            "p95Ms": {
+              "medianWindow": 11.94,
+              "maxWindow": 19.95
+            },
+            "p99Ms": {
+              "medianWindow": 15.65,
+              "maxWindow": 45.25
+            },
+            "maxMs": {
+              "medianWindow": 15.65,
+              "maxWindow": 45.25
+            }
+          },
+          "message": {
+            "total": 10800,
+            "p50Ms": {
+              "medianWindow": 23.11,
+              "maxWindow": 38.85
+            },
+            "p95Ms": {
+              "medianWindow": 31.98,
+              "maxWindow": 556.49
+            },
+            "p99Ms": {
+              "medianWindow": 42.78,
+              "maxWindow": 1026.12
+            },
+            "maxMs": {
+              "medianWindow": 42.78,
+              "maxWindow": 1026.12
+            }
+          },
+          "notifications": {
+            "total": 10800,
+            "p50Ms": {
+              "medianWindow": 6.08,
+              "maxWindow": 8.24
+            },
+            "p95Ms": {
+              "medianWindow": 9.67,
+              "maxWindow": 20.23
+            },
+            "p99Ms": {
+              "medianWindow": 13.36,
+              "maxWindow": 43.95
+            },
+            "maxMs": {
+              "medianWindow": 13.36,
+              "maxWindow": 43.95
+            }
+          }
+        },
+        "windowsWithMissedReceipts": [],
+        "windowsWithDbWait": 0,
+        "lastRealtime": [
+          {
+            "streamReadErrors": 0,
+            "streamPublishErrors": 0,
+            "slowConsumerDrops": 0,
+            "streamEventsPublished": 10852,
+            "streamEventsReceived": 10848
+          },
+          {
+            "streamReadErrors": 0,
+            "streamPublishErrors": 0,
+            "slowConsumerDrops": 0,
+            "streamEventsPublished": 10848,
+            "streamEventsReceived": 10852
+          }
+        ]
+      }
+    },
+    "processes": {
+      "basis": "Five-second process CPU samples on the WSL2 lab. 100% is one logical CPU. PostgreSQL totals count processes observed in both samples. PSI is guest-wide.",
+      "seconds": 2782.7,
+      "groups": {
+        "api": {
+          "samples": 553,
+          "median": 10.58,
+          "p95": 13.77,
+          "max": 91.92
+        },
+        "realtime": {
+          "samples": 554,
+          "median": 1.99,
+          "p95": 2.99,
+          "max": 12.16
+        },
+        "postgres": {
+          "samples": 554,
+          "median": 6.19,
+          "p95": 7.18,
+          "max": 13.95
+        },
+        "redis": {
+          "samples": 554,
+          "median": 0.4,
+          "p95": 0.6,
+          "max": 0.8
+        },
+        "generator": {
+          "samples": 547,
+          "median": 3.99,
+          "p95": 5.98,
+          "max": 6.98
+        }
+      },
+      "pressure": {
+        "cpuPressureAvg10": {
+          "samples": 554,
+          "median": 1.51,
+          "p95": 2.14,
+          "max": 2.84
+        },
+        "ioPressureAvg10": {
+          "samples": 554,
+          "median": 1.85,
+          "p95": 4.53,
+          "max": 25.41
+        },
+        "memoryPressureAvg10": {
+          "samples": 554,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        }
+      }
+    },
+    "socketAndPoolWindows": {
+      "observedWindows": 180,
+      "seconds": 2700,
+      "sourceWindowsSha256": "2e77f49dc26c5b7c1c085f4477c7c7eec57e51e4ddfadb48da4bd2619e8ef586",
+      "apis": [
+        {
+          "instanceIndex": 1,
+          "observedWindows": 180,
+          "missingWindows": 0,
+          "countersAndSamples": {
+            "slowRequestsTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitedTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "loadShedTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitPgFallbacks": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitRedisHits": {
+              "first": 84,
+              "latest": 5456,
+              "median": 2772.0,
+              "max": 5456
+            },
+            "eventLoopLagP95Ms": {
+              "first": 20.79,
+              "latest": 20.84,
+              "median": 20.84,
+              "max": 20.87
+            },
+            "memoryRssBytes": {
+              "first": 153464832,
+              "latest": 179355648,
+              "median": 177864704.0,
+              "max": 182181888
+            },
+            "memoryHeapUsedBytes": {
+              "first": 47908504,
+              "latest": 48397008,
+              "median": 55541112.0,
+              "max": 65915688
+            }
+          },
+          "dbPool": {
+            "total": {
+              "first": 5,
+              "latest": 3,
+              "median": 3.0,
+              "max": 6
+            },
+            "idle": {
+              "first": 5,
+              "latest": 3,
+              "median": 3.0,
+              "max": 6
+            },
+            "waiting": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            }
+          },
+          "redisQuotaConfiguredWindows": 180,
+          "redisQuotaReadyWindows": 180
+        },
+        {
+          "instanceIndex": 2,
+          "observedWindows": 180,
+          "missingWindows": 0,
+          "countersAndSamples": {
+            "slowRequestsTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitedTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "loadShedTotal": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitPgFallbacks": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitRedisHits": {
+              "first": 56,
+              "latest": 5424,
+              "median": 2742.0,
+              "max": 5424
+            },
+            "eventLoopLagP95Ms": {
+              "first": 20.73,
+              "latest": 20.82,
+              "median": 20.82,
+              "max": 20.86
+            },
+            "memoryRssBytes": {
+              "first": 149721088,
+              "latest": 178937856,
+              "median": 177029120.0,
+              "max": 179007488
+            },
+            "memoryHeapUsedBytes": {
+              "first": 53398816,
+              "latest": 61794184,
+              "median": 55282200.0,
+              "max": 65581760
+            }
+          },
+          "dbPool": {
+            "total": {
+              "first": 5,
+              "latest": 3,
+              "median": 3.0,
+              "max": 7
+            },
+            "idle": {
+              "first": 5,
+              "latest": 3,
+              "median": 3.0,
+              "max": 7
+            },
+            "waiting": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            }
+          },
+          "redisQuotaConfiguredWindows": 180,
+          "redisQuotaReadyWindows": 180
+        }
+      ],
+      "gateways": [
+        {
+          "instanceIndex": 1,
+          "observedWindows": 180,
+          "missingWindows": 0,
+          "countersAndSamples": {
+            "activeConnections": {
+              "first": 3,
+              "latest": 0,
+              "median": 3.0,
+              "max": 3
+            },
+            "authenticatedConnections": {
+              "first": 3,
+              "latest": 0,
+              "median": 3.0,
+              "max": 3
+            },
+            "streamEventsReceived": {
+              "first": 112,
+              "latest": 10848,
+              "median": 5484.0,
+              "max": 10848
+            },
+            "streamEventsPublished": {
+              "first": 108,
+              "latest": 10852,
+              "median": 5484.0,
+              "max": 10852
+            },
+            "slowConsumerDrops": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "streamPublishErrors": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "streamReadErrors": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitDrops": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "eventLoopLagP95Ms": {
+              "first": 20.5,
+              "latest": 20.55,
+              "median": 20.56,
+              "max": 20.58
+            },
+            "memoryRssBytes": {
+              "first": 80068608,
+              "latest": 95703040,
+              "median": 91209728.0,
+              "max": 95703040
+            },
+            "memoryHeapUsedBytes": {
+              "first": 14075280,
+              "latest": 18094288,
+              "median": 17093612.0,
+              "max": 22552224
+            }
+          },
+          "redisConnectedWindows": 180,
+          "redisReaderReadyWindows": 180,
+          "busModes": [
+            "redis-streams"
+          ]
+        },
+        {
+          "instanceIndex": 2,
+          "observedWindows": 180,
+          "missingWindows": 0,
+          "countersAndSamples": {
+            "activeConnections": {
+              "first": 2,
+              "latest": 0,
+              "median": 2.0,
+              "max": 2
+            },
+            "authenticatedConnections": {
+              "first": 2,
+              "latest": 0,
+              "median": 2.0,
+              "max": 2
+            },
+            "streamEventsReceived": {
+              "first": 108,
+              "latest": 10852,
+              "median": 5484.0,
+              "max": 10852
+            },
+            "streamEventsPublished": {
+              "first": 112,
+              "latest": 10848,
+              "median": 5484.0,
+              "max": 10848
+            },
+            "slowConsumerDrops": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "streamPublishErrors": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "streamReadErrors": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "rateLimitDrops": {
+              "first": 0,
+              "latest": 0,
+              "median": 0.0,
+              "max": 0
+            },
+            "eventLoopLagP95Ms": {
+              "first": 20.5,
+              "latest": 20.55,
+              "median": 20.55,
+              "max": 20.58
+            },
+            "memoryRssBytes": {
+              "first": 79691776,
+              "latest": 95436800,
+              "median": 91322368.0,
+              "max": 95744000
+            },
+            "memoryHeapUsedBytes": {
+              "first": 13252680,
+              "latest": 15136208,
+              "median": 17207084.0,
+              "max": 22477752
+            }
+          },
+          "redisConnectedWindows": 180,
+          "redisReaderReadyWindows": 180,
+          "busModes": [
+            "redis-streams"
+          ]
+        }
+      ]
+    },
+    "plot": {
+      "sha256": "5a8a149b1267ec415da798e7163649e5bfb42eb86337fb3b0b8c608413a1f5a9",
+      "location": "Included in the private postpublication evidence bundle."
+    }
+  },
+  "liveHost": {
+    "public": {
+      "checkedUtc": "2026-11-20T15:53:57.301411+00:00",
+      "tls": "TLSv1.3",
+      "status": 200,
+      "ready": true,
+      "caps": 25,
+      "release": {
+        "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+      }
+    },
+    "private": {
+      "checkedUtc": "2026-11-20T15:53:57.453508+00:00",
+      "tls": "TLSv1.3",
+      "status": 200,
+      "ready": true,
+      "caps": 25,
+      "release": {
+        "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+      }
+    }
+  },
+  "previousMarkedRelease": {
+    "refs": {
+      "refs/heads/feature/live-gifts": "c51bdcfb426c2cb40285bef477f04316372d2e52",
+      "refs/heads/main": "c51bdcfb426c2cb40285bef477f04316372d2e52"
+    },
+    "requests": [
+      {
+        "state": "CANCELED",
+        "target": null,
+        "ref": "feature/live-gifts",
+        "sha": "c51bdcfb426c2cb40285bef477f04316372d2e52"
+      },
+      {
+        "state": "CANCELED",
+        "target": "production",
+        "ref": "main",
+        "sha": "c51bdcfb426c2cb40285bef477f04316372d2e52"
+      }
+    ],
+    "aliases": [
+      {
+        "domain": "www.novvinapp.com",
+        "state": "READY",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275"
+      },
+      {
+        "domain": "novvinapp.com",
+        "state": "READY",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275"
+      },
+      {
+        "domain": "red-social-android.vercel.app",
+        "state": "READY",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275"
+      }
+    ]
+  },
+  "officeAlternative": {
+    "publicationStatus": {
+      "checkedUtc": "2026-11-20T15:15:03.823638+00:00",
+      "variant": "Private Ubuntu 26.04 alternative for document conversion",
+      "packageStatusSource": "Canonical VEX e0002e1e7efd69cfd765691383b0c2b704bf682d",
+      "sourcesWithExactAffectedStatements": 9,
+      "affectedStatements": 16,
+      "fetchErrors": 0,
+      "pocketsBySource": {
+        "expat": {
+          "installed": "2.7.4-1ubuntu0.2",
+          "advisories": [
+            "UBUNTU-CVE-2026-102633",
+            "UBUNTU-CVE-2026-77214",
+            "UBUNTU-CVE-2026-93990"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=expat&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "3ea34b0f0646a83089ca4e26d4644b6524e76af753f55cc21f4bbaea7d30f381",
+            "versions": [
+              {
+                "version": "2.7.4-1",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18084415",
+                "publishedUtc": "2026-02-02T20:15:21.529592+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=expat&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "9b9a494178224d681322cd76313955308999c9aa59cac9d4563d6ad1979a0248",
+            "versions": [
+              {
+                "version": "2.7.4-1ubuntu0.2",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18796019",
+                "publishedUtc": "2026-09-24T13:05:56.644859+00:00"
+              }
+            ]
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=expat&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "57e7579abecefa6ecb8bcb5db34cf03ec084d3b565e5bad3ca7542451a5fcf62",
+            "versions": [
+              {
+                "version": "2.7.4-1ubuntu0.2",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18796142",
+                "publishedUtc": "2026-09-24T16:10:39.953603+00:00"
+              }
+            ]
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=expat&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          }
+        },
+        "krb5": {
+          "installed": "1.22.1-2ubuntu4.1",
+          "advisories": [
+            "UBUNTU-CVE-2026-107778"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=krb5&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "51236113cfda6f26d7cfd725059f4a749ca6c8b082909ee27a1a7449b3d0ba73",
+            "versions": [
+              {
+                "version": "1.22.1-2ubuntu4",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18269359",
+                "publishedUtc": "2026-03-24T05:40:00.935971+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=krb5&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "5dcae15ce46573b065dbeef0a98b1e700bcfef1db2b3046a4926e9b7fd0e55ef",
+            "versions": [
+              {
+                "version": "1.22.1-2ubuntu4.1",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18633588",
+                "publishedUtc": "2026-07-22T12:58:21.316541+00:00"
+              }
+            ]
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=krb5&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "2e5145ad8f05f126d3f1d87c1b2905062f7244d80cab8c6a02c26256482fcf21",
+            "versions": [
+              {
+                "version": "1.22.1-2ubuntu4.1",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18633954",
+                "publishedUtc": "2026-07-22T15:22:58.524597+00:00"
+              }
+            ]
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=krb5&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          }
+        },
+        "libxml2": {
+          "installed": "2.15.2+dfsg-0.1ubuntu0.3",
+          "advisories": [
+            "UBUNTU-CVE-2026-11979"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libxml2&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "e42dcb63de2887e25c32ffb55d6721f25eee3f092834c0a2f9de2b5cfdc7e55c",
+            "versions": [
+              {
+                "version": "2.15.2+dfsg-0.1",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18279915",
+                "publishedUtc": "2026-03-28T10:51:35.949753+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libxml2&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "0a0affd441a6111b425309912fd1505e61ce044f797df54b05fafc70bbeb8f64",
+            "versions": [
+              {
+                "version": "2.15.2+dfsg-0.1ubuntu0.3",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18824315",
+                "publishedUtc": "2026-10-08T17:07:33.435960+00:00"
+              }
+            ]
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libxml2&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "a2121a50275712aa25d906d1b8d5ff9ed5fa9d064d81213c9db9a300b6759428",
+            "versions": [
+              {
+                "version": "2.15.2+dfsg-0.1ubuntu0.3",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18824581",
+                "publishedUtc": "2026-10-08T20:20:15.117255+00:00"
+              }
+            ]
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libxml2&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          }
+        },
+        "gst-plugins-base1.0": {
+          "installed": "1.28.2-1ubuntu0.3",
+          "advisories": [
+            "UBUNTU-CVE-2026-125712"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=gst-plugins-base1.0&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "bc9636052e963eb746360f8d6425ec41120f5f15ace00828963bb34d5a1dcfe6",
+            "versions": [
+              {
+                "version": "1.28.2-1",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18302809",
+                "publishedUtc": "2026-04-12T23:35:19.030291+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=gst-plugins-base1.0&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "fd172d7273f3d2f0e8ee634eba0655f5f7bb99e0b52870261b7b3eaebc35333b",
+            "versions": [
+              {
+                "version": "1.28.2-1ubuntu0.3",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18958385",
+                "publishedUtc": "2026-11-16T15:57:40.303007+00:00"
+              }
+            ]
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=gst-plugins-base1.0&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "00b8de1f3a4b961768d4b38f24d19006052c73ba039184910c306a97ae369b9f",
+            "versions": [
+              {
+                "version": "1.28.2-1ubuntu0.3",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18958561",
+                "publishedUtc": "2026-11-16T17:18:09.114147+00:00"
+              }
+            ]
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=gst-plugins-base1.0&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "9fa5cbba2154aa6e7e0ebcc94ec5d17b3a5be979cd2e5bdf00645efd44025b09",
+            "versions": [
+              {
+                "version": "1.28.2-1ubuntu0.4",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18971246",
+                "publishedUtc": "2026-11-20T13:09:51.270795+00:00"
+              }
+            ]
+          }
+        },
+        "tiff": {
+          "installed": "4.7.0-3ubuntu5",
+          "advisories": [
+            "UBUNTU-CVE-2026-12912",
+            "UBUNTU-CVE-2026-4775"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=tiff&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "e74db9c0be166a0c1ada0589cca4b9a4e68b0886bfe2f01daa17534ed7b672d5",
+            "versions": [
+              {
+                "version": "4.7.0-3ubuntu4",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18152974",
+                "publishedUtc": "2026-03-06T17:54:53.521033+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=tiff&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "edcf71b08a9f7f64c4e0a17c1f08e51d725637899c593883765e04ed96e21dc4",
+            "versions": [
+              {
+                "version": "4.7.0-3ubuntu5",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18684845",
+                "publishedUtc": "2026-08-19T09:08:14.130938+00:00"
+              }
+            ]
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=tiff&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "3e270b7a147d0977fd3834d40f8ff455afe82ca8427ea78d3357649f112daad1",
+            "versions": [
+              {
+                "version": "4.7.0-3ubuntu5",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18684915",
+                "publishedUtc": "2026-08-19T10:09:09.983144+00:00"
+              }
+            ]
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=tiff&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          }
+        },
+        "perl": {
+          "installed": "5.40.1-7ubuntu0.4",
+          "advisories": [
+            "UBUNTU-CVE-2026-48962",
+            "UBUNTU-CVE-2026-9538"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=perl&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "9a02a00fcc3f0241dcffc54e8bf883d5403d90b5fdbbf3b4065ddd637fbbfab9",
+            "versions": [
+              {
+                "version": "5.40.1-7build1",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18277464",
+                "publishedUtc": "2026-03-27T02:16:04.834091+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=perl&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "a03d8414b02ae77316103814d3b45ee9a742a5e544e605d23b1ab897c5e4c922",
+            "versions": [
+              {
+                "version": "5.40.1-7ubuntu0.4",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18942533",
+                "publishedUtc": "2026-11-10T02:50:51.375213+00:00"
+              }
+            ]
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=perl&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "0bec081a177c11539ce1c657a63277a09815e55c3303ba546c0c6a002bdead80",
+            "versions": [
+              {
+                "version": "5.40.1-7ubuntu0.4",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18943326",
+                "publishedUtc": "2026-11-10T08:44:37.368048+00:00"
+              }
+            ]
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=perl&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          }
+        },
+        "acl": {
+          "installed": "2.3.2-2",
+          "advisories": [
+            "UBUNTU-CVE-2026-54369",
+            "UBUNTU-CVE-2026-54370"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=acl&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "ddb7435617e9b089778fb0d9c88bef2f5af0220105527c1460a48bc63a457024",
+            "versions": [
+              {
+                "version": "2.3.2-2",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/17708091",
+                "publishedUtc": "2025-10-09T15:05:22.433263+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=acl&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=acl&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=acl&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          }
+        },
+        "util-linux": {
+          "installed": "2.41.3-3ubuntu2.2",
+          "advisories": [
+            "UBUNTU-CVE-2026-76642",
+            "UBUNTU-CVE-2026-78408",
+            "UBUNTU-CVE-2026-78410"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=util-linux&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "50e7a9439477ecb7c0a08cbc370eec79bfc775da0c27eb98b7d8e22af39df614",
+            "versions": [
+              {
+                "version": "2.41.3-3ubuntu2",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18175471",
+                "publishedUtc": "2026-03-18T16:24:33.863175+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=util-linux&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "91a0735ec89468e76a993918af3230f42564e1ea753234975f5864c8549d00a4",
+            "versions": [
+              {
+                "version": "2.41.3-3ubuntu2.2",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18709716",
+                "publishedUtc": "2026-08-31T12:41:34.944952+00:00"
+              }
+            ]
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=util-linux&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "658ed189a3945b98403f2d4a11884d4a31960c8a2006005e2003eb508858c4e2",
+            "versions": [
+              {
+                "version": "2.41.3-3ubuntu2.2",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18709824",
+                "publishedUtc": "2026-08-31T15:03:50.031060+00:00"
+              }
+            ]
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=util-linux&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "068be0e5359f3da6ba18b211efcd89f9c2da63ecadd710fd74ede6deaebe0f87",
+            "versions": [
+              {
+                "version": "2.41.3-3ubuntu2.3",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18752823",
+                "publishedUtc": "2026-09-23T20:30:22.582774+00:00"
+              }
+            ]
+          }
+        },
+        "libxrender": {
+          "installed": "1:0.9.12-1build1",
+          "advisories": [
+            "UBUNTU-CVE-2026-88807"
+          ],
+          "Release": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libxrender&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Release&ws.size=15",
+            "responseSha256": "7c15dbdf69eb8e386d179d322a38915a6343d6335a0fb239675934efbe43a95f",
+            "versions": [
+              {
+                "version": "1:0.9.12-1build1",
+                "publisherRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18114817",
+                "publishedUtc": "2026-02-14T18:24:03.150996+00:00"
+              }
+            ]
+          },
+          "Security": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libxrender&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Security&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          },
+          "Updates": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libxrender&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Updates&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          },
+          "Proposed": {
+            "url": "https://api.launchpad.net/1.0/ubuntu/+archive/primary?ws.op=getPublishedSources&source_name=libxrender&exact_match=true&distro_series=https%3A%2F%2Fapi.launchpad.net%2F1.0%2Fubuntu%2Fresolute&status=Published&pocket=Proposed&ws.size=15",
+            "responseSha256": "aeccab7ba3548115eac64a023c8f60fa448132b168d09e179f15732ea44e50f7",
+            "versions": []
+          }
+        }
+      }
+    },
+    "proposedChangeNotes": {
+      "gst-plugins-base1.0": {
+        "source": "gst-plugins-base1.0",
+        "version": "1.28.2-1ubuntu0.4",
+        "publishingRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18971246",
+        "knownAffectedAdvisories": [
+          "UBUNTU-CVE-2026-125712"
+        ],
+        "notesUrl": "https://launchpad.net/ubuntu/+archive/primary/+files/gst-plugins-base1.0_1.28.2-1ubuntu0.4_source.changes",
+        "notesSha256": "337e16e08d755a6501eddbef9c03659f5c7ab3fef9db247a4070fbaafa7d18bb",
+        "namedCves": [],
+        "matchedAffectedCves": []
+      },
+      "util-linux": {
+        "source": "util-linux",
+        "version": "2.41.3-3ubuntu2.3",
+        "publishingRecord": "https://api.launchpad.net/1.0/ubuntu/+archive/primary/+sourcepub/18752823",
+        "knownAffectedAdvisories": [
+          "UBUNTU-CVE-2026-76642",
+          "UBUNTU-CVE-2026-78408",
+          "UBUNTU-CVE-2026-78410"
+        ],
+        "notesUrl": "https://launchpad.net/ubuntu/+archive/primary/+files/util-linux_2.41.3-3ubuntu2.3_source.changes",
+        "notesSha256": "d8c0003b4be25f84980db6d69b28377be6f94c22d69df51a2df41ef9901f48a5",
+        "namedCves": [],
+        "matchedAffectedCves": []
+      }
+    }
+  },
+  "privateApk": {
+    "version": "9.1.43",
+    "versionCode": 183,
+    "appTree": "f23a5acdeff618fc1713a91ec51ac95461ae1ca7",
+    "size": 221779125,
+    "embeddedCommit": "1018190bbdb125f48bf6445a0007439710aefdf6",
+    "apkSha256": "178947cef4a905530d1f8b41f26fdfe777c2518b61d5c676c6896d6b29b6a21d",
+    "pathsUnchanged": [
+      "app",
+      "gradle",
+      "buildSrc",
+      "build-logic",
+      "gradlew",
+      "gradlew.bat",
+      "settings.gradle",
+      "settings.gradle.kts",
+      "gradle.properties",
+      "build.gradle",
+      "build.gradle.kts"
+    ]
+  }
+}
