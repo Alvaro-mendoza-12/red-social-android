@@ -21,6 +21,16 @@ jobs:
       NOVVIN_CI_FIXTURE: "true"
 
     steps:
+      - &android_disk_space
+        name: Free space for Android builds
+        if: runner.environment == 'github-hosted' && runner.os == 'Linux'
+        shell: bash
+        run: |
+          df --block-size=1 --output=avail,iavail,target .
+          # These two preinstalled toolchains are unused by the Android jobs.
+          sudo rm -rf --one-file-system -- /usr/share/dotnet/sdk /opt/hostedtoolcache/CodeQL
+          df --block-size=1 --output=avail,iavail,target .
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -109,6 +119,8 @@ jobs:
       NOVVIN_CI_FIXTURE: "true"
 
     steps:
+      - *android_disk_space
+
       - name: Checkout
         uses: actions/checkout@v4
 
