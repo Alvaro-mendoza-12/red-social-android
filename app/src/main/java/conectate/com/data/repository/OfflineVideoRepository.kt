@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.StatFs
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.model.Video
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.AuthService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -13,7 +14,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,41 +61,57 @@ class OfflineVideoRepository @Inject constructor(
         refreshForCurrentAccount()
     }
 
-    fun refreshForCurrentAccount() {
-        val accountId = currentAccountId()
-        _videos.value = if (accountId == null) emptyList() else loadAndPrune(accountId)
-        _downloadProgress.value = emptyMap()
+    internal val accountVisitChanges get() = authService.accountVisitChanges
+
+    internal fun captureOwner() = authService.captureAccountLease()
+
+    internal fun refreshForCurrentAccount(owner: AuthSessionLease = captureOwner()) {
+        val accountId = owner.accountId
+        if (accountId == null) {
+            _videos.value = emptyList()
+            _downloadProgress.value = emptyMap()
+            return
+        }
+        val entries = loadAvailable(accountId)
+        authService.commitForAccountLease(owner) {
+            _videos.value = entries
+            _downloadProgress.value = emptyMap()
+        }
     }
 
-    fun configuredTargetCount(): Int {
-        val accountId = currentAccountId() ?: return 0
+    internal fun configuredTargetCount(owner: AuthSessionLease = captureOwner()): Int {
+        val accountId = owner.accountId ?: return 0
         return preferences.getInt(targetPreferenceKey(accountId), 0)
             .coerceIn(0, MAX_CONFIGURED_VIDEO_COUNT)
     }
 
-    fun setConfiguredTargetCount(count: Int) {
-        val accountId = currentAccountId() ?: return
-        preferences.edit()
-            .putInt(targetPreferenceKey(accountId), count.coerceIn(0, MAX_CONFIGURED_VIDEO_COUNT))
-            .apply()
-    }
-
-    fun requestFreshCycle() {
-        val accountId = currentAccountId() ?: return
-        preferences.edit().putBoolean(refreshPreferenceKey(accountId), true).apply()
-    }
-
-    fun consumeFreshCycleRequest(): Boolean {
-        val accountId = currentAccountId() ?: return false
-        val requested = preferences.getBoolean(refreshPreferenceKey(accountId), false)
-        if (requested) {
-            preferences.edit().putBoolean(refreshPreferenceKey(accountId), false).apply()
+    internal fun setConfiguredTargetCount(count: Int, owner: AuthSessionLease) {
+        val accountId = owner.accountId ?: return
+        authService.commitForAccountLease(owner) {
+            preferences.edit().putInt(targetPreferenceKey(accountId), count.coerceIn(0, MAX_CONFIGURED_VIDEO_COUNT)).apply()
         }
+    }
+
+    internal fun requestFreshCycle(owner: AuthSessionLease) {
+        val accountId = owner.accountId ?: return
+        authService.commitForAccountLease(owner) {
+            preferences.edit().putBoolean(refreshPreferenceKey(accountId), true).apply()
+        }
+    }
+
+    internal fun consumeFreshCycleRequest(owner: AuthSessionLease): Boolean {
+        val accountId = owner.accountId ?: return false
+        var requested = false
+        if (!authService.commitForAccountLease(owner) {
+            requested = preferences.getBoolean(refreshPreferenceKey(accountId), false)
+            if (requested) preferences.edit().remove(refreshPreferenceKey(accountId)).apply()
+        }) owner.requireCurrent()
         return requested
     }
 
-    suspend fun download(video: Video): Result<OfflineVideoEntry> = withContext(Dispatchers.IO) {
-        val accountId = currentAccountId()
+    internal suspend fun download(video: Video, owner: AuthSessionLease): Result<OfflineVideoEntry> = withContext(Dispatchers.IO) {
+        owner.requireCurrent()
+        val accountId = owner.accountId
             ?: return@withContext Result.failure(IllegalStateException("No hay una cuenta activa"))
         val videoId = safePart(video.id)
         if (videoId.isBlank() || video.videoUrl.isBlank()) {
@@ -99,10 +119,11 @@ class OfflineVideoRepository @Inject constructor(
         }
 
         writeMutex.withLock {
-            val current = loadAndPrune(accountId)
+            owner.requireCurrent()
+            val current = loadAvailable(accountId)
             current.firstOrNull { it.video.id.equals(video.id, ignoreCase = true) }
                 ?.let { existing ->
-                    _videos.value = current
+                    authService.commitForAccountLease(owner) { _videos.value = current }
                     return@withLock Result.success(existing)
                 }
 
@@ -113,13 +134,17 @@ class OfflineVideoRepository @Inject constructor(
             partialVideo.delete()
 
             try {
+                val job = currentCoroutineContext()
+                val checkActive = { job.ensureActive(); owner.requireCurrent() }
                 val sourceUrl = UbuntuStorageUrl.rewrite(video.videoUrl) ?: video.videoUrl
                 val sizeBytes = downloadToFile(
                     sourceUrl = sourceUrl,
                     destination = partialVideo,
                     maximumBytes = MAX_OFFLINE_VIDEO_BYTES,
-                    onProgress = { progress -> updateProgress(video.id, progress) }
+                    checkActive = checkActive,
+                    onProgress = { progress -> updateProgress(owner, video.id, progress) }
                 )
+                checkActive()
                 validatePlayableVideo(partialVideo)
                 if (!partialVideo.renameTo(finalVideo)) {
                     partialVideo.copyTo(finalVideo, overwrite = true)
@@ -133,6 +158,7 @@ class OfflineVideoRepository @Inject constructor(
                             sourceUrl = resolved,
                             destination = finalThumbnail,
                             maximumBytes = MAX_THUMBNAIL_BYTES,
+                            checkActive = checkActive,
                             onProgress = {}
                         )
                         finalThumbnail.absolutePath
@@ -151,65 +177,64 @@ class OfflineVideoRepository @Inject constructor(
                 )
                 val updated = (current.filterNot { it.video.id.equals(video.id, ignoreCase = true) } + entry)
                     .sortedByDescending { it.downloadedAtEpochMs }
-                persist(accountId, updated)
-                _videos.value = updated
+                checkActive()
+                if (!authService.commitForAccountLease(owner) {
+                    persist(accountId, updated)
+                    _videos.value = updated
+                }) throw CancellationException("La sesión cambió durante la descarga")
                 Result.success(entry)
             } catch (error: Exception) {
                 partialVideo.delete()
                 finalVideo.delete()
                 finalThumbnail.delete()
+                if (error is CancellationException) throw error
                 Result.failure(error)
             } finally {
-                updateProgress(video.id, null)
+                updateProgress(owner, video.id, null)
             }
         }
     }
 
-    suspend fun remove(videoId: String): Result<Unit> = withContext(Dispatchers.IO) {
-        val accountId = currentAccountId()
-            ?: return@withContext Result.failure(IllegalStateException("No hay una cuenta activa"))
-        writeMutex.withLock {
-            val directory = accountDirectory(accountId).canonicalFile
-            val current = loadAndPrune(accountId)
-            val target = current.firstOrNull { it.video.id.equals(videoId, ignoreCase = true) }
-                ?: return@withLock Result.success(Unit)
-            listOfNotNull(target.localVideoPath, target.localThumbnailPath).forEach { path ->
-                runCatching {
-                    val file = File(path).canonicalFile
-                    if (file.path.startsWith(directory.path + File.separator)) file.delete()
+    internal suspend fun remove(videoId: String, owner: AuthSessionLease): Result<Unit> =
+        removeEntries(owner) { it.video.id.equals(videoId, ignoreCase = true) }
+
+    internal suspend fun removeAll(owner: AuthSessionLease): Result<Unit> = removeEntries(owner) { true }
+
+    private suspend fun removeEntries(owner: AuthSessionLease, selected: (OfflineVideoEntry) -> Boolean): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val accountId = owner.accountId
+                ?: return@withContext Result.failure(IllegalStateException("No hay una cuenta activa"))
+            writeMutex.withLock {
+                authService.withAccountLocalStorage(owner) {
+                    val (removed, remaining) = loadAvailable(accountId).partition(selected)
+                    val directory = accountDirectory(accountId).canonicalFile
+                    for (entry in removed) {
+                        listOfNotNull(entry.localVideoPath, entry.localThumbnailPath).forEach { path ->
+                            val file = File(path).canonicalFile
+                            if (file.parentFile == directory && file.exists() && !file.delete()) {
+                                return@withAccountLocalStorage Result.failure<Unit>(IllegalStateException("No se pudo eliminar el archivo"))
+                            }
+                        }
+                    }
+                    persist(accountId, remaining)
+                    authService.commitForAccountLease(owner) { _videos.value = remaining }
+                    Result.success(Unit)
                 }
             }
-            val updated = current.filterNot { it.video.id.equals(videoId, ignoreCase = true) }
-            persist(accountId, updated)
-            _videos.value = updated
-            Result.success(Unit)
         }
-    }
 
-    suspend fun removeAll(): Result<Unit> = withContext(Dispatchers.IO) {
-        val accountId = currentAccountId()
-            ?: return@withContext Result.failure(IllegalStateException("No hay una cuenta activa"))
-        writeMutex.withLock {
-            loadAndPrune(accountId).forEach { entry ->
-                File(entry.localVideoPath).delete()
-                entry.localThumbnailPath?.let { File(it).delete() }
-            }
-            persist(accountId, emptyList())
-            _videos.value = emptyList()
-            Result.success(Unit)
-        }
-    }
-
-    private fun loadAndPrune(accountId: String): List<OfflineVideoEntry> {
+    private fun loadAvailable(accountId: String): List<OfflineVideoEntry> {
         val encoded = preferences.getString(preferenceKey(accountId), null) ?: return emptyList()
         val stored = runCatching { json.decodeFromString<List<OfflineVideoEntry>>(encoded) }
             .getOrElse { emptyList() }
-        val valid = stored.filter { entry ->
-            val videoFile = File(entry.localVideoPath)
-            videoFile.isFile && videoFile.length() > 0L
+        val directory = accountDirectory(accountId).canonicalFile
+        return stored.mapNotNull { entry ->
+            val video = File(entry.localVideoPath).canonicalFile
+            if (video.parentFile != directory || !video.isFile || video.length() == 0L) return@mapNotNull null
+            val thumbnail = entry.localThumbnailPath?.let { File(it).canonicalFile }
+                ?.takeIf { it.parentFile == directory && it.isFile }
+            entry.copy(localThumbnailPath = thumbnail?.absolutePath)
         }.sortedByDescending { it.downloadedAtEpochMs }
-        if (valid.size != stored.size) persist(accountId, valid)
-        return valid
     }
 
     private fun persist(accountId: String, entries: List<OfflineVideoEntry>) {
@@ -223,11 +248,13 @@ class OfflineVideoRepository @Inject constructor(
         sourceUrl: String,
         destination: File,
         maximumBytes: Long,
+        checkActive: () -> Unit,
         onProgress: (Float) -> Unit
     ): Long {
         require(sourceUrl.startsWith("http://", true) || sourceUrl.startsWith("https://", true)) {
             "La dirección del archivo no es válida"
         }
+        checkActive()
         destination.parentFile?.mkdirs()
         val storageRead = conectate.com.core.media.StorageReadSession.isStorageRequest(sourceUrl)
         val storageCredential = if (storageRead) conectate.com.core.media.StorageReadSession.readySnapshot() else null
@@ -265,6 +292,7 @@ class OfflineVideoRepository @Inject constructor(
                 destination.outputStream().buffered().use { output ->
                     val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
                     while (true) {
+                        checkActive()
                         val read = input.read(buffer)
                         if (read < 0) break
                         copied += read
@@ -297,16 +325,13 @@ class OfflineVideoRepository @Inject constructor(
         }
     }
 
-    private fun updateProgress(videoId: String, progress: Float?) {
-        _downloadProgress.value = _downloadProgress.value.toMutableMap().apply {
-            if (progress == null) remove(videoId) else put(videoId, progress.coerceIn(0f, 1f))
+    private fun updateProgress(owner: AuthSessionLease, videoId: String, progress: Float?) {
+        authService.commitForAccountLease(owner) {
+            _downloadProgress.value = _downloadProgress.value.toMutableMap().apply {
+                if (progress == null) remove(videoId) else put(videoId, progress.coerceIn(0f, 1f))
+            }
         }
     }
-
-    private fun currentAccountId(): String? = authService.getCurrentUserId()
-        ?.trim()
-        ?.lowercase()
-        ?.takeIf { it.isNotBlank() }
 
     private fun accountDirectory(accountId: String): File =
         File(context.filesDir, "offline-videos/${safePart(accountId)}")

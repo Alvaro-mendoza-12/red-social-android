@@ -16,16 +16,20 @@ class OfflineVideoPrefetchCoordinator @Inject constructor(
     private val videoRepository: VideoRepository,
     private val offlineVideoRepository: OfflineVideoRepository
 ) {
-    suspend fun replenish(): OfflineVideoPrefetchResult {
-        val target = offlineVideoRepository.configuredTargetCount().coerceIn(0, MAX_TARGET)
+    internal suspend fun replenish(expectedAccount: String): OfflineVideoPrefetchResult {
+        val owner = offlineVideoRepository.captureOwner()
+        if (owner.accountId != expectedAccount || !owner.isCurrent()) {
+            return OfflineVideoPrefetchResult(0, 0, 0, 0)
+        }
+        val target = offlineVideoRepository.configuredTargetCount(owner).coerceIn(0, MAX_TARGET)
         if (target == 0) {
             return OfflineVideoPrefetchResult(0, offlineVideoRepository.videos.value.size, 0, 0)
         }
 
-        if (offlineVideoRepository.consumeFreshCycleRequest()) {
-            offlineVideoRepository.removeAll().getOrThrow()
+        if (offlineVideoRepository.consumeFreshCycleRequest(owner)) {
+            offlineVideoRepository.removeAll(owner).getOrThrow()
         } else {
-            offlineVideoRepository.refreshForCurrentAccount()
+            offlineVideoRepository.refreshForCurrentAccount(owner)
         }
 
         val existingIds = offlineVideoRepository.videos.value
@@ -37,11 +41,13 @@ class OfflineVideoPrefetchCoordinator @Inject constructor(
         var emptyPages = 0
 
         while (existingIds.size < target && offset < MAX_FETCH_OFFSET && emptyPages < 2) {
+            owner.requireCurrent()
             val page = videoRepository.getVideos(
                 offset = offset,
                 limit = PAGE_SIZE,
                 random = true
             ).last()
+            owner.requireCurrent()
             val candidates = page
                 .asSequence()
                 .filter { it.id.isNotBlank() && it.videoUrl.isNotBlank() }
@@ -56,7 +62,7 @@ class OfflineVideoPrefetchCoordinator @Inject constructor(
                 emptyPages = 0
                 for (video in candidates) {
                     if (existingIds.size >= target) break
-                    offlineVideoRepository.download(video)
+                    offlineVideoRepository.download(video, owner)
                         .onSuccess {
                             existingIds += video.id.trim().lowercase()
                             downloaded += 1
@@ -69,7 +75,8 @@ class OfflineVideoPrefetchCoordinator @Inject constructor(
             offset += PAGE_SIZE
         }
 
-        offlineVideoRepository.refreshForCurrentAccount()
+        offlineVideoRepository.refreshForCurrentAccount(owner)
+        owner.requireCurrent()
         return OfflineVideoPrefetchResult(
             requested = target,
             available = offlineVideoRepository.videos.value.size,

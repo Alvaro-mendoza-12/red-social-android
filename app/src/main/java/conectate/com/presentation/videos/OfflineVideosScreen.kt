@@ -84,6 +84,7 @@ import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.workDataOf
 import androidx.work.WorkManager
 import coil.compose.AsyncImage
 import conectate.com.data.repository.OfflineVideoDownloadWorker
@@ -99,7 +100,10 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @HiltViewModel
@@ -107,19 +111,26 @@ class OfflineVideosViewModel @Inject constructor(
     private val repository: OfflineVideoRepository,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
-    val videos: StateFlow<List<OfflineVideoEntry>> = repository.videos
-    val downloadProgress: StateFlow<Map<String, Float>> = repository.downloadProgress
-    private val _targetCount = kotlinx.coroutines.flow.MutableStateFlow(repository.configuredTargetCount())
-    val targetCount: StateFlow<Int> = _targetCount
+    private val owner = repository.captureOwner()
+
+    private fun <T> visibleDuringVisit(source: StateFlow<T>, empty: T): StateFlow<T> =
+        combine(source, repository.accountVisitChanges) { value, _ -> if (owner.isCurrent()) value else empty }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, empty)
+
+    val videos = visibleDuringVisit(repository.videos, emptyList<OfflineVideoEntry>())
+    val downloadProgress = visibleDuringVisit(repository.downloadProgress, emptyMap<String, Float>())
+    private val _targetCount = kotlinx.coroutines.flow.MutableStateFlow(repository.configuredTargetCount(owner))
+    val targetCount = visibleDuringVisit(_targetCount, 0)
 
     init {
-        repository.refreshForCurrentAccount()
+        repository.refreshForCurrentAccount(owner)
         if (_targetCount.value > repository.videos.value.size) enqueueReplenishment()
     }
 
     fun configureTarget(count: Int) {
+        if (!owner.isCurrent()) return
         val safeCount = count.coerceIn(1, 150)
-        repository.setConfiguredTargetCount(safeCount)
+        repository.setConfiguredTargetCount(safeCount, owner)
         _targetCount.value = safeCount
         enqueueReplenishment()
         AppFeedbackBus.show(
@@ -128,6 +139,7 @@ class OfflineVideosViewModel @Inject constructor(
     }
 
     fun replenishNow() {
+        if (!owner.isCurrent()) return
         if (_targetCount.value <= 0) {
             AppFeedbackBus.showError("Primero elige cuántos videos quieres guardar.")
             return
@@ -137,32 +149,38 @@ class OfflineVideosViewModel @Inject constructor(
     }
 
     fun markCycleCompleted() {
+        if (!owner.isCurrent()) return
         if (_targetCount.value <= 0) return
-        repository.requestFreshCycle()
+        repository.requestFreshCycle(owner)
         enqueueReplenishment()
     }
 
     fun remove(videoId: String) {
+        if (!owner.isCurrent()) return
         viewModelScope.launch {
-            repository.remove(videoId)
+            repository.remove(videoId, owner)
                 .onSuccess { AppFeedbackBus.showSuccess("Video eliminado del dispositivo") }
                 .onFailure { AppFeedbackBus.showError(it.message ?: "No se pudo eliminar el video") }
         }
     }
 
     fun removeAll() {
-        WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK_NAME)
-        repository.setConfiguredTargetCount(0)
+        if (!owner.isCurrent()) return
+        WorkManager.getInstance(context).cancelUniqueWork("$UNIQUE_WORK_NAME:${owner.accountId}")
+        repository.setConfiguredTargetCount(0, owner)
         _targetCount.value = 0
         viewModelScope.launch {
-            repository.removeAll()
+            repository.removeAll(owner)
                 .onSuccess { AppFeedbackBus.showSuccess("Videos sin conexión eliminados") }
                 .onFailure { AppFeedbackBus.showError(it.message ?: "No se pudieron eliminar los videos") }
         }
     }
 
     private fun enqueueReplenishment() {
+        val account = owner.accountId ?: return
+        if (!owner.isCurrent()) return
         val request = OneTimeWorkRequestBuilder<OfflineVideoDownloadWorker>()
+            .setInputData(workDataOf(OfflineVideoDownloadWorker.ACCOUNT_KEY to account))
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -171,7 +189,7 @@ class OfflineVideosViewModel @Inject constructor(
             .addTag(UNIQUE_WORK_NAME)
             .build()
         WorkManager.getInstance(context).enqueueUniqueWork(
-            UNIQUE_WORK_NAME,
+            "$UNIQUE_WORK_NAME:$account",
             ExistingWorkPolicy.REPLACE,
             request
         )
