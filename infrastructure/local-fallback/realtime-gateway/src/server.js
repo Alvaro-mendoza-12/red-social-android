@@ -71,6 +71,7 @@ app.use((req, res, next) => {
 })
 app.get('/', (_req, res) => res.json({ ok: true, service: serviceName, version, instanceId }))
 app.get(['/health', '/ready'], (req, res) => {
+  res.set('Cache-Control', 'no-store')
   const redisConnected = Boolean(redisBus?.isReady())
   const redisReaderReady = Boolean(redisBus?.isReaderReady())
   const ready = !realtimeRedisUrl || (redisConnected && redisReaderReady)

@@ -2120,6 +2120,7 @@ app.get('/', (_req, res) => {
 })
 
 app.get('/health', (_req, res) => {
+  res.set('Cache-Control', 'no-store')
   res.json({
     ok: true,
     service: serviceName,
@@ -2148,6 +2149,7 @@ app.get('/internal/metrics', (req, res) => {
 })
 
 app.get('/ready', async (_req, res, next) => {
+  res.set('Cache-Control', 'no-store')
   try {
     const { rows } = await pool.query('SELECT NOW() AS now')
     const release = await loadReleaseMetadata()
