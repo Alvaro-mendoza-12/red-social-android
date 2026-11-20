@@ -10,12 +10,13 @@
  * Phases:
  *  1. Live Streams (Directos) Multi-Instance Rehydration & SIGKILL Failover (2x Signaling + Real Redis 7.4.8)
  *     + signaling-server Redis integration test suite against real Redis 7.4.8
- *  2. Next-Round Scalability & Performance Benchmark (50..1,500 concurrent users + DM/Group latency breakdown)
+ *  2. Closed-loop workload (50..1,500 workers sharing 24 synthetic accounts) + DM/group latency
  *  3. Extended Multi-Instance Soak (configurable, default 210s) + run-ubuntu-staging-soak.mjs safety guard verification
- *  4. Fault-Injection Chaos Suite (Redis SIGKILL, PG slow/lock contention, Realtime-1 SIGKILL + 60-WS reconnect storm,
+ *  4. Fault-Injection Chaos Suite (Redis SIGKILL, PG row lock, Realtime-1 SIGKILL + 30 reconnects with 60 recipients,
  *     Cross-node change-password instant WS revocation)
  *  5. Cycle 221–222 Security & Business Rules Matrix E2E Verification
  */
+import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -28,6 +29,9 @@ import { createRequire } from 'node:module'
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(__dirname, '../..')
+const hostKeys = new Set(['PATH', 'SYSTEMROOT', 'WINDIR', 'SYSTEMDRIVE', 'COMSPEC', 'PATHEXT',
+  'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'LANG'])
+const hostEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => hostKeys.has(key.toUpperCase())))
 
 const { Pool } = require(path.join(repoRoot, 'infrastructure/local-fallback/api/node_modules/pg'))
 const { io: ioClient } = require(path.join(repoRoot, 'infrastructure/local-fallback/api/node_modules/socket.io-client'))
@@ -125,7 +129,7 @@ function parseServerTiming(headerValue) {
 async function timedFetch(url, options = {}) {
   const started = performance.now()
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(options.timeoutMs || 15_000), ...options })
+    const res = await fetch(url, { signal: AbortSignal.timeout(options.timeoutMs || 15_000), ...options, redirect: 'manual' })
     const text = await res.text()
     let json = null
     try { json = text ? JSON.parse(text) : null } catch {}
@@ -153,7 +157,7 @@ async function fetchJsonMetrics(url, secret, headerName = 'Authorization') {
 function spawnNodeService(name, scriptPath, cwd, env, logStream) {
   const child = spawn(process.execPath, [scriptPath], {
     cwd,
-    env: { ...process.env, ...env },
+    env: { ...hostEnv, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   child.stdout.on('data', (chunk) => logStream.write(`[${name}:out] ${chunk}`))
@@ -255,6 +259,17 @@ async function startLocalRedis748({ port, password, workDir, logStream }) {
   })
 
   const lineWaiters = []
+  let wrapperFailure
+  function rejectWaiters(error) {
+    wrapperFailure = error
+    for (const waiter of lineWaiters.splice(0)) {
+      clearTimeout(waiter.timer)
+      waiter.reject(error)
+    }
+  }
+  proc.on('error', rejectWaiters)
+  proc.stdin.on('error', rejectWaiters)
+  proc.on('exit', (code, signal) => rejectWaiters(new Error(`Redis wrapper exited (${signal || code})`)))
   let stdoutBuf = ''
   let stderrTail = ''
   proc.stdout.on('data', (chunk) => {
@@ -281,19 +296,27 @@ async function startLocalRedis748({ port, password, workDir, logStream }) {
   })
 
   function waitForLine(expected, timeoutMs = 15_000) {
+    if (wrapperFailure) return Promise.reject(wrapperFailure)
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`Redis wrapper timed out waiting for ${expected} (stderr: ${stderrTail.trim()})`)),
-        timeoutMs,
-      )
-      lineWaiters.push({ expected, resolve, timer })
+      const waiter = { expected, resolve, reject }
+      waiter.timer = setTimeout(() => {
+        lineWaiters.splice(lineWaiters.indexOf(waiter), 1)
+        reject(new Error(`Redis wrapper timed out waiting for ${expected} (stderr: ${stderrTail.trim()})`))
+      }, timeoutMs)
+      lineWaiters.push(waiter)
     })
   }
 
   const readyPromise = waitForLine('READY', 20_000)
   proc.stdin.write(`${password}\n`)
-  await readyPromise
-  await waitForTcpPort('127.0.0.1', port, 10_000)
+  try {
+    await readyPromise
+    await waitForTcpPort('127.0.0.1', port, 10_000)
+  } catch (error) {
+    proc.stdin.end('quit\n')
+    await stopChild(proc)
+    throw error
+  }
 
   return {
     port,
@@ -366,6 +389,7 @@ async function runWave({ name, concurrency, requestsPerUser, users, apiUrls, cha
   const criticalErrors = { dmSend: 0, groupSend: 0, profile: 0, notifications: 0 }
   let status2xx = 0
   let status4xx = 0
+  let functionalFailures = 0
   let status429 = 0
   let loadShed503 = 0
   let unexpected5xx = 0
@@ -383,57 +407,67 @@ async function runWave({ name, concurrency, requestsPerUser, users, apiUrls, cha
         const mod = (workerIndex + i) % 5
         let res
         let bucket
+        let valid
         if (mod === 0) {
           bucket = 'feed'
           res = await timedFetch(`${apiUrl}/v1/data/feed?limit=20`, { headers: authHeaders })
+          valid = res.status === 200 && Array.isArray(res.json?.items)
         } else if (mod === 1) {
           bucket = 'profile'
           const target = users[(workerIndex + 1) % users.length]
           res = await timedFetch(`${apiUrl}/v1/data/profiles/${target.id}`, { headers: authHeaders })
+          valid = res.status === 200 && res.json?.profile?.id === target.id
         } else if (mod === 2) {
           bucket = 'dmSend'
+          const id = crypto.randomUUID()
           const chatId = chatIds[Math.floor((workerIndex % users.length) / 2) % chatIds.length]
           res = await timedFetch(`${apiUrl}/v1/data/messages/chats/${chatId}/messages`, {
             method: 'POST',
             headers: jsonHeaders,
             body: JSON.stringify({
-              id: crypto.randomUUID(),
+              id,
               content: `c221-dm-${name}-${workerIndex}-${i}`,
               contentType: 'text',
             }),
           })
+          valid = res.status === 201 && res.json?.message?.id === id
         } else if (mod === 3) {
           bucket = 'groupSend'
+          const id = crypto.randomUUID()
           const groupId = groupIds[workerIndex % groupIds.length]
           res = await timedFetch(`${apiUrl}/v1/data/messages/groups/${groupId}/messages`, {
             method: 'POST',
             headers: jsonHeaders,
             body: JSON.stringify({
-              id: crypto.randomUUID(),
+              id,
               content: `c221-grp-${name}-${workerIndex}-${i}`,
               contentType: 'text',
             }),
           })
+          valid = res.status === 201 && res.json?.message?.id === id
         } else {
           bucket = 'notifications'
           res = await timedFetch(`${apiUrl}/v1/data/notifications?limit=15`, { headers: authHeaders })
+          valid = res.status === 200 && Array.isArray(res.json?.items)
         }
 
         latencies.push(res.ms)
         byAction[bucket].push(res.ms)
+        if (!valid) {
+          functionalFailures += 1
+          if (bucket !== 'feed') criticalErrors[bucket] += 1
+        }
         if (res.status === 0) {
           networkErrors += 1
-          if (bucket !== 'feed') criticalErrors[bucket] += 1
         } else if (res.status === 503 && res.json?.error === 'SERVICE_OVERLOADED') {
           loadShed503 += 1
         } else if (res.status >= 500) {
           unexpected5xx += 1
-          if (bucket !== 'feed') criticalErrors[bucket] += 1
         } else if (res.status === 429) {
           status429 += 1
         } else if (res.status >= 400) {
           status4xx += 1
-        } else {
+        } else if (res.status >= 200 && res.status < 300) {
           status2xx += 1
         }
       }
@@ -456,6 +490,9 @@ async function runWave({ name, concurrency, requestsPerUser, users, apiUrls, cha
     unexpected5xx,
     networkErrors,
     criticalErrors,
+    functionalFailures,
+    uniqueAccounts: Math.min(users.length, concurrency),
+    workload: 'closed-loop',
     overall: percentiles(latencies),
     byAction: Object.fromEntries(Object.entries(byAction).map(([k, v]) => [k, percentiles(v)])),
   }
@@ -467,7 +504,6 @@ async function openAuthenticatedRealtimeWs(realtimeUrl, token, subscribeChannels
     const ws = new WebSocket(wsUrl, {
       headers: { Authorization: `Bearer ${token}` },
     })
-    const events = []
     const listeners = new Set()
     let connected = false
     let closedInfo = null
@@ -484,7 +520,7 @@ async function openAuthenticatedRealtimeWs(realtimeUrl, token, subscribeChannels
         connected = true
         if (pendingSubs.size === 0) {
           clearTimeout(timer)
-          resolve({ ws, events, listeners, getClosedInfo: () => closedInfo })
+          resolve({ ws, listeners, getClosedInfo: () => closedInfo })
         } else {
           for (const ch of pendingSubs) {
             ws.send(JSON.stringify({ type: 'subscribe', channel: ch }))
@@ -496,14 +532,13 @@ async function openAuthenticatedRealtimeWs(realtimeUrl, token, subscribeChannels
         pendingSubs.delete(msg.channel)
         if (connected && pendingSubs.size === 0) {
           clearTimeout(timer)
-          resolve({ ws, events, listeners, getClosedInfo: () => closedInfo })
+          resolve({ ws, listeners, getClosedInfo: () => closedInfo })
         }
         return
       }
       if (msg.type === 'event') {
         const receivedAtMs = performance.now()
         const entry = { ...msg, receivedAtMs }
-        events.push(entry)
         for (const fn of listeners) fn(entry)
       }
     })
@@ -706,7 +741,7 @@ async function main() {
   const liveToken = crypto.randomBytes(32).toString('hex')
   const adminToken = crypto.randomBytes(32).toString('hex')
   const redisPass = crypto.randomBytes(32).toString('hex')
-  const pgPass = 'novvin_c221_local_pw'
+  const pgPass = crypto.randomBytes(32).toString('hex')
   const pwFile = path.join(workDir, 'pgpass.txt')
   const redisPwFile = path.join(workDir, 'redispass.txt')
   fs.writeFileSync(pwFile, pgPass, 'utf8')
@@ -767,7 +802,7 @@ async function main() {
       {
         cwd: path.join(repoRoot, 'signaling-server'),
         env: {
-          ...process.env,
+          ...hostEnv,
           NOVVIN_TEST_REDIS_URL: `redis://:${encodeURIComponent(redisPass)}@127.0.0.1:${redisPort}`,
           NOVVIN_TEST_REDIS_PASSWORD: redisPass,
         },
@@ -803,6 +838,7 @@ async function main() {
       NODE_ENV: 'test',
       PORT: String(port),
       DATABASE_URL: databaseUrl,
+      API_LISTEN_HOST: '127.0.0.1',
       DATABASE_POOL_MAX: String(poolMax),
       DB_POOL_LOAD_SHED_WAITING: String(loadShedWaiting),
       JWT_SECRET: jwtSecret,
@@ -841,6 +877,7 @@ async function main() {
       LOCAL_FALLBACK_API_URL: apiUrl,
       FALLBACK_API_URL: apiUrl,
       SIGNALING_ALLOWED_ORIGINS: 'http://127.0.0.1',
+      SIGNALING_LISTEN_HOST: '127.0.0.1',
       SIGNALING_REDIS_URL: redisHandle.url,
       SIGNALING_REDIS_PASSWORD_FILE: redisPwFile,
       SIGNALING_REDIS_REQUIRED: 'true',
@@ -1129,14 +1166,18 @@ async function main() {
 
       let bgStop = false
       const bgPromises = []
+      const backgroundFeed = { attempted: 0, failures: 0, statuses: {} }
       if (backgroundLoad > 0) {
         for (let b = 0; b < backgroundLoad; b += 1) {
           const bgUser = users[(b + 4) % users.length]
           bgPromises.push((async () => {
             while (!bgStop) {
-              await timedFetch(`${b % 2 === 0 ? api1Url : api2Url}/v1/data/feed?limit=15`, {
+              const response = await timedFetch(`${b % 2 === 0 ? api1Url : api2Url}/v1/data/feed?limit=15`, {
                 headers: { Authorization: `Bearer ${bgUser.token}` },
               })
+              backgroundFeed.attempted++
+              backgroundFeed.statuses[response.status] = (backgroundFeed.statuses[response.status] || 0) + 1
+              if (response.status !== 200 || !Array.isArray(response.json?.items)) backgroundFeed.failures++
             }
           })())
         }
@@ -1187,7 +1228,7 @@ async function main() {
             headers: { Authorization: `Bearer ${dmSender.token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: msgId, content: `lat221-${kind}-${i}`, contentType: 'text' }),
           })
-          if (res.status !== 201) {
+          if (res.status !== 201 || res.json?.message?.id !== msgId) {
             errors += 1
             wsSameNode.listeners.delete(onSame)
             wsCrossNode.listeners.delete(onCross)
@@ -1218,7 +1259,11 @@ async function main() {
         kind,
         samplesRequested: count,
         backgroundConcurrentFeedUsers: backgroundLoad,
+        backgroundFeed,
         errors,
+        passed: errors === 0 && backgroundFeed.failures === 0 && (!backgroundLoad || backgroundFeed.attempted > 0) &&
+          backendAckSamples.length === count &&
+          sameNodeWsSamples.length === count && crossNodeWsSamples.length === count,
         access: percentiles(accessSamples),
         persist: percentiles(persistSamples),
         backendAck: percentiles(backendAckSamples),
@@ -1266,12 +1311,12 @@ async function main() {
     console.error('[c221-222][Phase3] Verifying run-ubuntu-staging-soak.mjs safety guards & running extended multi-instance soak...')
     const soakScriptPath = path.join(repoRoot, 'tools/loadtest/run-ubuntu-staging-soak.mjs')
     const guardMissingFlag = spawnSync(process.execPath, [soakScriptPath], {
-      env: { ...process.env, NOVVIN_STAGING_ISOLATED: '' },
+      env: { ...hostEnv, NOVVIN_STAGING_ISOLATED: '' },
       encoding: 'utf8',
     })
     const guardProdDomain = spawnSync(process.execPath, [soakScriptPath], {
       env: {
-        ...process.env,
+        ...hostEnv,
         NOVVIN_STAGING_ISOLATED: 'true',
         STAGING_API_URL: 'https://api.novvin.app',
       },
@@ -1279,7 +1324,7 @@ async function main() {
     })
     const guardNonLoopback = spawnSync(process.execPath, [soakScriptPath], {
       env: {
-        ...process.env,
+        ...hostEnv,
         NOVVIN_STAGING_ISOLATED: 'true',
         NOVVIN_ALLOW_NON_LOOPBACK_STAGING_HOST: 'false',
         STAGING_API_URL: 'http://10.20.30.40:3080',
@@ -1303,6 +1348,7 @@ async function main() {
     let soakTotalRequests = 0
     let soakTotalUnexpected5xx = 0
     let soakTotalLoadShed = 0
+    let soakFunctionalFailures = 0
 
     while (Date.now() < soakEndMs) {
       soakIteration += 1
@@ -1318,6 +1364,7 @@ async function main() {
       soakTotalRequests += wave.totalRequests
       soakTotalUnexpected5xx += wave.unexpected5xx
       soakTotalLoadShed += wave.loadShed503
+      soakFunctionalFailures += wave.functionalFailures
 
       const elapsedSec = Math.round((Date.now() - soakStartMs) / 1000)
       if (soakIteration === 1 || soakIteration % 5 === 0 || Date.now() + 1500 >= soakEndMs) {
@@ -1386,13 +1433,28 @@ async function main() {
 
     // Scenario 4A: PostgreSQL Slow Query / Lock Contention Injection during concurrent API traffic
     const lockClient = await dbPool.connect()
-    let pgContention5xx = 0
-    let pgContention2xx = 0
+    const probeId = crypto.randomUUID()
+    let lockedWrite
+    let contentionTraffic
+    let observedBlockedWriter = false
     try {
       await lockClient.query('BEGIN')
-      // Hold row lock on posts[0] for 350ms while 30 concurrent requests hit feed & DM
-      await lockClient.query('SELECT pg_sleep(0.35)')
-      const contentionWave = await runWave({
+      await lockClient.query('SELECT id FROM fallback_chats WHERE id=$1 FOR UPDATE', [chatIds[0]])
+      lockedWrite = timedFetch(`${api1Url}/v1/data/messages/chats/${chatIds[0]}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${users[0].token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: probeId, content: 'contention probe', contentType: 'text' }),
+      })
+      const observeUntil = performance.now() + 2000
+      do {
+        const result = await dbPool.query(
+          'SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1::int = ANY(pg_blocking_pids(pid))) AS blocked',
+          [lockClient.processID],
+        )
+        observedBlockedWriter = result.rows[0].blocked
+        if (!observedBlockedWriter) await new Promise(resolve => setTimeout(resolve, 20))
+      } while (!observedBlockedWriter && performance.now() < observeUntil)
+      contentionTraffic = runWave({
         name: 'chaos_pg_contention',
         concurrency: 30,
         requestsPerUser: 2,
@@ -1401,18 +1463,18 @@ async function main() {
         chatIds,
         groupIds,
       })
-      pgContention5xx = contentionWave.unexpected5xx
-      pgContention2xx = contentionWave.status2xx
-      await lockClient.query('COMMIT')
+      await new Promise(resolve => setTimeout(resolve, 350))
     } finally {
-      lockClient.release()
+      try { await lockClient.query('ROLLBACK') } finally { lockClient.release() }
     }
+    const [probeAck, contentionWave] = await Promise.all([lockedWrite, contentionTraffic])
+    const lockedWriteConfirmed = probeAck.status === 201 && probeAck.json?.message?.id === probeId
     const [m1AfterLock, m2AfterLock] = await Promise.all([
       fetchJsonMetrics(api1Url, internalSecret, 'Authorization'),
       fetchJsonMetrics(api2Url, internalSecret, 'Authorization'),
     ])
 
-    // Scenario 4B: Realtime-1 SIGKILL + 60-WebSocket Reconnect Storm onto Realtime-2
+    // Scenario 4B: 30 disconnected recipients rejoin the 30 still on Realtime-2.
     const stormSocketsRt1 = await Promise.all(
       Array.from({ length: 30 }, (_, i) => openAuthenticatedRealtimeWs(rt1Url, users[i % 2].token, [`chat:${chatIds[0]}`])),
     )
@@ -1429,16 +1491,30 @@ async function main() {
     const rtStormReconnectMs = Number((performance.now() - rtStormStart).toFixed(1))
     // Publish a message through API-2 -> verify all 60 connected clients on Realtime-2 receive it!
     const stormMsgId = crypto.randomUUID()
-    await timedFetch(`${api2Url}/v1/data/messages/chats/${chatIds[0]}/messages`, {
+    const all60Sockets = [...stormSocketsRt2, ...reconnectedOnRt2]
+    const deliveredTo = new Set()
+    let allDelivered
+    const completed = new Promise(resolve => { allDelivered = resolve })
+    for (const socket of all60Sockets) {
+      socket.listeners.add(event => {
+        if (event.channel === `chat:${chatIds[0]}` && event.payload?.message?.id === stormMsgId) {
+          deliveredTo.add(socket)
+          if (deliveredTo.size === all60Sockets.length) allDelivered()
+        }
+      })
+    }
+    const stormAck = await timedFetch(`${api2Url}/v1/data/messages/chats/${chatIds[0]}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${users[0].token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: stormMsgId, content: 'storm-verify-msg', contentType: 'text' }),
     })
-    await new Promise((r) => setTimeout(r, 400))
-    const all60Sockets = [...stormSocketsRt2, ...reconnectedOnRt2]
-    const stormDeliveredCount = all60Sockets.filter((h) =>
-      h.events.some((e) => e.channel === `chat:${chatIds[0]}` && e.payload?.message?.id === stormMsgId),
-    ).length
+    assert.equal(stormAck.status, 201)
+    assert.equal(stormAck.json?.message?.id, stormMsgId)
+    let stormTimer
+    try {
+      await Promise.race([completed, new Promise(resolve => { stormTimer = setTimeout(resolve, 3000) })])
+    } finally { clearTimeout(stormTimer) }
+    const stormDeliveredCount = deliveredTo.size
     for (const h of all60Sockets) { try { h.ws.close() } catch {} }
 
     // Restart Realtime-1
@@ -1511,10 +1587,10 @@ async function main() {
 
     const chaosSuiteReport = {
       passed:
-        pgContention5xx === 0 &&
-        pgContention2xx === 60 &&
-        (m1AfterLock?.dbPool?.waiting || 0) === 0 &&
-        (m2AfterLock?.dbPool?.waiting || 0) === 0 &&
+        observedBlockedWriter && lockedWriteConfirmed &&
+        contentionWave.functionalFailures === 0 && contentionWave.status2xx === 60 &&
+        m1AfterLock?.dbPool?.waiting === 0 &&
+        m2AfterLock?.dbPool?.waiting === 0 &&
         reconnectedOnRt2.length === 30 &&
         stormDeliveredCount === 60 &&
         pwChangeRes.status === 200 &&
@@ -1524,9 +1600,12 @@ async function main() {
         redisDownRes.status === 201 &&
         redisAutoRecoveryMs !== null,
       pgLockContention: {
-        status2xx: pgContention2xx,
-        unexpected5xx: pgContention5xx,
-        poolWaitingAfterRelease: (m1AfterLock?.dbPool?.waiting || 0) + (m2AfterLock?.dbPool?.waiting || 0),
+        observedBlockedWriter, lockedWriteConfirmed, lockedWriteAckMs: probeAck.ms,
+        status2xx: contentionWave.status2xx,
+        unexpected5xx: contentionWave.unexpected5xx,
+        functionalFailures: contentionWave.functionalFailures,
+        poolWaitingAfterRelease: m1AfterLock?.dbPool && m2AfterLock?.dbPool
+          ? m1AfterLock.dbPool.waiting + m2AfterLock.dbPool.waiting : null,
       },
       realtimeSigkillAnd60WsStorm: {
         reconnectedCount: reconnectedOnRt2.length,
@@ -1543,6 +1622,48 @@ async function main() {
         writeDuringOutageStatus: redisDownRes.status,
         fullClusterAutoRecoveryMs: redisAutoRecoveryMs,
       },
+    }
+
+    const report = {
+      executedAt: new Date().toISOString(),
+      environment: {
+        isolatedLoopback: true,
+        hostPlatform: `${process.platform}-${process.arch}`,
+        nodeVersion: process.version,
+        cpuCount: os.cpus().length,
+        totalRamGB: Number((os.totalmem() / 1073741824).toFixed(1)),
+        databaseEngine: 'PostgreSQL 17 (isolated ephemeral cluster, max_connections=220)',
+        redisEngine: `Redis ${initialRedisInfo.redisVersion} (isolated WSL2 ephemeral instance, requirepass+AOF+256MB)`,
+      },
+      phase1LiveStreamsMultiInstanceRehydration: liveRehydrationReport,
+      phase2ScalabilityAndLatency: {
+        redis2ApiBenchmark: benchRedis2x,
+        messagingLatency: messagingLatencyReport,
+      },
+      phase3ExtendedSoak: {
+        durationSeconds: soakSeconds,
+        iterations: soakIteration,
+        totalRequests: soakTotalRequests,
+        totalUnexpected5xx: soakTotalUnexpected5xx,
+        totalLoadShed503: soakTotalLoadShed,
+        functionalFailures: soakFunctionalFailures,
+        passed: soakTotalRequests > 0 && soakFunctionalFailures === 0,
+        samples: soakSamples,
+      },
+      phase4ChaosAndRecovery: chaosSuiteReport,
+    }
+
+    const operationalChecksPassed =
+      report.phase1LiveStreamsMultiInstanceRehydration.passed &&
+      report.phase3ExtendedSoak.passed &&
+      report.phase4ChaosAndRecovery.passed &&
+      benchRedis2x.every(w => w.functionalFailures === 0) &&
+      Object.values(messagingLatencyReport).every(scenario => scenario.passed)
+
+    if (process.argv.includes('--operational-only')) {
+      report.scope = 'live, workload, messaging, soak and recovery'
+      finishReport(report, operationalChecksPassed)
+      return
     }
 
     // =========================================================================
@@ -1645,51 +1766,8 @@ async function main() {
       },
     }
 
-    const report = {
-      executedAt: new Date().toISOString(),
-      environment: {
-        isolatedLoopback: true,
-        hostPlatform: `${process.platform}-${process.arch}`,
-        nodeVersion: process.version,
-        cpuCount: os.cpus().length,
-        totalRamGB: Number((os.totalmem() / 1073741824).toFixed(1)),
-        databaseEngine: 'PostgreSQL 17 (isolated ephemeral cluster, max_connections=220)',
-        redisEngine: `Redis ${initialRedisInfo.redisVersion} (isolated WSL2 ephemeral instance, requirepass+AOF+256MB)`,
-      },
-      phase1LiveStreamsMultiInstanceRehydration: liveRehydrationReport,
-      phase2ScalabilityAndLatency: {
-        redis2ApiBenchmark: benchRedis2x,
-        messagingLatency: messagingLatencyReport,
-      },
-      phase3ExtendedSoak: {
-        durationSeconds: soakSeconds,
-        iterations: soakIteration,
-        totalRequests: soakTotalRequests,
-        totalUnexpected5xx: soakTotalUnexpected5xx,
-        totalLoadShed503: soakTotalLoadShed,
-        passed: soakTotalUnexpected5xx === 0,
-        samples: soakSamples,
-      },
-      phase4ChaosAndRecovery: chaosSuiteReport,
-      phase5SecurityAndBusinessRules: securityAndBusinessReport,
-    }
-
-    const allPassed =
-      report.phase1LiveStreamsMultiInstanceRehydration.passed &&
-      report.phase3ExtendedSoak.passed &&
-      report.phase4ChaosAndRecovery.passed &&
-      report.phase5SecurityAndBusinessRules.passed &&
-      benchRedis2x.every((w) => w.unexpected5xx === 0 && w.networkErrors === 0)
-
-    report.summary = { allPassed }
-
-    const outPath = process.env.NOVVIN_C221_REPORT_PATH
-    if (outPath) {
-      fs.mkdirSync(path.dirname(outPath), { recursive: true })
-      fs.writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8')
-    }
-    console.log(JSON.stringify(report, null, 2))
-    if (!allPassed) process.exitCode = 1
+    report.phase5SecurityAndBusinessRules = securityAndBusinessReport
+    finishReport(report, operationalChecksPassed && securityAndBusinessReport.passed)
   } finally {
     await Promise.all(Object.keys(children).map((name) => stopNamed(name)))
     if (redisHandle) await redisHandle.stop().catch(() => {})
@@ -1700,6 +1778,18 @@ async function main() {
     logStream.end()
     try { fs.rmSync(workDir, { recursive: true, force: true }) } catch {}
   }
+}
+
+function finishReport(report, allPassed) {
+  report.summary = { allPassed }
+
+  const outPath = process.env.NOVVIN_C221_REPORT_PATH
+  if (outPath) {
+    fs.mkdirSync(path.dirname(outPath), { recursive: true })
+    fs.writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf8')
+  }
+  console.log(JSON.stringify(report, null, 2))
+  if (!allPassed) process.exitCode = 1
 }
 
 main().catch((error) => {
