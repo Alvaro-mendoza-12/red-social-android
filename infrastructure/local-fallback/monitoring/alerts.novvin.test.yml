@@ -46,3 +46,32 @@ tests:
       - eval_time: 5m
         alertname: NovvinMetricsTargetDown
         exp_alerts: []
+  - name: All realtime replicas disappear from service discovery
+    interval: 15s
+    input_series:
+      - series: 'up{job="novvin-api",instance="a"}'
+        values: '1x22'
+      - series: 'up{job="novvin-signaling",instance="s"}'
+        values: '1x22'
+      - series: 'up{job="novvin-realtime-gateway",instance="r1"}'
+        values: '1 stale'
+      - series: 'up{job="novvin-realtime-gateway",instance="r2"}'
+        values: '1 1 stale'
+      - series: 'up{job="novvin-realtime-gateway",instance="r3"}'
+        values: '_x15 1x6'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: NovvinMetricsServiceMissing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: NovvinMetricsServiceMissing
+        exp_alerts:
+          - exp_labels:
+              job: novvin-realtime-gateway
+              severity: critical
+            exp_annotations:
+              summary: NOVVIN service missing from metrics discovery
+              description: Prometheus has no metrics targets for novvin-realtime-gateway.
+      - eval_time: 5m
+        alertname: NovvinMetricsServiceMissing
+        exp_alerts: []

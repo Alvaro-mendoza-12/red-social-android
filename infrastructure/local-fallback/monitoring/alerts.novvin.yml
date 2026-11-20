@@ -13,6 +13,17 @@ groups:
         annotations:
           summary: "NOVVIN metrics endpoint unreachable"
           description: "Prometheus has been unable to scrape {{ $labels.job }} at {{ $labels.instance }} for two minutes."
+      - alert: NovvinMetricsServiceMissing
+        expr: |
+          absent(up{job="novvin-api"})
+          or absent(up{job="novvin-realtime-gateway"})
+          or absent(up{job="novvin-signaling"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NOVVIN service missing from metrics discovery"
+          description: "Prometheus has no metrics targets for {{ $labels.job }}."
 
   - name: novvin.api.slo
     interval: 15s

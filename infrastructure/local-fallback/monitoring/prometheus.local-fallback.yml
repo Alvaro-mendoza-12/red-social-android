@@ -1,6 +1,7 @@
 # NOVVIN Ubuntu Local-Fallback Stack — Prometheus Scrape Configuration
 # Mount secret files (read-only) containing REALTIME_INTERNAL_SECRET and LIVE_INTERNAL_EVENTS_TOKEN
 # or point bearer_token_file / authorization.credentials_file to the host secret path.
+# Run on the Compose network so its DNS resolver returns every healthy or starting replica.
 
 global:
   scrape_interval: 15s
@@ -18,27 +19,36 @@ scrape_configs:
     authorization:
       type: "Bearer"
       credentials_file: "/run/secrets/realtime_internal_secret"
-    static_configs:
-      - targets: ["api:3001"]
-        labels:
-          component: "api"
+    dns_sd_configs:
+      - names: ["api"]
+        type: A
+        port: 3001
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        target_label: component
 
   - job_name: "novvin-realtime-gateway"
     metrics_path: "/internal/metrics"
     authorization:
       type: "Bearer"
       credentials_file: "/run/secrets/realtime_internal_secret"
-    static_configs:
-      - targets: ["realtime-gateway:3002"]
-        labels:
-          component: "realtime-gateway"
+    dns_sd_configs:
+      - names: ["realtime-gateway"]
+        type: A
+        port: 3002
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        target_label: component
 
   - job_name: "novvin-signaling"
     metrics_path: "/internal/metrics"
     authorization:
       type: "Bearer"
       credentials_file: "/run/secrets/live_internal_events_token"
-    static_configs:
-      - targets: ["signaling:3003"]
-        labels:
-          component: "signaling"
+    dns_sd_configs:
+      - names: ["signaling"]
+        type: A
+        port: 3003
+    relabel_configs:
+      - source_labels: [__meta_dns_name]
+        target_label: component
