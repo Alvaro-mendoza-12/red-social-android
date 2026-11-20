@@ -3,7 +3,7 @@
  * NOVVIN Ubuntu Staging Long-Duration Soak Runner (2–6 hours)
  *
  * Designed to run against an isolated Ubuntu staging Docker Compose stack
- * (PostgreSQL + Redis 7.4.8 + multi-instance API / Realtime Gateway / Signaling).
+ * (PostgreSQL + Redis + multi-instance API / Realtime Gateway / Signaling).
  *
  * Safety guards:
  *  1. Refuses to run unless NOVVIN_STAGING_ISOLATED=true is explicitly set.
@@ -24,6 +24,8 @@
  *   SOAK_CONCURRENCY=50 \
  *   node tools/loadtest/run-ubuntu-staging-soak.mjs
  *
+ * To reuse previously registered synthetic accounts, set SOAK_FIXTURE_CREDENTIALS_FILE
+ * to a private JSON array of {email, password} and SOAK_ACCOUNTS to its length.
  * SOAK_DURATION_SECONDS selects a shorter smoke run. SOAK_WS_CLIENTS opens
  * recipient chat subscriptions. Set SOAK_ARRIVAL_RPS for a fixed arrival
  * rate with SOAK_CONCURRENCY as the maximum number of in-flight operations.
@@ -166,23 +168,35 @@ async function fetchMetrics(url, headers) {
 
 async function seedStagingUsers() {
   const tag = Date.now().toString(36)
+  const credentialsFile = process.env.SOAK_FIXTURE_CREDENTIALS_FILE
+  let fixtures
+  if (credentialsFile) {
+    fixtures = JSON.parse(fs.readFileSync(credentialsFile, 'utf8'))
+    if (!Array.isArray(fixtures) || fixtures.length !== accountCount ||
+        !fixtures.every(row => typeof row?.email === 'string' && /^[^@\s]+@staging\.novvin\.invalid$/i.test(row.email) &&
+          typeof row.password === 'string' && row.password.length > 0) ||
+        new Set(fixtures.map(row => row.email.toLowerCase())).size !== accountCount) {
+      throw new Error('Expected one distinct synthetic staging credential per account')
+    }
+  }
   const users = []
   for (let i = 0; i < accountCount; i += 1) {
-    const email = `soak_${tag}_${i}@staging.novvin.invalid`
-    const reg = await timedFetch(`${apiUrl}/v1/auth/register`, {
+    const credentials = fixtures ? { email: fixtures[i].email, password: fixtures[i].password } : {
+      email: `soak_${tag}_${i}@staging.novvin.invalid`,
+      password: crypto.randomBytes(24).toString('base64url') + 'aA1!',
+      displayName: `Soak User ${i}`,
+      username: `soak_${tag}_${i}`.slice(0, 22),
+    }
+    const route = fixtures ? 'login' : 'register'
+    const session = await timedFetch(`${apiUrl}/v1/auth/${route}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email,
-        password: crypto.randomBytes(24).toString('base64url') + 'aA1!',
-        displayName: `Soak User ${i}`,
-        username: `soak_${tag}_${i}`.slice(0, 22),
-      }),
+      body: JSON.stringify(credentials),
     })
-    if (!reg.ok || !reg.json?.accessToken || !reg.json?.user?.id) {
-      throw new Error(`Staging user seed failed at ${i}: HTTP ${reg.status}`)
+    if (!session.ok || !session.json?.accessToken || !session.json?.user?.id) {
+      throw new Error(`Staging ${route} failed at account ${i}: HTTP ${session.status}`)
     }
-    users.push({ id: reg.json.user.id, token: reg.json.accessToken })
+    users.push({ id: session.json.user.id, token: session.json.accessToken })
   }
   const chatIds = []
   for (let i = 0; i < Math.min(10, Math.floor(users.length / 2)); i += 1) {
@@ -194,20 +208,36 @@ async function seedStagingUsers() {
     const cid = r.json?.chat?.id || r.json?.id
     if (!r.ok || !cid) throw new Error(`Staging chat seed failed at ${i}: HTTP ${r.status}`)
     const chatUrl = `${apiUrl}/v1/data/messages/chats/${cid}`
-    const id = crypto.randomUUID()
-    const intro = await timedFetch(chatUrl + '/messages', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${users[i * 2].token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, content: 'Staging introduction', contentType: 'text' }),
-    })
-    if (intro.status !== 201 || intro.json?.message?.id !== id) throw new Error(`Staging introduction failed at ${i}: HTTP ${intro.status}`)
+    const pair = { id: cid, a: users[i * 2], b: users[i * 2 + 1] }
+    let requestStatus = 'new'
+    if (fixtures) {
+      const request = await timedFetch(chatUrl + '/request', { headers: { Authorization: `Bearer ${pair.b.token}` } })
+      if (!request.ok) throw new Error(`Staging recipient lookup failed at ${i}: HTTP ${request.status}`)
+      requestStatus = request.json?.status
+      if (requestStatus === 'open') {
+        chatIds.push(pair)
+        continue
+      }
+      if (requestStatus !== 'new' && requestStatus !== 'pending_incoming') {
+        throw new Error(`Staging recipient cannot accept conversation at ${i}`)
+      }
+    }
+    if (requestStatus === 'new') {
+      const id = crypto.randomUUID()
+      const intro = await timedFetch(chatUrl + '/messages', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${pair.a.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, content: 'Staging introduction', contentType: 'text' }),
+      })
+      if (intro.status !== 201 || intro.json?.message?.id !== id) throw new Error(`Staging introduction failed at ${i}: HTTP ${intro.status}`)
+    }
     const accept = await timedFetch(chatUrl + '/request', {
       method: 'POST',
       headers: { Authorization: `Bearer ${users[i * 2 + 1].token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'accept' }),
     })
     if (!accept.ok || accept.json?.status !== 'open') throw new Error(`Staging recipient acceptance failed at ${i}: HTTP ${accept.status}`)
-    chatIds.push({ id: cid, a: users[i * 2], b: users[i * 2 + 1] })
+    chatIds.push(pair)
   }
   return { users, chatIds }
 }

@@ -16,14 +16,14 @@ async function observeChat(url, pair) {
   try {
     await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Staging chat subscription timed out')), 5000)
-      function failed() {
+      function failed(message) {
         clearTimeout(timer)
         ready = false
-        reject(new Error('Staging chat connection closed'))
+        reject(new Error(message))
         for (const finish of pending.values()) finish(null)
       }
-      ws.on('error', failed)
-      ws.on('close', failed)
+      ws.on('error', () => failed('Staging chat connection error'))
+      ws.on('close', code => failed(`Staging chat connection closed (${code})`))
       ws.on('message', raw => {
         let event
         try { event = JSON.parse(raw) } catch { return }
@@ -33,6 +33,10 @@ async function observeChat(url, pair) {
           clearTimeout(timer)
           ready = true
           resolve()
+        } else if (event.type === 'error' && !ready) {
+          const reason = ['FORBIDDEN_CHANNEL', 'SUBSCRIPTION_LIMIT', 'AUTHENTICATION_REQUIRED'].includes(event.error)
+            ? event.error : 'GATEWAY_ERROR'
+          failed('Staging chat subscription rejected: ' + reason)
         } else if (event.type === 'event' && event.channel === channel) {
           pending.get(event.payload?.message?.id)?.(performance.now())
         }

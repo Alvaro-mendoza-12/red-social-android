@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
@@ -14,11 +14,14 @@ import { setTimeout as wait } from 'node:timers/promises'
 const script = fileURLToPath(new URL('./run-ubuntu-staging-soak.mjs', import.meta.url))
 
 async function runFixture(t, { writeStatus = 201, wrongId = false, seedRejected = false,
-  duration = '1', silentRecipient = false, arrivalRate = '0' } = {}) {
+  duration = '1', silentRecipient = false, arrivalRate = '0', fixtures, requestState = 'open' } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'novvin-soak-contract-'))
   t.after(() => rm(dir, { recursive: true, force: true }))
   let users = 0
   let chats = 0
+  let logins = 0
+  let introductions = 0
+  let decisions = 0
   const server = http.createServer(async (req, res) => {
     const chunks = []
     for await (const chunk of req) chunks.push(chunk)
@@ -29,13 +32,26 @@ async function runFixture(t, { writeStatus = 201, wrongId = false, seedRejected 
       res.end(JSON.stringify(value))
     }
     if (url.pathname === '/health') return send(200, { ok: true })
+    if (url.pathname.endsWith('/login')) {
+      const user = fixtures?.findIndex(row => row.email === body.email && row.password === body.password)
+      if (user === undefined || user < 0) return send(401, {})
+      logins++
+      return send(200, { user: { id: String(user + 1) }, accessToken: 'test-' + (user + 1) })
+    }
     if (url.pathname.endsWith('/register')) return send(201, { user: { id: String(++users) }, accessToken: 'test-' + users })
     if (url.pathname.endsWith('/chats')) return send(201, { chat: { id: String(++chats) } })
     if (url.pathname.endsWith('/messages')) {
-      if (body.content === 'Staging introduction') return send(201, { message: { id: body.id } })
+      if (body.content === 'Staging introduction') {
+        introductions++
+        return send(201, { message: { id: body.id } })
+      }
       return send(writeStatus, { message: { id: wrongId ? 'previous-message' : body.id } })
     }
-    if (url.pathname.endsWith('/request')) return send(seedRejected ? 409 : 200, { status: seedRejected ? 'pending' : 'open' })
+    if (url.pathname.endsWith('/request')) {
+      if (req.method === 'GET') return send(200, { status: requestState })
+      decisions++
+      return send(seedRejected ? 409 : 200, { status: seedRejected ? 'pending' : 'open' })
+    }
     if (url.pathname.includes('/profiles/')) return send(200, { profile: { id: url.pathname.split('/').at(-1) } })
     if (['/v1/data/feed', '/v1/data/notifications'].includes(url.pathname)) return send(200, { items: [] })
     return send(404, {})
@@ -53,6 +69,11 @@ async function runFixture(t, { writeStatus = 201, wrongId = false, seedRejected 
     t.after(() => ws.close())
   }
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(SOAK_|STAGING_|NOVVIN_)/i.test(key)))
+  if (fixtures) {
+    env.SOAK_FIXTURE_CREDENTIALS_FILE = path.join(dir, 'synthetic-users.json')
+    env.SOAK_ACCOUNTS = String(fixtures.length)
+    await writeFile(env.SOAK_FIXTURE_CREDENTIALS_FILE, JSON.stringify(fixtures), { mode: 0o600 })
+  }
   const runner = spawn(process.execPath, [script], {
     env: { ...env, NOVVIN_STAGING_ISOLATED: 'true', STAGING_API_URL: 'http://127.0.0.1:' + server.address().port,
       SOAK_CONCURRENCY: '5', SOAK_DURATION_SECONDS: duration, SOAK_SAMPLE_INTERVAL_SEC: '1',
@@ -68,8 +89,27 @@ async function runFixture(t, { writeStatus = 201, wrongId = false, seedRejected 
   const windows = report?.jsonlFile
     ? (await readFile(report.jsonlFile, 'utf8')).trim().split('\n').map(line => JSON.parse(line))
     : []
-  return { code, report, windows, log, users }
+  return { code, report, windows, log, users, logins, introductions, decisions }
 }
+
+test('repeated staging runs log in with existing synthetic accounts', async t => {
+  const fixtures = [1, 2].map(i => ({ email: `receipt_${i}@staging.novvin.invalid`, password: 'test-fixture' }))
+  const result = await runFixture(t, { fixtures })
+  assert.equal(result.code, 0, result.log)
+  assert.equal(result.users, 0)
+  assert.equal(result.logins, 2)
+  assert.equal(result.introductions, 0)
+  assert.equal(result.decisions, 0)
+  assert.ok(result.report.operations.message.passed > 0)
+})
+
+test('a recipient with a pending invitation accepts without a second introduction', async t => {
+  const fixtures = [1, 2].map(i => ({ email: `pending_${i}@staging.novvin.invalid`, password: 'test-fixture' }))
+  const result = await runFixture(t, { fixtures, requestState: 'pending_incoming' })
+  assert.equal(result.code, 0, result.log)
+  assert.equal(result.introductions, 0)
+  assert.equal(result.decisions, 1)
+})
 
 test('accounts for every completed HTTP operation including the final sample', async t => {
   const { code, report, windows, log } = await runFixture(t)
