@@ -1,0 +1,50 @@
+# Apply explicitly on a disposable Docker host with staging-only credentials.
+# The loopback port of each replica is available with "compose port --index".
+name: novvin-staging
+
+services:
+  api:
+    container_name: !reset null
+    ports: !override ["127.0.0.1::3001"]
+    networks:
+      default:
+        aliases: [conectate-local-fallback-api-main]
+    deploy:
+      replicas: ${API_REPLICAS:-2}
+
+  realtime-gateway:
+    container_name: !reset null
+    ports: !override ["127.0.0.1::3002"]
+    networks:
+      default:
+        aliases: [conectate-local-fallback-realtime-main]
+    deploy:
+      replicas: ${REALTIME_REPLICAS:-2}
+
+  signaling:
+    ports: !override ["127.0.0.1::3003"]
+    deploy:
+      replicas: ${SIGNALING_REPLICAS:-2}
+
+  db:
+    container_name: !reset null
+    image: !reset null
+  signaling-redis:
+    container_name: !reset null
+    image: !reset null
+  edge:
+    container_name: !reset null
+    image: !reset null
+  ai-chatbot:
+    container_name: !reset null
+  coturn:
+    container_name: !reset null
+  pgbouncer:
+    container_name: !reset null
+    image: !reset null
+
+volumes: !override
+  conectate-fallback-db: {}
+  conectate-fallback-storage: {}
+  novvin-clamav-db: {}
+  novvin-signaling-redis: {}
