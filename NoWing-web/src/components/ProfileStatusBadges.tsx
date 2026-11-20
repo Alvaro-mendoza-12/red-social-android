@@ -34,15 +34,21 @@ function read(owner: string, id: string): Promise<ProfileIdentity | null> {
 }
 /** Display only. Authorization always remains with the server. */
 export function ProfileStatusBadges({ profileId, initialIdentity }: { profileId: string; initialIdentity?: ProfileIdentity }) {
-  const { user } = useAuth(), owner = user?.id || '', key = owner + ':' + profileId
-  const [loaded, setLoaded] = useState<{ key: string; value: ProfileIdentity } | null>(null)
+  const { user } = useAuth()
+  const owner = user?.id || ''
+  return <ScopedProfileStatusBadges key={owner + ':' + profileId} owner={owner} profileId={profileId} initialIdentity={initialIdentity}/>
+}
+
+function ScopedProfileStatusBadges({ owner, profileId, initialIdentity }: {
+  owner: string; profileId: string; initialIdentity?: ProfileIdentity
+}) {
+  const [loaded, setLoaded] = useState<ProfileIdentity | null>(null)
   useEffect(() => {
-    setLoaded(null)
     if (!owner || !profileId) return
     let active = true
-    void read(owner, profileId).then(value => { if (active && value) setLoaded({ key, value }) })
+    void read(owner, profileId).then(value => { if (active && value) setLoaded(value) })
     return () => { active = false }
-  }, [owner, profileId, key])
-  const value = loaded?.key === key ? loaded.value : cachedIdentity(key) ?? initialIdentity
+  }, [owner, profileId])
+  const value = loaded ?? cachedIdentity(owner + ':' + profileId) ?? initialIdentity
   return value ? <ProfileIdentityMarks identity={value}/> : null
 }
