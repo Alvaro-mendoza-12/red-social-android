@@ -487,30 +487,30 @@
     "productionBuildVerifiedForThisMandate": true,
     "newApkDelivered": true,
     "latestVerifiedCandidate": {
-      "source": "5806a0cafb504237a05304d439be0160ec9007dd",
-      "tree": "285a9b820d68d2dbe1fbfbedbd3ef00776b6fdcb",
+      "source": "1be1464275cd77bb4a43e0af37d9ec155cefbcdc",
+      "tree": "3a89af5e5f512540625135637f1aeb34fe8c1743",
       "artifacts": {
         ".apk": {
-          "name": "Novvin-9.1.43-183-5806a0cafb50.apk",
+          "name": "Novvin-9.1.43-183-1be1464275cd.apk",
           "bytes": 221746357,
-          "sha256": "6dab6ce7a5c31dd1c61a8ccffc99abc354bf41fba19ed112fa6df968d5c3ebef"
+          "sha256": "f40bd4576320ab31c458141e6a8d44ddf03821bd11f21f2eadf3df0bda00e89b"
         },
         ".aab": {
-          "name": "Novvin-9.1.43-183-5806a0cafb50.aab",
-          "bytes": 133137799,
-          "sha256": "f11fd2bba33fe5437b8e0244ae7331b0884e7df47472c4e03e41d61d9a182285"
+          "name": "Novvin-9.1.43-183-1be1464275cd.aab",
+          "bytes": 133140824,
+          "sha256": "5bb31ad79cf2fb707b4bf4075bdd21961929f7385abb656f11398ac933d3b8ac"
         }
       },
       "binaryChecks": 14,
       "lintWarnings": 346,
       "gradleReleaseTests": {
-        "tests": 56,
+        "tests": 3535,
         "failures": 0,
         "errors": 0,
         "skipped": 0,
-        "classes": 11
+        "classes": 589
       },
-      "emulatorPassed": false,
+      "emulatorPassed": true,
       "emulatorAttempts": 2,
       "productionReady": false
     },
@@ -519,7 +519,7 @@
   },
   "externalRequirements": [
     "Verificar la lista efectiva de países y la pista habilitada de Play Console.",
-    "Identificar entidad responsable, domicilio, representación y contactos legales aplicables sin inventarlos.",
+    "Verificar el domicilio de comunicación que figurará públicamente y la representación aplicable por mercado.",
     "Validación jurídica profesional por mercado; no se declara cumplimiento del100%.",
     "Ensayos físicos, cuentas de prueba y servicios de terceros separados de mocks."
   ],
@@ -807,29 +807,43 @@
       "registeredSessions": 2,
       "unitChecks": 76,
       "deployed": false
+    },
+    {
+      "kind": "signed-release-and-background-process-recreation",
+      "path": "2026-11-18-mobile-release-check/1be1464275cd",
+      "source": "1be1464275cd77bb4a43e0af37d9ec155cefbcdc",
+      "emulatorApi": 36,
+      "processIds": {
+        "before": "3288",
+        "after": "4514"
+      },
+      "offline": true,
+      "physicalDevice": false,
+      "distributed": false
     }
   ],
   "findingCounts": {
     "scope": "New findings for this mandate; historical test failures are not defect counts",
     "critical": 0,
-    "high": 15,
-    "medium": 7,
+    "high": 20,
+    "medium": 11,
     "low": 0,
-    "total": 22
+    "total": 31
   },
   "responsibleController": {
     "confirmedEmail": "administracion@novvinapp.com",
-    "legalName": null,
-    "country": null,
+    "legalName": "Alvaro Mendoza Marín",
+    "country": "Perú",
     "serviceAddress": null,
-    "source": "Owner says no registered entity, name or commercial premises; only email confirmed. No identity/address invented.",
-    "status": "needs-owner-and-legal-definition; not a requirement to own an office"
+    "source": "Owner confirmation on 2026-11-19.",
+    "status": "identity-country-and-public-email-confirmed; public service address and applicable representation remain under review",
+    "type": "persona natural"
   },
   "risks": [
     {
       "id": "R01",
       "status": "open",
-      "description": "Identificación del responsable, domicilios y representación aplicable sin verificar."
+      "description": "El titular confirmó identidad, país y correo empresarial. Quedan por verificar el domicilio de comunicación público y la representación aplicable."
     },
     {
       "id": "R02",

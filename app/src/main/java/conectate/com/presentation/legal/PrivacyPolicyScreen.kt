@@ -31,6 +31,8 @@ fun PrivacyPolicyScreen(
     navController: NavController
 ) {
     val sections = listOf(
+        "Responsable del tratamiento" to
+            "Alvaro Mendoza Marín, persona natural domiciliada en Perú, es el responsable del tratamiento de tus datos personales en Novvin. Para consultas y solicitudes de privacidad, escribe a administracion@novvinapp.com.",
         "1. Datos de cuenta y perfil" to
             "Tratamos el correo, nombre, credenciales protegidas, país, fecha de nacimiento, género opcional, avatar —que puede ser imagen o video breve—, portada, biografía, intereses, insignias, preferencias y enlaces sociales que decidas publicar. La fecha de nacimiento permite aplicar protecciones por edad y, si lo autorizas, avisos de cumpleaños.",
         "2. Contenido y comunicaciones" to
@@ -62,7 +64,7 @@ fun PrivacyPolicyScreen(
         "Seguridad infantil" to
             "Novvin prohíbe el abuso y la explotación sexual de menores, incluido el material de abuso sexual infantil, la captación con fines sexuales y la extorsión sexual. Usa Reportar en el contenido o perfil correspondiente, o escribe a administracion@novvinapp.com con un enlace o nombre de usuario para identificarlo. Evita descargar, reenviar o adjuntar el material.",
         "13. Cambios y contacto" to
-            "Esta política corresponde a Novvin (conectate.com), con sitio oficial novvinapp.com, y se actualizó el 17 de noviembre de 2026. En administracion@novvinapp.com puedes solicitar acceso, actualización, corrección o supresión de tus datos, conocer su uso o pedir la revocación de la autorización cuando corresponda. Los cambios importantes se comunicarán dentro de la aplicación.",
+            "Esta política corresponde a Novvin (conectate.com), con sitio oficial novvinapp.com, y se actualizó el 19 de noviembre de 2026. En administracion@novvinapp.com puedes solicitar acceso, actualización, corrección o supresión de tus datos, conocer su uso o pedir la revocación de la autorización cuando corresponda. Los cambios importantes se comunicarán dentro de la aplicación.",
         "14. Aceptación" to
             "Al pulsar “Aceptar y volver” confirmas que leíste estas políticas y las normas de la comunidad. Puedes volver al formulario sin perder los datos que ya escribiste."
     )

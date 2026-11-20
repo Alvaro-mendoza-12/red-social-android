@@ -30,6 +30,7 @@ test('deletion explains scope, verification, exceptions and the privacy contact'
 
 test('public privacy identifies Novvin, actual integrated services and a visible deletion journey', () => {
   const page = html('/privacidad')
+  assert.match(page, /Alvaro Mendoza Marín, persona natural domiciliada en Perú/)
   for (const phrase of ['Política de privacidad de Novvin', 'conectate.com', 'Firebase Cloud Messaging', 'Firebase Crashlytics', 'Google Play', 'Vercel', 'Cloudflare', 'HTTPS']) assert.ok(page.includes(phrase), phrase)
   assert.match(page, /href="\/eliminar-cuenta">Eliminar mi cuenta/)
   assert.match(page, /id="eliminacion"/)

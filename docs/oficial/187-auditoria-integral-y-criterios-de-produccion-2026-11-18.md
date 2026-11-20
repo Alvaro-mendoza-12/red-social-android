@@ -10,7 +10,7 @@ La base inicial del mandato es main `981d8da4bf8cff8262e394d6f75f63cce71e45b2` y
 
 El propietario confirmó que habilitó todos los países en Google Play Console. Se registra esa declaración como alcance del mercado, conservando pendiente la comprobación de pista y listado efectivo de Console. La disponibilidad de la tienda no acredita por sí sola cumplimiento jurídico en cada jurisdicción.
 
-El propietario confirmó solamente el correo administracion@novvinapp.com y explicó que no tiene una entidad registrada ni un domicilio comercial definido. Esto no se convierte en la afirmación de que deba tener una oficina o sociedad. No se inventan nombre legal, país, dirección, representación ni registros. La identificación del responsable y el análisis profesional por mercados siguen pendientes.
+El 19 de noviembre el propietario confirmó que Alvaro Mendoza Marín es el responsable del tratamiento como persona natural domiciliada en Perú, con contacto público administracion@novvinapp.com. Los avisos Android y web incorporan esta identificación. La [continuación 214](214-responsable-de-privacidad-y-candidata-android-2026-11-19.md) documenta el cambio, el balance de los 35 puntos y la candidata firmada de Android. El alcance jurídico por mercados y el domicilio de comunicación que debe figurar públicamente siguen pendientes.
 
 ## Hallazgos de esta continuación
 

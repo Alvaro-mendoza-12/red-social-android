@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-19T20:19:49.932722+00:00",
-  "baseCommit": "95af6a1276459a2ece911f9cb2a6ea7b321bdc82",
+  "generatedAtUtc": "2026-11-20T00:10:46.523453+00:00",
+  "baseCommit": "372e1b2b71b636615420a6ed88cac7b46331fb10",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3600,
+    "pending": 3601,
     "partial": 265,
     "code-read": 840
   },
@@ -21,7 +21,7 @@
       "code-read": 588
     },
     "documentation": {
-      "pending": 688,
+      "pending": 689,
       "code-read": 61,
       "partial": 20
     },
@@ -615,7 +615,7 @@
     {
       "file": "NoWing-web/public/sitemap.xml",
       "phase": "web",
-      "gitBlobId": "82b877dc8fb188780e64b63e189548f6d07c7391",
+      "gitBlobId": "d961e730ee8cc34f5730cb59095d511690c88b70",
       "reviewStatus": "pending"
     },
     {
@@ -711,7 +711,7 @@
     {
       "file": "NoWing-web/scripts/public-seo-state.json",
       "phase": "web",
-      "gitBlobId": "63f951bb4dad0e77a2ba181125fc00756a04697a",
+      "gitBlobId": "eb827f298f62db96258aca5582f250ceed3d80f1",
       "reviewStatus": "pending"
     },
     {
@@ -4431,9 +4431,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/publicInfoPages.ts",
       "phase": "web",
-      "gitBlobId": "f3774a96055f70b21cf2959d1dcc917c1ee75d9b",
+      "gitBlobId": "7c949309a80ff239f7ffba6d9bd673587651d48e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/214-responsable-de-privacidad-y-candidata-android-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4505,9 +4505,9 @@
     {
       "file": "NoWing-web/tests/public-account-policy.test.mjs",
       "phase": "web",
-      "gitBlobId": "466f7e2fad517b36b4f19164cc417b7feb3d56cd",
+      "gitBlobId": "eb64f029eed74855592004b270728b7dd572bc3a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/214-responsable-de-privacidad-y-candidata-android-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10593,9 +10593,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/legal/PrivacyPolicyScreen.kt",
       "phase": "android",
-      "gitBlobId": "40b04ca01712b175f292f487432d00cee25e8aad",
+      "gitBlobId": "84a42c1bd5ea75fdeef7b991124f8f1d7ed38d92",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/214-responsable-de-privacidad-y-candidata-android-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -21917,13 +21917,13 @@
     {
       "file": "docs/oficial/187-auditoria-integral-y-criterios-de-produccion-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "e7cebb27d01dbe1cb6b0cb0b64cf5043591592ad",
+      "gitBlobId": "a67eb9b95dc47a53425a766c049a15cadc594cc3",
       "reviewStatus": "pending"
     },
     {
       "file": "docs/oficial/187-auditoria-produccion-registro-2026-11-18.json",
       "phase": "documentation",
-      "gitBlobId": "69cdbfcb7be73d8e7c3fca24c73d8d332c98a3a1",
+      "gitBlobId": "81fb7704aa1d233ad7c414cd4fdb3c58e98a18c2",
       "reviewStatus": "pending"
     },
     {
@@ -21947,7 +21947,7 @@
     {
       "file": "docs/oficial/190-revision-juridica-inicial-por-mercados-2026-11-18.md",
       "phase": "documentation",
-      "gitBlobId": "ee7730d11c554654f447d4dccfdde18bb19c44d7",
+      "gitBlobId": "9e02820ee4dd238537418fef4731fdb2e8eccd0d",
       "reviewStatus": "pending"
     },
     {
@@ -22068,6 +22068,12 @@
       "file": "docs/oficial/211-aceptacion-de-llamadas-por-sesion-2026-11-19.md",
       "phase": "documentation",
       "gitBlobId": "110a3a7ddd6e678bdc1033099edb624521830ac7",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/214-responsable-de-privacidad-y-candidata-android-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "6ef88b973d6293b43fc0953a266435427020ef31",
       "reviewStatus": "pending"
     },
     {
