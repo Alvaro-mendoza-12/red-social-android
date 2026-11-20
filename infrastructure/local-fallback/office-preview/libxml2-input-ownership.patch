@@ -1,0 +1,18 @@
+Description: Preserve the inputPush ownership result when the parser has halted
+ A successfully pushed input belongs to the parser even if it has reached EOF.
+ Keep the existing early exit and return the actual stack result. This
+ backport changes no public declarations.
+Origin: vendor, adapted from the remediation described in https://errata.tuxcare.com/els_os/debian10els/CLSA-2026-1789202279.html
+Bug-Debian: https://security-tracker.debian.org/tracker/CVE-2026-6653
+Forwarded: not-needed
+--- a/parser.c
++++ b/parser.c
+@@ -2313,7 +2313,7 @@ xmlPushInput(xmlParserCtxtPtr ctxt, xmlParserInputPtr input) {
+     }
+     ret = inputPush(ctxt, input);
+     if (ctxt->instate == XML_PARSER_EOF)
+-        return(-1);
++        return(ret);
+     GROW;
+     return(ret);
+ }

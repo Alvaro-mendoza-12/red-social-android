@@ -25,8 +25,32 @@ RUN set -eu; \
         cp "${package}_8.23.0-2~novvin13+1_"*.deb /out/; \
     done
 
+FROM curl-build AS xml-build
+WORKDIR /tmp/libxml2-build
+COPY libxml2-sources.sha256 libxml2-input-ownership.patch ./
+
+# Build against the converter's own Debian ABI; keep its distributor patches.
+RUN set -eu; \
+    archive=https://snapshot.debian.org/archive/debian/20261118T000000Z/pool/main/libx/libxml2; \
+    while read -r digest file; do \
+        curl --fail --silent --show-error --location --proto '=https' --retry 3 "$archive/$file" -o "$file"; \
+    done < libxml2-sources.sha256; \
+    sha256sum --strict --check libxml2-sources.sha256; \
+    DEBIAN_FRONTEND=noninteractive apt-get -y --no-install-recommends -Pnocheck,nopython build-dep ./*.dsc; \
+    dpkg-source --no-check -x ./*.dsc libxml2; \
+    cd libxml2; \
+    test "$(dpkg-parsechangelog -S Version)" = "$(dpkg-query -W -f='${Version}' libxml2)"; \
+    patch --dry-run --batch --fuzz=0 -p1 < ../libxml2-input-ownership.patch; \
+    cp ../libxml2-input-ownership.patch debian/patches/; \
+    echo libxml2-input-ownership.patch >> debian/patches/series; \
+    sed -i '1s/+deb13u3)/+deb13u3+novvin232.1)/' debian/changelog; \
+    DEB_BUILD_OPTIONS='parallel=2 nocheck' dpkg-buildpackage -B -us -uc -Pnocheck,nopython; \
+    mkdir /xml-out; \
+    cp ../libxml2_*+novvin232.1_*.deb /xml-out/
+
 FROM office
 USER root
 RUN --mount=type=bind,from=curl-build,source=/out,target=/tmp/curl-packages \
-    dpkg -i /tmp/curl-packages/*.deb && apt-get check && test -z "$(dpkg --audit)"
+    --mount=type=bind,from=xml-build,source=/xml-out,target=/tmp/xml-packages \
+    dpkg -i /tmp/curl-packages/*.deb /tmp/xml-packages/*.deb && apt-get check && test -z "$(dpkg --audit)"
 USER gotenberg
