@@ -10,7 +10,10 @@ export function birthdayCard(value: string): BirthdayCard | null {
   } catch { return null }
 }
 export function birthdayLabel(value: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return ''
-  const date = new Date(value + 'T12:00:00Z')
-  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value ? '' : new Intl.DateTimeFormat('es', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(date)
+  // Intl needs a date to format a month and day. A leap year also admits February 29.
+  const calendarDate = /^--\d{2}-\d{2}$/.test(value) ? '2000' + value.slice(1) : value
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(calendarDate)) return ''
+  const date = new Date(calendarDate + 'T12:00:00Z')
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== calendarDate) return ''
+  return new Intl.DateTimeFormat('es', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(date)
 }

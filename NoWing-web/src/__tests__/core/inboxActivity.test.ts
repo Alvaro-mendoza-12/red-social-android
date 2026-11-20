@@ -101,15 +101,16 @@ test('tab total counts individual unread messages and follows read updates',()=>
 })
 
 test('a confirmed read cursor survives a page reload while a newer incoming message stays unread',()=>{
- const account='persistent-read',item={id:'chat',unreadCount:1,updatedAt:'2026-10-18T12:00:00Z'}
+ const readAt = Date.now() - 60_000
+ const account='persistent-read',item={id:'chat',unreadCount:1,updatedAt:new Date(readAt - 60_000).toISOString()}
  applyInboxUnreadSnapshot(account,'chat',[item],100)
  const token=markInboxConversationRead(account,'chat','chat')
- confirmInboxConversationRead(account,'chat','chat',token,'2026-10-18T12:01:00Z')
- expect(JSON.parse(localStorage.getItem(`novvin:read-cursors:${account}`)!)).toEqual([['chat:chat',Date.parse('2026-10-18T12:01:00Z')]])
+ confirmInboxConversationRead(account,'chat','chat',token,new Date(readAt).toISOString())
+ expect(JSON.parse(localStorage.getItem(`novvin:read-cursors:${account}`)!)).toEqual([['chat:chat',readAt]])
  jest.isolateModules(()=>{
    const fresh=require('../../core/inboxActivity') as typeof import('../../core/inboxActivity')
    expect(fresh.inboxUnreadCount(account,'chat',item)).toBe(0)
-   expect(fresh.inboxUnreadCount(account,'chat',{...item,updatedAt:'2026-10-18T12:02:00Z'})).toBe(1)
+   expect(fresh.inboxUnreadCount(account,'chat',{...item,updatedAt:new Date(readAt + 60_000).toISOString()})).toBe(1)
    expect(fresh.inboxUnreadCount('different-account','chat',item)).toBe(1)
  })
 })

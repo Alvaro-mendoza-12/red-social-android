@@ -9,3 +9,11 @@ test('birthday presentation omits year and rejects impossible dates', () => {
  expect(birthdayLabel('2000-02-31')).toBe('')
  expect(birthdayLabel('bad')).toBe('')
 })
+
+test('public birthdays accept a month and day including leap day', () => {
+  expect(birthdayLabel('--10-17')).toBe('17 de octubre')
+  expect(birthdayLabel('--02-29')).toBe('29 de febrero')
+  for (const value of ['--02-30', '--04-31', '--13-01', '--10-00', '--2-9', '2001-02-29']) {
+    expect(birthdayLabel(value)).toBe('')
+  }
+})
