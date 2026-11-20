@@ -1,0 +1,5816 @@
+{
+  "checkedUtc": "2026-11-20T14:00:25.329440+00:00",
+  "verdict": "NO APTA PARA PRODUCCIÓN",
+  "sourceBase": "521e2e9782ec2b7b58eb10a76fcb4a76681babff",
+  "engineeringEnd": "f4cce71c542514f1550f4db096502a346c694824",
+  "engineeringCommits": [
+    "3b89ec2d96cb8c319be9c5c0deed44da19d7af84\tLimit Office previews to bounded temporary filesystems",
+    "c77747e16e3697fbdfd4498cefb8fa42b8741c0f\tBuild patched curl for the Debian 13 Office renderer",
+    "204200147d47d60e0a4120e457ea9328c6262e7a\tPreserve Office build inputs on Windows checkouts",
+    "e716064017d2bad16e3898ffefa222068e74b07b\tProvide isolated Firebase resources for Android CI builds",
+    "0459e882f986b6b5440980f03969fadee0403a7c\tCheck the maintained database and Node image pins in CI",
+    "41013ec158163c9e1bce8914fe24ff16559fe374\tModel the pinned database image lookup in the restore fixture",
+    "05120f6750cfcd4ae3fea5ff64894e2d3308a165\tExercise poll transactions with the current membership projection",
+    "790f0f7118b10b6d9f74c3071ae5d4bb60d144d8\tUse the Node runtime to watch signaling development files",
+    "18eff4655b1a3e4b4c8fa65bf95db691f4d8d508\tInstall signaling before exercising its API startup contract in CI",
+    "649faffa955eff480a2b7140924bedbe48393cf5\tScope displayed profile badges to the current account and profile",
+    "71db3c75883b5168dca5eadafcb8e5aa22b968ba\tRetain preloaded Reels when the media starts loading",
+    "b7168c8e5b6c6f227c930a5efd0e2c9131d8c170\tKeep the Web minifier explicit and remove the unused PWA build plugin",
+    "a508065593d8e9faa88ece698b79a5e558200ebf\tCommit each PostgreSQL migration and its checksum in one transaction",
+    "dd9582f56645f5885353c35949cb733af410dbe0\tKeep the migration ledger owned by the database administrator",
+    "a872e408c57ba5913a42de8d5ccca93079850535\tScope service environment files and keep bootstrap credentials out of clients",
+    "0bc80727cc54fc5d92858c3a3aa290d86ab955d9\tKeep private socket settings outside the API credential mount",
+    "f4cce71c542514f1550f4db096502a346c694824\tAttribute staging HTTP latency to operations and missed chat receipts"
+  ],
+  "office": {
+    "sourceSha256": {
+      "curl_8.23.0-2.debian.tar.xz": "ef63b646058c8732492faf53005407a9910e4e2797abb73d213fc5d2c6813dad",
+      "curl_8.23.0.orig.tar.gz.asc": "fe7b5aa2d678aac81f0a95d6b27919db9b7f677a0a937777b6cffc01bd48adf1",
+      "curl_8.23.0-2.dsc": "78b5c7750e1c244504b280482b9eb4275f5a2011ceba75258bdd2512ece04e16",
+      "curl_8.23.0.orig.tar.gz": "e3de77cfa6367083c776a26647fc9f633b538c06c3baa73d931a252ac8f72b49"
+    },
+    "snapshotChecks": [
+      [
+        "curl_8.23.0-2.debian.tar.xz",
+        200,
+        "ef63b646058c8732492faf53005407a9910e4e2797abb73d213fc5d2c6813dad"
+      ],
+      [
+        "curl_8.23.0.orig.tar.gz.asc",
+        200,
+        "fe7b5aa2d678aac81f0a95d6b27919db9b7f677a0a937777b6cffc01bd48adf1"
+      ],
+      [
+        "curl_8.23.0-2.dsc",
+        200,
+        "78b5c7750e1c244504b280482b9eb4275f5a2011ceba75258bdd2512ece04e16"
+      ],
+      [
+        "curl_8.23.0.orig.tar.gz",
+        200,
+        "e3de77cfa6367083c776a26647fc9f633b538c06c3baa73d931a252ac8f72b49"
+      ]
+    ],
+    "imageBuild": {
+      "buildSeconds": 626,
+      "imageId": "451b2dc007281c99eab2677d5e393208f461b121ffdfa3b5ba3c0eb090831b22",
+      "user": "gotenberg",
+      "entrypoint": [
+        "/usr/bin/tini",
+        "--"
+      ],
+      "cmd": [
+        "gotenberg"
+      ],
+      "dockerfileSha256": "d5cbf0b1446a88eaa4c71c5093165bd09af30aa7cc099eeb4a51d8c7820a0ae3",
+      "utc": "2026-11-20T12:33:54.494325+00:00"
+    },
+    "installed": {
+      "ociManifestDigest": "sha256:34ae9b119349e9741a06105478b6253edfcf7985e94d25309d7f8ba51c3b1f1e",
+      "configDigest": "sha256:999b4139654338a77e9bb1dd0126dd3dc78def5ac6d5b90e840b5a77aa4c2db8",
+      "packageCount": 344,
+      "changedPackages": {
+        "curl": {
+          "before": "8.21.0-2~bpo13+1",
+          "after": "8.23.0-2~novvin13+1"
+        },
+        "libcurl3t64-gnutls:amd64": {
+          "before": "8.21.0-2~bpo13+1",
+          "after": "8.23.0-2~novvin13+1"
+        },
+        "libcurl4-gnutls:amd64": {
+          "before": "8.21.0-2~bpo13+1",
+          "after": "8.23.0-2~novvin13+1"
+        },
+        "libcurl4t64:amd64": {
+          "before": "8.21.0-2~bpo13+1",
+          "after": "8.23.0-2~novvin13+1"
+        }
+      },
+      "entrypoint": [
+        "/usr/bin/tini",
+        "--"
+      ],
+      "cmd": [
+        "gotenberg"
+      ],
+      "user": "gotenberg",
+      "architecture": "linux/amd64"
+    },
+    "actualDocker": {
+      "scope": "Dedicated Docker daemon on Ubuntu under WSL2. One isolated network, no published ports. Exact imported image and service flags from repository Compose. Synthetic files.",
+      "engine": "29.1.3",
+      "compose": "2.40.3+ds1-0ubuntu1~24.04.1",
+      "ociManifest": "sha256:34ae9b119349e9741a06105478b6253edfcf7985e94d25309d7f8ba51c3b1f1e",
+      "imageConfig": "sha256:999b4139654338a77e9bb1dd0126dd3dc78def5ac6d5b90e840b5a77aa4c2db8",
+      "readOnlyRoot": true,
+      "mountFlags": {
+        "/": [
+          "ro",
+          "relatime"
+        ],
+        "/tmp": [
+          "rw",
+          "nosuid",
+          "nodev",
+          "noexec",
+          "relatime"
+        ],
+        "/home/gotenberg": [
+          "rw",
+          "nosuid",
+          "nodev",
+          "noexec",
+          "relatime"
+        ]
+      },
+      "uidGidMode": [
+        "0 0 1777",
+        "1001 1001 700"
+      ],
+      "tmpfsBytes": [
+        1073741824,
+        134217728
+      ],
+      "memoryLimitBytes": 2147483648,
+      "pidsLimit": 192,
+      "temporaryMarkersRemovedAfterRestart": 2,
+      "healthyAfterRestart": true,
+      "requests": [
+        {
+          "format": "doc",
+          "requestMs": 831,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "a2c526f1691f4b5583906536bdd21efcc7474725470bd01705981a21b0637a47"
+        },
+        {
+          "format": "docx",
+          "requestMs": 531,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "5fd70b53c57d8a5f0671ba1920145afd612873bde8268d07f989b9adf5b6cb52"
+        },
+        {
+          "format": "xls",
+          "requestMs": 275,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "30b139ee517bd0eb7dfd557fbc5bc99ad9925b0e2c4488c65e32d90f31a2fa26"
+        },
+        {
+          "format": "xlsx",
+          "requestMs": 278,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "989d01325d59666cc41950bedacb31b00dc9964e8e6031c762498e6f63ef49af"
+        },
+        {
+          "format": "ppt",
+          "requestMs": 380,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "db0743cd8d1ba84e41ca3946fca1a4cd1e472083e688c6c4346337bef0b46dff"
+        },
+        {
+          "format": "pptx",
+          "requestMs": 728,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "5260829b5e46b83f42afabd57a59da4966547b8c036d9764cc2a56b338df4281"
+        },
+        {
+          "format": "docx",
+          "requestMs": 879,
+          "afterRestart": true,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "ed7a87d204749aa64342a8dcd3c3c61a54dd6e2c39b67d99634ccd960438cffb"
+        }
+      ]
+    },
+    "authenticatedProduct": [
+      {
+        "format": "docx",
+        "rendererRequestBytes": 36782,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "b6ddc61afd4c03fa7253bb6bf1ad35cd971b527b7dbfac8072697c30b5e5493d",
+        "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+        "milliseconds": 953,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "doc",
+        "rendererRequestBytes": 18621,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "4a6732a9b1b4f0e5842ca3b49ffde44998876cf8e4ecf4be34d24fb7beb441a7",
+        "inputSha256": "3e79fb6017c0755d3c0de36d2b506e649e61d21d8dbdfb8828ffe3172c9bc97f",
+        "milliseconds": 250,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "xlsx",
+        "rendererRequestBytes": 5050,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "d7b5dffddfe5d80504af7714eef4cc8c544f88ee92b24e71ba1266ed69c82368",
+        "inputSha256": "2bfad1bc3b6c489b694708af7b21bc0c9717276f43955c9f367467916fdcafce",
+        "milliseconds": 281,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "xls",
+        "rendererRequestBytes": 5821,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "5a3a8e1cf7a9d42916d47b808e759b1b56d83f64cf88b1407e27a3dd333542cb",
+        "inputSha256": "1ae48ddea2af5d29e7ec20f622217a4379e41ea7c940ab507329944d53286e88",
+        "milliseconds": 281,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "pptx",
+        "rendererRequestBytes": 28435,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "a71b65e728f320d61e50585e7057470680a3070830d21c84f6d038ccca9fa05a",
+        "inputSha256": "3cb3e83e27ec332665f14f7be6bea45f79c12c1273c78e48890914f402f44df2",
+        "milliseconds": 1032,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "ppt",
+        "rendererRequestBytes": 649405,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "c670c9c189acd1dc0cb5e63f63ad1dc6ddb9fd7e3634261c9fe10b5dc143fd98",
+        "inputSha256": "3cf589773ddc79cc315ca388650e5e6395e41bd41bc91174eaedbc231a45293f",
+        "milliseconds": 485,
+        "verifiedText": true,
+        "pages": 1
+      }
+    ],
+    "deployScriptTrials": {
+      "scope": "Real shell entry point with isolated .env, empty test migration set and local command doubles. No Docker host or production data accessed.",
+      "cases": [
+        {
+          "version": "baseline",
+          "skipBuild": false,
+          "injectConverterStartFailure": false,
+          "exit": 0,
+          "explicitBuildIncludesRenderer": false,
+          "rendererReadinessBeforeApi": false,
+          "apiRestarted": true
+        },
+        {
+          "version": "candidate",
+          "skipBuild": false,
+          "injectConverterStartFailure": false,
+          "exit": 0,
+          "explicitBuildIncludesRenderer": true,
+          "rendererReadinessBeforeApi": true,
+          "apiRestarted": true
+        },
+        {
+          "version": "candidate",
+          "skipBuild": true,
+          "injectConverterStartFailure": false,
+          "exit": 0,
+          "explicitBuildIncludesRenderer": false,
+          "rendererReadinessBeforeApi": true,
+          "apiRestarted": true
+        },
+        {
+          "version": "candidate",
+          "skipBuild": false,
+          "injectConverterStartFailure": true,
+          "exit": 72,
+          "explicitBuildIncludesRenderer": true,
+          "rendererReadinessBeforeApi": false,
+          "apiRestarted": false
+        }
+      ]
+    },
+    "runtime": {
+      "checkedUtc": "2026-11-20T12:52:42.491960+00:00",
+      "inventory": 205,
+      "rawAdvisoryIds": [
+        "DEBIAN-CVE-2005-2541",
+        "DEBIAN-CVE-2007-5686",
+        "DEBIAN-CVE-2010-4756",
+        "DEBIAN-CVE-2011-3374",
+        "DEBIAN-CVE-2011-3389",
+        "DEBIAN-CVE-2011-4116",
+        "DEBIAN-CVE-2012-0039",
+        "DEBIAN-CVE-2012-5639",
+        "DEBIAN-CVE-2013-4392",
+        "DEBIAN-CVE-2013-4472",
+        "DEBIAN-CVE-2014-8166",
+        "DEBIAN-CVE-2015-3276",
+        "DEBIAN-CVE-2015-9019",
+        "DEBIAN-CVE-2016-10505",
+        "DEBIAN-CVE-2016-9113",
+        "DEBIAN-CVE-2016-9114",
+        "DEBIAN-CVE-2016-9115",
+        "DEBIAN-CVE-2016-9116",
+        "DEBIAN-CVE-2016-9117",
+        "DEBIAN-CVE-2016-9580",
+        "DEBIAN-CVE-2016-9581",
+        "DEBIAN-CVE-2017-11695",
+        "DEBIAN-CVE-2017-11696",
+        "DEBIAN-CVE-2017-11697",
+        "DEBIAN-CVE-2017-11698",
+        "DEBIAN-CVE-2017-14159",
+        "DEBIAN-CVE-2017-16232",
+        "DEBIAN-CVE-2017-17740",
+        "DEBIAN-CVE-2017-18018",
+        "DEBIAN-CVE-2017-2814",
+        "DEBIAN-CVE-2017-2818",
+        "DEBIAN-CVE-2017-2820",
+        "DEBIAN-CVE-2017-7475",
+        "DEBIAN-CVE-2017-9083",
+        "DEBIAN-CVE-2017-9937",
+        "DEBIAN-CVE-2018-10126",
+        "DEBIAN-CVE-2018-10583",
+        "DEBIAN-CVE-2018-16376",
+        "DEBIAN-CVE-2018-18064",
+        "DEBIAN-CVE-2018-20796",
+        "DEBIAN-CVE-2018-5709",
+        "DEBIAN-CVE-2018-6829",
+        "DEBIAN-CVE-2019-1010022",
+        "DEBIAN-CVE-2019-1010023",
+        "DEBIAN-CVE-2019-1010024",
+        "DEBIAN-CVE-2019-1010025",
+        "DEBIAN-CVE-2019-6988",
+        "DEBIAN-CVE-2019-9192",
+        "DEBIAN-CVE-2019-9543",
+        "DEBIAN-CVE-2019-9545",
+        "DEBIAN-CVE-2020-15719",
+        "DEBIAN-CVE-2021-4214",
+        "DEBIAN-CVE-2021-45346",
+        "DEBIAN-CVE-2022-0563",
+        "DEBIAN-CVE-2022-1210",
+        "DEBIAN-CVE-2022-24106",
+        "DEBIAN-CVE-2022-3219",
+        "DEBIAN-CVE-2023-31437",
+        "DEBIAN-CVE-2023-31438",
+        "DEBIAN-CVE-2023-31439",
+        "DEBIAN-CVE-2023-37769",
+        "DEBIAN-CVE-2023-39327",
+        "DEBIAN-CVE-2023-39328",
+        "DEBIAN-CVE-2023-39329",
+        "DEBIAN-CVE-2024-2236",
+        "DEBIAN-CVE-2024-26458",
+        "DEBIAN-CVE-2024-26461",
+        "DEBIAN-CVE-2024-52615",
+        "DEBIAN-CVE-2024-52616",
+        "DEBIAN-CVE-2024-56433",
+        "DEBIAN-CVE-2025-10911",
+        "DEBIAN-CVE-2025-10966",
+        "DEBIAN-CVE-2025-11731",
+        "DEBIAN-CVE-2025-14017",
+        "DEBIAN-CVE-2025-15079",
+        "DEBIAN-CVE-2025-15224",
+        "DEBIAN-CVE-2025-29070",
+        "DEBIAN-CVE-2025-50422",
+        "DEBIAN-CVE-2025-5278",
+        "DEBIAN-CVE-2025-58436",
+        "DEBIAN-CVE-2025-59529",
+        "DEBIAN-CVE-2025-61143",
+        "DEBIAN-CVE-2025-61144",
+        "DEBIAN-CVE-2025-61145",
+        "DEBIAN-CVE-2025-6141",
+        "DEBIAN-CVE-2025-61915",
+        "DEBIAN-CVE-2025-66382",
+        "DEBIAN-CVE-2025-68276",
+        "DEBIAN-CVE-2025-68468",
+        "DEBIAN-CVE-2025-68471",
+        "DEBIAN-CVE-2025-68972",
+        "DEBIAN-CVE-2025-69720",
+        "DEBIAN-CVE-2025-70873",
+        "DEBIAN-CVE-2025-71436",
+        "DEBIAN-CVE-2025-8176",
+        "DEBIAN-CVE-2025-8177",
+        "DEBIAN-CVE-2025-8534",
+        "DEBIAN-CVE-2025-8941",
+        "DEBIAN-CVE-2026-100101",
+        "DEBIAN-CVE-2026-100290",
+        "DEBIAN-CVE-2026-102010",
+        "DEBIAN-CVE-2026-102473",
+        "DEBIAN-CVE-2026-102474",
+        "DEBIAN-CVE-2026-102620",
+        "DEBIAN-CVE-2026-102621",
+        "DEBIAN-CVE-2026-105326",
+        "DEBIAN-CVE-2026-10536",
+        "DEBIAN-CVE-2026-105712",
+        "DEBIAN-CVE-2026-107080",
+        "DEBIAN-CVE-2026-107161",
+        "DEBIAN-CVE-2026-107364",
+        "DEBIAN-CVE-2026-107493",
+        "DEBIAN-CVE-2026-107496",
+        "DEBIAN-CVE-2026-107655",
+        "DEBIAN-CVE-2026-107705",
+        "DEBIAN-CVE-2026-107708",
+        "DEBIAN-CVE-2026-107778",
+        "DEBIAN-CVE-2026-107884",
+        "DEBIAN-CVE-2026-107885",
+        "DEBIAN-CVE-2026-107886",
+        "DEBIAN-CVE-2026-107888",
+        "DEBIAN-CVE-2026-107890",
+        "DEBIAN-CVE-2026-107928",
+        "DEBIAN-CVE-2026-107929",
+        "DEBIAN-CVE-2026-109908",
+        "DEBIAN-CVE-2026-111423",
+        "DEBIAN-CVE-2026-112060",
+        "DEBIAN-CVE-2026-112061",
+        "DEBIAN-CVE-2026-112314",
+        "DEBIAN-CVE-2026-112315",
+        "DEBIAN-CVE-2026-112316",
+        "DEBIAN-CVE-2026-112317",
+        "DEBIAN-CVE-2026-112318",
+        "DEBIAN-CVE-2026-112319",
+        "DEBIAN-CVE-2026-112320",
+        "DEBIAN-CVE-2026-112321",
+        "DEBIAN-CVE-2026-112322",
+        "DEBIAN-CVE-2026-112323",
+        "DEBIAN-CVE-2026-113351",
+        "DEBIAN-CVE-2026-113679",
+        "DEBIAN-CVE-2026-113680",
+        "DEBIAN-CVE-2026-114690",
+        "DEBIAN-CVE-2026-114691",
+        "DEBIAN-CVE-2026-115455",
+        "DEBIAN-CVE-2026-115456",
+        "DEBIAN-CVE-2026-115506",
+        "DEBIAN-CVE-2026-115819",
+        "DEBIAN-CVE-2026-117610",
+        "DEBIAN-CVE-2026-118370",
+        "DEBIAN-CVE-2026-118380",
+        "DEBIAN-CVE-2026-11850",
+        "DEBIAN-CVE-2026-11856",
+        "DEBIAN-CVE-2026-119079",
+        "DEBIAN-CVE-2026-119371",
+        "DEBIAN-CVE-2026-119372",
+        "DEBIAN-CVE-2026-119373",
+        "DEBIAN-CVE-2026-119374",
+        "DEBIAN-CVE-2026-119375",
+        "DEBIAN-CVE-2026-119376",
+        "DEBIAN-CVE-2026-119377",
+        "DEBIAN-CVE-2026-119378",
+        "DEBIAN-CVE-2026-119379",
+        "DEBIAN-CVE-2026-119586",
+        "DEBIAN-CVE-2026-119591",
+        "DEBIAN-CVE-2026-119729",
+        "DEBIAN-CVE-2026-11979",
+        "DEBIAN-CVE-2026-119842",
+        "DEBIAN-CVE-2026-12064",
+        "DEBIAN-CVE-2026-120749",
+        "DEBIAN-CVE-2026-121757",
+        "DEBIAN-CVE-2026-121758",
+        "DEBIAN-CVE-2026-124024",
+        "DEBIAN-CVE-2026-124317",
+        "DEBIAN-CVE-2026-124709",
+        "DEBIAN-CVE-2026-125040",
+        "DEBIAN-CVE-2026-125704",
+        "DEBIAN-CVE-2026-125709",
+        "DEBIAN-CVE-2026-125712",
+        "DEBIAN-CVE-2026-126765",
+        "DEBIAN-CVE-2026-127039",
+        "DEBIAN-CVE-2026-127040",
+        "DEBIAN-CVE-2026-127231",
+        "DEBIAN-CVE-2026-128241",
+        "DEBIAN-CVE-2026-128885",
+        "DEBIAN-CVE-2026-128886",
+        "DEBIAN-CVE-2026-128987",
+        "DEBIAN-CVE-2026-129483",
+        "DEBIAN-CVE-2026-132138",
+        "DEBIAN-CVE-2026-13608",
+        "DEBIAN-CVE-2026-13757",
+        "DEBIAN-CVE-2026-15059",
+        "DEBIAN-CVE-2026-15534",
+        "DEBIAN-CVE-2026-16742",
+        "DEBIAN-CVE-2026-18374",
+        "DEBIAN-CVE-2026-18477",
+        "DEBIAN-CVE-2026-18495",
+        "DEBIAN-CVE-2026-18508",
+        "DEBIAN-CVE-2026-18924",
+        "DEBIAN-CVE-2026-18938",
+        "DEBIAN-CVE-2026-19499",
+        "DEBIAN-CVE-2026-19542",
+        "DEBIAN-CVE-2026-19931",
+        "DEBIAN-CVE-2026-22185",
+        "DEBIAN-CVE-2026-24401",
+        "DEBIAN-CVE-2026-24882",
+        "DEBIAN-CVE-2026-27447",
+        "DEBIAN-CVE-2026-3184",
+        "DEBIAN-CVE-2026-34933",
+        "DEBIAN-CVE-2026-34978",
+        "DEBIAN-CVE-2026-34979",
+        "DEBIAN-CVE-2026-34980",
+        "DEBIAN-CVE-2026-34990",
+        "DEBIAN-CVE-2026-35190",
+        "DEBIAN-CVE-2026-36849",
+        "DEBIAN-CVE-2026-3713",
+        "DEBIAN-CVE-2026-39113",
+        "DEBIAN-CVE-2026-39314",
+        "DEBIAN-CVE-2026-39316",
+        "DEBIAN-CVE-2026-40228",
+        "DEBIAN-CVE-2026-41079",
+        "DEBIAN-CVE-2026-42250",
+        "DEBIAN-CVE-2026-50812",
+        "DEBIAN-CVE-2026-50813",
+        "DEBIAN-CVE-2026-52490",
+        "DEBIAN-CVE-2026-52491",
+        "DEBIAN-CVE-2026-52492",
+        "DEBIAN-CVE-2026-53910",
+        "DEBIAN-CVE-2026-5435",
+        "DEBIAN-CVE-2026-54369",
+        "DEBIAN-CVE-2026-54370",
+        "DEBIAN-CVE-2026-54371",
+        "DEBIAN-CVE-2026-54411",
+        "DEBIAN-CVE-2026-55453",
+        "DEBIAN-CVE-2026-55467",
+        "DEBIAN-CVE-2026-55480",
+        "DEBIAN-CVE-2026-56391",
+        "DEBIAN-CVE-2026-56392",
+        "DEBIAN-CVE-2026-5704",
+        "DEBIAN-CVE-2026-57062",
+        "DEBIAN-CVE-2026-58055",
+        "DEBIAN-CVE-2026-61702",
+        "DEBIAN-CVE-2026-6238",
+        "DEBIAN-CVE-2026-6368",
+        "DEBIAN-CVE-2026-6653",
+        "DEBIAN-CVE-2026-67693",
+        "DEBIAN-CVE-2026-6791",
+        "DEBIAN-CVE-2026-71199",
+        "DEBIAN-CVE-2026-71200",
+        "DEBIAN-CVE-2026-74860",
+        "DEBIAN-CVE-2026-76642",
+        "DEBIAN-CVE-2026-76781",
+        "DEBIAN-CVE-2026-77117",
+        "DEBIAN-CVE-2026-78408",
+        "DEBIAN-CVE-2026-78409",
+        "DEBIAN-CVE-2026-78410",
+        "DEBIAN-CVE-2026-80229",
+        "DEBIAN-CVE-2026-80230",
+        "DEBIAN-CVE-2026-80255",
+        "DEBIAN-CVE-2026-80489",
+        "DEBIAN-CVE-2026-82208",
+        "DEBIAN-CVE-2026-82209",
+        "DEBIAN-CVE-2026-82560",
+        "DEBIAN-CVE-2026-84243",
+        "DEBIAN-CVE-2026-8458",
+        "DEBIAN-CVE-2026-84786",
+        "DEBIAN-CVE-2026-85150",
+        "DEBIAN-CVE-2026-86137",
+        "DEBIAN-CVE-2026-86138",
+        "DEBIAN-CVE-2026-86139",
+        "DEBIAN-CVE-2026-86140",
+        "DEBIAN-CVE-2026-86141",
+        "DEBIAN-CVE-2026-86142",
+        "DEBIAN-CVE-2026-86143",
+        "DEBIAN-CVE-2026-86144",
+        "DEBIAN-CVE-2026-86409",
+        "DEBIAN-CVE-2026-86410",
+        "DEBIAN-CVE-2026-86414",
+        "DEBIAN-CVE-2026-86469",
+        "DEBIAN-CVE-2026-86476",
+        "DEBIAN-CVE-2026-8674",
+        "DEBIAN-CVE-2026-86805",
+        "DEBIAN-CVE-2026-87862",
+        "DEBIAN-CVE-2026-87863",
+        "DEBIAN-CVE-2026-87864",
+        "DEBIAN-CVE-2026-87865",
+        "DEBIAN-CVE-2026-87866",
+        "DEBIAN-CVE-2026-87875",
+        "DEBIAN-CVE-2026-87876",
+        "DEBIAN-CVE-2026-88647",
+        "DEBIAN-CVE-2026-88648",
+        "DEBIAN-CVE-2026-88806",
+        "DEBIAN-CVE-2026-88807",
+        "DEBIAN-CVE-2026-88822",
+        "DEBIAN-CVE-2026-88823",
+        "DEBIAN-CVE-2026-89092",
+        "DEBIAN-CVE-2026-8926",
+        "DEBIAN-CVE-2026-8932",
+        "DEBIAN-CVE-2026-9079",
+        "DEBIAN-CVE-2026-9080",
+        "DEBIAN-CVE-2026-91094",
+        "DEBIAN-CVE-2026-92386",
+        "DEBIAN-CVE-2026-92387",
+        "DEBIAN-CVE-2026-92388",
+        "DEBIAN-CVE-2026-92389",
+        "DEBIAN-CVE-2026-92390",
+        "DEBIAN-CVE-2026-92391",
+        "DEBIAN-CVE-2026-93311",
+        "DEBIAN-CVE-2026-93312",
+        "DEBIAN-CVE-2026-93313",
+        "DEBIAN-CVE-2026-93314",
+        "DEBIAN-CVE-2026-93653",
+        "DEBIAN-CVE-2026-94266",
+        "DEBIAN-CVE-2026-94283",
+        "DEBIAN-CVE-2026-94284",
+        "DEBIAN-CVE-2026-94285",
+        "DEBIAN-CVE-2026-95184",
+        "DEBIAN-CVE-2026-95209",
+        "DEBIAN-CVE-2026-95210",
+        "DEBIAN-CVE-2026-9538",
+        "DEBIAN-CVE-2026-9545",
+        "DEBIAN-CVE-2026-9547",
+        "DEBIAN-CVE-2026-95512",
+        "DEBIAN-CVE-2026-95619",
+        "DEBIAN-CVE-2026-95690",
+        "DEBIAN-CVE-2026-95691",
+        "DEBIAN-CVE-2026-95692",
+        "DEBIAN-CVE-2026-95818",
+        "DEBIAN-CVE-2026-97399"
+      ],
+      "changedCoordinates": {
+        "removed": [
+          [
+            "curl",
+            "8.21.0-2~bpo13+1"
+          ]
+        ],
+        "added": [
+          [
+            "curl",
+            "8.23.0-2~novvin13+1"
+          ]
+        ]
+      },
+      "newAdvisoryIds": [],
+      "removedAdvisoryIds": [],
+      "baseScoringForSameIds": {
+        "medium": 151,
+        "high": 119,
+        "low": 33,
+        "critical": 13,
+        "unrated": 12
+      },
+      "unchangedExecutables": {
+        "usr/bin/gotenberg": "d3f7f916940369d8515431c0d406bcb367e737a42f3d06cf37c73e18419ad40d",
+        "usr/lib/libreoffice/program/soffice.bin": "0b6650a3d44fd67e427edeffe6263dbfcfef55a8152c00d9f36f92e615fc9a86"
+      }
+    },
+    "criticalVendorEvidence": [
+      {
+        "id": "CVE-2019-1010022",
+        "sourcePackage": "glibc",
+        "installedSourceVersion": "2.41-12+deb13u4",
+        "scannerCvss": 9.8,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2019-1010022",
+        "baseAssessment": {
+          "status": "disputed upstream; retained",
+          "debianUrgency": "unimportant",
+          "vendorDoesNotClassifyAsSecurityIssue": true
+        }
+      },
+      {
+        "id": "CVE-2026-10536",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.8,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-10536",
+        "upstream": "https://curl.se/docs/CVE-2026-10536.html",
+        "affectedFrom": "7.88.0",
+        "affectedThrough": "8.20.0",
+        "upstream821InRange": false,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "installed upstream version outside affected range"
+        }
+      },
+      {
+        "id": "CVE-2026-11856",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.8,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-11856",
+        "upstream": "https://curl.se/docs/CVE-2026-11856.html",
+        "affectedFrom": "7.10.6",
+        "affectedThrough": "8.20.0",
+        "upstream821InRange": false,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "installed upstream version outside affected range"
+        }
+      },
+      {
+        "id": "CVE-2026-129483",
+        "sourcePackage": "cyrus-sasl2",
+        "installedSourceVersion": "2.1.28+dfsg1-9",
+        "scannerCvss": 9.3,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-129483",
+        "baseAssessment": {
+          "status": "affected server mechanism absent",
+          "debianBuildOption": "--disable-srp",
+          "installedPlugins": [
+            "usr/lib/x86_64-linux-gnu/sasl2/libsasldb.so",
+            "usr/lib/x86_64-linux-gnu/sasl2/libsasldb.so.2",
+            "usr/lib/x86_64-linux-gnu/sasl2/libsasldb.so.2.0.25"
+          ],
+          "libraryInstalled": "usr/lib/x86_64-linux-gnu/libsasl2.so.2"
+        }
+      },
+      {
+        "id": "CVE-2026-18924",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.1,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-18924",
+        "upstream": "https://curl.se/docs/CVE-2026-18924.html",
+        "affectedFrom": "7.44.0",
+        "affectedThrough": "8.21.0",
+        "upstream821InRange": true,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "in upstream affected range"
+        }
+      },
+      {
+        "id": "CVE-2026-19931",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.8,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-19931",
+        "upstream": "https://curl.se/docs/CVE-2026-19931.html",
+        "affectedFrom": "7.64.1",
+        "affectedThrough": "8.21.0",
+        "upstream821InRange": true,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "in upstream affected range"
+        }
+      },
+      {
+        "id": "CVE-2026-52490",
+        "sourcePackage": "tiff",
+        "installedSourceVersion": "4.7.0-3+deb13u3",
+        "scannerCvss": 9.8,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-52490",
+        "baseAssessment": {
+          "status": "affected executable absent",
+          "affectedExecutable": "tiffcrop",
+          "filesWithAffectedName": [],
+          "libraryInstalled": "usr/lib/x86_64-linux-gnu/libtiff.so.6"
+        }
+      },
+      {
+        "id": "CVE-2026-6653",
+        "sourcePackage": "libxml2",
+        "installedSourceVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+        "scannerCvss": 9.8,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-6653",
+        "baseAssessment": {
+          "status": "affected package present; open",
+          "debianUpdateAvailableForInstalledRelease": false
+        }
+      },
+      {
+        "id": "CVE-2026-86414",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.1,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-86414",
+        "upstream": "https://curl.se/docs/CVE-2026-86414.html",
+        "affectedFrom": "7.10.8",
+        "affectedThrough": "8.22.0",
+        "upstream821InRange": true,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "in upstream affected range"
+        }
+      },
+      {
+        "id": "CVE-2026-87866",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.1,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-87866",
+        "upstream": "https://curl.se/docs/CVE-2026-87866.html",
+        "affectedFrom": "7.43.0",
+        "affectedThrough": "8.22.0",
+        "upstream821InRange": true,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "in upstream affected range"
+        }
+      },
+      {
+        "id": "CVE-2026-8926",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.1,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-8926",
+        "upstream": "https://curl.se/docs/CVE-2026-8926.html",
+        "affectedFrom": "8.11.1",
+        "affectedThrough": "8.20.0",
+        "upstream821InRange": false,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "installed upstream version outside affected range"
+        }
+      },
+      {
+        "id": "CVE-2026-9079",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.8,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-9079",
+        "upstream": "https://curl.se/docs/CVE-2026-9079.html",
+        "affectedFrom": "8.8.0",
+        "affectedThrough": "8.20.0",
+        "upstream821InRange": false,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "installed upstream version outside affected range"
+        }
+      },
+      {
+        "id": "CVE-2026-92388",
+        "sourcePackage": "curl",
+        "installedSourceVersion": "8.21.0-2~bpo13+1",
+        "scannerCvss": 9.1,
+        "debianTracker": "https://security-tracker.debian.org/tracker/CVE-2026-92388",
+        "upstream": "https://curl.se/docs/CVE-2026-92388.html",
+        "affectedFrom": "7.21.0",
+        "affectedThrough": "8.22.0",
+        "upstream821InRange": true,
+        "upstream823InRange": false,
+        "baseAssessment": {
+          "status": "in upstream affected range"
+        }
+      }
+    ],
+    "fourRuntimePackagesBuiltInLab": {
+      "curl_8.23.0-2~novvin13+1_amd64.deb": "302ff1d631892d31894a9c6f54dfb41ad358ed17144740f587347e1c5668f485",
+      "libcurl3t64-gnutls_8.23.0-2~novvin13+1_amd64.deb": "2e22ed1f6e454b706d0fba9861b7ba21dc02b094a144765f2c4ef756b6e8c22e",
+      "libcurl4-gnutls_8.23.0-2~novvin13+1_amd64.deb": "936ba8f49ad4e4eec423ecef1de7b57dfa3432110c130e0e308de48d84b77b60",
+      "libcurl4t64_8.23.0-2~novvin13+1_amd64.deb": "8864515cfa90fce9e676ae4c6897518c6fafd626a37fd4574ab8ea53869c9e81"
+    },
+    "osvCurlPackageResults": {
+      "8.21.0-2~bpo13+1": 39,
+      "8.14.1-2+deb13u7": 39,
+      "8.23.0-2~novvin13+1": 39
+    },
+    "curlVendorVersionChecks": {
+      "utc": "2026-11-20T13:11:20.241402+00:00",
+      "covered": 39,
+      "upstreamReleaseCounts": {
+        "8.21.0": 33,
+        "8.23.0": 0
+      },
+      "baselineByDistributionRating": {
+        "high": 20,
+        "critical": 5
+      },
+      "candidateByDistributionRating": {},
+      "rows": [
+        {
+          "id": "CVE-2025-10966",
+          "distributionRating": "medium",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.16.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2025-10966.json",
+          "sourceSha256": "61f9aca650964c1edfa47825f02619f4da0e8a16fe8a1d31a4b7ca44d6afdb87"
+        },
+        {
+          "id": "CVE-2025-14017",
+          "distributionRating": "medium",
+          "vendorSeverity": "Medium",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.17.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2025-14017.json",
+          "sourceSha256": "6240695a265bb291a5387522a0279281c24a2e231a9cfed716095a37d57f2286"
+        },
+        {
+          "id": "CVE-2025-15079",
+          "distributionRating": "medium",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.17.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2025-15079.json",
+          "sourceSha256": "495a9f1d47121a1c9c08701e106aec98f1f79af72f1eaa4be9674e55e516a84f"
+        },
+        {
+          "id": "CVE-2025-15224",
+          "distributionRating": "low",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.17.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2025-15224.json",
+          "sourceSha256": "472c7fbf5da2342b53c5a7448d7416990aae0de9ba1ec7bf27b212ae5f178a0f"
+        },
+        {
+          "id": "CVE-2026-10536",
+          "distributionRating": "critical",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-10536.json",
+          "sourceSha256": "9595773c086f9d6e24f31968d08c10e1336f46e6b9f8af807378d99483cd0a98"
+        },
+        {
+          "id": "CVE-2026-107928",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-107928.json",
+          "sourceSha256": "c26b000e190cb01ce7325b2296d85ef5b627a0744b93d0619fdf8b27936b915e"
+        },
+        {
+          "id": "CVE-2026-107929",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-107929.json",
+          "sourceSha256": "e7c6ccb1d6456499c26717e451fe181ec1ef540bcafd5d990784e042fb2911e9"
+        },
+        {
+          "id": "CVE-2026-11856",
+          "distributionRating": "critical",
+          "vendorSeverity": "Medium",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-11856.json",
+          "sourceSha256": "927bb72cd0c2d4213f7f99b2f45794f97f3f3b5583432ecbefc16390de56b00c"
+        },
+        {
+          "id": "CVE-2026-12064",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-12064.json",
+          "sourceSha256": "80809a722fdd9215b84f9e91cfb5983f21314badf395bb0bbe8600b9cc56335a"
+        },
+        {
+          "id": "CVE-2026-13608",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-13608.json",
+          "sourceSha256": "394eaf6cde4ac375d8662dc88b780d8d86f8f0c541c6ce432c4279610c865f07"
+        },
+        {
+          "id": "CVE-2026-18924",
+          "distributionRating": "critical",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-18924.json",
+          "sourceSha256": "5445d43aa5123efda14a5e6a372894d485035865349231163e85ab1325478806"
+        },
+        {
+          "id": "CVE-2026-19931",
+          "distributionRating": "critical",
+          "vendorSeverity": "Medium",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-19931.json",
+          "sourceSha256": "00c745149cb15a7fee9b6f2d76934a75eb7047cbc407f13d7b6d481756a454ae"
+        },
+        {
+          "id": "CVE-2026-80229",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-80229.json",
+          "sourceSha256": "c413ab12da658deea5476913fda04ef956a14860747c7cf5e1fc6648611ff447"
+        },
+        {
+          "id": "CVE-2026-80230",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-80230.json",
+          "sourceSha256": "5dfe3316ebee8044208432f11dee5784dcdb172082ba6804c513b575166b0751"
+        },
+        {
+          "id": "CVE-2026-80255",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-80255.json",
+          "sourceSha256": "ad15f13821a3d07249547e5fe424b877954f05c576b76b970dc11ab32e2cd5a8"
+        },
+        {
+          "id": "CVE-2026-82208",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-82208.json",
+          "sourceSha256": "779aabbe6b05bd68e745533af5249c527b2e1a28b796bbd8ffbfa31adb0b5eeb"
+        },
+        {
+          "id": "CVE-2026-82209",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-82209.json",
+          "sourceSha256": "338b961ed0b06d2e4a0304a03046570820ab070eab33787e0f0b6e8badc7d617"
+        },
+        {
+          "id": "CVE-2026-8458",
+          "distributionRating": "medium",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-8458.json",
+          "sourceSha256": "b36ecf17784961ea892f9afc9e9b561114a6a93bea54bdedb7fd0ecbb803e902"
+        },
+        {
+          "id": "CVE-2026-86409",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-86409.json",
+          "sourceSha256": "a38875aa1f4b205a0155b3517888278c83cc27c3bd411d8f08987a2c99b38d3e"
+        },
+        {
+          "id": "CVE-2026-86410",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-86410.json",
+          "sourceSha256": "02219654084d3b2e9e1513e4dc14b4abb223dd33ba43db07a5b38a18a2d8217f"
+        },
+        {
+          "id": "CVE-2026-86414",
+          "distributionRating": "critical",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-86414.json",
+          "sourceSha256": "1ebe452e632a0823aff76da520ab2de0719da62f8161534171133175c623d41d"
+        },
+        {
+          "id": "CVE-2026-87862",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-87862.json",
+          "sourceSha256": "5dbc7cde4f4f7ebbb74df2c66bc927caf97ab94a78719c403685a31c45115b35"
+        },
+        {
+          "id": "CVE-2026-87863",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-87863.json",
+          "sourceSha256": "b5a6f8629b838b94261c76e4dcb2b276094ed81c6cbfc6878ebceb33d64ee76d"
+        },
+        {
+          "id": "CVE-2026-87864",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.21.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-87864.json",
+          "sourceSha256": "1f2b2f6e86ee61db393f26402cc5089c555147b1f13b1eae61c4896d8da14592"
+        },
+        {
+          "id": "CVE-2026-87865",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-87865.json",
+          "sourceSha256": "d05a80ebbb9b4feb0b3a74b0c3b5d214f478504c887e0f82b2f635a34943fff9"
+        },
+        {
+          "id": "CVE-2026-87866",
+          "distributionRating": "critical",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-87866.json",
+          "sourceSha256": "aad6ebc12472137f4acefe0608e2fcfd488fb16c87cea1fe37cdff48cb82385d"
+        },
+        {
+          "id": "CVE-2026-8926",
+          "distributionRating": "critical",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-8926.json",
+          "sourceSha256": "4d4f8954e251acc4b60061f061ac838f1658a66a1c56b67923cc534ce8f34a57"
+        },
+        {
+          "id": "CVE-2026-8932",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-8932.json",
+          "sourceSha256": "757a5f10959f527f009eac2e0a483a17231330ba4db77ad41aa504c4da768444"
+        },
+        {
+          "id": "CVE-2026-9079",
+          "distributionRating": "critical",
+          "vendorSeverity": "Medium",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-9079.json",
+          "sourceSha256": "5e0441339f6b0490de82631ff0d829b25c36663dec471301cf731d1881249096"
+        },
+        {
+          "id": "CVE-2026-9080",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-9080.json",
+          "sourceSha256": "b490416000b3aa79994321f7900e1f8da4605df38a6cb0bfcb8ed7a185fa659c"
+        },
+        {
+          "id": "CVE-2026-92386",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-92386.json",
+          "sourceSha256": "2455d75d5d23de7b78c6b56f7987771f9f44f95a5912b4ce894d8ad35a99d41c"
+        },
+        {
+          "id": "CVE-2026-92387",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-92387.json",
+          "sourceSha256": "0c29c9823ff156e5cb165981f9730727ab13e83c1fb03b653e96585cc04aa0d2"
+        },
+        {
+          "id": "CVE-2026-92388",
+          "distributionRating": "critical",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-92388.json",
+          "sourceSha256": "090c7f19ab726d62c8c0044d4a8094fc24fb09f7164e26d46cfb0b921b23751b"
+        },
+        {
+          "id": "CVE-2026-92389",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-92389.json",
+          "sourceSha256": "120ab40548b118bc4bbba9d845d18bfb8614ad93c4a6042eaab7071e25094cfb"
+        },
+        {
+          "id": "CVE-2026-92390",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-92390.json",
+          "sourceSha256": "da14afba74b489cc3aa2b97cb6fb3f2943a651c080e47646bdc2e07055fc83fa"
+        },
+        {
+          "id": "CVE-2026-92391",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-92391.json",
+          "sourceSha256": "2d9180899f788ac54cfde8fd47e5a5d6a0752443113c01a8103c7853e6dd9d68"
+        },
+        {
+          "id": "CVE-2026-94266",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": true,
+          "vendorLists823": false,
+          "lastAffected": "8.22.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-94266.json",
+          "sourceSha256": "89276d5799cd8c91ff3ffc91f6325f35a93f1c4de4197f254518f2937c3f3b91"
+        },
+        {
+          "id": "CVE-2026-9545",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-9545.json",
+          "sourceSha256": "51446b84a3f38af03a5c1c1bf2d5bbc7386a078850fd04b89094e80bfacfe3f7"
+        },
+        {
+          "id": "CVE-2026-9547",
+          "distributionRating": "high",
+          "vendorSeverity": "Low",
+          "vendorLists821": false,
+          "vendorLists823": false,
+          "lastAffected": "8.20.0",
+          "sourceUrl": "https://curl.se/docs/CVE-2026-9547.json",
+          "sourceSha256": "a4975a07edbc3bb5ee0118d1c16d08e256fcc779dbd32892702a9c6e69f9099e"
+        }
+      ]
+    },
+    "debianHighAndCritical": {
+      "sourceUrl": "https://security-tracker.debian.org/tracker/data/json",
+      "checkedUtc": "2026-11-20T13:11:30.777859+00:00",
+      "trackerFileSha256": "cc6e09b021cf3acf7fc4fd64955a2f2bfa67df1632468051027a718a9a96a529",
+      "rows": [
+        {
+          "id": "CVE-2012-0039",
+          "source": "glib2.0",
+          "baseVersion": "2.84.4-3~deb13u5",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2012-0039"
+        },
+        {
+          "id": "CVE-2014-8166",
+          "source": "cups",
+          "baseVersion": "2.4.10-3+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2014-8166"
+        },
+        {
+          "id": "CVE-2015-3276",
+          "source": "openldap",
+          "baseVersion": "2.6.10+dfsg-1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2015-3276"
+        },
+        {
+          "id": "CVE-2016-9113",
+          "source": "openjpeg2",
+          "baseVersion": "2.5.3-2.1~deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2016-9113"
+        },
+        {
+          "id": "CVE-2016-9114",
+          "source": "openjpeg2",
+          "baseVersion": "2.5.3-2.1~deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2016-9114"
+        },
+        {
+          "id": "CVE-2016-9580",
+          "source": "openjpeg2",
+          "baseVersion": "2.5.3-2.1~deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2016-9580"
+        },
+        {
+          "id": "CVE-2016-9581",
+          "source": "openjpeg2",
+          "baseVersion": "2.5.3-2.1~deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2016-9581"
+        },
+        {
+          "id": "CVE-2017-11695",
+          "source": "nss",
+          "baseVersion": "2:3.110-1+deb13u5",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-11695"
+        },
+        {
+          "id": "CVE-2017-11696",
+          "source": "nss",
+          "baseVersion": "2:3.110-1+deb13u5",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-11696"
+        },
+        {
+          "id": "CVE-2017-11697",
+          "source": "nss",
+          "baseVersion": "2:3.110-1+deb13u5",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-11697"
+        },
+        {
+          "id": "CVE-2017-11698",
+          "source": "nss",
+          "baseVersion": "2:3.110-1+deb13u5",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-11698"
+        },
+        {
+          "id": "CVE-2017-16232",
+          "source": "tiff",
+          "baseVersion": "4.7.0-3+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-16232"
+        },
+        {
+          "id": "CVE-2017-17740",
+          "source": "openldap",
+          "baseVersion": "2.6.10+dfsg-1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-17740"
+        },
+        {
+          "id": "CVE-2017-2814",
+          "source": "poppler",
+          "baseVersion": "25.03.0-5+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-2814"
+        },
+        {
+          "id": "CVE-2017-2818",
+          "source": "poppler",
+          "baseVersion": "25.03.0-5+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-2818"
+        },
+        {
+          "id": "CVE-2017-2820",
+          "source": "poppler",
+          "baseVersion": "25.03.0-5+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2017-2820"
+        },
+        {
+          "id": "CVE-2018-10583",
+          "source": "libreoffice",
+          "baseVersion": "4:26.8.2.2-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2018-10583"
+        },
+        {
+          "id": "CVE-2018-16376",
+          "source": "openjpeg2",
+          "baseVersion": "2.5.3-2.1~deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2018-16376"
+        },
+        {
+          "id": "CVE-2018-20796",
+          "source": "glibc",
+          "baseVersion": "2.41-12+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2018-20796"
+        },
+        {
+          "id": "CVE-2018-5709",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2018-5709"
+        },
+        {
+          "id": "CVE-2018-6829",
+          "source": "libgcrypt20",
+          "baseVersion": "1.11.0-7+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2018-6829"
+        },
+        {
+          "id": "CVE-2019-1010022",
+          "source": "glibc",
+          "baseVersion": "2.41-12+deb13u4",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2019-1010022"
+        },
+        {
+          "id": "CVE-2019-1010023",
+          "source": "glibc",
+          "baseVersion": "2.41-12+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2019-1010023"
+        },
+        {
+          "id": "CVE-2019-9192",
+          "source": "glibc",
+          "baseVersion": "2.41-12+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2019-9192"
+        },
+        {
+          "id": "CVE-2019-9543",
+          "source": "poppler",
+          "baseVersion": "25.03.0-5+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "low",
+            "nodsa": "Minor issue",
+            "nodsa_reason": "ignored"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2019-9543"
+        },
+        {
+          "id": "CVE-2019-9545",
+          "source": "poppler",
+          "baseVersion": "25.03.0-5+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "low",
+            "nodsa": "Minor issue",
+            "nodsa_reason": "ignored"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2019-9545"
+        },
+        {
+          "id": "CVE-2022-24106",
+          "source": "poppler",
+          "baseVersion": "25.03.0-5+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2022-24106"
+        },
+        {
+          "id": "CVE-2024-26461",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2024-26461"
+        },
+        {
+          "id": "CVE-2025-29070",
+          "source": "lcms2",
+          "baseVersion": "2.16-2+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2025-29070"
+        },
+        {
+          "id": "CVE-2025-61144",
+          "source": "tiff",
+          "baseVersion": "4.7.0-3+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2025-61144"
+        },
+        {
+          "id": "CVE-2025-69720",
+          "source": "ncurses",
+          "baseVersion": "6.5+20250216-2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2025-69720"
+        },
+        {
+          "id": "CVE-2025-70873",
+          "source": "sqlite3",
+          "baseVersion": "3.46.1-7+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2025-70873"
+        },
+        {
+          "id": "CVE-2025-71436",
+          "source": "raptor2",
+          "baseVersion": "2.0.16-6",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2025-71436"
+        },
+        {
+          "id": "CVE-2025-8176",
+          "source": "tiff",
+          "baseVersion": "4.7.0-3+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2025-8176"
+        },
+        {
+          "id": "CVE-2025-8177",
+          "source": "tiff",
+          "baseVersion": "4.7.0-3+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2025-8177"
+        },
+        {
+          "id": "CVE-2025-8941",
+          "source": "pam",
+          "baseVersion": "1.7.0-5",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "undetermined",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2025-8941"
+        },
+        {
+          "id": "CVE-2026-100101",
+          "source": "libreoffice",
+          "baseVersion": "4:26.8.2.2-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-100101"
+        },
+        {
+          "id": "CVE-2026-102010",
+          "source": "gcc-14",
+          "baseVersion": "14.2.0-19",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-102010"
+        },
+        {
+          "id": "CVE-2026-10536",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-10536"
+        },
+        {
+          "id": "CVE-2026-107161",
+          "source": "cyrus-sasl2",
+          "baseVersion": "2.1.28+dfsg1-9",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Will be fixed via point release; suggested patch taken for update",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-107161"
+        },
+        {
+          "id": "CVE-2026-107493",
+          "source": "openssl",
+          "baseVersion": "3.5.7-1~deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-107493"
+        },
+        {
+          "id": "CVE-2026-107496",
+          "source": "openssl",
+          "baseVersion": "3.5.7-1~deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-107496"
+        },
+        {
+          "id": "CVE-2026-107705",
+          "source": "poppler",
+          "baseVersion": "25.03.0-5+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-107705"
+        },
+        {
+          "id": "CVE-2026-107778",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-107778"
+        },
+        {
+          "id": "CVE-2026-107928",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-107928"
+        },
+        {
+          "id": "CVE-2026-107929",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-107929"
+        },
+        {
+          "id": "CVE-2026-109908",
+          "source": "libfontenc",
+          "baseVersion": "1:1.1.8-1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-109908"
+        },
+        {
+          "id": "CVE-2026-112314",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-112314"
+        },
+        {
+          "id": "CVE-2026-112320",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-112320"
+        },
+        {
+          "id": "CVE-2026-112321",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-112321"
+        },
+        {
+          "id": "CVE-2026-112322",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-112322"
+        },
+        {
+          "id": "CVE-2026-112323",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-112323"
+        },
+        {
+          "id": "CVE-2026-113351",
+          "source": "expat",
+          "baseVersion": "2.9.0-1~deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-113351"
+        },
+        {
+          "id": "CVE-2026-113679",
+          "source": "harfbuzz",
+          "baseVersion": "10.2.0-1+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "resolved",
+            "urgency": "unimportant",
+            "fixed_version": "0"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-113679"
+        },
+        {
+          "id": "CVE-2026-115506",
+          "source": "expat",
+          "baseVersion": "2.9.0-1~deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-115506"
+        },
+        {
+          "id": "CVE-2026-117610",
+          "source": "expat",
+          "baseVersion": "2.9.0-1~deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-117610"
+        },
+        {
+          "id": "CVE-2026-118370",
+          "source": "expat",
+          "baseVersion": "2.9.0-1~deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-118370"
+        },
+        {
+          "id": "CVE-2026-11856",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-11856"
+        },
+        {
+          "id": "CVE-2026-119079",
+          "source": "krb5",
+          "baseVersion": "1.21.3-5+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-119079"
+        },
+        {
+          "id": "CVE-2026-119373",
+          "source": "sqlite3",
+          "baseVersion": "3.46.1-7+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-119373"
+        },
+        {
+          "id": "CVE-2026-119374",
+          "source": "sqlite3",
+          "baseVersion": "3.46.1-7+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-119374"
+        },
+        {
+          "id": "CVE-2026-119379",
+          "source": "sqlite3",
+          "baseVersion": "3.46.1-7+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-119379"
+        },
+        {
+          "id": "CVE-2026-119586",
+          "source": "sqlite3",
+          "baseVersion": "3.46.1-7+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "undetermined",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-119586"
+        },
+        {
+          "id": "CVE-2026-11979",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-11979"
+        },
+        {
+          "id": "CVE-2026-12064",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-12064"
+        },
+        {
+          "id": "CVE-2026-124709",
+          "source": "openssl",
+          "baseVersion": "3.5.7-1~deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-124709"
+        },
+        {
+          "id": "CVE-2026-125704",
+          "source": "gstreamer1.0",
+          "baseVersion": "1.26.2-2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-125704"
+        },
+        {
+          "id": "CVE-2026-125712",
+          "source": "gst-plugins-base1.0",
+          "baseVersion": "1.26.2-1+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-125712"
+        },
+        {
+          "id": "CVE-2026-129483",
+          "source": "cyrus-sasl2",
+          "baseVersion": "2.1.28+dfsg1-9",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-129483"
+        },
+        {
+          "id": "CVE-2026-13608",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-13608"
+        },
+        {
+          "id": "CVE-2026-18924",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-18924"
+        },
+        {
+          "id": "CVE-2026-19499",
+          "source": "glibc",
+          "baseVersion": "2.41-12+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-19499"
+        },
+        {
+          "id": "CVE-2026-19931",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-19931"
+        },
+        {
+          "id": "CVE-2026-24882",
+          "source": "gnupg2",
+          "baseVersion": "2.4.7-21+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-24882"
+        },
+        {
+          "id": "CVE-2026-34980",
+          "source": "cups",
+          "baseVersion": "2.4.10-3+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-34980"
+        },
+        {
+          "id": "CVE-2026-52490",
+          "source": "tiff",
+          "baseVersion": "4.7.0-3+deb13u3",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-52490"
+        },
+        {
+          "id": "CVE-2026-52491",
+          "source": "tiff",
+          "baseVersion": "4.7.0-3+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-52491"
+        },
+        {
+          "id": "CVE-2026-52492",
+          "source": "tiff",
+          "baseVersion": "4.7.0-3+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-52492"
+        },
+        {
+          "id": "CVE-2026-5435",
+          "source": "glibc",
+          "baseVersion": "2.41-12+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-5435"
+        },
+        {
+          "id": "CVE-2026-54369",
+          "source": "acl",
+          "baseVersion": "2.3.2-2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Will be fixed first in unstable, then point release update; not to be backported by individual patches",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-54369"
+        },
+        {
+          "id": "CVE-2026-54370",
+          "source": "acl",
+          "baseVersion": "2.3.2-2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Will be fixed first in unstable, then point release update; not to be backported by individual patches",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-54370"
+        },
+        {
+          "id": "CVE-2026-54371",
+          "source": "attr",
+          "baseVersion": "1:2.5.2-3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Will be fixed first in unstable, then point release update; not to be backported by individual patches",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-54371"
+        },
+        {
+          "id": "CVE-2026-6653",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-6653"
+        },
+        {
+          "id": "CVE-2026-74860",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-74860"
+        },
+        {
+          "id": "CVE-2026-76642",
+          "source": "util-linux",
+          "baseVersion": "2.41.5-0+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-76642"
+        },
+        {
+          "id": "CVE-2026-78408",
+          "source": "util-linux",
+          "baseVersion": "2.41.5-0+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-78408"
+        },
+        {
+          "id": "CVE-2026-78409",
+          "source": "util-linux",
+          "baseVersion": "2.41.5-0+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-78409"
+        },
+        {
+          "id": "CVE-2026-78410",
+          "source": "util-linux",
+          "baseVersion": "2.41.5-0+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-78410"
+        },
+        {
+          "id": "CVE-2026-80229",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-80229"
+        },
+        {
+          "id": "CVE-2026-80230",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-80230"
+        },
+        {
+          "id": "CVE-2026-80255",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-80255"
+        },
+        {
+          "id": "CVE-2026-82208",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-82208"
+        },
+        {
+          "id": "CVE-2026-82209",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-82209"
+        },
+        {
+          "id": "CVE-2026-82560",
+          "source": "perl",
+          "baseVersion": "5.40.1-6+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-82560"
+        },
+        {
+          "id": "CVE-2026-84243",
+          "source": "glibc",
+          "baseVersion": "2.41-12+deb13u4",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-84243"
+        },
+        {
+          "id": "CVE-2026-84786",
+          "source": "openssl",
+          "baseVersion": "3.5.7-1~deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-84786"
+        },
+        {
+          "id": "CVE-2026-85150",
+          "source": "gst-plugins-base1.0",
+          "baseVersion": "1.26.2-1+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-85150"
+        },
+        {
+          "id": "CVE-2026-86138",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86138"
+        },
+        {
+          "id": "CVE-2026-86139",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86139"
+        },
+        {
+          "id": "CVE-2026-86140",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86140"
+        },
+        {
+          "id": "CVE-2026-86142",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86142"
+        },
+        {
+          "id": "CVE-2026-86143",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86143"
+        },
+        {
+          "id": "CVE-2026-86144",
+          "source": "libxml2",
+          "baseVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86144"
+        },
+        {
+          "id": "CVE-2026-86409",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86409"
+        },
+        {
+          "id": "CVE-2026-86410",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86410"
+        },
+        {
+          "id": "CVE-2026-86414",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86414"
+        },
+        {
+          "id": "CVE-2026-86476",
+          "source": "gst-plugins-base1.0",
+          "baseVersion": "1.26.2-1+deb13u2",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-86476"
+        },
+        {
+          "id": "CVE-2026-87862",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-87862"
+        },
+        {
+          "id": "CVE-2026-87863",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-87863"
+        },
+        {
+          "id": "CVE-2026-87864",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-87864"
+        },
+        {
+          "id": "CVE-2026-87865",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-87865"
+        },
+        {
+          "id": "CVE-2026-87866",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-87866"
+        },
+        {
+          "id": "CVE-2026-88806",
+          "source": "libx11",
+          "baseVersion": "2:1.8.12-1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-88806"
+        },
+        {
+          "id": "CVE-2026-88807",
+          "source": "libxrender",
+          "baseVersion": "1:0.9.12-1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-88807"
+        },
+        {
+          "id": "CVE-2026-88823",
+          "source": "openssl",
+          "baseVersion": "3.5.7-1~deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-88823"
+        },
+        {
+          "id": "CVE-2026-8926",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-8926"
+        },
+        {
+          "id": "CVE-2026-8932",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-8932"
+        },
+        {
+          "id": "CVE-2026-9079",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-9079"
+        },
+        {
+          "id": "CVE-2026-9080",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-9080"
+        },
+        {
+          "id": "CVE-2026-92386",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-92386"
+        },
+        {
+          "id": "CVE-2026-92387",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-92387"
+        },
+        {
+          "id": "CVE-2026-92388",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "critical",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-92388"
+        },
+        {
+          "id": "CVE-2026-92389",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-92389"
+        },
+        {
+          "id": "CVE-2026-92390",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-92390"
+        },
+        {
+          "id": "CVE-2026-92391",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-92391"
+        },
+        {
+          "id": "CVE-2026-94266",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-94266"
+        },
+        {
+          "id": "CVE-2026-9538",
+          "source": "perl",
+          "baseVersion": "5.40.1-6+deb13u1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue; wait for regressions upstream sorted out",
+            "nodsa_reason": "postponed"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-9538"
+        },
+        {
+          "id": "CVE-2026-9545",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-9545"
+        },
+        {
+          "id": "CVE-2026-9547",
+          "source": "curl",
+          "baseVersion": "8.21.0-2~bpo13+1",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "unimportant"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-9547"
+        },
+        {
+          "id": "CVE-2026-95619",
+          "source": "gcc-14",
+          "baseVersion": "14.2.0-19",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned",
+            "nodsa": "Minor issue",
+            "nodsa_reason": ""
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-95619"
+        },
+        {
+          "id": "CVE-2026-95691",
+          "source": "openssl",
+          "baseVersion": "3.5.7-1~deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-95691"
+        },
+        {
+          "id": "CVE-2026-95692",
+          "source": "openssl",
+          "baseVersion": "3.5.7-1~deb13u3",
+          "distributionRating": "high",
+          "trixie": {
+            "status": "open",
+            "urgency": "not yet assigned"
+          },
+          "sourceUrl": "https://security-tracker.debian.org/tracker/CVE-2026-95692"
+        }
+      ],
+      "counts": {
+        "open": 129,
+        "undetermined": 2,
+        "resolved": 1
+      }
+    }
+  },
+  "privateXmlTrial": {
+    "committed": false,
+    "ubuntuPatchSha256": "6c2b8a7b6fa470efcb1854e5c73bd7e1ae1663d8b111e27ce9232bbc1fe44f54",
+    "sourceArchives": [
+      {
+        "url": "https://snapshot.debian.org/archive/debian/20261118T000000Z/pool/main/libx/libxml2/libxml2_2.12.7+dfsg+really2.9.14-2.1+deb13u3.debian.tar.xz",
+        "expected": "3b6d265f482d6a8fbe3c056d2006fb3b563b4a838f7258b388ac5f0b29206921",
+        "verified": true
+      },
+      {
+        "url": "https://snapshot.debian.org/archive/debian/20261118T000000Z/pool/main/libx/libxml2/libxml2_2.12.7+dfsg+really2.9.14-2.1+deb13u3.dsc",
+        "expected": "04b1da890535b11e3db231f39114ee09e643badceff79441d749d0ca78efaaa5",
+        "verified": true
+      },
+      {
+        "url": "https://snapshot.debian.org/archive/debian/20261118T000000Z/pool/main/libx/libxml2/libxml2_2.12.7+dfsg+really2.9.14.orig.tar.xz",
+        "expected": "4fe913dec8b1ab89d13b489b419a8203176ea39e931eaa0d25b17eafb9c279e9",
+        "verified": true
+      },
+      {
+        "url": "https://snapshot.ubuntu.com/ubuntu/20261118T000000Z/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3ubuntu3.10.debian.tar.xz",
+        "expected": "d2d821830eb60edbcfcbe30e2827420e9e439e98c85c812352969cdda764d60b",
+        "verified": true
+      }
+    ],
+    "image": {
+      "ociManifestDigest": "sha256:a8ba98c7b513d66a3ee206d94eacf92b358c3ab12e2bf18a5b525a84a7d3f1ef",
+      "configDigest": "sha256:8e0a25194d4d67324171f00035cd86c91cb408b43213901ef18612647abb5ecf",
+      "packageCount": 344,
+      "changedPackages": {
+        "curl": {
+          "before": "8.21.0-2~bpo13+1",
+          "after": "8.23.0-2~novvin13+1"
+        },
+        "libcurl3t64-gnutls:amd64": {
+          "before": "8.21.0-2~bpo13+1",
+          "after": "8.23.0-2~novvin13+1"
+        },
+        "libcurl4-gnutls:amd64": {
+          "before": "8.21.0-2~bpo13+1",
+          "after": "8.23.0-2~novvin13+1"
+        },
+        "libcurl4t64:amd64": {
+          "before": "8.21.0-2~bpo13+1",
+          "after": "8.23.0-2~novvin13+1"
+        },
+        "libxml2:amd64": {
+          "before": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+          "after": "2.12.7+dfsg+really2.9.14-2.1+deb13u3+novvin1"
+        }
+      },
+      "entrypoint": [
+        "/usr/bin/tini",
+        "--"
+      ],
+      "cmd": [
+        "gotenberg"
+      ],
+      "user": "gotenberg",
+      "architecture": "linux/amd64"
+    },
+    "abi": {
+      "publicStructs": {
+        "old": {
+          "sizeofXmlEntity": 136,
+          "sizeofXmlParserInput": 104,
+          "offsetChecked": 132,
+          "offsetId": 100,
+          "normalXmlReadPassed": true
+        },
+        "new": {
+          "sizeofXmlEntity": 152,
+          "sizeofXmlParserInput": 120,
+          "offsetChecked": 132,
+          "offsetId": 100,
+          "normalXmlReadPassed": true
+        }
+      },
+      "dynamicExports": {
+        "old": 1786,
+        "new": 1786
+      },
+      "removedOrChangedExports": 0,
+      "addedOrChangedExports": 0,
+      "oldHeaderConsumerNewLibraryExit": 0,
+      "newHeaderConsumerOldLibraryExit": 0,
+      "architecture": "linux/amd64"
+    },
+    "docker": {
+      "scope": "Dedicated Docker daemon on Ubuntu under WSL2. One isolated network, no published ports. Exact imported image and service flags from repository Compose. Synthetic files.",
+      "engine": "29.1.3",
+      "compose": "2.40.3+ds1-0ubuntu1~24.04.1",
+      "ociManifest": "sha256:a8ba98c7b513d66a3ee206d94eacf92b358c3ab12e2bf18a5b525a84a7d3f1ef",
+      "imageConfig": "sha256:8e0a25194d4d67324171f00035cd86c91cb408b43213901ef18612647abb5ecf",
+      "readOnlyRoot": true,
+      "mountFlags": {
+        "/": [
+          "ro",
+          "relatime"
+        ],
+        "/tmp": [
+          "rw",
+          "nosuid",
+          "nodev",
+          "noexec",
+          "relatime"
+        ],
+        "/home/gotenberg": [
+          "rw",
+          "nosuid",
+          "nodev",
+          "noexec",
+          "relatime"
+        ]
+      },
+      "uidGidMode": [
+        "0 0 1777",
+        "1001 1001 700"
+      ],
+      "tmpfsBytes": [
+        1073741824,
+        134217728
+      ],
+      "memoryLimitBytes": 2147483648,
+      "pidsLimit": 192,
+      "temporaryMarkersRemovedAfterRestart": 2,
+      "healthyAfterRestart": true,
+      "requests": [
+        {
+          "format": "doc",
+          "requestMs": 680,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "1e22a5dc6b87c3942df614d64fa0a364a80d24316248e42ff4ea4a72e56bef5b"
+        },
+        {
+          "format": "docx",
+          "requestMs": 477,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "69590ab902138d06d222b4f5e9323cbb8d8f1841da5fbe688be86cf5b6736033"
+        },
+        {
+          "format": "xls",
+          "requestMs": 276,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "093042d7f6c0575f31f747e38a69075583ad1b88330a8f17829396e61b4fe770"
+        },
+        {
+          "format": "xlsx",
+          "requestMs": 326,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "5e425022deab949324e4afc4cc537745b3e25062014dbce2bbf316876a291613"
+        },
+        {
+          "format": "ppt",
+          "requestMs": 427,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "15b1c08ebe36537884dc5d552c5abae876bb894f9ec4c870852cc60a43cb718e"
+        },
+        {
+          "format": "pptx",
+          "requestMs": 679,
+          "afterRestart": false,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "ae9b481409cd92ceb268668551f00483088dd0925229fe6e038c92a9155878cb"
+        },
+        {
+          "format": "docx",
+          "requestMs": 829,
+          "afterRestart": true,
+          "pages": 1,
+          "verifiedText": true,
+          "pdfSha256": "e3c19c2d97fbe4771ece7ffce4521c4382e583ae2cd8ba1a8b7408e83da3fa2a"
+        }
+      ]
+    },
+    "product": [
+      {
+        "format": "docx",
+        "rendererRequestBytes": 36782,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "6e097c37aff369f118c97b7c5a3469f00092abd8e339327bb2aa90bd0764f9b1",
+        "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+        "milliseconds": 1797,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "doc",
+        "rendererRequestBytes": 18621,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "677ff10c401709a6b9de8f4085d9d17784acaa6d74ba0ba2b864e19bd5f0d134",
+        "inputSha256": "3e79fb6017c0755d3c0de36d2b506e649e61d21d8dbdfb8828ffe3172c9bc97f",
+        "milliseconds": 343,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "xlsx",
+        "rendererRequestBytes": 5050,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "602127d924b1a67eb457fda7ce2fe0d8ae7f0727db002dbee3d21739cd029c59",
+        "inputSha256": "2bfad1bc3b6c489b694708af7b21bc0c9717276f43955c9f367467916fdcafce",
+        "milliseconds": 391,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "xls",
+        "rendererRequestBytes": 5821,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "6394b88940f3de357d4389394aa898e949d97160d887ed9ba6c08ac6f1802be8",
+        "inputSha256": "1ae48ddea2af5d29e7ec20f622217a4379e41ea7c940ab507329944d53286e88",
+        "milliseconds": 281,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "pptx",
+        "rendererRequestBytes": 28435,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "fe8e692bb1d6706eb1893c849169d63868f3761b75de68b79892573b532e3404",
+        "inputSha256": "3cb3e83e27ec332665f14f7be6bea45f79c12c1273c78e48890914f402f44df2",
+        "milliseconds": 1094,
+        "verifiedText": true,
+        "pages": 1
+      },
+      {
+        "format": "ppt",
+        "rendererRequestBytes": 649405,
+        "http": 200,
+        "noStore": true,
+        "pdfSha256": "6250ca2046bc01528295c915f6c4c6b92b7d3b2a6b131d7d2a33849c2e88c652",
+        "inputSha256": "3cf589773ddc79cc315ca388650e5e6395e41bd41bc91174eaedbc231a45293f",
+        "milliseconds": 437,
+        "verifiedText": true,
+        "pages": 1
+      }
+    ]
+  },
+  "androidCiFixture": {
+    "variants": [
+      "debug",
+      "release"
+    ],
+    "project": "demo-novvin-ci",
+    "generatedResources": [
+      "generated/res/processDebugGoogleServices/values/values.xml",
+      "generated/res/processReleaseGoogleServices/values/values.xml"
+    ],
+    "externalMappingUploadDisabled": true
+  },
+  "signalingDevelopmentWatcher": {
+    "node": "22.23.5",
+    "script": "node --watch index.js",
+    "initialStart": true,
+    "importEditRestart": true
+  },
+  "baselineActions": {
+    "feature/live-gifts Android Quality Gate": {
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44734546713",
+      "conclusion": "failure",
+      "jobs": {
+        "quality-gate": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Run quality gate"
+          ]
+        },
+        "backend-contracts": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Validate API contracts and security"
+          ]
+        },
+        "client-and-realtime-contracts": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Validate web production build and tests"
+          ]
+        },
+        "release-smoke": {
+          "outcome": "skipped",
+          "failedSteps": []
+        }
+      }
+    },
+    "main Web and service quality": {
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44734546724",
+      "conclusion": "failure",
+      "jobs": {
+        "Channel point redemption transactions": {
+          "outcome": "success",
+          "failedSteps": []
+        },
+        "web": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Lint"
+          ]
+        },
+        "signaling": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Audit direct and transitive dependencies"
+          ]
+        },
+        "api": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Run tests"
+          ]
+        },
+        "chatbot": {
+          "outcome": "success",
+          "failedSteps": []
+        },
+        "realtime": {
+          "outcome": "success",
+          "failedSteps": []
+        }
+      }
+    },
+    "feature/live-gifts Web and service quality": {
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44734546827",
+      "conclusion": "failure",
+      "jobs": {
+        "web": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Lint"
+          ]
+        },
+        "signaling": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Audit direct and transitive dependencies"
+          ]
+        },
+        "realtime": {
+          "outcome": "success",
+          "failedSteps": []
+        },
+        "chatbot": {
+          "outcome": "success",
+          "failedSteps": []
+        },
+        "Channel point redemption transactions": {
+          "outcome": "success",
+          "failedSteps": []
+        },
+        "api": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Run tests"
+          ]
+        }
+      }
+    },
+    "main Android Quality Gate": {
+      "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44734546624",
+      "conclusion": "failure",
+      "jobs": {
+        "backend-contracts": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Validate API contracts and security"
+          ]
+        },
+        "client-and-realtime-contracts": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Validate web production build and tests"
+          ]
+        },
+        "quality-gate": {
+          "outcome": "failure",
+          "failedSteps": [
+            "Run quality gate"
+          ]
+        },
+        "release-smoke": {
+          "outcome": "skipped",
+          "failedSteps": []
+        }
+      }
+    }
+  },
+  "cleanLinuxSuite": {
+    "baseSha": "0459e882f986b6b5440980f03969fadee0403a7c",
+    "overlay": [
+      ".github/workflows/service-ci.yml",
+      ".github/workflows/android-ci.yml",
+      "signaling-server/package.json",
+      "signaling-server/package-lock.json",
+      "NoWing-web/src/components/ProfileStatusBadges.tsx",
+      "NoWing-web/src/features/reels/ReelsPage.tsx",
+      "infrastructure/local-fallback/api/tests/poll-vote-transaction.test.js",
+      "infrastructure/local-fallback/api/tests/isolated-restore-readiness.test.js"
+    ],
+    "results": [
+      {
+        "test": "signaling-ci",
+        "exit": 0,
+        "seconds": 6.4
+      },
+      {
+        "test": "signaling-tests",
+        "exit": 0,
+        "seconds": 1.0
+      },
+      {
+        "test": "signaling-audit",
+        "exit": 0,
+        "seconds": 1.5
+      },
+      {
+        "test": "api-ci",
+        "exit": 0,
+        "seconds": 20.0
+      },
+      {
+        "test": "api-suite",
+        "exit": 0,
+        "seconds": 63.2
+      },
+      {
+        "test": "web-ci",
+        "exit": 0,
+        "seconds": 166.1
+      },
+      {
+        "test": "web-lint",
+        "exit": 0,
+        "seconds": 32.1
+      },
+      {
+        "test": "web-jest",
+        "exit": 0,
+        "seconds": 134.2
+      },
+      {
+        "test": "web-build",
+        "exit": 0,
+        "seconds": 86.0
+      },
+      {
+        "test": "web-node",
+        "exit": 0,
+        "seconds": 3.1
+      },
+      {
+        "test": "web-audit",
+        "exit": 1,
+        "seconds": 10.3
+      }
+    ]
+  },
+  "serverReadOnly": {
+    "public": {
+      "status": 200,
+      "backendReady": true,
+      "caps": 25,
+      "release": {
+        "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+      },
+      "elapsedMs": 2312,
+      "checkedUtc": "2026-11-20T12:10:51.160922+00:00",
+      "tlsVersion": "TLSv1.3"
+    },
+    "private": {
+      "status": 200,
+      "backendReady": true,
+      "caps": 25,
+      "release": {
+        "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+      },
+      "elapsedMs": 62,
+      "checkedUtc": "2026-11-20T12:10:51.352111+00:00",
+      "tlsVersion": "TLSv1.3"
+    }
+  },
+  "firstMarkedPush": [
+    {
+      "state": "CANCELED",
+      "target": null,
+      "ref": "feature/live-gifts",
+      "sha": "3b89ec2d96cb8c319be9c5c0deed44da19d7af84"
+    },
+    {
+      "state": "CANCELED",
+      "target": "production",
+      "ref": "main",
+      "sha": "3b89ec2d96cb8c319be9c5c0deed44da19d7af84"
+    }
+  ],
+  "firstPublicAliases": {
+    "checkedUtc": "2026-11-20T12:19:04.6592470+00:00",
+    "domains": [
+      {
+        "domain": "www.novvinapp.com",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      },
+      {
+        "domain": "novvinapp.com",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      },
+      {
+        "domain": "red-social-android.vercel.app",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      }
+    ]
+  },
+  "secondMarkedPush": [
+    {
+      "state": "CANCELED",
+      "target": "production",
+      "ref": "main",
+      "sha": "71db3c75883b5168dca5eadafcb8e5aa22b968ba"
+    },
+    {
+      "state": "CANCELED",
+      "target": null,
+      "ref": "feature/live-gifts",
+      "sha": "71db3c75883b5168dca5eadafcb8e5aa22b968ba"
+    }
+  ],
+  "secondPublicAliases": {
+    "checkedUtc": "2026-11-20T12:54:21.8234822+00:00",
+    "domains": [
+      {
+        "domain": "www.novvinapp.com",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      },
+      {
+        "domain": "novvinapp.com",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      },
+      {
+        "domain": "red-social-android.vercel.app",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      }
+    ]
+  },
+  "webDependencyUpdate": {
+    "packageChanges": {
+      "beforePackages": 1083,
+      "afterPackages": 903,
+      "versionChanges": [
+        "node_modules/@typescript-eslint/eslint-plugin",
+        "node_modules/@typescript-eslint/eslint-plugin/node_modules/ignore",
+        "node_modules/@typescript-eslint/parser",
+        "node_modules/@typescript-eslint/project-service",
+        "node_modules/@typescript-eslint/scope-manager",
+        "node_modules/@typescript-eslint/tsconfig-utils",
+        "node_modules/@typescript-eslint/type-utils",
+        "node_modules/@typescript-eslint/types",
+        "node_modules/@typescript-eslint/typescript-estree",
+        "node_modules/@typescript-eslint/typescript-estree/node_modules/minimatch",
+        "node_modules/@typescript-eslint/utils",
+        "node_modules/@typescript-eslint/visitor-keys",
+        "node_modules/typescript-eslint"
+      ],
+      "changedRuntimeVersions": [],
+      "removedRuntimePackages": [],
+      "afterAudit": {
+        "info": 0,
+        "low": 0,
+        "moderate": 0,
+        "high": 0,
+        "critical": 0,
+        "total": 0
+      }
+    },
+    "checks": [
+      {
+        "command": "npm ci --no-fund",
+        "exit": 0,
+        "elapsedSeconds": 30.1
+      },
+      {
+        "command": "npm audit --audit-level=moderate --json",
+        "exit": 0,
+        "elapsedSeconds": 1.6
+      },
+      {
+        "command": "npm run lint",
+        "exit": 0,
+        "elapsedSeconds": 37.4
+      },
+      {
+        "command": "npm run build",
+        "exit": 0,
+        "elapsedSeconds": 60.5
+      },
+      {
+        "command": "npm test -- --runInBand",
+        "exit": 0,
+        "elapsedSeconds": 134.2
+      },
+      {
+        "command": "npm run test:node",
+        "exit": 0,
+        "elapsedSeconds": 1.9
+      }
+    ],
+    "serviceWorker": {
+      "existsInDist": true,
+      "bytes": 10199,
+      "sha256": "51c5bf2354c20edca5622e37814f4494831aa3f33224f24d9aeafe349fea7614"
+    },
+    "jestPassed": 1346,
+    "jestSuites": 208,
+    "nodePassed": 129,
+    "publicPages": 22
+  },
+  "remoteChecks": {
+    "source": "b7168c8e5b6c6f227c930a5efd0e2c9131d8c170",
+    "checkedUtc": "2026-11-20T13:59:00.514857+00:00",
+    "runs": [
+      {
+        "branch": "feature/live-gifts",
+        "workflow": "Web and service quality",
+        "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44741261514",
+        "conclusion": "success",
+        "jobs": {
+          "api": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "chatbot": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "realtime": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "web": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "signaling": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "Channel point redemption transactions": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          }
+        }
+      },
+      {
+        "branch": "main",
+        "workflow": "Web and service quality",
+        "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44741261695",
+        "conclusion": "success",
+        "jobs": {
+          "Channel point redemption transactions": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "realtime": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "web": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "signaling": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "chatbot": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "api": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          }
+        }
+      },
+      {
+        "branch": "main",
+        "workflow": "Android Quality Gate",
+        "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44741261564",
+        "conclusion": "success",
+        "jobs": {
+          "client-and-realtime-contracts": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "backend-contracts": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "quality-gate": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "release-smoke": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          }
+        }
+      },
+      {
+        "branch": "feature/live-gifts",
+        "workflow": "Android Quality Gate",
+        "url": "https://github.com/Alvaro-mendoza-12/red-social-android/actions/runs/44741261448",
+        "conclusion": "success",
+        "jobs": {
+          "quality-gate": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "client-and-realtime-contracts": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "backend-contracts": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          },
+          "release-smoke": {
+            "status": "completed",
+            "conclusion": "success",
+            "unfinished": []
+          }
+        }
+      }
+    ]
+  },
+  "migrationAtomicity": {
+    "baseline": {
+      "exit": 0,
+      "rowCount": 1,
+      "ledgerCount": 1,
+      "clientDiagnostic": []
+    },
+    "baselineLedgerFailure": {
+      "exit": 3,
+      "rowCount": 1,
+      "ledgerCount": 0
+    },
+    "ledgerFailure": {
+      "exit": 3,
+      "rowCount": 0,
+      "ledgerCount": 0
+    },
+    "retry": {
+      "rows": 1,
+      "ledgerRows": 1,
+      "alreadyApplied": true
+    },
+    "checksumDriftRejected": true,
+    "concurrent": {
+      "runners": 2,
+      "exits": [
+        0,
+        0
+      ],
+      "insertedRows": 1,
+      "skippedBy": 1
+    },
+    "quotedNameAndRawCrlfHash": true,
+    "invalidSqlRolledBack": true,
+    "intermediateCommitRejected": true,
+    "terminatedBackendRolledBack": true,
+    "fullHistory": {
+      "applied": 37,
+      "exactOriginalChecksums": 37,
+      "skippedOnSecondRun": 37
+    },
+    "privateClusterStopped": true
+  },
+  "migrationPrivileges": {
+    "oldBootstrap": {
+      "owner": "novvin_api",
+      "canWrite": true,
+      "canRead": true
+    },
+    "afterDeployRepair": {
+      "owner": "conectate",
+      "canWrite": false,
+      "canRead": false
+    },
+    "afterOperatorRepair": {
+      "owner": "conectate",
+      "canWrite": false,
+      "canRead": false
+    },
+    "afterRepeatedSetup": {
+      "owner": "conectate",
+      "canWrite": false,
+      "canRead": false
+    },
+    "applicationTableOwner": "novvin_api",
+    "existingLedgerEntryPreserved": true,
+    "privateClusterStopped": true
+  },
+  "migrationCiRegression": {
+    "nodeIntegrationExit": 0,
+    "scratchDatabasesAfter": 0,
+    "privateClusterStopped": true
+  },
+  "labGuest": {
+    "state": "saved",
+    "scopedToDedicatedLab": true,
+    "utc": "2026-11-20T12:56:03.591141+00:00"
+  },
+  "webMarkedPush": [
+    {
+      "state": "CANCELED",
+      "target": "production",
+      "ref": "main",
+      "sha": "b7168c8e5b6c6f227c930a5efd0e2c9131d8c170"
+    },
+    {
+      "state": "CANCELED",
+      "target": null,
+      "ref": "feature/live-gifts",
+      "sha": "b7168c8e5b6c6f227c930a5efd0e2c9131d8c170"
+    }
+  ],
+  "webPublicAliases": {
+    "checkedUtc": "2026-11-20T13:07:43.3596994+00:00",
+    "domains": [
+      {
+        "domain": "www.novvinapp.com",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      },
+      {
+        "domain": "novvinapp.com",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      },
+      {
+        "domain": "red-social-android.vercel.app",
+        "sha": "4517f8d164c83e390c7461a8b90412da29cde275",
+        "state": "READY",
+        "target": "production"
+      }
+    ]
+  },
+  "composeEnvironment": {
+    "scope": "Docker Compose 2.40.3 config, synthetic project and per-service environment files, no host secrets",
+    "services": {
+      "db": {
+        "bootstrapPasswordBefore": true,
+        "bootstrapPasswordAfter": true,
+        "applicationSourceDsnAfter": false,
+        "preservedServiceSettings": 0,
+        "inheritedUnrelatedSentinelAfter": false
+      },
+      "api": {
+        "bootstrapPasswordBefore": true,
+        "bootstrapPasswordAfter": false,
+        "applicationSourceDsnAfter": true,
+        "preservedServiceSettings": 0,
+        "inheritedUnrelatedSentinelAfter": true
+      },
+      "signaling": {
+        "bootstrapPasswordBefore": true,
+        "bootstrapPasswordAfter": false,
+        "applicationSourceDsnAfter": false,
+        "preservedServiceSettings": 51,
+        "inheritedUnrelatedSentinelAfter": false,
+        "privateExtensionConfined": true
+      },
+      "realtime-gateway": {
+        "bootstrapPasswordBefore": true,
+        "bootstrapPasswordAfter": false,
+        "applicationSourceDsnAfter": false,
+        "preservedServiceSettings": 17,
+        "inheritedUnrelatedSentinelAfter": false,
+        "privateExtensionConfined": true
+      },
+      "office-preview": {
+        "bootstrapPasswordBefore": false,
+        "bootstrapPasswordAfter": false,
+        "applicationSourceDsnAfter": false,
+        "preservedServiceSettings": 0,
+        "inheritedUnrelatedSentinelAfter": false
+      },
+      "ai-chatbot": {
+        "bootstrapPasswordBefore": false,
+        "bootstrapPasswordAfter": false,
+        "applicationSourceDsnAfter": false,
+        "preservedServiceSettings": 0,
+        "inheritedUnrelatedSentinelAfter": false
+      }
+    }
+  },
+  "regressionAfterCompose": [
+    {
+      "service": "api",
+      "exit": 0,
+      "seconds": 83.8
+    },
+    {
+      "service": "signaling",
+      "exit": 0,
+      "seconds": 1.4
+    },
+    {
+      "service": "realtime",
+      "exit": 0,
+      "seconds": 3.6
+    }
+  ],
+  "toolsLinux": {
+    "tests": 90,
+    "failures": 0,
+    "errors": 0
+  },
+  "linuxSustained": {
+    "environment": "WSL2 Ubuntu 24.04, 2 API and 2 realtime, round-robin calls and recipient gateways, PostgreSQL 16.15, Ubuntu Redis 7.0.15, two CPU affinity shared with local generator, loopback, ordinary quotas",
+    "stages": {
+      "smoke": {
+        "passed": true,
+        "actualDurationSeconds": 45,
+        "stopReason": "completed",
+        "arrivals": {
+          "planned": 180,
+          "dispatched": 180,
+          "late": 0,
+          "atCapacity": 0,
+          "notScheduledAfterStop": 0,
+          "peakInFlight": 1
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 45,
+          "received": 45,
+          "missed": 0
+        },
+        "totals": {
+          "totalReqs": 180,
+          "total2xx": 180,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 0
+        },
+        "sampleCount": 3,
+        "operations": {
+          "feed": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          },
+          "profile": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          },
+          "message": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "201": 45
+            }
+          },
+          "notifications": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          }
+        },
+        "exit": 0,
+        "requestedSeconds": 45,
+        "requestedRps": 4,
+        "availableMiBMin": 6876.0,
+        "peakRssMiB": {
+          "realtime1": 75.1,
+          "realtime2": 80.4,
+          "api1": 138.4,
+          "api2": 158.5
+        }
+      },
+      "sustained": {
+        "passed": false,
+        "actualDurationSeconds": 489,
+        "stopReason": "circuit_breaker_functional_threshold_8",
+        "arrivals": {
+          "planned": 43200,
+          "dispatched": 7572,
+          "late": 0,
+          "atCapacity": 80,
+          "notScheduledAfterStop": 35548,
+          "peakInFlight": 8
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 1896,
+          "received": 1881,
+          "missed": 15
+        },
+        "totals": {
+          "totalReqs": 7572,
+          "total2xx": 7572,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 15
+        },
+        "sampleCount": 33,
+        "operations": {
+          "feed": {
+            "attempted": 1893,
+            "passed": 1893,
+            "statuses": {
+              "200": 1893
+            }
+          },
+          "profile": {
+            "attempted": 1896,
+            "passed": 1896,
+            "statuses": {
+              "200": 1896
+            }
+          },
+          "message": {
+            "attempted": 1896,
+            "passed": 1896,
+            "statuses": {
+              "201": 1896
+            }
+          },
+          "notifications": {
+            "attempted": 1887,
+            "passed": 1887,
+            "statuses": {
+              "200": 1887
+            }
+          }
+        },
+        "exit": 1,
+        "requestedSeconds": 2700,
+        "requestedRps": 16,
+        "availableMiBMin": 6330.3,
+        "peakRssMiB": {
+          "realtime1": 86.2,
+          "realtime2": 86.8,
+          "api1": 168.5,
+          "api2": 168.4
+        }
+      }
+    },
+    "source": "a508065593d8e9faa88ece698b79a5e558200ebf",
+    "redisStreamEntries": 3892,
+    "perWindow": {
+      "smoke": {
+        "windows": 3,
+        "sha256": "070b2a708c408cee593ca77d7d57062534c6301be96883a8600691ec27d95303",
+        "windowLatencyMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 8.11,
+              "median": 10.34,
+              "max": 11.29
+            },
+            "p95Ms": {
+              "min": 28.22,
+              "median": 28.41,
+              "max": 35.64
+            },
+            "p99Ms": {
+              "min": 29.75,
+              "median": 41.76,
+              "max": 53.4
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 27.99,
+              "median": 30.23,
+              "max": 36.81
+            },
+            "p95Ms": {
+              "min": 38.3,
+              "median": 49.7,
+              "max": 95.64
+            },
+            "p99Ms": {
+              "min": 38.3,
+              "median": 49.7,
+              "max": 95.64
+            }
+          }
+        },
+        "api": [
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 78,
+            "lastTotalRequests": 140
+          },
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 36,
+            "lastTotalRequests": 98
+          }
+        ],
+        "realtime": [
+          {
+            "messagesDelivered": 56,
+            "streamEventsPublished": 54,
+            "streamEventsReceived": 46,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          },
+          {
+            "messagesDelivered": 34,
+            "streamEventsPublished": 46,
+            "streamEventsReceived": 54,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          }
+        ]
+      },
+      "sustained": {
+        "windows": 33,
+        "sha256": "5a66f85b26851f24ad584d1a850b0f978c1c1da49a812a3e4efe17d201d97fbb",
+        "windowLatencyMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 6.3,
+              "median": 7.49,
+              "max": 9122.13
+            },
+            "p95Ms": {
+              "min": 23.91,
+              "median": 41.71,
+              "max": 11633.13
+            },
+            "p99Ms": {
+              "min": 27.31,
+              "median": 65.15,
+              "max": 11633.13
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 24.88,
+              "median": 32.95,
+              "max": 1106.76
+            },
+            "p95Ms": {
+              "min": 29.16,
+              "median": 69.05,
+              "max": 2810.46
+            },
+            "p99Ms": {
+              "min": 35.7,
+              "median": 80.78,
+              "max": 2828.08
+            }
+          }
+        },
+        "api": [
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 287,
+            "lastTotalRequests": 4034
+          },
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 224,
+            "lastTotalRequests": 3954
+          }
+        ],
+        "realtime": [
+          {
+            "messagesDelivered": 2428,
+            "streamEventsPublished": 1946,
+            "streamEventsReceived": 1945,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          },
+          {
+            "messagesDelivered": 1452,
+            "streamEventsPublished": 1945,
+            "streamEventsReceived": 1946,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          }
+        ]
+      }
+    },
+    "role": {
+      "ledgerCount": 37,
+      "apiRole": "novvin_api",
+      "superuser": false,
+      "source": "a508065593d8e9faa88ece698b79a5e558200ebf"
+    }
+  },
+  "dockerProduct": {
+    "sourceImages": {
+      "db": {
+        "buildAndExportSeconds": 61.5,
+        "imageId": "a342523698d611abbd86c56016a30ade6faabd73fcd7323d1ffca0aee66f227e",
+        "sha": "dd9582f56645f5885353c35949cb733af410dbe0",
+        "archiveBytes": 303675904,
+        "command": [
+          "postgres"
+        ]
+      },
+      "api": {
+        "buildAndExportSeconds": 161.3,
+        "imageId": "6de8b048b911fccbc51a873c198e50db8bbc32cc6d9d150a479c950b67507668",
+        "sha": "dd9582f56645f5885353c35949cb733af410dbe0",
+        "archiveBytes": 827923456,
+        "command": [
+          "./scripts/start-with-antivirus.sh"
+        ]
+      }
+    },
+    "transport": "Private native Docker Engine and Compose, isolated Linux network namespace; API uses its normal DNS route to the converter, a restricted DB login and its production entrypoint. Test secrets and files only.",
+    "variants": {
+      "225": {
+        "imageId": "sha256:451b2dc007281c99eab2677d5e393208f461b121ffdfa3b5ba3c0eb090831b22",
+        "readOnlyRoot": true,
+        "internalNetwork": true,
+        "documents": [
+          {
+            "format": "doc",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 851,
+            "inputSha256": "3e79fb6017c0755d3c0de36d2b506e649e61d21d8dbdfb8828ffe3172c9bc97f",
+            "pdfSha256": "be6c7a5c8f9890e9ce984bb12928e47d9cdd499dd6db88fbbe410b44881192c5",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "docx",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 357,
+            "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+            "pdfSha256": "1a39e71c421359480f3474b38cdfeffd9867fdb3312bf2ca527ff3b2fdf712dd",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "xls",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 175,
+            "inputSha256": "1ae48ddea2af5d29e7ec20f622217a4379e41ea7c940ab507329944d53286e88",
+            "pdfSha256": "537934389a18cda805c7f50e0089edc82a7acd6597f463a31d66fc7cc975bd09",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "xlsx",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 138,
+            "inputSha256": "2bfad1bc3b6c489b694708af7b21bc0c9717276f43955c9f367467916fdcafce",
+            "pdfSha256": "1d58f6396b6a28114a2ab6e199645c4e8d580c8eb6be991f055f5bc53948eb9d",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "ppt",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 283,
+            "inputSha256": "3cf589773ddc79cc315ca388650e5e6395e41bd41bc91174eaedbc231a45293f",
+            "pdfSha256": "3e9f4a081fce65e229073b122e60652c2f1bf5d2b2a8a5f12a938895e8f5b193",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "pptx",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 519,
+            "inputSha256": "3cb3e83e27ec332665f14f7be6bea45f79c12c1273c78e48890914f402f44df2",
+            "pdfSha256": "fbd22eadeee420e946be5643d13120af6131992d4a29dd07877c2298ab91641c",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "docx",
+            "afterRestart": true,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 648,
+            "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+            "pdfSha256": "f958797e3d295d3718b9bb0c9465fee91fd4e7efbbb63d2c39b43f21528b36ea",
+            "pages": 1,
+            "expectedText": true
+          }
+        ]
+      },
+      "ubuntu225": {
+        "imageId": "sha256:caabf69853093ac97f4aa5529f1762e3e80ff9c5257f0ea777936537550fa851",
+        "readOnlyRoot": true,
+        "internalNetwork": true,
+        "documents": [
+          {
+            "format": "doc",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 615,
+            "inputSha256": "3e79fb6017c0755d3c0de36d2b506e649e61d21d8dbdfb8828ffe3172c9bc97f",
+            "pdfSha256": "e9a4ee8725218b844a9db6afe4023ba3e81c2785c99b119ee2d05e7aabae1f1d",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "docx",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 286,
+            "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+            "pdfSha256": "bb9a95ef7b2094bf6208e2fd887964930aca4b86f48a374c4a7472e06e05199c",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "xls",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 140,
+            "inputSha256": "1ae48ddea2af5d29e7ec20f622217a4379e41ea7c940ab507329944d53286e88",
+            "pdfSha256": "2fadfd9e4958334ebaefb00499a524047c60de38d4291c7ad35d841e3098835a",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "xlsx",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 102,
+            "inputSha256": "2bfad1bc3b6c489b694708af7b21bc0c9717276f43955c9f367467916fdcafce",
+            "pdfSha256": "ea3cb6c96f571a4c9e15581c905f7aaea2ca62650d9c29989b4b45386176d96b",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "ppt",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 259,
+            "inputSha256": "3cf589773ddc79cc315ca388650e5e6395e41bd41bc91174eaedbc231a45293f",
+            "pdfSha256": "3c081a69bcf464bdc4b6ca186ae2ad348a857a5e5ed43b34c125bc803ab4df92",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "pptx",
+            "afterRestart": false,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 459,
+            "inputSha256": "3cb3e83e27ec332665f14f7be6bea45f79c12c1273c78e48890914f402f44df2",
+            "pdfSha256": "3da383271ec8c0bbd60d16ced24df3e9dfd725349036f201bf7dbf0d7899ee27",
+            "pages": 1,
+            "expectedText": true
+          },
+          {
+            "format": "docx",
+            "afterRestart": true,
+            "http": 200,
+            "noStore": true,
+            "milliseconds": 603,
+            "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+            "pdfSha256": "5d489142ab05268cabb2383e727bd2eafd58dc1d09bb8ea280b3eb9da515e128",
+            "pages": 1,
+            "expectedText": true
+          }
+        ]
+      }
+    },
+    "engine": "29.1.3",
+    "compose": "2.40.3+ds1-0ubuntu1~24.04.1",
+    "postgres": "postgres (PostgreSQL) 16.16",
+    "migrations": 37,
+    "apiUid": "10001",
+    "apiReadinessCapabilities": 25,
+    "registrationStatus": 201
+  },
+  "linuxReplay": {
+    "environment": "WSL2 Ubuntu 24.04, 2 API and 2 realtime, round-robin calls and recipient gateways, PostgreSQL 16.15, Ubuntu Redis 7.0.15, two CPU affinity shared with local generator, loopback, ordinary quotas",
+    "stages": {
+      "smoke": {
+        "passed": false,
+        "actualDurationSeconds": 45,
+        "stopReason": "completed",
+        "arrivals": {
+          "planned": 180,
+          "dispatched": 180,
+          "late": 0,
+          "atCapacity": 0,
+          "notScheduledAfterStop": 0,
+          "peakInFlight": 5
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 45,
+          "received": 43,
+          "missed": 2
+        },
+        "totals": {
+          "totalReqs": 180,
+          "total2xx": 180,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 2
+        },
+        "sampleCount": 3,
+        "operations": {
+          "feed": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          },
+          "profile": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          },
+          "message": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "201": 45
+            }
+          },
+          "notifications": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          }
+        },
+        "exit": 1,
+        "requestedSeconds": 45,
+        "requestedRps": 4,
+        "availableMiBMin": 4786.4,
+        "peakRssMiB": {
+          "realtime1": 74.5,
+          "realtime2": 74.5,
+          "api1": 140.3,
+          "api2": 152.0
+        }
+      }
+    },
+    "source": "dd9582f56645f5885353c35949cb733af410dbe0",
+    "redisStreamEntries": 100,
+    "perWindow": {
+      "smoke": {
+        "windows": 3,
+        "sha256": "8b8abf4debe97aa0fb051e533676058a1835e6b9cba0347dc35903ff046de9a3",
+        "windowLatencyMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 15.41,
+              "median": 16.14,
+              "max": 17.29
+            },
+            "p95Ms": {
+              "min": 56.54,
+              "median": 117.71,
+              "max": 2452.25
+            },
+            "p99Ms": {
+              "min": 415.1,
+              "median": 2283.98,
+              "max": 3458.5
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 52.86,
+              "median": 83.85,
+              "max": 1900.45
+            },
+            "p95Ms": {
+              "min": 433.61,
+              "median": 2293.29,
+              "max": 2489.88
+            },
+            "p99Ms": {
+              "min": 433.61,
+              "median": 2293.29,
+              "max": 2489.88
+            }
+          }
+        },
+        "api": [
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 77,
+            "lastTotalRequests": 140
+          },
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 34,
+            "lastTotalRequests": 98
+          }
+        ],
+        "realtime": [
+          {
+            "messagesDelivered": 56,
+            "streamEventsPublished": 54,
+            "streamEventsReceived": 46,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          },
+          {
+            "messagesDelivered": 34,
+            "streamEventsPublished": 46,
+            "streamEventsReceived": 54,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          }
+        ]
+      }
+    },
+    "telemetry": {
+      "source": "dd9582f56645f5885353c35949cb733af410dbe0",
+      "recordedLogCategories": {
+        "realtime-publish": 0,
+        "realtime-publish-batch": 0,
+        "realtime-redis-sub": 0,
+        "realtime-redis-pub": 0
+      },
+      "stages": {
+        "smoke": [
+          {
+            "elapsedSeconds": 15,
+            "latency": {
+              "count": 57,
+              "avgMs": 38.97,
+              "p50Ms": 17.29,
+              "p95Ms": 117.71,
+              "p99Ms": 415.1,
+              "maxMs": 415.1
+            },
+            "wsDelivery": {
+              "count": 12,
+              "avgMs": 144.44,
+              "p50Ms": 83.85,
+              "p95Ms": 433.61,
+              "p99Ms": 433.61,
+              "maxMs": 433.61
+            }
+          },
+          {
+            "elapsedSeconds": 30,
+            "latency": {
+              "count": 62,
+              "avgMs": 438.11,
+              "p50Ms": 16.14,
+              "p95Ms": 2452.25,
+              "p99Ms": 3458.5,
+              "maxMs": 3458.5
+            },
+            "wsDelivery": {
+              "count": 14,
+              "avgMs": 1441.48,
+              "p50Ms": 1900.45,
+              "p95Ms": 2489.88,
+              "p99Ms": 2489.88,
+              "maxMs": 2489.88
+            }
+          },
+          {
+            "elapsedSeconds": 45,
+            "latency": {
+              "count": 61,
+              "avgMs": 87.92,
+              "p50Ms": 15.41,
+              "p95Ms": 56.54,
+              "p99Ms": 2283.98,
+              "maxMs": 2283.98
+            },
+            "wsDelivery": {
+              "count": 17,
+              "avgMs": 289.1,
+              "p50Ms": 52.86,
+              "p95Ms": 2293.29,
+              "p99Ms": 2293.29,
+              "maxMs": 2293.29
+            }
+          }
+        ]
+      }
+    }
+  },
+  "ubuntuVariant": {
+    "shared": false,
+    "base": {
+      "tag": "26.04",
+      "indexDigest": "sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db",
+      "amd64Manifest": "sha256:0d5255be560e2d2ddcfbfda88549e9e815ef29e7cd7fc62183d5709e6e2963c6"
+    },
+    "build": {
+      "seconds": 214.2,
+      "declaredFontsAndHyphenation": [
+        "fonts-crosextra-caladea",
+        "fonts-crosextra-carlito",
+        "fonts-dejavu",
+        "fonts-dejavu-core",
+        "fonts-dejavu-extra",
+        "fonts-dejavu-mono",
+        "fonts-liberation",
+        "fonts-liberation2",
+        "fonts-noto-cjk",
+        "fonts-noto-color-emoji",
+        "fonts-noto-core",
+        "fonts-noto-mono",
+        "fonts-opensymbol",
+        "fonts-urw-base35",
+        "hyphen-af",
+        "hyphen-as",
+        "hyphen-be",
+        "hyphen-bg",
+        "hyphen-bn",
+        "hyphen-ca",
+        "hyphen-cs",
+        "hyphen-da",
+        "hyphen-de",
+        "hyphen-el",
+        "hyphen-en-gb",
+        "hyphen-en-us",
+        "hyphen-eo",
+        "hyphen-es",
+        "hyphen-fr",
+        "hyphen-gl",
+        "hyphen-gu",
+        "hyphen-hi",
+        "hyphen-hr",
+        "hyphen-hu",
+        "hyphen-id",
+        "hyphen-is",
+        "hyphen-it",
+        "hyphen-kn",
+        "hyphen-lt",
+        "hyphen-lv",
+        "hyphen-ml",
+        "hyphen-mn",
+        "hyphen-mr",
+        "hyphen-nl",
+        "hyphen-no",
+        "hyphen-or",
+        "hyphen-pa",
+        "hyphen-pl",
+        "hyphen-pt-br",
+        "hyphen-pt-pt",
+        "hyphen-ro",
+        "hyphen-ru",
+        "hyphen-sk",
+        "hyphen-sl",
+        "hyphen-sr",
+        "hyphen-sv",
+        "hyphen-ta",
+        "hyphen-te",
+        "hyphen-th",
+        "hyphen-uk",
+        "hyphen-zu"
+      ],
+      "base": "sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db",
+      "vendorImage": "sha256:3d5fd268be20a7935d3e624770161080b615d9086548a2b501f44f388710529b",
+      "published": false
+    },
+    "checks": {
+      "source": "OSV Ubuntu:26.04:LTS",
+      "baseVectorMethod": "highest published CVSS 3 or 4 base vector for each OSV record, same thresholds as Debian comparison",
+      "ratings": {
+        "medium": 87,
+        "high": 57,
+        "low": 13,
+        "unrated": 17,
+        "critical": 1
+      },
+      "packages": [
+        {
+          "id": "UBUNTU-CVE-2019-9543",
+          "vectorScore": 8.8,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "poppler@26.01.0-2ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2019-9545",
+          "vectorScore": 8.8,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "poppler@26.01.0-2ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2025-71436",
+          "vectorScore": 7.1,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "raptor2@2.0.16-6build1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2025-7425",
+          "vectorScore": 7.8,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libxslt@1.1.45-0.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-100101",
+          "vectorScore": 8.4,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101352",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101892",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101930",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-102633",
+          "vectorScore": 8.2,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "expat@2.7.4-1ubuntu0.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-104007",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-104692",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-104920",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-107161",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "cyrus-sasl2@2.1.28+dfsg1-9ubuntu3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-107493",
+          "vectorScore": 7.7,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "openssl@3.5.5-1ubuntu3.7"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-107496",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "openssl@3.5.5-1ubuntu3.7"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-107778",
+          "vectorScore": 7.1,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "krb5@1.22.1-2ubuntu4.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-108169",
+          "vectorScore": 7.3,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-112314",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "krb5@1.22.1-2ubuntu4.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-112320",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "krb5@1.22.1-2ubuntu4.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-112321",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "krb5@1.22.1-2ubuntu4.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-112322",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "krb5@1.22.1-2ubuntu4.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-112323",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "krb5@1.22.1-2ubuntu4.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-113351",
+          "vectorScore": 8.2,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "expat@2.7.4-1ubuntu0.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-115506",
+          "vectorScore": 8.7,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "expat@2.7.4-1ubuntu0.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-117610",
+          "vectorScore": 8.2,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "expat@2.7.4-1ubuntu0.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-118370",
+          "vectorScore": 8.2,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "expat@2.7.4-1ubuntu0.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-119079",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "krb5@1.22.1-2ubuntu4.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-119373",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "sqlite3@3.46.1-9ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-119374",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "sqlite3@3.46.1-9ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-119379",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "sqlite3@3.46.1-9ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-119586",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "sqlite3@3.46.1-9ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-11979",
+          "vectorScore": 7.8,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libxml2@2.15.2+dfsg-0.1ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-121876",
+          "vectorScore": 7.9,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "systemd@259.9-0ubuntu0.1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-124709",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "openssl@3.5.5-1ubuntu3.7"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-125712",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "gst-plugins-base1.0@1.28.2-1ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-12912",
+          "vectorScore": 7.3,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "tiff@4.7.0-3ubuntu5"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-129483",
+          "vectorScore": 9.3,
+          "rating": "critical",
+          "priority": null,
+          "packages": [
+            "cyrus-sasl2@2.1.28+dfsg1-9ubuntu3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-131844",
+          "vectorScore": 7.1,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "poppler@26.01.0-2ubuntu0.3"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-4775",
+          "vectorScore": 7.8,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "tiff@4.7.0-3ubuntu5"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-48959",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "perl@5.40.1-7ubuntu0.4"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-48961",
+          "vectorScore": 7.3,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "perl@5.40.1-7ubuntu0.4"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-48962",
+          "vectorScore": 7.8,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "perl@5.40.1-7ubuntu0.4"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-54369",
+          "vectorScore": 8.4,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "acl@2.3.2-2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-54370",
+          "vectorScore": 7.2,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "acl@2.3.2-2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-63277",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-7017",
+          "vectorScore": 7.1,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "perl@5.40.1-7ubuntu0.4"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-76642",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "util-linux@2.41.3-3ubuntu2.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-77214",
+          "vectorScore": 8.3,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "expat@2.7.4-1ubuntu0.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-78408",
+          "vectorScore": 7.9,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "util-linux@2.41.3-3ubuntu2.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-78409",
+          "vectorScore": 7.0,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "util-linux@2.41.3-3ubuntu2.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-78410",
+          "vectorScore": 7.8,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "util-linux@2.41.3-3ubuntu2.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-84443",
+          "vectorScore": 8.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libreoffice@4:26.2.6.3-0ubuntu0.26.04.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-88807",
+          "vectorScore": 8.9,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "libxrender@1:0.9.12-1build1"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-88823",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "openssl@3.5.5-1ubuntu3.7"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-93990",
+          "vectorScore": 8.7,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "expat@2.7.4-1ubuntu0.2"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-9538",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "perl@5.40.1-7ubuntu0.4"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-95691",
+          "vectorScore": 8.1,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "openssl@3.5.5-1ubuntu3.7"
+          ]
+        },
+        {
+          "id": "UBUNTU-CVE-2026-95692",
+          "vectorScore": 7.5,
+          "rating": "high",
+          "priority": null,
+          "packages": [
+            "openssl@3.5.5-1ubuntu3.7"
+          ]
+        }
+      ],
+      "unratedCount": 17,
+      "knownXmlIdPresent": false
+    },
+    "sasl": {
+      "checkedFromFinalImageArchive": true,
+      "sharedObjects": [
+        "usr/lib/x86_64-linux-gnu/sasl2/libsasldb.so",
+        "usr/lib/x86_64-linux-gnu/sasl2/libsasldb.so.2",
+        "usr/lib/x86_64-linux-gnu/sasl2/libsasldb.so.2.0.25"
+      ],
+      "srpPluginInstalled": false,
+      "saslPackages": {
+        "libsasl2-2": "2.1.28+dfsg1-9ubuntu3",
+        "libsasl2-modules-db": "2.1.28+dfsg1-9ubuntu3"
+      }
+    },
+    "binaryPackages": 325,
+    "sourcePackages": 189,
+    "scanControl": {
+      "version": "8.18.0-1ubuntu2.7",
+      "expectedNotice": "USN-8927-1",
+      "detected": true
+    },
+    "publishedOfficialVersions": {
+      "resolute primary": [
+        [
+          "4:26.2.7.3-0ubuntu0.26.04.1",
+          "Proposed",
+          "2026-11-10T17:28:38.360219+00:00"
+        ],
+        [
+          "4:26.2.6.3-0ubuntu0.26.04.2",
+          "Updates",
+          "2026-10-05T17:12:39.970469+00:00"
+        ],
+        [
+          "4:26.2.6.3-0ubuntu0.26.04.2",
+          "Security",
+          "2026-10-05T12:55:47.781280+00:00"
+        ],
+        [
+          "4:26.2.2.2-0ubuntu1",
+          "Release",
+          "2026-03-24T13:35:25.606216+00:00"
+        ]
+      ],
+      "stonking primary": [
+        [
+          "4:26.8.2.2-0ubuntu0.26.10.1",
+          "Proposed",
+          "2026-11-10T17:28:38.360219+00:00"
+        ],
+        [
+          "4:26.8.1.1-0ubuntu1",
+          "Release",
+          "2026-10-03T23:40:27.825568+00:00"
+        ]
+      ],
+      "resolute ppa": [
+        [
+          "4:26.8.2.2-0ubuntu0.26.04.1~lo3",
+          "Release",
+          "2026-11-10T17:40:51.352171+00:00"
+        ]
+      ],
+      "resolute libreoffice-fresh": {
+        "error": "HTTP Error 404: Not Found"
+      }
+    },
+    "vendorReferences": [
+      "https://ubuntu.com/security/CVE-2026-6653",
+      "https://ubuntu.com/security/CVE-2026-129483",
+      "https://www.libreoffice.org/security/#cve-2026-101351",
+      "https://ubuntu.com/security/CVE-2026-101351"
+    ],
+    "libreofficeVendorRanges": {
+      "source": "https://www.libreoffice.org/security/",
+      "vendorDocumentSha256": "094e9164185cea121a7b46dbdaa69d48542b41435679255dad5532c6e5e41436",
+      "installedUbuntu": "26.2.6.3",
+      "debianCandidate": "26.8.2.2",
+      "ubuntuProposed": "26.2.7.3",
+      "packageRecords": 31,
+      "rows": [
+        {
+          "id": "UBUNTU-CVE-2026-100101",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101351",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101352",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101353",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101892",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101929",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101930",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-101933",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-104007",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-104692",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-104920",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-104933",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-108169",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-18563",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-18564",
+          "upstreamFixed": "26.2.6"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-18565",
+          "upstreamFixed": "26.2.7/26.8.1"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-18566",
+          "upstreamFixed": "26.2.6"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-63266",
+          "upstreamFixed": "26.2.5/26.8.0"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-63267",
+          "upstreamFixed": "26.2.5/26.8.0"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-63268",
+          "upstreamFixed": "26.2.5/26.8.0"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-63269",
+          "upstreamFixed": "26.2.5/26.8.0"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-63270",
+          "upstreamFixed": "26.2.5/26.8.0"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-63277",
+          "upstreamFixed": "26.2.5/26.8.0"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-76181",
+          "upstreamFixed": "26.2.6/26.8.1"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-84234",
+          "upstreamFixed": "26.2.7/26.8.1"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-84443",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-87932",
+          "upstreamFixed": "26.2.7/26.8.1"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-97892",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-97894",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-97999",
+          "upstreamFixed": "26.2.7/26.8.2"
+        },
+        {
+          "id": "UBUNTU-CVE-2026-98100",
+          "upstreamFixed": "26.2.7/26.8.2"
+        }
+      ]
+    }
+  },
+  "engineeringFiles": {
+    "f4cce71c542514f1550f4db096502a346c694824": [
+      "tools/loadtest/run-ubuntu-staging-soak.mjs",
+      "tools/loadtest/staging-soak.test.mjs"
+    ],
+    "0bc80727cc54fc5d92858c3a3aa290d86ab955d9": [
+      "infrastructure/local-fallback/docker-compose.yml",
+      "tools/tests/test_service_environment.py"
+    ],
+    "a872e408c57ba5913a42de8d5ccca93079850535": [
+      "infrastructure/local-fallback/docker-compose.yml",
+      "tools/tests/test_service_environment.py"
+    ],
+    "dd9582f56645f5885353c35949cb733af410dbe0": [
+      "infrastructure/local-fallback/api/tests/schema-migrations.postgres.test.js",
+      "infrastructure/local-fallback/db/operations/10-bootstrap-runtime-role.sql",
+      "infrastructure/local-fallback/db/operations/README.md",
+      "infrastructure/local-fallback/scripts/apply-schema-migration.sql"
+    ],
+    "a508065593d8e9faa88ece698b79a5e558200ebf": [
+      ".github/workflows/service-ci.yml",
+      "infrastructure/local-fallback/api/tests/schema-migrations.postgres.test.js",
+      "infrastructure/local-fallback/scripts/apply-schema-migration.sql",
+      "infrastructure/local-fallback/scripts/deploy-stack-safely.sh"
+    ],
+    "b7168c8e5b6c6f227c930a5efd0e2c9131d8c170": [
+      "NoWing-web/package-lock.json",
+      "NoWing-web/package.json"
+    ],
+    "71db3c75883b5168dca5eadafcb8e5aa22b968ba": [
+      "NoWing-web/src/features/reels/ReelsPage.tsx"
+    ],
+    "649faffa955eff480a2b7140924bedbe48393cf5": [
+      "NoWing-web/src/components/ProfileStatusBadges.tsx"
+    ],
+    "18eff4655b1a3e4b4c8fa65bf95db691f4d8d508": [
+      ".github/workflows/android-ci.yml",
+      ".github/workflows/service-ci.yml"
+    ],
+    "790f0f7118b10b6d9f74c3071ae5d4bb60d144d8": [
+      "signaling-server/package-lock.json",
+      "signaling-server/package.json"
+    ],
+    "05120f6750cfcd4ae3fea5ff64894e2d3308a165": [
+      "infrastructure/local-fallback/api/tests/poll-vote-transaction.test.js"
+    ],
+    "41013ec158163c9e1bce8914fe24ff16559fe374": [
+      "infrastructure/local-fallback/api/tests/isolated-restore-readiness.test.js"
+    ],
+    "0459e882f986b6b5440980f03969fadee0403a7c": [
+      "infrastructure/local-fallback/api/tests/container-runtime-security.test.js",
+      "infrastructure/local-fallback/api/tests/signaling-edge-config.test.js"
+    ],
+    "e716064017d2bad16e3898ffefa222068e74b07b": [
+      ".github/fixtures/android-google-services.json",
+      ".github/workflows/android-ci.yml"
+    ],
+    "204200147d47d60e0a4120e457ea9328c6262e7a": [
+      "infrastructure/local-fallback/office-preview/.gitattributes"
+    ],
+    "c77747e16e3697fbdfd4498cefb8fa42b8741c0f": [
+      "infrastructure/local-fallback/docker-compose.yml",
+      "infrastructure/local-fallback/office-preview/Dockerfile",
+      "infrastructure/local-fallback/office-preview/sources.sha256",
+      "infrastructure/local-fallback/scripts/deploy-stack-safely.sh"
+    ],
+    "3b89ec2d96cb8c319be9c5c0deed44da19d7af84": [
+      "infrastructure/local-fallback/docker-compose.yml"
+    ]
+  },
+  "lastServerReadOnly": {
+    "public": {
+      "status": 200,
+      "backendReady": true,
+      "caps": 25,
+      "release": {
+        "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+      },
+      "elapsedMs": 2219,
+      "checkedUtc": "2026-11-20T13:45:32.667311+00:00",
+      "tlsVersion": "TLSv1.3"
+    },
+    "private": {
+      "status": 200,
+      "backendReady": true,
+      "caps": 25,
+      "release": {
+        "commit": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+      },
+      "elapsedMs": 62,
+      "checkedUtc": "2026-11-20T13:45:32.854556+00:00",
+      "tlsVersion": "TLSv1.3"
+    }
+  },
+  "linuxControl": {
+    "environment": "WSL2 Ubuntu 24.04, 2 API and 2 realtime, round-robin calls and recipient gateways, PostgreSQL 16.15, Ubuntu Redis 7.0.15, two CPU affinity shared with local generator, loopback, ordinary quotas",
+    "stages": {
+      "smoke": {
+        "passed": true,
+        "actualDurationSeconds": 45,
+        "stopReason": "completed",
+        "arrivals": {
+          "planned": 180,
+          "dispatched": 180,
+          "late": 0,
+          "atCapacity": 0,
+          "notScheduledAfterStop": 0,
+          "peakInFlight": 1
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 45,
+          "received": 45,
+          "missed": 0
+        },
+        "totals": {
+          "totalReqs": 180,
+          "total2xx": 180,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 0
+        },
+        "sampleCount": 3,
+        "operations": {
+          "feed": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          },
+          "profile": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          },
+          "message": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "201": 45
+            }
+          },
+          "notifications": {
+            "attempted": 45,
+            "passed": 45,
+            "statuses": {
+              "200": 45
+            }
+          }
+        },
+        "exit": 0,
+        "requestedSeconds": 45,
+        "requestedRps": 4,
+        "availableMiBMin": 6837.2,
+        "peakRssMiB": {
+          "realtime1": 75.0,
+          "realtime2": 74.4,
+          "api1": 135.6,
+          "api2": 166.1
+        }
+      },
+      "sustained": {
+        "passed": false,
+        "actualDurationSeconds": 720,
+        "stopReason": "completed",
+        "arrivals": {
+          "planned": 11520,
+          "dispatched": 11515,
+          "late": 0,
+          "atCapacity": 5,
+          "notScheduledAfterStop": 0,
+          "peakInFlight": 8
+        },
+        "delivery": {
+          "clients": 5,
+          "expected": 2879,
+          "received": 2879,
+          "missed": 0
+        },
+        "totals": {
+          "totalReqs": 11515,
+          "total2xx": 11515,
+          "total429": 0,
+          "totalLoadShed503": 0,
+          "totalUnexpected5xx": 0,
+          "totalNetworkErrors": 0,
+          "totalFunctionalFailures": 0
+        },
+        "sampleCount": 48,
+        "operations": {
+          "feed": {
+            "attempted": 2878,
+            "passed": 2878,
+            "statuses": {
+              "200": 2878
+            }
+          },
+          "profile": {
+            "attempted": 2880,
+            "passed": 2880,
+            "statuses": {
+              "200": 2880
+            }
+          },
+          "message": {
+            "attempted": 2879,
+            "passed": 2879,
+            "statuses": {
+              "201": 2879
+            }
+          },
+          "notifications": {
+            "attempted": 2878,
+            "passed": 2878,
+            "statuses": {
+              "200": 2878
+            }
+          }
+        },
+        "exit": 1,
+        "requestedSeconds": 720,
+        "requestedRps": 16,
+        "availableMiBMin": 6726.5,
+        "peakRssMiB": {
+          "realtime1": 87.2,
+          "realtime2": 87.4,
+          "api1": 167.2,
+          "api2": 168.3
+        }
+      }
+    },
+    "source": "a872e408c57ba5913a42de8d5ccca93079850535",
+    "redisStreamEntries": 5858,
+    "perWindow": {
+      "smoke": {
+        "windows": 3,
+        "sha256": "bfff58587961cb635c03eba9b6bf2c7c5daf525952d3ed9fbd814c7efad252fd",
+        "windowLatencyMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 10.21,
+              "median": 10.65,
+              "max": 10.74
+            },
+            "p95Ms": {
+              "min": 31.29,
+              "median": 32.18,
+              "max": 42.51
+            },
+            "p99Ms": {
+              "min": 42.16,
+              "median": 45.21,
+              "max": 61.15
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 32.5,
+              "median": 33.83,
+              "max": 35.28
+            },
+            "p95Ms": {
+              "min": 53.48,
+              "median": 54.01,
+              "max": 126.86
+            },
+            "p99Ms": {
+              "min": 53.48,
+              "median": 54.01,
+              "max": 126.86
+            }
+          }
+        },
+        "api": [
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 78,
+            "lastTotalRequests": 140
+          },
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 36,
+            "lastTotalRequests": 98
+          }
+        ],
+        "realtime": [
+          {
+            "messagesDelivered": 56,
+            "streamEventsPublished": 54,
+            "streamEventsReceived": 46,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          },
+          {
+            "messagesDelivered": 34,
+            "streamEventsPublished": 46,
+            "streamEventsReceived": 54,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          }
+        ]
+      },
+      "sustained": {
+        "windows": 48,
+        "sha256": "1875953adf917ef629232085fb14c9b0ca20cfe3690bf335046cbc1fc2eb8383",
+        "windowLatencyMs": {
+          "latency": {
+            "p50Ms": {
+              "min": 6.59,
+              "median": 7.49,
+              "max": 8.41
+            },
+            "p95Ms": {
+              "min": 24.05,
+              "median": 28.0,
+              "max": 45.37
+            },
+            "p99Ms": {
+              "min": 25.56,
+              "median": 40.4,
+              "max": 1520.51
+            }
+          },
+          "wsDelivery": {
+            "p50Ms": {
+              "min": 25.18,
+              "median": 27.66,
+              "max": 43.13
+            },
+            "p95Ms": {
+              "min": 30.41,
+              "median": 43.58,
+              "max": 1313.44
+            },
+            "p99Ms": {
+              "min": 32.2,
+              "median": 60.23,
+              "max": 2184.16
+            }
+          }
+        },
+        "api": [
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 288,
+            "lastTotalRequests": 6041
+          },
+          {
+            "allWindowsRedisReady": true,
+            "maxDbWait": 0,
+            "firstTotalRequests": 224,
+            "lastTotalRequests": 5954
+          }
+        ],
+        "realtime": [
+          {
+            "messagesDelivered": 3654,
+            "streamEventsPublished": 2930,
+            "streamEventsReceived": 2928,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          },
+          {
+            "messagesDelivered": 2194,
+            "streamEventsPublished": 2928,
+            "streamEventsReceived": 2930,
+            "streamPublishErrors": 0,
+            "streamReadErrors": 0,
+            "slowConsumerDrops": 0
+          }
+        ]
+      }
+    },
+    "cpuAndPressure": {
+      "scope": "Three-second samples during the active tail of the quiet lab control. CPU busy and iowait refer to the two assigned logical CPUs. PSI is guest-wide, rolling ten seconds.",
+      "samples": 225,
+      "seconds": 675.6,
+      "cpuCount": 2,
+      "metrics": {
+        "busyPercent": {
+          "min": 3.51,
+          "median": 11.95,
+          "p95": 15.03,
+          "max": 19.1
+        },
+        "ioWaitPercent": {
+          "min": 1.85,
+          "median": 2.9,
+          "p95": 7.2,
+          "max": 46.36
+        },
+        "cpuSomeAvg10": {
+          "min": 1.03,
+          "median": 1.63,
+          "p95": 2.3,
+          "max": 3.11
+        },
+        "ioSomeAvg10": {
+          "min": 1.37,
+          "median": 2.57,
+          "p95": 7.91,
+          "max": 19.68
+        },
+        "memorySomeAvg10": {
+          "min": 0.0,
+          "median": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        }
+      }
+    }
+  },
+  "socketEnvironmentMounts": {
+    "scope": "Resolved Docker Compose 2.40.3 model and actual synthetic private files",
+    "services": {
+      "signaling": {
+        "oldFileUnderApiBind": true,
+        "newFileUnderApiBind": false,
+        "ownExtensionLoaded": true,
+        "siblingExtensionAbsent": true
+      },
+      "realtime-gateway": {
+        "oldFileUnderApiBind": true,
+        "newFileUnderApiBind": false,
+        "ownExtensionLoaded": true,
+        "siblingExtensionAbsent": true
+      }
+    },
+    "apiConfigurationIdentical": true
+  },
+  "routeLatencyInstrumentation": {
+    "commit": "f4cce71c542514f1550f4db096502a346c694824",
+    "generatorCasesPassed": 16,
+    "testBeforeFix": [
+      "per-operation counts",
+      "HTTP ACK with missing receiver"
+    ],
+    "testedAfterQuietControl": true
+  }
+}

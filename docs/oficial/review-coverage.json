@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T11:54:33.279213+00:00",
-  "baseCommit": "e14c7cc66aa23aa738a04e976e15807978912bb9",
+  "generatedAtUtc": "2026-11-20T14:00:31.543440+00:00",
+  "baseCommit": "f4cce71c542514f1550f4db096502a346c694824",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3436,
-    "partial": 271,
-    "code-read": 1039
+    "pending": 3435,
+    "code-read": 1047,
+    "partial": 273
   },
   "countsByPhase": {
     "android": {
@@ -21,24 +21,24 @@
       "code-read": 612
     },
     "documentation": {
-      "pending": 692,
+      "pending": 694,
       "code-read": 67,
       "partial": 20
     },
     "server": {
-      "pending": 733,
-      "code-read": 197,
-      "partial": 39
+      "pending": 727,
+      "code-read": 204,
+      "partial": 43
     },
     "tooling-and-other": {
-      "pending": 135,
-      "partial": 11,
-      "code-read": 40
+      "pending": 137,
+      "code-read": 42,
+      "partial": 9
     },
     "web": {
       "partial": 77,
-      "pending": 473,
-      "code-read": 123
+      "pending": 474,
+      "code-read": 122
     }
   },
   "files": [
@@ -55,11 +55,19 @@
       "reviewStatus": "pending"
     },
     {
+      "file": ".github/fixtures/android-google-services.json",
+      "phase": "tooling-and-other",
+      "gitBlobId": "61183bcca743d00ede07ff73ece90b8958f43d83",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": ".github/workflows/android-ci.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "94070e868390dc5aaee00b1974d7e2b02469fe9a",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/127-android-participacion-pausa-y-trazabilidad-2026-11-13.md",
+      "gitBlobId": "fc60095aeb235a925579cc53f1018688ff297a29",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -85,9 +93,9 @@
     {
       "file": ".github/workflows/service-ci.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "64bcea18877376b7742275678081684b29eb9179",
+      "gitBlobId": "14d51884e10f86cd1432dd7e28faf70fa3772d91",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/132-cuentas-juego-y-canjes-live-2026-11-13.md",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -265,17 +273,15 @@
     {
       "file": "NoWing-web/package-lock.json",
       "phase": "web",
-      "gitBlobId": "524da223bf48a4451142c27e3cb427312cb93e7e",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/147-carga-multimedia-cache-y-servidor-2026-11-15.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "650cbc5a860002e93eb99a218644cb60386e41b9",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/package.json",
       "phase": "web",
-      "gitBlobId": "ea5cfd812839d20cc868c4506da556b103a17d22",
+      "gitBlobId": "1dda397b00da8525f720c8658d972a0545ddaa73",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2493,9 +2499,9 @@
     {
       "file": "NoWing-web/src/components/ProfileStatusBadges.tsx",
       "phase": "web",
-      "gitBlobId": "48da18e27117d9d825a7a741e461fac6cf221f08",
+      "gitBlobId": "0415372235977f3c77e436979dce91a7ebf9c072",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4003,9 +4009,9 @@
     {
       "file": "NoWing-web/src/features/reels/ReelsPage.tsx",
       "phase": "web",
-      "gitBlobId": "d3e6789095c60009b61081e61e7c41ac3d6b2a78",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "gitBlobId": "20a79689590da1995fe86dc6b597e82131bd16fb",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22273,6 +22279,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "121969784cf9cc8d100886d44bfeead8f29bac9d",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/23-multimedia-offline-y-restauracion-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "d22eca229741a92edd67245371999039798bf76f",
@@ -23150,6 +23162,12 @@
       "file": "docs/oficial/evidencias/224-certificacion-independiente.json",
       "phase": "documentation",
       "gitBlobId": "c66a9b772775431e37a237e2123684922e666630",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/225-conversor-y-controles-de-integracion.json",
+      "phase": "documentation",
+      "gitBlobId": "82f470bcc3d38150ec89ae2ffc2b1cd183509a18",
       "reviewStatus": "pending"
     },
     {
@@ -26209,8 +26227,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/container-runtime-security.test.js",
       "phase": "server",
-      "gitBlobId": "4e5a4e8029f714753a0c1f680691b47c2081168e",
-      "reviewStatus": "pending"
+      "gitBlobId": "a8c398e7be225ee043246e1a55c0abee37ec2080",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/content-moderation.test.js",
@@ -26473,8 +26493,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/isolated-restore-readiness.test.js",
       "phase": "server",
-      "gitBlobId": "3fdfb91cd933765bdd18a38914b9d72511c251a0",
-      "reviewStatus": "pending"
+      "gitBlobId": "2a0af47b4ae0b6de299ef45a69f589e438b579da",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/legacy-storage-reference-migration.test.js",
@@ -26925,8 +26947,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/poll-vote-transaction.test.js",
       "phase": "server",
-      "gitBlobId": "90892df5ac8eba1dd52bb68f435d7a71f49b016d",
-      "reviewStatus": "pending"
+      "gitBlobId": "67d9ce2633dc02fa1328b409d86cb9f9ebf7e6ac",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/post-engagement-reader.test.js",
@@ -27239,6 +27263,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/schema-migrations.postgres.test.js",
+      "phase": "server",
+      "gitBlobId": "6e85389405a9e170efef13d962291da12fcd472e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/service-read-paths.test.js",
       "phase": "server",
       "gitBlobId": "7f264e41f7402c4cb65ee61f39491a45ab02dcc3",
@@ -27247,8 +27279,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/signaling-edge-config.test.js",
       "phase": "server",
-      "gitBlobId": "616a3566f7f0d0ffd7475488f6a2abdc886464fa",
-      "reviewStatus": "pending"
+      "gitBlobId": "0dc8f4d771f405839f571988edc1db2efc21ca02",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/social-promotions.test.js",
@@ -27871,8 +27905,10 @@
     {
       "file": "infrastructure/local-fallback/db/operations/10-bootstrap-runtime-role.sql",
       "phase": "server",
-      "gitBlobId": "dc2ab578249333429e8f3dc9f2f410e6a8b80bea",
-      "reviewStatus": "pending"
+      "gitBlobId": "2556f4a0f7869252abbf9e6e4e770d870dae6d1e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/db/operations/15-runtime-import-read.sql",
@@ -27901,8 +27937,10 @@
     {
       "file": "infrastructure/local-fallback/db/operations/README.md",
       "phase": "server",
-      "gitBlobId": "90d9e8aa892e9c87f249d95b7d60cf720fadb1f3",
-      "reviewStatus": "pending"
+      "gitBlobId": "c75721557dd1eeee8f19a311dec5f1af9874c5f6",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/db/operations/STORAGE_HISTORICAL_AV_BACKFILL.md",
@@ -27935,9 +27973,9 @@
     {
       "file": "infrastructure/local-fallback/docker-compose.yml",
       "phase": "server",
-      "gitBlobId": "ed7f020d3723e71746d6c9443155ad0f25361511",
+      "gitBlobId": "e3141f1b41ad75a22349b4157ee70952a3b90820",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27990,6 +28028,30 @@
       "gitBlobId": "74598a5a883c57606f1cbe069b999d4dfe153267",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/office-preview/.gitattributes",
+      "phase": "server",
+      "gitBlobId": "314930b6c9058a8db2ed715c9ebd64d9d53bc7ff",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/office-preview/Dockerfile",
+      "phase": "server",
+      "gitBlobId": "d3f421f58800ea93dc45dfcdf36c077034a0f4da",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/office-preview/sources.sha256",
+      "phase": "server",
+      "gitBlobId": "60a17dc4c7954f49deef630f7de53d7593cc2d6c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28121,6 +28183,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/scripts/apply-schema-migration.sql",
+      "phase": "server",
+      "gitBlobId": "f18fee76004014a9857a4ca061cb2f6cbced6852",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/scripts/archive-protected-storage.sh",
       "phase": "server",
       "gitBlobId": "d924d78c47e4ec0f304391c33e514df1c471dc6a",
@@ -28153,9 +28223,9 @@
     {
       "file": "infrastructure/local-fallback/scripts/deploy-stack-safely.sh",
       "phase": "server",
-      "gitBlobId": "7bdc9fd32df4ac7e38aaf99d5ac93ab26725154f",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "gitBlobId": "da70482c7125d93549021a5356232bbbf92841bc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -29075,15 +29145,15 @@
     {
       "file": "signaling-server/package-lock.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "d12d1782538f69e07365187d6686fbc5250e4a45",
+      "gitBlobId": "28772134fdbf62dc19d46058b2eac584ac7e7394",
       "reviewStatus": "pending"
     },
     {
       "file": "signaling-server/package.json",
       "phase": "tooling-and-other",
-      "gitBlobId": "451bee68407ef729f3f682d9de9974e318fb6e00",
+      "gitBlobId": "28358b73ef17d3e98107460b721e0f99aa66322f",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -30887,10 +30957,8 @@
     {
       "file": "tools/loadtest/run-ubuntu-staging-soak.mjs",
       "phase": "tooling-and-other",
-      "gitBlobId": "09b6a516e8f91a148a76c077f398281be0880143",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "469c4e24cabf0ec45f88a75e2ed44e2535e883ec",
+      "reviewStatus": "pending"
     },
     {
       "file": "tools/loadtest/staging-arrivals.mjs",
@@ -30911,10 +30979,8 @@
     {
       "file": "tools/loadtest/staging-soak.test.mjs",
       "phase": "tooling-and-other",
-      "gitBlobId": "e196cf01d526fe1bb793ee5ef29b73f0dd8d716b",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "62170504bac986b0df52099ee524c3bbad446398",
+      "reviewStatus": "pending"
     },
     {
       "file": "tools/perf_budgets.json",
@@ -31069,6 +31135,14 @@
       "phase": "tooling-and-other",
       "gitBlobId": "5f467e3db42fc755f193f5ad520aa752fc80f4aa",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "tools/tests/test_service_environment.py",
+      "phase": "tooling-and-other",
+      "gitBlobId": "2a3b957214a98f4f0a34cfd633d671bbbda2be50",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/tests/test_sql_security_overlay.py",
