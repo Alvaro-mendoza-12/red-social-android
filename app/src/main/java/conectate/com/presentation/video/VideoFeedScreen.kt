@@ -66,7 +66,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
@@ -684,39 +683,7 @@ fun VideoFeedScreen(
         }
     }
     
-    // We remember the player across recompositions. 
-    val exoPlayer = remember {
-        // Keep the device-specific startup and rebuffer protection.
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                performanceProfile.minBufferMs,
-                performanceProfile.maxBufferMs,
-                performanceProfile.playBufferMs,
-                performanceProfile.rebufferMs
-            )
-            .setPrioritizeTimeOverSizeThresholds(true)
-            .build()
-            
-        val cacheDataSourceFactory = conectate.com.util.VideoCache.feedDataSourceFactory(context)
-
-        ExoPlayer.Builder(context)
-            .setLoadControl(loadControl)
-            .setMediaSourceFactory(
-                androidx.media3.exoplayer.source.DefaultMediaSourceFactory(cacheDataSourceFactory)
-            )
-            .build().apply {
-                repeatMode = Player.REPEAT_MODE_ONE
-                playWhenReady = false
-                // Handle Audio Focus automatically
-                setAudioAttributes(
-                    androidx.media3.common.AudioAttributes.Builder()
-                        .setUsage(androidx.media3.common.C.USAGE_MEDIA)
-                        .setContentType(androidx.media3.common.C.AUDIO_CONTENT_TYPE_MOVIE)
-                        .build(),
-                    true
-                )
-            }
-    }
+    val exoPlayer = remember { createFeedVideoPlayer(context, performanceProfile) }
 
     val automaticPlaybackAttempts = remember { mutableMapOf<String, Int>() }
     var exhaustedPlaybackVideoId by remember { mutableStateOf<String?>(null) }

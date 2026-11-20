@@ -9,11 +9,12 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import conectate.com.data.localfallback.UbuntuStorageUrl
+import conectate.com.presentation.video.createFeedVideoPlayer
 import conectate.com.util.VideoCache
+import conectate.com.util.VideoPerformanceProfiles
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -51,14 +52,11 @@ class FeedNeighbourFrameDeviceTest {
             instrumentation.runOnMainSync {
                 val outputTexture = SurfaceTexture(false).also { texture = it }
                 val output = Surface(outputTexture).also { surface = it }
-                player = ExoPlayer.Builder(context)
-                    .setMediaSourceFactory(DefaultMediaSourceFactory(VideoCache.feedDataSourceFactory(context)))
-                    .build().apply {
-                        volume = 0f
-                        repeatMode = Player.REPEAT_MODE_ONE
-                        setVideoSurface(output)
-                        setMediaItems(items)
-                    }
+                player = createFeedVideoPlayer(context, VideoPerformanceProfiles.detect(context)).apply {
+                    volume = 0f
+                    setVideoSurface(output)
+                    setMediaItems(items)
+                }
             }
             for (index in files.indices) {
                 if (index > 0) runBlocking {
