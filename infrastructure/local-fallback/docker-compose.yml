@@ -288,8 +288,8 @@ services:
       network: host
     restart: unless-stopped
     env_file:
-      # Additional process settings belong to this service's private file.
-      - path: ./secrets/signaling.env
+      # Keep socket configuration outside the credential directory mounted by the API.
+      - path: ./.env.signaling.local
         required: false
     environment:
       NODE_ENV: production
@@ -412,7 +412,7 @@ services:
     restart: unless-stopped
     env_file:
       # Additional process settings belong to this service's private file.
-      - path: ./secrets/realtime.env
+      - path: ./.env.realtime.local
         required: false
     environment:
       NODE_ENV: production

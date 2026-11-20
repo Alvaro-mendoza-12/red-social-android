@@ -18,10 +18,10 @@ class ServiceEnvironmentTests(unittest.TestCase):
         self.assertIn("FALLBACK_API_DATABASE_URL", api["DATABASE_URL"])
 
     def test_socket_services_have_their_own_optional_environment_file(self):
-        for name, filename in (("signaling", "signaling.env"), ("realtime-gateway", "realtime.env")):
+        for name, filename in (("signaling", ".env.signaling.local"), ("realtime-gateway", ".env.realtime.local")):
             with self.subTest(service=name):
                 service = self.services[name]
-                self.assertEqual(service["env_file"], [{"path": "./secrets/" + filename, "required": False}])
+                self.assertEqual(service["env_file"], [{"path": "./" + filename, "required": False}])
                 for key in ("POSTGRES_PASSWORD", "FALLBACK_API_DATABASE_URL", "DATABASE_URL", "ADMIN_SYNC_TOKEN"):
                     self.assertNotIn(key, service["environment"])
 
