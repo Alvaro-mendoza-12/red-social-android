@@ -90,12 +90,13 @@ class ChatScrollFrameMetricsDeviceTest {
                 instrumentation.runOnMainSync { result = condition() }
                 return result
             }
-            fun awaitState(condition: () -> Boolean) {
+            fun awaitState(description: String = "Conversation did not settle in time", condition: () -> Boolean) {
                 val deadline = SystemClock.uptimeMillis() + 10_000
                 while (!onMain(condition) && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(20)
-                assertTrue("Conversation did not settle in time", onMain(condition))
+                assertTrue(description, onMain(condition))
             }
             awaitState { state.get()?.layoutInfo?.visibleItemsInfo?.any { it.key == "frame-row-400" } == true }
+            awaitState("The conversation window did not receive input focus") { window.decorView.hasWindowFocus() }
             scenario.onActivity { activity ->
                 val decor = activity.window.decorView
                 val location = IntArray(2).also(decor::getLocationOnScreen)
@@ -104,6 +105,8 @@ class ChatScrollFrameMetricsDeviceTest {
                 endY = location[1] + decor.height * .75f
             }
             fun nativeSwipe() {
+                assertTrue("The conversation lost input focus during the gesture measurement",
+                    onMain { window.decorView.hasWindowFocus() })
                 val downTime = SystemClock.uptimeMillis()
                 fun event(action: Int, y: Float) {
                     val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, x, y, 0)
@@ -147,7 +150,7 @@ class ChatScrollFrameMetricsDeviceTest {
             }
             var after = 0
             scenario.onActivity { after = state.get().firstVisibleItemIndex }
-            assertTrue("The native gesture did not move through history", after < before)
+            assertTrue("The native gesture did not move through history (before=$before, after=$after)", after < before)
             val frames = synchronized(samples) { samples.toList() }
             assertTrue("No render frames were captured", frames.isNotEmpty())
             val sorted = frames.map { it.first / 1_000_000.0 }.sorted()
