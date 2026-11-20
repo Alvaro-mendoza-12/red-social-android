@@ -6,7 +6,7 @@ const { blockedProfileIds } = require('./blocked-profile-ids')
 const { publicVideoSound } = require('./video-public-attribution')
 const crypto = require('crypto')
 const { adminAccessFromStoredRow, appAdminAccess } = require('./admin-moderation-routes')
-const { SYSTEM_MEMBERSHIP, ensureCollectionMembershipTables, loadCollectionMembershipState, collectionHistoryAllows, registerCollectionMembershipRoutes } = require('./collection-membership-policy')
+const { SYSTEM_MEMBERSHIP, ensureCollectionMembershipTables, loadCollectionMembershipSnapshot, loadCollectionMembershipState, collectionMembershipStateFromSnapshot, collectionHistoryAllows, registerCollectionMembershipRoutes } = require('./collection-membership-policy')
 const { patchImportedRow, deleteImportedRow, deleteImportedPost } = require('./imported-mutation-capabilities')
 const { isRetiredNotification } = require('./retired-notifications')
 const { isServerManagedNotification } = require('./notification-event-policy')
@@ -1407,39 +1407,42 @@ async function localPostsByOwnerIds(pool, ownerIds, limit = 5000) {
   const ids = Array.from(cleanSet(ownerIds))
   if (ids.length === 0) return []
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        user_id,
-        user_name,
-        user_profile_image,
-        content,
-        media_url,
-        media_urls,
-        media_type,
-        survey_id,
-        (SELECT count(*)::int FROM survey_responses r WHERE r.campaign_id=fallback_posts.survey_id AND r.removed_at IS NULL AND (r.expires_at IS NULL OR r.expires_at>now())) AS survey_response_count,
-        visibility,
-        remix_allowed,
-        remix_audience,
-        remix_revoked_at,
-        remix_source_post_id,
-        remix_root_post_id,
-        remix_source_user_id,
-        remix_source_user_name,
-        remix_depth,
-        created_at,
-        updated_at,
-        0::int AS like_count,
-        0::int AS comment_count,
-        TRUE AS local_only
-     FROM fallback_posts
-     WHERE lower(user_id) = ANY($1::text[])
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [ids, safeLimit],
-  )
-  return rows.map(normalizeImportedRow)
+  const key = `localPostsByOwnerIds:${safeLimit}:${stableKey(ids.slice().sort().join('|'))}`
+  return singleflightLoad(pool, key, async () => {
+    const { rows } = await pool.query(
+      `SELECT
+          id::text,
+          user_id,
+          user_name,
+          user_profile_image,
+          content,
+          media_url,
+          media_urls,
+          media_type,
+          survey_id,
+          (SELECT count(*)::int FROM survey_responses r WHERE r.campaign_id=fallback_posts.survey_id AND r.removed_at IS NULL AND (r.expires_at IS NULL OR r.expires_at>now())) AS survey_response_count,
+          visibility,
+          remix_allowed,
+          remix_audience,
+          remix_revoked_at,
+          remix_source_post_id,
+          remix_root_post_id,
+          remix_source_user_id,
+          remix_source_user_name,
+          remix_depth,
+          created_at,
+          updated_at,
+          0::int AS like_count,
+          0::int AS comment_count,
+          TRUE AS local_only
+       FROM fallback_posts
+       WHERE lower(user_id) = ANY($1::text[])
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [ids, safeLimit],
+    )
+    return rows.map(normalizeImportedRow)
+  })
 }
 
 async function localPostsByIds(pool, postIds) {
@@ -3329,20 +3332,23 @@ async function localFollowsByFollowerIds(pool, followerIds, limit = 10_000) {
   const ids = Array.from(cleanSet(followerIds))
   if (ids.length === 0) return []
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        follower_id,
-        following_id,
-        created_at,
-        TRUE AS local_only
-     FROM fallback_follows
-     WHERE lower(follower_id) = ANY($1::text[])
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [ids, safeLimit],
-  )
-  return rows.map(normalizeImportedRow)
+  const key = `localFollowsByFollowerIds:${safeLimit}:${stableKey(ids.slice().sort().join('|'))}`
+  return singleflightLoad(pool, key, async () => {
+    const { rows } = await pool.query(
+      `SELECT
+          id::text,
+          follower_id,
+          following_id,
+          created_at,
+          TRUE AS local_only
+       FROM fallback_follows
+       WHERE lower(follower_id) = ANY($1::text[])
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [ids, safeLimit],
+    )
+    return rows.map(normalizeImportedRow)
+  })
 }
 
 async function localMomentsByIds(pool, momentIds) {
@@ -3419,21 +3425,24 @@ async function localFollowsByParticipantIds(pool, participantIds, limit = 10_000
   const ids = Array.from(cleanSet(participantIds))
   if (ids.length === 0) return []
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        follower_id,
-        following_id,
-        created_at,
-        TRUE AS local_only
-     FROM fallback_follows
-     WHERE lower(follower_id) = ANY($1::text[])
-        OR lower(following_id) = ANY($1::text[])
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [ids, safeLimit],
-  )
-  return rows.map(normalizeImportedRow)
+  const key = `localFollowsByParticipantIds:${safeLimit}:${stableKey(ids.slice().sort().join('|'))}`
+  return singleflightLoad(pool, key, async () => {
+    const { rows } = await pool.query(
+      `SELECT
+          id::text,
+          follower_id,
+          following_id,
+          created_at,
+          TRUE AS local_only
+       FROM fallback_follows
+       WHERE lower(follower_id) = ANY($1::text[])
+          OR lower(following_id) = ANY($1::text[])
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [ids, safeLimit],
+    )
+    return rows.map(normalizeImportedRow)
+  })
 }
 
 function dispatchLocalNotification(pool, notification, extraData = {}) {
@@ -5399,13 +5408,12 @@ async function loadCollectionRoomAccess(pool, user, kind, roomId, { allowPrivate
   if (!config || !cleanRoomId) return null
 
   const identity = userIdentity(user)
-  const [importedRooms, importedMembers, localRooms, localMembers, membershipState] = await Promise.all([
-    importedRowsByFieldValues(pool, config.roomTable, ['id'], [cleanRoomId], 4),
-    importedRowsByFieldValues(pool, config.memberTable, [config.roomKey, 'room_id'], [cleanRoomId], 10_000),
-    localCollectionRoomsByIds(pool, config.kind, [cleanRoomId]),
-    localCollectionMembersByRoomIds(pool, config.kind, [cleanRoomId], 10_000),
-    loadCollectionMembershipState(pool, config.kind, cleanRoomId, identity.ids),
-  ])
+  const snapshot = await loadCollectionMembershipSnapshot(pool, config.kind, cleanRoomId)
+  const membershipState = collectionMembershipStateFromSnapshot(snapshot, identity.ids)
+  const importedRooms = (snapshot.oldRooms || []).map(normalizeImportedRow)
+  const importedMembers = (snapshot.oldMembers || []).map(normalizeImportedRow)
+  const localRooms = (snapshot.localRooms?.rows || []).map(normalizeImportedRow)
+  const localMembers = (snapshot.localMembers?.rows || []).map(normalizeImportedRow)
   const rooms = mergeRowsById([...importedRooms, ...localRooms])
     .filter((row) => {
       const id = normalizeId(textOf(row, ['id'], ''))
@@ -6556,6 +6564,10 @@ async function ensureLocalDataTables(pool) {
   await pool.query(
     `CREATE INDEX IF NOT EXISTS idx_fallback_collection_rooms_kind_created
      ON fallback_collection_rooms(room_kind, is_deleted, created_at DESC)`,
+  )
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_fallback_collection_rooms_kind_id_lower
+     ON fallback_collection_rooms(room_kind, lower(id::text))`,
   )
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_collection_members (

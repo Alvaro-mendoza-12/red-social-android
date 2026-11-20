@@ -181,6 +181,20 @@ async function ensureLivePointsTables(pool) {
   `)
 }
 
+function identityHasId(identity, candidate) {
+  const normalized = normalizeId(candidate)
+  if (!normalized || !identity) return false
+  if (identity.ids instanceof Set) {
+    if (identity.ids.has(normalized)) return true
+  } else if (Array.isArray(identity.ids)) {
+    if (identity.ids.some((entry) => normalizeId(entry) === normalized)) return true
+  }
+  if (Array.isArray(identity.values)) {
+    if (identity.values.some((entry) => normalizeId(entry) === normalized)) return true
+  }
+  return normalizeId(identity.displayUserId) === normalized
+}
+
 async function liveForUser(pool, liveId, user, userIdentity) {
   const { rows } = await pool.query(
     `SELECT id::text, host_user_id, is_active, title
@@ -190,7 +204,7 @@ async function liveForUser(pool, liveId, user, userIdentity) {
   const live = rows[0]
   if (!live) return { error: 'LIVE_NOT_FOUND' }
   const identity = userIdentity(user)
-  return { live, identity, isHost: identity.ids.includes(normalizeId(live.host_user_id)) }
+  return { live, identity, isHost: identityHasId(identity, live.host_user_id) }
 }
 
 async function pointSettings(pool, liveId, creatorId) {
@@ -575,7 +589,7 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
         [liveId, requestNonce],
       )
       if (existing.rows[0]) {
-        if (!access.identity.ids.includes(normalizeId(existing.rows[0].viewer_id)) ||
+        if (!identityHasId(access.identity, existing.rows[0].viewer_id) ||
             normalizeId(existing.rows[0].reward_id) !== rewardId) {
           await client.query('ROLLBACK')
           return res.status(409).json({ error: 'LIVE_POINT_REDEMPTION_NONCE_CONFLICT' })
@@ -755,6 +769,7 @@ function registerLivePointsRoutes(app, { pool, authRequired, getCurrentUser, use
 module.exports = {
   dailyAwardAmount,
   ensureLivePointsTables,
+  identityHasId,
   issueSessionToken,
   rewardCooldownRemainingSeconds,
   pointsEnabled,

@@ -294,7 +294,8 @@ function ownsSession(session, identity) {
 
 async function sessionById(pool, sessionId) {
   const { rows } = await pool.query(
-    `SELECT id::text, user_a, user_b, status, user_a_reveal, user_b_reveal, created_at, updated_at
+    `SELECT id::text, user_a, user_b, status, user_a_reveal, user_b_reveal,
+            user_a_read_at, user_b_read_at, created_at, updated_at
      FROM fallback_random_chat_sessions
      WHERE id = $1::uuid
      LIMIT 1`,
@@ -362,18 +363,24 @@ async function sessionPayload(pool, session, identity) {
   }
 }
 
-// Trust grows from actual conversation, never from a button that lets a
-// client skip levels. Four exchanged messages unlock the next level for both
-// participants, up to the three levels needed to reveal the normal profile.
+// Trust grows from actual two-way conversation, never from a button or
+// one-sided message spam. Each participant must contribute at least 2 messages
+// per level (4 exchanged messages = 2 each) up to level 3.
 async function advanceAnonymousProgress(db, sessionId) {
   const { rows: countRows } = await db.query(
-    `SELECT COUNT(*)::int AS total
-     FROM fallback_random_chat_messages
-     WHERE session_id = $1::uuid`,
+    `SELECT
+       COUNT(*) FILTER (WHERE lower(m.sender_id::text) = lower(s.user_a::text))::int AS count_a,
+       COUNT(*) FILTER (WHERE lower(m.sender_id::text) = lower(s.user_b::text))::int AS count_b
+     FROM fallback_random_chat_sessions s
+     LEFT JOIN fallback_random_chat_messages m ON m.session_id = s.id
+     WHERE s.id = $1::uuid
+     GROUP BY s.id`,
     [sessionId],
   )
-  const total = Number(countRows[0]?.total || 0)
-  const level = Math.min(3, Math.floor(total / 4))
+  const countA = Number(countRows[0]?.count_a || 0)
+  const countB = Number(countRows[0]?.count_b || 0)
+  const exchangedMessages = Math.min(countA, countB) * 2
+  const level = Math.min(3, Math.floor(exchangedMessages / 4))
   const { rows } = await db.query(
     `UPDATE fallback_random_chat_sessions
      SET user_a_reveal = GREATEST(user_a_reveal, $2),
@@ -381,7 +388,7 @@ async function advanceAnonymousProgress(db, sessionId) {
          updated_at = NOW()
      WHERE id = $1::uuid
      RETURNING id::text, user_a, user_b, status, user_a_reveal, user_b_reveal,
-               created_at, updated_at`,
+               user_a_read_at, user_b_read_at, created_at, updated_at`,
     [sessionId, level],
   )
   return rows[0] || null
@@ -1303,6 +1310,10 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
       if (!session || !ownsSession(session, identity) || session.status !== 'active') {
         return res.status(404).json({ error: 'SESSION_NOT_FOUND' })
       }
+      const peerId = identity.ids.has(normalizeId(session.user_a)) ? session.user_b : session.user_a
+      if (await anonymousPairBlocked(pool, identity, peerId)) {
+        return res.status(403).json({ error: 'RANDOM_PAIR_BLOCKED' })
+      }
       // Kept as a compatibility endpoint for older clients, but the server
       // no longer accepts a requested level. Progress is derived exclusively
       // from exchanged messages in advanceAnonymousProgress().
@@ -1337,6 +1348,7 @@ function registerProximityRoutes(app, { pool, authRequired, getCurrentUser, user
 }
 
 module.exports = {
+  advanceAnonymousProgress,
   anonymousPairBlocked,
   validateAnonymousMedia,
   approximateDistanceKm,

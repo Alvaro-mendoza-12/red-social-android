@@ -1,5 +1,6 @@
-const { cleanStorageRow } = require('./storage-scan-coordinator')
 'use strict'
+
+const { cleanStorageRow } = require('./storage-scan-coordinator')
 
 const { clippedMusicLyrics } = require('./moment-music-lyrics')
 const crypto = require('crypto')
@@ -213,7 +214,7 @@ async function runCommand(command, args, timeoutMs) {
 
 async function localStorageSource(pool, audioUrl) {
   const location = parseStorageObjectUrl(audioUrl)
-  if (!location) return null
+  if (!location || location.bucket !== 'community-music') return null
   const { rows } = await pool.query(
     `SELECT *
        FROM fallback_storage_objects

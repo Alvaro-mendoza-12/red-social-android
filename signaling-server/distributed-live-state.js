@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const LIVE_STATE_VERSION = 1;
 const DEFAULT_STATE_TTL_SECONDS = 24 * 60 * 60;
 const DEFAULT_HOST_LEASE_SECONDS = 45;
+const DEFAULT_NODE_LIVENESS_SECONDS = 10;
 const DEFAULT_TERMINATION_LOCK_MS = 30_000;
 const MAX_DEDUPE_IDS = 500;
 const MAX_RECOVERABLE_PARTICIPANTS = 16;
@@ -211,6 +212,12 @@ function buildDistributedLiveConfig(env = process.env) {
             15,
             300
         ),
+        nodeLivenessSeconds: boundedInteger(
+            env.SIGNALING_NODE_LIVENESS_SECONDS,
+            DEFAULT_NODE_LIVENESS_SECONDS,
+            3,
+            60
+        ),
         terminationLockMs: boundedInteger(
             env.SIGNALING_LIVE_TERMINATION_LOCK_MS,
             DEFAULT_TERMINATION_LOCK_MS,
@@ -228,8 +235,26 @@ function createNoopDistributedLiveState() {
         remove: async () => false,
         listActiveIds: async () => [],
         renewHostLease: async () => false,
+        reclaimDeadHostLease: async () => false,
+        getHostLeaseOwner: async () => null,
         releaseHostLease: async () => false,
         hasHostLease: async () => false,
+        renewNodeHeartbeat: async () => false,
+        clearNodeHeartbeat: async () => false,
+        isNodeAlive: async () => false,
+        setHostRuntime: async () => false,
+        getHostRuntime: async () => null,
+        clearHostRuntime: async () => false,
+        upsertViewer: async () => false,
+        removeViewer: async () => false,
+        listViewers: async () => null,
+        upsertGuestRequest: async () => false,
+        removeGuestRequest: async () => false,
+        listGuestRequests: async () => null,
+        upsertGuest: async () => false,
+        removeGuest: async () => false,
+        listGuests: async () => null,
+        incrementReactions: async () => null,
         scheduleHostDeadline: async () => false,
         clearHostDeadline: async () => false,
         hostDeadline: async () => null,
@@ -248,8 +273,58 @@ function createDistributedLiveState(redisClient, options = {}) {
     const stateKey = (liveId) => key(`state:${cleanString(liveId, 128)}`);
     const leaseKey = (liveId) => key(`host-lease:${cleanString(liveId, 128)}`);
     const lockKey = (liveId) => key(`termination-lock:${cleanString(liveId, 128)}`);
+    const nodeKey = (nodeId) => key(`node:${cleanString(nodeId, 128)}`);
+    const hostRuntimeKey = (liveId) => key(`host-runtime:${cleanString(liveId, 128)}`);
+    const viewersKey = (liveId) => key(`viewers:${cleanString(liveId, 128)}`);
+    const guestsKey = (liveId) => key(`guests:${cleanString(liveId, 128)}`);
+    const guestRequestsKey = (liveId) => key(`guest-requests:${cleanString(liveId, 128)}`);
+    const reactionsKey = (liveId) => key(`reactions:${cleanString(liveId, 128)}`);
+    const reactionBatchesKey = (liveId) => key(`reaction-batches:${cleanString(liveId, 128)}`);
     const activeKey = key('active');
     const deadlinesKey = key('host-deadlines');
+    const hasHashSupport = typeof redisClient.hSet === 'function' &&
+        typeof redisClient.hGetAll === 'function' &&
+        typeof redisClient.hDel === 'function';
+
+    async function filterAliveEntries(hashKey, rawEntries, filterDeadNodes = true) {
+        const parsed = [];
+        const staleFields = [];
+        const nodeCache = new Map();
+        for (const [socketId, raw] of Object.entries(rawEntries || {})) {
+            let entry = null;
+            try { entry = JSON.parse(raw); } catch { entry = null; }
+            if (!entry || typeof entry !== 'object' || !cleanString(entry.userId, 160)) {
+                staleFields.push(socketId);
+                continue;
+            }
+            const entryNodeId = cleanString(entry.nodeId, 128);
+            if (filterDeadNodes && entryNodeId) {
+                let alive = nodeCache.get(entryNodeId);
+                if (alive === undefined) {
+                    alive = Number(await redisClient.exists(nodeKey(entryNodeId))) > 0;
+                    nodeCache.set(entryNodeId, alive);
+                }
+                if (!alive) {
+                    staleFields.push(socketId);
+                    continue;
+                }
+            }
+            parsed.push({
+                socketId: cleanString(entry.socketId || socketId, 128),
+                userId: cleanString(entry.userId, 160),
+                name: cleanString(entry.name, 100) || 'Usuario',
+                avatarUrl: cleanString(entry.avatarUrl, 2_048),
+                nodeId: entryNodeId,
+                ...(typeof entry.isModerator === 'boolean' ? { isModerator: entry.isModerator } : {}),
+                ...(typeof entry.videoEnabled === 'boolean' ? { videoEnabled: entry.videoEnabled } : {}),
+                ...(entry.requestedAtMs ? { requestedAtMs: Number(entry.requestedAtMs) || Date.now() } : {})
+            });
+        }
+        if (staleFields.length > 0 && hasHashSupport) {
+            await redisClient.hDel(hashKey, staleFields).catch(() => {});
+        }
+        return parsed;
+    }
 
     return {
         enabled: true,
@@ -276,6 +351,16 @@ function createDistributedLiveState(redisClient, options = {}) {
                 redisClient.sRem(activeKey, normalizedLiveId),
                 redisClient.zRem(deadlinesKey, normalizedLiveId)
             ]);
+            if (hasHashSupport) {
+                await redisClient.del([
+                    hostRuntimeKey(normalizedLiveId),
+                    viewersKey(normalizedLiveId),
+                    guestsKey(normalizedLiveId),
+                    guestRequestsKey(normalizedLiveId),
+                    reactionsKey(normalizedLiveId),
+                    reactionBatchesKey(normalizedLiveId)
+                ]).catch(() => {});
+            }
             return true;
         },
         async listActiveIds() {
@@ -305,6 +390,33 @@ function createDistributedLiveState(redisClient, options = {}) {
             await redisClient.zRem(deadlinesKey, cleanString(liveId, 128));
             return true;
         },
+        async getHostLeaseOwner(liveId) {
+            const value = await redisClient.get(leaseKey(liveId));
+            return value ? cleanString(value, 200) : null;
+        },
+        /**
+         * Atomically reclaims a host lease ONLY when the Redis node liveness key
+         * for the prior owner's signaling replica has expired or been cleared.
+         * Never steals a lease from a living replica.
+         */
+        async reclaimDeadHostLease(liveId, ownerId, expectedDeadOwnerId) {
+            const owner = cleanString(ownerId, 200);
+            const deadOwner = cleanString(expectedDeadOwnerId, 200);
+            const deadNodeId = cleanString(deadOwner.split(':')[0], 128);
+            if (!owner || !deadOwner || !deadNodeId) return false;
+            const result = await redisClient.eval(
+                "local current = redis.call('GET', KEYS[1]) " +
+                "if not current or current == ARGV[1] or (current == ARGV[3] and redis.call('EXISTS', KEYS[2]) == 0) then " +
+                "redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]) return 1 end return 0",
+                {
+                    keys: [leaseKey(liveId), nodeKey(deadNodeId)],
+                    arguments: [owner, String(config.hostLeaseSeconds), deadOwner]
+                }
+            );
+            if (Number(result) <= 0) return false;
+            await redisClient.zRem(deadlinesKey, cleanString(liveId, 128));
+            return true;
+        },
         async releaseHostLease(liveId, ownerId) {
             const owner = cleanString(ownerId, 200);
             if (!owner) return false;
@@ -316,6 +428,189 @@ function createDistributedLiveState(redisClient, options = {}) {
         },
         async hasHostLease(liveId) {
             return Number(await redisClient.exists(leaseKey(liveId))) > 0;
+        },
+        async renewNodeHeartbeat(nodeId) {
+            const cleanNode = cleanString(nodeId, 128);
+            if (!cleanNode) return false;
+            await redisClient.set(nodeKey(cleanNode), '1', { EX: config.nodeLivenessSeconds });
+            return true;
+        },
+        async clearNodeHeartbeat(nodeId) {
+            const cleanNode = cleanString(nodeId, 128);
+            if (!cleanNode) return false;
+            await redisClient.del(nodeKey(cleanNode));
+            return true;
+        },
+        async isNodeAlive(nodeId) {
+            const cleanNode = cleanString(nodeId, 128);
+            if (!cleanNode) return false;
+            return Number(await redisClient.exists(nodeKey(cleanNode))) > 0;
+        },
+        async setHostRuntime(liveId, runtime) {
+            const normalizedLiveId = cleanString(liveId, 128);
+            const userId = cleanString(runtime?.userId, 160);
+            const socketId = cleanString(runtime?.socketId, 128);
+            const nodeId = cleanString(runtime?.nodeId, 128);
+            if (!normalizedLiveId || !userId || !socketId || !nodeId) return false;
+            const record = {
+                nodeId,
+                socketId,
+                userId,
+                name: cleanString(runtime?.name, 100) || 'Usuario',
+                avatarUrl: cleanString(runtime?.avatarUrl, 2_048),
+                updatedAtMs: Date.now()
+            };
+            await redisClient.set(hostRuntimeKey(normalizedLiveId), JSON.stringify(record), { EX: config.stateTtlSeconds });
+            return true;
+        },
+        async getHostRuntime(liveId) {
+            const raw = await redisClient.get(hostRuntimeKey(liveId));
+            if (!raw) return null;
+            try {
+                const parsed = JSON.parse(raw);
+                if (!parsed?.socketId || !parsed?.userId) return null;
+                if (parsed.nodeId) {
+                    const alive = Number(await redisClient.exists(nodeKey(parsed.nodeId))) > 0;
+                    if (!alive) return null;
+                }
+                return parsed;
+            } catch {
+                return null;
+            }
+        },
+        async clearHostRuntime(liveId, expectedSocketId = '') {
+            const keyName = hostRuntimeKey(liveId);
+            const cleanSocket = cleanString(expectedSocketId, 128);
+            if (!cleanSocket) {
+                await redisClient.del(keyName);
+                return true;
+            }
+            const raw = await redisClient.get(keyName);
+            if (!raw) return false;
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed?.socketId !== cleanSocket) return false;
+            } catch {
+                return false;
+            }
+            await redisClient.del(keyName);
+            return true;
+        },
+        async upsertViewer(liveId, socketId, viewer) {
+            if (!hasHashSupport) return false;
+            const cleanSid = cleanString(socketId, 128);
+            const userId = cleanString(viewer?.userId, 160);
+            if (!cleanSid || !userId) return false;
+            const record = {
+                socketId: cleanSid,
+                userId,
+                name: cleanString(viewer?.name, 100) || 'Usuario',
+                avatarUrl: cleanString(viewer?.avatarUrl, 2_048),
+                nodeId: cleanString(viewer?.nodeId, 128),
+                isModerator: Boolean(viewer?.isModerator),
+                joinedAtMs: Date.now()
+            };
+            const hashKey = viewersKey(liveId);
+            await redisClient.hSet(hashKey, cleanSid, JSON.stringify(record));
+            await redisClient.expire?.(hashKey, config.stateTtlSeconds);
+            return true;
+        },
+        async removeViewer(liveId, socketId) {
+            if (!hasHashSupport) return false;
+            const cleanSid = cleanString(socketId, 128);
+            if (!cleanSid) return false;
+            await redisClient.hDel(viewersKey(liveId), cleanSid);
+            return true;
+        },
+        async listViewers(liveId, { filterDeadNodes = true } = {}) {
+            if (!hasHashSupport) return null;
+            const hashKey = viewersKey(liveId);
+            const entries = await redisClient.hGetAll(hashKey);
+            const viewers = await filterAliveEntries(hashKey, entries, filterDeadNodes);
+            const uniqueUsers = new Set(viewers.map((entry) => entry.userId));
+            return { viewers, uniqueViewerCount: uniqueUsers.size };
+        },
+        async upsertGuestRequest(liveId, socketId, request) {
+            if (!hasHashSupport) return false;
+            const cleanSid = cleanString(socketId, 128);
+            const userId = cleanString(request?.userId, 160);
+            if (!cleanSid || !userId) return false;
+            const hashKey = guestRequestsKey(liveId);
+            await redisClient.hSet(hashKey, cleanSid, JSON.stringify({
+                socketId: cleanSid,
+                userId,
+                name: cleanString(request?.name, 100) || 'Usuario',
+                avatarUrl: cleanString(request?.avatarUrl, 2_048),
+                nodeId: cleanString(request?.nodeId, 128),
+                requestedAtMs: Number(request?.requestedAtMs || Date.now())
+            }));
+            await redisClient.expire?.(hashKey, config.stateTtlSeconds);
+            return true;
+        },
+        async removeGuestRequest(liveId, socketId) {
+            if (!hasHashSupport) return false;
+            const cleanSid = cleanString(socketId, 128);
+            if (!cleanSid) return false;
+            await redisClient.hDel(guestRequestsKey(liveId), cleanSid);
+            return true;
+        },
+        async listGuestRequests(liveId, { filterDeadNodes = true } = {}) {
+            if (!hasHashSupport) return null;
+            const hashKey = guestRequestsKey(liveId);
+            return filterAliveEntries(hashKey, await redisClient.hGetAll(hashKey), filterDeadNodes);
+        },
+        async upsertGuest(liveId, socketId, guest) {
+            if (!hasHashSupport) return false;
+            const cleanSid = cleanString(socketId, 128);
+            const userId = cleanString(guest?.userId, 160);
+            if (!cleanSid || !userId) return false;
+            const hashKey = guestsKey(liveId);
+            await redisClient.hSet(hashKey, cleanSid, JSON.stringify({
+                socketId: cleanSid,
+                userId,
+                name: cleanString(guest?.name, 100) || 'Usuario',
+                avatarUrl: cleanString(guest?.avatarUrl, 2_048),
+                nodeId: cleanString(guest?.nodeId, 128),
+                videoEnabled: guest?.videoEnabled !== false
+            }));
+            await redisClient.expire?.(hashKey, config.stateTtlSeconds);
+            return true;
+        },
+        async removeGuest(liveId, socketId) {
+            if (!hasHashSupport) return false;
+            const cleanSid = cleanString(socketId, 128);
+            if (!cleanSid) return false;
+            await redisClient.hDel(guestsKey(liveId), cleanSid);
+            return true;
+        },
+        async listGuests(liveId, { filterDeadNodes = true } = {}) {
+            if (!hasHashSupport) return null;
+            const hashKey = guestsKey(liveId);
+            return filterAliveEntries(hashKey, await redisClient.hGetAll(hashKey), filterDeadNodes);
+        },
+        async incrementReactions(liveId, delta, batchId = '', baselineCount = 0) {
+            const amount = Math.max(0, Math.trunc(Number(delta) || 0));
+            const base = Math.max(0, Math.trunc(Number(baselineCount) || 0));
+            const cleanBatch = cleanString(batchId, 128);
+            const result = await redisClient.eval(
+                "local cur = tonumber(redis.call('GET', KEYS[1]) or '0') " +
+                "local base = tonumber(ARGV[3]) " +
+                "if base > cur then cur = base redis.call('SET', KEYS[1], tostring(cur), 'EX', ARGV[2]) end " +
+                "if ARGV[4] ~= '' then " +
+                "  local added = redis.call('SADD', KEYS[2], ARGV[4]) " +
+                "  redis.call('EXPIRE', KEYS[2], ARGV[2]) " +
+                "  if added == 0 then return {0, cur} end " +
+                "end " +
+                "local total = cur + tonumber(ARGV[1]) " +
+                "redis.call('SET', KEYS[1], tostring(total), 'EX', ARGV[2]) " +
+                "return {1, total}",
+                {
+                    keys: [reactionsKey(liveId), reactionBatchesKey(liveId)],
+                    arguments: [String(amount), String(config.stateTtlSeconds), String(base), cleanBatch]
+                }
+            );
+            if (!Array.isArray(result) || result.length < 2) return null;
+            return { applied: Number(result[0]) === 1, total: Math.max(0, Number(result[1]) || 0) };
         },
         async scheduleHostDeadline(liveId, deadlineMs) {
             const normalizedLiveId = cleanString(liveId, 128);

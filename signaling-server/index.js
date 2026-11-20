@@ -660,7 +660,9 @@ function buildServiceHealthPayload() {
         stateConsistency: {
             signalingTransport: realtimeBus.connected ? 'distributed' : 'single-instance',
             voiceAndCallPresence: realtimeBus.connected ? 'distributed' : 'single-instance',
-            liveSessionState: 'replica-affinity-required'
+            liveSessionState: (realtimeBus.connected && currentLiveStateStore().enabled)
+                ? 'distributed-redis-rehydrated'
+                : 'replica-affinity-required'
         }
     };
 }
@@ -2027,6 +2029,7 @@ const liveBattleTimers = new Map();
 const HOST_DISCONNECT_GRACE_MS = 90 * 1000;
 let liveLeaseHeartbeatTimer = null;
 let liveRecoveryMonitorTimer = null;
+let liveNodeHeartbeatTimer = null;
 
 function currentLiveStateStore() {
     return distributedAdapterRuntime.liveState || createNoopDistributedLiveState();
@@ -2034,6 +2037,100 @@ function currentLiveStateStore() {
 
 function liveLeaseOwner(socketId) {
     return `${signalingInstanceId}:${String(socketId || '').trim()}`;
+}
+
+function emitLiveClusterSync(payload) {
+    try {
+        if (typeof liveIo?.serverSideEmit === 'function') {
+            liveIo.serverSideEmit('live:sync', {
+                ...payload,
+                originNodeId: signalingInstanceId
+            });
+        }
+    } catch {
+        // best-effort cluster broadcast
+    }
+}
+
+async function resolveDistributedViewers(liveId, session) {
+    const localViewers = [];
+    if (session?.viewers instanceof Map) {
+        session.viewers.forEach((v, sid) => {
+            localViewers.push({
+                socketId: sid,
+                userId: v.userId,
+                name: v.name,
+                avatarUrl: v.avatarUrl,
+                isModerator: Boolean(v.isModerator)
+            });
+        });
+    }
+    const store = currentLiveStateStore();
+    if (!store.enabled || typeof store.listViewers !== 'function') {
+        const uniqueUsers = new Set(localViewers.map((v) => v.userId));
+        return { viewers: localViewers, viewerCount: localViewers.length, uniqueViewerCount: uniqueUsers.size };
+    }
+    try {
+        const distributed = await store.listViewers(liveId);
+        if (!distributed || !Array.isArray(distributed.viewers)) {
+            const uniqueUsers = new Set(localViewers.map((v) => v.userId));
+            return { viewers: localViewers, viewerCount: localViewers.length, uniqueViewerCount: uniqueUsers.size };
+        }
+        const bySocket = new Map();
+        for (const entry of distributed.viewers) {
+            if (entry?.socketId) bySocket.set(entry.socketId, entry);
+        }
+        for (const entry of localViewers) {
+            if (entry?.socketId) bySocket.set(entry.socketId, entry);
+        }
+        const merged = Array.from(bySocket.values());
+        const uniqueUsers = new Set(merged.map((v) => v.userId));
+        return {
+            viewers: merged,
+            viewerCount: merged.length,
+            uniqueViewerCount: uniqueUsers.size
+        };
+    } catch {
+        const uniqueUsers = new Set(localViewers.map((v) => v.userId));
+        return { viewers: localViewers, viewerCount: localViewers.length, uniqueViewerCount: uniqueUsers.size };
+    }
+}
+
+async function resolveDistributedGuestState(liveId, session) {
+    ensureLiveInteractionState(session);
+    const localRequests = Array.from(session.guestRequests.entries()).map(([socketId, viewer]) => ({
+        ...publicLiveGuest(viewer, socketId),
+        requestedAtMs: Number(viewer?.requestedAtMs || Date.now())
+    }));
+    const localGuests = Array.from(session.guests.entries()).map(([socketId, viewer]) =>
+        publicLiveGuest(viewer, socketId)
+    );
+    const store = currentLiveStateStore();
+    if (!store.enabled) {
+        return { requests: localRequests, guests: localGuests };
+    }
+    try {
+        const [remoteRequests, remoteGuests] = await Promise.all([
+            typeof store.listGuestRequests === 'function' ? store.listGuestRequests(liveId) : null,
+            typeof store.listGuests === 'function' ? store.listGuests(liveId) : null
+        ]);
+        const mergeByUser = (remoteList, localList) => {
+            const byUser = new Map();
+            for (const item of Array.isArray(remoteList) ? remoteList : []) {
+                if (item?.userId) byUser.set(item.userId, item);
+            }
+            for (const item of localList) {
+                if (item?.userId) byUser.set(item.userId, item);
+            }
+            return Array.from(byUser.values());
+        };
+        return {
+            requests: mergeByUser(remoteRequests, localRequests),
+            guests: mergeByUser(remoteGuests, localGuests)
+        };
+    } catch {
+        return { requests: localRequests, guests: localGuests };
+    }
 }
 
 async function persistLiveSession(liveId, session) {
@@ -2101,18 +2198,18 @@ function publicLiveGuest(viewer, socketId) {
 
 function emitLiveGuestState(liveId, session) {
     ensureLiveInteractionState(session);
-    const requests = Array.from(session.guestRequests.entries()).map(([socketId, viewer]) => ({
-        ...publicLiveGuest(viewer, socketId),
-        requestedAtMs: Number(viewer?.requestedAtMs || Date.now())
-    }));
-    const guests = Array.from(session.guests.entries()).map(([socketId, viewer]) =>
-        publicLiveGuest(viewer, socketId)
-    );
-
-    if (session.host?.socketId) {
-        liveIo.to(session.host.socketId).emit('live-guest-requests', requests);
-    }
-    liveIo.to(liveId).emit('live-guests', guests);
+    void (async () => {
+        const { requests, guests } = await resolveDistributedGuestState(liveId, session);
+        const store = currentLiveStateStore();
+        const hostSocketId = session.host?.socketId ||
+            (store.enabled && typeof store.getHostRuntime === 'function'
+                ? (await store.getHostRuntime(liveId).catch(() => null))?.socketId
+                : null);
+        if (hostSocketId) {
+            liveIo.to(hostSocketId).emit('live-guest-requests', requests);
+        }
+        liveIo.to(liveId).emit('live-guests', guests);
+    })();
 }
 
 function clearLiveBattleTimer(liveId) {
@@ -2176,6 +2273,7 @@ async function finalizeLiveTermination(liveId, reason = 'ended') {
     console.log(`[SOCKET_DEBUG] [LIVE][END] ${reason}: liveRef=${diagnosticRef(liveId)}`);
     liveIo.to(liveId).emit('live-ended');
     lives.delete(liveId);
+    emitLiveClusterSync({ action: 'terminated', liveId });
     try {
         await currentLiveStateStore().remove(liveId);
     } catch (error) {
@@ -2219,6 +2317,12 @@ function scheduleHostTerminationGrace(liveId, hostSnapshot, requestedDeadlineMs 
             console.log(`[SOCKET_DEBUG] [LIVE][HOST] userRef=${diagnosticRef(hostSnapshot.userId)} reconnected to liveRef=${diagnosticRef(liveId)} before grace timeout`);
             return;
         }
+        // Check if host already reconnected on another signaling replica!
+        if (store.enabled && await store.hasHostLease(liveId).catch(() => false)) {
+            session.pendingHostSnapshot = null;
+            void store.clearHostDeadline(liveId).catch(() => {});
+            return;
+        }
 
         console.log(`[SOCKET_DEBUG] [LIVE][HOST] userRef=${diagnosticRef(hostSnapshot.userId)} did not reconnect within ${HOST_DISCONNECT_GRACE_MS}ms. Ending liveRef=${diagnosticRef(liveId)}`
         );
@@ -2237,8 +2341,17 @@ async function monitorRecoverableLives() {
         const activeIds = await store.listActiveIds();
         for (const liveId of activeIds.slice(0, 1_000)) {
             if (await store.hasHostLease(liveId)) {
-                await store.clearHostDeadline(liveId);
-                continue;
+                const owner = typeof store.getHostLeaseOwner === 'function'
+                    ? await store.getHostLeaseOwner(liveId)
+                    : null;
+                const ownerNodeId = String(owner || '').split(':')[0];
+                const nodeAlive = !ownerNodeId || typeof store.isNodeAlive !== 'function'
+                    ? true
+                    : await store.isNodeAlive(ownerNodeId);
+                if (nodeAlive) {
+                    await store.clearHostDeadline(liveId);
+                    continue;
+                }
             }
             const deadline = await store.hostDeadline(liveId);
             if (deadline == null) {
@@ -2250,8 +2363,17 @@ async function monitorRecoverableLives() {
             if (!lockToken) continue;
             try {
                 if (await store.hasHostLease(liveId)) {
-                    await store.clearHostDeadline(liveId);
-                    continue;
+                    const owner = typeof store.getHostLeaseOwner === 'function'
+                        ? await store.getHostLeaseOwner(liveId)
+                        : null;
+                    const ownerNodeId = String(owner || '').split(':')[0];
+                    const nodeAlive = !ownerNodeId || typeof store.isNodeAlive !== 'function'
+                        ? true
+                        : await store.isNodeAlive(ownerNodeId);
+                    if (nodeAlive) {
+                        await store.clearHostDeadline(liveId);
+                        continue;
+                    }
                 }
                 if (!lives.has(liveId)) await restoreLiveSession(liveId);
                 await finalizeLiveTermination(liveId, 'distributed-host-lease-timeout');
@@ -2269,6 +2391,15 @@ function startLiveRecoveryWorkers() {
     if (!store.enabled || liveLeaseHeartbeatTimer || liveRecoveryMonitorTimer) return;
     const leaseSeconds = Number(store.config?.hostLeaseSeconds || 45);
     const heartbeatMs = Math.max(5_000, Math.min(30_000, Math.floor((leaseSeconds * 1_000) / 3)));
+    const nodeLivenessSeconds = Number(store.config?.nodeLivenessSeconds || 10);
+    const nodeHeartbeatMs = Math.max(1_000, Math.min(15_000, Math.floor((nodeLivenessSeconds * 1_000) / 3)));
+    if (typeof store.renewNodeHeartbeat === 'function') {
+        void store.renewNodeHeartbeat(signalingInstanceId).catch(() => {});
+        liveNodeHeartbeatTimer = setInterval(() => {
+            void store.renewNodeHeartbeat(signalingInstanceId).catch(() => {});
+        }, nodeHeartbeatMs);
+        liveNodeHeartbeatTimer.unref?.();
+    }
     liveLeaseHeartbeatTimer = setInterval(() => {
         for (const [liveId, session] of lives.entries()) {
             if (!session.host?.socketId) continue;
@@ -2282,6 +2413,91 @@ function startLiveRecoveryWorkers() {
     liveRecoveryMonitorTimer.unref?.();
     void monitorRecoverableLives();
 }
+
+liveIo.on('live:sync', async (payload = {}) => {
+    const liveId = String(payload.liveId || '').trim();
+    if (!liveId || payload.originNodeId === signalingInstanceId) return;
+    const session = lives.get(liveId);
+    if (payload.action === 'terminated') {
+        clearPendingLiveTermination(liveId);
+        clearLiveBattleTimer(liveId);
+        lives.delete(liveId);
+        return;
+    }
+    if (payload.action === 'host-joined') {
+        if (!session) return;
+        clearPendingLiveTermination(liveId);
+        const previousHost = session.host;
+        if (previousHost?.socketId) {
+            const previousSocket = liveIo.sockets.get(previousHost.socketId);
+            if (previousSocket) {
+                previousSocket.emit('live-session-replaced', {
+                    liveId,
+                    message: 'Este directo continúa desde otro dispositivo.'
+                });
+                previousSocket.data.joinedLiveIds?.delete(liveId);
+                if (previousSocket.data.liveId === liveId) {
+                    previousSocket.data.liveId = null;
+                    previousSocket.data.liveRole = null;
+                }
+                previousSocket.leave(liveId);
+            }
+            session.host = null;
+        }
+        session.pendingHostSnapshot = payload.host || session.pendingHostSnapshot;
+        return;
+    }
+    if (payload.action === 'state-updated') {
+        if (!session) return;
+        if (payload.state) session.state = { ...session.state, ...payload.state };
+        if (typeof payload.reactionCount === 'number') {
+            session.reactionCount = Math.max(Number(session.reactionCount || 0), payload.reactionCount);
+        }
+        if (payload.battle) session.battle = { ...session.battle, ...payload.battle };
+        if (payload.moderation) {
+            session.moderation = {
+                chatPaused: Boolean(payload.moderation.chatPaused),
+                moderators: new Set(Array.isArray(payload.moderation.moderators) ? payload.moderation.moderators : []),
+                blockedWords: Array.isArray(payload.moderation.blockedWords) ? payload.moderation.blockedWords : []
+            };
+            session.viewers.forEach((viewer) => {
+                viewer.isModerator = session.moderation.moderators.has(viewer.userId);
+            });
+        }
+        return;
+    }
+    if (payload.action === 'moderation-enforce' && ['kick', 'ban'].includes(payload.command)) {
+        if (!session) return;
+        const targetUserId = String(payload.targetUserId || '').trim();
+        if (!targetUserId) return;
+        const store = currentLiveStateStore();
+        for (const [viewerSocketId, viewer] of session.viewers.entries()) {
+            if (viewer.userId !== targetUserId) continue;
+            liveIo.to(viewerSocketId).emit('live-moderated', {
+                action: payload.command,
+                message: payload.command === 'ban'
+                    ? 'El equipo de moderación restringió tu acceso a este directo.'
+                    : 'El equipo de moderación te retiró de este directo.'
+            });
+            const targetSocket = liveIo.sockets.get(viewerSocketId);
+            if (targetSocket) {
+                targetSocket.data.joinedLiveIds?.delete(liveId);
+                targetSocket.leave(liveId);
+            }
+            session.viewers.delete(viewerSocketId);
+            session.guestRequests.delete(viewerSocketId);
+            session.guests.delete(viewerSocketId);
+            if (store.enabled) {
+                void store.removeViewer?.(liveId, viewerSocketId)?.catch?.(() => {});
+                void store.removeGuestRequest?.(liveId, viewerSocketId)?.catch?.(() => {});
+                void store.removeGuest?.(liveId, viewerSocketId)?.catch?.(() => {});
+            }
+            liveIo.to(liveId).emit('viewer-left', viewerSocketId);
+        }
+        const { viewerCount } = await resolveDistributedViewers(liveId, session);
+        liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
+    }
+});
 
 liveIo.on('connection', (socket) => {
     installSocketPacketGuard(socket);
@@ -2494,6 +2710,28 @@ liveIo.on('connection', (socket) => {
                         liveLeaseOwner(socket.id),
                         replaceOwnerId
                     );
+                    if (!claimed && typeof store.getHostLeaseOwner === 'function') {
+                        const currentOwner = await store.getHostLeaseOwner(liveId);
+                        if (currentOwner) {
+                            // 1) Fast dead-replica reclaim when owning node heartbeat expired
+                            if (typeof store.reclaimDeadHostLease === 'function') {
+                                claimed = await store.reclaimDeadHostLease(
+                                    liveId,
+                                    liveLeaseOwner(socket.id),
+                                    currentOwner
+                                );
+                            }
+                            // 2) Intentional cross-replica host reconnect / handoff by the verified canonical owner
+                            const activeHostUserId = session.host?.userId || session.pendingHostSnapshot?.userId || userId;
+                            if (!claimed && activeHostUserId === userId) {
+                                claimed = await store.renewHostLease(
+                                    liveId,
+                                    liveLeaseOwner(socket.id),
+                                    currentOwner
+                                );
+                            }
+                        }
+                    }
                 } catch (error) {
                     console.error(
                         `[SIGNALING_REDIS] Could not claim host lease for liveRef=${diagnosticRef(liveId)}`,
@@ -2573,37 +2811,46 @@ liveIo.on('connection', (socket) => {
                     ? requestedModeration.blocked_words.map((word) => String(word || '').trim()).filter(Boolean)
                     : []
             };
-            await currentLiveStateStore().clearHostDeadline(liveId).catch(() => {});
+            const store = currentLiveStateStore();
+            await store.clearHostDeadline(liveId).catch(() => {});
+            await store.setHostRuntime?.(liveId, {
+                nodeId: signalingInstanceId,
+                socketId: socket.id,
+                userId,
+                name,
+                avatarUrl
+            })?.catch?.(() => {});
             await persistLiveSession(liveId, session);
-        console.log(`[SOCKET_DEBUG] [LIVE][HOST] userRef=${diagnosticRef(userId)} is hosting liveRef=${diagnosticRef(liveId)}`);
-
-            // Send existing viewers to host
-            const currentViewers = [];
-            session.viewers.forEach((v, sid) => {
-                currentViewers.push({ socketId: sid, userId: v.userId, name: v.name, avatarUrl: v.avatarUrl });
+            emitLiveClusterSync({
+                action: 'host-joined',
+                liveId,
+                nodeId: signalingInstanceId,
+                socketId: socket.id,
+                host: { userId, name, avatarUrl }
             });
-            socket.emit('current-viewers', currentViewers);
-            socket.emit(
-                'live-guest-requests',
-                Array.from(session.guestRequests.entries()).map(([socketId, viewer]) => ({
-                    ...publicLiveGuest(viewer, socketId),
-                    requestedAtMs: Number(viewer?.requestedAtMs || Date.now())
-                }))
-            );
+            console.log(`[SOCKET_DEBUG] [LIVE][HOST] userRef=${diagnosticRef(userId)} is hosting liveRef=${diagnosticRef(liveId)}`);
 
-            // Inform viewers about host (so they can connect)
-            session.viewers.forEach((v, sid) => {
-                liveIo.to(sid).emit('host-info', {
-                    socketId: socket.id,
-                    userId,
-                    name,
-                    avatarUrl
-                });
-                liveIo.to(sid).emit('live-state', session.state);
+            // Send existing viewers across all active signaling replicas to host
+            const { viewers: currentViewers, viewerCount } = await resolveDistributedViewers(liveId, session);
+            const { requests: currentGuestRequests } = await resolveDistributedGuestState(liveId, session);
+            socket.emit('current-viewers', currentViewers.map((v) => ({
+                socketId: v.socketId,
+                userId: v.userId,
+                name: v.name,
+                avatarUrl: v.avatarUrl
+            })));
+            socket.emit('live-guest-requests', currentGuestRequests);
+
+            // Inform viewers on ALL signaling replicas about host (so they can connect/reconnect)
+            liveIo.to(liveId).emit('host-info', {
+                socketId: socket.id,
+                userId,
+                name,
+                avatarUrl
             });
+            liveIo.to(liveId).emit('live-state', session.state);
 
             // Emit count
-            const viewerCount = session.viewers.size;
             liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
             socket.emit('reaction-count', { liveId, reactionCount: session.reactionCount });
             await setLiveStreamActive(liveId, session.hostAuthToken);
@@ -2615,6 +2862,7 @@ liveIo.on('connection', (socket) => {
         }
 
         // Viewer join
+        const store = currentLiveStateStore();
         session.viewers.set(socket.id, {
             userId,
             name,
@@ -2622,31 +2870,87 @@ liveIo.on('connection', (socket) => {
             authToken: getSocketAuthToken(socket),
             isModerator: Boolean(requestedModeration?.is_moderator)
         });
-        const recoveredRequest = session.recoverableGuestRequests.get(userId);
+        if (store.enabled) {
+            await store.upsertViewer?.(liveId, socket.id, {
+                userId,
+                name,
+                avatarUrl,
+                nodeId: signalingInstanceId,
+                isModerator: Boolean(requestedModeration?.is_moderator)
+            })?.catch?.(() => {});
+        }
+        let recoveredRequest = session.recoverableGuestRequests.get(userId);
+        if (!recoveredRequest && store.enabled && typeof store.listGuestRequests === 'function') {
+            const remoteRequests = await store.listGuestRequests(liveId, { filterDeadNodes: false }).catch(() => null);
+            const priorReq = Array.isArray(remoteRequests) ? remoteRequests.find((entry) => entry.userId === userId) : null;
+            if (priorReq) {
+                recoveredRequest = priorReq;
+                if (priorReq.socketId && priorReq.socketId !== socket.id) {
+                    await store.removeGuestRequest?.(liveId, priorReq.socketId)?.catch?.(() => {});
+                }
+            }
+        }
         if (recoveredRequest) {
             session.recoverableGuestRequests.delete(userId);
-            session.guestRequests.set(socket.id, {
+            const reboundReq = {
                 ...session.viewers.get(socket.id),
                 requestedAtMs: Number(recoveredRequest.requestedAtMs || Date.now())
-            });
+            };
+            session.guestRequests.set(socket.id, reboundReq);
+            if (store.enabled) {
+                await store.upsertGuestRequest?.(liveId, socket.id, {
+                    ...reboundReq,
+                    nodeId: signalingInstanceId
+                })?.catch?.(() => {});
+            }
         }
-        if (session.recoverableGuests.has(userId)) {
-            const recoveredGuest = session.recoverableGuests.get(userId);
+        let recoveredGuest = session.recoverableGuests.get(userId);
+        if (!recoveredGuest && store.enabled && typeof store.listGuests === 'function') {
+            const remoteGuests = await store.listGuests(liveId, { filterDeadNodes: false }).catch(() => null);
+            const priorGuest = Array.isArray(remoteGuests) ? remoteGuests.find((entry) => entry.userId === userId) : null;
+            if (priorGuest) {
+                recoveredGuest = priorGuest;
+                if (priorGuest.socketId && priorGuest.socketId !== socket.id) {
+                    await store.removeGuest?.(liveId, priorGuest.socketId)?.catch?.(() => {});
+                }
+            }
+        }
+        if (recoveredGuest) {
             session.recoverableGuests.delete(userId);
-            session.guests.set(socket.id, {
+            const reboundGuest = {
                 ...session.viewers.get(socket.id),
                 ...(typeof recoveredGuest?.videoEnabled === 'boolean'
                     ? { videoEnabled: recoveredGuest.videoEnabled } : {})
+            };
+            session.guests.set(socket.id, reboundGuest);
+            if (store.enabled) {
+                await store.upsertGuest?.(liveId, socket.id, {
+                    ...reboundGuest,
+                    nodeId: signalingInstanceId
+                })?.catch?.(() => {});
+            }
+            socket.emit('live-guest-status', {
+                status: 'accepted',
+                rehydrated: true,
+                videoEnabled: reboundGuest.videoEnabled !== false,
+                message: 'Sesión multi-host restaurada automáticamente.'
             });
         }
         if (session.battle?.opponentUserId === userId) {
             session.battle.opponentSocketId = socket.id;
         }
         persistLiveSessionInBackground(liveId, session);
-        console.log(`[SOCKET_DEBUG] [LIVE][VIEWER] userRef=${diagnosticRef(userId)} joined liveRef=${diagnosticRef(liveId)}. Viewers: ${session.viewers.size}`);
+        const { viewerCount } = await resolveDistributedViewers(liveId, session);
+        console.log(`[SOCKET_DEBUG] [LIVE][VIEWER] userRef=${diagnosticRef(userId)} joined liveRef=${diagnosticRef(liveId)}. Viewers: ${viewerCount}`);
 
-        // Notify host and provide host info to viewer
-        if (session.host?.socketId) {
+        const activeHost = session.host?.socketId
+            ? session.host
+            : (store.enabled && typeof store.getHostRuntime === 'function'
+                ? await store.getHostRuntime(liveId).catch(() => null)
+                : null);
+
+        // Notify host and provide host info to viewer across any replica
+        if (activeHost?.socketId) {
             // Every participant should see the live join activity. The Android
             // viewer only updates the UI; only the host establishes a media peer.
             liveIo.to(liveId).emit('viewer-joined', {
@@ -2657,20 +2961,20 @@ liveIo.on('connection', (socket) => {
             });
 
             socket.emit('host-info', {
-                socketId: session.host.socketId,
-                userId: session.host.userId,
-                name: session.host.name,
-                avatarUrl: session.host.avatarUrl
+                socketId: activeHost.socketId,
+                userId: activeHost.userId,
+                name: activeHost.name,
+                avatarUrl: activeHost.avatarUrl
             });
             socket.emit('live-state', session.state);
-            socket.emit(
-                'live-guests',
-                Array.from(session.guests.entries()).map(([socketId, viewer]) => publicLiveGuest(viewer, socketId))
-            );
+            const { guests: currentGuests } = await resolveDistributedGuestState(liveId, session);
+            socket.emit('live-guests', currentGuests);
             socket.emit('live-battle-state', session.battle);
         }
 
-        const viewerCount = session.viewers.size;
+        if (recoveredRequest || recoveredGuest) {
+            emitLiveGuestState(liveId, session);
+        }
         liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
         socket.emit('reaction-count', { liveId, reactionCount: session.reactionCount });
         await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
@@ -2706,8 +3010,8 @@ liveIo.on('connection', (socket) => {
         await finalizeLiveTermination(liveId, 'host-ended');
     });
 
-    // Free hearts are ephemeral UI events; this process owns the room aggregate.
-    safeSocketOn(socket, 'send-reaction', (data) => {
+    // Free hearts are ephemeral UI events; Redis coordinates the room aggregate when enabled.
+    safeSocketOn(socket, 'send-reaction', async (data) => {
         const liveId = requireJoinedScope(
             socket,
             'joinedLiveIds',
@@ -2726,13 +3030,35 @@ liveIo.on('connection', (socket) => {
 
         const effect = liveReactionPolicy(data?.emoji);
         if (!effect) return;
-        session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + effect.heartDelta;
+        const store = currentLiveStateStore();
+        if (effect.heartDelta && store.enabled && typeof store.incrementReactions === 'function') {
+            const incremented = await store.incrementReactions(
+                liveId,
+                effect.heartDelta,
+                '',
+                session.reactionCount
+            ).catch(() => null);
+            if (incremented) {
+                session.reactionCount = incremented.total;
+            } else {
+                session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + effect.heartDelta;
+            }
+        } else {
+            session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + effect.heartDelta;
+        }
         const reactionId = typeof data?.reactionId === 'string' && /^[a-f0-9-]{36}$/i.test(data.reactionId) ? data.reactionId : crypto.randomUUID();
         liveIo.to(liveId).emit('reaction', { liveId, kind: effect.kind, emoji: effect.emoji, userId, reactionId });
-        if (effect.heartDelta) liveIo.to(liveId).emit('reaction-count', {
-            liveId,
-            reactionCount: session.reactionCount
-        });
+        if (effect.heartDelta) {
+            liveIo.to(liveId).emit('reaction-count', {
+                liveId,
+                reactionCount: session.reactionCount
+            });
+            emitLiveClusterSync({
+                action: 'state-updated',
+                liveId,
+                reactionCount: session.reactionCount
+            });
+        }
         if (effect.heartDelta && session.reactionCount % 25 === 0) {
             void setLiveReactionCount(liveId, session.reactionCount, session.hostAuthToken);
             persistLiveSessionInBackground(liveId, session);
@@ -2741,7 +3067,7 @@ liveIo.on('connection', (socket) => {
 
     // Mobile clients aggregate rapid taps for 500 ms (or ten taps). The batch
     // id prevents a reconnect/retry from counting the same hearts twice.
-    safeSocketOn(socket, 'send-reaction-batch', (data) => {
+    safeSocketOn(socket, 'send-reaction-batch', async (data) => {
         const liveId = requireJoinedScope(
             socket,
             'joinedLiveIds',
@@ -2774,12 +3100,40 @@ liveIo.on('connection', (socket) => {
             socket.emit('reaction-count', { liveId, reactionCount: session.reactionCount });
             return;
         }
-        session.reactionBatchIds.add(clientBatchId);
-        if (session.reactionBatchIds.size > 500) {
-            session.reactionBatchIds.delete(session.reactionBatchIds.values().next().value);
+
+        const store = currentLiveStateStore();
+        if (store.enabled && typeof store.incrementReactions === 'function') {
+            const incremented = await store.incrementReactions(
+                liveId,
+                count,
+                clientBatchId,
+                session.reactionCount
+            ).catch(() => null);
+            if (incremented) {
+                session.reactionCount = incremented.total;
+                session.reactionBatchIds.add(clientBatchId);
+                if (session.reactionBatchIds.size > 500) {
+                    session.reactionBatchIds.delete(session.reactionBatchIds.values().next().value);
+                }
+                if (!incremented.applied) {
+                    socket.emit('reaction-count', { liveId, reactionCount: session.reactionCount });
+                    return;
+                }
+            } else {
+                session.reactionBatchIds.add(clientBatchId);
+                if (session.reactionBatchIds.size > 500) {
+                    session.reactionBatchIds.delete(session.reactionBatchIds.values().next().value);
+                }
+                session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + count;
+            }
+        } else {
+            session.reactionBatchIds.add(clientBatchId);
+            if (session.reactionBatchIds.size > 500) {
+                session.reactionBatchIds.delete(session.reactionBatchIds.values().next().value);
+            }
+            session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + count;
         }
 
-        session.reactionCount = Math.max(0, Number(session.reactionCount || 0)) + count;
         liveIo.to(liveId).emit('reaction', {
             liveId,
             kind: 'heart',
@@ -2788,6 +3142,11 @@ liveIo.on('connection', (socket) => {
             clientBatchId
         });
         liveIo.to(liveId).emit('reaction-count', {
+            liveId,
+            reactionCount: session.reactionCount
+        });
+        emitLiveClusterSync({
+            action: 'state-updated',
             liveId,
             reactionCount: session.reactionCount
         });
@@ -2887,6 +3246,7 @@ liveIo.on('connection', (socket) => {
         };
 
         liveIo.to(liveId).emit('live-state', session.state);
+        emitLiveClusterSync({ action: 'state-updated', liveId, state: session.state });
         persistLiveSessionInBackground(liveId, session);
     });
 
@@ -2917,19 +3277,31 @@ liveIo.on('connection', (socket) => {
             return;
         }
 
-        if (session.guests.has(socket.id)) {
+        const { guests: currentGuests } = await resolveDistributedGuestState(liveId, session);
+        if (session.guests.has(socket.id) || currentGuests.some((g) => g.userId === viewer.userId)) {
             socket.emit('live-guest-status', { status: 'accepted', message: 'Ya estás en la sala multi-host.' });
             return;
         }
-        if (session.guests.size >= maxLiveGuests) {
+        if (currentGuests.length >= maxLiveGuests) {
             socket.emit('live-guest-status', { status: 'rejected', message: 'La sala multi-host ya está llena.' });
             return;
         }
         const request = { ...viewer, requestedAtMs: Date.now() };
         session.guestRequests.set(socket.id, request);
+        const store = currentLiveStateStore();
+        if (store.enabled) {
+            await store.upsertGuestRequest?.(liveId, socket.id, {
+                ...request,
+                nodeId: signalingInstanceId
+            })?.catch?.(() => {});
+        }
         socket.emit('live-guest-status', { status: 'pending', message: 'Solicitud enviada al anfitrión.' });
-        if (session.host?.socketId) {
-            liveIo.to(session.host.socketId).emit('live-guest-request', {
+        const hostSocketId = session.host?.socketId ||
+            (store.enabled && typeof store.getHostRuntime === 'function'
+                ? (await store.getHostRuntime(liveId).catch(() => null))?.socketId
+                : null);
+        if (hostSocketId) {
+            liveIo.to(hostSocketId).emit('live-guest-request', {
                 ...publicLiveGuest(request, socket.id),
                 requestedAtMs: request.requestedAtMs
             });
@@ -2938,7 +3310,7 @@ liveIo.on('connection', (socket) => {
         persistLiveSessionInBackground(liveId, session);
     });
 
-    safeSocketOn(socket, 'live-guest-cancel', (rawData) => {
+    safeSocketOn(socket, 'live-guest-cancel', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(
             socket,
@@ -2952,12 +3324,16 @@ liveIo.on('connection', (socket) => {
         if (!session || socket.data.liveRole !== 'viewer') return;
         ensureLiveInteractionState(session);
         session.guestRequests.delete(socket.id);
+        const store = currentLiveStateStore();
+        if (store.enabled) {
+            await store.removeGuestRequest?.(liveId, socket.id)?.catch?.(() => {});
+        }
         socket.emit('live-guest-status', { status: 'none', message: 'Solicitud cancelada.' });
         emitLiveGuestState(liveId, session);
         persistLiveSessionInBackground(liveId, session);
     });
 
-    safeSocketOn(socket, 'live-guest-response', (rawData) => {
+    safeSocketOn(socket, 'live-guest-response', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(
             socket,
@@ -2971,35 +3347,65 @@ liveIo.on('connection', (socket) => {
         if (!session || session.host?.socketId !== socket.id) return;
         ensureLiveInteractionState(session);
         const targetSocketId = String(data.targetSocketId || '').trim();
-        const targetViewer = session.guestRequests.get(targetSocketId) || session.viewers.get(targetSocketId);
+        const store = currentLiveStateStore();
+        let targetViewer = session.guestRequests.get(targetSocketId) || session.viewers.get(targetSocketId);
+        if (!targetViewer && store.enabled) {
+            const { requests, guests } = await resolveDistributedGuestState(liveId, session);
+            const { viewers } = await resolveDistributedViewers(liveId, session);
+            targetViewer = requests.find((r) => r.socketId === targetSocketId) ||
+                viewers.find((v) => v.socketId === targetSocketId) ||
+                guests.find((g) => g.socketId === targetSocketId) ||
+                null;
+        }
         if (!targetSocketId || !targetViewer) return;
 
         session.guestRequests.delete(targetSocketId);
-        const accepted = Boolean(data.accepted) && session.guests.size < maxLiveGuests;
-        if (accepted) session.guests.set(targetSocketId, targetViewer);
+        if (store.enabled) {
+            await store.removeGuestRequest?.(liveId, targetSocketId)?.catch?.(() => {});
+        }
+        const { guests: currentGuests } = await resolveDistributedGuestState(liveId, session);
+        const accepted = Boolean(data.accepted) && currentGuests.length < maxLiveGuests;
+        if (accepted) {
+            session.guests.set(targetSocketId, targetViewer);
+            session.recoverableGuests.set(targetViewer.userId, publicLiveGuest(targetViewer, targetSocketId));
+            if (store.enabled) {
+                await store.upsertGuest?.(liveId, targetSocketId, {
+                    ...targetViewer,
+                    nodeId: targetViewer.nodeId || signalingInstanceId
+                })?.catch?.(() => {});
+            }
+        }
         liveIo.to(targetSocketId).emit('live-guest-status', {
             status: accepted ? 'accepted' : 'rejected',
             message: accepted
                 ? 'El anfitrión aceptó tu solicitud. Configura cámara y micrófono.'
-                : session.guests.size >= maxLiveGuests
+                : currentGuests.length >= maxLiveGuests
                     ? 'La sala multi-host ya está llena.'
                     : 'El anfitrión rechazó la solicitud.'
         });
         emitLiveGuestState(liveId, session);
-        persistLiveSessionInBackground(liveId, session);
+        await persistLiveSession(liveId, session);
     });
 
-    safeSocketOn(socket, 'update-live-guest-media-state', (data) => {
+    safeSocketOn(socket, 'update-live-guest-media-state', async (data) => {
         const liveId = requireJoinedScope(socket, 'joinedLiveIds', data.liveId || socket.data.liveId,
             'live', 'update-live-guest-media-state');
         if (!liveId) return;
         const session = lives.get(liveId);
         if (!updateLiveGuestMediaState(session, socket, data)) return;
+        const store = currentLiveStateStore();
+        const updatedGuest = session.guests.get(socket.id);
+        if (store.enabled && updatedGuest) {
+            await store.upsertGuest?.(liveId, socket.id, {
+                ...updatedGuest,
+                nodeId: signalingInstanceId
+            })?.catch?.(() => {});
+        }
         emitLiveGuestState(liveId, session);
         persistLiveSessionInBackground(liveId, session);
     });
 
-    safeSocketOn(socket, 'live-guest-leave', (rawData) => {
+    safeSocketOn(socket, 'live-guest-leave', async (rawData) => {
         const data = (rawData && typeof rawData === 'object') ? rawData : {};
         const liveId = requireJoinedScope(
             socket,
@@ -3014,6 +3420,15 @@ liveIo.on('connection', (socket) => {
         ensureLiveInteractionState(session);
         session.guestRequests.delete(socket.id);
         session.guests.delete(socket.id);
+        if (socket.data.authUserId) {
+            session.recoverableGuestRequests?.delete(socket.data.authUserId);
+            session.recoverableGuests?.delete(socket.data.authUserId);
+        }
+        const store = currentLiveStateStore();
+        if (store.enabled) {
+            await store.removeGuestRequest?.(liveId, socket.id)?.catch?.(() => {});
+            await store.removeGuest?.(liveId, socket.id)?.catch?.(() => {});
+        }
         socket.emit('live-guest-status', { status: 'none', message: 'Saliste de la sala multi-host.' });
         emitLiveGuestState(liveId, session);
         persistLiveSessionInBackground(liveId, session);
@@ -3148,6 +3563,7 @@ liveIo.on('connection', (socket) => {
             });
 
             if (['kick', 'ban'].includes(command)) {
+                const store = currentLiveStateStore();
                 for (const [viewerSocketId, viewer] of session.viewers.entries()) {
                     if (viewer.userId !== targetUserId) continue;
                     liveIo.to(viewerSocketId).emit('live-moderated', {
@@ -3162,16 +3578,36 @@ liveIo.on('connection', (socket) => {
                         targetSocket.leave(liveId);
                     }
                     session.viewers.delete(viewerSocketId);
-                    if (session.host?.socketId) {
-                        liveIo.to(liveId).emit('viewer-left', viewerSocketId);
+                    session.guestRequests.delete(viewerSocketId);
+                    session.guests.delete(viewerSocketId);
+                    if (store.enabled) {
+                        await store.removeViewer?.(liveId, viewerSocketId)?.catch?.(() => {});
+                        await store.removeGuestRequest?.(liveId, viewerSocketId)?.catch?.(() => {});
+                        await store.removeGuest?.(liveId, viewerSocketId)?.catch?.(() => {});
                     }
+                    liveIo.to(liveId).emit('viewer-left', viewerSocketId);
                 }
-                const viewerCount = session.viewers.size;
+                emitLiveClusterSync({
+                    action: 'moderation-enforce',
+                    liveId,
+                    command,
+                    targetUserId
+                });
+                const { viewerCount } = await resolveDistributedViewers(liveId, session);
                 liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
                 await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
             }
 
             emitLiveModerationState(liveId, session);
+            emitLiveClusterSync({
+                action: 'state-updated',
+                liveId,
+                moderation: {
+                    chatPaused: session.moderation.chatPaused,
+                    moderators: Array.from(session.moderation.moderators),
+                    blockedWords: session.moderation.blockedWords
+                }
+            });
             persistLiveSessionInBackground(liveId, session);
             socket.emit('live-moderation-confirmed', { command, targetUserId });
         } catch (error) {
@@ -3244,6 +3680,7 @@ liveIo.on('connection', (socket) => {
 
     safeSocketOn(socket, 'disconnecting', async () => {
         const joined = Array.from(socket.data.joinedLiveIds || []);
+        const store = currentLiveStateStore();
 
         for (const liveId of joined) {
             const session = lives.get(liveId);
@@ -3260,11 +3697,12 @@ liveIo.on('connection', (socket) => {
                 });
                 session.host = null;
                 session.pendingHostSnapshot = disconnectedHost;
-                await currentLiveStateStore()
+                await store
                     .releaseHostLease(liveId, liveLeaseOwner(socket.id))
                     .catch((error) => {
                         console.error(`[SIGNALING_REDIS] Could not release host lease for liveRef=${diagnosticRef(liveId)}`, diagnosticError(error));
                     });
+                await store.clearHostRuntime?.(liveId, socket.id)?.catch?.(() => {});
                 console.log(`[SOCKET_DEBUG] [LIVE][HOST] userRef=${diagnosticRef(disconnectedHost.userId)} disconnected from liveRef=${diagnosticRef(liveId)}. Waiting ${HOST_DISCONNECT_GRACE_MS}ms for reconnection`
                 );
                 scheduleHostTerminationGrace(liveId, disconnectedHost);
@@ -3272,30 +3710,66 @@ liveIo.on('connection', (socket) => {
             }
 
             // Viewer disconnect
+            const viewerEntry = session.viewers.get(socket.id);
             const wasViewer = session.viewers.delete(socket.id);
+            if (store.enabled) {
+                await store.removeViewer?.(liveId, socket.id)?.catch?.(() => {});
+            }
             if (wasViewer) {
                 ensureLiveInteractionState(session);
+                let pendingReq = session.guestRequests.get(socket.id);
                 session.guestRequests.delete(socket.id);
-                const wasGuest = session.guests.delete(socket.id);
+                let activeGuest = session.guests.get(socket.id);
+                let wasGuest = session.guests.delete(socket.id);
+                if (!pendingReq && store.enabled && typeof store.listGuestRequests === 'function') {
+                    const remoteReqs = await store.listGuestRequests(liveId, { filterDeadNodes: false }).catch(() => null);
+                    if (Array.isArray(remoteReqs)) {
+                        pendingReq = remoteReqs.find((r) => r.socketId === socket.id || (viewerEntry?.userId && r.userId === viewerEntry.userId)) || null;
+                    }
+                }
+                if (!activeGuest && store.enabled && typeof store.listGuests === 'function') {
+                    const remoteGuests = await store.listGuests(liveId, { filterDeadNodes: false }).catch(() => null);
+                    if (Array.isArray(remoteGuests)) {
+                        activeGuest = remoteGuests.find((g) => g.socketId === socket.id || (viewerEntry?.userId && g.userId === viewerEntry.userId)) || null;
+                        if (activeGuest) wasGuest = true;
+                    }
+                }
+                // Preserve recoverable guest/request permissions across transient disconnects or node failovers
+                if (pendingReq?.userId) {
+                    session.recoverableGuestRequests.set(pendingReq.userId, {
+                        userId: pendingReq.userId,
+                        name: pendingReq.name,
+                        avatarUrl: pendingReq.avatarUrl,
+                        requestedAtMs: pendingReq.requestedAtMs
+                    });
+                }
+                if (activeGuest?.userId) {
+                    session.recoverableGuests.set(activeGuest.userId, publicLiveGuest(activeGuest, socket.id));
+                }
+                if (store.enabled) {
+                    await store.removeGuestRequest?.(liveId, socket.id)?.catch?.(() => {});
+                    await store.removeGuest?.(liveId, socket.id)?.catch?.(() => {});
+                }
                 if (wasGuest && session.battle?.opponentSocketId === socket.id && ['invited', 'active'].includes(session.battle.status)) {
                     clearLiveBattleTimer(liveId);
                     session.battle = { ...session.battle, status: 'finished', message: 'El invitado salió de la batalla.' };
                     emitLiveBattleState(liveId, session);
                 }
                 emitLiveGuestState(liveId, session);
-                if (session.host?.socketId) {
-                    liveIo.to(liveId).emit('viewer-left', socket.id);
-                }
+                liveIo.to(liveId).emit('viewer-left', socket.id);
 
-                const viewerCount = session.viewers.size;
+                const { viewerCount } = await resolveDistributedViewers(liveId, session);
                 liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
                 await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
-                persistLiveSessionInBackground(liveId, session);
+                await persistLiveSession(liveId, session);
 
-                if (!session.host && viewerCount === 0 && !liveEndTimers.has(liveId)) {
+                const hasRemoteHost = store.enabled
+                    ? await store.hasHostLease(liveId).catch(() => false)
+                    : false;
+                if (!session.host && !hasRemoteHost && viewerCount === 0 && !liveEndTimers.has(liveId)) {
                     const pendingHost = session.pendingHostSnapshot;
-                    if (pendingHost?.userId) {
-                        scheduleHostTerminationGrace(liveId, pendingHost);
+                    if (pendingHost?.userId || viewerEntry) {
+                        scheduleHostTerminationGrace(liveId, pendingHost || { userId: '' });
                     } else {
                         await finalizeLiveTermination(liveId, 'empty-orphaned-live');
                     }
@@ -3320,8 +3794,15 @@ async function shutdown(signal) {
     console.log(`[SOCKET_DEBUG] Graceful shutdown requested (${signal})`);
     if (liveLeaseHeartbeatTimer) clearInterval(liveLeaseHeartbeatTimer);
     if (liveRecoveryMonitorTimer) clearInterval(liveRecoveryMonitorTimer);
+    if (liveNodeHeartbeatTimer) clearInterval(liveNodeHeartbeatTimer);
     liveLeaseHeartbeatTimer = null;
     liveRecoveryMonitorTimer = null;
+    liveNodeHeartbeatTimer = null;
+    try {
+        await currentLiveStateStore().clearNodeHeartbeat?.(signalingInstanceId);
+    } catch {
+        // best-effort node liveness cleanup
+    }
 
     await new Promise((resolve) => {
         const timeout = setTimeout(resolve, 10_000);

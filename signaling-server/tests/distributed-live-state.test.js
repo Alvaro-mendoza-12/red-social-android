@@ -169,3 +169,115 @@ test('persists snapshots and active membership through the Redis contract', asyn
     assert.ok(calls.some(([name]) => name === 'set'));
     assert.ok(calls.some(([name]) => name === 'sAdd'));
 });
+
+test('reclaims host lease ONLY when the owning signaling replica node heartbeat is gone', async () => {
+    const values = new Map();
+    const sets = new Map();
+    const hashes = new Map();
+    const redis = {
+        get: async (key) => values.get(key) || null,
+        set: async (key, value) => { values.set(key, value); return 'OK'; },
+        del: async (keys) => [keys].flat().reduce((acc, k) => acc + Number(values.delete(k) || hashes.delete(k) || sets.delete(k)), 0),
+        exists: async (key) => (values.has(key) || hashes.has(key) || sets.has(key)) ? 1 : 0,
+        sAdd: async () => 1,
+        sRem: async () => 1,
+        sMembers: async () => [],
+        zAdd: async () => 1,
+        zRem: async () => 1,
+        zScore: async () => null,
+        zRangeByScore: async () => [],
+        hSet: async (key, field, value) => {
+            if (!hashes.has(key)) hashes.set(key, new Map());
+            hashes.get(key).set(field, value);
+            return 1;
+        },
+        hGetAll: async (key) => {
+            const map = hashes.get(key);
+            return map ? Object.fromEntries(map.entries()) : {};
+        },
+        hDel: async (key, fields) => {
+            const map = hashes.get(key);
+            if (!map) return 0;
+            return [fields].flat().reduce((acc, f) => acc + Number(map.delete(f)), 0);
+        },
+        expire: async () => 1,
+        eval: async (script, { keys, arguments: args }) => {
+            if (script.includes("redis.call('EXISTS', KEYS[2]) == 0")) {
+                const [leaseKey, nodeKey] = keys;
+                const [newOwner, , deadOwner] = args;
+                const current = values.get(leaseKey) || null;
+                const nodeAlive = values.has(nodeKey);
+                if (!current || current === newOwner || (current === deadOwner && !nodeAlive)) {
+                    values.set(leaseKey, newOwner);
+                    return 1;
+                }
+                return 0;
+            }
+            if (script.includes("redis.call('SADD', KEYS[2], ARGV[4])")) {
+                const [reactionsKey, batchesKey] = keys;
+                const [delta, , base, batchId] = args;
+                let cur = Number(values.get(reactionsKey) || 0);
+                if (Number(base) > cur) cur = Number(base);
+                if (batchId) {
+                    if (!sets.has(batchesKey)) sets.set(batchesKey, new Set());
+                    if (sets.get(batchesKey).has(batchId)) return [0, cur];
+                    sets.get(batchesKey).add(batchId);
+                }
+                const total = cur + Number(delta);
+                values.set(reactionsKey, String(total));
+                return [1, total];
+            }
+            const [key] = keys;
+            const current = values.get(key) || null;
+            if (script.includes("redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])")) {
+                const [owner, , replaceOwner] = args;
+                if (!current || current === owner || (replaceOwner && current === replaceOwner)) {
+                    values.set(key, owner);
+                    return 1;
+                }
+                return 0;
+            }
+            return 0;
+        }
+    };
+
+    const store = createDistributedLiveState(redis, { env: {} });
+    await store.renewNodeHeartbeat('node-a');
+    await store.renewNodeHeartbeat('node-b');
+    assert.equal(await store.renewHostLease('live-1', 'node-a:sock-1'), true);
+    await store.setHostRuntime('live-1', { nodeId: 'node-a', socketId: 'sock-1', userId: 'host-1', name: 'Ana' });
+    await store.upsertViewer('live-1', 'v-sock-a', { userId: 'viewer-1', name: 'V1', nodeId: 'node-a' });
+    await store.upsertViewer('live-1', 'v-sock-b', { userId: 'viewer-2', name: 'V2', nodeId: 'node-b' });
+    await store.upsertGuest('live-1', 'v-sock-a', { userId: 'viewer-1', name: 'V1', nodeId: 'node-a', videoEnabled: false });
+
+    // Cannot reclaim while node-a is alive
+    assert.equal(await store.reclaimDeadHostLease('live-1', 'node-b:sock-2', 'node-a:sock-1'), false);
+    assert.equal((await store.getHostRuntime('live-1')).socketId, 'sock-1');
+    assert.equal((await store.listViewers('live-1')).uniqueViewerCount, 2);
+
+    // Simulate node-a crash (heartbeat expires)
+    await store.clearNodeHeartbeat('node-a');
+    assert.equal(await store.isNodeAlive('node-a'), false);
+    assert.equal(await store.getHostRuntime('live-1'), null);
+
+    // Dead-node reclaim succeeds atomically and prunes dead-node viewers while preserving recoverable guest record
+    assert.equal(await store.reclaimDeadHostLease('live-1', 'node-b:sock-2', 'node-a:sock-1'), true);
+    assert.equal(await store.getHostLeaseOwner('live-1'), 'node-b:sock-2');
+    const viewersAfterCrash = await store.listViewers('live-1');
+    assert.equal(viewersAfterCrash.uniqueViewerCount, 1);
+    assert.equal(viewersAfterCrash.viewers[0].userId, 'viewer-2');
+
+    // Recoverable guest record is still readable with filterDeadNodes: false during guest reconnect
+    const recoverableGuests = await store.listGuests('live-1', { filterDeadNodes: false });
+    assert.equal(recoverableGuests.length, 1);
+    assert.equal(recoverableGuests[0].userId, 'viewer-1');
+    assert.equal(recoverableGuests[0].videoEnabled, false);
+
+    // Atomic reactions + batch deduplication across nodes
+    const r1 = await store.incrementReactions('live-1', 5, 'batch-uuid-1', 10);
+    assert.deepEqual(r1, { applied: true, total: 15 });
+    const r1Dup = await store.incrementReactions('live-1', 5, 'batch-uuid-1', 10);
+    assert.deepEqual(r1Dup, { applied: false, total: 15 });
+    const r2 = await store.incrementReactions('live-1', 3, 'batch-uuid-2', 10);
+    assert.deepEqual(r2, { applied: true, total: 18 });
+});

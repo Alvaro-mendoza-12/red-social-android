@@ -4,8 +4,46 @@ const crypto = require('crypto')
 
 const GUEST_AUDIENCE = 'novvin-guests'
 const GUEST_LIFETIME_SECONDS = 30 * 24 * 60 * 60
+const importedTableCacheByPool = new WeakMap()
+
+const GUEST_CREATOR_VISIBLE_SQL = (ownerExpr) => `
+  AND NOT EXISTS (
+    SELECT 1 FROM fallback_deleted_identities di
+    WHERE lower(di.user_id) = lower(${ownerExpr})
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM fallback_profile_moderation pm
+    WHERE lower(pm.user_id) = lower(${ownerExpr})
+      AND pm.is_suspended = TRUE
+      AND (COALESCE(pm.suspended_until, pm.suspension_end_date) IS NULL
+        OR COALESCE(pm.suspended_until, pm.suspension_end_date) > NOW())
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM fallback_users fu
+    JOIN fallback_profile_overrides fo ON fo.user_id = fu.id
+    WHERE (lower(fu.id::text) = lower(${ownerExpr}) OR lower(COALESCE(fu.supabase_user_id::text, '')) = lower(${ownerExpr}))
+      AND (
+        COALESCE(fo.profile->>'is_private', 'false') IN ('true', 't', '1')
+        OR COALESCE(fo.profile->>'is_suspended', 'false') IN ('true', 't', '1')
+        OR COALESCE(fo.profile->>'profile_visibility', 'everyone') NOT IN ('everyone', 'public')
+        OR COALESCE(fo.profile->>'break_mode', 'off') NOT IN ('off', 'mute')
+      )
+  )`
 
 async function importedTableExists(pool, table) {
+  if (pool && typeof pool === 'object') {
+    let map = importedTableCacheByPool.get(pool)
+    if (!map) {
+      map = new Map()
+      importedTableCacheByPool.set(pool, map)
+    }
+    if (map.has(table)) return map.get(table)
+    const promise = pool.query('SELECT to_regclass($1) AS table_oid', [`supabase_import.${table}`])
+      .then(({ rows }) => Boolean(rows[0]?.table_oid))
+      .catch((err) => { map.delete(table); throw err })
+    map.set(table, promise)
+    return promise
+  }
   const { rows } = await pool.query('SELECT to_regclass($1) AS table_oid', [`supabase_import.${table}`])
   return Boolean(rows[0]?.table_oid)
 }
@@ -85,10 +123,13 @@ async function readPublicContent(pool, kind, id) {
   const { rows } = await pool.query(video
     ? `SELECT id::text, user_id, user_name, user_profile_image, title,
               description, video_url, cover_url, thumbnail_url, created_at
-       FROM fallback_videos WHERE id = $1::uuid AND is_public = TRUE AND is_sensitive = FALSE`
+       FROM fallback_videos WHERE id = $1::uuid AND is_public = TRUE AND is_sensitive = FALSE
+         AND NOT EXISTS (SELECT 1 FROM fallback_video_deletions vd WHERE lower(vd.video_id) = lower(fallback_videos.id::text))
+         ${GUEST_CREATOR_VISIBLE_SQL('fallback_videos.user_id')}`
     : `SELECT id::text, user_id, user_name, user_profile_image, content,
               COALESCE(media_url, media_urls->>0) AS media_url, media_urls, media_type, created_at
-       FROM fallback_posts WHERE id = $1::uuid AND visibility = 'public' AND is_sensitive = FALSE`,
+       FROM fallback_posts WHERE id = $1::uuid AND visibility = 'public' AND is_sensitive = FALSE
+         ${GUEST_CREATOR_VISIBLE_SQL('fallback_posts.user_id')}`,
     [id])
   if (rows[0]) return video ? rows[0] : normalizeGuestPost(rows[0])
   if (!await importedTableExists(pool, kind)) return null
@@ -99,11 +140,14 @@ async function readPublicContent(pool, kind, id) {
          NULLIF(to_jsonb(v)->>'ispublic', '')) IN ('true', 't', '1')
          AND COALESCE(to_jsonb(v)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
          AND COALESCE(to_jsonb(v)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
+         AND NOT EXISTS (SELECT 1 FROM fallback_video_deletions vd WHERE lower(vd.video_id) = lower(v.id))
+         ${GUEST_CREATOR_VISIBLE_SQL("COALESCE(to_jsonb(v)->>'user_id', to_jsonb(v)->>'userid', '')")}
          AND NOT EXISTS (SELECT 1 FROM fallback_videos f WHERE f.id::text = v.id) LIMIT 1`
     : `SELECT to_jsonb(p) AS row FROM supabase_import.posts p
        WHERE p.id = $1 AND COALESCE(NULLIF(p.visibility, ''), 'public') = 'public'
          AND COALESCE(to_jsonb(p)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
          AND COALESCE(to_jsonb(p)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
+         ${GUEST_CREATOR_VISIBLE_SQL("COALESCE(to_jsonb(p)->>'user_id', '')")}
          AND NOT EXISTS (SELECT 1 FROM fallback_posts f WHERE f.id::text = p.id) LIMIT 1`,
     [id])
   return result.rows[0] ? (video ? importedVideo(result.rows[0].row) : importedPost(result.rows[0].row)) : null
@@ -123,7 +167,20 @@ async function readPublicProfile(pool, identifier) {
      LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
      WHERE (u.id::text = $1 OR u.supabase_user_id::text = $1 OR lower(o.profile->>'username') = $1)
        AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
-       AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
+       AND COALESCE(o.profile->>'break_mode', 'off') IN ('off', 'mute')
+       AND COALESCE(o.profile->>'is_suspended', 'false') NOT IN ('true', 't', '1')
+       AND NOT EXISTS (
+         SELECT 1 FROM fallback_deleted_identities di
+         WHERE lower(di.user_id) = lower(u.id::text)
+            OR lower(di.user_id) = lower(COALESCE(u.supabase_user_id::text, ''))
+       )
+       AND NOT EXISTS (
+         SELECT 1 FROM fallback_profile_moderation pm
+         WHERE (lower(pm.user_id) = lower(u.id::text) OR lower(pm.user_id) = lower(COALESCE(u.supabase_user_id::text, '')))
+           AND pm.is_suspended = TRUE
+           AND (COALESCE(pm.suspended_until, pm.suspension_end_date) IS NULL
+             OR COALESCE(pm.suspended_until, pm.suspension_end_date) > NOW())
+       )
      LIMIT 1`,
     [id],
   )
@@ -137,8 +194,21 @@ async function readPublicProfile(pool, identifier) {
          (COALESCE(to_jsonb(p)->>'username_origin', '') IN ('chosen', 'migrated_name')
           AND lower(p.username) = $1))
      AND COALESCE(NULLIF(p.is_suspended, ''), 'false') NOT IN ('true', 't', '1')
+     AND COALESCE(o.profile->>'is_suspended', 'false') NOT IN ('true', 't', '1')
      AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
-     AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
+     AND COALESCE(o.profile->>'break_mode', 'off') IN ('off', 'mute')
+     AND NOT EXISTS (
+       SELECT 1 FROM fallback_deleted_identities di
+       WHERE lower(di.user_id) = lower(p.id)
+          OR lower(di.user_id) = lower(COALESCE(u.id::text, ''))
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM fallback_profile_moderation pm
+       WHERE (lower(pm.user_id) = lower(p.id) OR lower(pm.user_id) = lower(COALESCE(u.id::text, '')))
+         AND pm.is_suspended = TRUE
+         AND (COALESCE(pm.suspended_until, pm.suspension_end_date) IS NULL
+           OR COALESCE(pm.suspended_until, pm.suspension_end_date) > NOW())
+     )
        LIMIT 1`,
       [id],
     )
@@ -195,6 +265,8 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
         `SELECT id::text, user_id, user_name, user_profile_image, title,
                 description, video_url, cover_url, thumbnail_url, created_at
          FROM fallback_videos WHERE is_public = TRUE AND is_sensitive = FALSE
+           AND NOT EXISTS (SELECT 1 FROM fallback_video_deletions vd WHERE lower(vd.video_id) = lower(fallback_videos.id::text))
+           ${GUEST_CREATOR_VISIBLE_SQL('fallback_videos.user_id')}
          ORDER BY created_at DESC LIMIT 30`,
       )
       let imported = []
@@ -205,6 +277,8 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
                           NULLIF(to_jsonb(v)->>'ispublic', '')) IN ('true', 't', '1')
              AND COALESCE(to_jsonb(v)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
          AND COALESCE(to_jsonb(v)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
+         AND NOT EXISTS (SELECT 1 FROM fallback_video_deletions vd WHERE lower(vd.video_id) = lower(v.id))
+         ${GUEST_CREATOR_VISIBLE_SQL("COALESCE(to_jsonb(v)->>'user_id', to_jsonb(v)->>'userid', '')")}
          AND NOT EXISTS (SELECT 1 FROM fallback_videos f WHERE f.id::text = v.id)
            ORDER BY v.created_at DESC LIMIT 30`,
         )
@@ -223,6 +297,7 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
                 media_urls, media_type, created_at
          FROM fallback_posts
          WHERE visibility = 'public' AND is_sensitive = FALSE
+           ${GUEST_CREATOR_VISIBLE_SQL('fallback_posts.user_id')}
          ORDER BY created_at DESC LIMIT 30`,
       )
       let imported = []
@@ -232,6 +307,7 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
            WHERE COALESCE(NULLIF(p.visibility, ''), 'public') = 'public'
              AND COALESCE(to_jsonb(p)->>'is_sensitive', 'false') NOT IN ('true', 't', '1')
          AND COALESCE(to_jsonb(p)->>'is_deleted', 'false') NOT IN ('true', 't', '1')
+         ${GUEST_CREATOR_VISIBLE_SQL("COALESCE(to_jsonb(p)->>'user_id', '')")}
          AND NOT EXISTS (SELECT 1 FROM fallback_posts f WHERE f.id::text = p.id)
            ORDER BY p.created_at DESC LIMIT 30`,
         )
@@ -251,6 +327,8 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
          FROM fallback_moments
          WHERE visibility_type = 'public' AND visibility = 'all'
            AND (expires_at IS NULL OR expires_at > NOW())
+           AND NOT EXISTS (SELECT 1 FROM fallback_moment_deletions md WHERE lower(md.moment_id) = lower(fallback_moments.id::text))
+           ${GUEST_CREATOR_VISIBLE_SQL('fallback_moments.user_id')}
          ORDER BY created_at DESC LIMIT 30`,
       )
       let imported = []
@@ -260,6 +338,8 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
            WHERE COALESCE(NULLIF(m.visibility_type, ''), 'public') = 'public'
              AND COALESCE(NULLIF(m.visibility, ''), 'all') = 'all'
              AND (NULLIF(m.expires_at, '') IS NULL OR m.expires_at::timestamptz > NOW())
+             AND NOT EXISTS (SELECT 1 FROM fallback_moment_deletions md WHERE lower(md.moment_id) = lower(m.id))
+             ${GUEST_CREATOR_VISIBLE_SQL("COALESCE(to_jsonb(m)->>'user_id', '')")}
              AND NOT EXISTS (SELECT 1 FROM fallback_moments f WHERE f.id::text = m.id)
            ORDER BY m.created_at DESC LIMIT 30`,
         )
@@ -340,7 +420,20 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
          FROM fallback_users u
          LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
          WHERE COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
-           AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
+           AND COALESCE(o.profile->>'break_mode', 'off') IN ('off', 'mute')
+           AND COALESCE(o.profile->>'is_suspended', 'false') NOT IN ('true', 't', '1')
+           AND NOT EXISTS (
+             SELECT 1 FROM fallback_deleted_identities di
+             WHERE lower(di.user_id) = lower(u.id::text)
+                OR lower(di.user_id) = lower(COALESCE(u.supabase_user_id::text, ''))
+           )
+           AND NOT EXISTS (
+             SELECT 1 FROM fallback_profile_moderation pm
+             WHERE (lower(pm.user_id) = lower(u.id::text) OR lower(pm.user_id) = lower(COALESCE(u.supabase_user_id::text, '')))
+               AND pm.is_suspended = TRUE
+               AND (COALESCE(pm.suspended_until, pm.suspension_end_date) IS NULL
+                 OR COALESCE(pm.suspended_until, pm.suspension_end_date) > NOW())
+           )
            AND (strpos(lower(CASE WHEN COALESCE(o.profile->>'username_origin', '') NOT IN ('chosen', 'migrated_name')
              THEN '' ELSE COALESCE(o.profile->>'username', '') END), $1) > 0
             OR strpos(lower(COALESCE(o.profile->>'display_name', u.display_name, '')), $1) > 0)
@@ -357,8 +450,21 @@ function registerGuestModeRoutes(app, { pool, jwt, jwtSecret, serviceName }) {
            LEFT JOIN fallback_users u ON u.supabase_user_id::text = p.id OR u.id::text = p.id
            LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
            WHERE COALESCE(NULLIF(p.is_suspended, ''), 'false') NOT IN ('true', 't', '1')
+             AND COALESCE(o.profile->>'is_suspended', 'false') NOT IN ('true', 't', '1')
              AND COALESCE(o.profile->>'profile_visibility', 'everyone') = 'everyone'
-             AND COALESCE(o.profile->>'break_mode', 'off') <> 'hidden'
+             AND COALESCE(o.profile->>'break_mode', 'off') IN ('off', 'mute')
+             AND NOT EXISTS (
+               SELECT 1 FROM fallback_deleted_identities di
+               WHERE lower(di.user_id) = lower(p.id)
+                  OR lower(di.user_id) = lower(COALESCE(u.id::text, ''))
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM fallback_profile_moderation pm
+               WHERE (lower(pm.user_id) = lower(p.id) OR lower(pm.user_id) = lower(COALESCE(u.id::text, '')))
+                 AND pm.is_suspended = TRUE
+                 AND (COALESCE(pm.suspended_until, pm.suspension_end_date) IS NULL
+                   OR COALESCE(pm.suspended_until, pm.suspension_end_date) > NOW())
+             )
              AND (strpos(lower(CASE WHEN COALESCE(to_jsonb(p)->>'username_origin', '') NOT IN ('chosen', 'migrated_name')
                THEN '' ELSE COALESCE(p.username, '') END), $1) > 0
                OR strpos(lower(COALESCE(p.display_name, p.full_name, '')), $1) > 0)

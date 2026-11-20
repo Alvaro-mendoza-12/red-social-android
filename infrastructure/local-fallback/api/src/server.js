@@ -964,36 +964,41 @@ async function issueUserSession(user, req, options = {}) {
 }
 
 async function revokeUserAuthSessions(userId, executor = pool) {
-  await executor.query(
+  const { rows } = await executor.query(
     `UPDATE fallback_auth_sessions
      SET revoked_at = COALESCE(revoked_at, NOW()),
          updated_at = NOW()
      WHERE user_id = $1
-       AND revoked_at IS NULL`,
+       AND revoked_at IS NULL
+     RETURNING id`,
     [userId],
   )
+  return rows
 }
 
 async function revokeUserWebSessions(userId, executor = pool) {
-  await executor.query(
+  const { rows } = await executor.query(
     `UPDATE fallback_web_sessions
      SET revoked_at = COALESCE(revoked_at, NOW()),
          updated_at = NOW()
      WHERE user_id = $1
-       AND revoked_at IS NULL`,
+       AND revoked_at IS NULL
+     RETURNING id`,
     [userId],
   )
+  return rows
 }
 
 async function revokeAllUserSessions(userId, executor = pool) {
-  await revokeUserAuthSessions(userId, executor)
-  await revokeUserWebSessions(userId, executor)
+  const authRows = await revokeUserAuthSessions(userId, executor)
+  const webRows = await revokeUserWebSessions(userId, executor)
   await executor.query(
     `UPDATE fallback_web_login_pairings
      SET status = 'rejected', updated_at = NOW()
      WHERE approved_by_user_id = $1 AND status = 'approved'`,
     [userId],
   )
+  return [...authRows, ...webRows]
 }
 
 function requestedAuthClient(req) {
@@ -1348,6 +1353,70 @@ function bearerTokenFromRequest(req) {
   return authorization.replace(/^Bearer\s+/i, '').trim()
 }
 
+const authLookupInFlight = new Map()
+
+function queryAuthenticatedUserAndSession(userId, sessionId, hasValidSessionUuid, isWeb) {
+  const inflightKey = `${String(userId).toLowerCase()}:${hasValidSessionUuid ? String(sessionId).toLowerCase() : 'none'}:${isWeb ? 'web' : 'app'}`
+  const existing = authLookupInFlight.get(inflightKey)
+  if (existing) return existing
+  const sessionJoin = hasValidSessionUuid
+    ? (isWeb
+      ? `LEFT JOIN fallback_web_sessions s
+           ON s.id = $2::uuid
+          AND s.user_id = u.id
+          AND s.revoked_at IS NULL
+          AND (s.expires_at IS NULL OR s.expires_at > NOW())`
+      : `LEFT JOIN fallback_auth_sessions s
+           ON s.id = $2::uuid
+          AND s.user_id = u.id
+          AND s.revoked_at IS NULL
+          AND s.expires_at > NOW()`)
+    : ''
+  const sessionSelect = hasValidSessionUuid
+    ? (isWeb
+      ? ', s.id AS _active_session_id, s.last_seen_at AS _session_last_touched_at'
+      : ', s.id AS _active_session_id, s.last_used_at AS _session_last_touched_at')
+    : ', NULL::uuid AS _active_session_id, NULL::timestamptz AS _session_last_touched_at'
+  const params = hasValidSessionUuid ? [userId, sessionId] : [userId]
+  const promise = pool.query(
+    `SELECT u.id,
+            u.email,
+            u.display_name,
+            u.avatar_url,
+            u.supabase_user_id,
+            u.sync_source,
+            u.sync_status,
+            u.created_at,
+            u.updated_at,
+            u.last_login_at
+            ${sessionSelect},
+            EXISTS(
+              SELECT 1
+              FROM fallback_profile_moderation m
+              WHERE (
+                lower(m.user_id) = lower(u.id::text)
+                OR (u.supabase_user_id IS NOT NULL AND lower(m.user_id) = lower(u.supabase_user_id::text))
+              )
+                AND m.is_suspended = TRUE
+                AND (
+                  COALESCE(m.suspended_until, m.suspension_end_date) IS NULL
+                  OR COALESCE(m.suspended_until, m.suspension_end_date) > NOW()
+                )
+            ) AS _has_active_suspension
+     FROM fallback_users u
+     ${sessionJoin}
+     WHERE u.id = $1::uuid
+     LIMIT 1`,
+    params,
+  ).finally(() => {
+    if (authLookupInFlight.get(inflightKey) === promise) {
+      authLookupInFlight.delete(inflightKey)
+    }
+  })
+  authLookupInFlight.set(inflightKey, promise)
+  return promise
+}
+
 async function authenticateClientRequest(req) {
   let verifiedAuth = null
   return authenticateClientSession({
@@ -1364,56 +1433,7 @@ async function authenticateClientRequest(req) {
       const sessionId = String(verifiedAuth?.sid || '').trim()
       const hasValidSessionUuid = isUuidText(sessionId)
       const isWeb = String(verifiedAuth?.client || '').trim().toLowerCase() === 'web'
-      const sessionJoin = hasValidSessionUuid
-        ? (isWeb
-          ? `LEFT JOIN fallback_web_sessions s
-               ON s.id = $2::uuid
-              AND s.user_id = u.id
-              AND s.revoked_at IS NULL
-              AND (s.expires_at IS NULL OR s.expires_at > NOW())`
-          : `LEFT JOIN fallback_auth_sessions s
-               ON s.id = $2::uuid
-              AND s.user_id = u.id
-              AND s.revoked_at IS NULL
-              AND s.expires_at > NOW()`)
-        : ''
-      const sessionSelect = hasValidSessionUuid
-        ? (isWeb
-          ? ', s.id AS _active_session_id, s.last_seen_at AS _session_last_touched_at'
-          : ', s.id AS _active_session_id, s.last_used_at AS _session_last_touched_at')
-        : ', NULL::uuid AS _active_session_id, NULL::timestamptz AS _session_last_touched_at'
-      const params = hasValidSessionUuid ? [userId, sessionId] : [userId]
-      const { rows } = await pool.query(
-        `SELECT u.id,
-                u.email,
-                u.display_name,
-                u.avatar_url,
-                u.supabase_user_id,
-                u.sync_source,
-                u.sync_status,
-                u.created_at,
-                u.updated_at,
-                u.last_login_at
-                ${sessionSelect},
-                EXISTS(
-                  SELECT 1
-                  FROM fallback_profile_moderation m
-                  WHERE (
-                    lower(m.user_id) = lower(u.id::text)
-                    OR (u.supabase_user_id IS NOT NULL AND lower(m.user_id) = lower(u.supabase_user_id::text))
-                  )
-                    AND m.is_suspended = TRUE
-                    AND (
-                      COALESCE(m.suspended_until, m.suspension_end_date) IS NULL
-                      OR COALESCE(m.suspended_until, m.suspension_end_date) > NOW()
-                    )
-                ) AS _has_active_suspension
-         FROM fallback_users u
-         ${sessionJoin}
-         WHERE u.id = $1::uuid
-         LIMIT 1`,
-        params,
-      )
+      const { rows } = await queryAuthenticatedUserAndSession(userId, sessionId, hasValidSessionUuid, isWeb)
       const row = rows[0]
       if (!row) return false
       req._currentUser = {
@@ -2392,8 +2412,9 @@ app.post('/v1/admin/users/set-local-password', adminRequired, requireBcryptPassw
        WHERE user_id = $1 AND consumed_at IS NULL`,
       [account.rows[0].id],
     )
-    await revokeAllUserSessions(account.rows[0].id, client)
+    const revokedSessions = await revokeAllUserSessions(account.rows[0].id, client)
     await client.query('COMMIT')
+    void publishWebSessionsRevoked(account.rows[0].id, revokedSessions).catch(() => {})
     client.release()
     client = null
 
@@ -3118,8 +3139,9 @@ app.post('/v1/auth/2fa/enable', authRequired, async (req, res, next) => {
         [req.auth.sub, recoveryHash(code, twoFactorEncryptionSecret)],
       )
     }
-    await revokeAllUserSessions(req.auth.sub, client)
+    const revokedSessions = await revokeAllUserSessions(req.auth.sub, client)
     await client.query('COMMIT')
+    void publishWebSessionsRevoked(req.auth.sub, revokedSessions).catch(() => {})
     const { rows: users } = await pool.query(
       `SELECT ${userSelectColumns} FROM fallback_users WHERE id = $1`, [req.auth.sub],
     )
@@ -3151,8 +3173,9 @@ app.post('/v1/auth/2fa/disable', authRequired, async (req, res, next) => {
     await client.query('BEGIN')
     await client.query('DELETE FROM fallback_totp_recovery_codes WHERE user_id = $1', [req.auth.sub])
     await client.query('DELETE FROM fallback_totp_factors WHERE user_id = $1', [req.auth.sub])
-    await revokeAllUserSessions(req.auth.sub, client)
+    const revokedSessions = await revokeAllUserSessions(req.auth.sub, client)
     await client.query('COMMIT')
+    void publishWebSessionsRevoked(req.auth.sub, revokedSessions).catch(() => {})
     await recordAudit('auth_second_factor_disabled', req.auth.sub)
     return res.json({ ok: true, signInRequired: true })
   } catch (error) {
@@ -3224,8 +3247,9 @@ app.post('/v1/auth/change-password', authRequired, requireBcryptPasswordLength('
        WHERE user_id = $1 AND consumed_at IS NULL`,
       [row.id],
     )
-    await revokeAllUserSessions(row.id, client)
+    const revokedSessions = await revokeAllUserSessions(row.id, client)
     await client.query('COMMIT')
+    void publishWebSessionsRevoked(row.id, revokedSessions).catch(() => {})
     client.release()
     client = null
 
@@ -3405,7 +3429,7 @@ app.post('/v1/auth/password-reset/confirm', requireBcryptPasswordLength('newPass
       [row.user_id, passwordHash],
     )
     await client.query('UPDATE fallback_password_reset_email_codes SET consumed_at = NOW() WHERE user_id = $1 AND consumed_at IS NULL', [row.user_id])
-    await revokeAllUserSessions(row.user_id, client)
+    const revokedSessions = await revokeAllUserSessions(row.user_id, client)
     if (row.recovery_case_id) {
       const reviewedCase = await client.query(
         `SELECT two_factor_reset FROM fallback_account_recovery_cases
@@ -3425,6 +3449,7 @@ app.post('/v1/auth/password-reset/confirm', requireBcryptPasswordLength('newPass
       )
     }
     await client.query('COMMIT')
+    void publishWebSessionsRevoked(row.user_id, revokedSessions).catch(() => {})
     passwordChangeCommitted = true
     const committedClient = client
     client = null
@@ -3515,8 +3540,9 @@ app.post('/v1/auth/password-recovery-codes/confirm', requireBcryptPasswordLength
        WHERE user_id = $1 AND consumed_at IS NULL`,
       [account.id],
     )
-    await revokeAllUserSessions(account.id, client)
+    const revokedSessions = await revokeAllUserSessions(account.id, client)
     await client.query('COMMIT')
+    void publishWebSessionsRevoked(account.id, revokedSessions).catch(() => {})
     client.release()
     client = null
 
@@ -3594,7 +3620,8 @@ app.post('/v1/auth/complete-migrated-password-reset', requireBcryptPasswordLengt
        WHERE user_id = $1 AND consumed_at IS NULL`,
       [user.id],
     )
-    await revokeAllUserSessions(user.id)
+    const revokedSessions = await revokeAllUserSessions(user.id)
+    void publishWebSessionsRevoked(user.id, revokedSessions).catch(() => {})
     if (await hasEnabledSecondFactor(user.id)) {
       return res.json({ ok: true, requiresTwoFactor: true })
     }
@@ -4021,7 +4048,8 @@ app.post('/v1/auth/activate-local-password', requireBcryptPasswordLength('passwo
 
     const user = sanitizeUser(await hydrateUserRow(rows[0]))
     await recordAudit('auth_activate_local_password', user.id, { email })
-    await revokeAllUserSessions(user.id)
+    const revokedSessions = await revokeAllUserSessions(user.id)
+    void publishWebSessionsRevoked(user.id, revokedSessions).catch(() => {})
     if (await hasEnabledSecondFactor(user.id)) {
       return res.json({ ok: true, requiresTwoFactor: true })
     }

@@ -228,7 +228,7 @@ async function failGooglePlayRtdnEvent(pool, messageId, error) {
   await pool.query(
     `UPDATE google_play_rtdn_events
      SET status = 'failed', last_error = $2, updated_at = NOW()
-     WHERE message_id = $1`,
+     WHERE message_id = $1 AND status = 'processing'`,
     [messageId, String(error?.code || error?.message || 'UNKNOWN').slice(0, 160)],
   )
 }
@@ -273,6 +273,7 @@ function createGooglePlayRtdnHandler({
   }
   return async function googlePlayRtdnHandler(req, res, next) {
     let event
+    let claimed = false
     try {
       const config = configProvider()
       if (!config.enabled) throw rtdnError('GOOGLE_PLAY_RTDN_DISABLED', 503)
@@ -284,11 +285,14 @@ function createGooglePlayRtdnHandler({
       const claim = await claimGooglePlayRtdnEvent(pool, event)
       if (claim.duplicate) return res.status(204).end()
       if (!claim.claimed) throw rtdnError('GOOGLE_PLAY_RTDN_ALREADY_PROCESSING', 503)
+      claimed = true
       const result = await processNotification(event, config)
       await completeGooglePlayRtdnEvent(pool, event.messageId, result)
       return res.status(204).end()
     } catch (error) {
-      if (event?.messageId) await failGooglePlayRtdnEvent(pool, event.messageId, error).catch(() => {})
+      if (claimed && event?.messageId) {
+        await failGooglePlayRtdnEvent(pool, event.messageId, error).catch(() => {})
+      }
       return next(error)
     }
   }

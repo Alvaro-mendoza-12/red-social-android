@@ -1,5 +1,6 @@
-const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
 'use strict';
+
+const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
 
 // Call this guard after looking up the object, before scan/variant/fs/ETag/Range
 // or X-Accel delivery. URL signatures authorize neither a user nor a message.
@@ -7,6 +8,8 @@ const MAX_REFERENCES = 64;
 const PREVIEW_TTL_MS = 15 * 60 * 1000;
 const PRIVATE_OR_MIXED_BUCKETS = new Set(['chat-media', 'group-media', 'community-media', 'group-audio', 'groups', 'communities', 'thumbnails']);
 const IMPORTED_MESSAGE_TABLES = Object.freeze({ messages: 'dm', group_messages: 'group', community_messages: 'community', proximity_messages: 'proximity' });
+const importedRelationCacheByDb = new WeakMap();
+const membershipStateCacheByDb = new WeakMap();
 function norm(value) { return typeof value === 'string' ? value.trim().toLowerCase() : ''; }
 function deny(code = 'STORAGE_READ_DENIED', status = 404) { return Object.assign(new Error(code), { code, status }); }
 function list(value) { if (Array.isArray(value)) return value; if (typeof value === 'string') { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch {} } return []; }
@@ -65,10 +68,44 @@ function privateCacheHeaders(res) {
   res.setHeader('Vary', 'Authorization');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 }
+async function hasImportedRelation(db, table) {
+  if (db && typeof db === 'object') {
+    let map = importedRelationCacheByDb.get(db);
+    if (!map) {
+      map = new Map();
+      importedRelationCacheByDb.set(db, map);
+    }
+    if (map.has(table)) return map.get(table);
+    const promise = db.query('SELECT to_regclass($1) AS relation', [`supabase_import.${table}`])
+      .then((res) => Boolean(res.rows[0]?.relation))
+      .catch((err) => { map.delete(table); throw err; });
+    map.set(table, promise);
+    return promise;
+  }
+  const exists = await db.query('SELECT to_regclass($1) AS relation', [`supabase_import.${table}`]);
+  return Boolean(exists.rows[0]?.relation);
+}
+
+async function cachedCollectionMembershipState(db, kind, roomId, viewerIds) {
+  const key = `${norm(kind)}:${norm(roomId)}:${[...viewerIds].map(norm).sort().join(',')}`;
+  if (db && typeof db === 'object') {
+    let map = membershipStateCacheByDb.get(db);
+    if (!map) {
+      map = new Map();
+      membershipStateCacheByDb.set(db, map);
+    }
+    if (map.has(key)) return map.get(key);
+    const promise = loadCollectionMembershipState(db, kind, roomId, viewerIds)
+      .catch((err) => { map.delete(key); throw err; });
+    map.set(key, promise);
+    return promise;
+  }
+  return loadCollectionMembershipState(db, kind, roomId, viewerIds);
+}
+
 async function importedRows(db, table, predicate, params) {
   // table is selected exclusively from constants in this module.
-  const exists = await db.query('SELECT to_regclass($1) AS relation', [`supabase_import.${table}`]);
-  if (!exists.rows[0]?.relation) return [];
+  if (!(await hasImportedRelation(db, table))) return [];
   if (predicate.includes("to_jsonb(t)->>'media_url'")) {
     const columns = await db.query(`SELECT a.attname AS name, a.atttypid IN ('text'::regtype,'varchar'::regtype) AS text_type FROM pg_attribute a WHERE a.attrelid=$1::regclass AND a.attnum>0 AND NOT a.attisdropped AND a.attname=ANY($2::text[])`, [`supabase_import.${table}`, ['media_url', 'thumbnail_url']]);
     for (const field of ['media_url', 'thumbnail_url']) {
@@ -142,7 +179,7 @@ async function roomAccess(db, kind, roomId, viewerIds, {allowPublicPreview=true}
   // A deleted membership beats an imported membership, including a creator.
   const members = await db.query(`SELECT user_id, is_deleted FROM fallback_collection_members WHERE room_kind=$1 AND lower(room_id)=$2 AND lower(user_id)=ANY($3::text[])`, [kind, id, viewerIds]);
   if (members.rows.some(member => bool(member.is_deleted))) {
-    const state = await loadCollectionMembershipState(db, kind, id, viewerIds);
+    const state = await cachedCollectionMembershipState(db, kind, id, viewerIds);
     return state.history.canReadHistory === true;
   }
   if (members.rows.some(member => !bool(member.is_deleted))) return true;
@@ -189,7 +226,7 @@ async function referenceAllows(db, message, viewerIds, options={}) {
       if (!channels.rows[0] || bool(channels.rows[0].is_deleted) || norm(channels.rows[0].community_id) !== norm(roomId)) return false;
     }
     if (!await roomAccess(db, message.access_kind, roomId, viewerIds, options)) return false;
-    const state = await loadCollectionMembershipState(db, message.access_kind, roomId, viewerIds);
+    const state = await cachedCollectionMembershipState(db, message.access_kind, roomId, viewerIds);
     return collectionHistoryAllows(state.history, message);
   }
   if (message.access_kind === 'random') {

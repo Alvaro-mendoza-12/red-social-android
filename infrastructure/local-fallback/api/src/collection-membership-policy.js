@@ -29,30 +29,47 @@ async function ensureCollectionMembershipTables(db) {
   await db.query('ALTER TABLE fallback_collection_history_grants ADD COLUMN IF NOT EXISTS allow_all_history BOOLEAN')
 }
 
+const regclassCacheByDb = new WeakMap()
+
+async function hasLegacyImportTable(db, table) {
+  let cache = db && typeof db === 'object' ? regclassCacheByDb.get(db) : null
+  if (db && typeof db === 'object' && !cache) {
+    cache = new Map()
+    regclassCacheByDb.set(db, cache)
+  }
+  if (cache && cache.has(table)) return cache.get(table)
+  const result = await db.query('SELECT to_regclass($1) AS oid', [`supabase_import.${table}`])
+  const exists = Boolean(result?.rows?.[0]?.oid)
+  if (cache) cache.set(table, exists)
+  return exists
+}
+
 // Query a single room, never a bounded global list that could omit a removal.
 async function legacyRows(db, table, kind, roomId, isRoom=false) {
   const key = isRoom ? 'id' : `${kind}_id`
-  const result = await db.query('SELECT to_regclass($1) AS oid', [`supabase_import.${table}`])
-  const imported = result.rows[0]?.oid ? (await db.query(
+  const [hasImported, compat] = await Promise.all([
+    hasLegacyImportTable(db, table),
+    db.query(`SELECT row FROM fallback_compat_rows WHERE table_name=$1
+      AND lower(COALESCE(row->>'${key}',row->>'room_id',''))=$2 ORDER BY updated_at`, [table,roomId]),
+  ])
+  const imported = hasImported ? (await db.query(
     `SELECT to_jsonb(t) AS row FROM supabase_import."${table}" t
      WHERE lower(COALESCE(to_jsonb(t)->>'${key}',to_jsonb(t)->>'room_id',''))=$1`, [roomId])).rows.map(r=>r.row) : []
-  const compat = await db.query(`SELECT row FROM fallback_compat_rows WHERE table_name=$1
-    AND lower(COALESCE(row->>'${key}',row->>'room_id',''))=$2 ORDER BY updated_at`, [table,roomId])
   return [...imported,...compat.rows.map(r=>r.row)]
 }
 
 async function loadCollectionMembershipSnapshot(db, kind, rawRoomId) {
   if (!['group','community'].includes(kind)) throw fail('ROOM_KIND_INVALID',400)
   const roomId=id(rawRoomId)
-  const [oldRooms, oldMembers, localRooms, localMembers, policies, grants] = await Promise.all([
+  const [oldRooms, oldMembers, localRooms, localMembers, policies, grants, archives] = await Promise.all([
     legacyRows(db,kind==='group'?'groups':'communities',kind,roomId,true),
     legacyRows(db,`${kind}_members`,kind,roomId),
     db.query('SELECT * FROM fallback_collection_rooms WHERE room_kind=$1 AND lower(id::text)=$2',[kind,roomId]),
-    db.query('SELECT * FROM fallback_collection_members WHERE room_kind=$1 AND lower(room_id)=$2',[kind,roomId]),
+    db.query('SELECT *, room_id AS group_id, room_id AS community_id FROM fallback_collection_members WHERE room_kind=$1 AND lower(room_id)=$2 ORDER BY joined_at ASC',[kind,roomId]),
     db.query('SELECT members_can_add FROM fallback_collection_policies WHERE room_kind=$1 AND room_id=$2',[kind,roomId]),
     db.query('SELECT * FROM fallback_collection_history_grants WHERE room_kind=$1 AND room_id=$2',[kind,roomId]),
+    db.query('SELECT * FROM fallback_collection_chat_history WHERE room_kind=$1 AND room_id=$2',[kind,roomId]),
   ])
-  const archives=await db.query('SELECT * FROM fallback_collection_chat_history WHERE room_kind=$1 AND room_id=$2',[kind,roomId])
   return {kind,roomId,oldRooms,oldMembers,localRooms,localMembers,policies,grants,archives}
 }
 function collectionMembershipStateFromSnapshot(snapshot,viewerIds) {

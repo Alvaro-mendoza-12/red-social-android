@@ -469,7 +469,7 @@ async function processDueNotificationDigests(pool, now = new Date()) {
   const result = { checked: rows.length, delivered: 0, notifications: 0 }
   for (const row of rows) {
     const delivery = await deliverDigestForPreference(pool, row, now)
-    if (delivery.reason === 'NOT_DUE') continue
+    if (delivery.reason) continue
     result.delivered += 1
     if (delivery.delivered) result.notifications += 1
   }

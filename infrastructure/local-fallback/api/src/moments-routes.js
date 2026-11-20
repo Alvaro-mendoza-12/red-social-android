@@ -680,10 +680,12 @@ function mergeMomentOwnerProfile(importedProfile = {}, localUser = null) {
   return mergeProfileRows(importedProfile, localProfile)
 }
 
-async function profileFor(pool, userId, profilesById) {
-  const cleanUserId = normalizeId(userId)
-  if (profilesById?.has(cleanUserId)) return profilesById.get(cleanUserId)
-  const [profiles, localUsers] = await Promise.all([
+async function preloadProfiles(pool, userIds, profilesById) {
+  const missing = Array.from(new Set(
+    (userIds || []).map(normalizeId).filter((id) => id && !profilesById?.has(id)),
+  ))
+  if (missing.length === 0) return
+  const [importedProfiles, localUsers] = await Promise.all([
     importedRows(pool, 'profiles', 5000),
     pool.query(
       `SELECT u.id, u.email, u.display_name, u.avatar_url, u.supabase_user_id,
@@ -692,23 +694,45 @@ async function profileFor(pool, userId, profilesById) {
               o.updated_at AS profile_override_updated_at
        FROM fallback_users u
        LEFT JOIN fallback_profile_overrides o ON o.user_id = u.id
-       LIMIT 10000`,
+       WHERE lower(u.id::text) = ANY($1::text[])
+          OR lower(COALESCE(u.supabase_user_id::text, '')) = ANY($1::text[])
+          OR lower(COALESCE(u.email, '')) = ANY($1::text[])`,
+      [missing],
     ).then((result) => result.rows),
   ])
-  const importedProfile = profiles.find((row) => profileAliases(row).has(cleanUserId)) || {}
-  const localUser = localUsers.find((row) => profileAliases(row).has(cleanUserId))
-  // Local profile edits are authoritative. Imported rows are only a fallback
-  // for fields that the user has not set in Novvin yet.
-  const profile = mergeMomentOwnerProfile(importedProfile, localUser)
-  const normalized = {
-    name: textOf(profile, ['display_name', 'displayName', 'full_name', 'username', 'email'], 'Usuario'),
-    avatarUrl: versionedAssetUrl(
-      textOf(profile, ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image', 'picture', 'image'], ''),
-      textOf(profile, ['updated_at', 'updatedAt', 'created_at', 'createdAt'], ''),
-    ),
+  const importedByAlias = new Map()
+  for (const row of importedProfiles) {
+    for (const alias of profileAliases(row)) {
+      if (!importedByAlias.has(alias)) importedByAlias.set(alias, row)
+    }
   }
-  profilesById?.set(cleanUserId, normalized)
-  return normalized
+  const localByAlias = new Map()
+  for (const row of localUsers) {
+    for (const alias of profileAliases(row)) {
+      if (!localByAlias.has(alias)) localByAlias.set(alias, row)
+    }
+  }
+  for (const cleanUserId of missing) {
+    const importedProfile = importedByAlias.get(cleanUserId) || {}
+    const localUser = localByAlias.get(cleanUserId) || null
+    const profile = mergeMomentOwnerProfile(importedProfile, localUser)
+    const normalized = {
+      name: textOf(profile, ['display_name', 'displayName', 'full_name', 'username', 'email'], 'Usuario'),
+      avatarUrl: versionedAssetUrl(
+        textOf(profile, ['avatar_url', 'avatarUrl', 'photo_url', 'profile_image', 'picture', 'image'], ''),
+        textOf(profile, ['updated_at', 'updatedAt', 'created_at', 'createdAt'], ''),
+      ),
+    }
+    profilesById?.set(cleanUserId, normalized)
+  }
+}
+
+async function profileFor(pool, userId, profilesById) {
+  const cleanUserId = normalizeId(userId)
+  if (!cleanUserId) return { name: 'Usuario', avatarUrl: '' }
+  if (profilesById?.has(cleanUserId)) return profilesById.get(cleanUserId)
+  await preloadProfiles(pool, [cleanUserId], profilesById)
+  return profilesById?.get(cleanUserId) || { name: 'Usuario', avatarUrl: '' }
 }
 
 async function visibleMomentForInteraction(pool, identity, requestedId, now = Date.now()) {
@@ -861,6 +885,16 @@ async function buildMomentsFeed(pool, identity, ownerIds = []) {
   }
 
   const profilesById = new Map()
+  const preloadIds = new Set()
+  for (const row of moments) {
+    const ownerId = normalizeId(textOf(row, ['user_id'], ''))
+    if (ownerId) preloadIds.add(ownerId)
+    const id = textOf(row, ['id'], '')
+    for (const entry of (viewersByMoment.get(id) || []).slice(0, 5)) {
+      if (entry.userId) preloadIds.add(normalizeId(entry.userId))
+    }
+  }
+  await preloadProfiles(pool, Array.from(preloadIds), profilesById)
   const items = []
   for (const row of moments) {
     const id = textOf(row, ['id'], '')
@@ -1121,9 +1155,14 @@ function registerMomentsRoutes(
       const overlayScale = Math.max(0.7, Math.min(numberOf(req.body, ['overlayScale', 'overlay_scale'], 1), 2.1))
       const overlayX = Math.max(0, Math.min(numberOf(req.body, ['overlayX', 'overlay_x'], 0.5), 1))
       const overlayY = Math.max(0, Math.min(numberOf(req.body, ['overlayY', 'overlay_y'], 0.38), 1))
-      const durationHours = Math.max(1, Math.min(Number(req.body?.durationHours || req.body?.duration_hours || 24), 168))
+      const durationHours = Math.max(1, Math.min(numberOf(req.body, ['durationHours', 'duration_hours'], 24), 168))
       const expiresAt = new Date(Date.now() + durationHours * 60 * 60 * 1000).toISOString()
-      const visibility = textOf(req.body, ['visibility'], 'all')
+      const requestedVisibility = textOf(req.body, ['visibility'], 'all').toLowerCase()
+      const allowedMomentVisibilities = new Set([
+        'all', 'public', 'followers', 'following', 'chats',
+        'only_selected', 'except_selected', 'only_me', 'private', 'silent',
+      ])
+      const visibility = allowedMomentVisibilities.has(requestedVisibility) ? requestedVisibility : 'all'
       const requestedVisibilityType = textOf(req.body, ['visibilityType', 'visibility_type'], '')
       const visibilityType = ['private', 'silent', 'public'].includes(requestedVisibilityType)
         ? requestedVisibilityType
@@ -1529,9 +1568,15 @@ function registerMomentsRoutes(
         }))
       const seen = new Set()
       const profilesById = new Map()
+      const allViewRows = [...viewRows, ...importedViews]
+      await preloadProfiles(
+        pool,
+        allViewRows.map((row) => normalizeId(textOf(row, ['user_id'], ''))).filter(Boolean),
+        profilesById,
+      )
       const items = []
 
-      for (const row of [...viewRows, ...importedViews]) {
+      for (const row of allViewRows) {
         const viewerId = normalizeId(textOf(row, ['user_id'], ''))
         if (!viewerId || identity.ids.has(viewerId) || seen.has(viewerId)) continue
         seen.add(viewerId)

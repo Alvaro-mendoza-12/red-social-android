@@ -462,7 +462,7 @@ async function ownedMusicCoverStorageObject(pool, ownerId, rawUrl) {
   const url = cleanText(rawUrl, 2000)
   if (!url) return null
   const { rows } = await pool.query(
-    `SELECT name, content_type, size_bytes, public_url
+    `SELECT *
        FROM fallback_storage_objects
       WHERE owner_id=$1::uuid AND bucket_id='thumbnails'
         AND (public_url=$2 OR $2 LIKE ('%/storage/v1/object/public/thumbnails/' || name)
@@ -471,6 +471,7 @@ async function ownedMusicCoverStorageObject(pool, ownerId, rawUrl) {
     [ownerId, url],
   )
   const row = rows[0]
+  if (scanEnforcementEnabled() && !cleanStorageRow(row)) return null
   if (!row || !new Set(['image/jpeg', 'image/png', 'image/webp']).has(String(row.content_type || '').toLowerCase())) return null
   if (Number(row.size_bytes || 0) <= 0 || Number(row.size_bytes) > 10 * 1024 * 1024) return null
   return row
@@ -1264,10 +1265,18 @@ function registerMusicRoutes(app, {
       const { rows } = await pool.query(
         `UPDATE fallback_music_listens l SET completed_at=NOW(), listened_ms=$3,
            counted=(NOW()-l.started_at >= INTERVAL '3 seconds' AND $3 >= LEAST(30000, GREATEST(3000, (SELECT duration_ms*0.3 FROM fallback_music_tracks WHERE id=l.track_id))))
-         WHERE l.session_id=$1::uuid AND l.user_id=$2::uuid RETURNING counted,track_id::text,context`,
+         WHERE l.session_id=$1::uuid AND l.user_id=$2::uuid AND l.completed_at IS NULL
+         RETURNING counted,track_id::text,context`,
         [req.params.sessionId, current.userId, listenedMs],
       )
-      if (!rows[0]) return res.status(404).json({ error: 'LISTEN_SESSION_NOT_FOUND' })
+      if (!rows[0]) {
+        const existing = await pool.query(
+          `SELECT counted FROM fallback_music_listens WHERE session_id=$1::uuid AND user_id=$2::uuid LIMIT 1`,
+          [req.params.sessionId, current.userId],
+        )
+        if (!existing.rows[0]) return res.status(404).json({ error: 'LISTEN_SESSION_NOT_FOUND' })
+        return res.json({ counted: existing.rows[0].counted === true, alreadyCompleted: true })
+      }
       if (rows[0].counted === true) {
         await pool.query(
           `INSERT INTO fallback_music_play_events(track_key,user_id,event_type,listened_ms,context)
@@ -1285,16 +1294,24 @@ function registerMusicRoutes(app, {
       const trackId = rawTrackId(req.params.trackId)
       const reason = cleanText(req.body?.reason, 80)
       if (!current || !trackId || !reason) return res.status(400).json({ error: 'TRACK_AND_REASON_REQUIRED' })
+      const exists = await pool.query(
+        `SELECT 1 FROM fallback_music_tracks WHERE id=$1::uuid AND removed_at IS NULL LIMIT 1`,
+        [trackId],
+      )
+      if (!exists.rows[0]) return res.status(404).json({ error: 'TRACK_NOT_FOUND' })
       await pool.query(
         `INSERT INTO fallback_music_reports(track_id,reporter_id,reason,details) VALUES($1::uuid,$2::uuid,$3,$4)
          ON CONFLICT(track_id,reporter_id,reason) DO UPDATE SET details=EXCLUDED.details,status='OPEN',created_at=NOW()`,
         [trackId, current.userId, reason, cleanMultiline(req.body?.details, 2000) || null],
       )
-      const openCount = Number((await pool.query(`SELECT COUNT(*)::int count FROM fallback_music_reports WHERE track_id=$1::uuid AND status='OPEN'`, [trackId])).rows[0]?.count || 0)
-      if (openCount >= 3) {
+      const distinctReporters = Number((await pool.query(
+        `SELECT COUNT(DISTINCT reporter_id)::int count FROM fallback_music_reports WHERE track_id=$1::uuid AND status='OPEN'`,
+        [trackId],
+      )).rows[0]?.count || 0)
+      if (distinctReporters >= 3) {
         await pool.query(`UPDATE fallback_music_tracks SET moderation_state='TAKEDOWN_PENDING', visibility='PRIVATE', moderation_reason='Revisión automática por reportes', updated_at=NOW() WHERE id=$1::uuid AND moderation_state='APPROVED'`, [trackId])
       }
-      res.status(201).json({ reported: true, underReview: openCount >= 3 })
+      res.status(201).json({ reported: true, underReview: distinctReporters >= 3 })
     } catch (error) { next(error) }
   })
 

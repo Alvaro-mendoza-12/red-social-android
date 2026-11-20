@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { blockedProfileIds } = require('./blocked-profile-ids')
 const { redactDeletedMessage, refreshChatSummary } = require('./message-deletion-policy')
 const { publishChatMessageEvent } = require('./realtime-publish')
 
@@ -129,9 +130,23 @@ async function loadOwnerIdentity(queryable, ownerId) {
 }
 
 async function requireTargetAccess(queryable, identity, scopeType, targetId) {
+  const suspension = await queryable.query(
+    `SELECT 1
+     FROM fallback_profile_moderation
+     WHERE lower(user_id::text) = ANY($1::text[])
+       AND is_suspended = TRUE
+       AND (
+         COALESCE(suspended_until, suspension_end_date) IS NULL
+         OR COALESCE(suspended_until, suspension_end_date) > NOW()
+       )
+     LIMIT 1`,
+    [identity.aliases],
+  ).catch((error) => (error?.code === '42P01' ? { rows: [] } : Promise.reject(error)))
+  if (suspension.rows[0]) throw publicError('ACCOUNT_SUSPENDED', 403)
+
   if (scopeType === 'dm') {
     const { rows } = await queryable.query(
-      `SELECT c.id::text
+      `SELECT c.id::text, c.participants
        FROM fallback_chats c
        WHERE c.id = $1::uuid
          AND (
@@ -148,6 +163,38 @@ async function requireTargetAccess(queryable, identity, scopeType, targetId) {
       [targetId, identity.aliases],
     )
     if (!rows[0]) throw publicError('CHAT_ACCESS_DENIED', 403)
+    const blocked = await blockedProfileIds(queryable, { ids: new Set(identity.aliases) })
+      .catch((error) => (error?.code === '42P01' ? new Set() : Promise.reject(error)))
+    if (blocked.size > 0) {
+      const peerRows = await queryable.query(
+        `SELECT DISTINCT lower(user_id) AS user_id
+         FROM fallback_chat_participants
+         WHERE chat_id = $1::uuid AND NOT (lower(user_id) = ANY($2::text[]))`,
+        [targetId, identity.aliases],
+      )
+      const peerIds = new Set([
+        ...peerRows.rows.map((row) => String(row.user_id || '').trim().toLowerCase()),
+        ...(Array.isArray(rows[0].participants) ? rows[0].participants : [])
+          .map((value) => String(value || '').trim().toLowerCase())
+          .filter((value) => value && !identity.aliases.includes(value)),
+      ].filter(Boolean))
+      if (peerIds.size > 0) {
+        const peerUsers = await queryable.query(
+          `SELECT id::text, supabase_user_id::text
+           FROM fallback_users
+           WHERE lower(id::text) = ANY($1::text[])
+              OR lower(COALESCE(supabase_user_id::text, '')) = ANY($1::text[])`,
+          [Array.from(peerIds)],
+        )
+        for (const row of peerUsers.rows) {
+          if (row.id) peerIds.add(String(row.id).toLowerCase())
+          if (row.supabase_user_id) peerIds.add(String(row.supabase_user_id).toLowerCase())
+        }
+        for (const peerId of peerIds) {
+          if (blocked.has(peerId)) throw publicError('USER_BLOCKED', 403)
+        }
+      }
+    }
     return
   }
 
@@ -165,6 +212,7 @@ async function requireTargetAccess(queryable, identity, scopeType, targetId) {
              AND lower(member.room_id) = lower(room.id::text)
              AND lower(member.user_id) = ANY($3::text[])
              AND member.is_deleted = FALSE
+             AND lower(COALESCE(member.status, 'active')) NOT IN ('left', 'removed', 'deleted', 'banned', 'blocked')
          )
        )
      LIMIT 1`,
@@ -352,27 +400,25 @@ async function processDueScheduledMessageJobs(pool, options = {}) {
   )
   let sent = 0
   for (const candidate of candidates) {
-    const client = await pool.connect()
     let claimedJob = null
+    const claimResult = await pool.query(
+      `UPDATE fallback_scheduled_message_jobs
+       SET status = 'processing', locked_at = NOW(), locked_by = $2,
+           attempt_count = attempt_count + 1, updated_at = NOW()
+       WHERE id = $1::uuid
+         AND (
+           (status = 'pending' AND next_attempt_at <= NOW())
+           OR (status = 'processing' AND locked_at < NOW() - INTERVAL '2 minutes')
+         )
+       RETURNING *`,
+      [candidate.id, workerId],
+    )
+    claimedJob = claimResult.rows[0]
+    if (!claimedJob) continue
+
+    const client = await pool.connect()
     try {
       await client.query('BEGIN')
-      const { rows } = await client.query(
-        `UPDATE fallback_scheduled_message_jobs
-         SET status = 'processing', locked_at = NOW(), locked_by = $2,
-             attempt_count = attempt_count + 1, updated_at = NOW()
-         WHERE id = $1::uuid
-           AND (
-             (status = 'pending' AND next_attempt_at <= NOW())
-             OR (status = 'processing' AND locked_at < NOW() - INTERVAL '2 minutes')
-           )
-         RETURNING *`,
-        [candidate.id, workerId],
-      )
-      claimedJob = rows[0]
-      if (!claimedJob) {
-        await client.query('ROLLBACK')
-        continue
-      }
       const delivered = await deliverClaimedJob(client, claimedJob)
       await client.query('COMMIT')
       sent += 1
@@ -387,25 +433,24 @@ async function processDueScheduledMessageJobs(pool, options = {}) {
       })
     } catch (error) {
       await client.query('ROLLBACK').catch(() => {})
-      if (claimedJob) {
-        const attempts = Number(claimedJob.attempt_count || 1)
-        const terminal = attempts >= Number(claimedJob.max_attempts || 6)
-        await pool.query(
-          `UPDATE fallback_scheduled_message_jobs
-           SET status = $2,
-               error_message = $3,
-               next_attempt_at = NOW() + ($4::integer * INTERVAL '1 second'),
-               locked_at = NULL, locked_by = NULL, updated_at = NOW()
-           WHERE id = $1::uuid AND status = 'processing' AND locked_by = $5`,
-          [
-            claimedJob.id,
-            terminal ? 'failed' : 'pending',
-            cleanText(error?.message || 'SCHEDULED_DELIVERY_FAILED', 240),
-            retryDelaySeconds(attempts),
-            workerId,
-          ],
-        ).catch(() => {})
-      }
+      const attempts = Number(claimedJob.attempt_count || 1)
+      const permanentAccessError = [403, 404].includes(Number(error?.status))
+      const terminal = permanentAccessError || attempts >= Number(claimedJob.max_attempts || 6)
+      await pool.query(
+        `UPDATE fallback_scheduled_message_jobs
+         SET status = $2,
+             error_message = $3,
+             next_attempt_at = NOW() + ($4::integer * INTERVAL '1 second'),
+             locked_at = NULL, locked_by = NULL, updated_at = NOW()
+         WHERE id = $1::uuid AND status = 'processing' AND locked_by = $5`,
+        [
+          claimedJob.id,
+          terminal ? 'failed' : 'pending',
+          cleanText(error?.message || 'SCHEDULED_DELIVERY_FAILED', 240),
+          retryDelaySeconds(attempts),
+          workerId,
+        ],
+      ).catch(() => {})
     } finally {
       client.release()
     }
