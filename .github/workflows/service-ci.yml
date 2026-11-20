@@ -43,6 +43,10 @@ jobs:
       - name: Install from lockfile
         working-directory: ${{ matrix.directory }}
         run: npm ci
+      - name: Install signaling for the API startup contract
+        if: matrix.name == 'api'
+        working-directory: signaling-server
+        run: npm ci --omit=dev
       - name: Check syntax
         working-directory: ${{ matrix.directory }}
         run: npm run check --if-present

@@ -224,6 +224,10 @@ jobs:
       - name: Install backend dependencies
         run: npm ci
 
+      - name: Install signaling for the API startup contract
+        working-directory: signaling-server
+        run: npm ci --omit=dev
+
       - name: Validate API contracts and security
         run: |
           npm run check
