@@ -1,0 +1,341 @@
+{
+  "testedCodeCommit": "270e2c6d4e52a32f465a3424afd8a4b3b4815382",
+  "apiSourceCommit": "1c0cc5c6efa2e2baa588285c3cbea02a60057351",
+  "baseImage": "docker.io/gotenberg/gotenberg:9.9.1-libreoffice@sha256:3d5fd268be20a7935d3e624770161080b615d9086548a2b501f44f388710529b",
+  "amd64ImageId": "sha256:18a1e240ea17e5414f7d0e080ad9d429652c11304dc539f7b94827b4d960c91b",
+  "buildInputsSha256": {
+    "Dockerfile": "97f605cf82f3f256e7aa4c056c5f9ab88efef55b6870341d316dbb63f355ce38",
+    "libxml2-sources.sha256": "778b0bc850c142db9e4a9bb36d8ca965a6cf6d6deefb19779fe5a94824f27ab1",
+    "libxml2-input-ownership.patch": "46a47681cf941ca5d1e375c4e40e5010e955854cea1b31bb86d97116c3208164",
+    "sources.sha256": "3da433140eab07e6b16de15a417a163d2bb358fc5b5baf08aab05c1ff44d4938"
+  },
+  "archiveAutocrlfModes": [
+    "false",
+    "true",
+    "input"
+  ],
+  "buildSeconds": 218,
+  "candidateBinarySha256": "5b97fe0a878eec8202304c7ed9c639c92f4cb8f3e963ffcea0eeb35dcb2fdcf3",
+  "baselineBinarySha256": "8f2643af68a9eba917929046806dabd1848867068d0eee0f6799288a8e886963",
+  "debian": {
+    "headersCompared": 47,
+    "differingHeaders": 0,
+    "stockBinaryDebSha256": "2d1a5825cabb43cf4be6848a4acc4a73c50d9c3740ab0c76e2fed80a3e5c6398",
+    "stockBinaryUrl": "https://snapshot.debian.org/archive/debian/20261118T000000Z/pool/main/libx/libxml2/libxml2-dev_2.12.7+dfsg+really2.9.14-2.1+deb13u3_amd64.deb",
+    "candidateBinaryDebSha256": "4a4bb5869066d21214b0881b9f50875ae4eebdf8b9af4b79a3026753b31e4759",
+    "stockDebianVersion": "2.12.7+dfsg+really2.9.14-2.1+deb13u3",
+    "includeInventoryDigest": "a45898cc738d1247743e3e54077b593cc9891e3b58a68e9920b19a09fefcf35e"
+  },
+  "abi": {
+    "publicStructs": {
+      "old": {
+        "sizeofXmlEntity": 136,
+        "sizeofXmlParserInput": 104,
+        "offsetChecked": 132,
+        "offsetId": 100,
+        "normalXmlReadPassed": true
+      },
+      "new": {
+        "sizeofXmlEntity": 136,
+        "sizeofXmlParserInput": 104,
+        "offsetChecked": 132,
+        "offsetId": 100,
+        "normalXmlReadPassed": true
+      }
+    },
+    "dynamicExports": {
+      "old": 1786,
+      "new": 1786
+    },
+    "removedOrChangedExports": 0,
+    "addedOrChangedExports": 0,
+    "oldHeaderConsumerNewLibraryExit": 0,
+    "newHeaderConsumerOldLibraryExit": 0,
+    "architecture": "linux/amd64"
+  },
+  "packageScan": {
+    "utc": "2026-11-20T19:21:00.236781+00:00",
+    "sourcePackages": 205,
+    "onlyChangedPackage": [
+      [
+        "libxml2",
+        "2.12.7+dfsg+really2.9.14-2.1+deb13u3"
+      ],
+      [
+        "libxml2",
+        "2.12.7+dfsg+really2.9.14-2.1+deb13u3+novvin232.1"
+      ]
+    ],
+    "osvQueryUsedDebianBaseVersionForLocalXml": true,
+    "rawAdvisoryCount": 330,
+    "libxml2IdsInclude6653": true,
+    "addedSince225": [
+      "DEBIAN-CVE-2026-132998",
+      "DEBIAN-CVE-2026-132999"
+    ],
+    "removedSince225": [],
+    "identicalPrograms": {
+      "usr/bin/gotenberg": "d3f7f916940369d8515431c0d406bcb367e737a42f3d06cf37c73e18419ad40d",
+      "usr/bin/lok": "8d13ca95be0e62455be446fae1840221c0777e4190dbe948d3665d56f6ffe5ff",
+      "usr/lib/libreoffice/program/soffice.bin": "0b6650a3d44fd67e427edeffe6263dbfcfef55a8152c00d9f36f92e615fc9a86",
+      "usr/bin/curl": "405983620ffd44cc5ebc8bc0eaee623feacfc54b8323d428f95864d9fd5c5a5b"
+    }
+  },
+  "packages": {
+    "curl": "8.23.0-2~novvin13+1",
+    "libcurl4t64": "8.23.0-2~novvin13+1",
+    "libcurl4-gnutls": "8.23.0-2~novvin13+1",
+    "libxml2": "2.12.7+dfsg+really2.9.14-2.1+deb13u3+novvin232.1",
+    "libreoffice-core": "4:26.8.2.2-2~bpo13+1"
+  },
+  "engine": "29.1.3",
+  "compose": "2.40.3+ds1-0ubuntu1~24.04.1",
+  "postgres": "postgres (PostgreSQL) 16.16",
+  "migrations": 37,
+  "apiUid": "10001",
+  "converterUid": "1001",
+  "readOnlyRoot": true,
+  "internalConverterNetwork": true,
+  "appRegistrationStatus": 201,
+  "capabilities": 25,
+  "conversions": [
+    {
+      "format": "doc",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 492,
+      "inputSha256": "3e79fb6017c0755d3c0de36d2b506e649e61d21d8dbdfb8828ffe3172c9bc97f",
+      "pdfSha256": "128b3b1dc117458463d5e0d79993606079b7448351cb81040b8f22d0fffa5411",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "docx",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 306,
+      "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+      "pdfSha256": "5159822eea498e6ee34367a971dbd68b3d889671f003d53732a71c82e570f41d",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "xls",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 112,
+      "inputSha256": "1ae48ddea2af5d29e7ec20f622217a4379e41ea7c940ab507329944d53286e88",
+      "pdfSha256": "a7b70f0ba0a86bc1b652b1d2bdc74ae3d11c9b099b9e3f49d5b907c26e7c67cf",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "xlsx",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 102,
+      "inputSha256": "2bfad1bc3b6c489b694708af7b21bc0c9717276f43955c9f367467916fdcafce",
+      "pdfSha256": "a791ca98fd57d5a41790961e46cc169230a21fbbd917029092f9a6d9d12bedc5",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "ppt",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 173,
+      "inputSha256": "3cf589773ddc79cc315ca388650e5e6395e41bd41bc91174eaedbc231a45293f",
+      "pdfSha256": "1af1d7f8c2a3cee3675fd825cdd76f5ba133b6ee9860eac115f7af24c9d0f0db",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "pptx",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 411,
+      "inputSha256": "3cb3e83e27ec332665f14f7be6bea45f79c12c1273c78e48890914f402f44df2",
+      "pdfSha256": "ab241dc1444816de785861ca20b0788c59b974b727daf0ca7dd0f8741fe1abd5",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "docx",
+      "rich": false,
+      "afterRestart": true,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 571,
+      "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+      "pdfSha256": "0142e002786d266a289b72bb128aa75bcf812177c054d3f262b05de132f0d4db",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "docx",
+      "rich": true,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 196,
+      "inputSha256": "60bfc7a48fa81d3588d66e303cf251b2e78e7ef2a77cfb646a7931defdab8f57",
+      "pdfSha256": "e0eb9327d4c22bea09e48aa9ae0f9635a27acd1d0a7cbe82dad7002d9252513a",
+      "pages": 2,
+      "expectedText": true
+    },
+    {
+      "format": "xlsx",
+      "rich": true,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 171,
+      "inputSha256": "6d6c409867131ef7f4b01bbf00321a8d820db11d98f45e4e9f346e21a968e7b2",
+      "pdfSha256": "02c283ad549c69aaccc94df77eccb535356fab12b00ca8cfa9b3be08dad6d3ac",
+      "pages": 2,
+      "expectedText": true
+    },
+    {
+      "format": "pptx",
+      "rich": true,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 481,
+      "inputSha256": "c07834a8d32e54a80250fa2fac4d12e664f7203f82a411d87f479a4f2dd470d5",
+      "pdfSha256": "92ceb4948c23ae7732656c811eb370c3ee0c682ff7937c8ff39c63b4feb7e864",
+      "pages": 2,
+      "expectedText": true
+    }
+  ],
+  "pagePixelComparison": [
+    {
+      "format": "docx",
+      "page": 1,
+      "pixels": 484704,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "docx",
+      "page": 2,
+      "pixels": 484704,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "xlsx",
+      "page": 1,
+      "pixels": 501832,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "xlsx",
+      "page": 2,
+      "pixels": 501832,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "pptx",
+      "page": 1,
+      "pixels": 388800,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "pptx",
+      "page": 2,
+      "pixels": 388800,
+      "different": 0,
+      "maxChannelDelta": 0
+    }
+  ],
+  "alternateFedora": {
+    "packages": {
+      "libxml2": "2.15.4-1.fc45",
+      "libcurl": "8.21.0-9.fc45",
+      "curl": "8.21.0-9.fc45",
+      "libreoffice-core": "26.8.3.1-2.fc45",
+      "tini": "0.19.0-12.fc44"
+    },
+    "health": 200,
+    "conversions": [
+      {
+        "format": "docx",
+        "http": 200,
+        "bytes": 8762
+      },
+      {
+        "format": "xlsx",
+        "http": 200,
+        "bytes": 10962
+      },
+      {
+        "format": "pptx",
+        "http": 200,
+        "bytes": 10580
+      },
+      {
+        "format": "doc",
+        "http": 200,
+        "bytes": 8762
+      },
+      {
+        "format": "xls",
+        "http": 200,
+        "bytes": 10962
+      },
+      {
+        "format": "ppt",
+        "http": 200,
+        "bytes": 10542
+      }
+    ],
+    "scope": "direct converter in isolated network namespace",
+    "selected": false
+  },
+  "realServer": {
+    "public": {
+      "checkedUtc": "2026-11-20T19:21:30.117749+00:00",
+      "http": 200,
+      "tls": "TLSv1.3",
+      "capabilities": 25,
+      "release": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+    },
+    "private": {
+      "checkedUtc": "2026-11-20T19:21:30.267124+00:00",
+      "http": 200,
+      "tls": "TLSv1.3",
+      "capabilities": 25,
+      "release": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+    }
+  },
+  "newDebianFindings": [
+    {
+      "name": "CVE-2026-132998",
+      "source": "libeot",
+      "trixie": "0.01-5",
+      "unstableFixed": "1:0.0.3-1"
+    },
+    {
+      "name": "CVE-2026-132999",
+      "source": "libeot",
+      "trixie": "0.01-5",
+      "unstableFixed": "1:0.0.4-1"
+    }
+  ]
+}

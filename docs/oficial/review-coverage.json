@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T18:13:10.673144+00:00",
-  "baseCommit": "922d8459cac4a74f0d39a3794e05af01eae38acf",
+  "generatedAtUtc": "2026-11-20T19:27:18.578061+00:00",
+  "baseCommit": "270e2c6d4e52a32f465a3424afd8a4b3b4815382",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,8 +10,8 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3439,
-    "code-read": 1052,
+    "pending": 3441,
+    "code-read": 1054,
     "partial": 280
   },
   "countsByPhase": {
@@ -21,13 +21,13 @@
       "code-read": 612
     },
     "documentation": {
-      "pending": 705,
+      "pending": 707,
       "code-read": 67,
       "partial": 21
     },
     "server": {
       "pending": 720,
-      "code-read": 208,
+      "code-read": 210,
       "partial": 49
     },
     "tooling-and-other": {
@@ -22337,6 +22337,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/232-conversor-office-compatibilidad-y-fidelidad-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "74f30f73defb682b4e2d14e6cbfd455ed19053b1",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/24-musica-privacidad-y-plan-gamer-hub-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "4b6363478b08ea9abd1dec49c858af09a3e904bc",
@@ -23250,6 +23256,12 @@
       "file": "docs/oficial/evidencias/231-actualizacion-con-huellas-historicas-de-migracion.json",
       "phase": "documentation",
       "gitBlobId": "56960276de15f5e19166d30bc9c448829f9b441c",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/232-conversor-office-compatibilidad-y-fidelidad.json",
+      "phase": "documentation",
+      "gitBlobId": "ca787796a7b33efdd710776571ab5881b722ed71",
       "reviewStatus": "pending"
     },
     {
@@ -28141,17 +28153,33 @@
     {
       "file": "infrastructure/local-fallback/office-preview/.gitattributes",
       "phase": "server",
-      "gitBlobId": "314930b6c9058a8db2ed715c9ebd64d9d53bc7ff",
+      "gitBlobId": "baa8651d27a189a9e4a6a603f7df961f2d7bf147",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "evidence": "docs/oficial/232-conversor-office-compatibilidad-y-fidelidad-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/office-preview/Dockerfile",
       "phase": "server",
-      "gitBlobId": "d3f421f58800ea93dc45dfcdf36c077034a0f4da",
+      "gitBlobId": "7aa9de39fbd84a8f77c148574f2cfadbdb7ba2d0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "evidence": "docs/oficial/232-conversor-office-compatibilidad-y-fidelidad-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/office-preview/libxml2-input-ownership.patch",
+      "phase": "server",
+      "gitBlobId": "1084e772bbbd11a1f79efa01ff44585b2a4bbe1a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/232-conversor-office-compatibilidad-y-fidelidad-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/office-preview/libxml2-sources.sha256",
+      "phase": "server",
+      "gitBlobId": "2f69dc27e1b7dd76b2d307c9d14f465cc6baf88b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/232-conversor-office-compatibilidad-y-fidelidad-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28159,7 +28187,7 @@
       "phase": "server",
       "gitBlobId": "60a17dc4c7954f49deef630f7de53d7593cc2d6c",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "evidence": "docs/oficial/232-conversor-office-compatibilidad-y-fidelidad-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
