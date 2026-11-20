@@ -180,7 +180,7 @@ services:
         aliases:
           - conectate-api
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "busybox", "wget", "-Y", "off", "-q", "-O", "/dev/null", "http://127.0.0.1:3001/health"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -321,7 +321,7 @@ services:
     deploy:
       replicas: ${SIGNALING_REPLICAS:-1}
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "busybox", "wget", "-Y", "off", "-q", "-O", "/dev/null", "http://127.0.0.1:3003/health"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -388,7 +388,7 @@ services:
     ports:
       - "127.0.0.1:${FALLBACK_REALTIME_PORT:-3002}:3002"
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "busybox", "wget", "-Y", "off", "-q", "-O", "/dev/null", "http://127.0.0.1:3002/ready"]
       interval: 15s
       timeout: 5s
       retries: 5
