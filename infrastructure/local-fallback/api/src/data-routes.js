@@ -208,6 +208,28 @@ function toMillis(value) {
 const PRESENCE_ONLINE_TTL_MS = Math.max(30_000, Number(process.env.PRESENCE_ONLINE_TTL_MS) || 90_000)
 const TTL_CACHE_MAX_ENTRIES = Math.max(100, Number(process.env.TTL_CACHE_MAX_ENTRIES) || 600)
 const ttlCache = new Map()
+const inFlightReadsByPool = new WeakMap()
+const globalInFlightCacheLoads = new Map()
+
+function singleflightLoad(pool, key, loader) {
+  let map = pool && typeof pool === 'object' ? inFlightReadsByPool.get(pool) : null
+  if (pool && typeof pool === 'object' && !map) {
+    map = new Map()
+    inFlightReadsByPool.set(pool, map)
+  }
+  const activeMap = map || globalInFlightCacheLoads
+  const existing = activeMap.get(key)
+  if (existing) {
+    return existing.then((rows) => (Array.isArray(rows) ? rows.map((row) => ({ ...row })) : rows))
+  }
+  const promise = Promise.resolve()
+    .then(loader)
+    .finally(() => {
+      if (activeMap.get(key) === promise) activeMap.delete(key)
+    })
+  activeMap.set(key, promise)
+  return promise.then((rows) => (Array.isArray(rows) ? rows.map((row) => ({ ...row })) : rows))
+}
 
 function cacheGet(key) {
   const entry = ttlCache.get(key)
@@ -235,9 +257,23 @@ function cacheSet(key, value, ttlMs) {
 async function cacheGetOrSet(key, ttlMs, loader) {
   const cached = cacheGet(key)
   if (cached) return cached.map((row) => ({ ...row }))
-  const rows = await loader()
-  cacheSet(key, rows.map((row) => ({ ...row })), ttlMs)
-  return rows
+  const inflight = globalInFlightCacheLoads.get(key)
+  if (inflight) {
+    const rows = await inflight
+    return rows.map((row) => ({ ...row }))
+  }
+  const promise = Promise.resolve()
+    .then(loader)
+    .then((rows) => {
+      cacheSet(key, rows.map((row) => ({ ...row })), ttlMs)
+      return rows
+    })
+    .finally(() => {
+      if (globalInFlightCacheLoads.get(key) === promise) globalInFlightCacheLoads.delete(key)
+    })
+  globalInFlightCacheLoads.set(key, promise)
+  const rows = await promise
+  return rows.map((row) => ({ ...row }))
 }
 
 function cacheDeletePrefix(prefix) {
@@ -1100,38 +1136,49 @@ async function localCollectionMembers(pool, kind, limit = 10_000) {
 
 async function localPosts(pool, limit = 5000) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        user_id,
-        user_name,
-        user_profile_image,
-        content,
-        media_url,
-        media_urls,
-        media_type,
-        survey_id,
-        (SELECT count(*)::int FROM survey_responses r WHERE r.campaign_id=fallback_posts.survey_id AND r.removed_at IS NULL AND (r.expires_at IS NULL OR r.expires_at>now())) AS survey_response_count,
-        visibility,
-        remix_allowed,
-        remix_audience,
-        remix_revoked_at,
-        remix_source_post_id,
-        remix_root_post_id,
-        remix_source_user_id,
-        remix_source_user_name,
-        remix_depth,
-        created_at,
-        updated_at,
-        0::int AS like_count,
-        0::int AS comment_count,
-        TRUE AS local_only
-     FROM fallback_posts
-     ORDER BY created_at DESC
-     LIMIT $1`,
-    [safeLimit],
-  )
-  return rows.map(normalizeImportedRow)
+  return singleflightLoad(pool, `localPosts:${safeLimit}`, async () => {
+    const { rows } = await pool.query(
+      `SELECT
+          id::text,
+          user_id,
+          user_name,
+          user_profile_image,
+          content,
+          media_url,
+          media_urls,
+          media_type,
+          survey_id,
+          CASE
+            WHEN fallback_posts.survey_id IS NOT NULL THEN (
+              SELECT count(*)::int
+              FROM survey_responses r
+              WHERE r.campaign_id = fallback_posts.survey_id
+                AND r.removed_at IS NULL
+                AND (r.expires_at IS NULL OR r.expires_at > now())
+            )
+            ELSE 0
+          END AS survey_response_count,
+          visibility,
+          remix_allowed,
+          remix_audience,
+          remix_revoked_at,
+          remix_source_post_id,
+          remix_root_post_id,
+          remix_source_user_id,
+          remix_source_user_name,
+          remix_depth,
+          created_at,
+          updated_at,
+          0::int AS like_count,
+          0::int AS comment_count,
+          TRUE AS local_only
+       FROM fallback_posts
+       ORDER BY created_at DESC
+       LIMIT $1`,
+      [safeLimit],
+    )
+    return rows.map(normalizeImportedRow)
+  })
 }
 
 async function localVideos(pool, limit = 5000) {
@@ -2375,48 +2422,54 @@ async function localPostComments(pool, postIds, limit = 10_000) {
   const ids = Array.from(cleanSet(postIds))
   if (ids.length === 0) return []
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        post_id,
-        user_id,
-        content,
-        parent_id,
-        media_url,
-        media_type,
-        created_at,
-        updated_at,
-        TRUE AS local_only
-     FROM fallback_post_comments
-     WHERE is_deleted = FALSE
-       AND lower(post_id) = ANY($1::text[])
-     ORDER BY created_at ASC
-     LIMIT $2`,
-    [ids, safeLimit],
-  )
-  return rows.map(normalizeImportedRow)
+  const key = `localPostComments:${safeLimit}:${stableKey(ids.slice().sort().join('|'))}`
+  return singleflightLoad(pool, key, async () => {
+    const { rows } = await pool.query(
+      `SELECT
+          id::text,
+          post_id,
+          user_id,
+          content,
+          parent_id,
+          media_url,
+          media_type,
+          created_at,
+          updated_at,
+          TRUE AS local_only
+       FROM fallback_post_comments
+       WHERE is_deleted = FALSE
+         AND lower(post_id) = ANY($1::text[])
+       ORDER BY created_at ASC
+       LIMIT $2`,
+      [ids, safeLimit],
+    )
+    return rows.map(normalizeImportedRow)
+  })
 }
 
 async function localPostReactions(pool, postIds, limit = 10_000) {
   const ids = Array.from(cleanSet(postIds))
   if (ids.length === 0) return []
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
-  const { rows } = await pool.query(
-    `SELECT
-        post_id,
-        user_id,
-        reaction_type,
-        created_at,
-        updated_at,
-        is_deleted,
-        TRUE AS local_only
-     FROM fallback_post_reactions
-     WHERE lower(post_id) = ANY($1::text[])
-     ORDER BY updated_at DESC
-     LIMIT $2`,
-    [ids, safeLimit],
-  )
-  return rows.map(normalizeImportedRow)
+  const key = `localPostReactions:${safeLimit}:${stableKey(ids.slice().sort().join('|'))}`
+  return singleflightLoad(pool, key, async () => {
+    const { rows } = await pool.query(
+      `SELECT
+          post_id,
+          user_id,
+          reaction_type,
+          created_at,
+          updated_at,
+          is_deleted,
+          TRUE AS local_only
+       FROM fallback_post_reactions
+       WHERE lower(post_id) = ANY($1::text[])
+       ORDER BY updated_at DESC
+       LIMIT $2`,
+      [ids, safeLimit],
+    )
+    return rows.map(normalizeImportedRow)
+  })
 }
 
 // Imported Supabase rows are a read-only snapshot. A local unlike therefore
@@ -2467,32 +2520,43 @@ async function localPostShares(pool, postIds, limit = 10_000) {
   const ids = Array.from(cleanSet(postIds))
   if (ids.length === 0) return []
   const safeLimit = Math.max(1, Math.min(Number(limit) || 10_000, 50_000))
-  const { rows } = await pool.query(
-    `SELECT
-        id::text,
-        post_id,
-        user_id,
-        content_type,
-        created_at,
-        TRUE AS local_only
-     FROM fallback_shares
-     WHERE content_type = 'post'
-       AND lower(post_id) = ANY($1::text[])
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [ids, safeLimit],
-  )
-  return rows.map(normalizeImportedRow)
+  const key = `localPostShares:${safeLimit}:${stableKey(ids.slice().sort().join('|'))}`
+  return singleflightLoad(pool, key, async () => {
+    const { rows } = await pool.query(
+      `SELECT
+          id::text,
+          post_id,
+          user_id,
+          content_type,
+          created_at,
+          TRUE AS local_only
+       FROM fallback_shares
+       WHERE content_type = 'post'
+         AND lower(post_id) = ANY($1::text[])
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [ids, safeLimit],
+    )
+    return rows.map(normalizeImportedRow)
+  })
 }
 
 async function fallbackUserProfileRows(pool, limit = 5000, profileIds = []) {
   const safeLimit = Math.max(1, Math.min(Number(limit) || 5000, 10_000))
   const requestedIds = Array.from(cleanSet(profileIds))
-  const scopeKey = requestedIds.length > 0 ? stableKey(requestedIds.sort().join('|')) : 'all'
+  const allUuids = requestedIds.length > 0 && requestedIds.every((id) => Boolean(validUuid(id)))
+  const scopeKey = requestedIds.length > 0 ? stableKey(requestedIds.slice().sort().join('|')) : 'all'
   return cacheGetOrSet(
     `fallbackUserProfileRows:${safeLimit}:${scopeKey}`,
     10_000,
     async () => {
+      const whereClause = requestedIds.length === 0
+        ? 'TRUE'
+        : allUuids
+          ? '(u.id = ANY($1::uuid[]) OR u.supabase_user_id = ANY($1::uuid[]))'
+          : '(lower(u.id::text) = ANY($1::text[]) OR lower(COALESCE(u.supabase_user_id::text, \'\')) = ANY($1::text[]))'
+      const params = requestedIds.length === 0 ? [safeLimit] : [requestedIds, safeLimit]
+      const limitParam = requestedIds.length === 0 ? '$1' : '$2'
       const { rows } = await pool.query(
         `SELECT
             u.id::text AS id,
@@ -2566,12 +2630,10 @@ async function fallbackUserProfileRows(pool, limit = 5000, profileIds = []) {
            ORDER BY moderation.is_admin DESC, moderation.updated_at DESC
            LIMIT 1
          ) m ON TRUE
-         WHERE ($1::text[] = '{}'::text[]
-           OR lower(u.id::text) = ANY($1::text[])
-           OR lower(COALESCE(u.supabase_user_id::text, '')) = ANY($1::text[]))
+         WHERE ${whereClause}
          ORDER BY COALESCE(o.updated_at, u.created_at) DESC
-         LIMIT $2`,
-        [requestedIds, safeLimit],
+         LIMIT ${limitParam}`,
+        params,
       )
       return rows.map((raw) => {
         const { __admin_email, __admin_flag, __admin_level, __admin_owner, ...profile } = normalizeImportedRow(raw)
@@ -11756,6 +11818,7 @@ function registerDataRoutes(app, {
         return res.status(400).json({ error: 'ROOM_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
 
+      const accessStartedAt = process.hrtime.bigint()
       const roomAccess = await loadCollectionRoomAccess(pool, user, config.kind, roomId)
       if (!roomAccess) return res.status(404).json({ error: 'ROOM_NOT_FOUND' })
 
@@ -11814,6 +11877,8 @@ function registerDataRoutes(app, {
       }))) {
         return res.status(403).json({ error: 'COLLECTION_MEDIA_REFERENCE_FORBIDDEN' })
       }
+      const accessDurMs = Number(process.hrtime.bigint() - accessStartedAt) / 1_000_000
+      const persistStartedAt = process.hrtime.bigint()
       const senderId = identity.displayUserId
       const saved = await insertWithCommunityBudget(pool, {
         kind: config.kind, scopeId: roomId,
@@ -11828,6 +11893,11 @@ function registerDataRoutes(app, {
         },
       }, { isAdmin, weeklyLimit: numberOf(roomRow, ['weekly_message_limit', 'weeklyMessageLimit'], 0),
         dailyLimit: numberOf(roomRow, ['daily_message_limit', 'dailyMessageLimit'], 0) })
+      const persistDurMs = Number(process.hrtime.bigint() - persistStartedAt) / 1_000_000
+      req._serverTimings = [
+        { name: 'access', durMs: accessDurMs },
+        { name: 'persist', durMs: persistDurMs },
+      ]
       const rows = [saved.message]
 
       const profilesById = indexProfiles(await publicProfilesByIds(pool, [senderId]))
@@ -14533,6 +14603,7 @@ function registerDataRoutes(app, {
         return res.status(400).json({ error: 'CHAT_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
 
+      const accessStartedAt = process.hrtime.bigint()
       const identity = userIdentity(user)
       const accessContext = await privateChatAccessContext(pool, chatId, identity, { includeImportedPreferences: false })
       if (!accessContext.hasAccess) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
@@ -14566,6 +14637,8 @@ function registerDataRoutes(app, {
       ))) {
         return res.status(403).json({ error: 'CHAT_THUMBNAIL_REFERENCE_FORBIDDEN' })
       }
+      const accessDurMs = Number(process.hrtime.bigint() - accessStartedAt) / 1_000_000
+      const persistStartedAt = process.hrtime.bigint()
       const senderId = identity.displayUserId
       const saved = await insertMessageOnce(pool, {
         kind: 'dm', scopeId: chatId, actorIds: identity.ids,
@@ -14578,7 +14651,13 @@ function registerDataRoutes(app, {
         },
       })
       const insertedMessage = normalizeMessageRow(saved.message)
-      if (!saved.inserted) return res.json({ message: insertedMessage })
+      if (!saved.inserted) {
+        req._serverTimings = [
+          { name: 'access', durMs: accessDurMs },
+          { name: 'persist', durMs: Number(process.hrtime.bigint() - persistStartedAt) / 1_000_000 },
+        ]
+        return res.json({ message: insertedMessage })
+      }
       await Promise.all([
         pool.query(
           `DELETE FROM fallback_chat_hidden
@@ -14588,6 +14667,10 @@ function registerDataRoutes(app, {
         ),
         refreshChatSummary(pool, chatId),
       ])
+      req._serverTimings = [
+        { name: 'access', durMs: accessDurMs },
+        { name: 'persist', durMs: Number(process.hrtime.bigint() - persistStartedAt) / 1_000_000 },
+      ]
       const recipientIds = new Set([
         ...accessContext.participantRows
           .map((row) => normalizeId(textOf(row, ['user_id', 'profile_id'], ''))),

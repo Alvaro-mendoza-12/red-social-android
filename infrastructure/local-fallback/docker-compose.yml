@@ -123,6 +123,8 @@ services:
       MUSIC_ANTIVIRUS_TIMEOUT_MS: ${MUSIC_ANTIVIRUS_TIMEOUT_MS:-90000}
       REALTIME_INTERNAL_URL: http://realtime-gateway:3002
       REALTIME_INTERNAL_SECRET: ${REALTIME_INTERNAL_SECRET:?REALTIME_INTERNAL_SECRET is required}
+      RATE_LIMIT_REDIS_URL: ${RATE_LIMIT_REDIS_URL:-redis://signaling-redis:6379}
+      RATE_LIMIT_REDIS_PASSWORD_FILE: /run/secrets/signaling_redis_password
       LIVE_INTERNAL_EVENTS_TOKEN: ${LIVE_INTERNAL_EVENTS_TOKEN:?LIVE_INTERNAL_EVENTS_TOKEN is required}
       SIGNALING_INTERNAL_URL: http://signaling:3003
       AI_INTERNAL_URL: http://ai-chatbot:3010
@@ -143,6 +145,8 @@ services:
       - ./.conectate-release:/run/novvin-release:ro
       - conectate-fallback-storage:/data/storage
       - novvin-clamav-db:/var/lib/clamav
+    secrets:
+      - signaling_redis_password
     read_only: true
     tmpfs:
       - /tmp:size=256m,noexec,nosuid,nodev
@@ -358,6 +362,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       JWT_ISSUER: ${JWT_ISSUER:-conectate-local-fallback}
       REALTIME_INTERNAL_SECRET: ${REALTIME_INTERNAL_SECRET:?REALTIME_INTERNAL_SECRET is required}
+      REALTIME_REDIS_URL: ${REALTIME_REDIS_URL:-redis://signaling-redis:6379}
+      REALTIME_REDIS_PASSWORD_FILE: /run/secrets/signaling_redis_password
+    secrets:
+      - signaling_redis_password
     read_only: true
     tmpfs:
       - /tmp:size=16m,noexec,nosuid,nodev
@@ -422,6 +430,51 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  # Pooler opcional en modo transacción para escalar API a múltiples réplicas
+  # sin agotar max_connections de PostgreSQL (activar con: docker compose --profile scale up -d pgbouncer).
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.23.1-p3
+    container_name: conectate-local-fallback-pgbouncer-main
+    restart: unless-stopped
+    profiles: ["scale"]
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: conectate
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      DB_NAME: conectate_fallback
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-1000}
+      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-40}
+      RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-10}
+      RESERVE_POOL_TIMEOUT: "3"
+      SERVER_IDLE_TIMEOUT: "60"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "127.0.0.1:${FALLBACK_PGBOUNCER_PORT:-6432}:5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${PGBOUNCER_MEMORY_LIMIT:-128m}
+    memswap_limit: ${PGBOUNCER_MEMORY_SWAP_LIMIT:-128m}
+    cpus: "${PGBOUNCER_CPU_LIMIT:-0.50}"
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U conectate"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   conectate-fallback-db:

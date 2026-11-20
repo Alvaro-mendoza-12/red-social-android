@@ -63,6 +63,7 @@ const {
   createDistributedRateLimitMiddleware,
   pruneExpiredRateLimitWindows,
 } = require('./distributed-rate-limit')
+const { createRedisRespClient } = require('./redis-resp-client')
 const { processMessageDeletionOutbox } = require('./message-deletion-policy')
 const {
   ensureScheduledMessageTables,
@@ -222,7 +223,33 @@ function logDatabasePoolError(error) {
 // The pool discards that client and establishes a fresh connection on demand.
 pool.on('error', logDatabasePoolError)
 
-const apiMetrics = createApiMetricsCollector({ pool })
+const rateLimitRedisUrl = String(process.env.RATE_LIMIT_REDIS_URL || process.env.REDIS_URL || '').trim()
+const rateLimitRedisClient = rateLimitRedisUrl
+  ? createRedisRespClient({
+      url: rateLimitRedisUrl,
+      password: process.env.RATE_LIMIT_REDIS_PASSWORD || process.env.REDIS_PASSWORD || '',
+      passwordFile: process.env.RATE_LIMIT_REDIS_PASSWORD_FILE || process.env.SIGNALING_REDIS_PASSWORD_FILE || '',
+      connectTimeoutMs: boundedInteger(process.env.RATE_LIMIT_REDIS_CONNECT_TIMEOUT_MS, 2_000, 250, 15_000),
+      commandTimeoutMs: boundedInteger(process.env.RATE_LIMIT_REDIS_COMMAND_TIMEOUT_MS, 200, 50, 5_000),
+    })
+  : null
+if (rateLimitRedisClient) {
+  rateLimitRedisClient.on('error', (error) => {
+    console.warn('[rate-limit-redis] connection degraded, falling back to PostgreSQL', safeErrorLogDetails(error, {
+      production: isProduction,
+      fallbackCode: 'REDIS_ERROR',
+    }))
+  })
+  void rateLimitRedisClient.connect()
+}
+
+const apiMetrics = createApiMetricsCollector({ pool, redisRateLimiter: rateLimitRedisClient })
+const distributedRateLimitStoreOptions = {
+  redisClient: rateLimitRedisClient,
+  redisCommandTimeoutMs: boundedInteger(process.env.RATE_LIMIT_REDIS_COMMAND_TIMEOUT_MS, 200, 50, 5_000),
+  onRedisHit: () => apiMetrics.recordRateLimitRedisHit(),
+  onRedisFallback: () => apiMetrics.recordRateLimitPgFallback(),
+}
 
 const app = express()
 app.disable('x-powered-by')
@@ -333,6 +360,7 @@ const authCredentialKey = (req) => {
 
 app.use('/v1/auth/register', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:register',
   limit: boundedInteger(process.env.AUTH_REGISTER_RATE_LIMIT_PER_HOUR, 10, 2, 100),
   windowMs: 60 * 60_000,
@@ -342,6 +370,7 @@ app.use('/v1/auth/register', createDistributedRateLimitMiddleware({
 }))
 app.use('/v1/auth/login', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:login',
   limit: boundedInteger(process.env.AUTH_LOGIN_RATE_LIMIT_PER_15_MINUTES, 20, 5, 200),
   windowMs: 15 * 60_000,
@@ -351,6 +380,7 @@ app.use('/v1/auth/login', createDistributedRateLimitMiddleware({
 }))
 app.use('/v1/auth/refresh', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:refresh',
   limit: boundedInteger(process.env.AUTH_REFRESH_RATE_LIMIT_PER_15_MINUTES, 60, 10, 300),
   windowMs: 15 * 60_000,
@@ -360,6 +390,7 @@ app.use('/v1/auth/refresh', createDistributedRateLimitMiddleware({
 }))
 app.use('/v1/auth/username/availability', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:username-availability',
   limit: boundedInteger(process.env.AUTH_USERNAME_CHECK_RATE_LIMIT_PER_MINUTE, 30, 5, 120),
   windowMs: 60_000,
@@ -369,6 +400,7 @@ app.use('/v1/auth/username/availability', createDistributedRateLimitMiddleware({
 }))
 app.use('/v1/guest/session', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'guest:session',
   limit: 20,
   windowMs: 60 * 60_000,
@@ -378,6 +410,7 @@ app.use('/v1/guest/session', createDistributedRateLimitMiddleware({
 }))
 app.use('/v1/guest', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'guest:reads',
   limit: 120,
   windowMs: 60_000,
@@ -386,15 +419,16 @@ app.use('/v1/guest', createDistributedRateLimitMiddleware({
   methods: ['GET'],
 }))
 app.use(['/v1/public/profiles', '/p'], createDistributedRateLimitMiddleware({
-  pool, scope: 'public:profile-preview', limit: 60, windowMs: 60_000,
+  pool, ...distributedRateLimitStoreOptions, scope: 'public:profile-preview', limit: 60, windowMs: 60_000,
   code: 'PROFILE_PREVIEW_RATE_LIMITED', key: authIpKey, methods: ['GET'],
 }))
 app.use(['/v1/public/posts', '/v1/public/videos'], createDistributedRateLimitMiddleware({
-  pool, scope: 'public:content-preview', limit: 60, windowMs: 60_000,
+  pool, ...distributedRateLimitStoreOptions, scope: 'public:content-preview', limit: 60, windowMs: 60_000,
   code: 'CONTENT_PREVIEW_RATE_LIMITED', key: authIpKey, methods: ['GET'],
 }))
 app.use('/v1/auth/logout', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:logout',
   limit: boundedInteger(process.env.AUTH_LOGOUT_RATE_LIMIT_PER_15_MINUTES, 60, 10, 300),
   windowMs: 15 * 60_000,
@@ -404,6 +438,7 @@ app.use('/v1/auth/logout', createDistributedRateLimitMiddleware({
 }))
 app.use('/v1/auth/2fa', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:2fa',
   limit: boundedInteger(process.env.AUTH_2FA_RATE_LIMIT_PER_15_MINUTES, 20, 5, 100),
   windowMs: 15 * 60_000,
@@ -413,6 +448,7 @@ app.use('/v1/auth/2fa', createDistributedRateLimitMiddleware({
 }))
 app.use('/v1/auth/web-session', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:web-session',
   limit: boundedInteger(process.env.WEB_SESSION_RATE_LIMIT_PER_15_MINUTES, 120, 20, 600),
   windowMs: 15 * 60_000,
@@ -422,6 +458,7 @@ app.use('/v1/auth/web-session', createDistributedRateLimitMiddleware({
 }))
 app.use('/v1/auth/password-reset/request', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:password-reset-request',
   limit: boundedInteger(process.env.AUTH_PASSWORD_RESET_RATE_LIMIT_PER_15_MINUTES, 5, 2, 50),
   windowMs: 15 * 60_000,
@@ -430,11 +467,12 @@ app.use('/v1/auth/password-reset/request', createDistributedRateLimitMiddleware(
   methods: ['POST'],
 }))
 app.use('/v1/auth/password-reset/verify', createDistributedRateLimitMiddleware({
-  pool, scope: 'auth:password-reset-verify', limit: 8, windowMs: 15 * 60_000,
+  pool, ...distributedRateLimitStoreOptions, scope: 'auth:password-reset-verify', limit: 8, windowMs: 15 * 60_000,
   code: 'AUTH_PASSWORD_RESET_RATE_LIMITED', key: authCredentialKey, methods: ['POST'],
 }))
 app.post('/v1/auth/account-recovery/cases', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:assisted-recovery-request',
   limit: 3,
   windowMs: 60 * 60_000,
@@ -444,6 +482,7 @@ app.post('/v1/auth/account-recovery/cases', createDistributedRateLimitMiddleware
 }))
 app.post('/v1/auth/account-recovery/cases/:id/confirm-contact', createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:assisted-recovery-contact',
   limit: 10,
   windowMs: 60 * 60_000,
@@ -459,6 +498,7 @@ app.use([
   '/v1/auth/activate-local-password',
 ], createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:sensitive-action',
   limit: boundedInteger(process.env.AUTH_SENSITIVE_RATE_LIMIT_PER_15_MINUTES, 12, 3, 100),
   windowMs: 15 * 60_000,
@@ -471,6 +511,7 @@ app.use([
   '/functions/v1/web-login-pairing',
 ], createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'auth:web-login-pairing',
   limit: boundedInteger(process.env.AUTH_PAIRING_RATE_LIMIT_PER_MINUTE, 90, 10, 300),
   windowMs: 60_000,
@@ -484,6 +525,7 @@ app.use([
   '/storage/v1/upload/resumable',
 ], createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'storage:upload',
   limit: boundedInteger(process.env.STORAGE_UPLOAD_RATE_LIMIT_PER_10_MINUTES, 120, 10, 1000),
   windowMs: 10 * 60_000,
@@ -493,7 +535,7 @@ app.use([
 }))
 
 // Authenticated write anti-flood protection keyed by verified JWT subject (or IP fallback).
-// Uses the shared PostgreSQL fixed-window limiter so limits remain authoritative across replicas.
+// Uses Redis atomic Lua counters when configured with deterministic fail-closed PostgreSQL fallback.
 const bearerActorKey = (req) => {
   const header = String(req.headers.authorization || '').trim()
   const match = header.match(/^Bearer\s+(.+)$/i)
@@ -514,6 +556,7 @@ app.use([
   '/v1/data/messages/communities/:roomId/messages',
 ], createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'data:message-write',
   limit: boundedInteger(process.env.MESSAGE_WRITE_RATE_LIMIT_PER_MINUTE, 120, 10, 5000),
   windowMs: 60_000,
@@ -527,6 +570,7 @@ app.use([
   '/v1/data/calls/:callId/invite',
 ], createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'data:call-initiate',
   limit: boundedInteger(process.env.CALL_INITIATE_RATE_LIMIT_PER_MINUTE, 30, 5, 500),
   windowMs: 60_000,
@@ -541,6 +585,7 @@ app.use([
   '/v1/data/videos/comments/:commentId/report',
 ], createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'data:report-submit',
   limit: boundedInteger(process.env.REPORT_SUBMIT_RATE_LIMIT_PER_10_MINUTES, 20, 3, 200),
   windowMs: 10 * 60_000,
@@ -559,6 +604,7 @@ app.use([
   '/v1/data/notifications',
 ], createDistributedRateLimitMiddleware({
   pool,
+  ...distributedRateLimitStoreOptions,
   scope: 'data:social-write',
   limit: boundedInteger(process.env.SOCIAL_WRITE_RATE_LIMIT_PER_MINUTE, 120, 10, 5000),
   windowMs: 60_000,
@@ -2935,6 +2981,7 @@ app.post('/v1/auth/logout', async (req, res, next) => {
     if (rows[0]) {
       await pool.query('DELETE FROM fallback_fcm_tokens WHERE auth_session_id=$1::uuid', [rows[0].id])
       await recordAudit('auth_logout', rows[0].user_id, { sessionId: rows[0].id })
+      void publishWebSessionsRevoked(rows[0].user_id, [{ id: rows[0].id }])
     }
     return res.json({ ok: true, revoked: Boolean(rows[0]) })
   } catch (error) {
@@ -4368,6 +4415,7 @@ async function shutdown(signal) {
   if (passwordMailTimer) clearInterval(passwordMailTimer)
   await passwordResetMailOutbox?.stop()
   liveDrawGuessReconciler?.stop()
+  await rateLimitRedisClient?.close().catch(() => {})
   if (!server) {
     await closeStorageUploadPools(pool)
     await pool.end()

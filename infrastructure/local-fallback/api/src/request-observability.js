@@ -35,7 +35,7 @@ function elapsedMilliseconds(startedAt) {
   return Number(process.hrtime.bigint() - startedAt) / 1_000_000
 }
 
-function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
+function createApiMetricsCollector({ pool = null, redisRateLimiter = null, sampleSize = 2048 } = {}) {
   const maxSamples = Math.max(64, Math.min(Number(sampleSize) || 2048, 16_384))
   const latencies = new Float64Array(maxSamples)
   let latencyCursor = 0
@@ -51,6 +51,8 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
     status4xx: 0,
     status5xx: 0,
     rateLimitedTotal: 0,
+    rateLimitRedisHits: 0,
+    rateLimitPgFallbacks: 0,
     loadShedTotal: 0,
     slowRequestsTotal: 0,
   }
@@ -68,6 +70,12 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
     },
     recordLoadShed() {
       counters.loadShedTotal += 1
+    },
+    recordRateLimitRedisHit() {
+      counters.rateLimitRedisHits += 1
+    },
+    recordRateLimitPgFallback() {
+      counters.rateLimitPgFallbacks += 1
     },
     endRequest({ route, statusCode, durationMs, slow }) {
       counters.inFlight = Math.max(0, counters.inFlight - 1)
@@ -96,6 +104,7 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
     snapshot() {
       const slice = Array.from(latencies.subarray(0, latencyFilled)).sort((a, b) => a - b)
       const mem = process.memoryUsage()
+      const redisReady = Boolean(redisRateLimiter && redisRateLimiter.isReady?.())
       return {
         uptimeSeconds: Math.round((Date.now() - startedAtMs) / 1000),
         requestsTotal: counters.requestsTotal,
@@ -105,6 +114,10 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
         status4xx: counters.status4xx,
         status5xx: counters.status5xx,
         rateLimitedTotal: counters.rateLimitedTotal,
+        rateLimitRedisHits: counters.rateLimitRedisHits,
+        rateLimitPgFallbacks: counters.rateLimitPgFallbacks,
+        rateLimitRedisConfigured: Boolean(redisRateLimiter),
+        rateLimitRedisReady: redisReady,
         loadShedTotal: counters.loadShedTotal,
         slowRequestsTotal: counters.slowRequestsTotal,
         latencyP50Ms: percentile(slice, 0.5),
@@ -134,6 +147,12 @@ function createApiMetricsCollector({ pool = null, sampleSize = 2048 } = {}) {
         `novvin_api_responses_total{class="5xx"} ${s.status5xx}`,
         '# TYPE novvin_api_rate_limited_total counter',
         `novvin_api_rate_limited_total ${s.rateLimitedTotal}`,
+        '# TYPE novvin_api_ratelimit_redis_hits_total counter',
+        `novvin_api_ratelimit_redis_hits_total ${s.rateLimitRedisHits}`,
+        '# TYPE novvin_api_ratelimit_pg_fallback_total counter',
+        `novvin_api_ratelimit_pg_fallback_total ${s.rateLimitPgFallbacks}`,
+        '# TYPE novvin_api_ratelimit_redis_ready gauge',
+        `novvin_api_ratelimit_redis_ready ${s.rateLimitRedisReady ? 1 : 0}`,
         '# TYPE novvin_api_load_shed_total counter',
         `novvin_api_load_shed_total ${s.loadShedTotal}`,
         '# TYPE novvin_api_slow_requests_total counter',
@@ -202,7 +221,15 @@ function createRequestObservabilityMiddleware(options = {}) {
       if (!headersWritten && !res.headersSent) {
         headersWritten = true
         const durationMs = elapsedMilliseconds(startedAt)
-        res.setHeader('Server-Timing', `app;dur=${durationMs.toFixed(1)}`)
+        const timings = [`app;dur=${durationMs.toFixed(1)}`]
+        if (Array.isArray(req._serverTimings)) {
+          for (const entry of req._serverTimings) {
+            if (entry && /^[a-z0-9_-]{1,32}$/i.test(String(entry.name || '')) && Number.isFinite(entry.durMs)) {
+              timings.push(`${entry.name};dur=${Number(entry.durMs).toFixed(1)}`)
+            }
+          }
+        }
+        res.setHeader('Server-Timing', timings.join(', '))
         res.setHeader('X-Response-Time', `${durationMs.toFixed(1)}ms`)
       }
       return originalWriteHead.apply(this, args)

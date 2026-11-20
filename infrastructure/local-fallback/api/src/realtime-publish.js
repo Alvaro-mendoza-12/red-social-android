@@ -5,6 +5,11 @@ const { canonicalizeStorageUrls } = require('./storage-url-canonicalization')
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
 
+function realtimePublishTimeoutMs() {
+  const parsed = Number(process.env.REALTIME_PUBLISH_TIMEOUT_MS || 2_000)
+  return Number.isFinite(parsed) && parsed >= 300 ? Math.min(Math.trunc(parsed), 15_000) : 2_000
+}
+
 async function publishRealtimeEvent(channel, payload, options = {}) {
   const base = String(process.env.REALTIME_INTERNAL_URL || DEFAULT_URL).replace(/\/+$/, '')
   const cleanChannel = String(channel || '').trim()
@@ -17,7 +22,7 @@ async function publishRealtimeEvent(channel, payload, options = {}) {
     const traceparent = String(options?.traceparent || '').trim()
     const response = await fetch(`${base}/internal/publish`, {
       method: 'POST',
-      signal: AbortSignal.timeout(5_000),
+      signal: AbortSignal.timeout(realtimePublishTimeoutMs()),
       headers: {
         'Content-Type': 'application/json',
         ...(internalSecret ? { Authorization: `Bearer ${internalSecret}` } : {}),
@@ -69,7 +74,7 @@ async function publishRealtimeEvents(events) {
     try {
       const response = await fetch(`${base}/internal/publish-batch`, {
         method: 'POST',
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(realtimePublishTimeoutMs()),
         headers: {
           'Content-Type': 'application/json',
           ...(internalSecret ? { Authorization: `Bearer ${internalSecret}` } : {}),

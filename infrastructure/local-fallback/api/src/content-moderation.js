@@ -13,7 +13,11 @@ const LEET_CLASS = Object.freeze({
 
 function obfuscatedPattern(term) {
   const canonical = String(term).normalize('NFD').replace(/\p{M}+/gu, '').toLowerCase().replace(/[^a-z0-9]/gu, '')
-  const body = [...canonical].map((character) => `${LEET_CLASS[character] || character}+`).join('[\\W_]*')
+  // Disjoint bounded separator avoids catastrophic backtracking (ReDoS) between
+  // symbol leet substitutions (@, !, |, $, +) and non-word separators.
+  const body = [...canonical]
+    .map((character) => `${LEET_CLASS[character] || character}{1,8}`)
+    .join('[^\\p{L}\\p{N}@!|$+]{0,3}')
   return new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, 'giu')
 }
 

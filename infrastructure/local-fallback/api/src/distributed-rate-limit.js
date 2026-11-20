@@ -1,5 +1,15 @@
 const crypto = require('crypto')
 
+const REDIS_FIXED_WINDOW_LUA = `
+local current = redis.call('INCR', KEYS[1])
+local ttl = redis.call('PTTL', KEYS[1])
+if current == 1 or ttl < 0 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+  ttl = tonumber(ARGV[1])
+end
+return {current, ttl}
+`.trim()
+
 function positiveInteger(value, name, maximum) {
   const parsed = Number(value)
   if (!Number.isSafeInteger(parsed) || parsed <= 0 || parsed > maximum) {
@@ -20,12 +30,44 @@ function hashRateLimitKey(value) {
   return crypto.createHash('sha256').update(String(value || 'anonymous')).digest('hex')
 }
 
-async function consumeDistributedFixedWindow({ pool, scope, key, limit, windowMs }) {
+async function consumeRedisFixedWindow({
+  redisClient,
+  scope,
+  keyHash,
+  limit,
+  windowMs,
+  keyPrefix = 'novvin:rl',
+  commandTimeoutMs = 200,
+}) {
+  if (!redisClient || typeof redisClient.sendCommand !== 'function' || !redisClient.isReady?.()) {
+    const err = new Error('REDIS_RATE_LIMIT_UNAVAILABLE')
+    err.code = 'REDIS_RATE_LIMIT_UNAVAILABLE'
+    throw err
+  }
+  const redisKey = `${keyPrefix}:${scope}:${keyHash}`
+  const reply = await redisClient.sendCommand(
+    ['EVAL', REDIS_FIXED_WINDOW_LUA, '1', redisKey, String(windowMs)],
+    { timeoutMs: commandTimeoutMs },
+  )
+  if (!Array.isArray(reply) || reply.length < 2) {
+    const err = new Error('REDIS_RATE_LIMIT_INVALID_REPLY')
+    err.code = 'REDIS_RATE_LIMIT_INVALID_REPLY'
+    throw err
+  }
+  const count = Number(reply[0] || 0)
+  const ttlMs = Number(reply[1] || windowMs)
+  const retryAfterSeconds = Math.max(1, Math.ceil(Math.max(ttlMs, 1) / 1000))
+  return {
+    allowed: count > 0 && count <= limit,
+    limit,
+    remaining: Math.max(0, limit - count),
+    retryAfterSeconds,
+    backend: 'redis',
+  }
+}
+
+async function consumePostgresFixedWindow({ pool, scope, keyHash, limit, windowMs }) {
   if (!pool || typeof pool.query !== 'function') throw new TypeError('pool.query is required')
-  const safeScope = normalizedScope(scope)
-  const safeLimit = positiveInteger(limit, 'limit', 1_000_000)
-  const safeWindowMs = positiveInteger(windowMs, 'windowMs', 7 * 24 * 60 * 60_000)
-  const keyHash = hashRateLimitKey(key)
   const { rows } = await pool.query(
     `INSERT INTO fallback_rate_limit_windows(
         scope, key_hash, window_started_at, request_count, expires_at
@@ -50,20 +92,79 @@ async function consumeDistributedFixedWindow({ pool, scope, key, limit, windowMs
      RETURNING request_count::text,
        GREATEST(1, CEIL(EXTRACT(EPOCH FROM (expires_at - NOW()))))::integer
          AS retry_after_seconds`,
-    [safeScope, keyHash, safeWindowMs, safeLimit],
+    [scope, keyHash, windowMs, limit],
   )
   const count = Number(rows[0]?.request_count || 0)
   const retryAfterSeconds = Math.max(1, Number(rows[0]?.retry_after_seconds || 1))
   return {
-    allowed: count > 0 && count <= safeLimit,
-    limit: safeLimit,
-    remaining: Math.max(0, safeLimit - count),
+    allowed: count > 0 && count <= limit,
+    limit,
+    remaining: Math.max(0, limit - count),
     retryAfterSeconds,
   }
 }
 
+async function consumeDistributedFixedWindow({
+  pool,
+  redisClient = null,
+  keyPrefix = 'novvin:rl',
+  redisCommandTimeoutMs = 200,
+  onRedisHit = null,
+  onRedisFallback = null,
+  scope,
+  key,
+  limit,
+  windowMs,
+}) {
+  if (!pool || typeof pool.query !== 'function') throw new TypeError('pool.query is required')
+  const safeScope = normalizedScope(scope)
+  const safeLimit = positiveInteger(limit, 'limit', 1_000_000)
+  const safeWindowMs = positiveInteger(windowMs, 'windowMs', 7 * 24 * 60 * 60_000)
+  const keyHash = hashRateLimitKey(key)
+
+  if (redisClient) {
+    if (redisClient.isReady?.()) {
+      try {
+        const result = await consumeRedisFixedWindow({
+          redisClient,
+          scope: safeScope,
+          keyHash,
+          limit: safeLimit,
+          windowMs: safeWindowMs,
+          keyPrefix,
+          commandTimeoutMs: redisCommandTimeoutMs,
+        })
+        onRedisHit?.()
+        return {
+          allowed: result.allowed,
+          limit: result.limit,
+          remaining: result.remaining,
+          retryAfterSeconds: result.retryAfterSeconds,
+        }
+      } catch (error) {
+        onRedisFallback?.(error)
+      }
+    } else {
+      onRedisFallback?.(null)
+    }
+  }
+
+  return consumePostgresFixedWindow({
+    pool,
+    scope: safeScope,
+    keyHash,
+    limit: safeLimit,
+    windowMs: safeWindowMs,
+  })
+}
+
 function createDistributedRateLimitMiddleware({
   pool,
+  redisClient = null,
+  keyPrefix = 'novvin:rl',
+  redisCommandTimeoutMs = 200,
+  onRedisHit = null,
+  onRedisFallback = null,
   scope,
   limit,
   windowMs,
@@ -80,6 +181,11 @@ function createDistributedRateLimitMiddleware({
     try {
       const result = await consumeDistributedFixedWindow({
         pool,
+        redisClient,
+        keyPrefix,
+        redisCommandTimeoutMs,
+        onRedisHit,
+        onRedisFallback,
         scope: safeScope,
         key: key(req),
         limit,
@@ -110,7 +216,10 @@ async function pruneExpiredRateLimitWindows(pool, { retentionMs = 24 * 60 * 60_0
 }
 
 module.exports = {
+  REDIS_FIXED_WINDOW_LUA,
   consumeDistributedFixedWindow,
+  consumePostgresFixedWindow,
+  consumeRedisFixedWindow,
   createDistributedRateLimitMiddleware,
   hashRateLimitKey,
   normalizedScope,

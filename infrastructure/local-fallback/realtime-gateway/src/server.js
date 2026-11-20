@@ -5,9 +5,11 @@ const jwt = require('jsonwebtoken')
 const WebSocket = require('ws')
 const crypto = require('crypto')
 const { monitorEventLoopDelay } = require('perf_hooks')
+const { createRedisRespClient } = require('./redis-resp-client')
 
 const serviceName = 'conectate-local-fallback-realtime-gateway'
 const version = '0.1.0'
+const instanceId = crypto.randomUUID()
 const isProduction = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production'
 
 const port = Number(process.env.PORT || 3002)
@@ -17,6 +19,10 @@ const localFallbackApiUrl = String(process.env.LOCAL_FALLBACK_API_URL || 'http:/
 const internalSecret = String(process.env.REALTIME_INTERNAL_SECRET || '').trim()
 const MAX_TOTAL_CONNECTIONS = Math.max(100, Math.min(Number(process.env.REALTIME_MAX_CONNECTIONS || 10_000) || 10_000, 100_000))
 const MAX_CONNECTIONS_PER_IP = Math.max(5, Math.min(Number(process.env.REALTIME_MAX_CONNECTIONS_PER_IP || 200) || 200, 10_000))
+const realtimeRedisUrl = String(process.env.REALTIME_REDIS_URL || '').trim()
+const realtimeRedisStreamName = String(process.env.REALTIME_REDIS_STREAM_NAME || 'novvin:realtime:events').trim() || 'novvin:realtime:events'
+const realtimeRedisStreamMaxLen = Math.max(1_000, Math.min(Number(process.env.REALTIME_REDIS_STREAM_MAXLEN || 20_000) || 20_000, 200_000))
+const realtimeRedisBlockMs = Math.max(250, Math.min(Number(process.env.REALTIME_REDIS_BLOCK_MS || 1_500) || 1_500, 10_000))
 
 const eventLoopMonitor = monitorEventLoopDelay({ resolution: 20 })
 eventLoopMonitor.enable()
@@ -30,6 +36,10 @@ const gatewayMetrics = {
   rateLimitDrops: 0,
   connectionLimitRejections: 0,
   authFailures: 0,
+  streamEventsPublished: 0,
+  streamEventsReceived: 0,
+  streamDuplicatesSkipped: 0,
+  streamPublishErrors: 0,
 }
 
 if (!jwtSecret || jwtSecret.length < 32) {
@@ -58,8 +68,16 @@ app.use((req, res, next) => {
   res.set('traceparent', traceparent)
   next()
 })
-app.get('/', (_req, res) => res.json({ ok: true, service: serviceName, version }))
-app.get('/health', (_req, res) => res.json({ ok: true, service: serviceName, version, time: new Date().toISOString() }))
+app.get('/', (_req, res) => res.json({ ok: true, service: serviceName, version, instanceId }))
+app.get('/health', (_req, res) => res.json({
+  ok: true,
+  service: serviceName,
+  version,
+  instanceId,
+  redisBusMode: redisBus ? 'redis-streams' : 'local',
+  redisConnected: Boolean(redisBus && redisBus.isReady()),
+  time: new Date().toISOString(),
+}))
 
 const server = http.createServer(app)
 const wss = new WebSocket.Server({ server, maxPayload: 32 * 1024, perMessageDeflate: false })
@@ -419,8 +437,22 @@ wss.on('connection', (ws, req) => {
   ws.on('error', () => { ws.close() })
 })
 
-function broadcast(channel, payload, options = {}) {
-  gatewayMetrics.eventsPublished += 1
+const SEEN_EVENT_IDS_MAX = 10_000
+const seenEventIds = new Set()
+
+function rememberEventId(eventId) {
+  const id = String(eventId || '').trim()
+  if (!id) return true
+  if (seenEventIds.has(id)) return false
+  seenEventIds.add(id)
+  if (seenEventIds.size > SEEN_EVENT_IDS_MAX) {
+    const oldest = seenEventIds.values().next().value
+    if (oldest) seenEventIds.delete(oldest)
+  }
+  return true
+}
+
+function broadcastLocal(channel, payload, options = {}) {
   const excludeSessionId = String(options?.excludeSessionId || '').trim()
   const targetUserId = channel.startsWith('user:')
     ? channel.slice('user:'.length).trim().toLowerCase()
@@ -429,11 +461,12 @@ function broadcast(channel, payload, options = {}) {
   const userSet = targetUserId ? userSockets.get(targetUserId) : null
   if ((!directSet || directSet.size === 0) && (!userSet || userSet.size === 0)) return 0
 
-  const now = Date.now()
+  const now = Number.isFinite(Number(options?.ts)) ? Number(options.ts) : Date.now()
   const serialized = JSON.stringify({
     type: 'event',
     channel,
     payload,
+    ...(options?.eventId ? { eventId: String(options.eventId) } : {}),
     ts: new Date(now).toISOString(),
   })
 
@@ -458,6 +491,178 @@ function broadcast(channel, payload, options = {}) {
       client._authenticated = false
       client.close(4401, 'WEB_SESSION_REVOKED')
     }
+  }
+  return delivered
+}
+
+function fieldsArrayToObject(fields) {
+  const out = {}
+  if (!Array.isArray(fields)) return out
+  for (let i = 0; i + 1 < fields.length; i += 2) {
+    out[String(fields[i])] = fields[i + 1]
+  }
+  return out
+}
+
+function createRedisStreamBus() {
+  if (!realtimeRedisUrl) return null
+  const sharedConfig = {
+    url: realtimeRedisUrl,
+    password: process.env.REALTIME_REDIS_PASSWORD || process.env.REDIS_PASSWORD || '',
+    passwordFile: process.env.REALTIME_REDIS_PASSWORD_FILE || process.env.SIGNALING_REDIS_PASSWORD_FILE || '',
+    connectTimeoutMs: 3_000,
+    commandTimeoutMs: 1_500,
+  }
+  const pubClient = createRedisRespClient(sharedConfig)
+  const subClient = createRedisRespClient({
+    ...sharedConfig,
+    commandTimeoutMs: realtimeRedisBlockMs + 4_000,
+  })
+  if (!pubClient || !subClient) return null
+
+  let stopped = false
+  let loopRunning = false
+  let lastStreamId = null
+
+  pubClient.on('error', (error) => {
+    console.warn('[realtime-redis-pub] degraded:', error?.code || error?.message || 'REDIS_ERROR')
+  })
+  subClient.on('error', (error) => {
+    console.warn('[realtime-redis-sub] degraded:', error?.code || error?.message || 'REDIS_ERROR')
+  })
+
+  async function initCursorIfNeeded() {
+    if (lastStreamId !== null) return
+    const latest = await subClient.sendCommand(['XREVRANGE', realtimeRedisStreamName, '+', '-', 'COUNT', '1'])
+    if (Array.isArray(latest) && latest.length > 0 && Array.isArray(latest[0]) && latest[0][0]) {
+      lastStreamId = String(latest[0][0])
+    } else {
+      lastStreamId = '0-0'
+    }
+  }
+
+  async function readLoop() {
+    if (loopRunning || stopped) return
+    loopRunning = true
+    try {
+      while (!stopped && subClient.isReady()) {
+        await initCursorIfNeeded()
+        const response = await subClient.sendCommand(
+          ['XREAD', 'COUNT', '100', 'BLOCK', String(realtimeRedisBlockMs), 'STREAMS', realtimeRedisStreamName, lastStreamId],
+          { timeoutMs: realtimeRedisBlockMs + 4_000 },
+        )
+        if (!Array.isArray(response)) continue
+        for (const streamEntry of response) {
+          const entries = Array.isArray(streamEntry?.[1]) ? streamEntry[1] : []
+          for (const entry of entries) {
+            if (!Array.isArray(entry) || entry.length < 2) continue
+            const entryId = String(entry[0] || '')
+            if (entryId) lastStreamId = entryId
+            const fields = fieldsArrayToObject(entry[1])
+            if (fields.origin === instanceId) continue
+            const eventId = String(fields.eventId || entryId || '')
+            if (!rememberEventId(eventId)) {
+              gatewayMetrics.streamDuplicatesSkipped += 1
+              continue
+            }
+            const channel = String(fields.channel || '').trim()
+            if (!channel || channel.length > 256) continue
+            const payload = safeJsonParse(fields.payload || '{}') ?? {}
+            const excludeSessionId = String(fields.excludeSessionId || '').trim()
+            const ts = Number(fields.ts || Date.now())
+            gatewayMetrics.streamEventsReceived += 1
+            broadcastLocal(channel, payload, { excludeSessionId, eventId, ts })
+          }
+        }
+      }
+    } catch (error) {
+      if (!stopped) {
+        console.warn('[realtime-redis-sub] read loop interrupted:', error?.code || error?.message || 'REDIS_ERROR')
+      }
+    } finally {
+      loopRunning = false
+    }
+  }
+
+  subClient.on('ready', () => {
+    void readLoop()
+  })
+
+  return {
+    async start() {
+      await Promise.all([pubClient.connect(), subClient.connect()])
+      if (subClient.isReady()) void readLoop()
+    },
+    isReady() {
+      return pubClient.isReady() && subClient.isReady()
+    },
+    async publish({ eventId, channel, payload, excludeSessionId, ts }) {
+      if (!pubClient.isReady()) {
+        gatewayMetrics.streamPublishErrors += 1
+        return false
+      }
+      try {
+        await pubClient.sendCommand(
+          [
+            'XADD',
+            realtimeRedisStreamName,
+            'MAXLEN',
+            '~',
+            String(realtimeRedisStreamMaxLen),
+            '*',
+            'origin',
+            instanceId,
+            'eventId',
+            String(eventId || ''),
+            'channel',
+            String(channel),
+            'excludeSessionId',
+            String(excludeSessionId || ''),
+            'ts',
+            String(ts || Date.now()),
+            'payload',
+            JSON.stringify(payload ?? {}),
+          ],
+          { timeoutMs: 1_500 },
+        )
+        gatewayMetrics.streamEventsPublished += 1
+        return true
+      } catch (error) {
+        gatewayMetrics.streamPublishErrors += 1
+        console.warn('[realtime-redis-pub] XADD failed:', error?.code || error?.message || 'REDIS_ERROR')
+        return false
+      }
+    },
+    async close() {
+      stopped = true
+      await Promise.all([pubClient.close(), subClient.close()])
+    },
+  }
+}
+
+const redisBus = createRedisStreamBus()
+if (redisBus) {
+  void redisBus.start()
+}
+
+function broadcast(channel, payload, options = {}) {
+  gatewayMetrics.eventsPublished += 1
+  const eventId = String(options?.eventId || crypto.randomUUID())
+  const ts = Date.now()
+  rememberEventId(eventId)
+  const delivered = broadcastLocal(channel, payload, {
+    excludeSessionId: options?.excludeSessionId,
+    eventId,
+    ts,
+  })
+  if (redisBus) {
+    void redisBus.publish({
+      eventId,
+      channel,
+      payload,
+      excludeSessionId: options?.excludeSessionId,
+      ts,
+    })
   }
   return delivered
 }
@@ -514,6 +719,9 @@ app.get('/internal/metrics', (req, res) => {
   }
   const snapshot = {
     service: serviceName,
+    instanceId,
+    redisBusMode: redisBus ? 'redis-streams' : 'local',
+    redisConnected: Boolean(redisBus && redisBus.isReady()),
     uptimeSeconds: Math.round((Date.now() - gatewayMetrics.startedAtMs) / 1000),
     activeConnections: wss.clients.size,
     authenticatedConnections,
@@ -522,6 +730,10 @@ app.get('/internal/metrics', (req, res) => {
     eventsPublished: gatewayMetrics.eventsPublished,
     batchRequests: gatewayMetrics.batchRequests,
     messagesDelivered: gatewayMetrics.messagesDelivered,
+    streamEventsPublished: gatewayMetrics.streamEventsPublished,
+    streamEventsReceived: gatewayMetrics.streamEventsReceived,
+    streamDuplicatesSkipped: gatewayMetrics.streamDuplicatesSkipped,
+    streamPublishErrors: gatewayMetrics.streamPublishErrors,
     slowConsumerDrops: gatewayMetrics.slowConsumerDrops,
     rateLimitDrops: gatewayMetrics.rateLimitDrops,
     connectionLimitRejections: gatewayMetrics.connectionLimitRejections,
@@ -546,6 +758,14 @@ app.get('/internal/metrics', (req, res) => {
     `novvin_realtime_events_published_total ${snapshot.eventsPublished}`,
     '# TYPE novvin_realtime_messages_delivered_total counter',
     `novvin_realtime_messages_delivered_total ${snapshot.messagesDelivered}`,
+    '# TYPE novvin_realtime_stream_events_published_total counter',
+    `novvin_realtime_stream_events_published_total ${snapshot.streamEventsPublished}`,
+    '# TYPE novvin_realtime_stream_events_received_total counter',
+    `novvin_realtime_stream_events_received_total ${snapshot.streamEventsReceived}`,
+    '# TYPE novvin_realtime_stream_duplicates_skipped_total counter',
+    `novvin_realtime_stream_duplicates_skipped_total ${snapshot.streamDuplicatesSkipped}`,
+    '# TYPE novvin_realtime_redis_connected gauge',
+    `novvin_realtime_redis_connected ${snapshot.redisConnected ? 1 : 0}`,
     '# TYPE novvin_realtime_slow_consumer_drops_total counter',
     `novvin_realtime_slow_consumer_drops_total ${snapshot.slowConsumerDrops}`,
     '# TYPE novvin_realtime_rate_limit_drops_total counter',
@@ -561,15 +781,31 @@ app.get('/internal/metrics', (req, res) => {
   return res.send(`${lines.join('\n')}\n`)
 })
 
+async function shutdownRealtime() {
+  try {
+    await redisBus?.close()
+  } catch {
+    // best-effort shutdown
+  }
+  wss.close()
+  server.close(() => process.exit(0))
+  setTimeout(() => process.exit(0), 2_000).unref()
+}
+
 if (require.main === module) {
+  process.on('SIGTERM', () => { void shutdownRealtime() })
+  process.on('SIGINT', () => { void shutdownRealtime() })
   server.listen(port, process.env.REALTIME_LISTEN_HOST || '0.0.0.0', () => {
-    console.log(`[realtime] ${serviceName} ${version} listening on ${port}`)
+    console.log(`[realtime] ${serviceName} ${version} (${instanceId.slice(0, 8)}) listening on ${port} (bus=${redisBus ? 'redis-streams' : 'local'})`)
   })
 }
 
 module.exports = {
   app,
+  broadcast,
+  broadcastLocal,
   maySubscribeToChannel,
+  redisBus,
   server,
   subscriptionAuthorizationUrl,
   verifyToken,

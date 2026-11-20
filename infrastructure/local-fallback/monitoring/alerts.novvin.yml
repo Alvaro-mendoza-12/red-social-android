@@ -80,6 +80,16 @@ groups:
           summary: "Elevated HTTP 429 rate-limit rejections in NOVVIN API"
           description: "API is rejecting {{ $value }} req/s with 429 — possible abuse or misbehaving client."
 
+      - alert: NovvinApiRateLimitRedisFallbackActive
+        expr: increase(novvin_api_ratelimit_pg_fallback_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          service: novvin-api
+        annotations:
+          summary: "NOVVIN API rate limiter fell back from Redis to PostgreSQL"
+          description: "API executed {{ $value }} rate-limit checks on PostgreSQL fallback in 5m — check signaling-redis connectivity."
+
   - name: novvin.realtime.slo
     interval: 15s
     rules:
@@ -112,6 +122,16 @@ groups:
         annotations:
           summary: "Realtime Gateway event loop lag above 100ms"
           description: "Realtime Gateway event loop p95 lag reached {{ $value }}ms."
+
+      - alert: NovvinRealtimeRedisStreamDisconnected
+        expr: novvin_realtime_redis_connected == 0
+        for: 1m
+        labels:
+          severity: warning
+          service: novvin-realtime-gateway
+        annotations:
+          summary: "Realtime Gateway Redis Streams bus disconnected"
+          description: "Realtime Gateway fell back to local-only delivery; cross-replica WebSocket fanout is degraded."
 
   - name: novvin.signaling.slo
     interval: 15s

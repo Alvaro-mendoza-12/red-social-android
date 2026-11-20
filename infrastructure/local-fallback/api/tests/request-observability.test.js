@@ -24,7 +24,10 @@ async function run() {
   assert.equal(developmentLog.message, privateDiagnostic)
   assert.equal(developmentLog.messageRef, productionLog.messageRef)
 
-  const metrics = createApiMetricsCollector({ pool: { totalCount: 4, idleCount: 3, waitingCount: 0 } })
+  const metrics = createApiMetricsCollector({
+    pool: { totalCount: 4, idleCount: 3, waitingCount: 0 },
+    redisRateLimiter: { isReady: () => true },
+  })
   const app = express()
   app.use((req, _res, next) => {
     req.requestId = 'request-observability-test'
@@ -38,6 +41,10 @@ async function run() {
   }))
   app.get('/items/:id', async (_req, res) => {
     await new Promise((resolve) => setTimeout(resolve, 120))
+    res.json({ ok: true })
+  })
+  app.get('/timed', (req, res) => {
+    req._serverTimings = [{ name: 'access', durMs: 1.5 }, { name: 'persist', durMs: 4.2 }]
     res.json({ ok: true })
   })
   const server = await new Promise((resolve) => {
@@ -59,17 +66,28 @@ async function run() {
     assert.equal(routeName({ observabilityRoute: '/rest/v1/rpc/:operation', route: { path: /^\/rpc\/(.*)$/ } }),
       '/rest/v1/rpc/:operation')
     assert.equal(routeName({ observabilityRoute: '/users/private-value?secret=hidden' }), 'unmatched')
+    const timedRes = await fetch(`http://127.0.0.1:${address.port}/timed`)
+    assert.equal(timedRes.status, 200)
+    assert.match(timedRes.headers.get('server-timing'), /^app;dur=\d+\.\d, access;dur=1\.5, persist;dur=4\.2$/)
     metrics.recordLoadShed()
+    metrics.recordRateLimitRedisHit()
+    metrics.recordRateLimitPgFallback()
     const snapshot = metrics.snapshot()
-    assert.equal(snapshot.requestsTotal, 1)
-    assert.equal(snapshot.status2xx, 1)
+    assert.equal(snapshot.requestsTotal, 2)
+    assert.equal(snapshot.status2xx, 2)
     assert.equal(snapshot.slowRequestsTotal, 1)
     assert.equal(snapshot.loadShedTotal, 1)
+    assert.equal(snapshot.rateLimitRedisHits, 1)
+    assert.equal(snapshot.rateLimitPgFallbacks, 1)
+    assert.equal(snapshot.rateLimitRedisReady, true)
     assert.equal(snapshot.latencyP50Ms >= 100, true)
     assert.equal(snapshot.dbPool.total, 4)
     const promText = metrics.formatPrometheus()
-    assert.match(promText, /novvin_api_requests_total 1/)
+    assert.match(promText, /novvin_api_requests_total 2/)
     assert.match(promText, /novvin_api_load_shed_total 1/)
+    assert.match(promText, /novvin_api_ratelimit_redis_hits_total 1/)
+    assert.match(promText, /novvin_api_ratelimit_pg_fallback_total 1/)
+    assert.match(promText, /novvin_api_ratelimit_redis_ready 1/)
     assert.match(promText, /novvin_api_db_pool_connections\{state="total"\} 4/)
 
     const validTrace = parseOrCreateTraceparent('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01')

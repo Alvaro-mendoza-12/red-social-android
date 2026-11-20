@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T02:27:05.587094+00:00",
-  "baseCommit": "d23ea5e84208aa4ec86196e61ce0400c646a5e39",
+  "generatedAtUtc": "2026-11-20T03:33:57.800334+00:00",
+  "baseCommit": "8455898307a870e4bf9d20b20b1e05ce5ef45eb9",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,30 +10,30 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3576,
-    "partial": 263,
-    "code-read": 880
+    "pending": 3519,
+    "partial": 262,
+    "code-read": 945
   },
   "countsByPhase": {
     "android": {
-      "pending": 1416,
+      "pending": 1413,
       "partial": 121,
-      "code-read": 599
+      "code-read": 602
     },
     "documentation": {
-      "pending": 691,
-      "code-read": 64,
+      "pending": 690,
+      "code-read": 66,
       "partial": 20
     },
     "server": {
-      "pending": 838,
-      "code-read": 83,
+      "pending": 792,
+      "code-read": 133,
       "partial": 33
     },
     "tooling-and-other": {
-      "pending": 146,
-      "partial": 13,
-      "code-read": 22
+      "pending": 139,
+      "partial": 12,
+      "code-read": 32
     },
     "web": {
       "partial": 76,
@@ -9194,7 +9194,9 @@
       "file": "app/src/main/java/conectate/com/data/service/CallCancellationGuard.kt",
       "phase": "android",
       "gitBlobId": "50568f90d7888c16e4b29b680e2b7dd867aadf2d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/service/IncomingCallAccountRouter.kt",
@@ -9462,13 +9464,17 @@
       "file": "app/src/main/java/conectate/com/data/webrtc/NativeCameraProfile.kt",
       "phase": "android",
       "gitBlobId": "0b011ac0ddc17de4c06479ec5af5b89c107b19c7",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/webrtc/NetworkHandoffPolicy.kt",
       "phase": "android",
       "gitBlobId": "b6e31fff0ad284c8cd88db587de6c2d17957068c",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/webrtc/RtcAudioLevelBatch.kt",
@@ -22166,7 +22172,9 @@
       "file": "docs/oficial/216-liberacion-del-anfitrion-en-redis-2026-11-19.md",
       "phase": "documentation",
       "gitBlobId": "6e20031dd23309656aed780155aa043d025921e2",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
@@ -22181,6 +22189,14 @@
       "phase": "documentation",
       "gitBlobId": "f6fb72852cd4a8def820dcaea72779c01a577bdd",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "phase": "documentation",
+      "gitBlobId": "d52479fc3377cf40e890005967c08519dd5fb3e6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/23-multimedia-offline-y-restauracion-2026-09-13.md",
@@ -23942,7 +23958,9 @@
       "file": "infrastructure/local-fallback/api/package.json",
       "phase": "server",
       "gitBlobId": "6bd5ec25cf6bff949b126c4bb568b24757c40a97",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/query.js",
@@ -24396,7 +24414,9 @@
       "file": "infrastructure/local-fallback/api/scripts/verify-source-dependencies.js",
       "phase": "server",
       "gitBlobId": "ba937cea5af94cd5875458a21fecf475e96dedce",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-sticker-catalog-read.js",
@@ -24480,19 +24500,25 @@
       "file": "infrastructure/local-fallback/api/src/account-recovery-admin-queue.js",
       "phase": "server",
       "gitBlobId": "249735c90983a1204211fa2e87eb54f8bb731ab2",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/account-status.js",
       "phase": "server",
       "gitBlobId": "592b4d26a25bf7262934efe0f5a0b5c8fcc6d8ad",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/admin-capabilities.js",
       "phase": "server",
       "gitBlobId": "e282824de27d177e9901fc32d63d8156815752e4",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
@@ -24572,7 +24598,9 @@
       "file": "infrastructure/local-fallback/api/src/auth-public-username.js",
       "phase": "server",
       "gitBlobId": "75e32d3bfb0591c68ed04a942dc52dd39210867e",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/backfill-algorithm-classifications.js",
@@ -24624,7 +24652,9 @@
       "file": "infrastructure/local-fallback/api/src/client-auth-session.js",
       "phase": "server",
       "gitBlobId": "589a02f0346e506f5c7fce541934bc6d3c2882ed",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/collection-membership-policy.js",
@@ -24656,7 +24686,9 @@
       "file": "infrastructure/local-fallback/api/src/community-message-budget.js",
       "phase": "server",
       "gitBlobId": "be3a318093baee16c862db00f79ca0b9ffceee6f",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/community-music-policy.js",
@@ -24679,8 +24711,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/content-moderation.js",
       "phase": "server",
-      "gitBlobId": "ba5adc35811a0a96f7c152c45d264390e3de3515",
-      "reviewStatus": "pending"
+      "gitBlobId": "94bdc0b5295f4a84d9dbcde1f245e1e902f6670a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/conversation-activity-routes.js",
@@ -24723,9 +24757,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "178e1b198adc0406010285c45803b109cb28f3be",
+      "gitBlobId": "5d102fd97de7dada6c2b682b5d6a8184b48f2fac",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -24759,8 +24793,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/distributed-rate-limit.js",
       "phase": "server",
-      "gitBlobId": "12385ee3534290fd56d2ddf8ebd475051c4e675e",
-      "reviewStatus": "pending"
+      "gitBlobId": "18b75c409c3dc13fc227fe0aa3f2835044711927",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/document-preview-routes.js",
@@ -24834,7 +24870,9 @@
       "file": "infrastructure/local-fallback/api/src/guest-storage-read.js",
       "phase": "server",
       "gitBlobId": "fbbeab12030104280c2ce2eccdb1ee37b4aa6fe3",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/image-variant-policy.js",
@@ -24920,13 +24958,17 @@
       "file": "infrastructure/local-fallback/api/src/live-guest-exit.js",
       "phase": "server",
       "gitBlobId": "06c4f5480c14477fc2aa991ee54c1ef7f53aad1c",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/live-invitation-access.js",
       "phase": "server",
       "gitBlobId": "65d007e36453ea5e471e22acec4ba12f57f71abc",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/live-points-routes.js",
@@ -24946,27 +24988,33 @@
       "file": "infrastructure/local-fallback/api/src/livekit-admin.js",
       "phase": "server",
       "gitBlobId": "bc18ce0e2e3545e5f5acaa6505b0b32f7f6a55e3",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/login-identifier-privacy.js",
       "phase": "server",
       "gitBlobId": "77f6bb9421481ec0532d752cb9cecc920c2ca92d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/message-deletion-policy.js",
       "phase": "server",
-      "gitBlobId": "df139d787dc3dc813c00244e1c76ac66c7c509ea",
+      "gitBlobId": "2f9958e74f8e6d423c0c07d59c12f25ee4fb432a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/message-insert-store.js",
       "phase": "server",
       "gitBlobId": "1051d80389296d3c656af95b7849c0414d856090",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/message-location.js",
@@ -24984,13 +25032,17 @@
       "file": "infrastructure/local-fallback/api/src/message-media-access.js",
       "phase": "server",
       "gitBlobId": "c061b16c7e0a9581d25805f087117a8e9f4d494e",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/message-push-limiter.js",
       "phase": "server",
       "gitBlobId": "3ebac38969a34aecdea4dd07f888b02296d5e3aa",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/message-reaction-notifications.js",
@@ -25010,7 +25062,9 @@
       "file": "infrastructure/local-fallback/api/src/messaging-upload-policy.js",
       "phase": "server",
       "gitBlobId": "da51a56363d0b90fe35f9cc92288d15eedcb3698",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/moment-music-lyrics.js",
@@ -25066,7 +25120,9 @@
       "file": "infrastructure/local-fallback/api/src/new-password-policy.js",
       "phase": "server",
       "gitBlobId": "c4be09db7bbb7dc939f61c462a07284647466ea5",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/notification-digest-routes.js",
@@ -25086,25 +25142,33 @@
       "file": "infrastructure/local-fallback/api/src/notification-realtime-envelope.js",
       "phase": "server",
       "gitBlobId": "c80e8c1e7cd9632214f501d0b2aec0fae5e36619",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/password-recovery-codes.js",
       "phase": "server",
       "gitBlobId": "c422c51c377759dc2f5a2ac5c43bd3f6839f47ec",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/password-reset-email-code.js",
       "phase": "server",
       "gitBlobId": "fdb84d9064532caf6ccc5536668c4c5f5d9d3931",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/password-reset-mail-outbox.js",
       "phase": "server",
       "gitBlobId": "046e0a3a16daee813bf07db1118009f3aa56fda6",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/password-reset-mailer.js",
@@ -25198,7 +25262,9 @@
       "file": "infrastructure/local-fallback/api/src/public-api-error.js",
       "phase": "server",
       "gitBlobId": "db9472476499eb802e584c15c634796a0fb5848b",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/public-content-share.js",
@@ -25212,13 +25278,17 @@
       "file": "infrastructure/local-fallback/api/src/public-creator-visibility.js",
       "phase": "server",
       "gitBlobId": "42615eaae3d70940b86a68d28654077f768d523e",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/public-feed-page.js",
       "phase": "server",
       "gitBlobId": "3a7ee343b6cc1e301756aecc1b92c64deeaee821",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/public-profile-share.js",
@@ -25279,9 +25349,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/realtime-publish.js",
       "phase": "server",
-      "gitBlobId": "c2edbbb0eefdaa03e6127d1dcea235db8c47d28e",
+      "gitBlobId": "5ae4c80d86c12be54c8d37331f5a41d245a7c329",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25294,21 +25364,33 @@
       "file": "infrastructure/local-fallback/api/src/recovery-evidence.js",
       "phase": "server",
       "gitBlobId": "3303386194c0f3d8b96f0a2bcb986b2f325bfaff",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/redis-resp-client.js",
+      "phase": "server",
+      "gitBlobId": "164ba93e13049ca49e60891fd99f5d26ca829d3f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/request-observability.js",
       "phase": "server",
-      "gitBlobId": "8bcd6271de10552cd8f68f64a2b87624290f9e62",
+      "gitBlobId": "ac43244ab9b82cefe3eb52a8c2444d232d7da907",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/request-security.js",
       "phase": "server",
       "gitBlobId": "3a13825b311e5a9ef66f2418c34ec4adcba87e6f",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/retired-notifications.js",
@@ -25332,14 +25414,16 @@
       "file": "infrastructure/local-fallback/api/src/schema-initializer.js",
       "phase": "server",
       "gitBlobId": "470bb853caa4cd8f427af2849ed65440054e3da6",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/server.js",
       "phase": "server",
-      "gitBlobId": "d9bb6e77c7366b358a2f4c4043dc3bfbf3bc298f",
+      "gitBlobId": "cb7a38239ffc9a87ae6c1d83592692791b963f81",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25394,7 +25478,9 @@
       "file": "infrastructure/local-fallback/api/src/storage-clamd.js",
       "phase": "server",
       "gitBlobId": "d95714159e93b8dd3d9645b02a0d60f094f8d5ac",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/storage-content-read.js",
@@ -25424,7 +25510,9 @@
       "file": "infrastructure/local-fallback/api/src/storage-media-reference.js",
       "phase": "server",
       "gitBlobId": "22afe4579b798b5c09d508ce14c1a6615cc47437",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/storage-r2-edge.js",
@@ -25462,7 +25550,9 @@
       "file": "infrastructure/local-fallback/api/src/storage-read-access.js",
       "phase": "server",
       "gitBlobId": "005eed07f79525873a9f5a7a893ab1aab94f8777",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/storage-read-config.js",
@@ -25500,25 +25590,33 @@
       "file": "infrastructure/local-fallback/api/src/storage-scan-coordinator.js",
       "phase": "server",
       "gitBlobId": "6646a7029ba2460ca7ed7aeb61bba79426444a2d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/storage-upload-admission.js",
       "phase": "server",
       "gitBlobId": "422d68a12408433afdf2a31641ba4d9c05e338fe",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/storage-url-canonicalization.js",
       "phase": "server",
       "gitBlobId": "65af3d675b37072aa89fd98bff5076fdcd4eed4d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/storage-view-once.js",
       "phase": "server",
       "gitBlobId": "3b24e3c08e23988f5d0f887cfed42a996fa7cc5d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/surveys/clamd-client.js",
@@ -25572,7 +25670,9 @@
       "file": "infrastructure/local-fallback/api/src/two-factor.js",
       "phase": "server",
       "gitBlobId": "ccf0ecbbcc2e1b70f7f9f9c73bbfa40eb5e53ef1",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/username-policy.js",
@@ -25642,13 +25742,17 @@
       "file": "infrastructure/local-fallback/api/src/web-session-events.js",
       "phase": "server",
       "gitBlobId": "844504210c229b2e6605f2ce09373ff1d45d5990",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/web-session-security.js",
       "phase": "server",
       "gitBlobId": "dc5ed808ba73d738a0575bc77843d297a193b121",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/account-status.test.js",
@@ -25949,8 +26053,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/content-moderation.test.js",
       "phase": "server",
-      "gitBlobId": "fffdf2071f4c519b12dc3261f43f302641550c25",
-      "reviewStatus": "pending"
+      "gitBlobId": "d73ebb29d000ade4184b088bdc417f52d330196c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/conversation-activity-routes.test.js",
@@ -26040,7 +26146,9 @@
       "file": "infrastructure/local-fallback/api/tests/distributed-rate-limit.test.js",
       "phase": "server",
       "gitBlobId": "afec846c005988d9b05eb5d57557a7cafb2da209",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/document-preview-routes.test.js",
@@ -26652,8 +26760,8 @@
       "file": "infrastructure/local-fallback/api/tests/production-config.test.js",
       "phase": "server",
       "gitBlobId": "46dc70c10540aae64254d0085a58830b750187fa",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26861,11 +26969,19 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/redis-rate-limit.test.js",
+      "phase": "server",
+      "gitBlobId": "58aa80cdb56c41fde371523d41b98db3828f7d98",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/request-observability.test.js",
       "phase": "server",
-      "gitBlobId": "a9702aae9ae21d627a84f393cc0f9ec551ea4c6b",
+      "gitBlobId": "bc4de8fcc1066ff448e5bd5029727c67c12ee1f0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27579,8 +27695,10 @@
     {
       "file": "infrastructure/local-fallback/docker-compose.yml",
       "phase": "server",
-      "gitBlobId": "4ad394df48ca4e273e1e0d5b678051fdc7a65416",
-      "reviewStatus": "pending"
+      "gitBlobId": "27a718355ccb1c4c63d941aab769562dadcf9792",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/imports/.gitignore",
@@ -27597,9 +27715,9 @@
     {
       "file": "infrastructure/local-fallback/monitoring/alerts.novvin.yml",
       "phase": "server",
-      "gitBlobId": "effc497e9746e16c8d39260ab5373e1d9a20ba52",
+      "gitBlobId": "5fdf42de7facf28c2178ec96ba8a45868482704e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27660,7 +27778,9 @@
       "file": "infrastructure/local-fallback/realtime-gateway/Dockerfile",
       "phase": "server",
       "gitBlobId": "0299277b8611240878f8d2dfc8c26050df09fef6",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/realtime-gateway/README.md",
@@ -27678,14 +27798,32 @@
       "file": "infrastructure/local-fallback/realtime-gateway/package.json",
       "phase": "server",
       "gitBlobId": "2c8faa7bfbcbb98c71bcd1c7916a30e4cbbc0b76",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/realtime-gateway/src/redis-resp-client.js",
+      "phase": "server",
+      "gitBlobId": "ada8fb7e8998b37f20cf8f6aa60980afd6b85876",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/realtime-gateway/src/server.js",
       "phase": "server",
-      "gitBlobId": "d79a592a31536f411debe6ce3ded750750ce5e4d",
+      "gitBlobId": "2b6d85ebb68de78081cc6a75ea212a223059c859",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/realtime-gateway/tests/redis-streams-bus.test.js",
+      "phase": "server",
+      "gitBlobId": "afb7b4566995c28e4355ad223f32e17216ba2c40",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -27736,7 +27874,9 @@
       "file": "infrastructure/local-fallback/scripts/deploy-stack-safely.sh",
       "phase": "server",
       "gitBlobId": "a182801d19e01896b9d17fc15fdea78e8af0f3a6",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/diagnose-api.sh",
@@ -28582,14 +28722,16 @@
       "file": "signaling-server/call-join-policy.js",
       "phase": "tooling-and-other",
       "gitBlobId": "ad67dcd4fc2ec3c8e85492d59f2c4b4101732430",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/distributed-adapter.js",
       "phase": "tooling-and-other",
       "gitBlobId": "d7ca294fa919087779e9b90cc7626f679e2a5055",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/102-r2-replica-y-entrega-multimedia.md",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28604,7 +28746,9 @@
       "file": "signaling-server/distributed-scope.js",
       "phase": "tooling-and-other",
       "gitBlobId": "9c7e11db4717a693bc29d93cf8f65700d73dacbf",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/index.js",
@@ -28618,7 +28762,9 @@
       "file": "signaling-server/live-access-policy.js",
       "phase": "tooling-and-other",
       "gitBlobId": "df595cd4ea06b1a9a2811236a59f185d9549b83d",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/live-guest-media-state.js",
@@ -28642,19 +28788,25 @@
       "file": "signaling-server/package.json",
       "phase": "tooling-and-other",
       "gitBlobId": "451bee68407ef729f3f682d9de9974e318fb6e00",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/payload-policy.js",
       "phase": "tooling-and-other",
       "gitBlobId": "d5e9b764cc424872a326e2b1775bbfb7220eb5d1",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/resolver.js",
       "phase": "tooling-and-other",
       "gitBlobId": "ac034736645c94eac4016013d56030bfa82b887c",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/room-chat-policy.js",
@@ -28684,7 +28836,9 @@
       "file": "signaling-server/socket-event-guard.js",
       "phase": "tooling-and-other",
       "gitBlobId": "40f02b654d8daa743de3d6d51cae02d249066f49",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "signaling-server/tests/call-join-policy.test.js",
@@ -30411,11 +30565,27 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "tools/loadtest/run-cycle220-certification.mjs",
+      "phase": "tooling-and-other",
+      "gitBlobId": "f2d503c42debe6e811a90f08fbc31cd270e0df97",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "tools/loadtest/run-isolated-capacity-suite.mjs",
       "phase": "tooling-and-other",
       "gitBlobId": "367a2c7af201e9d2630fec2a38dc6aef34decb71",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/213-capacidad-estres-seguridad-observabilidad-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "tools/loadtest/run-ubuntu-staging-soak.mjs",
+      "phase": "tooling-and-other",
+      "gitBlobId": "c7ef23acffea6d14a75fa0c9852532ba185700a5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/220-certificacion-escalabilidad-multiinstancia-soak-cobertura-2026-11-19.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

@@ -166,9 +166,14 @@ async function withCurrentMessage(pool, scope, callback, { allowDeleted = false,
   try {
     await client.query('BEGIN')
     const direct = scope.kind === 'chat'
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(scope.messageId)
     const local = await client.query(direct
-      ? `SELECT * FROM fallback_messages WHERE lower(chat_id)=$1 AND lower(id::text)=$2 FOR SHARE`
-      : `SELECT * FROM fallback_room_messages WHERE room_kind=$3 AND lower(room_id)=$1 AND lower(id::text)=$2 FOR SHARE`,
+      ? (isUuid
+        ? `SELECT * FROM fallback_messages WHERE id = $2::uuid AND lower(chat_id) = $1 FOR SHARE`
+        : `SELECT * FROM fallback_messages WHERE lower(chat_id)=$1 AND lower(id::text)=$2 FOR SHARE`)
+      : (isUuid
+        ? `SELECT * FROM fallback_room_messages WHERE id = $2::uuid AND room_kind = $3 AND lower(room_id) = $1 FOR SHARE`
+        : `SELECT * FROM fallback_room_messages WHERE room_kind=$3 AND lower(room_id)=$1 AND lower(id::text)=$2 FOR SHARE`),
     direct ? [scope.scopeId, scope.messageId] : [scope.scopeId, scope.messageId, scope.kind])
     const tableName = direct ? 'messages' : `${scope.kind}_messages`
     const compat = await client.query(`SELECT row FROM fallback_compat_rows

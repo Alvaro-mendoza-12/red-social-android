@@ -23,3 +23,17 @@ test('masks obfuscated insults without censoring benign compliments', () => {
   assert.equal(result.text.includes('1mb3c1l'), false)
   assert.equal(moderatePublicComment('Qué bonito, quedó muy rico.').verdict, 'allow')
 })
+
+test('resists adversarial ReDoS symbol repetition in linear time', () => {
+  const payloads = [
+    'e' + 's' + '$'.repeat(300) + 't' + '+'.repeat(300) + 'u' + 'p' + '!'.repeat(300) + 'x',
+    'i' + '!'.repeat(400) + 'd' + '!'.repeat(400) + 'o' + 't' + '+'.repeat(400) + 'x',
+    'a' + '@'.repeat(1400) + 'z',
+  ]
+  for (const payload of payloads) {
+    const started = performance.now()
+    moderatePublicComment(payload)
+    const elapsedMs = performance.now() - started
+    assert.ok(elapsedMs < 50, `Expected linear-time moderation, got ${elapsedMs.toFixed(2)}ms`)
+  }
+})
