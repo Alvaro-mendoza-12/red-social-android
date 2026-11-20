@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T19:27:18.578061+00:00",
-  "baseCommit": "270e2c6d4e52a32f465a3424afd8a4b3b4815382",
+  "generatedAtUtc": "2026-11-20T19:39:46.207156+00:00",
+  "baseCommit": "c750d82bdda01a264b5b0fec660ed53f2ccad70c",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3441,
+    "pending": 3443,
     "code-read": 1054,
     "partial": 280
   },
@@ -21,7 +21,7 @@
       "code-read": 612
     },
     "documentation": {
-      "pending": 707,
+      "pending": 709,
       "code-read": 67,
       "partial": 21
     },
@@ -22343,6 +22343,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/233-fuentes-incrustadas-del-conversor-office-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "a3c5d6019bb9c613fe2d0aeb59f99b4943c95b7e",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/24-musica-privacidad-y-plan-gamer-hub-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "4b6363478b08ea9abd1dec49c858af09a3e904bc",
@@ -23262,6 +23268,12 @@
       "file": "docs/oficial/evidencias/232-conversor-office-compatibilidad-y-fidelidad.json",
       "phase": "documentation",
       "gitBlobId": "ca787796a7b33efdd710776571ab5881b722ed71",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/233-fuentes-incrustadas-del-conversor-office.json",
+      "phase": "documentation",
+      "gitBlobId": "ad2d4c500a2a0fbf03cf4263f8071bf2d2c8e6bd",
       "reviewStatus": "pending"
     },
     {
@@ -28161,9 +28173,9 @@
     {
       "file": "infrastructure/local-fallback/office-preview/Dockerfile",
       "phase": "server",
-      "gitBlobId": "7aa9de39fbd84a8f77c148574f2cfadbdb7ba2d0",
+      "gitBlobId": "6f0ad77626a83a05d100ebeed1ade552517b7fc6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/232-conversor-office-compatibilidad-y-fidelidad-2026-11-20.md",
+      "evidence": "docs/oficial/233-fuentes-incrustadas-del-conversor-office-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

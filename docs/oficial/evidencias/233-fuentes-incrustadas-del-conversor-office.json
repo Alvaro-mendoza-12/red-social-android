@@ -1,0 +1,430 @@
+{
+  "testedCodeCommit": "c750d82bdda01a264b5b0fec660ed53f2ccad70c",
+  "apiSourceCommit": "2a27967d3597bb5f56e007e8c593b9666f569c60",
+  "image": {
+    "seconds": 19.2,
+    "id": "f326a60475f7ae8058eeb25965d161f4305eed1ed77b55ece870892509bf22b5",
+    "dockerfile": "02feb16bfbeb266065b205abf11750570446b6f26e87b352f774f780357cbdf9",
+    "testedAt": "2026-11-20T19:30:35.104234+00:00"
+  },
+  "packages": {
+    "curl": "8.23.0-2~novvin13+1",
+    "libcurl4t64": "8.23.0-2~novvin13+1",
+    "libcurl4-gnutls": "8.23.0-2~novvin13+1",
+    "libxml2": "2.12.7+dfsg+really2.9.14-2.1+deb13u3+novvin232.1",
+    "libreoffice-core": "4:26.8.2.2-2~bpo13+1",
+    "libeot0": "1:0.0.4-1"
+  },
+  "signedPackageAcquisition": {
+    "snapshot": "https://snapshot.debian.org/archive/debian/20261120T060000Z/",
+    "signingFingerprints": [
+      "4CB50190207B4758A3F73A796ED0E7B82643E131",
+      "B8E5F13176D2A7A75220028078DBA3BC47EF2265"
+    ],
+    "packages": [
+      {
+        "platform": {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        "architecture": "amd64",
+        "version": "1:0.0.4-1",
+        "depends": "libc6 (>= 2.14)",
+        "debSha256": "1a4551463483e1af4344fafc1038959b571ae4eda847e534052162de631fc3d7",
+        "indexSha256": "c086eff51fdbe167627b70eee47757d0528d918a07aa01ef247a073430ba02e6"
+      },
+      {
+        "platform": {
+          "architecture": "386",
+          "os": "linux"
+        },
+        "architecture": "i386",
+        "version": "1:0.0.4-1",
+        "depends": "libc6 (>= 2.11)",
+        "debSha256": "0b78af8fbbda5b14f1f9eddceb5d9391deebdda62572c4048885102645ddaf8c",
+        "indexSha256": "6f2cb6142c4ebd79c58fe4c1b47d5a6326007804e604fd48cab79557800aabd6"
+      },
+      {
+        "platform": {
+          "architecture": "ppc64le",
+          "os": "linux"
+        },
+        "architecture": "ppc64el",
+        "version": "1:0.0.4-1",
+        "depends": "libc6 (>= 2.17)",
+        "debSha256": "a3a77f0e2afff6c24b7b1daa038ebe2b1c8dedcc74ff6cb3927fcaeb7a28bd26",
+        "indexSha256": "7869680afd4906b0b6da13cd3e75753f25b0552901c7a43051252b8b8813419d"
+      },
+      {
+        "platform": {
+          "architecture": "arm64",
+          "os": "linux"
+        },
+        "architecture": "arm64",
+        "version": "1:0.0.4-1",
+        "depends": "libc6 (>= 2.17)",
+        "debSha256": "b4159bbbfc61f6156b04876121a88b8fbf5e6097f2e3518bc1c14873281b8244",
+        "indexSha256": "efa565a9454a5412471916bb495bb817617c3f19edbe96262be04ae90c620e14"
+      },
+      {
+        "platform": {
+          "architecture": "arm",
+          "os": "linux",
+          "variant": "v7"
+        },
+        "architecture": "armhf",
+        "version": "1:0.0.4-1",
+        "depends": "libc6 (>= 2.11)",
+        "debSha256": "097290f22edad958351dbe3e792837ed10888f25ff2752e3e541cab5fbae1441",
+        "indexSha256": "94454e1e1993ad4fddef981041c2f3ea798f8149ea123c7d93be72636df39de2"
+      }
+    ],
+    "baseManifest": "sha256:3d5fd268be20a7935d3e624770161080b615d9086548a2b501f44f388710529b"
+  },
+  "libraryExports": {
+    "stockSymbols": 114,
+    "officialSymbols": 115,
+    "removedOrChanged": [],
+    "added": [
+      "max_DecodedBlockSize"
+    ],
+    "baselineSoname": "libeot.so.0",
+    "newSoname": "libeot.so.0",
+    "oldNeeded": [
+      "libc.so.6"
+    ],
+    "newNeeded": [
+      "libc.so.6"
+    ]
+  },
+  "directConsumers": {
+    "objectsScanned": 1126,
+    "dependencies": [
+      {
+        "path": "usr/lib/libreoffice/program/libmergedlo.so",
+        "importedFunctions": [
+          "EOT2ttf_buffer",
+          "EOTcanLegallyEdit",
+          "EOTfreeBuffer",
+          "EOTfreeMetadata"
+        ]
+      }
+    ],
+    "source": "https://raw.githubusercontent.com/LibreOffice/core/libreoffice-26.8.2.2/vcl/source/gdi/embeddedfontsmanager.cxx",
+    "sourceSha256": "71033a5e51b9734124531204069064178830af35dee741a121f630d2d28b8eb0",
+    "successValueBeforeAndAfter": 0,
+    "removedPublicEnumerator": "EOT_NO_GLYF_TABLE"
+  },
+  "fontConversion": {
+    "publicHeaders": {
+      "libeot/EOT.h": {
+        "old": "05bb96b4bbcf75f013590bd1b98e4f795c591002e47352c04d9c7ae1de1c0518",
+        "new": "f8e2f2763d80b1127f9b8c889f3d2531cd1e019e3ca1a095d850a2ca3833fd1e"
+      },
+      "libeot/EOTError.h": {
+        "old": "29881ad4b4a5c3010db4276d38b10ff77493ab303be1ada8e73abb3dbc8865ae",
+        "new": "7f0efb68695a578ef1fd702871153fecee2bdffff59e51f70146204163e143f8"
+      },
+      "libeot/libeot.h": {
+        "old": "d8934c23b93d29a8a3a5557152730394fbd6e62576a6a800315cbeee27cad43d",
+        "new": "104bb879cf20c753f68c6ad01a0b105e5a77a93366bc5067dc5bf08fba4113cd"
+      }
+    },
+    "onlyNewHeaders": [],
+    "font": {
+      "source": "https://raw.githubusercontent.com/FortAwesome/Font-Awesome/a8386aae19e200ddb0f6845b5feeee5eb7013687/fonts/fontawesome-webfont.eot",
+      "sha256": "7bfcab6db99d5cfbf1705ca0536ddc78585432cc5fa41bbd7ad0f009033b2979",
+      "bytes": 165742,
+      "license": "SIL OFL 1.1",
+      "debs": {
+        "eot2ttf_0.0.4-1_amd64.deb": "b5820cf9aec361b4842fda338a1f825063832aad1aac3cedb79c32dfcc7b4090",
+        "libeot-dev_0.01-5+b2_amd64.deb": "d89809a83ea5bf46bbb08bcf801c7851f9204943ed8f8fa372b465171b428936"
+      }
+    },
+    "normalFont": {
+      "baseline": {
+        "ttfBytes": 165548,
+        "ttfSha256": "aa58f33f239a0fb02f5c7a6c45c043d7a9ac9a093335806694ecd6d4edc0d6a8",
+        "librarySha256": "36b3e222ff0d96e57d2c3e91e8468ac40c13b54230de876a990f1840c279778d"
+      },
+      "candidate": {
+        "ttfBytes": 165548,
+        "ttfSha256": "aa58f33f239a0fb02f5c7a6c45c043d7a9ac9a093335806694ecd6d4edc0d6a8",
+        "librarySha256": "e7d31fb6e302551e3a8a91fb39620ed9f147c7699db035cfb696dd79a39e2b31"
+      }
+    },
+    "officialDebSha256": "1a4551463483e1af4344fafc1038959b571ae4eda847e534052162de631fc3d7",
+    "signedSnapshot": "20261120T060000Z"
+  },
+  "embeddedFontComparison": {
+    "candidate": "sha256:f326a60475f7ae8058eeb25965d161f4305eed1ed77b55ece870892509bf22b5",
+    "fixture": {
+      "source": "https://raw.githubusercontent.com/LibreOffice/core/libreoffice-26.8.2.2/sd/qa/unit/data/BoldonseFontEmbedded.pptx",
+      "upstreamSha256": "9801672f6c932e218e044df19608d1f31629fee5c87af0bc7c04bfc9f84dbb69",
+      "fontFamilies": [
+        "Boldonse"
+      ],
+      "fontParts": [
+        [
+          "ppt/fonts/font1.fntdata",
+          36187,
+          "5b8d0000"
+        ]
+      ],
+      "controlSha256": "d6a13591fd5e05f63aa3f4289905e6119e3b012e60225a47fa2f97385878bd01"
+    },
+    "systemFontAbsent": true,
+    "results": [
+      {
+        "case": "systemFontsOnly",
+        "pageCount": 1,
+        "fonts": [
+          "NotoSans-Regular"
+        ],
+        "pages": [
+          {
+            "width": 961,
+            "height": 540
+          }
+        ],
+        "pdfSha256": "35e92a8da889f43adc14bae84dfed6f01ba168733d0c1f0a4d576d93a944d344",
+        "http": 200
+      },
+      {
+        "case": "embeddedFont",
+        "pageCount": 1,
+        "fonts": [
+          "Boldonse-Regular"
+        ],
+        "pages": [
+          {
+            "width": 961,
+            "height": 540
+          }
+        ],
+        "pdfSha256": "5c04500a2f58bbfed7678159a90c2ca6dfa5eebb943818a67f8f70281cde0b25",
+        "http": 200
+      }
+    ],
+    "differentPixelsFromSystemFallback": [
+      6203
+    ]
+  },
+  "postgres": "postgres (PostgreSQL) 16.16",
+  "migrations": 37,
+  "converterUid": "1001",
+  "apiUid": "10001",
+  "capabilities": 25,
+  "readOnlyRoot": true,
+  "internalNetwork": true,
+  "normalConversions": [
+    {
+      "format": "doc",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 818,
+      "inputSha256": "3e79fb6017c0755d3c0de36d2b506e649e61d21d8dbdfb8828ffe3172c9bc97f",
+      "pdfSha256": "cf33d2fab72fb531ebf4ab754c67fe63af8516e769bad702e67d8420b5c6b19e",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "docx",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 297,
+      "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+      "pdfSha256": "9aea3965dd48ea8d5daf9f1936296adf9764cdd9f829b9b0684bfcbbfc64cb53",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "xls",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 166,
+      "inputSha256": "1ae48ddea2af5d29e7ec20f622217a4379e41ea7c940ab507329944d53286e88",
+      "pdfSha256": "bc8adeb952fea4aa537a9d8d1a2e032993b24004725b2cea163d286ab8c0d2f8",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "xlsx",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 127,
+      "inputSha256": "2bfad1bc3b6c489b694708af7b21bc0c9717276f43955c9f367467916fdcafce",
+      "pdfSha256": "1be09aed72db67a4ccb8a35a0cff7f6fee26c12d3aeb476f43193b0dcb5932a0",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "ppt",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 286,
+      "inputSha256": "3cf589773ddc79cc315ca388650e5e6395e41bd41bc91174eaedbc231a45293f",
+      "pdfSha256": "6ff655d1e4efd3de1368acb53fc8ad73c7d08b590ac3423baa181eba6d506ffd",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "pptx",
+      "rich": false,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 455,
+      "inputSha256": "3cb3e83e27ec332665f14f7be6bea45f79c12c1273c78e48890914f402f44df2",
+      "pdfSha256": "c1f93e5e5b146e4f63c54669fff1fe4c432c1c83ac2d222cf5b9d113425a258c",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "docx",
+      "rich": false,
+      "afterRestart": true,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 579,
+      "inputSha256": "c96c420a9cd198a6d25b793525e5ce903976a0751fc1b45c7f49cbc8b84121ec",
+      "pdfSha256": "df7529d5fd55a260b64a54fca893d5c0639b222341842dcc9f1f900cca351f3c",
+      "pages": 1,
+      "expectedText": true
+    },
+    {
+      "format": "docx",
+      "rich": true,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 199,
+      "inputSha256": "60bfc7a48fa81d3588d66e303cf251b2e78e7ef2a77cfb646a7931defdab8f57",
+      "pdfSha256": "c1931f266f7f6937b5506d8b50c3082768af553d5e90d5da9f2061262f3e2c61",
+      "pages": 2,
+      "expectedText": true
+    },
+    {
+      "format": "xlsx",
+      "rich": true,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 168,
+      "inputSha256": "6d6c409867131ef7f4b01bbf00321a8d820db11d98f45e4e9f346e21a968e7b2",
+      "pdfSha256": "d18c1901c60b69f3eb3e9ea377a95f976b7ebb0fc51259a69cdc57b3a0d7335a",
+      "pages": 2,
+      "expectedText": true
+    },
+    {
+      "format": "pptx",
+      "rich": true,
+      "afterRestart": false,
+      "http": 200,
+      "noStore": true,
+      "milliseconds": 619,
+      "inputSha256": "c07834a8d32e54a80250fa2fac4d12e664f7203f82a411d87f479a4f2dd470d5",
+      "pdfSha256": "9d239d9859b2f7eb661981e89aae8558d6208066980c53075bcae2993c0825e4",
+      "pages": 2,
+      "expectedText": true
+    }
+  ],
+  "complexPages": [
+    {
+      "format": "docx",
+      "page": 1,
+      "pixels": 484704,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "docx",
+      "page": 2,
+      "pixels": 484704,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "xlsx",
+      "page": 1,
+      "pixels": 501832,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "xlsx",
+      "page": 2,
+      "pixels": 501832,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "pptx",
+      "page": 1,
+      "pixels": 388800,
+      "different": 0,
+      "maxChannelDelta": 0
+    },
+    {
+      "format": "pptx",
+      "page": 2,
+      "pixels": 388800,
+      "different": 0,
+      "maxChannelDelta": 0
+    }
+  ],
+  "scan": {
+    "utc": "2026-11-20T19:34:46.599974+00:00",
+    "sourcePackages": 205,
+    "changedSourcePackages": {
+      "libxml2": [
+        [
+          "libxml2",
+          "2.12.7+dfsg+really2.9.14-2.1+deb13u3"
+        ],
+        [
+          "libxml2",
+          "2.12.7+dfsg+really2.9.14-2.1+deb13u3+novvin232.1"
+        ]
+      ],
+      "libeot": [
+        [
+          "libeot",
+          "0.01-5"
+        ],
+        [
+          "libeot",
+          "1:0.0.4-1"
+        ]
+      ]
+    },
+    "osvQueryUsedDebianBaseVersionForLocalXml": true,
+    "rawAdvisoryCount": 330,
+    "libxml2IdsInclude6653": true,
+    "addedSince225": [
+      "DEBIAN-CVE-2026-132998",
+      "DEBIAN-CVE-2026-132999"
+    ],
+    "removedSince225": [],
+    "rawMatchedEotIssues": [
+      "DEBIAN-CVE-2026-132998",
+      "DEBIAN-CVE-2026-132999"
+    ],
+    "identicalPrograms": {
+      "usr/bin/gotenberg": "d3f7f916940369d8515431c0d406bcb367e737a42f3d06cf37c73e18419ad40d",
+      "usr/bin/lok": "8d13ca95be0e62455be446fae1840221c0777e4190dbe948d3665d56f6ffe5ff",
+      "usr/lib/libreoffice/program/soffice.bin": "0b6650a3d44fd67e427edeffe6263dbfcfef55a8152c00d9f36f92e615fc9a86",
+      "usr/bin/curl": "405983620ffd44cc5ebc8bc0eaee623feacfc54b8323d428f95864d9fd5c5a5b"
+    }
+  }
+}
