@@ -151,7 +151,7 @@ docker compose config --quiet
 
 if [ "$SKIP_BUILD" = false ]; then
   echo "==> Construyendo imagenes sin interrumpir los contenedores actuales"
-  docker compose build api ai-chatbot signaling realtime-gateway
+  docker compose build db signaling-redis api ai-chatbot survey-antivirus signaling realtime-gateway edge
 fi
 
 echo "==> Verificando dependencias de estado antes de actualizar"

@@ -2,12 +2,11 @@
 set -Eeuo pipefail
 
 # No production DB connection, network, host port, writable backup, or durable volume.
-# Usage: bash scripts/restore-drill-isolated.sh /absolute/path/to/verified/backup
+# Usage: bash scripts/restore-drill-isolated.sh /absolute/path/to/verified/backup [postgres-image]
 BACKUP_DIR="$(readlink -f "${1:?Provide the directory of a verified backup}")"
 test -d "$BACKUP_DIR"
 test -s "$BACKUP_DIR/postgres.dump"
-IMAGE="postgres:16.16-alpine@sha256:1d5b02d3a9941fbd52437db4107f8c52d6297dac553ca1e5c299ebb3756b4857"
-docker image inspect "$IMAGE" >/dev/null
+IMAGE="$(docker image inspect --format '{{.Id}}' "${2:-novvin-postgres:16.16-alpine-r1}")"
 DRILL_NAME="novvin-restore-check-$(date -u +%Y%m%d%H%M%S)-$$"
 DRILL_LABEL="novvin.restore-check=$DRILL_NAME"
 LOG_DIR="$(mktemp -d /tmp/novvin-restore-check.XXXXXXXX)"

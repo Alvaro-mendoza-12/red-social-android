@@ -1,6 +1,8 @@
 services:
   db:
-    image: postgres:16.16-alpine@sha256:1d5b02d3a9941fbd52437db4107f8c52d6297dac553ca1e5c299ebb3756b4857
+    build: ./db
+    image: novvin-postgres:16.16-alpine-r1
+    pull_policy: never
     container_name: conectate-local-fallback-db-main
     restart: unless-stopped
     environment:
@@ -23,7 +25,9 @@ services:
       retries: 5
 
   signaling-redis:
-    image: redis:7.4.12-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
+    build: ./redis
+    image: novvin-redis:7.4.12-alpine-r1
+    pull_policy: never
     container_name: conectate-local-fallback-signaling-redis-main
     restart: unless-stopped
     user: "999:1000"
