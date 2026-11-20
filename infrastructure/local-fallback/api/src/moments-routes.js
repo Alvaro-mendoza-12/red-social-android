@@ -22,7 +22,7 @@ async function removeRenderedMomentMusic(pool, audioUrl) {
   const { rows } = await pool.query(
     `DELETE FROM fallback_storage_objects
       WHERE bucket_id=$1 AND name=$2
-      RETURNING bucket_id,name,local_path`,
+      RETURNING bucket_id,name,local_path,object_revision`,
     [location.bucket, location.objectPath],
   )
   const removed = await removeStorageObjectFiles(rows)
