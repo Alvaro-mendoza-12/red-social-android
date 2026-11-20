@@ -268,7 +268,8 @@ async function main() {
   let totalUnexpected5xx = 0
   let totalNetworkErrors = 0
   let totalFunctionalFailures = 0
-  const operations = Object.fromEntries(['feed', 'profile', 'message', 'notifications'].map(name =>
+  const operationNames = ['feed', 'profile', 'message', 'notifications']
+  const operations = Object.fromEntries(operationNames.map(name =>
     [name, { attempted: 0, passed: 0, statuses: {} }]))
   let stop = false
   let stopReason = 'completed'
@@ -277,7 +278,8 @@ async function main() {
   process.on('SIGINT', () => { stop = true; stopReason = 'SIGINT' })
   process.on('SIGTERM', () => { stop = true; stopReason = 'SIGTERM' })
 
-  let windowLatencies = []
+  const windowHttpByOperation = Object.fromEntries(operationNames.map(name => [name, []]))
+  let windowAcksWithMissedReceipt = []
   let windowDeliveryLatencies = []
   let windowCount = 0
   let windowStart = performance.now()
@@ -288,22 +290,19 @@ async function main() {
     const pair = chatIds[idx % chatIds.length]
     const authHdr = { Authorization: `Bearer ${user.token}` }
     const targetApi = apiUrls[(rrCounter++) % apiUrls.length]
-    const mod = (idx + step) % 4
     let res
     let valid
-    let operation
+    const operationName = operationNames[(idx + step) % operationNames.length]
+    const operation = operations[operationName]
     let missingDelivery = false
-    if (mod === 0) {
-      operation = operations.feed
+    if (operationName === 'feed') {
       res = await timedFetch(`${targetApi}/v1/data/feed?limit=20`, { headers: authHdr })
       valid = res.status === 200 && Array.isArray(res.json?.items)
-    } else if (mod === 1) {
-      operation = operations.profile
+    } else if (operationName === 'profile') {
       const target = users[(idx + 1) % users.length]
       res = await timedFetch(`${targetApi}/v1/data/profiles/${target.id}`, { headers: authHdr })
       valid = res.status === 200 && res.json?.profile?.id === target.id
-    } else if (mod === 2) {
-      operation = operations.message
+    } else if (operationName === 'message') {
       const id = crypto.randomUUID()
       const reception = recipients.expect(pair.id, id)
       res = await timedFetch(`${targetApi}/v1/data/messages/chats/${pair.id}/messages`, {
@@ -327,7 +326,6 @@ async function main() {
         }
       }
     } else {
-      operation = operations.notifications
       res = await timedFetch(`${targetApi}/v1/data/notifications?limit=15`, { headers: authHdr })
       valid = res.status === 200 && Array.isArray(res.json?.items)
     }
@@ -337,7 +335,8 @@ async function main() {
     if (!valid || missingDelivery) totalFunctionalFailures += 1
     totalReqs += 1
     windowCount += 1
-    windowLatencies.push(res.ms)
+    windowHttpByOperation[operationName].push(res.ms)
+    if (missingDelivery) windowAcksWithMissedReceipt.push(res.ms)
     if (res.status === 0) totalNetworkErrors += 1
     else if (res.status === 503 && res.json?.error === 'SERVICE_OVERLOADED') totalLoadShed503 += 1
     else if (res.status >= 500) totalUnexpected5xx += 1
@@ -382,11 +381,15 @@ async function main() {
     const elapsedSec = Math.round((performance.now() - startedAt) / 1000)
     const winSec = Math.max(0.001, (performance.now() - windowStart) / 1000)
     const rps = Number((windowCount / winSec).toFixed(1))
-    const pct = percentiles(windowLatencies)
+    const pct = percentiles(Object.values(windowHttpByOperation).flat())
+    const httpLatencyByOperation = Object.fromEntries(operationNames.map(name =>
+      [name, percentiles(windowHttpByOperation[name])]))
+    const httpAckWithMissedReceipt = percentiles(windowAcksWithMissedReceipt)
     const wsDelivery = percentiles(windowDeliveryLatencies)
     windowDeliveryLatencies = []
     const cumulative = { totalReqs, total2xx, total429, totalLoadShed503, totalUnexpected5xx, totalNetworkErrors, totalFunctionalFailures }
-    windowLatencies = []
+    for (const name of operationNames) windowHttpByOperation[name].length = 0
+    windowAcksWithMissedReceipt = []
     windowCount = 0
     windowStart = performance.now()
 
@@ -419,6 +422,8 @@ async function main() {
       elapsedSeconds: elapsedSec,
       windowRps: rps,
       latency: pct,
+      httpLatencyByOperation,
+      httpAckWithMissedReceipt,
       wsDelivery,
       cumulative,
       api: apiM,

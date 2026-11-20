@@ -119,6 +119,10 @@ test('accounts for every completed HTTP operation including the final sample', a
   assert.equal(report.totals.totalFunctionalFailures, 0)
   assert.equal(Object.values(report.operations).reduce((n, op) => n + op.passed, 0), report.totals.totalReqs)
   assert.equal(windows.reduce((n, w) => n + w.latency.count, 0), report.totals.totalReqs)
+  for (const [name, op] of Object.entries(report.operations)) {
+    assert.equal(windows.reduce((n, w) => n + w.httpLatencyByOperation[name].count, 0), op.attempted)
+  }
+  assert.ok(windows.every(w => w.httpAckWithMissedReceipt.count === 0))
 })
 
 for (const status of [401, 409, 429, 503]) {
@@ -147,12 +151,13 @@ test('a rejected recipient setup aborts before the measured writes', async t => 
 })
 
 test('a successful HTTP write with a missing recipient event fails the run', async t => {
-  const { code, report } = await runFixture(t, { silentRecipient: true })
+  const { code, report, windows } = await runFixture(t, { silentRecipient: true })
   assert.equal(code, 1)
   assert.ok(report.operations.message.passed > 0)
   assert.equal(report.delivery.received, 0)
   assert.equal(report.delivery.missed, report.delivery.expected)
   assert.ok(report.delivery.missed > 0)
+  assert.equal(windows.reduce((n, w) => n + w.httpAckWithMissedReceipt.count, 0), report.operations.message.passed)
 })
 
 test('arrival accounting reconciles scheduled slots with completed operations', async t => {
