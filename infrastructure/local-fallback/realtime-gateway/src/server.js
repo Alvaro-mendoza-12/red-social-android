@@ -70,15 +70,18 @@ app.use((req, res, next) => {
   next()
 })
 app.get('/', (_req, res) => res.json({ ok: true, service: serviceName, version, instanceId }))
-app.get('/health', (_req, res) => res.json({
-  ok: true,
-  service: serviceName,
-  version,
-  instanceId,
-  redisBusMode: redisBus ? 'redis-streams' : 'local',
-  redisConnected: Boolean(redisBus && redisBus.isReady()),
-  time: new Date().toISOString(),
-}))
+app.get(['/health', '/ready'], (req, res) => {
+  const redisConnected = Boolean(redisBus?.isReady())
+  const redisReaderReady = Boolean(redisBus?.isReaderReady())
+  const ready = !realtimeRedisUrl || (redisConnected && redisReaderReady)
+  const ok = req.path === '/health' || ready
+  return res.status(ok ? 200 : 503).json({
+    ok, service: serviceName, version, instanceId,
+    redisBusMode: redisBus ? 'redis-streams' : 'local',
+    redisConnected, redisReaderReady, ready,
+    time: new Date().toISOString(),
+  })
+})
 
 const server = http.createServer(app)
 const wss = new WebSocket.Server({ server, maxPayload: 32 * 1024, perMessageDeflate: false })
@@ -540,6 +543,7 @@ function createRedisStreamBus() {
   if (!pubClient || !subClient) return null
 
   let stopped = false
+  let readerReady = false
   let loopRunning = false
   let lastStreamId = null
   let retryTimer
@@ -572,6 +576,7 @@ function createRedisStreamBus() {
           ['XREAD', 'COUNT', '100', 'BLOCK', String(realtimeRedisBlockMs), 'STREAMS', realtimeRedisStreamName, lastStreamId],
           { timeoutMs: realtimeRedisBlockMs + 4_000 },
         )
+        readerReady = true
         retryDelayMs = 250
         if (!Array.isArray(response)) continue
         for (const streamEntry of response) {
@@ -603,6 +608,7 @@ function createRedisStreamBus() {
         console.warn('[realtime-redis-sub] read loop interrupted:', error?.code || error?.message || 'REDIS_ERROR')
       }
     } finally {
+      readerReady = false
       loopRunning = false
       // Redis can reject a command while keeping the connection open. In
       // that case there is no new ready event to restart the reader.
@@ -615,6 +621,7 @@ function createRedisStreamBus() {
   }
 
   subClient.on('ready', () => {
+    readerReady = false
     clearTimeout(retryTimer)
     void readLoop()
   })
@@ -626,6 +633,9 @@ function createRedisStreamBus() {
     },
     isReady() {
       return pubClient.isReady() && subClient.isReady()
+    },
+    isReaderReady() {
+      return !stopped && readerReady && subClient.isReady()
     },
     async publish({ eventId, channel, payload, excludeSessionId, ts }) {
       if (!pubClient.isReady()) {
@@ -754,6 +764,7 @@ app.get('/internal/metrics', (req, res) => {
     instanceId,
     redisBusMode: redisBus ? 'redis-streams' : 'local',
     redisConnected: Boolean(redisBus && redisBus.isReady()),
+    redisReaderReady: Boolean(redisBus?.isReaderReady()),
     uptimeSeconds: Math.round((Date.now() - gatewayMetrics.startedAtMs) / 1000),
     activeConnections: wss.clients.size,
     authenticatedConnections,
@@ -797,6 +808,8 @@ app.get('/internal/metrics', (req, res) => {
     `novvin_realtime_stream_events_received_total ${snapshot.streamEventsReceived}`,
     '# TYPE novvin_realtime_stream_duplicates_skipped_total counter',
     `novvin_realtime_stream_duplicates_skipped_total ${snapshot.streamDuplicatesSkipped}`,
+    '# TYPE novvin_realtime_redis_reader_ready gauge',
+    `novvin_realtime_redis_reader_ready ${snapshot.redisReaderReady ? 1 : 0}`,
     '# TYPE novvin_realtime_stream_read_errors_total counter',
     `novvin_realtime_stream_read_errors_total ${snapshot.streamReadErrors}`,
     '# TYPE novvin_realtime_stream_publish_errors_total counter',
