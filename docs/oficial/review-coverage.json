@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T16:00:32.844251+00:00",
-  "baseCommit": "eddaad0cc189732daae03d6fb5b4639033718ccb",
+  "generatedAtUtc": "2026-11-20T16:26:24.540285+00:00",
+  "baseCommit": "7423926084336d1868ec81506fb19df4de1887fc",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3438,
+    "pending": 3436,
     "code-read": 1047,
-    "partial": 275
+    "partial": 279
   },
   "countsByPhase": {
     "android": {
@@ -21,14 +21,14 @@
       "code-read": 612
     },
     "documentation": {
-      "pending": 698,
+      "pending": 700,
       "code-read": 67,
       "partial": 20
     },
     "server": {
-      "pending": 726,
+      "pending": 722,
       "code-read": 203,
-      "partial": 45
+      "partial": 49
     },
     "tooling-and-other": {
       "pending": 137,
@@ -101,9 +101,9 @@
     {
       "file": ".github/workflows/service-ci.yml",
       "phase": "tooling-and-other",
-      "gitBlobId": "14d51884e10f86cd1432dd7e28faf70fa3772d91",
+      "gitBlobId": "202d0dcc999e44d0b9034ed9b5f46a163f3f6d13",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "evidence": "docs/oficial/228-pruebas-condicionales-de-postgresql-redis-y-medios-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22305,6 +22305,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/228-pruebas-condicionales-de-postgresql-redis-y-medios-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "7caf298d6d2d2df9e929f47823e6bd88f49e8373",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/23-multimedia-offline-y-restauracion-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "d22eca229741a92edd67245371999039798bf76f",
@@ -23200,6 +23206,12 @@
       "file": "docs/oficial/evidencias/227-espacio-ci-y-carga-de-la-candidata.json",
       "phase": "documentation",
       "gitBlobId": "de2638a9655ee95d6143650f49f3ed6c7317ecd9",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/228-pruebas-condicionales-de-postgresql-redis-y-medios.json",
+      "phase": "documentation",
+      "gitBlobId": "7d9afcc9abbe6e8053b0bf70eb7cc909f4345e1b",
       "reviewStatus": "pending"
     },
     {
@@ -24521,8 +24533,10 @@
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-social-message-requests-private.js",
       "phase": "server",
-      "gitBlobId": "29aa9cc18602cc9c06587ba6e616301e50d76832",
-      "reviewStatus": "pending"
+      "gitBlobId": "59f4b29e5715b6c719c6b83172bfa25eb9375e1e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/228-pruebas-condicionales-de-postgresql-redis-y-medios-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/scripts/verify-social-read-paths.js",
@@ -26907,8 +26921,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/password-reset-confirmation.postgres.test.js",
       "phase": "server",
-      "gitBlobId": "ecabaf4671d240a40e6a5c5865019f643d2aa563",
-      "reviewStatus": "pending"
+      "gitBlobId": "cff4268f526a30ce387ea7dda6fad4c3690f8151",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/228-pruebas-condicionales-de-postgresql-redis-y-medios-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/password-reset-email-code.test.js",
@@ -27405,8 +27421,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/storage-content-json-array-postgres.test.js",
       "phase": "server",
-      "gitBlobId": "f7c0aac2443b8b35e8f4f1e7c4b0d88fd2b8155e",
-      "reviewStatus": "pending"
+      "gitBlobId": "0eae1718696723170245b209f84758897d7dc6ff",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/228-pruebas-condicionales-de-postgresql-redis-y-medios-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/storage-delete-ownership.test.js",
@@ -27423,8 +27441,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/storage-historical-av-backfill.postgres.test.js",
       "phase": "server",
-      "gitBlobId": "048d76b7dbf69a83815663f996c43914d9d0c04c",
-      "reviewStatus": "pending"
+      "gitBlobId": "64fe036522d5c796be00e5c1c9aa12fe39c5fca3",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/228-pruebas-condicionales-de-postgresql-redis-y-medios-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/storage-media-reference.test.js",

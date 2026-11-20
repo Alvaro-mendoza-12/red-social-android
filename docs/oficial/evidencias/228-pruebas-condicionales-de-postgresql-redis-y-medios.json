@@ -1,0 +1,758 @@
+{
+  "testedCommit": "7423926084336d1868ec81506fb19df4de1887fc",
+  "base": "7e9e07c44ad45f02c12cf08f7741216d76eff900",
+  "changes": [
+    ".github/workflows/service-ci.yml",
+    "infrastructure/local-fallback/api/scripts/verify-social-message-requests-private.js",
+    "infrastructure/local-fallback/api/tests/password-reset-confirmation.postgres.test.js",
+    "infrastructure/local-fallback/api/tests/storage-content-json-array-postgres.test.js",
+    "infrastructure/local-fallback/api/tests/storage-historical-av-backfill.postgres.test.js"
+  ],
+  "reviewedCommits": [
+    "7423926084336d1868ec81506fb19df4de1887fc\tIsolate friendships between private messaging scenarios",
+    "a00bdaa7629db59bd1c9130e0b634f7622138268\tAuthenticate restricted storage test roles on SCRAM clusters",
+    "61d1dd4d5eefeda163e3e39bcc0b8ebe603f488f\tExercise password reset and session revocation on PostgreSQL in CI"
+  ],
+  "hostedServiceRuns": [
+    {
+      "branch": "main",
+      "name": "Channel point redemption transactions",
+      "id": 136401520236,
+      "run": 44769072180,
+      "summary": [
+        "found 0 vulnerabilities",
+        "# tests 5",
+        "# suites 0",
+        "# pass 5",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0",
+        "# tests 1",
+        "# suites 0",
+        "# pass 1",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0"
+      ]
+    },
+    {
+      "branch": "main",
+      "name": "signaling",
+      "id": 136401520430,
+      "run": 44769072180,
+      "summary": [
+        "found 0 vulnerabilities",
+        "# tests 62",
+        "# suites 0",
+        "# pass 60",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 2",
+        "# todo 0",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "main",
+      "name": "realtime",
+      "id": 136401520432,
+      "run": 44769072180,
+      "summary": [
+        "found 0 vulnerabilities",
+        "# tests 2",
+        "# suites 0",
+        "# pass 2",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "main",
+      "name": "api",
+      "id": 136401520766,
+      "run": 44769072180,
+      "summary": [
+        "found 0 vulnerabilities",
+        "found 0 vulnerabilities",
+        "# tests 1204",
+        "# suites 0",
+        "# pass 1168",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 36",
+        "# todo 0",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "main",
+      "name": "web",
+      "id": 136401520784,
+      "run": 44769072180,
+      "summary": [
+        "found 0 vulnerabilities",
+        "Test Suites: 208 passed, 208 total",
+        "Tests:       1346 passed, 1346 total",
+        "# tests 129",
+        "# suites 0",
+        "# pass 129",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "main",
+      "name": "chatbot",
+      "id": 136401520930,
+      "run": 44769072180,
+      "summary": [
+        "found 0 vulnerabilities",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "feature/live-gifts",
+      "name": "web",
+      "id": 136401520015,
+      "run": 44769072155,
+      "summary": [
+        "found 0 vulnerabilities",
+        "Test Suites: 208 passed, 208 total",
+        "Tests:       1346 passed, 1346 total",
+        "# tests 129",
+        "# suites 0",
+        "# pass 129",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "feature/live-gifts",
+      "name": "realtime",
+      "id": 136401520361,
+      "run": 44769072155,
+      "summary": [
+        "found 0 vulnerabilities",
+        "# tests 2",
+        "# suites 0",
+        "# pass 2",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "feature/live-gifts",
+      "name": "api",
+      "id": 136401520647,
+      "run": 44769072155,
+      "summary": [
+        "found 0 vulnerabilities",
+        "found 0 vulnerabilities",
+        "# tests 1204",
+        "# suites 0",
+        "# pass 1168",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 36",
+        "# todo 0",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "feature/live-gifts",
+      "name": "Channel point redemption transactions",
+      "id": 136401520791,
+      "run": 44769072155,
+      "summary": [
+        "found 0 vulnerabilities",
+        "# tests 5",
+        "# suites 0",
+        "# pass 5",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0",
+        "# tests 1",
+        "# suites 0",
+        "# pass 1",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0"
+      ]
+    },
+    {
+      "branch": "feature/live-gifts",
+      "name": "chatbot",
+      "id": 136401521262,
+      "run": 44769072155,
+      "summary": [
+        "found 0 vulnerabilities",
+        "found 0 vulnerabilities"
+      ]
+    },
+    {
+      "branch": "feature/live-gifts",
+      "name": "signaling",
+      "id": 136401522002,
+      "run": 44769072155,
+      "summary": [
+        "found 0 vulnerabilities",
+        "# tests 62",
+        "# suites 0",
+        "# pass 60",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 2",
+        "# todo 0",
+        "found 0 vulnerabilities"
+      ]
+    }
+  ],
+  "matchedPreviouslySkipped": {
+    "api": {
+      "skippedInHostedDefault": 36,
+      "matchedByNameInPrivateRun": 36
+    },
+    "signaling": {
+      "skippedInHostedDefault": 2,
+      "matchedByNameInPrivateRun": 2
+    }
+  },
+  "matchByTitle": {
+    "api": {
+      "API startup remains bounded when the signature mirror hangs, under the actual dropped capabilities": [
+        "antivirus-startup"
+      ],
+      "a video avatar produces a bounded WebP poster without altering its playable original": [
+        "avatar-video-poster"
+      ],
+      "question persistence, creator permissions, Unicode limits, votes, pagination and revoked access": [
+        "community-questions.integration"
+      ],
+      "PostgreSQL compatibility inserts authorize every source and preserve owned merges": [
+        "compat-insert-ownership.postgres"
+      ],
+      "real PostgreSQL pages, imported overlays, permissions and index plans": [
+        "conversation-history-postgres"
+      ],
+      "CSV replacement, retries and profile updates are atomic per file": [
+        "csv-import-atomic.postgres"
+      ],
+      "private PostgreSQL request and publication mention acceptance": [
+        "direct-message-request-policy-postgres"
+      ],
+      "HTTP cancellation preserves accepted friendships, enforces sender ownership and serializes acceptance": [
+        "friend-cancellation-http.postgres"
+      ],
+      "independent PostgreSQL sessions serialize legacy decisions, cancellation and fresh invitations": [
+        "friend-request-concurrency.postgres"
+      ],
+      "PostgreSQL preserves alias matching, null/missing columns, complete rows and limits": [
+        "imported-profile-lookup"
+      ],
+      "live polls and questions retain one vote per person across retries, changes, expiry and moderation": [
+        "live-audience.postgres"
+      ],
+      "an idle expired round is finalized exactly once by concurrent timers in PostgreSQL": [
+        "live-draw-timer.postgres"
+      ],
+      "guest capacity counts identities once across historical invitation and participant aliases": [
+        "live-guest-count.postgres"
+      ],
+      "redemption ownership and concurrent retries with real PostgreSQL": [
+        "live-points-redemption.postgres"
+      ],
+      "committed password remains acknowledged after hydrate failure": [
+        "password-reset-confirmation.postgres"
+      ],
+      "committed password remains acknowledged after second-factor failure": [
+        "password-reset-confirmation.postgres"
+      ],
+      "committed password remains acknowledged after session failure": [
+        "password-reset-confirmation.postgres"
+      ],
+      "committed password remains acknowledged after cookie failure": [
+        "password-reset-confirmation.postgres"
+      ],
+      "ordinary confirmation keeps the existing successful session contract": [
+        "password-reset-confirmation.postgres"
+      ],
+      "enabled second factor still prevents session issue": [
+        "password-reset-confirmation.postgres"
+      ],
+      "precommit failure rolls back password, grants and session revocation without a receipt": [
+        "password-reset-confirmation.postgres"
+      ],
+      "expired grant cannot change any state or manufacture a receipt": [
+        "password-reset-confirmation.postgres"
+      ],
+      "concurrent confirmations consume the grant once and only the winning password is stored": [
+        "password-reset-confirmation.postgres"
+      ],
+      "missing assisted recovery case still rolls back and cannot become a confirmed change": [
+        "password-reset-confirmation.postgres"
+      ],
+      "an audit failure is non-fatal and does not print the raw exception": [
+        "password-reset-confirmation.postgres"
+      ],
+      "public, personalized and detail HTTP reads retain durable counts after reopening PostgreSQL connections": [
+        "post-engagement.postgres"
+      ],
+      "schema and real PostgreSQL reaction summary": [
+        "profile-music-routes"
+      ],
+      "PostgreSQL scopes shares to the displayed profile and preserves original authors": [
+        "profile-post-shares.postgres"
+      ],
+      "later readable originals remain reachable after hundreds of restricted shares": [
+        "profile-post-shares.postgres"
+      ],
+      "PostgreSQL persisted raffle workflow, HTTP policy and concurrent selections": [
+        "raffles"
+      ],
+      "PostgreSQL applies each migration and its checksum atomically": [
+        "schema-migrations.postgres"
+      ],
+      "PostgreSQL content URL arrays preserve policy and transactional boundaries": [
+        "storage-content-json-array-postgres"
+      ],
+      "historical AV backfill: isolated PostgreSQL, real files, synthetic scanner": [
+        "storage-historical-av-backfill.postgres"
+      ],
+      "durable PostgreSQL journal: replay, replacement, deletion, retry, target isolation, budget and multi-worker lock": [
+        "storage-r2-journal.postgres"
+      ],
+      "persistent upload admission across API replicas on PostgreSQL": [
+        "storage-upload-admission-postgres"
+      ],
+      "Encuestas: flujo HTTP y PostgreSQL con cuentas sintéticas": [
+        "survey-routes.integration"
+      ]
+    },
+    "signaling": {
+      "Redis enforces Live host lease contention atomically": [
+        "distributed-live-state.redis.integration"
+      ],
+      "ending a Live releases its host lease and clears only that Live": [
+        "distributed-live-state.redis.integration"
+      ]
+    }
+  },
+  "privatePostgresAndRedis": {
+    "database": "PostgreSQL 16.15 Ubuntu WSL2",
+    "node": "22.23.5",
+    "redis": "Redis 7.0.15",
+    "testsPassed": 123,
+    "jobs": {
+      "password-reset-confirmation.postgres": {
+        "exit": 0,
+        "seconds": 9.76,
+        "counts": {
+          "tests": 11,
+          "pass": 11,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "0688588e2fb652df222d7e2ac99acc33f3f71b7bf1cec5fc73a90300796e928a"
+      },
+      "community-questions.integration": {
+        "exit": 0,
+        "seconds": 1.22,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "019b384493ffce368a85f89b5714a87851a6e94ce03da81b8ca1769a78306d11"
+      },
+      "compat-insert-ownership.postgres": {
+        "exit": 0,
+        "seconds": 0.97,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "cddda3b80737f21273daaac56bc0c34d89f6223ac73fb1f91f90988cd6c605e0"
+      },
+      "conversation-history-postgres": {
+        "exit": 0,
+        "seconds": 2.08,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "8e37050cad9e70d214bb1ef73c65025fba5494894c3bd3cca1049898d75abf6c"
+      },
+      "csv-import-atomic.postgres": {
+        "exit": 0,
+        "seconds": 14.53,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "abfa4ccceff6744de0e3ce5b6596ecc3ed8f6d7cae91fa5a402a0b92a334b653"
+      },
+      "direct-message-request-policy-postgres": {
+        "exit": 0,
+        "seconds": 1.62,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "630079293f72eabd044e1f737ba6c0871aeb6a0596995b72c2145f4abbeef1db"
+      },
+      "friend-cancellation-http.postgres": {
+        "exit": 0,
+        "seconds": 1.37,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "bf8ce35cc80e2c58160ba8778639564a1c8af4dabffca547ed326fadb9ba2860"
+      },
+      "friend-request-concurrency.postgres": {
+        "exit": 0,
+        "seconds": 0.67,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "705e1d5c0eb00486701c46d8bceafaaac3b5e3a731bdfd0ebe1c675f0bfd29a1"
+      },
+      "friend-request-transition.postgres": {
+        "exit": 0,
+        "seconds": 1.42,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "a2b2d79f372729a0b73ea0805418a78fdb61ffacc2dee6928e7ffbdbd57b65ca"
+      },
+      "imported-profile-lookup": {
+        "exit": 0,
+        "seconds": 0.77,
+        "counts": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "1785ead1ad607d47e49733c509ae16ca23f76e55e27add436abc06d7755adaea"
+      },
+      "live-audience.postgres": {
+        "exit": 0,
+        "seconds": 1.37,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "41b7f6b83a8497da1cf8ece3a997d97ff032c41937cdcfe9e0cdecec63415879"
+      },
+      "live-draw-timer.postgres": {
+        "exit": 0,
+        "seconds": 0.77,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "2501525c383ec3ed560db9fe86fb6aa73abb6a982e13e092193b929ef2776e4b"
+      },
+      "live-guest-count.postgres": {
+        "exit": 0,
+        "seconds": 0.67,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "335209776362da8420d50ef354b0f4b9f858e72c2800b41fdbd7ca40bbe013cb"
+      },
+      "live-points-redemption.postgres": {
+        "exit": 0,
+        "seconds": 1.47,
+        "counts": {
+          "tests": 5,
+          "pass": 5,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "59745d6877cf3b36c33e2b02951b696c471fa311ecf547b94e78a2f83b80d4ca"
+      },
+      "post-engagement.postgres": {
+        "exit": 0,
+        "seconds": 1.32,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "bba997a45a58e112044393fa6504470cce72f27d9fdf91af4e7d7495443914ee"
+      },
+      "profile-music-routes": {
+        "exit": 0,
+        "seconds": 0.72,
+        "counts": {
+          "tests": 10,
+          "pass": 10,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "764e7dc5e9aae66db338c927ab13a7a02025382e110a7fe1ff6ae5324c1a1bcc"
+      },
+      "profile-post-shares.postgres": {
+        "exit": 0,
+        "seconds": 0.42,
+        "counts": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "40b71bda8df718d26bc38622a443dd792af50a5ffea047cdc50910221fa0e142"
+      },
+      "raffles": {
+        "exit": 0,
+        "seconds": 6.55,
+        "counts": {
+          "tests": 16,
+          "pass": 16,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "2abee29bafc4500c694869b255852f52987edafb093f75e85131743730db7a9e"
+      },
+      "schema-migrations.postgres": {
+        "exit": 0,
+        "seconds": 17.61,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "2ad800f6a63cd352b2d03e259135df09c578b212633b033611882d71d6262bad"
+      },
+      "storage-content-json-array-postgres": {
+        "exit": 0,
+        "seconds": 0.52,
+        "counts": {
+          "tests": 9,
+          "pass": 9,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "d1df9f59c3c452a45a78dd1711650ac2c7556f629106295bec348fafc64e9420"
+      },
+      "storage-historical-av-backfill.postgres": {
+        "exit": 0,
+        "seconds": 27.16,
+        "counts": {
+          "tests": 17,
+          "pass": 17,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "caf86ac47035b112ae4ac9a3861c401b724c87dd9d7e20ab26248920ff200cef"
+      },
+      "storage-r2-journal.postgres": {
+        "exit": 0,
+        "seconds": 0.72,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "a395d3d0b6e7be757f6b49b97bb85667d8e5153da474de3108a1fb12965aa34f"
+      },
+      "storage-upload-admission-postgres": {
+        "exit": 0,
+        "seconds": 1.32,
+        "counts": {
+          "tests": 13,
+          "pass": 13,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "0fc54eb02183939a4ceac7389ae14f40b467f96b63bb008167e82a00ee700eb5"
+      },
+      "survey-routes.integration": {
+        "exit": 0,
+        "seconds": 14.47,
+        "counts": {
+          "tests": 22,
+          "pass": 22,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "89b6fb09fb59eaa440c8b023644a1162782b821fa4bdcc72981acf3ac13425ab"
+      },
+      "distributed-live-state.redis.integration": {
+        "exit": 0,
+        "seconds": 1.17,
+        "counts": {
+          "tests": 2,
+          "pass": 2,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "logSha256": "77b018c17cffcdd85dce77b06f9d517e83646ad63637bbb4178109bb587da139"
+      }
+    },
+    "clusterStopped": true
+  },
+  "privateContainer": {
+    "source": "7423926084336d1868ec81506fb19df4de1887fc",
+    "imageId": "sha256:6de8b048b911fccbc51a873c198e50db8bbc32cc6d9d150a479c950b67507668",
+    "imageSource": "dd9582f56645f5885353c35949cb733af410dbe0",
+    "network": "none",
+    "rootfs": "read-only",
+    "execTmp": "Isolated mount for synthetic executables",
+    "jobs": {
+      "antivirus-startup": {
+        "rc": 0,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "sha256": "51d99e70618b8ccbf0868c79396dca4c54a19c777dce267385afd441a1d6c236",
+        "user": "0:0",
+        "passedCases": [
+          "API startup remains bounded when the signature mirror hangs, under the actual dropped capabilities"
+        ]
+      },
+      "avatar-video-poster": {
+        "rc": 0,
+        "counts": {
+          "tests": 1,
+          "pass": 1,
+          "fail": 0,
+          "cancelled": 0,
+          "skipped": 0
+        },
+        "sha256": "642e19ca7f5d05cb77db200479a6c23736a1d3cbd9eefd1ee7f8343ece112e4b",
+        "user": "10001:10001",
+        "passedCases": [
+          "a video avatar produces a bounded WebP poster without altering its playable original"
+        ]
+      }
+    }
+  },
+  "firstPass": {
+    "password-reset-confirmation.postgres": {
+      "tests": 11,
+      "pass": 3,
+      "fail": 8,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "direct-message-request-policy-postgres": {
+      "tests": 1,
+      "pass": 0,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "post-engagement.postgres": {
+      "tests": 1,
+      "pass": 0,
+      "fail": 1,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "storage-content-json-array-postgres": {
+      "tests": 9,
+      "pass": 7,
+      "fail": 2,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "storage-historical-av-backfill.postgres": {
+      "tests": 17,
+      "pass": 0,
+      "fail": 17,
+      "cancelled": 0,
+      "skipped": 0
+    }
+  },
+  "host": {
+    "public": {
+      "http": 200,
+      "tls": "TLSv1.3",
+      "release": "cc6a022ee123f99d84b97adc2136c92d1a2f6782",
+      "checkedUtc": "2026-11-20T16:24:15.160749+00:00",
+      "capabilities": 25
+    },
+    "private": {
+      "http": 200,
+      "tls": "TLSv1.3",
+      "release": "cc6a022ee123f99d84b97adc2136c92d1a2f6782",
+      "checkedUtc": "2026-11-20T16:24:15.345921+00:00",
+      "capabilities": 25
+    }
+  }
+}
