@@ -6,9 +6,15 @@ import { profileIdentity, type ProfileIdentity } from '../ui/novvin/profileIdent
 
 const cache = new Map<string, { at: number; value: ProfileIdentity }>()
 const pending = new Map<string, Map<string, Array<(value: ProfileIdentity | null) => void>>>()
+
+function cachedIdentity(key: string): ProfileIdentity | undefined {
+  const hit = cache.get(key)
+  return hit && Date.now() - hit.at < 120_000 ? hit.value : undefined
+}
+
 function read(owner: string, id: string): Promise<ProfileIdentity | null> {
-  const key = owner + ':' + id, hit = cache.get(key)
-  if (hit && Date.now() - hit.at < 120000) return Promise.resolve(hit.value)
+  const hit = cachedIdentity(owner + ':' + id)
+  if (hit) return Promise.resolve(hit)
   return new Promise(resolve => {
     const batch = pending.get(owner) || new Map<string, Array<(value: ProfileIdentity | null) => void>>()
     const listeners = batch.get(id) || []; listeners.push(resolve); batch.set(id, listeners)
@@ -31,11 +37,12 @@ export function ProfileStatusBadges({ profileId, initialIdentity }: { profileId:
   const { user } = useAuth(), owner = user?.id || '', key = owner + ':' + profileId
   const [loaded, setLoaded] = useState<{ key: string; value: ProfileIdentity } | null>(null)
   useEffect(() => {
+    setLoaded(null)
     if (!owner || !profileId) return
     let active = true
     void read(owner, profileId).then(value => { if (active && value) setLoaded({ key, value }) })
     return () => { active = false }
   }, [owner, profileId, key])
-  const value = loaded?.key === key ? loaded.value : cache.get(key)?.value || initialIdentity
+  const value = loaded?.key === key ? loaded.value : cachedIdentity(key) ?? initialIdentity
   return value ? <ProfileIdentityMarks identity={value}/> : null
 }

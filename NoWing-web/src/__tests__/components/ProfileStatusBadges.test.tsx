@@ -31,3 +31,22 @@ test('verification and administrator award are both visible for the same public 
   expect(await screen.findByLabelText('Cuenta verificada')).toBeInTheDocument()
   expect(screen.getByLabelText('Administrador verificado')).toBeInTheDocument()
 })
+
+test('reopening a profile uses its current identity while an expired badge lookup refreshes', async () => {
+  const id = 'reopened-profile'
+  profiles.mockResolvedValueOnce(new Map([[id, { id, is_verified: true }]]))
+  const firstVisit = render(<ProfileStatusBadges profileId={id}/>)
+  expect(await screen.findByLabelText('Cuenta verificada')).toBeInTheDocument()
+  firstVisit.unmount()
+
+  const clock = jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 121_000)
+  try {
+    profiles.mockResolvedValueOnce(new Map([[id, { id, is_admin: true }]]))
+    render(<ProfileStatusBadges profileId={id} initialIdentity={{ verified: false, admin: false, publicId: '' }}/>)
+    expect(screen.queryByLabelText('Cuenta verificada')).toBeNull()
+    expect(await screen.findByLabelText('Administrador verificado')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Cuenta verificada')).toBeNull()
+  } finally {
+    clock.mockRestore()
+  }
+})
