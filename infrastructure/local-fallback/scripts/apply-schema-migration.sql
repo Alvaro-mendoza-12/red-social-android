@@ -32,7 +32,21 @@ BEGIN
   SELECT checksum_sha256 INTO recorded FROM public.fallback_schema_migrations
     WHERE filename = migration_name;
   IF FOUND THEN
-    IF recorded <> checksum THEN
+    -- These two files were installed with CRLF on the original Ubuntu host.
+    -- Keep its ledger intact and accept only the two verified byte sequences
+    -- for each name. Every other change still requires a new migration.
+    IF recorded <> checksum AND NOT EXISTS (
+      SELECT 1 FROM (VALUES
+        ('002_sync_support.sql',
+         '6d672f68193658b3e7b1eef67780bd6ddd7dbd186750a77f2879255c9f06d687',
+         '58b63e60e148f0864c4f37c073789bf365c8233ec42720220f1e1e862ca37b3b'),
+        ('003_password_migration_notice.sql',
+         '34ddb64ab403442a77e05031b675ab24192e762e188925b9ff743af37b219cf4',
+         'e71fc58797864f1982e855634b86b1afe60be45294171320cbbcf8f70049d3ea')
+      ) historical(filename, lf_digest, crlf_digest)
+      WHERE historical.filename = migration_name
+        AND recorded IN (lf_digest, crlf_digest) AND checksum IN (lf_digest, crlf_digest)
+    ) THEN
       RAISE EXCEPTION 'Checksum de migración ya aplicada no coincide: %', migration_name;
     END IF;
     RETURN 'MIGRATION_ALREADY_APPLIED=' || migration_name;

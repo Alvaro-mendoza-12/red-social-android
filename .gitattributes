@@ -1,1 +1,2 @@
 *.sh text eol=lf
+infrastructure/local-fallback/db/migrations/*.sql text eol=lf

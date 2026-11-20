@@ -53,6 +53,19 @@ test('PostgreSQL applies each migration and its checksum atomically', { skip: !c
       assert.equal(await apply(second, filename, bytes), 'MIGRATION_ALREADY_APPLIED=' + filename)
     }
 
+    for (const historical of ['002_sync_support.sql', '003_password_migration_notice.sql']) {
+      const lf = readFileSync(path.join(directory, historical), 'utf8').replace(/\r\n/g, '\n')
+      const crlf = lf.replace(/\n/g, '\r\n')
+      for (const [installed, supplied] of [[crlf, lf], [lf, crlf]]) {
+        const recorded = createHash('sha256').update(installed).digest('hex')
+        await first.query('UPDATE fallback_schema_migrations SET checksum_sha256 = $2 WHERE filename = $1', [historical, recorded])
+        assert.equal(await apply(second, historical, supplied), 'MIGRATION_ALREADY_APPLIED=' + historical)
+        await assert.rejects(apply(second, historical, supplied + '\nSELECT 1;'), /checksum/i)
+        const { rows } = await first.query('SELECT checksum_sha256 FROM fallback_schema_migrations WHERE filename = $1', [historical])
+        assert.equal(rows[0].checksum_sha256, recorded)
+      }
+    }
+
     await first.query('CREATE TABLE migration_fixture (value int NOT NULL)')
     const insert = 'INSERT INTO migration_fixture VALUES (1)'
     const filename = "fixture's migration.sql"
