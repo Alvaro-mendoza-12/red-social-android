@@ -91,8 +91,12 @@ test('maintained production containers pin runtime patch versions', () => {
     path.join(repoRoot, 'infrastructure', 'local-fallback', 'ai-chatbot', 'Dockerfile'),
   ].map((file) => fs.readFileSync(file, 'utf8'))
 
-  assert.match(compose, /image: postgres:\d+\.\d+-alpine/)
-  assert.doesNotMatch(compose, /image: postgres:\d+-alpine/)
+  const database = fs.readFileSync(path.join(repoRoot, 'infrastructure/local-fallback/db/Dockerfile'), 'utf8')
+  const base = database.match(/^FROM postgres:(\d+\.\d+)-alpine@sha256:[a-f0-9]{64}$/m)
+  assert.ok(base, 'the database build must pin the upstream patch and digest')
+  const dbService = compose.match(/^  db:\r?\n([\s\S]*?)(?=^  [\w-]+:)/m)?.[1] || ''
+  assert.match(dbService, /^    build: \.\/db\r?$/m)
+  assert.equal(dbService.match(/^    image: novvin-postgres:(\d+\.\d+)-alpine-r\d+\r?$/m)?.[1], base[1])
   for (const dockerfile of dockerfiles) {
     assert.match(dockerfile, /^FROM node:\d+\.\d+\.\d+-alpine/m)
     assert.doesNotMatch(dockerfile, /^FROM node:\d+-alpine/m)

@@ -8,7 +8,9 @@ test('all first-party Node container services use the supported pinned LTS and p
     'infrastructure/local-fallback/realtime-gateway/Dockerfile','infrastructure/local-fallback/ai-chatbot/Dockerfile',
     'infrastructure/local-fallback/survey-antivirus/Dockerfile','infrastructure/local-fallback/storage-antivirus/Dockerfile']) {
     const dockerfile = fs.readFileSync(path.join(root,relative),'utf8')
-    assert.match(dockerfile,/^FROM node:22\.23\.4-alpine$/m,relative)
-    assert.match(dockerfile,/RUN apk add --no-cache --upgrade 'zlib>=1\.3\.2-r1'/,relative)
+    const base = dockerfile.match(/^FROM node:22\.(\d+)\.(\d+)-alpine@sha256:[a-f0-9]{64}$/m)
+    assert.ok(base, relative)
+    assert.ok(Number(base[1]) > 23 || (Number(base[1]) === 23 && Number(base[2]) >= 5), relative)
+    assert.match(dockerfile,/RUN apk add --no-cache --upgrade 'zlib>=1\.4-r0' 'libssl3>=3\.5\.9-r1' 'libcrypto3>=3\.5\.9-r1'/,relative)
   }
 })
