@@ -1,0 +1,170 @@
+{
+  "verdict": "NO APTA PARA PRODUCCIÓN",
+  "testedCommit": "ae8e71e5a97aed7b0a71d76eb256f642a89c94c7",
+  "priorProducer": "de33e26b45cabee2e977e289a5e613b0be475753",
+  "overlapBefore": {
+    "originalRow": "135:none:none",
+    "replacementRow": "243:none:none",
+    "uploadedBytes": 243,
+    "shaBefore": "154bb2aa8acb302360bdce04af8600ed04a0c3c1472e2fae769af54b3314908d",
+    "shaAfter": "306ab2962b56a2651676ecfc0de6d35b0d3494827fe2e703caf0c8a5a2636eb7",
+    "sourcePutHttp": 200,
+    "backupExit": 0,
+    "restoredRow": "135:none:none"
+  },
+  "restoredMediaBefore": [
+    {
+      "bucket": "avatars",
+      "status": 200,
+      "restoredBytes": 243,
+      "restoredSha256": "306ab2962b56a2651676ecfc0de6d35b0d3494827fe2e703caf0c8a5a2636eb7",
+      "matchesOriginal": false
+    },
+    {
+      "bucket": "post-media",
+      "status": 200,
+      "restoredBytes": 135,
+      "restoredSha256": "add8aaf396fd9e83dab545ba19290cae951c8744b65e53dfbc53f67b6da98d2f",
+      "matchesOriginal": true
+    }
+  ],
+  "sessionBefore": {
+    "http": 200,
+    "matchedOriginalAccount": true
+  },
+  "candidate": {
+    "producerScripts": {
+      "backup-ubuntu-primary.sh": "a8fbb01876e6b237a6d55a020267a9ac65d15d273d566a7090a7648c86ac8033",
+      "verify-backup-storage.py": "2cd3e3eba4837d837a67c1c0a350fc0dd8a3f705d79a5c55444eafb6331194eb"
+    },
+    "baselineVerifiedRows": 2,
+    "raceCases": [
+      {
+        "case": "different-size",
+        "writtenBytes": 243,
+        "http": 200,
+        "exit": 1,
+        "mismatch": [
+          "ERROR: storage mismatch: missing=0 size=1 digest=0 changed_unhashed=1"
+        ],
+        "lastGoodPreserved": true,
+        "partials": 0
+      },
+      {
+        "case": "equal-size",
+        "writtenBytes": 243,
+        "http": 200,
+        "exit": 1,
+        "mismatch": [
+          "ERROR: storage mismatch: missing=0 size=0 digest=0 changed_unhashed=1"
+        ],
+        "lastGoodPreserved": true,
+        "partials": 0
+      },
+      {
+        "case": "concurrent-new-object",
+        "writtenBytes": 103,
+        "http": 200,
+        "exit": 0,
+        "mismatch": [],
+        "lastGoodPreserved": false,
+        "partials": 0
+      }
+    ]
+  },
+  "restoredSessionAfter": {
+    "http": 200,
+    "matchedOriginalAccount": true
+  },
+  "restoredOriginalsAfter": true,
+  "productionRestored": false,
+  "sourceWasStopped": true,
+  "isolation": {
+    "networkNamespaceWithoutUplink": true,
+    "uniqueDockerGraph": true,
+    "hostPorts": 0,
+    "syntheticData": true
+  },
+  "recoverySeconds": {
+    "newDbRolesAclAndFiles": 20.271,
+    "totalRecoveryThroughHttp": 27.68
+  },
+  "regressions": {
+    "tests": 26,
+    "pass": 26,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "incrementalStorageCheckCost": {
+    "fileCount": 1536,
+    "rawBytes": 100663296,
+    "archiveBytes": 67515785,
+    "repetitions": 3,
+    "runs": [
+      {
+        "kind": "gnu-tar",
+        "elapsedSeconds": 0.82
+      },
+      {
+        "kind": "legacy-check",
+        "elapsedSeconds": 0.703
+      },
+      {
+        "kind": "digest-check",
+        "elapsedSeconds": 0.883
+      },
+      {
+        "kind": "digest-check",
+        "elapsedSeconds": 0.792
+      },
+      {
+        "kind": "legacy-check",
+        "elapsedSeconds": 1.584
+      },
+      {
+        "kind": "gnu-tar",
+        "elapsedSeconds": 0.877
+      },
+      {
+        "kind": "legacy-check",
+        "elapsedSeconds": 0.675
+      },
+      {
+        "kind": "gnu-tar",
+        "elapsedSeconds": 0.852
+      },
+      {
+        "kind": "digest-check",
+        "elapsedSeconds": 0.943
+      }
+    ],
+    "medianSeconds": {
+      "legacy-check": 0.703,
+      "gnu-tar": 0.852,
+      "digest-check": 0.883
+    },
+    "scope": "Private WSL filesystem, warm caches, one reader, 1536 synthetic objects, 64 KiB each. Does not include database queries, network, pg_dump or the live host."
+  },
+  "hostReads": {
+    "public": {
+      "utc": "2026-11-20T17:56:39.334850+00:00",
+      "http": 200,
+      "tls": "TLSv1.3",
+      "capabilities": 25,
+      "release": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+    },
+    "private": {
+      "utc": "2026-11-20T17:56:39.474131+00:00",
+      "http": 200,
+      "tls": "TLSv1.3",
+      "capabilities": 25,
+      "release": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+    }
+  },
+  "limits": [
+    "No proof of legacy content identity against an out-of-band same-size filesystem write",
+    "No joint chatbot/database atomic snapshot claim",
+    "No measured full-size backup or restore on the Ubuntu host"
+  ]
+}
