@@ -193,6 +193,9 @@ async function verifyLive(accountA, accountB) {
       micEnabled: true,
     })
     await initialCount
+    const visible = await request(`/v1/data/live/${liveId}`, { token: accountB.token })
+    assert.equal(visible.stream.id, liveId)
+    assert.equal(visible.stream.is_active ?? visible.stream.isActive, true)
 
     // An authenticated viewer must never be able to replace the real host.
     const rejectedTakeover = waitForEvent(viewer, 'live-ended')

@@ -1008,15 +1008,17 @@ async function setLiveReactionCount(liveId, reactionCount, accessToken) {
 }
 
 async function setLiveStreamActive(liveId, accessToken) {
-    if (!accessToken) return;
+    if (!accessToken) return false;
     try {
         await callUbuntuApi(`/v1/data/live/${encodeURIComponent(liveId)}/state`, {
             method: 'PATCH',
             accessToken,
             body: { isActive: true }
         });
+        return true;
     } catch (error) {
         console.error(`[SOCKET_DEBUG] [LIVE][DB] Failed to activate ref=${diagnosticRef(liveId)}:`, diagnosticError(error));
+        return false;
     }
 }
 
@@ -2622,6 +2624,7 @@ liveIo.on('connection', (socket) => {
             });
         }
 
+        let needsHostActivation = false;
         // Revalidate ownership even when an in-memory live session already exists.
         // Otherwise any authenticated viewer could reconnect with role=host and
         // replace the legitimate host for an active broadcast.
@@ -2635,6 +2638,7 @@ liveIo.on('connection', (socket) => {
                 socket.emit('live-ended');
                 return;
             }
+            needsHostActivation = !liveMeta.isActive;
         }
 
         const sessionReference = lives.get(liveId);
@@ -2821,6 +2825,18 @@ liveIo.on('connection', (socket) => {
                 avatarUrl
             })?.catch?.(() => {});
             await persistLiveSession(liveId, session);
+            // A viewer can join on the first host announcement. Its own API
+            // read must already see the committed active stream at that point.
+            if (needsHostActivation) {
+                if (!socket.connected || session.host?.socketId !== socket.id) return;
+                const activated = await setLiveStreamActive(liveId, session.hostAuthToken);
+                if (!socket.connected || session.host?.socketId !== socket.id || lives.get(liveId) !== session) return;
+                if (!activated) {
+                    socket.emit('live-moderation-error', { error: 'No se pudo iniciar el directo. Intenta de nuevo.' });
+                    socket.disconnect(true);
+                    return;
+                }
+            }
             emitLiveClusterSync({
                 action: 'host-joined',
                 liveId,
@@ -2853,7 +2869,6 @@ liveIo.on('connection', (socket) => {
             // Emit count
             liveIo.to(liveId).emit('viewer-count', { liveId, viewerCount });
             socket.emit('reaction-count', { liveId, reactionCount: session.reactionCount });
-            await setLiveStreamActive(liveId, session.hostAuthToken);
             await setLiveViewerCount(liveId, viewerCount, session.hostAuthToken);
             emitLiveModerationState(liveId, session);
             emitLiveGuestState(liveId, session);
