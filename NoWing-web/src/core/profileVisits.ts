@@ -15,9 +15,9 @@ export async function loadOwnProfileVisits(profileId:string):Promise<{enabled:bo
   const byId=new Map(profiles.map(row=>[textOf(row,['id'],''),row]))
   return {enabled:true,items:ids.map(id=>({id,name:textOf(byId.get(id)||{},['display_name','full_name'],'Usuario'),avatar:textOf(byId.get(id)||{},['avatar_url'],''),time:textOf(rows.find(row=>row.viewer_id===id)||{},['viewed_at'],'')}))}
 }
-export async function recordWebProfileVisit(profileId:string,targetEnabled:boolean){
+export async function recordWebProfileVisit(profileId:string,targetEnabled:boolean,expectedViewer?:string){
   const session=readFallbackSession(),viewer=session?.user.supabaseUserId||session?.user.id
-  if(!session||!viewer||viewer===profileId||!uuid.test(profileId)||!targetEnabled)return
+  if(!session||!viewer||(expectedViewer && session.user.id!==expectedViewer)||viewer===profileId||!uuid.test(profileId)||!targetEnabled)return
   const own=await fallbackApiJson<{profile:GenericRow}>('/v1/data/profile/me',{expectedAccountId:session.user.id})
   if(own.profile.profile_view_history_enabled===false)return
   await fallbackApiJson('/rest/v1/profile_views?on_conflict=profile_id,viewer_id',{method:'POST',expectedAccountId:session.user.id,headers:{Prefer:'resolution=merge-duplicates,return=minimal'},body:JSON.stringify({profile_id:profileId,viewer_id:viewer,viewed_at:new Date().toISOString()})})

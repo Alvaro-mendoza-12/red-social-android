@@ -2,7 +2,7 @@ import { subscribeUbuntuRealtime } from '../../core/ubuntuRealtime'
 import { birthdayLabel } from '../../core/birthdayCard'
 import { ProfilePostPreview } from '../../components/ProfilePostPreview'
 import { StreamingImage, StreamingVideo, StreamingAudio } from '../../components/StreamingMedia'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { MessageSquareText, Share2, QrCode, MoreHorizontal } from 'lucide-react'
 import { ProfileHeader } from '../../ui/novvin/ProfileHeader'
@@ -47,6 +47,7 @@ type PublicProfileData = {
   avatarMediaType: string
   coverUrl: string
   isPrivate: boolean
+  visitHistoryEnabled: boolean
   profileWelcome: string
   profileEffect: string
   profileTheme: string
@@ -120,6 +121,7 @@ function mapPublicProfile(
     avatarMediaType: avatarMediaTypeSource(row, avatarSource, fallbackAvatarMediaType),
     coverUrl: resolveSupabasePublicUrl('covers', profileCoverSource(row)),
     isPrivate: Boolean(row.is_private ?? row.isPrivate),
+    visitHistoryEnabled: row.profile_view_history_enabled !== false,
     profileWelcome: textOf(row, ['profile_welcome', 'profileWelcome'], ''),
     profileEffect: textOf(row, ['profile_effect', 'profileEffect'], 'none'),
     profileTheme: textOf(row, ['profile_theme', 'profileTheme'], 'conectate'),
@@ -148,9 +150,20 @@ function mapPublicPost(row: GenericRow): PublicPost {
 
 export function PublicProfilePage() {
   const { user, isFallbackSession } = useAuth()
-  const navigate = useNavigate()
   const { profileId = '' } = useParams()
-  const cleanProfileId = useMemo(() => profileId.trim(), [profileId])
+  const cleanProfileId = profileId.trim()
+  const useFallback = shouldUseUbuntuBackend(isFallbackSession)
+  return <PublicProfileView key={JSON.stringify([user?.id, cleanProfileId, useFallback])}
+    user={user} cleanProfileId={cleanProfileId} useFallback={useFallback}/>
+}
+
+function PublicProfileView({ user, cleanProfileId, useFallback }: {
+  user: ReturnType<typeof useAuth>['user']
+  cleanProfileId: string
+  useFallback: boolean
+}) {
+  const navigate = useNavigate()
+  const recordedVisit = useRef<string | null>(null)
 
   const [profile, setProfile] = useState<PublicProfileData | null>(null)
   const [activeTab, setActiveTab] = useState<'videos' | 'posts'>('videos')
@@ -175,7 +188,6 @@ export function PublicProfilePage() {
   const [reportDetails, setReportDetails] = useState('')
   const [reporting, setReporting] = useState(false)
   const [shareStatus, setShareStatus] = useState<string | null>(null)
-  const useFallback = shouldUseUbuntuBackend(isFallbackSession)
 
   const isSelf = Boolean(user && cleanProfileId && user.id === cleanProfileId)
   const canSeePosts = Boolean(profile && (!profile.isPrivate || isSelf || isFollowing))
@@ -211,11 +223,6 @@ export function PublicProfilePage() {
         ])
         if (profileResult.status === 'rejected') throw profileResult.reason
         const response = profileResult.value
-        if (!isSelf)
-          void recordWebProfileVisit(
-            textOf(response.profile, ['id'], cleanProfileId),
-            response.profile.profile_view_history_enabled !== false,
-          ).catch(() => {})
         const videoItems = videoResult.status === 'fulfilled' ? videoResult.value.items : []
         const aliases = profileIdentityAliases(response.profile, [cleanProfileId])
         setVideos(
@@ -357,6 +364,16 @@ export function PublicProfilePage() {
   useEffect(() => {
     void loadProfile()
   }, [loadProfile])
+
+  useEffect(() => {
+    if (!useFallback || !user || isSelf || loading || error || !profile?.visitHistoryEnabled) return
+    const id = profile.id
+    if (recordedVisit.current === id) return
+    recordedVisit.current = id
+    void recordWebProfileVisit(id, true, user.id).catch(() => {
+      if (recordedVisit.current === id) recordedVisit.current = null
+    })
+  }, [useFallback, user, isSelf, loading, error, profile])
 
   useEffect(() => {
     if (!useFallback || !cleanProfileId || !user) return

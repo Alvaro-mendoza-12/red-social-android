@@ -13,6 +13,10 @@ test('the viewer own privacy preference prevents recording',async()=>{
   await recordWebProfileVisit(target,true)
   expect(api).toHaveBeenCalledTimes(1)
 })
+test('a displayed profile from a previous account cannot register a visit in the new session',async()=>{
+  await recordWebProfileVisit(target,true,'previous-account')
+  expect(api).not.toHaveBeenCalled()
+})
 test('eligible visits use the authenticated registry and stable pair',async()=>{
   api.mockResolvedValueOnce({profile:{profile_view_history_enabled:true}}).mockResolvedValueOnce({})
   await recordWebProfileVisit(target,true)
