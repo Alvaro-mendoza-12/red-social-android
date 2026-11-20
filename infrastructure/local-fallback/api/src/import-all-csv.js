@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const { randomUUID } = require('node:crypto')
 const { parse } = require('csv-parse/sync')
 const { Pool } = require('pg')
 const { algorithmFeatureFlags, ensureAlgorithmTables } = require('./algorithm-routes')
@@ -132,11 +133,7 @@ async function ensureRawSchema() {
   await pool.query('CREATE SCHEMA IF NOT EXISTS supabase_import')
 }
 
-async function importRawTable(filePath) {
-  const fileName = path.basename(filePath)
-  const tableName = tableNameFromFile(fileName)
-  const { records, columns } = readCsv(filePath)
-
+async function importRawTable(client, fileName, tableName, { records, columns }) {
   if (columns.length === 0) {
     return { fileName, tableName, records: 0, columns: 0, skipped: true, reason: 'NO_COLUMNS' }
   }
@@ -154,27 +151,23 @@ async function importRawTable(filePath) {
   }
 
   const fullTableName = `supabase_import.${quoteIdentifier(tableName)}`
+  const stagingTable = `supabase_import.${quoteIdentifier('__novvin_csv_' + randomUUID())}`
   const columnSql = sanitizedColumns
     .map((column) => `${quoteIdentifier(column.name)} TEXT`)
     .join(',\n    ')
 
-  await pool.query(`DROP TABLE IF EXISTS ${fullTableName}`)
-  await pool.query(`
-    CREATE TABLE ${fullTableName} (
+  await client.query(`
+    CREATE TABLE ${stagingTable} (
       __source_file TEXT NOT NULL,
       __imported_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       ${columnSql}
     )
   `)
 
-  if (records.length === 0) {
-    return { fileName, tableName, records: 0, columns: sanitizedColumns.length, skipped: false }
-  }
-
   const dbColumns = ['__source_file', ...sanitizedColumns.map((column) => column.name)]
   const quotedColumns = dbColumns.map(quoteIdentifier).join(', ')
   const placeholders = dbColumns.map((_, index) => `$${index + 1}`).join(', ')
-  const insertSql = `INSERT INTO ${fullTableName} (${quotedColumns}) VALUES (${placeholders})`
+  const insertSql = `INSERT INTO ${stagingTable} (${quotedColumns}) VALUES (${placeholders})`
 
   for (const row of records) {
     const values = [
@@ -183,14 +176,15 @@ async function importRawTable(filePath) {
         row[column.original] == null ? null : String(row[column.original]),
       ),
     ]
-    await pool.query(insertSql, values)
+    await client.query(insertSql, values)
   }
 
+  await client.query(`DROP TABLE IF EXISTS ${fullTableName}`)
+  await client.query(`ALTER TABLE ${stagingTable} RENAME TO ${quoteIdentifier(tableName)}`)
   return { fileName, tableName, records: records.length, columns: sanitizedColumns.length, skipped: false }
 }
 
-async function importProfilesIntoFallback(filePath) {
-  const { records } = readCsv(filePath)
+async function importProfilesIntoFallback(client, records) {
   let imported = 0
   let skipped = 0
 
@@ -205,7 +199,7 @@ async function importProfilesIntoFallback(filePath) {
       continue
     }
 
-    await pool.query(
+    await client.query(
       `INSERT INTO fallback_users(
           email,
           password_hash,
@@ -261,12 +255,23 @@ async function main() {
   let fallbackProfiles = null
 
   for (const file of csvFiles) {
-    const fullPath = path.join(importsDir, file)
-    const rawResult = await importRawTable(fullPath)
-    results.push(rawResult)
-
-    if (tableNameFromFile(file) === 'profiles') {
-      fallbackProfiles = await importProfilesIntoFallback(fullPath)
+    const tableName = tableNameFromFile(file)
+    const csv = readCsv(path.join(importsDir, file))
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('novvin_csv_import'), hashtext($1))", [tableName])
+      if (tableName === 'profiles') {
+        fallbackProfiles = await importProfilesIntoFallback(client, csv.records)
+      }
+      const rawResult = await importRawTable(client, file, tableName, csv)
+      await client.query('COMMIT')
+      results.push(rawResult)
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {})
+      throw error
+    } finally {
+      client.release()
     }
   }
 
