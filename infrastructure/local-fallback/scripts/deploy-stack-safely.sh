@@ -164,39 +164,18 @@ wait_service db 120
 wait_service signaling-redis 120
 
 echo "==> Aplicando migraciones versionadas antes de actualizar servicios"
-docker compose exec -T db psql -U conectate -d conectate_fallback -v ON_ERROR_STOP=1 <<'SQL'
-CREATE TABLE IF NOT EXISTS fallback_schema_migrations (
-  filename TEXT PRIMARY KEY,
-  checksum_sha256 TEXT NOT NULL,
-  applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-SQL
-for migration in db/migrations/*.sql; do
-  [ -f "$migration" ] || continue
-  filename="$(basename "$migration")"
-  checksum="$(sha256sum "$migration" | awk '{print $1}')"
-  recorded_checksum="$(docker compose exec -T db psql -U conectate -d conectate_fallback -Atc \
-    "SELECT checksum_sha256 FROM fallback_schema_migrations WHERE filename = '$filename'")"
-  if [ -n "$recorded_checksum" ]; then
-    if [ "$recorded_checksum" != "$checksum" ]; then
-      echo "ERROR: checksum de migracion ya aplicada no coincide: $filename" >&2
-      exit 1
-    fi
-    echo "MIGRATION_ALREADY_APPLIED=$filename"
-    continue
-  fi
-  echo "MIGRATION_APPLYING=$filename"
-  docker compose exec -T db psql -U conectate -d conectate_fallback \
-    -v ON_ERROR_STOP=1 -1 < "$migration"
-  docker compose exec -T db psql -U conectate -d conectate_fallback \
-    -v ON_ERROR_STOP=1 \
-    -v migration_filename="$filename" \
-    -v migration_checksum="$checksum" <<'SQL'
-INSERT INTO fallback_schema_migrations(filename, checksum_sha256)
-VALUES (:'migration_filename', :'migration_checksum');
-SQL
-  echo "MIGRATION_APPLIED=$filename"
-done
+{
+  cat scripts/apply-schema-migration.sql || exit 1
+  for migration in db/migrations/*.sql; do
+    [ -f "$migration" ] || continue
+    # Base64 transports arbitrary file bytes without interpreting SQL or shell
+    # quoting. Each completed SELECT commits one migration and its checksum.
+    name64="$(printf '%s' "${migration##*/}" | base64 -w0)" || exit 1
+    printf "\nSELECT pg_temp.apply_schema_migration(convert_from(decode('%s','base64'),'UTF8'),decode('" "$name64"
+    base64 -w0 -- "$migration" || exit 1
+    printf "','base64'));\n"
+  done
+} | docker compose exec -T db psql -X -At -U conectate -d conectate_fallback -v ON_ERROR_STOP=1 -f -
 
 # Reuse an unchanged converter and finish its health check before switching the API.
 docker compose up -d --no-deps office-preview
