@@ -129,62 +129,61 @@ object VideoCache {
         url: String,
         byteCount: Long = 2L * 1024L * 1024L,
         timeoutMs: Long = 2_000L,
-    ) = withContext(Dispatchers.IO) {
-      try {
-      prefetchSlots.withPermit { supervisorScope {
-        val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return@supervisorScope
-        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return@supervisorScope
-        if (getOrCreateCache(context.applicationContext) == null) return@supervisorScope
-        val network = MediaPlaybackDataSources.prefetchFactory(context, timeoutMs)
-        val dataSource = createCacheDataSourceFactory(context.applicationContext,
-            requireStorageCacheAdmission = true, upstreamDataSourceFactory = network).createDataSource()
-        val dataSpec = DataSpec.Builder()
-            .setUri(resolvedUrl)
-            .setPosition(0)
-            .setLength(byteCount)
-            .setKey(cacheKey)
-            .build()
-        val task = async(Dispatchers.IO) {
-            try {
-                currentCoroutineContext().ensureActive()
-                dataSource.open(dataSpec)
-                val scratch = ByteArray(32 * 1024)
-                var read = 0L
-                while (read < byteCount && kotlinx.coroutines.currentCoroutineContext().isActive) {
-                    val count = dataSource.read(scratch, 0, minOf(scratch.size.toLong(), byteCount - read).toInt())
-                    if (count < 0) break
-                    read += count
-                }
-            } finally { dataSource.close() }
-        }
-        var completedWithinBudget = false
+    ) {
         try {
-            // Prefetch is strictly best-effort. On a slow mobile network it
-            // must yield instead of competing indefinitely with the visible
-            // video's Range request.
-            completedWithinBudget = withTimeoutOrNull(timeoutMs) {
-                task.await()
-                true
-            } == true
-        } finally {
-            // Cancel this preload's HTTP calls to interrupt blocking I/O.
-            // Only its loader may close the source and release its cache span;
-            // closing concurrently races with CacheDataSource.open/read.
-            if (!completedWithinBudget) {
-                task.cancel()
-                (network as? PrefetchNetworkCancellation)?.cancelNetworkRequests()
+            withTimeoutOrNull(timeoutMs) {
+                withContext(Dispatchers.IO) {
+                    prefetchSlots.withPermit {
+                        val resolvedUrl = UbuntuStorageUrl.rewrite(url) ?: return@withPermit
+                        val cacheKey = UbuntuStorageUrl.stableCacheKey(resolvedUrl) ?: return@withPermit
+                        if (getOrCreateCache(context.applicationContext) == null) return@withPermit
+                        val network = MediaPlaybackDataSources.prefetchFactory(context, timeoutMs)
+                        val dataSource = createCacheDataSourceFactory(
+                            context.applicationContext,
+                            requireStorageCacheAdmission = true,
+                            upstreamDataSourceFactory = network,
+                        ).createDataSource()
+                        val spec = DataSpec.Builder()
+                            .setUri(resolvedUrl)
+                            .setLength(byteCount)
+                            .setKey(cacheKey)
+                            .build()
+
+                        supervisorScope {
+                            val loader = async(Dispatchers.IO) {
+                                try {
+                                    currentCoroutineContext().ensureActive()
+                                    dataSource.open(spec)
+                                    val scratch = ByteArray(32 * 1024)
+                                    var remaining = byteCount
+                                    while (remaining > 0L && currentCoroutineContext().isActive) {
+                                        val count = dataSource.read(scratch, 0, minOf(scratch.size.toLong(), remaining).toInt())
+                                        if (count < 0) break
+                                        remaining -= count
+                                    }
+                                } finally {
+                                    dataSource.close()
+                                }
+                            }
+                            try {
+                                loader.await()
+                            } finally {
+                                // Interrupt the owned HTTP calls, leaving close() to the loader.
+                                if (!currentCoroutineContext().isActive) {
+                                    (network as? PrefetchNetworkCancellation)?.cancelNetworkRequests()
+                                }
+                            }
+                        }
+                    }
+                }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: java.io.IOException) {
+            throw error
+        } catch (error: Exception) {
+            throw java.io.IOException("No se pudo precargar el vídeo.", error)
         }
-      } }
-      } catch (cancelled: CancellationException) {
-          throw cancelled
-      } catch (error: java.io.IOException) {
-          throw error
-      } catch (error: Exception) {
-          // A speculative cache failure uses the caller's recoverable preload
-          // path instead of terminating the visible Compose coroutine.
-          throw java.io.IOException("No se pudo precargar el vídeo.", error)
-      }
     }
 
     fun release() {

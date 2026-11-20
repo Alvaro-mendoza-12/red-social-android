@@ -109,6 +109,34 @@ class VideoCachePrefetchRaceTest {
     @Test fun cancellationDuringOpenNeverClosesTheCacheSourceConcurrently() = cancellationWhile(true)
     @Test fun cancellationDuringReadNeverClosesTheCacheSourceConcurrently() = cancellationWhile(false)
 
+    @Test fun queuedNeighbourExpiresWithoutStartingAnotherNetworkRequest() = runBlocking {
+        supervisorScope {
+            val first = SlowSource(blockOpen = true)
+            val second = SlowSource(blockOpen = true)
+            val queue = java.util.concurrent.ConcurrentLinkedQueue(listOf(first, second))
+            every { MediaPlaybackDataSources.prefetchFactory(any(), any()) } answers {
+                DataSource.Factory { queue.remove() }
+            }
+            val occupied = listOf("first", "second").map { name ->
+                async(Dispatchers.IO) {
+                    VideoCache.preloadStart(context, "https://fixture.invalid/$name.mp4", 128, 5_000)
+                }
+            }
+            try {
+                assertTrue(first.entered.await(5, TimeUnit.SECONDS))
+                assertTrue(second.entered.await(5, TimeUnit.SECONDS))
+                withTimeout(1_000) {
+                    VideoCache.preloadStart(context, "https://fixture.invalid/queued.mp4", 128, 100)
+                }
+                verify(exactly = 2) { MediaPlaybackDataSources.prefetchFactory(any(), any()) }
+            } finally {
+                first.proceed.countDown()
+                second.proceed.countDown()
+                occupied.forEach { it.await() }
+            }
+        }
+    }
+
     @Test fun cancellingOnePreloadOnlyInterruptsItsOwnHttpRequests() = runBlocking {
         supervisorScope {
             val client = mockk<OkHttpClient>()
