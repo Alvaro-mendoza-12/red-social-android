@@ -12,11 +12,14 @@ const originalFetch = global.fetch
 let accountActive = true
 let chatAllowed = true
 let raffleAllowed = true
-global.fetch = async (url) => {
+global.fetch = async (url, options) => {
   if (String(url).endsWith('/v1/auth/me')) {
     return { ok: accountActive, json: async () => ({ user: { id: 'user-a' } }) }
   }
-  if (String(url).includes('/messages/chats/')) return { ok: chatAllowed }
+  if (String(url).includes('/messages/chats/')) {
+    assert.equal(options.method, 'HEAD')
+    return { ok: chatAllowed }
+  }
   if (String(url).includes('/data/raffles/')) return { ok: raffleAllowed }
   return { ok: true, json: async () => ({}) }
 }

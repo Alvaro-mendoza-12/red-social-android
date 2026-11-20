@@ -14523,6 +14523,8 @@ function registerDataRoutes(app, {
       if (!chat || !hasAccess) {
         return res.status(404).json({ error: 'CHAT_NOT_FOUND' })
       }
+      // Realtime periodically checks this same permission for subscribed sockets.
+      if (req.method === 'HEAD') return res.status(200).type('json').end()
 
       let otherId = memberRows
         .map((row) => normalizeId(textOf(row, ['user_id', 'profile_id'], '')))

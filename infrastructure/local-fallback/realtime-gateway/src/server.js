@@ -247,6 +247,7 @@ async function maySubscribeToChannel(token, allowedUserIds, channel) {
   if (!authorizationPath) return false
   try {
     const response = await fetch(`${localFallbackApiUrl}${authorizationPath}`, {
+      method: authorizationPath.startsWith('/v1/data/messages/chats/') ? 'HEAD' : 'GET',
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     })
