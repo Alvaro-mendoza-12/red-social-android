@@ -211,9 +211,6 @@ export function ReelFeedCard({
   const [visible, setVisible] = useState(false)
   const shouldAttachSource = (canLoad || preloadNext || visible) && keepLoaded
   useEffect(() => {
-    if (preloadNext && !canLoad) setCanLoad(true)
-  }, [preloadNext, canLoad])
-  useEffect(() => {
     const node = videoRef.current
     if (!node || canLoad) return
     if (typeof IntersectionObserver === 'undefined') return
@@ -281,6 +278,7 @@ export function ReelFeedCard({
         }}
         onWaiting={() => setBuffering(true)}
         onStalled={() => { if (visibleRef.current) setBuffering(true) }}
+        onLoadStart={event => { if (event.currentTarget.currentSrc) setCanLoad(true) }}
         onPlaying={() => { setBuffering(false); setPlaybackError(false) }}
         onError={() => { setBuffering(false); setPlaybackError(true) }}
         onSourceUnavailable={() => { setBuffering(false); setPlaybackError(true) }}
