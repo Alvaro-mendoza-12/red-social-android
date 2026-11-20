@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T16:26:24.540285+00:00",
-  "baseCommit": "7423926084336d1868ec81506fb19df4de1887fc",
+  "generatedAtUtc": "2026-11-20T17:44:33.523767+00:00",
+  "baseCommit": "286279c5f3f42522837f49d4fa2fe444f9a6b198",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,8 +11,8 @@
   },
   "counts": {
     "pending": 3436,
-    "code-read": 1047,
-    "partial": 279
+    "code-read": 1049,
+    "partial": 280
   },
   "countsByPhase": {
     "android": {
@@ -21,13 +21,13 @@
       "code-read": 612
     },
     "documentation": {
-      "pending": 700,
+      "pending": 701,
       "code-read": 67,
-      "partial": 20
+      "partial": 21
     },
     "server": {
-      "pending": 722,
-      "code-read": 203,
+      "pending": 721,
+      "code-read": 205,
       "partial": 49
     },
     "tooling-and-other": {
@@ -19873,8 +19873,10 @@
     {
       "file": "docs/UBUNTU_OPERATIONS_BACKUP_RUNBOOK_2026.md",
       "phase": "documentation",
-      "gitBlobId": "6b15e1bcf24b02f07334f25629c62b276eb3fd05",
-      "reviewStatus": "pending"
+      "gitBlobId": "c3f9dfcb1549b61a60e339f0bec1e26408dfefe0",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/229-respaldo-y-restauracion-con-permisos-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/UBUNTU_PRODUCTION_READINESS.md",
@@ -22311,6 +22313,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/229-respaldo-y-restauracion-con-permisos-2026-11-20.md",
+      "phase": "documentation",
+      "gitBlobId": "19c9b24cdffb282a59fce4aca124dc03605196c3",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/23-multimedia-offline-y-restauracion-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "d22eca229741a92edd67245371999039798bf76f",
@@ -23212,6 +23220,12 @@
       "file": "docs/oficial/evidencias/228-pruebas-condicionales-de-postgresql-redis-y-medios.json",
       "phase": "documentation",
       "gitBlobId": "7d9afcc9abbe6e8053b0bf70eb7cc909f4345e1b",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/evidencias/229-respaldo-y-restauracion-con-permisos.json",
+      "phase": "documentation",
+      "gitBlobId": "482f8bfba15724f977d919e7ed7c54fad62a7543",
       "reviewStatus": "pending"
     },
     {
@@ -26115,6 +26129,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/backup-artifact-verification.test.js",
+      "phase": "server",
+      "gitBlobId": "a7b6f57d30378a3a920fa0feeaa2b29d25b4252b",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/229-respaldo-y-restauracion-con-permisos-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/birthday-card.test.js",
       "phase": "server",
       "gitBlobId": "c4c8d1e849dd7cc22338e5cca4b18d1c620179fe",
@@ -28419,9 +28441,9 @@
     {
       "file": "infrastructure/local-fallback/scripts/restore-drill-isolated.sh",
       "phase": "server",
-      "gitBlobId": "8edf361ce49f1b77a9265a5f64068218cac0ae8e",
+      "gitBlobId": "38f6c08e1a0901991a2a40f8508d2ab0d83548e9",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/229-respaldo-y-restauracion-con-permisos-2026-11-20.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28485,8 +28507,10 @@
     {
       "file": "infrastructure/local-fallback/scripts/verify-backup.sh",
       "phase": "server",
-      "gitBlobId": "051eb5601fdc4485318d6e069fc24b5ec16fe9f8",
-      "reviewStatus": "pending"
+      "gitBlobId": "bdd3ec2d9137f8b4ceb9ebea6bd9fd2ca304c1e5",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/229-respaldo-y-restauracion-con-permisos-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/verify-live-module.js",

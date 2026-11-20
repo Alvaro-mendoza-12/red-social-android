@@ -1,0 +1,313 @@
+{
+  "testedCommit": "286279c5f3f42522837f49d4fa2fe444f9a6b198",
+  "jointRecoverySource": "ad74d1be172f28748efdd50d502ecc58f19244ae",
+  "verdict": "NO APTA PARA PRODUCCIÓN",
+  "verificationBefore": {
+    "tests": 13,
+    "pass": 5,
+    "fail": 8,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "verificationAfter": {
+    "tests": 13,
+    "pass": 13,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "commandSuiteBefore": {
+    "tests": 17,
+    "pass": 15,
+    "fail": 2,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "commandSuiteAfter": {
+    "tests": 17,
+    "pass": 17,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0
+  },
+  "realDumpTransferChecks": {
+    "cases": [
+      {
+        "snapshotFormat": 1,
+        "case": "complete-v1",
+        "before": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        },
+        "after": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        }
+      },
+      {
+        "snapshotFormat": 2,
+        "case": "complete-v2",
+        "before": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        },
+        "after": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        }
+      },
+      {
+        "snapshotFormat": 3,
+        "case": "complete-v3",
+        "before": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        },
+        "after": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        }
+      },
+      {
+        "snapshotFormat": 1,
+        "case": "lost-compose-v1",
+        "before": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        },
+        "after": {
+          "accepted": false,
+          "reportedVerified": false,
+          "exit": 1
+        }
+      },
+      {
+        "snapshotFormat": 2,
+        "case": "lost-ai-v2",
+        "before": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        },
+        "after": {
+          "accepted": false,
+          "reportedVerified": false,
+          "exit": 1
+        }
+      },
+      {
+        "snapshotFormat": 3,
+        "case": "metadata-truncated",
+        "before": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        },
+        "after": {
+          "accepted": false,
+          "reportedVerified": false,
+          "exit": 1
+        }
+      },
+      {
+        "snapshotFormat": 3,
+        "case": "wrong-receipt-size",
+        "before": {
+          "accepted": true,
+          "reportedVerified": true,
+          "exit": 0
+        },
+        "after": {
+          "accepted": false,
+          "reportedVerified": false,
+          "exit": 1
+        }
+      }
+    ],
+    "nativePgRestore": "pg_restore (PostgreSQL) 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)",
+    "archiveTocEntries": 1070,
+    "sourceArtifactSha256": "9e573f9005ac85dd7970dcfb708c1557ee7d8a01ae034305b15ec510890eefd1",
+    "mode": "Full v3 snapshot created by the repository backup script. Historical fixture schemas reflect their original writers, using the same real pg_dump and tar archives. Native pg_restore replaces Compose transport only."
+  },
+  "jointRecovery": {
+    "sourceCommit": "ad74d1be172f28748efdd50d502ecc58f19244ae",
+    "verifierSha256": "03a86db1ae79173ea2e23ff075b406418140f1c64cb47b9dfeb6053affd07246",
+    "isolation": {
+      "networkNamespaceWithoutUplink": true,
+      "uniqueDockerGraph": true,
+      "hostPorts": 0,
+      "syntheticData": true
+    },
+    "phasesSeconds": {
+      "sourceBackup": 3.115,
+      "newDbRolesAclAndFiles": 19.61,
+      "totalRecoveryThroughHttp": 26.685
+    },
+    "before": {
+      "role": "t:f:f:f:f",
+      "catalogOwnersAndAcl": "206:c51b56c5a8d8bc89fc7409b5167a6165",
+      "publicConnect": "f",
+      "dbPolicy": "conectate:t:f",
+      "permissions": "t:t:f:conectate",
+      "ledger": "37:805c867d5c868a833ed557e5a53ae5a9",
+      "markers": "1",
+      "mediaRows": "2",
+      "roleConfiguration": "TimeZone=UTC"
+    },
+    "fiveArtifacts": {
+      "postgres.dump": "9e573f9005ac85dd7970dcfb708c1557ee7d8a01ae034305b15ec510890eefd1",
+      "roles-no-passwords.sql": "f03497b58ac3a3857dc757790dbf6342221d5136bf5270139c0e35bb88fdc2e7",
+      "storage.tar.gz": "d42555b67bc12eb5f06166197d55e88332f58f97e4102a1c6d004b456a4ea875",
+      "ai-chatbot-data.tar.gz": "f6d0aa17ff1bedfb967290fc12eff3207a6c0996f442f4e01da2515080066cf9",
+      "docker-compose.yml": "51a3da90b4c25f075bfb7119d4f3a3d7ebe64cfcb714862ecab52277206117ac"
+    },
+    "backupMetadata": {
+      "schemaVersion": 3,
+      "createdAt": "2026-11-20T17:36:31Z",
+      "database": "conectate_fallback",
+      "databaseBytes": 541542,
+      "rolesBytes": 1016,
+      "databaseAclIncluded": true,
+      "restoreOwnersRequired": true,
+      "rolePasswordsIncluded": false,
+      "storageBytes": 1239,
+      "aiDataBytes": 281,
+      "verification": "passed"
+    },
+    "sourceStoppedBeforeRecovery": true,
+    "membershipGrantor": "conectate",
+    "sourceRolePasswordsRestored": 0,
+    "after": {
+      "role": "t:f:f:f:f",
+      "catalogOwnersAndAcl": "206:c51b56c5a8d8bc89fc7409b5167a6165",
+      "publicConnect": "f",
+      "dbPolicy": "conectate:t:f",
+      "permissions": "t:t:f:conectate",
+      "ledger": "37:805c867d5c868a833ed557e5a53ae5a9",
+      "markers": "1",
+      "mediaRows": "2",
+      "roleConfiguration": "TimeZone=UTC"
+    },
+    "reusedSession": true,
+    "mediaChecks": [
+      {
+        "bucket": "avatars",
+        "sha256": "154bb2aa8acb302360bdce04af8600ed04a0c3c1472e2fae769af54b3314908d",
+        "http": 200
+      },
+      {
+        "bucket": "post-media",
+        "sha256": "add8aaf396fd9e83dab545ba19290cae951c8744b65e53dfbc53f67b6da98d2f",
+        "http": 200
+      }
+    ],
+    "aiStateSha256": "685283ad0132e5e1776ca8260c5134d44e480e0aa6ce3aca6c586f0342448b8c",
+    "postBackupMarkersExcluded": true,
+    "restoreCommand": "pg_restore --create --exit-on-error with archive owners and ACLs",
+    "isolatedSourceAndRecoveryVolumes": true,
+    "candidateServicesStopped": true
+  },
+  "serviceRuntime": [
+    {
+      "caps": 25,
+      "apiUid": "10001",
+      "dbImage": "sha256:a342523698d611abbd86c56016a30ade6faabd73fcd7323d1ffca0aee66f227e",
+      "apiImage": "sha256:6de8b048b911fccbc51a873c198e50db8bbc32cc6d9d150a479c950b67507668"
+    },
+    {
+      "caps": 25,
+      "apiUid": "10001",
+      "dbImage": "sha256:a342523698d611abbd86c56016a30ade6faabd73fcd7323d1ffca0aee66f227e",
+      "apiImage": "sha256:6de8b048b911fccbc51a873c198e50db8bbc32cc6d9d150a479c950b67507668"
+    }
+  ],
+  "isolatedDrills": {
+    "sourceBackup": {
+      "postgres.dump": "9e573f9005ac85dd7970dcfb708c1557ee7d8a01ae034305b15ec510890eefd1",
+      "roles-no-passwords.sql": "f03497b58ac3a3857dc757790dbf6342221d5136bf5270139c0e35bb88fdc2e7",
+      "storage.tar.gz": "d42555b67bc12eb5f06166197d55e88332f58f97e4102a1c6d004b456a4ea875",
+      "ai-chatbot-data.tar.gz": "f6d0aa17ff1bedfb967290fc12eff3207a6c0996f442f4e01da2515080066cf9",
+      "docker-compose.yml": "51a3da90b4c25f075bfb7119d4f3a3d7ebe64cfcb714862ecab52277206117ac"
+    },
+    "shellScripts": {
+      "restore-drill-isolated.sh": "0ac881af1d0973fb6940250652921ed3dafa87499204750ead277298e9ff9c36",
+      "verify-backup.sh": "9b056e60091aa84779753f1ae1a1e9a19b268d5ccf5cce5c929cbc819915737b"
+    },
+    "engine": "29.1.3",
+    "cases": {
+      "files-when-compose-stopped": {
+        "exit": 0,
+        "tables": null,
+        "seconds": 0.112,
+        "filesVerified": true,
+        "roleRestore": false,
+        "logSha256": "331173e2295a02477615df41e27bee537e5a9c7aa401a552077045f609372ae5",
+        "errorExamples": [],
+        "leftRunningContainers": 0
+      },
+      "role-aware-restore": {
+        "exit": 0,
+        "tables": 201,
+        "seconds": 9.094,
+        "filesVerified": true,
+        "roleRestore": true,
+        "logSha256": "d213e5ccefb167c10e2b711e3517d1563d6e3d8a4eb2ecf933eee52368992787",
+        "errorExamples": [],
+        "leftRunningContainers": 0
+      },
+      "missing-role-grant": {
+        "exit": 1,
+        "tables": null,
+        "seconds": 4.455,
+        "filesVerified": true,
+        "roleRestore": false,
+        "logSha256": "1c175c503f73ee3b82f58f5bc6e9a33c12849ac9ad62ce202781c7d5b7446ba9",
+        "errorExamples": [
+          "psql:<stdin>:45: ERROR:  role \"missing_role_229\" does not exist"
+        ],
+        "leftRunningContainers": 0
+      },
+      "legacy-db-only": {
+        "exit": 0,
+        "tables": 201,
+        "seconds": 7.066,
+        "filesVerified": false,
+        "roleRestore": false,
+        "logSha256": "35cc4b985b3a22ebb6abc40310ba456aee143e5a7c56786528c104210de0453c",
+        "errorExamples": [],
+        "leftRunningContainers": 0
+      }
+    }
+  },
+  "readOnlyHostChecks": {
+    "public": {
+      "utc": "2026-11-20T17:43:07.415984+00:00",
+      "http": 200,
+      "tls": "TLSv1.3",
+      "capabilities": 25,
+      "release": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+    },
+    "private": {
+      "utc": "2026-11-20T17:43:07.573309+00:00",
+      "http": 200,
+      "tls": "TLSv1.3",
+      "capabilities": 25,
+      "release": "cc6a022ee123f99d84b97adc2136c92d1a2f6782"
+    }
+  },
+  "scope": {
+    "concurrentSourceWritesDuringBackup": false,
+    "syntheticMediaCount": 2,
+    "chatbotStateFixture": true,
+    "realChatbotInferenceTested": false,
+    "productionRestoreTested": false,
+    "realHostRecoveryObjectivesMeasured": false
+  }
+}
