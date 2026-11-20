@@ -17,6 +17,7 @@ test('isolated restore waits for the permanent postgres process and retains fail
     fs.writeFileSync(path.join(root, 'postgres.dump'), 'fixture')
     fs.writeFileSync(path.join(bin, 'docker'), `#!/bin/sh
 case "$*" in
+  "image inspect --format "*) echo "sha256:fixture-postgres" ;;
   *"--entrypoint id"*) echo 70 ;;
   *"run --detach"*)
     while [ "$1" != "--name" ]; do shift; done
