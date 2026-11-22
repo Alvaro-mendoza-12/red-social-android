@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-22T23:04:13.469193+00:00",
-  "baseCommit": "50b4c2a5aadb21b30b5d191951f5b846020e8543",
+  "generatedAtUtc": "2026-11-22T23:34:19.870273+00:00",
+  "baseCommit": "2d72a166e74c54329c298ba12fca288946c04050",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,7 +11,7 @@
   },
   "counts": {
     "pending": 3444,
-    "code-read": 1058,
+    "code-read": 1059,
     "partial": 281
   },
   "countsByPhase": {
@@ -22,7 +22,7 @@
     },
     "documentation": {
       "pending": 711,
-      "code-read": 68,
+      "code-read": 69,
       "partial": 21
     },
     "server": {
@@ -22376,6 +22376,14 @@
       "gitBlobId": "aec4095ad53babe89a8a2c8ee9e93701af88b472",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/235-reacciones-y-auditoria-juegos-compartir-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/236-fase-0-novvin-compartir-juegos-api-2026-11-22.md",
+      "phase": "documentation",
+      "gitBlobId": "8928707f5d6bc60a3f940f72ed150a12c075f4bb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/236-fase-0-novvin-compartir-juegos-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
