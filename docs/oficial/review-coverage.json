@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-20T21:08:43.721698+00:00",
-  "baseCommit": "014488ec83c9abf504f02e40c6378dca45923805",
+  "generatedAtUtc": "2026-11-22T23:04:13.469193+00:00",
+  "baseCommit": "50b4c2a5aadb21b30b5d191951f5b846020e8543",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3445,
-    "code-read": 1056,
-    "partial": 280
+    "pending": 3444,
+    "code-read": 1058,
+    "partial": 281
   },
   "countsByPhase": {
     "android": {
@@ -22,13 +22,13 @@
     },
     "documentation": {
       "pending": 711,
-      "code-read": 67,
+      "code-read": 68,
       "partial": 21
     },
     "server": {
-      "pending": 720,
-      "code-read": 210,
-      "partial": 49
+      "pending": 719,
+      "code-read": 211,
+      "partial": 50
     },
     "tooling-and-other": {
       "pending": 137,
@@ -22371,6 +22371,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/235-reacciones-y-auditoria-juegos-compartir-2026-11-22.md",
+      "phase": "documentation",
+      "gitBlobId": "aec4095ad53babe89a8a2c8ee9e93701af88b472",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/235-reacciones-y-auditoria-juegos-compartir-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/24-musica-privacidad-y-plan-gamer-hub-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "4b6363478b08ea9abd1dec49c858af09a3e904bc",
@@ -24991,9 +24999,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "b0546a75ed7cc1f0af3744e8711150940fb388dd",
+      "gitBlobId": "337bbfb1d3f795202b7acfb5ba1f5c5056309799",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/235-reacciones-y-auditoria-juegos-compartir-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26453,8 +26461,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/data-routes.test.js",
       "phase": "server",
-      "gitBlobId": "5a1bbd7750304f7d00f6f20bdf48615cf0de050a",
-      "reviewStatus": "pending"
+      "gitBlobId": "12986fe7c61ab640a61918297d1fed2377f9193e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/235-reacciones-y-auditoria-juegos-compartir-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/database-pool-errors.test.js",
@@ -27128,6 +27138,14 @@
       "gitBlobId": "275dbcb6b8ef48e5d22b3449a80604890f49794f",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/104-camara-y-reacciones-android.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/post-reaction-write.test.js",
+      "phase": "server",
+      "gitBlobId": "9e033e392a7d0a5c105702e3fede99d9864224a8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/235-reacciones-y-auditoria-juegos-compartir-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

@@ -4979,7 +4979,63 @@ function enrichPostComment(row, profilesById, identity = null) {
   }
 }
 
-async function loadPostDetailPayload(pool, user, rawPostId, { includeComments = true } = {}) {
+function visiblePostFromRows(post, identity, follows = []) {
+  const followingIds = cleanSet(follows
+    .filter((row) => rowMatchesAny(row, ['follower_id', 'user_id'], identity.ids))
+    .map((row) => textOf(row, ['following_id', 'target_user_id'], '')))
+  return feedPostVisible(post, { identityIds: identity.ids, followingIds }) ? post : null
+}
+
+async function loadPostForReaction(pool, identity, postId) {
+  const [imported, local] = await Promise.all([
+    importedRowsByFieldValues(pool, 'posts', ['id'], [postId], 4),
+    pool.query('SELECT id::text, user_id, visibility FROM fallback_posts WHERE lower(id::text) = $1', [postId]),
+  ])
+  const post = [...imported, ...local.rows].find((row) => normalizeId(textOf(row, ['id'], '')) === postId)
+  if (!post || visiblePostFromRows(post, identity)) return post || null
+  if (textOf(post, ['visibility'], 'public').toLowerCase() !== 'followers') return null
+  const [importedFollows, localFollows] = await Promise.all([
+    importedRowsByFieldValues(pool, 'follows', ['follower_id', 'user_id'], identity.values, 20_000),
+    localFollowsByFollowerIds(pool, identity.values, 20_000),
+  ])
+  return visiblePostFromRows(post, identity, [...importedFollows, ...localFollows])
+}
+
+async function persistPostReaction(pool, postId, identity, reactionType) {
+  // One statement commits the canonical reaction and all import tombstones
+  // together. Lock conflicting rows in a consistent order on every request.
+  const { rows } = await pool.query(
+    `INSERT INTO fallback_post_reactions AS old(post_id, user_id, reaction_type, created_at, updated_at, is_deleted)
+     SELECT $1, ids.user_id, COALESCE($4, 'LIKE'), NOW(), NOW(), $4 IS NULL OR ids.user_id <> $3
+     FROM unnest($2::text[]) AS ids(user_id)
+     ORDER BY ids.user_id
+     ON CONFLICT (post_id, user_id) DO UPDATE
+       SET reaction_type = COALESCE($4, old.reaction_type),
+           is_deleted = EXCLUDED.is_deleted, updated_at = NOW()
+       WHERE old.is_deleted IS DISTINCT FROM EXCLUDED.is_deleted
+          OR ($4 IS NOT NULL AND old.reaction_type IS DISTINCT FROM EXCLUDED.reaction_type)
+     RETURNING user_id`,
+    [postId, identity.values, identity.displayUserId, reactionType],
+  )
+  return { changed: rows.length > 0, canonicalChanged: rows.some(row => row.user_id === identity.displayUserId) }
+}
+
+async function acknowledgePostReaction(req, res, pool, user, postId) {
+  if (req.query?.response === 'minimal') return res.json({ ok: true })
+  // The optional legacy Web projection cannot change the outcome of a
+  // committed write. A null post lets clients keep their optimistic state.
+  let post = null
+  if (postId) {
+    try {
+      post = (await loadPostDetailPayload(pool, user, postId))?.post || null
+    } catch (error) {
+      console.warn('[post-reaction] committed without detail projection', safeErrorLogDetails(error))
+    }
+  }
+  return res.json({ ok: true, post })
+}
+
+async function loadPostDetailPayload(pool, user, rawPostId) {
   const postId = normalizeId(rawPostId)
   if (!postId) return null
 
@@ -4991,8 +5047,8 @@ async function loadPostDetailPayload(pool, user, rawPostId, { includeComments = 
       importedRowsByFieldValues(pool, 'post_likes', ['post_id', 'postId'], [postId], 50_000),
       importedRowsByFieldValues(pool, 'post_reactions', ['post_id', 'postId'], [postId], 50_000),
       localPostReactions(pool, [postId], 50_000),
-      includeComments ? importedRowsByFieldValues(pool, 'post_comments', ['post_id', 'postId'], [postId], 50_000) : [],
-      includeComments ? localPostComments(pool, [postId], 50_000) : [],
+      importedRowsByFieldValues(pool, 'post_comments', ['post_id', 'postId'], [postId], 50_000),
+      localPostComments(pool, [postId], 50_000),
       importedRowsByFieldValues(pool, 'shares', ['post_id', 'postId'], [postId], 50_000),
       localPostShares(pool, [postId], 50_000),
       importedRowsByFieldValues(pool, 'follows', ['follower_id', 'user_id'], identity.values, 20_000),
@@ -5002,16 +5058,7 @@ async function loadPostDetailPayload(pool, user, rawPostId, { includeComments = 
   const posts = [...importedPosts, ...fallbackPosts]
   const post = posts.find((row) => normalizeId(textOf(row, ['id'], '')) === postId)
   if (!post) return null
-  const followingIds = cleanSet(
-    [...importedFollows, ...fallbackFollows]
-      .filter((row) => rowMatchesAny(row, ['follower_id', 'user_id'], identity.ids))
-      .map((row) => textOf(row, ['following_id', 'target_user_id'], '')),
-  )
-  if (!feedPostVisible(post, {
-    identityIds: identity.ids,
-    followingIds,
-    mode: 'all',
-  })) return null
+  if (!visiblePostFromRows(post, identity, [...importedFollows, ...fallbackFollows])) return null
 
   const relevantLikes = mergePostReactionRows([
     ...importedLikes.filter((row) => postIdOf(row) === postId),
@@ -9877,100 +9924,56 @@ function registerDataRoutes(app, {
   })
 
 
-  app.post('/v1/data/feed/posts/:postId/reaction', authRequired, async (req, res, next) => {
+  const postReactionHandler = (remove) => async (req, res, next) => {
     try {
       const user = await getCurrentUser(pool, req)
       if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
 
       const postId = normalizeId(req.params.postId)
       if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
-      // Validate access without hydrating every comment/profile/reaction in the thread.
-      const existing = await loadPostDetailPayload(pool, user, postId, { includeComments: false })
-      if (!existing) return res.status(404).json({ error: 'POST_NOT_FOUND' })
-
-      const identity = userIdentity(user)
-      const reactionType = cleanText(req.body?.reactionType || req.body?.reaction_type || 'LIKE', 40).toUpperCase() || 'LIKE'
-      if (!POST_REACTION_TYPES.has(reactionType)) {
+      const requested = Object.hasOwn(req.body || {}, 'reactionType') ? req.body.reactionType
+        : Object.hasOwn(req.body || {}, 'reaction_type') ? req.body.reaction_type : 'LIKE'
+      const reactionType = remove ? null : typeof requested === 'string' ? requested.trim().toUpperCase() : ''
+      if (!remove && !POST_REACTION_TYPES.has(reactionType)) {
         return res.status(400).json({ error: 'POST_REACTION_INVALID' })
       }
-      for (const userId of identity.ids) {
-        const isAliasTombstone = userId !== identity.displayUserId
-        await pool.query(
-          `INSERT INTO fallback_post_reactions(post_id, user_id, reaction_type, created_at, updated_at, is_deleted)
-           VALUES ($1, $2, $3, NOW(), NOW(), $4)
-           ON CONFLICT (post_id, user_id)
-           DO UPDATE SET reaction_type = EXCLUDED.reaction_type,
-                         is_deleted = EXCLUDED.is_deleted,
-                         updated_at = NOW()`,
-          [postId, userId, reactionType, isAliasTombstone],
-        )
-      }
-      const postOwnerId = normalizeId(textOf(existing.post, [
-        'user_id', 'owner_id', 'author_id', 'creator_id',
-      ], ''))
-      const feedEvent = { event: 'post_reaction', action: 'updated', postId }
-      const visibility = textOf(existing.post, ['visibility'], 'public').trim().toLowerCase()
-      if (visibility === 'public') void publishRealtimeEvent('feed:live', feedEvent)
-      if (postOwnerId) {
-        void publishRealtimeEvent(`user:${postOwnerId}`, { ...feedEvent, scope: 'social' })
-      }
-      // The reaction is durable before acknowledging it; notification delivery is best effort.
-      const minimal = req.query?.response === 'minimal'
-      const payload = minimal ? null : await loadPostDetailPayload(pool, user, postId)
-      res.json(minimal ? { ok: true } : { ok: true, post: payload?.post || existing.post })
-      void createLocalNotificationBestEffort(pool, {
-        recipientId: normalizeId(textOf(existing.post, ['user_id', 'owner_id', 'author_id', 'creator_id'], '')),
-        actorId: identity.displayUserId,
-        actorName: user.display_name || user.email || 'Usuario',
-        actorAvatarUrl: user.avatar_url || '',
-        type: 'like_post',
-        targetId: postId,
-        targetType: 'post',
-        content: `${user.display_name || user.email || 'Alguien'} reaccionó a tu publicación.`,
-        extraData: { post_id: postId, reaction_type: reactionType },
-      })
-
-    } catch (error) {
-      next(error)
-    }
-  })
-
-  app.delete('/v1/data/feed/posts/:postId/reaction', authRequired, async (req, res, next) => {
-    try {
-      const user = await getCurrentUser(pool, req)
-      if (!user) return res.status(404).json({ error: 'USER_NOT_FOUND' })
-
-      const postId = normalizeId(req.params.postId)
-      if (!postId) return res.status(400).json({ error: 'POST_ID_REQUIRED' })
       const identity = userIdentity(user)
-      const existing = await loadPostDetailPayload(pool, user, postId, { includeComments: false })
-      for (const userId of identity.ids) {
-        await pool.query(
-          `INSERT INTO fallback_post_reactions(post_id, user_id, reaction_type, created_at, updated_at, is_deleted)
-           VALUES ($1, $2, 'LIKE', NOW(), NOW(), TRUE)
-           ON CONFLICT (post_id, user_id)
-           DO UPDATE SET is_deleted = TRUE, updated_at = NOW()`,
-          [postId, userId],
-        )
+      const post = await loadPostForReaction(pool, identity, postId)
+      if (!post) {
+        if (!remove) return res.status(404).json({ error: 'POST_NOT_FOUND' })
+        // Preserve the idempotent DELETE response without writing an orphan
+        // or revealing whether a publication exists but is private.
+        return await acknowledgePostReaction(req, res, pool, user, null)
       }
-      if (existing) {
-        const postOwnerId = normalizeId(textOf(existing.post, [
-          'user_id', 'owner_id', 'author_id', 'creator_id',
-        ], ''))
+      const { changed, canonicalChanged } = await persistPostReaction(pool, postId, identity, reactionType)
+      await acknowledgePostReaction(req, res, pool, user, postId)
+
+      const ownerId = postOwnerId(post)
+      if (changed) {
         const feedEvent = { event: 'post_reaction', action: 'updated', postId }
-        const visibility = textOf(existing.post, ['visibility'], 'public').trim().toLowerCase()
+        const visibility = textOf(post, ['visibility'], 'public').toLowerCase()
         if (visibility === 'public') void publishRealtimeEvent('feed:live', feedEvent)
-        if (postOwnerId) {
-          void publishRealtimeEvent(`user:${postOwnerId}`, { ...feedEvent, scope: 'social' })
-        }
+        if (ownerId) void publishRealtimeEvent(`user:${ownerId}`, { ...feedEvent, scope: 'social' })
       }
-      const minimal = req.query?.response === 'minimal'
-      const payload = !minimal && postId ? await loadPostDetailPayload(pool, user, postId) : null
-      res.json(minimal ? { ok: true } : { ok: true, post: payload?.post || null })
+      if (!remove && canonicalChanged && ownerId && !identity.ids.has(ownerId)) {
+        void createLocalNotificationBestEffort(pool, {
+          recipientId: ownerId,
+          actorId: identity.displayUserId,
+          actorName: user.display_name || user.email || 'Usuario',
+          actorAvatarUrl: user.avatar_url || '',
+          type: 'like_post',
+          targetId: postId,
+          targetType: 'post',
+          content: `${user.display_name || user.email || 'Alguien'} reaccionó a tu publicación.`,
+          extraData: { post_id: postId, reaction_type: reactionType },
+        })
+      }
     } catch (error) {
       next(error)
     }
-  })
+  }
+  app.post('/v1/data/feed/posts/:postId/reaction', authRequired, postReactionHandler(false))
+  app.delete('/v1/data/feed/posts/:postId/reaction', authRequired, postReactionHandler(true))
 
   app.post('/v1/data/feed/posts/:postId/share', authRequired, async (req, res, next) => {
     try {

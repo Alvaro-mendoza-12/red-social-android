@@ -1,0 +1,42 @@
+# 235 · Reacciones del feed y primera auditoría de Juegos y Compartir
+
+22 de noviembre de 2026. Primer bloque de la solicitud integral. No certifica todos los módulos ni declara terminados los juegos nativos o el sistema universal de compartir.
+
+## Reacciones: causa reproducida y corrección
+
+El aviso de Social agrupa los fallos de escritura. El cliente Android ya aplica una actualización optimista, serializa los cambios locales y pide un acuse mínimo a la API de Ubuntu. La captura no contiene versión instalada, identificador de petición ni estado HTTP; no permite vincular ese incidente exacto a un fallo del servidor activo.
+
+En el código base, incluso el acuse mínimo dependía de cargar reacciones, compartidos, seguidores y perfiles para comprobar el acceso. Se inyectó un fallo de lectura de compartidos y el `POST` devolvió 500 antes de escribir. Se impuso también una restricción de laboratorio sobre el segundo alias de la cuenta: la primera escritura sobrevivió al error de la segunda. Las pruebas reprodujeron además reescrituras ante reintentos, marcas de baja para publicaciones inexistentes o inaccesibles y aceptación de entradas inválidas como `0`.
+
+La ruta ahora comprueba la visibilidad sin consultar el detalle, y consulta seguidores solo para una publicación de esa audiencia cuando el actor no es el propietario. Mantiene la identidad canónica y las marcas de baja para los alias importados en una sola sentencia SQL. Una repetición del mismo estado no reescribe filas ni vuelve a emitir los mismos avisos. Un `DELETE` inaccesible o inexistente conserva su respuesta idempotente sin crear filas ni revelar la existencia de la publicación. Se aceptan ambos nombres históricos del campo de reacción y se mantiene `LIKE` cuando se omite; un valor explícito no admitido se rechaza. Si falla la proyección opcional que pide la web tras el commit, se registra el fallo y se devuelve un acuse con `post: null`, compatible con conservar el estado optimista. Un fallo de escritura real sigue devolviendo error.
+
+### Validación y límites
+
+- Referencia: los cinco subcasos nuevos fallaron sobre las rutas originales.
+- Selección final: 17 resultados aprobados, cero fallos y omisiones. Incluye las rutas Express mediante HTTP en loopback, SQL ejecutado en PGlite, comprobación posterior de las filas, concurrencia de reintentos, permisos, identidad dual, identificador importado, y los contratos de lectura y proyección existentes. La autenticación, la entrega de notificaciones y el gateway se aislaron; no se usaron cuentas reales.
+- Batería general de la API en el workspace: 1171 aprobados, 63 omitidos y un fallo. La prueba de configuración de Signaling agotó su comprobación de arranque sin emitir el diagnóstico esperado en esa tanda concurrente; aprobó al ejecutarse por separado en el worktree base y en el candidato. No se declara verde toda la batería general.
+- No cambia el esquema ni se añaden dependencias. Para revertir, revertir el commit de código en ambas ramas y, si se hubiese desplegado, restaurar la imagen previa por el procedimiento operativo. No hay una migración que revertir.
+- Pendientes: PostgreSQL del entorno de integración, variación de visibilidad concurrente con el borrado de un post, correlación del incidente original, recuperación de un ACK perdido del lado Android y prueba con sesión real en Android y escritorio. Git no equivale a despliegue ni a una APK nueva.
+
+## Juegos: base que se conserva
+
+[PlayMatch](158-playmatch-juegos-estable-2026-11-15.md) ya tiene descubrimiento, catálogo, filtros, coincidencias para buscar compañeros, actividad y acceso a conversaciones. Las rutas de coincidencia modelan participantes, aceptación y expiración; no aplican jugadas de tablero. CAPY-BATTLE tiene integración y coordinación propias; no se sustituyeron ni incorporaron sus cambios locales a este bloque.
+
+La renovación debe añadir partidas nativas junto a PlayMatch, sin confundir una coincidencia con una partida jugable. Primer corte Android: crear partida, invitar a una cuenta real, aceptar, aplicar una jugada, reconectar y terminar. En la capa común: reglas y versión persistidas por partida; autorización de participantes en cada comando; identificador idempotente por acción; versión esperada; persistencia de jugada y estado en una transacción; notificación posterior por el gateway existente. Un cliente que reconecta recupera la instantánea y revisiones posteriores; el estado del cliente no es la fuente de verdad. Los bots deben enviar comandos sujetos a las mismas reglas. Las salas y voz existentes son el primer candidato de integración: admisión ligada a la partida, micrófono apagado por defecto, permiso explícito y desconexión al salir. Los relojes, variantes de Damas y reglas de Ludo necesitan especificación y pruebas propias antes de ofrecerse.
+
+### Referencias técnicas y decisiones pendientes
+
+- [PostgreSQL 16: bloqueos](https://www.postgresql.org/docs/16/explicit-locking.html) y [Socket.IO: garantías de entrega](https://socket.io/docs/v4/delivery-guarantees/). Serializar por partida en PostgreSQL, no en una memoria de proceso; usar eventos como aviso y recuperar revisiones perdidas desde datos persistentes. Medir colas y tiempos de adquisición de bloqueos antes de aumentar tráfico.
+- [chess.js](https://github.com/jhlywa/chess.js/) (BSD-2-Clause) es candidato a validador Node, no a bot. Contrastar [reglas FIDE](https://rcc.fide.com/wp-content/uploads/2022/12/20230101Laws-of-Chess_final.pdf): separar tablas que se reclaman de finalizaciones automáticas, guardar historial y ensayar reloj y reconexión. Evaluar [Stockfish](https://github.com/official-stockfish/stockfish) como proceso servidor con presupuesto de CPU y cumplimiento de GPLv3; no incorporarlo al cliente en este bloque.
+- Damas: elegir y mostrar una variante inicial; [WCDF](https://wcdf.net/rules/rules_of_checkers_english.pdf) sirve para la inglesa. Ludo: comparar [las reglas de Funskool](https://funskoolindia.com/wp-content/uploads/2024/09/Ludo_Instructions.pdf) con la variante Novvin antes de fijar salidas, tiradas adicionales y captura. No tratar dos variantes como intercambiables. Tres en raya o Conecta 4 permiten probar la infraestructura común sin adelantar una afirmación de que los otros motores ya existen.
+- Voz: evaluar los permisos por sala y pista de [LiveKit](https://docs.livekit.io/frontends/reference/tokens-grants/), además del flujo WebRTC propio. El chat de texto debe seguir la persistencia de mensajes; no delegar su historial a paquetes de audio o eventos volátiles. Ningún candidato se instaló ni se contrató.
+
+## Compartir: reutilizar el envío en lugar de recrearlo
+
+Android ya dispone de selección de conversaciones, grupos y comunidades en `ShareDestinationViewModel`, diario de lotes y reanudación por cuenta. Para publicaciones y vídeos ese flujo envía un enlace con nota; no persiste una referencia interna tipada. Convive con `InternalShareDialog`, que selecciona una sola persona, y con las opciones de compartir fuera de la app. Las vistas previas públicas de [136](136-integracion-api-compartidos-y-mandato-word-2026-11-14.md) son un recorrido diferente del envío interno.
+
+El siguiente corte debe reutilizar el selector y el diario, añadir referencias tipadas `{tipo, id}` a los mensajes y resolver la vista previa con los permisos del lector. El servidor debe validar visibilidad en origen y pertenencia al destino; reenviar no concede acceso al objeto, y la tarjeta no debe mostrar contenido si caduca, cambia de audiencia o se borra. Primero: publicación a conversación individual y a grupo, con reintento selectivo y apertura desde la cuenta receptora. Después: comunidades, los demás emisores y paridad web. Conservar copiado, publicación en perfil y compartido externo donde corresponda. No se modificaron consumidores de Compartir en este bloque.
+
+## Auditoría abierta
+
+Se revisaron los tramos anteriores, no la aplicación completa. Los recorridos de comentarios, publicaciones, notificaciones, mensajes, Momentos, vídeos, amigos, grupos y comunidades siguen requiriendo su propia evidencia. La prueba de aceptación de Juegos incluye dos cuentas reales de laboratorio, turnos, reanudación, bot, finalización y controles de voz en dos dispositivos; la de Compartir incluye permisos de ambos extremos y relectura después de reconectar. No se entregan nuevos motores, interfaz de juego ni modal universal en este commit.
