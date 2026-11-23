@@ -1346,6 +1346,8 @@ fun ChatScreen(
                                             }
                                         }
                                     },
+                                    sharedPostDestination = conectate.com.data.model.SharedMessageDestination.Chat,
+                                    onSharedPostClick = { id -> navController.navigate(conectate.com.presentation.navigation.Screen.PostDetail.createRoute(id)) },
                                     currentUserId = currentUserId,
                                     onReactionClick = { emoji ->
                                         viewModel.reactToMessage(message, emoji)

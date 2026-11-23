@@ -13,7 +13,7 @@ function isSharedMessageType(value) {
 }
 
 function includesSharedMessageFields(value) {
-  return Object.hasOwn(value || {}, 'shared_content') || Object.hasOwn(value || {}, 'sharedContent') ||
+  return Object.hasOwn(value || {}, 'shared_content') || Object.hasOwn(value || {}, 'sharedContent') || Object.hasOwn(value || {}, 'sharedNote') ||
     isSharedMessageType(value?.content_type) || isSharedMessageType(value?.contentType)
 }
 
@@ -29,8 +29,9 @@ function parseSharedMessage(body, requestedId) {
   const hasInternalField = Object.hasOwn(body || {}, 'shared_content')
   if (!includesSharedMessageFields(body)) return null
   const reference = parseSharedReference(body?.sharedContent)
-  const note = body?.content
+  const note = body?.sharedNote ?? body?.content
   if (!hasReference || !reference || !requestedId || hasInternalField || Object.hasOwn(body, 'content_type') ||
+      (Object.hasOwn(body, 'sharedNote') && (typeof body.sharedNote !== 'string' || Object.hasOwn(body, 'content'))) ||
       (body.contentType != null && !isSharedMessageType(body.contentType)) ||
       (note != null && (typeof note !== 'string' || note.length > messageFields.properties.content.maxLength)) ||
       ['mediaUrl', 'thumbnailUrl', 'thumbnail_url', 'mediaSize', 'pollId', 'replyToId',
@@ -38,7 +39,7 @@ function parseSharedMessage(body, requestedId) {
         'forwardedFromUserId', 'forwarded_from_user_id'].some(key => body[key])) {
     throw Object.assign(new Error('SHARED_CONTENT_INVALID'), { status: 400 })
   }
-  return reference
+  return { reference, note: (note || '').trim() }
 }
 
 function withoutStoredReference(row) {
@@ -59,6 +60,9 @@ function postSharePreview(post, textOf, boolOf) {
 }
 
 function registerSharedMessageRead(app, { authRequired, validUuid, getCurrentUser, loadMessage, resolveSource }) {
+  app.get('/v1/data/messages/shared-content/capabilities', authRequired, (_req, res) => {
+    res.set('Cache-Control', 'private, no-store').json({ version: 1, kinds: [...sourceKinds] })
+  })
   app.get('/v1/data/messages/:collection/:scopeId/messages/:messageId/shared-content', authRequired, async (req, res, next) => {
     res.set('Cache-Control', 'private, no-store')
     const unavailable = () => res.status(404).json({ error: 'SHARED_CONTENT_NOT_AVAILABLE' })

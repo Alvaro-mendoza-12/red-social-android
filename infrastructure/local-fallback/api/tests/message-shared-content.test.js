@@ -16,12 +16,13 @@ test('the share contract is opt-in and rejects conflicting payloads', () => {
   const id = randomUUID()
   const sharedContent = { kind: 'post', id: 'Original-ID' }
   assert.equal(parseSharedMessage({ content: 'A regular link' }, id), null)
-  assert.deepEqual(parseSharedMessage({ sharedContent }, id), { kind: 'post', id: 'original-id' })
+  assert.deepEqual(parseSharedMessage({ sharedContent }, id), { reference: { kind: 'post', id: 'original-id' }, note: '' })
   for (const payload of [{ contentType: 'Shared_Content' }, { content_type: 'shared_content' },
     { shared_content: sharedContent }, { sharedContent: { ...sharedContent, kind: 'result' } },
     { sharedContent: { kind: 'post', id: '../other' } }, { sharedContent: { ...sharedContent, url: 'not allowed' } },
     { sharedContent, isForwarded: true }, { sharedContent, mediaUrl: 'not allowed' },
-    { sharedContent, contentType: 'text' }, { sharedContent, content: 'a'.repeat(801) }]) {
+    { sharedContent, contentType: 'text' }, { sharedContent, content: 'a'.repeat(801) },
+    { sharedContent, content: '', sharedNote: 'ambiguous' }, { sharedContent, sharedNote: null }]) {
     assert.throws(() => parseSharedMessage(payload, id), { message: 'SHARED_CONTENT_INVALID', status: 400 })
   }
   assert.throws(() => parseSharedMessage({ sharedContent }, null), { message: 'SHARED_CONTENT_INVALID', status: 400 })
@@ -112,6 +113,10 @@ test('HTTP sends persist a typed post in DMs, groups and communities and recheck
     })
   }
   const shared = { kind: 'post', id: post }
+  const capability = await call('shared-content/capabilities')
+  assert.equal(capability.headers.get('Cache-Control'), 'private, no-store')
+  assert.deepEqual(await capability.json(), { version: 1, kinds: ['post'] })
+  assert.equal((await call('shared-content/capabilities', '')).status, 401)
   const direct = `chats/${chat}/messages`
   const ids = {}
   for (const [key, scope, table] of [[`chats/${chat}`, chat, 'fallback_messages'],
@@ -144,9 +149,11 @@ test('HTTP sends persist a typed post in DMs, groups and communities and recheck
   assert.equal((await call(direct, 'sender', { id: randomUUID(), sharedContent: { ...shared, id: privatePost } })).status, 404)
   assert.equal((await call(direct, 'outsider', { id: randomUUID(), sharedContent: shared })).status, 403)
   assert.equal((await call(direct, 'sender', { id: ids[chat].id, sharedContent: shared, content: 'Different note' })).status, 409)
-  const note = await call(direct, 'sender', { id: randomUUID(), sharedContent: shared, content: 'Optional note' })
+  const noteBody = { id: randomUUID(), sharedContent: shared, sharedNote: 'Optional note' }
+  const note = await call(direct, 'sender', noteBody)
   assert.equal(note.status, 201)
   assert.equal((await note.json()).message.content, 'Optional note')
+  assert.equal((await call(direct, 'sender', { id: noteBody.id, sharedContent: shared, content: noteBody.sharedNote })).status, 200)
   assert.equal((await db.query('SELECT last_message FROM fallback_chats WHERE id=$1', [chat])).rows[0].last_message, 'Contenido compartido')
   const oldNote = await call(direct, 'sender', { id: randomUUID(), content: 'Plain text still works' })
   assert.equal(oldNote.status, 201)

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-23T00:31:55.962590+00:00",
-  "baseCommit": "d868f8781ca69b1aeb3f79938fb567e23fa5a45e",
+  "generatedAtUtc": "2026-11-23T01:16:01.725216+00:00",
+  "baseCommit": "e45bf56b7fbc613fb9704f2f167d6a5380abace1",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,25 +10,25 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3444,
-    "code-read": 1061,
-    "partial": 283
+    "pending": 3443,
+    "code-read": 1060,
+    "partial": 290
   },
   "countsByPhase": {
     "android": {
-      "pending": 1403,
-      "partial": 124,
-      "code-read": 614
+      "pending": 1402,
+      "partial": 130,
+      "code-read": 613
     },
     "documentation": {
       "pending": 711,
-      "code-read": 70,
+      "code-read": 71,
       "partial": 21
     },
     "server": {
       "pending": 719,
-      "code-read": 212,
-      "partial": 52
+      "code-read": 211,
+      "partial": 53
     },
     "tooling-and-other": {
       "pending": 137,
@@ -6647,9 +6647,9 @@
     {
       "file": "app/src/main/java/conectate/com/core/messaging/MessageForwardingPolicy.kt",
       "phase": "android",
-      "gitBlobId": "9276c3ceb4705568b9fe96ebee4aa99c68d06b5d",
+      "gitBlobId": "bbd6fa6cdd975ebb1f5b9ba27001bc206fd9e333",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7507,9 +7507,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/LocalFallbackApiClient.kt",
       "phase": "android",
-      "gitBlobId": "80e8cbeaefbd9fe9754cf5f2b8113cc7762fac96",
+      "gitBlobId": "24e32b6a14429ce6947f63bcc124443056f1002c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7928,6 +7928,14 @@
       "gitBlobId": "8303b32fe31b63e12c771c256911ca4256c30a66",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/auditoria-integral-busqueda-android-2026-11-16.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/model/SharedMessageContent.kt",
+      "phase": "android",
+      "gitBlobId": "4c81b07aa3153fb3fe50ad5a16ef53f49a283394",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8697,6 +8705,14 @@
       "phase": "android",
       "gitBlobId": "3a93e2b5ab0b711802cbb23093f8fa9475957b78",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/repository/SharedMessageRepository.kt",
+      "phase": "android",
+      "gitBlobId": "93cf3c8bb35816b220d58462fdc47403999f0506",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/SocializationRepository.kt",
@@ -10283,8 +10299,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/MessageBubble.kt",
       "phase": "android",
-      "gitBlobId": "06fae474cde9ad33de168480cdc51b9641b1fe49",
-      "reviewStatus": "pending"
+      "gitBlobId": "d64032aed6e4284ad49aea3006c0e9235f5bd25d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/MessageMediaClusterGrid.kt",
@@ -10409,6 +10427,14 @@
       "phase": "android",
       "gitBlobId": "c1d12cae7f5a77fdb3b4fc70c85ff1a2458f684e",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/components/SharedPostMessageCard.kt",
+      "phase": "android",
+      "gitBlobId": "c717efea1bf1df210d3aed57b604fde50b611d4c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/SharedVideoCard.kt",
@@ -11079,9 +11105,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "e6942a7b6855b61d99e4a5e1da921bd2128a8b05",
+      "gitBlobId": "6ffe839b0bf05e8e631f441ad107a34b9d599005",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11201,9 +11227,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/CommunityChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "30fb3fb0500b9729b80fb739cd52655d3484a088",
+      "gitBlobId": "b95955d0edf6b1a372c22f28c1eec9279bf19f39",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/176-teclado-y-desplazamiento-android-2026-11-17.md",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11383,9 +11409,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/GroupChatScreen.kt",
       "phase": "android",
-      "gitBlobId": "f0847d7ba9c5dd97e6f083c9a0aa6d35ce77fa11",
+      "gitBlobId": "427ee0df3be0bdb08955dd49ffd65f09c311c902",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11725,17 +11751,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ShareBatchDelivery.kt",
       "phase": "android",
-      "gitBlobId": "fc871f0d5cbf710f2ae9139bba775b3fd8c28bfc",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "029b17d436fa0431a2ca630b4a6c1da476002946",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ShareBatchJournal.kt",
       "phase": "android",
-      "gitBlobId": "406621141c624c30d5e22a0af6b4488cb4da182d",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "98843b31302b31098f6d11006fd9653973787690",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11749,9 +11775,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/ShareDestinationViewModel.kt",
       "phase": "android",
-      "gitBlobId": "928c58cf537b3750ca36604f53f48b534f50116e",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "4fb9e8353a256989b31913f8f7e5c94b91f72a67",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11799,9 +11825,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/UniversalShareHost.kt",
       "phase": "android",
-      "gitBlobId": "762031ea5b73c6fd6fcd5a2a97a8f45f6c0bc42d",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "297bae6d5faee99fc2b9e2e96a2f07e2f78515e4",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15689,6 +15715,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/data/localfallback/SharedPostTransportTest.kt",
+      "phase": "android",
+      "gitBlobId": "77a1ff5ebfbb7f184ebaf58923012ce69112e7d8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/data/localfallback/StorageUploadPolicyTest.kt",
       "phase": "android",
       "gitBlobId": "30f665fd155d9739a99d95502e4ba0d06dfd2043",
@@ -17661,9 +17695,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/messages/ShareBatchJournalTest.kt",
       "phase": "android",
-      "gitBlobId": "90f48d198d7e61a7082d8eb0b676bbad1cb8e23f",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "7d16203f2c50b4636208f1a2fa68f8549149bb3e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22395,6 +22429,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
+      "phase": "documentation",
+      "gitBlobId": "7d5753a7ff1414c03a8e7c24ea16c1bc7d490818",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/24-musica-privacidad-y-plan-gamer-hub-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "4b6363478b08ea9abd1dec49c858af09a3e904bc",
@@ -24975,9 +25017,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/contracts/message-shared-content.schema.json",
       "phase": "server",
-      "gitBlobId": "a72d54234f7ff1bcafb4c7a4502bbd2b9e928943",
+      "gitBlobId": "c259e31fe42dc3160d6e933bf9afa56a9b1502d1",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25023,9 +25065,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "5b71291e356b9566d93987b421417bfcea2efccc",
+      "gitBlobId": "6a6d45f7480c42260a885c89ed01ab047ed6582a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25361,9 +25403,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/message-shared-content.js",
       "phase": "server",
-      "gitBlobId": "d34e625402d7e4b6f7835a33833b6aa076f3b31a",
+      "gitBlobId": "de1231e2b98c32ddb87c1a787bbb2e3fb5e765d6",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26893,9 +26935,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/message-shared-content.test.js",
       "phase": "server",
-      "gitBlobId": "2d36cef0e3d3664a4d558f04f88415b99c6fb239",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
+      "gitBlobId": "6f1abe2ad11552691c1414698d02a7558635159c",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

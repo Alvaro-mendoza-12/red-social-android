@@ -12,6 +12,8 @@ internal fun messageForwardingError(
     status.trim().lowercase() !in setOf("sent", "delivered", "read", "received") -> "Espera a que el mensaje se envíe antes de reenviarlo."
     mediaUrl?.trim()?.substringBefore(':')?.lowercase() in setOf("file", "content") -> "El archivo aún está pendiente. Espera a que se envíe antes de reenviarlo."
     contentType.trim().lowercase() == "poll" -> "Las encuestas no admiten reenvíos. Puedes crear otra en el destino."
+    contentType.equals(conectate.com.data.model.SHARED_MESSAGE_TYPE, ignoreCase = true) ->
+        "Abre la publicación original y compártela desde allí."
     contentType.trim().lowercase() == "raffle" || contentType.trim().lowercase().startsWith("system_") ->
         "Este tipo de mensaje no admite reenvíos."
     else -> null

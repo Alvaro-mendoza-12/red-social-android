@@ -458,6 +458,8 @@ fun MessageBubble(
     replyMessage: Message? = null,
     selectionMode: Boolean = false,
     onStickerClick: () -> Unit = { onClick(null) },
+    sharedPostDestination: conectate.com.data.model.SharedMessageDestination? = null,
+    onSharedPostClick: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
     var showDocument by remember(message.id, message.media_url) { mutableStateOf(false) }
@@ -767,6 +769,12 @@ fun MessageBubble(
                     "birthday_card" -> {
                         val letter = conectate.com.data.model.BirthdayCard.decode(message.content)
                         if (letter != null) BirthdayLetter(letter) else Text("Tarjeta de cumpleaños", color = receivedTextColor)
+                    }
+                    conectate.com.data.model.SHARED_MESSAGE_TYPE -> {
+                        if (sharedPostDestination != null) SharedPostMessageCard(
+                            sharedPostDestination, message.chat_id, message.id, message.content,
+                            currentUserId, !selectionMode && !isSelected, onSharedPostClick,
+                        ) else Text("Publicación compartida", color = receivedTextColor)
                     }
                     "text" -> {
                         val videoReference = remember(message.content) { conectate.com.data.model.sharedVideoReference(message.content) }

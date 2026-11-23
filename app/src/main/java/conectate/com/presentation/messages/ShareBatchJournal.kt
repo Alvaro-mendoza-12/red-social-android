@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.AtomicFile
 import conectate.com.util.IncomingShareKind
 import conectate.com.util.IncomingSharedItem
+import conectate.com.data.model.SharedMessageReference
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileNotFoundException
@@ -255,9 +256,11 @@ internal class ShareBatchJournal internal constructor(private val directory: Fil
         val sourceKey: String, val destination: ShareDestination, val kind: String, val text: String = "",
         val uri: String? = null, val mime: String? = null, val name: String? = null, val size: Long = 0,
         val mediaKind: String? = null, val forward: ForwardMessagePayload? = null,
+        val reference: SharedMessageReference? = null,
     ) {
         fun toItem(): ShareBatchItem = ShareBatchItem(sourceKey, destination, when (kind) {
             "text" -> ShareOutgoingContent.Text(text)
+            "reference" -> ShareOutgoingContent.Reference(checkNotNull(reference), text)
             "attachment" -> ShareOutgoingContent.Attachment(IncomingSharedItem(Uri.parse(checkNotNull(uri)),
                 checkNotNull(mime), name, size, IncomingShareKind.valueOf(checkNotNull(mediaKind))), text)
             "forward" -> ShareOutgoingContent.Forward(checkNotNull(forward))
@@ -266,6 +269,7 @@ internal class ShareBatchJournal internal constructor(private val directory: Fil
         companion object {
             fun from(item: ShareBatchItem): StoredItem = when (val content = item.content) {
                 is ShareOutgoingContent.Text -> StoredItem(item.sourceKey, item.destination, "text", content.content)
+                is ShareOutgoingContent.Reference -> StoredItem(item.sourceKey, item.destination, "reference", content.note, reference = content.source)
                 is ShareOutgoingContent.Forward -> StoredItem(item.sourceKey, item.destination, "forward", forward = content.source)
                 is ShareOutgoingContent.Attachment -> StoredItem(item.sourceKey, item.destination, "attachment", content.content,
                     content.item.uri.toString(), content.item.mimeType, content.item.displayName, content.item.sizeBytes, content.item.kind.name)

@@ -1181,6 +1181,7 @@ private data class LocalFallbackCommunityEventResponse(
 @Serializable
 private data class LocalFallbackErrorResponse(
     val error: String? = null,
+    val path: String? = null,
     val message: String? = null,
     val migrationToken: String? = null,
     val email: String? = null,
@@ -5409,6 +5410,82 @@ class LocalFallbackApiClient @Inject constructor(
         }
     }
 
+    @Serializable
+    private data class SharedContentCapabilities(val version: Int, val kinds: Set<String>)
+
+    @Serializable
+    private data class SharedContentSend(
+        val id: String,
+        val sharedNote: String,
+        val sharedContent: conectate.com.data.model.SharedMessageReference,
+    )
+
+    @Serializable
+    private data class SharedContentReceipt(val message: SharedContentReceiptMessage)
+
+    @Serializable
+    private data class SharedContentReceiptMessage(
+        val id: String,
+        @SerialName("content_type") val contentType: String,
+        @SerialName("deleted_for_all") val deletedForAll: Boolean = false,
+        val status: String,
+    )
+
+    internal suspend fun supportsPostMessageShares(accessToken: String): Boolean {
+        val response = supabaseConfig.httpClient.get("$baseUrl/v1/data/messages/shared-content/capabilities") {
+            localHeaders(accessToken)
+        }
+        val body = response.bodyAsText()
+        if (response.status.isSuccess()) {
+            val capabilities = json.decodeFromString<SharedContentCapabilities>(body)
+            return capabilities.version == 1 && "post" in capabilities.kinds
+        }
+        val error = decodeError(body)
+        if (response.status.value == 404 && error.error == "NOT_FOUND" &&
+            error.path == "/v1/data/messages/shared-content/capabilities") return false
+        throw toException(response, error)
+    }
+
+    private fun sharedContentMessagesUrl(destination: conectate.com.data.model.SharedMessageDestination, scopeId: String) =
+        "$baseUrl/v1/data/messages/${destination.segment}/${urlEncode(scopeId)}/messages"
+
+    internal suspend fun sendSharedPostMessage(
+        accessToken: String,
+        destination: conectate.com.data.model.SharedMessageDestination,
+        scopeId: String,
+        messageId: String,
+        reference: conectate.com.data.model.SharedMessageReference,
+        note: String,
+    ) {
+        val response = supabaseConfig.httpClient.post(sharedContentMessagesUrl(destination, scopeId)) {
+            localHeaders(accessToken)
+            contentType(ContentType.Application.Json)
+            setBody(SharedContentSend(messageId, note, reference))
+        }
+        val body = response.bodyAsText()
+        if (!response.status.isSuccess()) throw toException(response, decodeError(body))
+        val message = json.decodeFromString<SharedContentReceipt>(body).message
+        check(message.id.equals(messageId, ignoreCase = true) && message.contentType == conectate.com.data.model.SHARED_MESSAGE_TYPE) {
+            "El servidor no confirmó la referencia de la publicación."
+        }
+        conectate.com.core.messaging.messageSendConfirmation(synced = true, status = message.status,
+            deletedForAll = message.deletedForAll).getOrThrow()
+    }
+
+    internal suspend fun resolveSharedPostMessage(
+        accessToken: String,
+        destination: conectate.com.data.model.SharedMessageDestination,
+        scopeId: String,
+        messageId: String,
+    ): conectate.com.data.model.SharedMessagePreview {
+        val response = supabaseConfig.httpClient.get("${sharedContentMessagesUrl(destination, scopeId)}/${urlEncode(messageId)}/shared-content") {
+            localHeaders(accessToken)
+        }
+        val body = response.bodyAsText()
+        if (!response.status.isSuccess()) throw toException(response, decodeError(body))
+        return json.decodeFromString<conectate.com.data.model.SharedMessagePreview>(body)
+    }
+
     suspend fun sendChatMessage(
         accessToken: String,
         chatId: String,
@@ -6733,6 +6810,7 @@ class LocalFallbackApiClient @Inject constructor(
             "ONLY_ADMINS_CAN_TALK" -> Exception("Solo los administradores pueden escribir en esta comunidad.")
             "COMMUNITY_OWNER_ROLE_REQUIRED" -> Exception("Solo quien creó la comunidad puede asignar o quitar administradores.")
             "NOT_FOUND" -> BackendRouteUnavailableException()
+            "SHARED_CONTENT_NOT_AVAILABLE" -> conectate.com.data.model.SharedMessageUnavailable()
             "VIDEO_NOT_FOUND", "VIDEOS_NOT_FOUND" ->
                 Exception("Este video ya no está disponible o no tienes acceso.")
             "INVALID_RECOVERY_CODE" ->

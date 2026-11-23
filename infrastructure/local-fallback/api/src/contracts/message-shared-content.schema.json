@@ -1,14 +1,25 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Novvin message shared content",
-  "description": "Supply sharedContent on a native message POST with a stable UUID and optional note in content. The server uses content_type shared_content. History, delivery and receipts carry the message ID and note, not the source reference or preview. Resolve on GET /v1/data/messages/{chats|groups|communities}/{scopeId}/messages/{messageId}/shared-content. Inaccessible or missing messages and sources return 404 without preview; responses are not cacheable.",
+  "description": "Supply sharedContent on a native message POST with a stable UUID and optional sharedNote (or legacy content, never both). sharedNote avoids sending an ordinary text message if a legacy server receives the request. History, delivery and receipts carry the message ID and note, not the source reference or preview. Resolve on GET /v1/data/messages/{chats|groups|communities}/{scopeId}/messages/{messageId}/shared-content. Inaccessible or missing messages and sources return 404 without preview; responses are not cacheable.",
   "$defs": {
+    "capabilities": {
+      "description": "Authenticated GET /v1/data/messages/shared-content/capabilities. A legacy 404 NOT_FOUND permits link delivery before any typed write is attempted.",
+      "type": "object",
+      "required": ["version", "kinds"],
+      "properties": {
+        "version": { "const": 1 },
+        "kinds": { "type": "array", "uniqueItems": true, "items": { "enum": ["post"] } }
+      }
+    },
     "messageFields": {
-      "description": "Same content and sharedContent are required for a replay using the same message ID. The destination and channel use the existing message route fields.",
+      "description": "Same note and sharedContent are required for a replay using the same message ID. The destination and channel use the existing message route fields.",
       "type": "object",
       "required": ["sharedContent"],
+      "not": { "required": ["content", "sharedNote"] },
       "properties": {
         "sharedContent": { "$ref": "#/$defs/reference" },
+        "sharedNote": { "type": "string", "maxLength": 800 },
         "content": { "type": "string", "maxLength": 800 },
         "contentType": { "const": "shared_content" }
       }

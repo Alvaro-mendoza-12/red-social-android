@@ -71,6 +71,25 @@ class ShareBatchJournalTest {
         assertEquals(1, folder.listFiles()!!.count { it.name.endsWith(".json") })
     }
 
+    @Test fun aTypedPostRetryCannotBecomeAnOrdinaryLink() = runBlocking {
+        val folder = temporary.newFolder()
+        val original = ShareBatchItem("content", chat, ShareOutgoingContent.Reference(
+            conectate.com.data.model.SharedMessageReference.post("Post-Abc123"), "Nota"))
+        val calls = mutableListOf<Pair<ShareBatchItem, String>>()
+        ShareBatchDelivery(0, ShareBatchJournal(folder)).send("post", "a", listOf(original), {}, { _, _ -> }) { row, id, _ ->
+            calls += row to id
+            Result.failure(IOException("Lost acknowledgement"))
+        }
+        val fallback = original.copy(content = ShareOutgoingContent.Text("a legacy link"))
+        val result = ShareBatchDelivery(0, ShareBatchJournal(folder)).send("post", "a", listOf(fallback), {}, { _, _ -> }) { row, id, _ ->
+            calls += row to id
+            Result.success(row.destination)
+        }
+        assertEquals(1, result.accepted)
+        assertEquals(listOf(original, original), calls.map { it.first })
+        assertEquals(calls.first().second, calls.last().second)
+    }
+
     @Test fun acceptedQueueHandoffIsSavedBeforeAUiCallbackCancelsDelivery() = runBlocking {
         val folder = temporary.newFolder(); val journal = ShareBatchJournal(folder)
         val original = temporary.newFile("queued.pptx").apply { writeBytes(ByteArray(100) { 1 }) }

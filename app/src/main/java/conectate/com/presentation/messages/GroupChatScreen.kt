@@ -659,6 +659,8 @@ fun GroupChatScreen(
                                                 navController.navigate(conectate.com.presentation.navigation.Screen.VideoPlayer.createRoute(id))
                                             }
                                         },
+                                        sharedPostDestination = conectate.com.data.model.SharedMessageDestination.Group,
+                                        onSharedPostClick = { id -> navController.navigate(conectate.com.presentation.navigation.Screen.PostDetail.createRoute(id)) },
                                         currentUserId = currentUserId,
                                         onReactionClick = { emoji ->
                                             viewModel.reactToMessage(msg, emoji)

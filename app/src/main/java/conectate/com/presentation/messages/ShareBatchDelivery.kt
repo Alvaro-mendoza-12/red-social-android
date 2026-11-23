@@ -1,6 +1,7 @@
 package conectate.com.presentation.messages
 
 import conectate.com.util.IncomingSharedItem
+import conectate.com.data.model.SharedMessageReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -9,6 +10,7 @@ import java.util.UUID
 
 internal sealed interface ShareOutgoingContent {
     data class Text(val content: String) : ShareOutgoingContent
+    data class Reference(val source: SharedMessageReference, val note: String) : ShareOutgoingContent
     data class Attachment(val item: IncomingSharedItem, val content: String) : ShareOutgoingContent
     data class Forward(val source: ForwardMessagePayload) : ShareOutgoingContent
 }

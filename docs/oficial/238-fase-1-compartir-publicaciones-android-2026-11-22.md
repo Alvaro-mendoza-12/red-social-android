@@ -1,0 +1,14 @@
+# 238 · Fase 1: compartir publicaciones desde Android
+
+22 de noviembre de 2026. Continuación del [contrato de API 237](237-fase-1-referencias-de-publicaciones-api-2026-11-22.md). Este bloque cubre publicaciones de Android; no declara terminada la Fase 1.
+
+- El modal existente congela una referencia `post`, nota y destinos en el mismo diario de envíos. Mantiene el identificador estable y exige el acuse del mismo mensaje, con el tipo y el estado confirmados. No usa el outbox de texto para un envío tipado. Recuperar un lote no cambia su contenido ni repite los destinos confirmados.
+- Android pregunta por una capacidad autenticada antes de congelar el lote. Una versión conocida que no tiene la ruta conserva el envío anterior por enlace. Una caída o respuesta ambigua no autoriza esa degradación. La nota de una referencia viaja en `sharedNote`, no en `content`: una API antigua que reciba el POST después de comprobar la capacidad no puede guardarla como si fuera un texto normal. La API de esta entrega conserva también el campo anterior para los consumidores de 237.
+- Los chats directos, grupos y comunidades reutilizan la misma tarjeta. La vista previa se pide al tocar el botón y no se guarda en Room. Abrir la publicación vuelve a consultar la autorización; si el acceso cambió, la tarjeta no navega. Cambiar la visita de cuenta invalida la respuesta. En vez de reenviar un `shared_content` como texto, Android indica que se vuelva a compartir desde la publicación original.
+- No hay cambios de esquema desde 237 ni dependencias nuevas en este bloque. No se publica un APK, no se toca Ubuntu, no se implementan Juegos y no se modifican la navegación compartida ni las ediciones ajenas.
+
+## Comprobación y límites
+
+- API: 13 resultados de regresión local aprobados, cero fallos y omisiones; dos resultados del archivo de integración repetidos en PostgreSQL nativo 16.9 aislado. Incluye comprobación de capacidad, envíos por los tres destinos y equivalencia de la nota histórica con la nueva, sin una segunda fila.
+- Android: Gradle compiló Kotlin, Java y Hilt y ejecutó **52 pruebas JVM, cero fallos y omisiones**, en cinco clases con casos efectivos. Incluye tres pruebas de transporte (Ktor con respuestas controladas), persistencia de la referencia e ID ante pérdida de acuse, recuperación de lotes y destinos de navegación. La primera tanda detectó y corrigió un argumento de confirmación antes de ejecutar la selección final. Se preservaron los cambios ajenos presentes en el worktree de compilación, que no forman parte de este commit.
+- Pendientes de la fase: visualización y envío con dos sesiones reales, actualización a través del gateway real, otros tipos de contenido, reenvío tipado, contactos frecuentes, paridad web y revisión completa de emisores. No se considera que una prueba JVM sustituya un recorrido físico.

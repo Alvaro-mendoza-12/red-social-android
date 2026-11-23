@@ -4,12 +4,15 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.UpdateProfileRequest
+import conectate.com.data.model.SharedMessageReference
+import conectate.com.data.model.SharedMessageDestination
 import conectate.com.data.repository.AuthRepository
 import conectate.com.data.repository.CommunityRepository
 import conectate.com.data.repository.GroupRepository
 import conectate.com.data.repository.MessageRepository
 import conectate.com.data.repository.MomentRepository
 import conectate.com.data.repository.PostRepository
+import conectate.com.data.repository.SharedMessageRepository
 import conectate.com.data.repository.UserRepository
 import conectate.com.util.IncomingShareKind
 import conectate.com.util.IncomingSharePayload
@@ -43,6 +46,7 @@ class ShareDestinationViewModel @Inject internal constructor(
     private val momentRepository: MomentRepository,
     private val userRepository: UserRepository,
     private val shareJournal: ShareBatchJournal,
+    private val sharedMessages: SharedMessageRepository,
 ) : ViewModel() {
 
     private val requests = ShareRequestSession(viewModelScope, authRepository::captureAccountLease) { error ->
@@ -209,8 +213,24 @@ class ShareDestinationViewModel @Inject internal constructor(
     fun shareInternalVideo(request: InternalVideoShareRequest, targets: List<ShareDestination>, caption: String) =
         shareInternalContent(request.requestId, conectate.com.data.model.videoWebLink(request.video.id), targets, caption)
 
-    fun shareInternalPost(request: InternalPostShareRequest, targets: List<ShareDestination>, caption: String) =
-        shareInternalContent(request.requestId, conectate.com.presentation.navigation.postShareLink(request.post.id), targets, caption)
+    fun shareInternalPost(request: InternalPostShareRequest, targets: List<ShareDestination>, caption: String) {
+        sharedTextError(caption, internalContent = true)?.let { requests.fail(request.requestId, it); return }
+        val reference = try { SharedMessageReference.post(request.post.id) } catch (_: IllegalArgumentException) {
+            requests.fail(request.requestId, "La publicación no tiene una referencia válida.")
+            return
+        }
+        val note = caption.trim()
+        val plan = targets.distinctBy { it.key }.map {
+            ShareBatchItem("content", it, ShareOutgoingContent.Reference(reference, note))
+        }
+        sendBatch(request.requestId, plan, prepare = { account ->
+            // Negotiate only before freezing. An uncertain typed write must never become a text retry.
+            if (sharedMessages.supportsPostShares(account)) plan else plan.map { item ->
+                item.copy(content = ShareOutgoingContent.Text(conectate.com.presentation.navigation.postShareLink(reference.id) +
+                    note.takeIf(String::isNotBlank)?.let { "\n$it" }.orEmpty()))
+            }
+        })
+    }
 
     private fun shareInternalContent(requestId: String, link: String, targets: List<ShareDestination>, caption: String) {
         sharedTextError(caption, internalContent = true)?.let { requests.fail(requestId, it); return }
@@ -251,14 +271,19 @@ class ShareDestinationViewModel @Inject internal constructor(
         } })
     }
 
-    private fun sendBatch(requestId: String, items: List<ShareBatchItem>, openWhenQueued: Boolean = false) {
+    private fun sendBatch(requestId: String, items: List<ShareBatchItem>, openWhenQueued: Boolean = false,
+        prepare: suspend (conectate.com.data.supabase.AuthSessionLease) -> List<ShareBatchItem> = { items },
+    ) {
         if (recovery.state.value.requestId != requestId || recovery.state.value.blocked) return
         if (items.isEmpty() || items.map { it.destination.key }.distinct().size > MAX_FORWARD_DESTINATIONS || items.size > MAX_FORWARD_OPERATIONS) {
             requests.fail(requestId, "Selecciona destinos y hasta $MAX_FORWARD_OPERATIONS envíos por lote.")
             return
         }
         requests.start(requestId, items.size) { ticket ->
-            val result = try { batch.send(requestId, checkNotNull(ticket.account.accountId), items,
+            val result = try {
+                val prepared = prepare(ticket.account)
+                requests.requireCurrent(ticket)
+                batch.send(requestId, checkNotNull(ticket.account.accountId), prepared,
                 requireCurrent = { requests.requireCurrent(ticket) },
                 onProgress = { completed, total -> requests.report(ticket, ShareActionState.Running(completed, total)) },
                 onQueued = { target -> if (openWhenQueued) requests.report(ticket, ShareActionState.Queued(target, requestId)) },
@@ -294,6 +319,15 @@ class ShareDestinationViewModel @Inject internal constructor(
         } else item.destination
         val result = when (val content = item.content) {
             is ShareOutgoingContent.Text -> sendText(account, destination, content.content, messageId)
+            is ShareOutgoingContent.Reference -> {
+                val scope = when (destination.type) {
+                    ShareDestinationType.CHAT -> SharedMessageDestination.Chat
+                    ShareDestinationType.GROUP -> SharedMessageDestination.Group
+                    ShareDestinationType.COMMUNITY -> SharedMessageDestination.Community
+                }
+                sharedMessages.sendPost(account, scope, destination.id, messageId, content.source, content.note)
+                Result.success(Unit)
+            }
             is ShareOutgoingContent.Attachment -> sendMedia(account, destination, content.item, content.content, messageId, onQueued)
             is ShareOutgoingContent.Forward -> forwardOne(account, content.source, destination, messageId)
         }

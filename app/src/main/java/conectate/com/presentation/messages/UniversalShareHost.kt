@@ -206,6 +206,7 @@ fun UniversalShareHost(
                     recovery.plan.firstOrNull()?.content?.let { content ->
                         Text(when (content) {
                             is ShareOutgoingContent.Text -> content.content
+                            is ShareOutgoingContent.Reference -> content.note.ifBlank { "Publicación compartida" }
                             is ShareOutgoingContent.Attachment -> "${content.item.displayName ?: "Archivo"}\n${content.content}"
                             is ShareOutgoingContent.Forward -> content.source.preview
                         }, maxLines = 4, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))

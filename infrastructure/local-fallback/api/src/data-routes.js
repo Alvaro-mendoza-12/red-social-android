@@ -11859,9 +11859,10 @@ function registerDataRoutes(app, {
       ) {
         return res.status(400).json({ error: 'INVALID_MESSAGE_PAYLOAD' })
       }
-      const content = String(req.body?.content || '').trim().slice(0, 16_000)
       const requestedId = validUuid(req.body?.id || req.body?.clientMessageId || req.body?.client_message_id)
-      const sharedContent = parseSharedMessage(req.body, requestedId)
+      const sharedMessage = parseSharedMessage(req.body, requestedId)
+      const sharedContent = sharedMessage?.reference
+      const content = sharedMessage?.note ?? String(req.body?.content || '').trim().slice(0, 16_000)
       const contentType = sharedContent ? SHARED_MESSAGE_TYPE : String(req.body?.contentType || 'text').trim().slice(0, 40) || 'text'
       if (contentType.toLowerCase().startsWith('system_')) return res.status(400).json({ error: 'RESERVED_MESSAGE_TYPE' })
       if (contentType === 'raffle') return res.status(400).json({ error: 'RAFFLE_CREATE_ENDPOINT_REQUIRED' })
@@ -14667,9 +14668,10 @@ function registerDataRoutes(app, {
       ) {
         return res.status(400).json({ error: 'INVALID_MESSAGE_PAYLOAD' })
       }
-      const content = String(req.body?.content || '').trim().slice(0, 16_000)
       const requestedId = validUuid(req.body?.id || req.body?.clientMessageId || req.body?.client_message_id)
-      const sharedContent = parseSharedMessage(req.body, requestedId)
+      const sharedMessage = parseSharedMessage(req.body, requestedId)
+      const sharedContent = sharedMessage?.reference
+      const content = sharedMessage?.note ?? String(req.body?.content || '').trim().slice(0, 16_000)
       const contentType = sharedContent ? SHARED_MESSAGE_TYPE : String(req.body?.contentType || 'text').trim().slice(0, 40) || 'text'
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
       const thumbnailUrl = String(req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim()
