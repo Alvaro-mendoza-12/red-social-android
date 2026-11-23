@@ -11,18 +11,25 @@ test('authenticated reaction HTTP writes are atomic and independent of optional 
   const db = new PGlite()
   t.after(() => db.close())
   await db.exec(`
-    CREATE TABLE fallback_posts(id text PRIMARY KEY, user_id text, visibility text);
+    CREATE TABLE fallback_posts(id text PRIMARY KEY, user_id text, visibility text,
+      user_name text DEFAULT 'Author', user_profile_image text, content text DEFAULT '', media_url text, media_urls text[],
+      media_type text, survey_id text, remix_allowed boolean DEFAULT false, remix_audience text, remix_revoked_at timestamptz,
+      remix_source_post_id text, remix_root_post_id text, remix_source_user_id text, remix_source_user_name text,
+      remix_depth int DEFAULT 0, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
     CREATE TABLE fallback_follows(id text PRIMARY KEY DEFAULT gen_random_uuid()::text,
       follower_id text, following_id text, created_at timestamptz DEFAULT now());
     CREATE TABLE fallback_post_reactions(post_id text, user_id text, reaction_type text,
       created_at timestamptz, updated_at timestamptz, is_deleted boolean,
       PRIMARY KEY (post_id, user_id));
     CREATE TABLE fallback_shares(id text, post_id text, user_id text, content_type text, created_at timestamptz);
+    CREATE TABLE survey_responses(campaign_id text, removed_at timestamptz, expires_at timestamptz);
+    CREATE TABLE fallback_post_comments(id text, post_id text, user_id text, content text, parent_id text,
+      media_url text, media_type text, created_at timestamptz, updated_at timestamptz, is_deleted boolean);
     CREATE SCHEMA supabase_import;
     CREATE TABLE supabase_import.posts(id text, user_id text, visibility text);
-    INSERT INTO fallback_posts VALUES ('public-post', 'owner', 'public'),
+    INSERT INTO fallback_posts(id, user_id, visibility) VALUES ('public-post', 'owner', 'public'),
       ('private-post', 'owner', 'private'), ('followers-post', 'owner', 'followers'),
-      ('atomic-post', 'owner', 'public'), ('retry-post', 'owner', 'public');
+      ('atomic-post', 'owner', 'public'), ('retry-post', 'owner', 'public'), ('lost-response', 'owner', 'public');
     INSERT INTO supabase_import.posts VALUES ('ImPoRtEd-PoSt', 'owner', 'public');
     INSERT INTO fallback_follows(follower_id,following_id) VALUES ('viewer-alias','owner');
   `)
@@ -46,6 +53,20 @@ test('authenticated reaction HTTP writes are atomic and independent of optional 
   } }
   const app = express()
   app.use(express.json())
+  app.use((req, res, next) => {
+    if (req.get('X-Fixture-Drop-Ack') === '1') {
+      // The routes have committed by the time they send their success receipt.
+      const original = res.json.bind(res)
+      res.json = body => {
+        if (res.statusCode === 200 && body?.ok === true) {
+          req.socket.destroy()
+          return res
+        }
+        return original(body)
+      }
+    }
+    next()
+  })
   registerDataRoutes(app, { pool, authRequired(req, res, next) {
     const token = req.get('Authorization')
     const user = token === 'Bearer viewer' ? { id: 'viewer', supabase_user_id: 'viewer-alias' }
@@ -137,5 +158,31 @@ test('authenticated reaction HTTP writes are atomic and independent of optional 
       assert.deepEqual(await response.json(), { ok: true, post: null })
       assert.equal((await read('public-post')).find(row => !row.is_deleted).reaction_type, 'FIRE')
     } finally { failShares = false }
+  })
+  await t.test('read confirms a committed reaction after the HTTP receipt was dropped', async () => {
+    const base = `http://127.0.0.1:${server.address().port}/v1/data/feed/posts/lost-response`
+    const headers = {
+      Authorization: 'Bearer viewer',
+      'X-Fixture-Drop-Ack': '1',
+      'Content-Type': 'application/json',
+    }
+    const readAs = user => fetch(base, { headers: { Authorization: 'Bearer ' + user } })
+    await assert.rejects(fetch(base + '/reaction?response=minimal', {
+      method: 'POST', headers, body: JSON.stringify({ reactionType: 'LOVE' })
+    }), TypeError)
+    const receipt = await readAs('viewer')
+    assert.equal(receipt.status, 200)
+    const confirmed = (await receipt.json()).post
+    assert.equal(confirmed.my_reaction, 'LOVE')
+    assert.equal(confirmed.reaction_counts.LOVE, 1)
+    const stranger = await readAs('stranger')
+    assert.equal(stranger.status, 200)
+    assert.equal((await stranger.json()).post.my_reaction, null)
+    assert.equal((await read('lost-response')).filter(row => !row.is_deleted).length, 1)
+    await assert.rejects(fetch(base + '/reaction?response=minimal', { method: 'DELETE', headers }), TypeError)
+    const removal = await readAs('viewer')
+    assert.equal(removal.status, 200)
+    assert.equal((await removal.json()).post.my_reaction, null)
+    assert.ok((await read('lost-response')).every(row => row.is_deleted))
   })
 })

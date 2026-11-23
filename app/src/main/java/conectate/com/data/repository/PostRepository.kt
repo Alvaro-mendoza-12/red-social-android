@@ -1019,13 +1019,17 @@ class PostRepository @Inject constructor(
             val normalizedReaction = normalizePostReaction(reactionType)
 
             if (usesLocalFallbackBackend()) {
-                val result = localFallbackApiClient.setPostReaction(accessToken, postId, normalizedReaction)
+                val response = localFallbackApiClient.setPostReaction(accessToken, postId, normalizedReaction)
+                val result = confirmPostReactionWrite(response, postId, normalizedReaction) {
+                    lease.requireCurrent()
+                    localFallbackApiClient.loadPostDetail(accessToken, postId).map { it.post }
+                }
+                lease.requireCurrent()
                 if (result.isSuccess) {
                     confirmCachedReaction(lease, postId, normalizedReaction)
                     invalidateGlobalPostCache()
-                    return Result.success(Unit)
                 }
-                return Result.failure(result.exceptionOrNull() ?: Exception("No se pudo guardar la reacción en Ubuntu"))
+                return result
             }
 
             if (normalizedReaction == null) {
