@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-23T01:16:01.725216+00:00",
-  "baseCommit": "e45bf56b7fbc613fb9704f2f167d6a5380abace1",
+  "generatedAtUtc": "2026-11-23T18:09:46.551901+00:00",
+  "baseCommit": "5aeff1218b081994d07d2ce670cc4b9ff8e2d182",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10431,7 +10431,7 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/SharedPostMessageCard.kt",
       "phase": "android",
-      "gitBlobId": "c717efea1bf1df210d3aed57b604fde50b611d4c",
+      "gitBlobId": "d1c75abed197f6082b8a42e7a7af2e22aebf456f",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

@@ -56,48 +56,49 @@ internal fun SharedPostMessageCard(
     val latestEnabled by rememberUpdatedState(enabled)
     key(destination, scopeId, messageId, visit, currentUserId) {
         val owner = remember { repository.captureAccount() }
-        if (!owner.accountId.equals(currentUserId, ignoreCase = true) || !owner.isCurrent()) return@key
-        val scope = rememberCoroutineScope()
-        var state by remember { mutableStateOf<SharedPostCardState>(SharedPostCardState.Initial) }
-        val visible = (state as? SharedPostCardState.Available)?.preview
-        Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface) {
-            Column(Modifier.padding(8.dp)) {
-                Text(visible?.title ?: "Publicación compartida", style = MaterialTheme.typography.titleSmall)
-                when (state) {
-                    SharedPostCardState.Loading -> Text("Comprobando acceso…")
-                    SharedPostCardState.Unavailable -> Text("La publicación ya no está disponible para esta cuenta.")
-                    SharedPostCardState.Failed -> Text("No se pudo comprobar el acceso. Reintenta.")
-                    else -> if (!visible?.summary.isNullOrBlank()) {
-                        Text(visible!!.summary, maxLines = 4, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-                if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodyMedium)
-                TextButton(
-                    enabled = enabled && state != SharedPostCardState.Loading,
-                    onClick = {
-                        if (!latestEnabled || state == SharedPostCardState.Loading || !owner.isCurrent()) return@TextButton
-                        val open = state is SharedPostCardState.Available
-                        state = SharedPostCardState.Loading
-                        scope.launch {
-                            try {
-                                val preview = repository.resolve(owner, destination, scopeId, messageId)
-                                owner.requireCurrent()
-                                state = SharedPostCardState.Available(preview)
-                                if (open && latestEnabled) {
-                                    state = SharedPostCardState.Initial
-                                    latestOpen(preview.reference.id)
-                                }
-                            } catch (cancelled: CancellationException) { throw cancelled }
-                            catch (_: SharedMessageUnavailable) { if (owner.isCurrent()) state = SharedPostCardState.Unavailable }
-                            catch (_: Exception) { if (owner.isCurrent()) state = SharedPostCardState.Failed }
+        if (owner.accountId.equals(currentUserId, ignoreCase = true) && owner.isCurrent()) {
+            val scope = rememberCoroutineScope()
+            var state by remember { mutableStateOf<SharedPostCardState>(SharedPostCardState.Initial) }
+            val visible = (state as? SharedPostCardState.Available)?.preview
+            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.padding(8.dp)) {
+                    Text(visible?.title ?: "Publicación compartida", style = MaterialTheme.typography.titleSmall)
+                    when (state) {
+                        SharedPostCardState.Loading -> Text("Comprobando acceso…")
+                        SharedPostCardState.Unavailable -> Text("La publicación ya no está disponible para esta cuenta.")
+                        SharedPostCardState.Failed -> Text("No se pudo comprobar el acceso. Reintenta.")
+                        else -> if (!visible?.summary.isNullOrBlank()) {
+                            Text(visible!!.summary, maxLines = 4, overflow = TextOverflow.Ellipsis)
                         }
-                    },
-                ) {
-                    Text(when (state) {
-                        is SharedPostCardState.Available -> "Abrir publicación"
-                        SharedPostCardState.Failed, SharedPostCardState.Unavailable -> "Reintentar"
-                        else -> "Ver publicación compartida"
-                    })
+                    }
+                    if (note.isNotBlank()) Text(note, style = MaterialTheme.typography.bodyMedium)
+                    TextButton(
+                        enabled = enabled && state != SharedPostCardState.Loading,
+                        onClick = {
+                            if (!latestEnabled || state == SharedPostCardState.Loading || !owner.isCurrent()) return@TextButton
+                            val open = state is SharedPostCardState.Available
+                            state = SharedPostCardState.Loading
+                            scope.launch {
+                                try {
+                                    val preview = repository.resolve(owner, destination, scopeId, messageId)
+                                    owner.requireCurrent()
+                                    state = SharedPostCardState.Available(preview)
+                                    if (open && latestEnabled) {
+                                        state = SharedPostCardState.Initial
+                                        latestOpen(preview.reference.id)
+                                    }
+                                } catch (cancelled: CancellationException) { throw cancelled }
+                                catch (_: SharedMessageUnavailable) { if (owner.isCurrent()) state = SharedPostCardState.Unavailable }
+                                catch (_: Exception) { if (owner.isCurrent()) state = SharedPostCardState.Failed }
+                            }
+                        },
+                    ) {
+                        Text(when (state) {
+                            is SharedPostCardState.Available -> "Abrir publicación"
+                            SharedPostCardState.Failed, SharedPostCardState.Unavailable -> "Reintentar"
+                            else -> "Ver publicación compartida"
+                        })
+                    }
                 }
             }
         }
