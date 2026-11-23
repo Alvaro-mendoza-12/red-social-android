@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { ShareVideoDialog } from '../../components/ShareVideoDialog'
 import { ForwardMessagesDialog } from '../../components/ForwardMessagesDialog'
+import { invalidateStorageReadIdentity, updateStorageReadIdentity } from '../../core/media/storageReadSession'
 import { loadFallbackMessagesInbox, sendFallbackChatMessage } from '../../core/fallbackData'
 
 jest.mock('../../core/fallbackData', () => ({ loadFallbackMessagesInbox: jest.fn(), sendFallbackChatMessage: jest.fn(), sendFallbackRoomMessage: jest.fn() }))
@@ -12,9 +13,12 @@ beforeAll(() => {
 })
 afterAll(() => { HTMLDialogElement.prototype.showModal = show; HTMLDialogElement.prototype.close = close })
 beforeEach(() => {
-  jest.clearAllMocks()
+  jest.resetAllMocks()
+  updateStorageReadIdentity('fixture-account', 'fallback')
   ;(loadFallbackMessagesInbox as jest.Mock).mockImplementation(async (tab: string) => ({ items: tab === 'chats' ? [{ id: 'recipient', kind: 'chat', title: 'Amiga', isMember: true }] : [] }))
 })
+
+afterEach(() => invalidateStorageReadIdentity())
 
 describe.each(['share', 'forward'])('%s dialog', kind => {
   function mount(onClose: () => void) {
@@ -41,4 +45,44 @@ describe.each(['share', 'forward'])('%s dialog', kind => {
     expect(onClose).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: /Cerrar/ })).toBeDisabled()
   })
+
+  test('closing the active session hides the old dialog', async () => {
+    const onClose = jest.fn()
+    mount(onClose)
+    await screen.findByRole('button', { name: /Amiga/ })
+
+    act(() => invalidateStorageReadIdentity())
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  test('changing sessions stops the remaining sends in an open batch', async () => {
+    jest.mocked(loadFallbackMessagesInbox).mockImplementation(async tab => ({
+      items: tab === 'chats' ? [
+        { id: 'first-chat', kind: 'chat', title: 'Primera conversación', isMember: true },
+        { id: 'second-chat', kind: 'chat', title: 'Segunda conversación', isMember: true },
+      ] : [],
+    }) as Awaited<ReturnType<typeof loadFallbackMessagesInbox>>)
+    let finishFirst: () => void
+    jest.mocked(sendFallbackChatMessage).mockImplementationOnce(() => new Promise(resolve => {
+      finishFirst = () => resolve({ message: { id: 'fixture-message' } })
+    }))
+    const onClose = jest.fn()
+    mount(onClose)
+    fireEvent.click(await screen.findByRole('button', { name: /Primera conversación/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Segunda conversación/ }))
+    fireEvent.click(screen.getByRole('button', { name: kind === 'share' ? 'Enviar (2)' : 'Reenviar a 2' }))
+    expect(sendFallbackChatMessage).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      updateStorageReadIdentity('another-fixture-account', 'fallback')
+      finishFirst()
+    })
+
+    expect(sendFallbackChatMessage).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
 })

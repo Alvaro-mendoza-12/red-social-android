@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { getStorageReadIdentity, requireStorageReadIdentity } from '../core/media/storageReadSession'
+import { useShareSession } from './useShareSession'
 import { loadFallbackMessagesInbox, sendFallbackChatMessage, sendFallbackRoomMessage, type FallbackInboxItem } from '../core/fallbackData'
 import { dedupeInboxConversations } from '../features/messages/conversationInboxSupport'
 import { friendlyError } from '../core/utils'
@@ -15,32 +17,43 @@ export function ForwardMessagesDialog({ messages, onClose, mode = 'forward' }: {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const completed = useRef(new Set<string>())
+  const { owner, sessionActive } = useShareSession(onClose)
   const key = (item: FallbackInboxItem) => `${item.kind}/${item.id}`
   useEffect(() => {
+    if (!sessionActive) return
     let active = true
+    const canPublish = () => active && owner === getStorageReadIdentity()
     void Promise.all(['chats', 'groups', 'communities'].map(loadFallbackMessagesInbox)).then(results => {
-      if (active) setItems(dedupeInboxConversations(results.flatMap(value => value.items).filter(item => ['chat', 'group', 'community'].includes(item.kind) && item.isMember !== false)))
-    }).catch(caught => { if (active) setError(friendlyError(caught, 'No se pudieron cargar tus conversaciones.')) }).finally(() => { if (active) setLoading(false) })
+      if (canPublish()) setItems(dedupeInboxConversations(results.flatMap(value => value.items).filter(item => ['chat', 'group', 'community'].includes(item.kind) && item.isMember !== false)))
+    }).catch(caught => { if (canPublish()) setError(friendlyError(caught, 'No se pudieron cargar tus conversaciones.')) }).finally(() => { if (canPublish()) setLoading(false) })
     return () => { active = false }
-  }, [])
+  }, [owner, sessionActive])
   async function send() {
-    if (busy || !selected.size || !eligible.length) return
+    if (!sessionActive || busy || !selected.size || !eligible.length) return
     setBusy(true); setError('')
     try {
       for (const target of items.filter(item => selected.has(key(item)))) {
         for (const message of eligible) {
           const delivery = `${key(target)}/${message.id}`
           if (completed.current.has(delivery)) continue
+          requireStorageReadIdentity(owner)
           const input = { content: message.content, contentType: message.contentType, mediaUrl: message.mediaUrl, ...(mode === 'forward' ? { isForwarded: true, forwardedFromMessageId: message.id, forwardedFromUserId: message.senderId } : {}) }
           if (target.kind === 'chat') await sendFallbackChatMessage(target.id, input)
           else if (target.kind === 'group' || target.kind === 'community') await sendFallbackRoomMessage(target.kind, target.id, input)
           completed.current.add(delivery)
         }
       }
+      requireStorageReadIdentity(owner)
       onClose()
-    } catch (caught) { setError(friendlyError(caught, 'No se completaron todos los envíos. Al reintentar se enviarán los restantes.')) }
-    finally { setBusy(false) }
+    } catch (caught) {
+      if (owner === getStorageReadIdentity()) {
+        setError(friendlyError(caught, 'No se completaron todos los envíos. Al reintentar se enviarán los restantes.'))
+      }
+    } finally {
+      if (owner === getStorageReadIdentity()) setBusy(false)
+    }
   }
+  if (!sessionActive) return null
   return <PublicationDialog title={mode === 'share' ? 'Enviar invitación' : `Reenviar ${eligible.length} mensaje${eligible.length === 1 ? '' : 's'}`} busy={busy} onClose={onClose}>
       {eligible.length < messages.length ? <p className="muted-line">Los contenidos de una sola vista, eliminados, pendientes y tarjetas interactivas conservan sus restricciones y no se reenvían.</p> : null}
       <input className="text-input" aria-label="Buscar destinatarios" placeholder="Buscar chats, grupos o comunidades" value={query} disabled={busy} onChange={event => setQuery(event.target.value)} />

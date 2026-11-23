@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-23T19:11:03.216034+00:00",
-  "baseCommit": "d01272e170d05a4bc636f7f1037b9fb8c3fa770a",
+  "generatedAtUtc": "2026-11-23T23:17:04.157656+00:00",
+  "baseCommit": "5e4a947ec80d271fcca0f50615027707eb6ac4fd",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,8 +11,8 @@
   },
   "counts": {
     "pending": 3445,
-    "code-read": 1064,
-    "partial": 290
+    "code-read": 1068,
+    "partial": 288
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 617
     },
     "documentation": {
-      "pending": 713,
+      "pending": 714,
       "code-read": 71,
       "partial": 21
     },
@@ -36,9 +36,9 @@
       "partial": 9
     },
     "web": {
-      "partial": 77,
-      "pending": 474,
-      "code-read": 122
+      "partial": 75,
+      "pending": 473,
+      "code-read": 126
     }
   },
   "files": [
@@ -1141,8 +1141,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/ShareDialogs.test.tsx",
       "phase": "web",
-      "gitBlobId": "2af0c8e34a82655c917ff222c3fef935d3a53926",
-      "reviewStatus": "pending"
+      "gitBlobId": "0f8394c8ea2101796f341b68e9a38bbef048c337",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/242-compartir-y-reenviar-por-sesion-web-2026-11-23.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/StickerPicker.test.tsx",
@@ -2361,9 +2363,9 @@
     {
       "file": "NoWing-web/src/components/ForwardMessagesDialog.tsx",
       "phase": "web",
-      "gitBlobId": "a262cb21a071bc0384117cc690fd20c913233e9b",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/114-comparacion-correcciones-dot-2026-11-12.md",
+      "gitBlobId": "a7a12e0b9188fd8868f70c4efdd3b26f93ca94de",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/242-compartir-y-reenviar-por-sesion-web-2026-11-23.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2585,9 +2587,9 @@
     {
       "file": "NoWing-web/src/components/ShareVideoDialog.tsx",
       "phase": "web",
-      "gitBlobId": "8f70c48775998fa71ffc4409f80f1b0008f625e2",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/131-compartidos-publicos-por-contenido-2026-11-13.md",
+      "gitBlobId": "094ae5cef857301f9e84856bbeb4a85a98ea21a8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/242-compartir-y-reenviar-por-sesion-web-2026-11-23.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2800,6 +2802,14 @@
       "gitBlobId": "e67ffdc0941a68d78f2a272551b9836b8dc10409",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/src/components/useShareSession.ts",
+      "phase": "web",
+      "gitBlobId": "163a9e7670ab0e2e3a5e9685122a951375b77d1c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/242-compartir-y-reenviar-por-sesion-web-2026-11-23.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22484,6 +22494,12 @@
       "file": "docs/oficial/241-playmatch-ficha-vigente-y-evaluacion-ajedrez-2026-11-23.md",
       "phase": "documentation",
       "gitBlobId": "24dac4631c97fde5adc69e73718949d554e45bc7",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/242-compartir-y-reenviar-por-sesion-web-2026-11-23.md",
+      "phase": "documentation",
+      "gitBlobId": "9ed73516ec09aa75e236e2bdb1004c18158a9806",
       "reviewStatus": "pending"
     },
     {

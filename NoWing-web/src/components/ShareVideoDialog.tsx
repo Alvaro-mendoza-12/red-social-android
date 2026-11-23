@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { getStorageReadIdentity, requireStorageReadIdentity } from '../core/media/storageReadSession'
+import { useShareSession } from './useShareSession'
 import { loadFallbackMessagesInbox, sendFallbackChatMessage, sendFallbackRoomMessage, type FallbackInboxItem } from '../core/fallbackData'
 import { friendlyError } from '../core/utils'
 import { SafeAvatar } from './SafeAvatar'
@@ -7,22 +9,45 @@ import { dedupeInboxConversations } from '../features/messages/conversationInbox
 import { buildVideoShareUrl } from '../core/socialLinks'
 export function ShareVideoDialog({videoId,title,onClose}:{videoId:string;title:string;onClose:()=>void}){
   const [items,setItems]=useState<FallbackInboxItem[]>([]),[selected,setSelected]=useState<Set<string>>(new Set()),[query,setQuery]=useState(''),[error,setError]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[info,setInfo]=useState('')
+  const { owner, sessionActive } = useShareSession(onClose)
   const url=buildVideoShareUrl(videoId)
   const key=(item:FallbackInboxItem)=>`${item.kind}/${item.id}`
-  useEffect(()=>{let active=true;void Promise.all(['chats','groups','communities'].map(tab=>loadFallbackMessagesInbox(tab))).then(values=>{if(active)setItems(dedupeInboxConversations(values.flatMap(value=>value.items).filter(item=>['chat','group','community'].includes(item.kind)&&item.isMember!==false)))}).catch(e=>{if(active)setError(friendlyError(e,'No se pudieron cargar tus conversaciones.'))}).finally(()=>{if(active)setLoading(false)});return()=>{active=false}},[])
+  useEffect(() => {
+    if (!sessionActive) return
+    let active = true
+    const canPublish = () => active && owner === getStorageReadIdentity()
+    void Promise.all(['chats', 'groups', 'communities'].map(tab => loadFallbackMessagesInbox(tab))).then(values => {
+      if (canPublish()) setItems(dedupeInboxConversations(values.flatMap(value => value.items)
+        .filter(item => ['chat', 'group', 'community'].includes(item.kind) && item.isMember !== false)))
+    }).catch(caught => {
+      if (canPublish()) setError(friendlyError(caught, 'No se pudieron cargar tus conversaciones.'))
+    }).finally(() => {
+      if (canPublish()) setLoading(false)
+    })
+    return () => { active = false }
+  }, [owner, sessionActive])
   async function send(){
-    if(busy||!selected.size)return
+    if (!sessionActive || busy || !selected.size) return
     setBusy(true);setError('');const sent=new Set<string>()
     try{
-      for(const item of items.filter(item=>selected.has(key(item)))){
+      for (const item of items.filter(item => selected.has(key(item)))) {
+        requireStorageReadIdentity(owner)
         const payload={content:`¡Mira este video!\n${url}\n\n${title}`,contentType:'text'}
         if(item.kind==='chat')await sendFallbackChatMessage(item.id,payload)
         else if(item.kind==='group'||item.kind==='community')await sendFallbackRoomMessage(item.kind,item.id,payload)
         sent.add(key(item))
       }
+      requireStorageReadIdentity(owner)
       onClose()
-    }catch(e){setSelected(current=>new Set([...current].filter(id=>!sent.has(id))));setError(friendlyError(e,'No se pudieron preparar todos los envíos. Puedes reintentar los restantes.'))}finally{setBusy(false)}
+    } catch (caught) {
+      if (owner !== getStorageReadIdentity()) return
+      setSelected(current => new Set([...current].filter(id => !sent.has(id))))
+      setError(friendlyError(caught, 'No se pudieron preparar todos los envíos. Puedes reintentar los restantes.'))
+    } finally {
+      if (owner === getStorageReadIdentity()) setBusy(false)
+    }
   }
+  if (!sessionActive) return null
   return <PublicationDialog title="Compartir video" busy={busy} onClose={onClose}>
     <input aria-label="Buscar destinatarios" disabled={busy} className="text-input" placeholder="Buscar chats, grupos o comunidades" value={query} onChange={event=>setQuery(event.target.value)} />
     {loading?<p>Buscando conversaciones…</p>:null}{error?<p role="alert">{error}</p>:null}{info?<p role="status">{info}</p>:null}
