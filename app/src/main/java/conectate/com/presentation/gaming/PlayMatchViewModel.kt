@@ -72,6 +72,7 @@ class PlayMatchViewModel @Inject constructor(
     private var pollingJob: Job? = null
     private var inboxJob: Job? = null
     private var catalogSearchJob: Job? = null
+    private var catalogSelectionJob: Job? = null
     private var homeJob: Job? = null
     private var playerLoadJob: Job? = null
     private var sessionLoadJob: Job? = null
@@ -89,6 +90,7 @@ class PlayMatchViewModel @Inject constructor(
                 pollingJob = null
                 inboxJob = null
                 catalogSearchJob = null
+                catalogSelectionJob = null
                 homeJob = null
                 catalogRequestGeneration++
                 discovery = newDiscovery()
@@ -258,6 +260,7 @@ class PlayMatchViewModel @Inject constructor(
     fun updateCatalogQuery(query: String) {
         val normalized = query.take(100)
         catalogSearchJob?.cancel()
+        catalogSelectionJob?.cancel()
         val generation = ++catalogRequestGeneration
         _state.update {
             it.copy(
@@ -332,9 +335,10 @@ class PlayMatchViewModel @Inject constructor(
     }
 
     fun selectCatalogGame(game: PlayMatchGameCatalogItem) {
+        catalogSelectionJob?.cancel()
         _state.update { it.copy(selectedCatalogGame = game, catalogError = null, isCatalogSelectionLoading = true) }
-        accountTasks.scope.launch {
-            repository.gameConfiguration(game.id).fold(
+        catalogSelectionJob = accountTasks.scope.launch {
+            boundedRequest { repository.gameConfiguration(game.id) }.fold(
                 onSuccess = { response -> _state.update { it.copy(selectedCatalogGame = response.game, isCatalogSelectionLoading = false) } },
                 onFailure = { error -> _state.update { it.copy(isCatalogSelectionLoading = false, catalogError = PlayMatchUiPolicy.safeError(error)) } },
             )

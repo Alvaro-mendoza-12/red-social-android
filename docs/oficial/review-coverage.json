@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-23T19:09:58.224663+00:00",
-  "baseCommit": "3982b06653cbd263a8742253d18b676a1f145f18",
+  "generatedAtUtc": "2026-11-23T19:11:03.216034+00:00",
+  "baseCommit": "d01272e170d05a4bc636f7f1037b9fb8c3fa770a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3444,
-    "code-read": 1063,
+    "pending": 3445,
+    "code-read": 1064,
     "partial": 290
   },
   "countsByPhase": {
     "android": {
       "pending": 1402,
       "partial": 130,
-      "code-read": 616
+      "code-read": 617
     },
     "documentation": {
-      "pending": 712,
+      "pending": 713,
       "code-read": 71,
       "partial": 21
     },
@@ -10675,9 +10675,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchViewModel.kt",
       "phase": "android",
-      "gitBlobId": "d6ce50b0e924723e8a447d57ddf7ef003b7814bc",
+      "gitBlobId": "5c03ecbb16e288afa453a043bd51f99864d3cb8f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/171-cierres-precarga-avatares-y-fondos-2026-11-16.md",
+      "evidence": "docs/oficial/241-playmatch-ficha-vigente-y-evaluacion-ajedrez-2026-11-23.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17295,6 +17295,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/gaming/PlayMatchCatalogSelectionTest.kt",
+      "phase": "android",
+      "gitBlobId": "e067b19c0efb26d7a6801e3209b883de95e49441",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/241-playmatch-ficha-vigente-y-evaluacion-ajedrez-2026-11-23.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/gaming/PlayMatchDecisionRecoveryTest.kt",
       "phase": "android",
       "gitBlobId": "c6976dc9d9b4b04e60d9a4820eb39f53bf43d88a",
@@ -22470,6 +22478,12 @@
       "file": "docs/oficial/240-confirmacion-de-reacciones-con-respuesta-perdida-2026-11-23.md",
       "phase": "documentation",
       "gitBlobId": "b87da685c18bc6fe5145c39890fc0e4ede9bc3be",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/241-playmatch-ficha-vigente-y-evaluacion-ajedrez-2026-11-23.md",
+      "phase": "documentation",
+      "gitBlobId": "24dac4631c97fde5adc69e73718949d554e45bc7",
       "reviewStatus": "pending"
     },
     {
