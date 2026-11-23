@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-22T23:34:19.870273+00:00",
-  "baseCommit": "2d72a166e74c54329c298ba12fca288946c04050",
+  "generatedAtUtc": "2026-11-23T00:31:55.962590+00:00",
+  "baseCommit": "d868f8781ca69b1aeb3f79938fb567e23fa5a45e",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,8 +11,8 @@
   },
   "counts": {
     "pending": 3444,
-    "code-read": 1059,
-    "partial": 281
+    "code-read": 1061,
+    "partial": 283
   },
   "countsByPhase": {
     "android": {
@@ -22,13 +22,13 @@
     },
     "documentation": {
       "pending": 711,
-      "code-read": 69,
+      "code-read": 70,
       "partial": 21
     },
     "server": {
       "pending": 719,
-      "code-read": 211,
-      "partial": 50
+      "code-read": 212,
+      "partial": 52
     },
     "tooling-and-other": {
       "pending": 137,
@@ -22387,6 +22387,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
+      "phase": "documentation",
+      "gitBlobId": "641d4a815cda530319df5bc47cecaf99c613b2eb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "docs/oficial/24-musica-privacidad-y-plan-gamer-hub-2026-09-13.md",
       "phase": "documentation",
       "gitBlobId": "4b6363478b08ea9abd1dec49c858af09a3e904bc",
@@ -24965,6 +24973,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "infrastructure/local-fallback/api/src/contracts/message-shared-content.schema.json",
+      "phase": "server",
+      "gitBlobId": "a72d54234f7ff1bcafb4c7a4502bbd2b9e928943",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/src/conversation-activity-routes.js",
       "phase": "server",
       "gitBlobId": "fee031e0790d6b9741902bac260797734026a1a5",
@@ -25007,9 +25023,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "337bbfb1d3f795202b7acfb5ba1f5c5056309799",
+      "gitBlobId": "5b71291e356b9566d93987b421417bfcea2efccc",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/235-reacciones-y-auditoria-juegos-compartir-2026-11-22.md",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25285,17 +25301,17 @@
     {
       "file": "infrastructure/local-fallback/api/src/message-deletion-policy.js",
       "phase": "server",
-      "gitBlobId": "2f9958e74f8e6d423c0c07d59c12f25ee4fb432a",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "gitBlobId": "8839c2159470579f25dc925eca5b2a01d838f2b5",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/message-insert-store.js",
       "phase": "server",
-      "gitBlobId": "1051d80389296d3c656af95b7849c0414d856090",
+      "gitBlobId": "9fecb2ef1c217db823238c249c1274c887053d6b",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25340,6 +25356,14 @@
       "gitBlobId": "2745786320bbaf915da38cff5ac91f5b9f47475e",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/src/message-shared-content.js",
+      "phase": "server",
+      "gitBlobId": "d34e625402d7e4b6f7835a33833b6aa076f3b31a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25519,9 +25543,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/postgrest-compat-routes.js",
       "phase": "server",
-      "gitBlobId": "20a63d77019e5dca5582cd9417ae250a288b528f",
+      "gitBlobId": "28631002b439c124e18709c921b976abab74389d",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25621,9 +25645,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/push-notifications.js",
       "phase": "server",
-      "gitBlobId": "3d6087898f784e72aafeda63b95bcb6070df65c0",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/219-certificacion-tecnica-breakpoint-caos-seguridad-fuzzing-2026-11-19.md",
+      "gitBlobId": "471447206c8732c86b06eb13587a51a3e8759267",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26469,9 +26493,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/data-routes.test.js",
       "phase": "server",
-      "gitBlobId": "12986fe7c61ab640a61918297d1fed2377f9193e",
+      "gitBlobId": "cf476f7f489535936351175212e0e5b2a494c1dd",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/235-reacciones-y-auditoria-juegos-compartir-2026-11-22.md",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26864,6 +26888,14 @@
       "gitBlobId": "4c54b3f25ad4936689f62aec31467d3955b25603",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/221-223-fortalecimiento-seguridad-rehidratacion-live-rendimiento-soak-release-2026-11-20.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "infrastructure/local-fallback/api/tests/message-shared-content.test.js",
+      "phase": "server",
+      "gitBlobId": "2d36cef0e3d3664a4d558f04f88415b99c6fb239",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/237-fase-1-referencias-de-publicaciones-api-2026-11-22.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

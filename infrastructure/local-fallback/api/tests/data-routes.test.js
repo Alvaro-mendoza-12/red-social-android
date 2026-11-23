@@ -179,7 +179,7 @@ const postReactionWriteSource = dataRoutesSource.slice(
   dataRoutesSource.indexOf('const postReactionHandler ='),
   dataRoutesSource.indexOf("app.post('/v1/data/feed/posts/:postId/share'"),
 )
-assert.match(postReactionWriteSource, /loadPostForReaction\(/)
+assert.match(postReactionWriteSource, /loadVisiblePostForInteraction\(/)
 assert.doesNotMatch(postReactionWriteSource, /loadPostDetailPayload\(/)
 assert.doesNotMatch(postReactionWriteSource, /await createLocalNotificationBestEffort/,
   'a committed like must not wait for notification delivery')

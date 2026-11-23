@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Novvin message shared content",
+  "description": "Supply sharedContent on a native message POST with a stable UUID and optional note in content. The server uses content_type shared_content. History, delivery and receipts carry the message ID and note, not the source reference or preview. Resolve on GET /v1/data/messages/{chats|groups|communities}/{scopeId}/messages/{messageId}/shared-content. Inaccessible or missing messages and sources return 404 without preview; responses are not cacheable.",
+  "$defs": {
+    "messageFields": {
+      "description": "Same content and sharedContent are required for a replay using the same message ID. The destination and channel use the existing message route fields.",
+      "type": "object",
+      "required": ["sharedContent"],
+      "properties": {
+        "sharedContent": { "$ref": "#/$defs/reference" },
+        "content": { "type": "string", "maxLength": 800 },
+        "contentType": { "const": "shared_content" }
+      }
+    },
+    "reference": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["post"] },
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$" }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "required": ["reference", "title", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "reference": { "$ref": "#/$defs/reference" },
+        "title": { "type": "string", "maxLength": 120 },
+        "summary": { "type": "string", "maxLength": 240 }
+      }
+    },
+    "error": {
+      "type": "object",
+      "required": ["error"],
+      "properties": {
+        "error": { "enum": ["SHARED_CONTENT_INVALID", "SHARED_CONTENT_NOT_AVAILABLE", "MESSAGE_ID_CONFLICT"] },
+        "requestId": { "type": "string" }
+      }
+    }
+  },
+  "$ref": "#/$defs/reference"
+}

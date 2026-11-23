@@ -6,6 +6,7 @@ const { getMessaging } = require('firebase-admin/messaging')
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
 const { limitMessagePush } = require('./message-push-limiter')
+const { isSharedMessageType, SHARED_MESSAGE_LABEL } = require('./message-shared-content')
 
 const serviceAccountFile = String(
   process.env.FIREBASE_SERVICE_ACCOUNT_FILE || '/run/secrets/firebase-service-account.json',
@@ -170,12 +171,13 @@ async function sendPushForNotification(pool, notification, extraData = {}) {
           reactions:current.reactions,deleted:current.deleted_for_all,deletedBy:Array.isArray(current.deleted_by)?current.deleted_by:[]}))
           return {sent:0,failed:0,suppressed:true}
       }
-      const persisted = cancellation || reaction ? notification : { ...notification, content: current.content || '' }
+      const preview = isSharedMessageType(current.content_type) ? SHARED_MESSAGE_LABEL : current.content || ''
+      const persisted = cancellation || reaction ? notification : { ...notification, content: preview }
       const authoritativeData = cancellation ? deletionData(scope, current, notification.recipient_id) : reaction ? {
         ...extraData, content: notification.content || '', body: notification.content || '', content_type: 'reaction',
         media_url: '', thumbnail_url: '',
       } : {
-        ...extraData, content: current.content || '', body: current.content || '', content_type: current.content_type || 'text',
+        ...extraData, content: preview, body: preview, content_type: current.content_type || 'text',
         media_url: current.media_url || '', thumbnail_url: current.thumbnail_url || '', media_size: String(current.media_size || 0),
         created_at: current.created_at instanceof Date ? current.created_at.toISOString() : String(current.created_at || ''),
       }

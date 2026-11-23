@@ -1,4 +1,5 @@
 const { randomUUID } = require('node:crypto')
+const { isSharedMessageType } = require('./message-shared-content')
 
 const directColumns = ['id', 'chat_id', 'sender_id', 'content', 'content_type', 'media_url',
   'thumbnail_url', 'media_size', 'reply_to_id', 'poll_id', 'is_forwarded',
@@ -17,6 +18,26 @@ function conflict() {
   return error
 }
 
+function sameSharedContent(previous, reference, content) {
+  return isSharedMessageType(previous.content_type) && previous.shared_content?.kind === reference?.kind &&
+    previous.shared_content?.id === reference?.id && previous.content === content
+}
+
+// Called only after the destination has been authorized. A missing original
+// cannot undo a previously accepted send, but a read of its preview still fails.
+async function findSharedMessageReplay(db, { kind, scopeId, channelId, actorIds, id, reference, content }) {
+  if (!['dm', 'group', 'community'].includes(kind)) return null
+  const direct = kind === 'dm'
+  const { rows } = await db.query(direct
+    ? 'SELECT * FROM fallback_messages WHERE id = $1::uuid AND lower(chat_id) = $2 AND lower(sender_id) = ANY($3::text[])'
+    : `SELECT * FROM fallback_room_messages WHERE id = $1::uuid AND lower(room_id) = $2 AND lower(sender_id) = ANY($3::text[])
+       AND room_kind = $4 AND channel_id IS NOT DISTINCT FROM $5::text`,
+  direct ? [id, scopeId, [...actorIds]] : [id, scopeId, [...actorIds], kind, channelId || null])
+  if (!rows[0]) return null
+  if (!sameSharedContent(rows[0], reference, content)) throw conflict()
+  return rows[0]
+}
+
 /** Call only after the route has authorized the conversation and media references. */
 async function insertMessageOnce(pool, { kind, scopeId, channelId = null, actorIds, message }) {
   if (!['dm', 'group', 'community'].includes(kind)) throw new Error('INVALID_MESSAGE_SCOPE')
@@ -28,7 +49,8 @@ async function insertMessageOnce(pool, { kind, scopeId, channelId = null, actorI
 
   const direct = kind === 'dm'
   const table = direct ? 'fallback_messages' : 'fallback_room_messages'
-  const columns = direct ? directColumns : collectionColumns
+  const shared = isSharedMessageType(message.content_type)
+  const columns = [...(direct ? directColumns : collectionColumns), ...(shared ? ['shared_content'] : [])]
   const row = {
     ...message,
     id: message.id || randomUUID(),
@@ -62,7 +84,9 @@ async function insertMessageOnce(pool, { kind, scopeId, channelId = null, actorI
     direct ? [row.id, scope, owners] : [row.id, scope, owners, kind, row.channel_id],
   )
   if (!existing.rows[0]) throw conflict()
+  const previous = existing.rows[0]
+  if (shared ? !sameSharedContent(previous, row.shared_content, row.content) : isSharedMessageType(previous.content_type)) throw conflict()
   return { message: existing.rows[0], inserted: false }
 }
 
-module.exports = { insertMessageOnce }
+module.exports = { insertMessageOnce, findSharedMessageReplay }

@@ -2,6 +2,7 @@ const { purgeFriendRequestIdentity, visibleLegacyFriends, createNativeFriend, an
 const { visibleFollowRows, setFollowState, publishFollowChange } = require('./follow-store')
 const { loadCollectionMembershipState, collectionHistoryAllows } = require('./collection-membership-policy')
 const { normalizeCompatProfileJson } = require('./compat-profile-json')
+const { includesSharedMessageFields } = require('./message-shared-content')
 const { deleteAccountMusic } = require('./music-library-routes')
 const { scanEnforcementEnabled, readyStorageSql, trustedStorageUrl } = require('./storage-media-reference')
 const scanReadySql = readyStorageSql()
@@ -1657,6 +1658,7 @@ function rejectCommentAudioPatch(tableName, current, patch) {
 }
 
 async function prepareInsertRow(pool, tableName, identity, source) {
+  if (messageTables.has(tableName) && includesSharedMessageFields(source)) throw httpError('RESERVED_MESSAGE_TYPE', 400)
   let row = compactRow(source)
   rejectCommentAudio(tableName, row)
   if (tableName === 'notifications' && isServerManagedNotification(row)) {
@@ -2022,6 +2024,7 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
   }
   if (tableName === 'messages') {
     if (!(await canAccessChat(pool, identity, row.chat_id))) return false
+    if (includesSharedMessageFields(patch)) return false
     if (isDeletedForAll(row)) return action === 'delete' ||
       (identityOwnsRow(identity, row, ['sender_id']) && isRecallPatch(patch)) || isHidePatch(row, patch, identity)
     if (identityOwnsRow(identity, row, ['sender_id'])) return true
@@ -2034,6 +2037,7 @@ async function authorizeMutation(pool, tableName, identity, row, patch, action) 
     const kind = tableName === 'group_messages' ? 'group' : 'community'
     const roomId = row[`${kind}_id`] || row.room_id
     if (!(await canAccessCollection(pool, kind, identity, roomId))) return false
+    if (includesSharedMessageFields(patch)) return false
     const state = await loadCollectionMembershipState(pool, kind, roomId, identity.values)
     if (!collectionHistoryAllows(state.history,row) || row.content_type === 'system_membership' || String(patch?.content_type || '').toLowerCase().startsWith('system_')) return false
     if (isDeletedForAll(row)) return action === 'delete' ||

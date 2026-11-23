@@ -55,7 +55,9 @@ const {
 const { stableKey } = require('./request-security')
 const { safeErrorLogDetails } = require('./request-observability')
 const { isDeletedForAll, redactDeletedMessage, mergeMessageRows, deleteMessageForAll, refreshChatSummary, ensureMessageDeletionTables, processMessageDeletionOutbox } = require('./message-deletion-policy')
-const { insertMessageOnce } = require('./message-insert-store')
+const { insertMessageOnce, findSharedMessageReplay } = require('./message-insert-store')
+const { SHARED_MESSAGE_TYPE, SHARED_MESSAGE_LABEL, isSharedMessageType, parseSharedMessage,
+  postSharePreview, registerSharedMessageRead, withoutStoredReference } = require('./message-shared-content')
 const { insertWithCommunityBudget } = require('./community-message-budget')
 const { createOwnedCollectionRoom, createOwnedCollectionRoomOnce } = require('./collection-room-create-store')
 const { mayReuseMessageMedia } = require('./message-media-access')
@@ -336,6 +338,7 @@ function sortByDateDesc(rows, keys) {
 function previewFromMessage(row) {
   if (isDeletedForAll(row)) return 'Mensaje eliminado'
   const contentType = textOf(row, ['content_type'], '').trim().toLowerCase()
+  if (isSharedMessageType(contentType)) return SHARED_MESSAGE_LABEL
   if (contentType === 'birthday_card') return '🎂 Tarjeta de cumpleaños'
   if (contentType === 'contact') return 'Contacto'
   if (contentType === 'sticker') return 'Sticker'
@@ -475,7 +478,7 @@ function normalizeMessageRow(row) {
     ? normalized.reactions
     : {}
   normalized.is_forwarded = boolOf(normalized, ['is_forwarded', 'isForwarded'], false)
-  return redactDeletedMessage(normalized)
+  return redactDeletedMessage(withoutStoredReference(normalized))
 }
 
 function profileName(row, fallback = 'Usuario') {
@@ -4986,10 +4989,11 @@ function visiblePostFromRows(post, identity, follows = []) {
   return feedPostVisible(post, { identityIds: identity.ids, followingIds }) ? post : null
 }
 
-async function loadPostForReaction(pool, identity, postId) {
+async function loadVisiblePostForInteraction(pool, identity, postId, { includePreview = false } = {}) {
+  const fields = includePreview ? 'id::text, user_id, visibility, content, is_sensitive' : 'id::text, user_id, visibility'
   const [imported, local] = await Promise.all([
     importedRowsByFieldValues(pool, 'posts', ['id'], [postId], 4),
-    pool.query('SELECT id::text, user_id, visibility FROM fallback_posts WHERE lower(id::text) = $1', [postId]),
+    pool.query(`SELECT ${fields} FROM fallback_posts WHERE lower(id::text) = $1`, [postId]),
   ])
   const post = [...imported, ...local.rows].find((row) => normalizeId(textOf(row, ['id'], '')) === postId)
   if (!post || visiblePostFromRows(post, identity)) return post || null
@@ -4999,6 +5003,45 @@ async function loadPostForReaction(pool, identity, postId) {
     localFollowsByFollowerIds(pool, identity.values, 20_000),
   ])
   return visiblePostFromRows(post, identity, [...importedFollows, ...localFollows])
+}
+
+async function resolveSharedPost(pool, identity, reference) {
+  if (reference.kind !== 'post') return null
+  const post = await loadVisiblePostForInteraction(pool, identity, reference.id, { includePreview: true })
+  if (!post || boolOf(post, ['is_deleted', 'deleted'], false)) return null
+  const owner = postOwnerId(post)
+  if (!owner || (!identity.ids.has(owner) && (await blockRelationshipForPair(pool, identity, owner)).isBlocked)) return null
+  return postSharePreview(post, textOf, boolOf)
+}
+
+async function loadSharedMessage(pool, identity, kind, scopeId, messageId) {
+  let access, history
+  if (kind === 'chat') {
+    access = await privateChatAccessContext(pool, scopeId, identity)
+    if (!access.chat || !access.hasAccess || (await blockRelationshipForChat(pool, access.chat, access.participantRows, identity)).isBlocked) return null
+  } else {
+    const state = await loadCollectionMembershipState(pool, kind, scopeId, identity.ids)
+    history = state.history
+    if (!history.canReadHistory || history.hidden) return null
+  }
+  const { rows } = kind === 'chat'
+    ? await pool.query('SELECT * FROM fallback_messages WHERE id = $1::uuid AND lower(chat_id) = $2', [messageId, scopeId])
+    : await pool.query('SELECT * FROM fallback_room_messages WHERE id = $1::uuid AND lower(room_id) = $2 AND room_kind = $3', [messageId, scopeId, kind])
+  const message = rows[0]
+  if (!message || isDeletedForAll(message) || !mayReuseMessageMedia(message, identity.ids)) return null
+  if (kind === 'chat') {
+    const participant = ownChatParticipant(access.participantRows, identity)
+    const clearedAt = toMillis(textOf(participant || {}, ['cleared_at', 'clearedAt'], ''))
+    if (clearedAt && toMillis(message.created_at) <= clearedAt) return null
+  } else if (!collectionHistoryAllows(history, message)) return null
+  if (kind === 'community') {
+    const channel = validUuid(message.channel_id)
+    if (!channel) return null
+    const visible = await pool.query(`SELECT 1 FROM fallback_community_channels
+      WHERE id = $1::uuid AND lower(community_id) = $2 AND is_deleted = FALSE`, [channel, scopeId])
+    if (!visible.rows.length) return null
+  }
+  return message
 }
 
 async function persistPostReaction(pool, postId, identity, reactionType) {
@@ -5420,7 +5463,7 @@ function collectionRoomAvatar(row) {
 }
 
 function enrichCollectionMessage(row, config, profilesById) {
-  row = redactDeletedMessage(row)
+  row = redactDeletedMessage(withoutStoredReference(row))
   const senderId = normalizeId(textOf(row, ['sender_id', 'user_id', 'profile_id', 'author_id'], ''))
   const profile = senderId ? profilesById.get(senderId) : null
   const roomId = textOf(row, [config.roomKey, 'room_id'], '')
@@ -5990,6 +6033,7 @@ async function ensureLocalDataTables(pool) {
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS is_forwarded BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS forwarded_from_message_id TEXT`,
     `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS forwarded_from_user_id TEXT`,
+    `ALTER TABLE fallback_messages ADD COLUMN IF NOT EXISTS shared_content JSONB`,
   ]) {
     await pool.query(statement)
   }
@@ -6416,6 +6460,7 @@ async function ensureLocalDataTables(pool) {
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS is_forwarded BOOLEAN NOT NULL DEFAULT FALSE`,
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS forwarded_from_message_id TEXT`,
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS forwarded_from_user_id TEXT`,
+    `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS shared_content JSONB`,
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
     `ALTER TABLE fallback_room_messages ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`,
   ]) {
@@ -7190,6 +7235,11 @@ function registerDataRoutes(app, {
   deleteExternalAuthUser,
   signStorageObjectReference = (_req, value) => value,
 }) {
+  registerSharedMessageRead(app, {
+    authRequired, validUuid, getCurrentUser: req => getCurrentUser(pool, req),
+    loadMessage: (user, kind, scopeId, messageId) => loadSharedMessage(pool, userIdentity(user), kind, scopeId, messageId),
+    resolveSource: (user, reference) => resolveSharedPost(pool, userIdentity(user), reference),
+  })
   const { createConversationActivityAuthorizer, registerVisibleMessageReadRoute, registerVisibleCollectionReadRoutes } = require('./conversation-activity-routes')
   const { publishChatMessageEvent, publishRealtimeEvent } = require('./realtime-publish')
   require('./profile-music-routes').registerProfileMusicRoutes(app, {
@@ -9938,7 +9988,7 @@ function registerDataRoutes(app, {
         return res.status(400).json({ error: 'POST_REACTION_INVALID' })
       }
       const identity = userIdentity(user)
-      const post = await loadPostForReaction(pool, identity, postId)
+      const post = await loadVisiblePostForInteraction(pool, identity, postId)
       if (!post) {
         if (!remove) return res.status(404).json({ error: 'POST_NOT_FOUND' })
         // Preserve the idempotent DELETE response without writing an orphan
@@ -11810,7 +11860,9 @@ function registerDataRoutes(app, {
         return res.status(400).json({ error: 'INVALID_MESSAGE_PAYLOAD' })
       }
       const content = String(req.body?.content || '').trim().slice(0, 16_000)
-      const contentType = String(req.body?.contentType || 'text').trim().slice(0, 40) || 'text'
+      const requestedId = validUuid(req.body?.id || req.body?.clientMessageId || req.body?.client_message_id)
+      const sharedContent = parseSharedMessage(req.body, requestedId)
+      const contentType = sharedContent ? SHARED_MESSAGE_TYPE : String(req.body?.contentType || 'text').trim().slice(0, 40) || 'text'
       if (contentType.toLowerCase().startsWith('system_')) return res.status(400).json({ error: 'RESERVED_MESSAGE_TYPE' })
       if (contentType === 'raffle') return res.status(400).json({ error: 'RAFFLE_CREATE_ENDPOINT_REQUIRED' })
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
@@ -11827,8 +11879,7 @@ function registerDataRoutes(app, {
       const requestedChannelId = config?.kind === 'community'
         ? normalizeId(req.body?.channelId || req.body?.channel_id)
         : ''
-      const requestedId = validUuid(req.body?.id || req.body?.clientMessageId || req.body?.client_message_id)
-      if (!config || !roomId || (!content && !mediaUrl)) {
+      if (!config || !roomId || (!content && !mediaUrl && !sharedContent)) {
         return res.status(400).json({ error: 'ROOM_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
 
@@ -11879,6 +11930,17 @@ function registerDataRoutes(app, {
       if (onlyAdminsCanTalk && !isAdmin) {
         return res.status(403).json({ error: 'ONLY_ADMINS_CAN_TALK' })
       }
+      if (sharedContent) {
+        if (!roomAccess.historyAccess.isMember) return res.status(403).json({ error: 'ROOM_ACCESS_DENIED' })
+        const replay = await findSharedMessageReplay(pool, {
+          kind: config.kind, scopeId: roomId, channelId: normalizeId(selectedChannel?.id),
+          actorIds: identity.ids, id: requestedId, reference: sharedContent, content,
+        })
+        if (replay) return res.json({ message: enrichCollectionMessage(normalizeImportedRow(replay), config, new Map()) })
+        if (!(await resolveSharedPost(pool, identity, sharedContent))) {
+          return res.status(404).json({ error: 'SHARED_CONTENT_NOT_AVAILABLE' })
+        }
+      }
       const allowedOwnedBuckets = config.kind === 'community'
         ? ['community-media', 'communities']
         : ['group-media', 'groups', 'group-audio']
@@ -11900,6 +11962,7 @@ function registerDataRoutes(app, {
         actorIds: identity.ids,
         message: {
           id: requestedId, sender_id: senderId, content, content_type: contentType,
+          shared_content: sharedContent,
           media_url: mediaUrl || null, media_size: mediaSize, reply_to_id: replyToId,
           poll_id: pollId, is_forwarded: isForwarded,
           forwarded_from_message_id: forwardedFromMessageId,
@@ -11971,7 +12034,8 @@ function registerDataRoutes(app, {
               type: 'message',
               targetId: roomId,
               targetType: config.kind,
-              content: contentType === 'birthday_card' ? '🎂 Te envió una tarjeta de cumpleaños' : content || previewFromMessage({ content_type: contentType }),
+              content: contentType === 'birthday_card' ? '🎂 Te envió una tarjeta de cumpleaños'
+                : isSharedMessageType(contentType) ? SHARED_MESSAGE_LABEL : content || previewFromMessage({ content_type: contentType }),
               extraData: {
                 [`${config.kind}_id`]: roomId,
                 // Identity comes from the authorized room, including when the
@@ -14604,7 +14668,9 @@ function registerDataRoutes(app, {
         return res.status(400).json({ error: 'INVALID_MESSAGE_PAYLOAD' })
       }
       const content = String(req.body?.content || '').trim().slice(0, 16_000)
-      const contentType = String(req.body?.contentType || 'text').trim().slice(0, 40) || 'text'
+      const requestedId = validUuid(req.body?.id || req.body?.clientMessageId || req.body?.client_message_id)
+      const sharedContent = parseSharedMessage(req.body, requestedId)
+      const contentType = sharedContent ? SHARED_MESSAGE_TYPE : String(req.body?.contentType || 'text').trim().slice(0, 40) || 'text'
       const mediaUrl = String(req.body?.mediaUrl || '').trim()
       const thumbnailUrl = String(req.body?.thumbnailUrl || req.body?.thumbnail_url || '').trim()
       const rawMediaSize = Number(req.body?.mediaSize)
@@ -14615,8 +14681,7 @@ function registerDataRoutes(app, {
       const isForwarded = Boolean(req.body?.isForwarded || req.body?.is_forwarded)
       const forwardedFromMessageId = cleanText(req.body?.forwardedFromMessageId || req.body?.forwarded_from_message_id, 80) || null
       const forwardedFromUserId = normalizeId(req.body?.forwardedFromUserId || req.body?.forwarded_from_user_id) || null
-      const requestedId = validUuid(req.body?.id || req.body?.clientMessageId || req.body?.client_message_id)
-      if (!chatId || (!content && !mediaUrl)) {
+      if (!chatId || (!content && !mediaUrl && !sharedContent)) {
         return res.status(400).json({ error: 'CHAT_ID_AND_CONTENT_OR_MEDIA_REQUIRED' })
       }
 
@@ -14636,6 +14701,16 @@ function registerDataRoutes(app, {
           blockedByMe: blockRelationship.blockedByMe,
           blockedMe: blockRelationship.blockedMe,
         })
+      }
+      if (sharedContent) {
+        if (!accessContext.chat) return res.status(403).json({ error: 'CHAT_ACCESS_DENIED' })
+        const replay = await findSharedMessageReplay(pool, {
+          kind: 'dm', scopeId: chatId, actorIds: identity.ids, id: requestedId, reference: sharedContent, content,
+        })
+        if (replay) return res.json({ message: normalizeMessageRow(replay) })
+        if (!(await resolveSharedPost(pool, identity, sharedContent))) {
+          return res.status(404).json({ error: 'SHARED_CONTENT_NOT_AVAILABLE' })
+        }
       }
       if (!(await currentUserMayReferenceMessageMedia(pool, user, identity, {
         mediaUrl,
@@ -14661,6 +14736,7 @@ function registerDataRoutes(app, {
         kind: 'dm', scopeId: chatId, actorIds: identity.ids,
         message: {
           id: requestedId, sender_id: senderId, content, content_type: contentType,
+          shared_content: sharedContent,
           media_url: mediaUrl || null, thumbnail_url: thumbnailUrl || null,
           media_size: mediaSize, reply_to_id: replyToId, poll_id: null,
           is_forwarded: isForwarded, forwarded_from_message_id: forwardedFromMessageId,
@@ -14725,7 +14801,7 @@ function registerDataRoutes(app, {
               type: 'message',
               targetId: chatId,
               targetType: 'chat',
-              content: content || previewFromMessage({ content_type: contentType }),
+              content: isSharedMessageType(contentType) ? SHARED_MESSAGE_LABEL : content || previewFromMessage({ content_type: contentType }),
               extraData: {
                 chat_id: chatId,
                 message_id: textOf(insertedMessage, ['id'], ''),

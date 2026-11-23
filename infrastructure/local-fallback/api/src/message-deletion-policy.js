@@ -1,5 +1,7 @@
 'use strict'
 
+const { isSharedMessageType, SHARED_MESSAGE_LABEL, withoutStoredReference } = require('./message-shared-content')
+
 const clean = value => String(value ?? '').trim().toLowerCase()
 const enabled = value => value === true || clean(value) === 'true'
 const messageTypes = new Set(['message', 'new_message', 'direct_message', 'group_message', 'community_message', 'message_deleted', 'message_reaction'])
@@ -12,7 +14,7 @@ function isDeletedForAll(row) {
 // Preserve only identifiers and state. Legacy aliases, metadata and embedded
 // quote/poll/contact objects must never retain a deleted message's payload.
 function redactDeletedMessage(row) {
-  if (!row || !isDeletedForAll(row)) return row
+  if (!row || !isDeletedForAll(row)) return withoutStoredReference(row)
   const result = {}
   for (const key of ['id', 'chat_id', 'room_id', 'room_kind', 'group_id', 'community_id', 'channel_id',
     'sender_id', 'sender_name', 'sender_image', 'created_at', 'updated_at', 'deleted_by', 'delivered_at', 'read_at']) {
@@ -241,6 +243,7 @@ async function ensureMessageDeletionTables(db) {
 function messagePreview(row) {
   if (!row) return null
   if (isDeletedForAll(row)) return 'Mensaje eliminado'
+  if (isSharedMessageType(row.content_type)) return SHARED_MESSAGE_LABEL
   if (row.content_type === 'birthday_card') return '🎂 Tarjeta de cumpleaños'
   if (row.content_type === 'contact') return 'Contacto'
   if (String(row.content_type || '').trim().toLowerCase() === 'sticker') return 'Sticker'
@@ -286,7 +289,7 @@ async function deleteMessageForAll(pool, { kind = 'chat', scopeId, messageId, ac
     const result = await client.query(`UPDATE ${direct ? 'fallback_messages' : 'fallback_room_messages'}
       SET deleted_for_all=TRUE, content='', content_type='text', media_url=NULL, ${direct ? 'thumbnail_url=NULL,' : ''}
       media_size=0, reply_to_id=NULL, poll_id=NULL, reactions='{}'::jsonb, is_edited=FALSE, is_forwarded=FALSE,
-      forwarded_from_message_id=NULL, forwarded_from_user_id=NULL, updated_at=NOW()
+      forwarded_from_message_id=NULL, forwarded_from_user_id=NULL, shared_content=NULL, updated_at=NOW()
       WHERE lower(${direct ? 'chat_id' : 'room_id'})=$1 AND lower(id::text)=$2
         AND lower(sender_id)=ANY($3::text[])${direct ? '' : ' AND room_kind=$4'} RETURNING *`,
     direct ? [scope.scopeId, scope.messageId, actorIds.map(clean)] : [scope.scopeId, scope.messageId, actorIds.map(clean), kind])
