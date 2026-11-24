@@ -5,6 +5,7 @@ import android.util.LruCache
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -50,9 +51,6 @@ internal data class GiftSpriteSheetSpec(
     val frameCount: Int = 8,
     val cycles: Float,
     val firstRow: Int = 0,
-    // Cada pose se mezcla mediante una curva continua. Ocho pasos por pose
-    // garantizan al menos 64 estados visuales incluso en los atlas de 8 poses.
-    val interpolationSteps: Int = 8,
 )
 
 internal data class GiftSpriteBlend(
@@ -85,22 +83,18 @@ internal fun giftSpriteSheetSpec(visualKey: String): GiftSpriteSheetSpec? = when
     "solar-hummingbird" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_solar_hummingbird_sheet,
         cycles = 5.5f,
-        interpolationSteps = 8,
     )
     "forest-guardian" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_forest_guardian_sheet,
         cycles = 2.25f,
-        interpolationSteps = 8,
     )
     "cosmic-whale" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_cosmic_whale_sheet,
         cycles = 2f,
-        interpolationSteps = 8,
     )
     "celestial-dragon" -> GiftSpriteSheetSpec(
         drawableRes = R.drawable.gift_anim_celestial_dragon_sheet,
         cycles = 1.75f,
-        interpolationSteps = 8,
     )
     else -> null
 }
@@ -115,24 +109,7 @@ private fun groupedSprite(
     frameCount = 4,
     cycles = cycles,
     firstRow = row,
-    // Los atlas agrupados contienen cuatro poses verdaderamente distintas.
-    // La interpolación conserva esas poses y crea 64 estados de transición
-    // fluidos; la escena, partículas y articulación siguen animándose a la
-    // frecuencia real de la pantalla.
-    interpolationSteps = 16,
 )
-
-internal fun giftSpriteFrame(
-    progress: Float,
-    animationsEnabled: Boolean,
-    spec: GiftSpriteSheetSpec
-): Int {
-    if (!animationsEnabled) return 0
-    val normalized = progress.coerceIn(0f, 0.999_999f)
-    return floor(normalized * spec.frameCount * spec.cycles)
-        .toInt()
-        .mod(spec.frameCount)
-}
 
 /**
  * Interpola dos posturas distintas. El atlas sigue siendo compacto, pero el
@@ -153,9 +130,6 @@ internal fun giftSpriteBlend(
     val smoothAlpha = fraction * fraction * (3f - 2f * fraction)
     return GiftSpriteBlend(current, next, smoothAlpha.coerceIn(0f, 1f))
 }
-
-internal fun giftEffectiveTimelineStates(spec: GiftSpriteSheetSpec): Int =
-    spec.frameCount * spec.interpolationSteps.coerceAtLeast(1)
 
 /** Ajusta una pose dentro del lienzo sin deformar artes rectangulares. */
 internal fun fitGiftSpriteFrame(source: IntSize, destination: IntSize): Pair<IntOffset, IntSize> {
@@ -191,13 +165,11 @@ internal fun GiftAnimatedArtwork(
     // Las hojas ocupan unos 6 MiB descomprimidas. Decodificarlas en el hilo de
     // interfaz congelaba el primer regalo en dispositivos de gama de entrada.
     val resources = LocalResources.current
-    val spriteSheet by produceState<ImageBitmap?>(
-        initialValue = null,
-        key1 = resources,
-        key2 = spec.drawableRes,
-    ) {
-        value = withContext(Dispatchers.IO) {
-            GiftSpriteSheetCache.getOrDecode(resources, spec.drawableRes)
+    val spriteSheet by key(resources, spec.drawableRes) {
+        produceState<ImageBitmap?>(initialValue = null) {
+            value = withContext(Dispatchers.IO) {
+                GiftSpriteSheetCache.getOrDecode(resources, spec.drawableRes)
+            }
         }
     }
     val artwork = spriteSheet

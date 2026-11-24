@@ -19,32 +19,30 @@ class GiftAnimatedArtworkTest {
     @Test
     fun `reduced motion keeps a stable first pose`() {
         val spec = requireNotNull(giftSpriteSheetSpec("solar-hummingbird"))
-        assertEquals(0, giftSpriteFrame(progress = 0.73f, animationsEnabled = false, spec = spec))
+        assertEquals(GiftSpriteBlend(0, 0, 0f), giftSpriteBlend(progress = 0.73f, animationsEnabled = false, spec = spec))
     }
 
     @Test
     fun `animated sequence advances through distinct poses`() {
         val spec = requireNotNull(giftSpriteSheetSpec("cosmic-whale"))
         val frames = (0..20).map { step ->
-            giftSpriteFrame(progress = step / 21f, animationsEnabled = true, spec = spec)
+            giftSpriteBlend(progress = step / 21f, animationsEnabled = true, spec = spec).currentFrame
         }.toSet()
         assertEquals(spec.frameCount, frames.size)
     }
 
     @Test
-    fun `all gift timelines expose between 50 and 100 useful visual states`() {
-        val premium = requireNotNull(giftSpriteSheetSpec("aurora-genesis"))
-        val dragon = requireNotNull(giftSpriteSheetSpec("celestial-dragon"))
-
+    fun `drawing interpolates valid poses and opacity throughout each gift timeline`() {
         NOVVIN_GIFT_VISUAL_KEYS.forEach { key ->
-            val states = giftEffectiveTimelineStates(requireNotNull(giftSpriteSheetSpec(key)))
-            assertTrue("$key has $states states", states in 50..100)
+            val spec = requireNotNull(giftSpriteSheetSpec(key))
+            val blends = (0..96).map { step -> giftSpriteBlend(step / 96f, animationsEnabled = true, spec = spec) }
+            assertTrue("$key changes continuously", blends.distinct().size >= 50)
+            assertTrue("$key stays inside its atlas", blends.all {
+                it.currentFrame in 0 until spec.frameCount &&
+                    it.nextFrame in 0 until spec.frameCount && it.nextFrame != it.currentFrame &&
+                    it.nextAlpha in 0f..1f
+            })
         }
-        assertEquals(64, giftEffectiveTimelineStates(premium))
-        assertEquals(64, giftEffectiveTimelineStates(dragon))
-        val blend = giftSpriteBlend(0.137f, animationsEnabled = true, spec = premium)
-        assertTrue(blend.nextFrame != blend.currentFrame)
-        assertTrue(blend.nextAlpha in 0f..1f)
     }
 
     @Test

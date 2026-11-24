@@ -1,7 +1,6 @@
 package conectate.com.presentation.wallet
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -49,12 +48,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import conectate.com.R
 import conectate.com.data.model.GiftReceipt
 import conectate.com.data.model.GiftCategory
@@ -119,8 +118,8 @@ fun GiftSelectionDialog(
                 .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                 .background(MaterialTheme.colorScheme.surface)
         ) {
-            Image(
-                painter = painterResource(R.drawable.gift_catalog_backdrop_v2),
+            AsyncImage(
+                model = R.drawable.gift_catalog_backdrop_v2,
                 contentDescription = null,
                 modifier = Modifier.matchParentSize(),
                 contentScale = ContentScale.Crop,

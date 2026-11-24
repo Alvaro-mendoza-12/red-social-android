@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-24T10:52:30.248425+00:00",
-  "baseCommit": "e70833d0b594b86924ebafca465e76fa655e0950",
+  "generatedAtUtc": "2026-11-24T16:01:54.039791+00:00",
+  "baseCommit": "6d9333b6ec071fd2203b7e0e6fb67127a0d68f4d",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,20 +10,20 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3440,
-    "code-read": 1082,
-    "partial": 294
+    "pending": 3435,
+    "code-read": 1084,
+    "partial": 297
   },
   "countsByPhase": {
     "android": {
-      "pending": 1400,
-      "partial": 132,
-      "code-read": 619
+      "pending": 1396,
+      "partial": 134,
+      "code-read": 621
     },
     "documentation": {
-      "pending": 714,
+      "pending": 713,
       "code-read": 71,
-      "partial": 21
+      "partial": 22
     },
     "server": {
       "pending": 720,
@@ -4895,9 +4895,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "fdac7e5ef47c48dfe6cbb16795dda2bf6af05455",
+      "gitBlobId": "aa0892e6fed0e90718c5f59e00d188f12f404b34",
       "reviewStatus": "partial",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -13725,8 +13725,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/GiftAnimatedArtwork.kt",
       "phase": "android",
-      "gitBlobId": "6f53360af6a32cd227ce57053431d0708a5621af",
-      "reviewStatus": "pending"
+      "gitBlobId": "27018440daf53b89f1a4ed8fb2df5c049d13aead",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/GiftArtwork.kt",
@@ -13767,9 +13769,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/wallet/GiftSelectionDialog.kt",
       "phase": "android",
-      "gitBlobId": "aa6e09114fceef2912553a2a2a784684ff91a865",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/191-precio-consentido-y-comprobantes-de-regalos-2026-11-18.md",
+      "gitBlobId": "1cc76339ddcd6565c304c5827047feb398efcdf7",
+      "reviewStatus": "partial",
+      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -14405,99 +14407,99 @@
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_battle_result.png",
+      "file": "app/src/main/res/drawable-nodpi/figma_live_battle_result.webp",
       "phase": "android",
-      "gitBlobId": "f1b9faa896beb8668000cb9d500011efec0369e5",
+      "gitBlobId": "3fc7a7e698269e960a76bc95286a639ab0d5d967",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_apex.png",
+      "file": "app/src/main/res/drawable-nodpi/figma_live_game_apex.webp",
       "phase": "android",
-      "gitBlobId": "1e270c756f582d088760c82cc2a04d1d94528e66",
+      "gitBlobId": "1bfb0d96e2af1e3e5acff3fa15cf4f562180c5c4",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_call_of_duty.png",
+      "file": "app/src/main/res/drawable-nodpi/figma_live_game_call_of_duty.webp",
       "phase": "android",
-      "gitBlobId": "d7854c85f83a0c6ca8d33ba05a0c7071736511e7",
+      "gitBlobId": "d0ba817dbf5c66255c7154ebf0fe8e765468ffec",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_fortnite.png",
+      "file": "app/src/main/res/drawable-nodpi/figma_live_game_fortnite.webp",
       "phase": "android",
-      "gitBlobId": "170328495c6e34b5dcc03c2e6b5c602235096dc9",
+      "gitBlobId": "3c47d6f89fe7ae383247e2f20d6660c5cf04b71f",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_league.png",
+      "file": "app/src/main/res/drawable-nodpi/figma_live_game_league.webp",
       "phase": "android",
-      "gitBlobId": "395e76f45f48e395a37efa06c32b00c0cc79a996",
+      "gitBlobId": "bfc22ac42115624d306b5a2663f61acc121f543d",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_minecraft.png",
+      "file": "app/src/main/res/drawable-nodpi/figma_live_game_minecraft.webp",
       "phase": "android",
-      "gitBlobId": "a11df3f2b43cdb61169e622fb90e0b64a84f7395",
+      "gitBlobId": "7ae913dd0b068099b36de4a8f8a1a46704395aab",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_valorant.png",
+      "file": "app/src/main/res/drawable-nodpi/figma_live_game_valorant.webp",
       "phase": "android",
-      "gitBlobId": "5b1487b1130dd1732efc2bafb09e857fd1401cfd",
+      "gitBlobId": "e0e217a089ae7670cc2f8d70599143879927bee8",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_celestial_dragon_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_celestial_dragon_sheet.webp",
       "phase": "android",
-      "gitBlobId": "83e22e55496e4e88ab2f4ec02bba0f612a523817",
+      "gitBlobId": "a19af6a79fcdbde849b3fca417225643043a7170",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_cosmic_whale_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_cosmic_whale_sheet.webp",
       "phase": "android",
-      "gitBlobId": "c9ae621c94339d307922623cd287147d35dfa996",
+      "gitBlobId": "7d1ce84c19b892aa56d6a522eece37b062f79ab8",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_forest_guardian_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_forest_guardian_sheet.webp",
       "phase": "android",
-      "gitBlobId": "16ef0e39c6b49142888d2ac06a95f0eb84c0cce4",
+      "gitBlobId": "9149779bc651eccbd6f4dfa3750a3a7914b3d9fe",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_1_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_1_sheet.webp",
       "phase": "android",
-      "gitBlobId": "7b99a61d6e6714a1ea217122e942e0578ff60c30",
+      "gitBlobId": "7bd7023dabdcd81094e9e530cc7cf24a645dc442",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_2_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_2_sheet.webp",
       "phase": "android",
-      "gitBlobId": "500416ed9f356d9d6b39ee1cd3e8cb9e795bf20d",
+      "gitBlobId": "6ec7b435dc12504e4cff205e7a04514b74806a35",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_3_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_3_sheet.webp",
       "phase": "android",
-      "gitBlobId": "af39e59ba8a5d9b7522a73340a999428d9c8cd84",
+      "gitBlobId": "e5f1872107ddfcc1de7eb83752581dca836cc8ff",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_4_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_4_sheet.webp",
       "phase": "android",
-      "gitBlobId": "f29826d3a53d8afdb2e074412d06f91df097c887",
+      "gitBlobId": "80c969502cf1e0b309cc3a3fdb059daeb2fcefad",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_5_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_group_5_sheet.webp",
       "phase": "android",
-      "gitBlobId": "dc7acfe3a80d58d37297ad42563257758c96024f",
+      "gitBlobId": "1741420fcde0e6e75cf85d152a13f6edd1dabdd1",
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_anim_solar_hummingbird_sheet.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_anim_solar_hummingbird_sheet.webp",
       "phase": "android",
-      "gitBlobId": "6041c340cfb6bf13e9c7801138ee5df5018ee1ac",
+      "gitBlobId": "96c6a97138c41a58069eea07026d71c30a711a8e",
       "reviewStatus": "pending"
     },
     {
@@ -14531,9 +14533,9 @@
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/gift_catalog_backdrop_v2.png",
+      "file": "app/src/main/res/drawable-nodpi/gift_catalog_backdrop_v2.webp",
       "phase": "android",
-      "gitBlobId": "c4164c85907f8ae09c56fe487058702152d2ab67",
+      "gitBlobId": "a54f5b6e39214ac3df38d17130571c92bb0aa331",
       "reviewStatus": "pending"
     },
     {
@@ -14663,15 +14665,9 @@
       "reviewStatus": "pending"
     },
     {
-      "file": "app/src/main/res/drawable-nodpi/ic_novvin.png",
+      "file": "app/src/main/res/drawable-nodpi/novvin_playmatch_gamer.webp",
       "phase": "android",
-      "gitBlobId": "e6d847915813ee09ee0ed6207e07935e4e40a307",
-      "reviewStatus": "pending"
-    },
-    {
-      "file": "app/src/main/res/drawable-nodpi/novvin_playmatch_gamer.png",
-      "phase": "android",
-      "gitBlobId": "9a5a3cea6ca7178e4c7ef258db4a1e8d1af2beb4",
+      "gitBlobId": "b3d59c5fe178fdf22e6728d791a0af72dbb26393",
       "reviewStatus": "pending"
     },
     {
@@ -15075,6 +15071,14 @@
       "phase": "android",
       "gitBlobId": "84b4de66495a36d0dc98ef58b58b6bfdc85a35f6",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/res/values/drawable_aliases.xml",
+      "phase": "android",
+      "gitBlobId": "23ef0774d70a9d9bd6ff581fbfd5d139590a657a",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/res/values/strings.xml",
@@ -18725,8 +18729,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
       "phase": "android",
-      "gitBlobId": "b3e40d8e31ca93e109ef4e4178e5310abc4dd474",
-      "reviewStatus": "pending"
+      "gitBlobId": "be507de661a3fb2328369f8969cad19fafd44592",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimationTierTest.kt",
@@ -19651,8 +19657,10 @@
     {
       "file": "docs/GIFT_ANIMATION_ASSET_MANIFEST.md",
       "phase": "documentation",
-      "gitBlobId": "eee6f2db701e983b9f42fb8852ffa2f878c3f56e",
-      "reviewStatus": "pending"
+      "gitBlobId": "aa769320caee32431063c31f54c557d5cb98c249",
+      "reviewStatus": "partial",
+      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/HOME_SERVER_PUBLIC_ACCESS_UBUNTU_2026.md",
@@ -24155,8 +24163,10 @@
     {
       "file": "gradle/libs.versions.toml",
       "phase": "android",
-      "gitBlobId": "b9ed613b067fc9c3cbcf9c417897182e4ffda27f",
-      "reviewStatus": "pending"
+      "gitBlobId": "911bf8997b8d7171b52ee23be28e2523bcb26fcb",
+      "reviewStatus": "partial",
+      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "gradle/release-signing-validation.gradle.kts",

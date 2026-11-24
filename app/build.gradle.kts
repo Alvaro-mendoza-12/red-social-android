@@ -290,8 +290,12 @@ android {
 
     splits {
         abi {
-            // Play App Bundle handles ABI splits; local APK splits stay disabled for release bundles.
-            isEnable = false
+            // Opt in for standalone sideload APKs. The AAB continues to split
+            // by device configuration in Play.
+            isEnable = providers.gradleProperty("novvinAbiApks").orNull == "true"
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
+            isUniversalApk = true
         }
     }
 
@@ -528,6 +532,9 @@ dependencies {
         implementation("com.google.protobuf:protobuf-javalite:3.25.9") {
             because("CVE-2024-7254: bound recursion when parsing unknown Protobuf fields")
         }
+        implementation(libs.multiplatform.settings) {
+            because("Keep the resolved version for legacy authentication while Supabase still uses it")
+        }
     }
 
     implementation(libs.androidx.core.ktx)
@@ -554,7 +561,6 @@ dependencies {
     implementation(libs.supabase.postgrest)
     implementation(libs.supabase.storage)
 
-    implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
@@ -601,7 +607,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.multiplatform.settings)
     implementation(libs.androidx.security.crypto)
 
     implementation(libs.androidx.room.runtime)
