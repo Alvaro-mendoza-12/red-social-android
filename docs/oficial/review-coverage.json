@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-24T00:41:21.880662+00:00",
-  "baseCommit": "5e2c4b641d68c6242ba6c6102ba02162f3172d11",
+  "generatedAtUtc": "2026-11-24T04:30:38.576643+00:00",
+  "baseCommit": "a3b1a97d2ef6eff976e920ccef94bd05dcb9dfa7",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3442,
-    "code-read": 1071,
+    "pending": 3444,
+    "code-read": 1077,
     "partial": 288
   },
   "countsByPhase": {
     "android": {
       "pending": 1402,
       "partial": 130,
-      "code-read": 617
+      "code-read": 618
     },
     "documentation": {
       "pending": 714,
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 75,
-      "pending": 470,
-      "code-read": 129
+      "pending": 472,
+      "code-read": 134
     }
   },
   "files": [
@@ -310,6 +310,50 @@
       "file": "NoWing-web/public/backend-config.json",
       "phase": "web",
       "gitBlobId": "a227aad9e854170d2e2e095f997898b6ff5d51a9",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/board-games/board-games.css",
+      "phase": "web",
+      "gitBlobId": "37e7df0614f07d20205bec090e5ef48fbf15439e",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/public/board-games/board-games.html",
+      "phase": "web",
+      "gitBlobId": "1f518e403d15747d639f38d9c775c9598f7fcda3",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/public/board-games/board-games.js",
+      "phase": "web",
+      "gitBlobId": "4c6f37cfdf85958dbb923374ab114c3c686ec5e5",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/public/board-games/board-rules.js",
+      "phase": "web",
+      "gitBlobId": "c6d011fb2ca3633e92b124006622a045d14c8a77",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/public/board-games/chess-1.4.0.js",
+      "phase": "web",
+      "gitBlobId": "c0006f773b36a96707f2c6d7c61ab8755b642f59",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/public/board-games/chess-LICENSE.txt",
+      "phase": "web",
+      "gitBlobId": "f318b42b3daf0053f1496eadccc3728deb3f88fb",
       "reviewStatus": "pending"
     },
     {
@@ -3669,9 +3713,9 @@
     {
       "file": "NoWing-web/src/features/games/GamesPage.tsx",
       "phase": "web",
-      "gitBlobId": "04786bcffb2445b8c4810267ceb792b4d77824ad",
+      "gitBlobId": "92f19221cb7780176a1fb3fff35c308afcda0b10",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/159-juegos-web-y-validacion-android-2026-11-15.md",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4555,6 +4599,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/tests/board-games.test.mjs",
+      "phase": "web",
+      "gitBlobId": "1433140ffb217542f725b2772ae57d61fd58e071",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/tests/control-contrast.test.mjs",
       "phase": "web",
       "gitBlobId": "3c132f9e6620c5c7856014622db163fcb0ec10b9",
@@ -4845,9 +4897,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "67c05e9e2502f51501d494891dec0720dbd43e58",
+      "gitBlobId": "a2b8576c5588de3c73af607077fddd81e44fb7ab",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10637,6 +10689,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/gaming/BoardGamesScreen.kt",
+      "phase": "android",
+      "gitBlobId": "26e69b5ea8c254de045edfa24d20ab81425fa3a7",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchAccountTasks.kt",
       "phase": "android",
       "gitBlobId": "41cc00d1fd2027441511986f1241dce39dc728bd",
@@ -10675,9 +10735,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchScreens.kt",
       "phase": "android",
-      "gitBlobId": "7e2ad47f47e27371e3bbbb4838fab4997423939f",
+      "gitBlobId": "d0a21858a86059bded533ac17868fb8b26035794",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/158-playmatch-juegos-estable-2026-11-15.md",
+      "evidence": "NoWing-web/tests/board-games.test.mjs",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

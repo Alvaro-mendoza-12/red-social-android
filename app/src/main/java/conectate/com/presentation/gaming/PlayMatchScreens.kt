@@ -126,6 +126,11 @@ fun GamesHomeScreen(
         if (section == GamesSection.Players && state.capabilities.enabled) viewModel.preparePlayerSearch()
     }
     PlayMatchNoticeHost(state, viewModel::clearNotice)
+    var openBoardGames by rememberSaveable(account) { mutableStateOf(false) }
+    if (openBoardGames) {
+        BoardGamesScreen(onBack = { openBoardGames = false })
+        return
+    }
 
     fun selectGame(gameId: String) {
         section = GamesSection.Players
@@ -135,6 +140,12 @@ fun GamesHomeScreen(
     Column(Modifier.fillMaxSize().background(PlayMatchColors.Background).statusBarsPadding()) {
         Box(Modifier.fillMaxWidth().padding(horizontal = PlayMatchDimensions.ScreenPadding, vertical = 10.dp)) {
             PlayMatchHeader(state.profile?.avatarUrl, state.profile?.avatarMediaType, onOpenProfile)
+        }
+        androidx.compose.material3.Button(
+            onClick = { openBoardGames = true },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = PlayMatchDimensions.ScreenPadding),
+        ) {
+            Text("Jugar Ajedrez, Ludo o Damas")
         }
         if (!state.capabilities.enabled) {
             Box(Modifier.padding(PlayMatchDimensions.ScreenPadding)) {

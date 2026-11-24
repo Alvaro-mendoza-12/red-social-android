@@ -422,6 +422,7 @@ android {
             manifest.srcFile("src/main/AndroidManifest.xml")
             java.setSrcDirs(listOf("src/main/java"))
             res.setSrcDirs(listOf("src/main/res"))
+            assets.srcDir(rootProject.file("NoWing-web/public/board-games"))
         }
     }
 

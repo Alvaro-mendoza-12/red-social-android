@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Juegos de mesa · Novvin</title>
+  <link rel="stylesheet" href="./board-games.css">
+  <script type="module" src="./board-games.js"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <a id="back" href="/app/games">‹ Juegos</a>
+      <span>Novvin</span>
+    </header>
+    <h1>Juegos de mesa</h1>
+    <nav id="games" aria-label="Elegir juego">
+      <button type="button" data-game="chess"><span aria-hidden="true">♞</span>Ajedrez</button>
+      <button type="button" data-game="ludo"><span aria-hidden="true">⚄</span>Ludo</button>
+      <button type="button" data-game="checkers"><span aria-hidden="true">●</span>Damas</button>
+    </nav>
+    <form id="setup">
+      <label>Modo<select id="mode"><option value="local">En este dispositivo</option><option value="bot">Contra Novvin</option></select></label>
+      <label id="players-control" hidden>Jugadores<select id="players"><option>2</option><option>3</option><option>4</option></select></label>
+      <label id="level-control" hidden>Dificultad<select id="level"><option value="0">Principiante</option><option value="1">Fácil</option><option value="2" selected>Intermedio</option><option value="3">Avanzado</option><option value="4">Experto</option></select></label>
+      <button class="primary" type="submit">Empezar partida</button>
+    </form>
+    <section id="table" hidden aria-label="Partida">
+      <div class="table-heading">
+        <h2 id="game-title"></h2>
+        <p id="status" role="status"></p>
+      </div>
+      <div id="board"></div>
+      <div class="turn-controls">
+        <button id="roll" type="button" hidden>Lanzar dado</button>
+        <div id="tokens"></div>
+        <button id="claim" type="button" hidden>Reclamar tablas</button>
+        <button id="resign" type="button" hidden>Abandonar</button>
+        <button id="restart" type="button">Nueva partida</button>
+      </div>
+      <dialog id="promotion" aria-label="Elegir promoción">
+        <p>Promocionar a</p>
+        <form method="dialog">
+          <button value="q">Dama</button><button value="r">Torre</button>
+          <button value="b">Alfil</button><button value="n">Caballo</button>
+          <button value="">Volver</button>
+        </form>
+      </dialog>
+      <details><summary>Historial</summary><ol id="moves"></ol></details>
+      <details><summary>Reglas de esta partida</summary><p id="rules"></p></details>
+    </section>
+  </main>
+</body>
+</html>

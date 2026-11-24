@@ -50,7 +50,14 @@ export function GamesPage() {
   if (!isFallbackSession || !user) {
     return <section className="surface-card games-state"><h2>Juegos</h2><p>Inicia sesión con Novvin para abrir PlayMatch.</p></section>
   }
-  return <GamesWorkspace key={user.id} accountId={user.id} />
+  return <>
+    <section className="surface-card games-state">
+      <h2>Juegos de mesa</h2>
+      <p>Ajedrez, Ludo y Damas en este dispositivo o contra Novvin.</p>
+      <a className="primary-btn" href="/board-games/board-games.html">Abrir juegos de mesa</a>
+    </section>
+    <GamesWorkspace key={user.id} accountId={user.id} />
+  </>
 }
 
 function GamesWorkspace({ accountId }: { accountId: string }) {
