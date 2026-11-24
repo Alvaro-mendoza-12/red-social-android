@@ -237,7 +237,7 @@ cloudflared no demuestra que perfiles, imágenes y rangos MP4 atraviesen edge.
 
 El orden es obligatorio para no cerrar sesiones web durante una publicación:
 
-1. confirmar que `.env` contiene el origen Vercel exacto en `CORS_ORIGIN`;
+1. confirmar que `.env` contiene el origen HTTPS exacto de la web activa en `CORS_ORIGIN`;
 2. desplegar primero API/nginx y esperar `/ready` saludable;
 3. comprobar que el esquema añadió `refresh_token_hash` y `expires_at` a
    `fallback_web_sessions`;
@@ -263,8 +263,26 @@ CORS_ORIGIN=https://novvinapp.com,https://www.novvinapp.com,https://red-social-a
 Un `403 UNTRUSTED_WEB_SESSION_REQUEST` indica header u origen inválido. Un
 `401 WEB_SESSION_REQUIRED/WEB_SESSION_INVALID` indica cookie ausente, expirada
 o revocada. No desactivar la comprobación de origen ni cambiar temporalmente
-`CORS_ORIGIN` a `*`; revisar primero el hostname real de Vercel y si el Quick
-Tunnel rotó.
+`CORS_ORIGIN` a `*`; revisar primero la dirección de la página que inició la
+solicitud y si el ingreso público cambió.
+
+Mientras la web de contingencia se sirva desde Ubuntu por Tailscale Funnel,
+añadir `https://conectate.tail9b267c.ts.net` como valor exacto al final de la
+lista activa. Aplicar la configuración del servicio `api` sin cambiar su
+imagen. Comprobar `/ready` después de recrearlo. Una llamada a
+`POST /v1/auth/web-session/refresh` sin cookie y con el origen de contingencia
+y `X-Novvin-Web-Session: web-v1` debe responder `401 WEB_SESSION_REQUIRED`.
+Un origen ajeno y una solicitud sin el marcador deben seguir devolviendo
+`403`. Probar el formulario en Safari o WebKit y verificar por separado la
+creación de la sesión con una cuenta de prueba autorizada.
+
+El 23/11/2026 se reprodujo `403 UNTRUSTED_WEB_SESSION_REQUEST` antes del ajuste.
+Después, WebKit con iPhone 15 emulado llegó a la validación de credenciales
+con una cuenta ficticia, y la API siguió informando `/ready` saludable.
+La portada de `novvinapp.com` redirige temporalmente a Ubuntu. Para ingresar,
+usar la [pantalla de acceso de contingencia](https://conectate.tail9b267c.ts.net/login).
+El reenvío de GoDaddy devuelve 404 al abrir directamente `novvinapp.com/login`.
+El error `DEPLOYMENT_DISABLED` del alias de Vercel se genera en el proveedor.
 
 Logs signaling:
 

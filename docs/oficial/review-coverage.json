@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-23T23:17:04.157656+00:00",
-  "baseCommit": "5e4a947ec80d271fcca0f50615027707eb6ac4fd",
+  "generatedAtUtc": "2026-11-24T00:16:37.938365+00:00",
+  "baseCommit": "0acabc02072d85935091cd48324a9dabda21e0fe",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -21575,9 +21575,9 @@
     {
       "file": "docs/oficial/06-operaciones-runbook.md",
       "phase": "documentation",
-      "gitBlobId": "47e7540dcba060b49178f5b05aa80451d1119137",
+      "gitBlobId": "3a0dbe315a98a125b843e0f618dec3d2dd44d206",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "evidence": "docs/oficial/06-operaciones-runbook.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
