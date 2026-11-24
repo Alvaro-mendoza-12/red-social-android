@@ -4,8 +4,8 @@ import conectate.com.data.auth.AccountSuspendedException
 import conectate.com.data.supabase.mapSupabaseServiceRestrictionMessage
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.HttpRequestTimeoutException
-import io.ktor.network.sockets.SocketTimeoutException
 import java.io.IOException
+import java.net.SocketTimeoutException
 
 internal fun Throwable?.toUserFacingMessage(
     fallback: String = "Ocurrió un problema. Inténtalo de nuevo."

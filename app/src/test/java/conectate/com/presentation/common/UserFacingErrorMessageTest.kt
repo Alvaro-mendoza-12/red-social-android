@@ -1,9 +1,22 @@
 package conectate.com.presentation.common
 
+import io.ktor.client.network.sockets.SocketTimeoutException as KtorSocketTimeoutException
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import java.net.SocketTimeoutException
 
 class UserFacingErrorMessageTest {
+    @Test
+    fun socketTimeoutsAreExplainedEvenWithoutTimeoutText() {
+        val timeouts = listOf(SocketTimeoutException(), KtorSocketTimeoutException("Read failed", null))
+        for (timeout in timeouts) {
+            assertEquals(
+                "El servidor de Novvin no respondió a tiempo. Inténtalo de nuevo en unos momentos.",
+                timeout.toUserFacingMessage()
+            )
+        }
+    }
+
     @Test
     fun `live moderation errors are explained without backend codes`() {
         assertEquals(

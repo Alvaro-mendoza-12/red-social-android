@@ -8,10 +8,10 @@ import conectate.com.core.result.AppResult
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.ServerResponseException
 import io.ktor.client.plugins.HttpRequestTimeoutException
-import io.ktor.network.sockets.SocketTimeoutException
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import java.io.IOException
+import java.net.SocketTimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 

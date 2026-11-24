@@ -5,6 +5,7 @@ import conectate.com.core.crash.CrashReporter
 import conectate.com.core.logging.AppLogger
 import conectate.com.core.result.AppError
 import conectate.com.core.result.AppResult
+import io.ktor.client.network.sockets.SocketTimeoutException as KtorSocketTimeoutException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -12,6 +13,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.IOException
+import java.net.SocketTimeoutException
 
 class RepositoryCallHandlerTest {
     private class Diagnostics : AppLogger, CrashReporter {
@@ -60,6 +62,17 @@ class RepositoryCallHandlerTest {
         assertTrue(error.cause is IOException)
         assertEquals(1, diagnostics.logged.size)
         assertEquals(1, diagnostics.reported.size)
+    }
+
+    @Test fun socketTimeoutsFromTheJvmAndKtorKeepTheirTimeoutClassification() = runTest {
+        val repository = handler(StandardTestDispatcher(testScheduler), Diagnostics())
+        val timeouts = listOf(SocketTimeoutException(), KtorSocketTimeoutException("Read failed", null))
+        for (timeout in timeouts) {
+            val result = repository.io<Unit>("timeout.fixture") { throw timeout }
+            val error = (result as AppResult.Error).error
+            assertTrue(error is AppError.Timeout)
+            assertSame(timeout, error.cause)
+        }
     }
 
     @Test fun fatalRuntimeErrorsAreNotTurnedIntoAnOrdinaryRetryResult() = runTest {
