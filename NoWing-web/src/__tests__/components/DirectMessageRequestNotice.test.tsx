@@ -5,7 +5,7 @@ jest.mock('../../core/auth/fallbackAuth',()=>({fallbackApiJson:jest.fn()}))
 const api=jest.mocked(fallbackApiJson)
 
 function Harness() {
-  const request = useDirectMessageRequest('chat', 'account', 1)
+  const request = useDirectMessageRequest('chat', 'account')
   return <><DirectMessageRequestNotice request={request}/><p>{directMessageWriteRestriction(request.status)}</p></>
 }
 beforeEach(()=>api.mockReset())

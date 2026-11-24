@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-24T04:30:38.576643+00:00",
-  "baseCommit": "a3b1a97d2ef6eff976e920ccef94bd05dcb9dfa7",
+  "generatedAtUtc": "2026-11-24T04:39:08.314385+00:00",
+  "baseCommit": "5a7d0033bc0b2f25f8c1f10a765b08c4e85c1b53",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -935,7 +935,7 @@
     {
       "file": "NoWing-web/src/__tests__/components/DirectMessageRequestNotice.test.tsx",
       "phase": "web",
-      "gitBlobId": "c27463e5e51f2df8611d951f16a591a3c91bcca3",
+      "gitBlobId": "5a2371e0b9726441542d5b2c916668f26aa34253",
       "reviewStatus": "code-read",
       "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -1951,7 +1951,7 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "phase": "web",
-      "gitBlobId": "fa54a7e8693f1542b6b4770ec8dbb661152a6544",
+      "gitBlobId": "aadbc90b76efcf6715bd275a042fcfd291b0067c",
       "reviewStatus": "partial",
       "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -2361,7 +2361,7 @@
     {
       "file": "NoWing-web/src/components/DirectMessageRequestNotice.tsx",
       "phase": "web",
-      "gitBlobId": "3f66cf9f65044296af23f82b946f70e4d691603d",
+      "gitBlobId": "7f8aadfa63dd48011abbac301b01df3ce0ccc6da",
       "reviewStatus": "code-read",
       "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -3805,7 +3805,7 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "1dfb525059e98856455da6db31c70787fcce9fbb",
+      "gitBlobId": "dbd4d2745e0415317ddd5ac4676faa14a5c4243e",
       "reviewStatus": "partial",
       "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

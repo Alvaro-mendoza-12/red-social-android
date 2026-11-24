@@ -765,3 +765,15 @@ test('the first queued introduction hides the composer before a server reread', 
   expect(screen.queryByPlaceholderText('Escribe un mensaje...')).toBeNull()
   expect(sendFallbackChatMessage).toHaveBeenCalledTimes(1)
 })
+
+test('incoming history does not restart the in-flight request verification', async () => {
+  let finish!: (value: unknown) => void
+  jest.mocked(fallbackApiJson).mockImplementation(path => path.endsWith('/request')
+    ? new Promise(resolve => { finish = resolve as typeof finish }) as never
+    : Promise.resolve([]) as never)
+  open()
+  await screen.findByText('Mensaje recibido')
+  expect(jest.mocked(fallbackApiJson).mock.calls.filter(([path]) => path.endsWith('/request'))).toHaveLength(1)
+  await act(async () => finish({ status: 'open' }))
+  expect(await screen.findByPlaceholderText('Escribe un mensaje...')).toBeInTheDocument()
+})

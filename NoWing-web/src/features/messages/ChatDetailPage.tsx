@@ -529,8 +529,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
   const scheduleIdentity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
-  const directRequest = useDirectMessageRequest(cleanChatId, useUbuntu ? user?.id || '' : '', messages.length)
+  const directRequest = useDirectMessageRequest(cleanChatId, useUbuntu ? user?.id || '' : '')
   const { status: requestStatus, refresh: refreshRequest, recordSendRejection } = directRequest
+  const requestStatusRef = useRef(requestStatus)
+  requestStatusRef.current = requestStatus
   const requestIdentity = JSON.stringify([user?.id, cleanChatId, scheduleIdentity])
   const firstIntroduction = useRef<{ identity: string; id?: string } | null>(null)
   const [reservedIntroduction, setReservedIntroduction] = useState<string>()
@@ -1486,6 +1488,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           const messageId = textOf(row, ['id'], '')
           if (!messageId) return
           upsertMessageInState(mapMessage(row))
+          if (requestStatusRef.current === 'pending_outgoing' && textOf(row, ['sender_id', 'senderId'], '') !== user.id) {
+            void refreshRequest()
+          }
           if(textOf(row,['sender_id','senderId'],'')!==user.id&&!textOf(row,['read_at','readAt'],'')&&document.visibilityState==='visible')void markAsDeliveredAndRead()
           const pollId = textOf(row, ['poll_id', 'pollId'], '')
           if (pollId) void refreshPollState(pollId)
@@ -1544,7 +1549,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     return () => {
       void removeRealtimeChannel(subscribedChannel ?? channel)
     }
-  }, [cleanChatId, markAsDeliveredAndRead, refreshPollState, removeMessageFromState, upsertMessageInState, useUbuntu, user])
+  }, [cleanChatId, markAsDeliveredAndRead, refreshPollState, refreshRequest, removeMessageFromState, upsertMessageInState, useUbuntu, user])
 
   async function sendMessage(input: SendMessageInput) {
     if (!user || !cleanChatId) return

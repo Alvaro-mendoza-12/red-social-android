@@ -20,7 +20,7 @@ export function directMessageWriteRestriction(status: RequestStatus | null) {
   return status ? writeRestrictions[status] : undefined
 }
 
-export function useDirectMessageRequest(chatId: string, accountId: string, revision: number) {
+export function useDirectMessageRequest(chatId: string, accountId: string) {
   const identity = accountId && chatId ? JSON.stringify([accountId, chatId]) : ''
   const identityRef = useRef(identity)
   identityRef.current = identity
@@ -50,7 +50,7 @@ export function useDirectMessageRequest(chatId: string, accountId: string, revis
   useEffect(() => {
     void refresh()
     return () => { sequence.current += 1 }
-  }, [refresh, revision])
+  }, [refresh])
 
   const status = snapshot?.identity === identity ? snapshot.status ?? null : null
   useEffect(() => {
