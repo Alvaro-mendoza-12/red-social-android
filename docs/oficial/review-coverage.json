@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-24T16:01:54.039791+00:00",
-  "baseCommit": "6d9333b6ec071fd2203b7e0e6fb67127a0d68f4d",
+  "generatedAtUtc": "2026-11-24T16:08:59.842095+00:00",
+  "baseCommit": "afc6fdede07440874d239030af2911b007b96e97",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -4895,9 +4895,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "aa0892e6fed0e90718c5f59e00d188f12f404b34",
+      "gitBlobId": "26cc8619d1aacf169a621e9c92142c0351dd36f2",
       "reviewStatus": "partial",
-      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
+      "evidence": "tools/verify_android_page_size.py",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

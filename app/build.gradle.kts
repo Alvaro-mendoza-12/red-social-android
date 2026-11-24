@@ -196,10 +196,13 @@ val hasReleaseSigning =
         releaseStorePassword != null &&
         releaseKeyAlias != null &&
         releaseKeyPassword != null
+val selectedNdkVersion = providers.gradleProperty("novvinNdkVersion").orNull
+    ?.trim()?.takeIf(String::isNotEmpty)
 
 android {
     namespace = "conectate.com"
     compileSdk = 36
+    selectedNdkVersion?.let { ndkVersion = it }
 
     defaultConfig {
         applicationId = "conectate.com"
@@ -347,6 +350,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
+            if (selectedNdkVersion != null) ndk.debugSymbolLevel = "SYMBOL_TABLE"
             buildConfigField("String", "BUILD_ENVIRONMENT", "\"production\"")
 
             proguardFiles(
