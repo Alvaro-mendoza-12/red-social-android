@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-24T00:16:37.938365+00:00",
-  "baseCommit": "0acabc02072d85935091cd48324a9dabda21e0fe",
+  "generatedAtUtc": "2026-11-24T00:41:21.880662+00:00",
+  "baseCommit": "5e2c4b641d68c6242ba6c6102ba02162f3172d11",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,8 +10,8 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3445,
-    "code-read": 1068,
+    "pending": 3442,
+    "code-read": 1071,
     "partial": 288
   },
   "countsByPhase": {
@@ -37,8 +37,8 @@
     },
     "web": {
       "partial": 75,
-      "pending": 473,
-      "code-read": 126
+      "pending": 470,
+      "code-read": 129
     }
   },
   "files": [
@@ -891,8 +891,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/DirectMessageRequestNotice.test.tsx",
       "phase": "web",
-      "gitBlobId": "749bffb4cbaa56eccb5205a346be476df9d3bcd4",
-      "reviewStatus": "pending"
+      "gitBlobId": "c27463e5e51f2df8611d951f16a591a3c91bcca3",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/EnterpriseLayout.test.tsx",
@@ -1905,9 +1907,9 @@
     {
       "file": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "phase": "web",
-      "gitBlobId": "d75b210228871384b50fb5273964b5a1fdf5a65f",
+      "gitBlobId": "fa54a7e8693f1542b6b4770ec8dbb661152a6544",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/137-seguidores-social-asistente-y-menu-web-2026-11-14.md",
+      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2315,8 +2317,10 @@
     {
       "file": "NoWing-web/src/components/DirectMessageRequestNotice.tsx",
       "phase": "web",
-      "gitBlobId": "8c9bc72697d4f9c2917acea19fe98b9f9427cd28",
-      "reviewStatus": "pending"
+      "gitBlobId": "3f66cf9f65044296af23f82b946f70e4d691603d",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/DocumentPreview.tsx",
@@ -3317,8 +3321,10 @@
     {
       "file": "NoWing-web/src/core/outboxFailureMessage.ts",
       "phase": "web",
-      "gitBlobId": "4c6e083ec5888717bb0809ed1572a8748a4f5d3a",
-      "reviewStatus": "pending"
+      "gitBlobId": "cc3bf5bc3fb5e071e97dd6a3cd89d8ab980e71f8",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/core/outboxProgress.ts",
@@ -3541,9 +3547,9 @@
     {
       "file": "NoWing-web/src/core/webOutbox.ts",
       "phase": "web",
-      "gitBlobId": "659f2c686ec76784da7b057caf5c11efdeaddb08",
+      "gitBlobId": "545f2a329016a8b91bd6b35026bfbb389cb9fa2a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3755,9 +3761,9 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "f485932fb1c3610f0b1dfa606e4f100734d96251",
+      "gitBlobId": "1dfb525059e98856455da6db31c70787fcce9fbb",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

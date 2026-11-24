@@ -8,13 +8,13 @@ import { outboxFailureMessage } from './outboxFailureMessage'
 import { MAX_MESSAGE_UPLOAD_BYTES } from './attachmentPreparation'
 import {setOutboxProgress,clearOutboxProgress} from './outboxProgress'
 import { outboxDeliveryLane } from './outboxDeliveryPolicy'
-import type { GenericRow } from './utils'
+import { apiErrorCode, type GenericRow } from './utils'
 import { messagingNowIso } from './messagingClock'
 import { getRuntimeBackendUrl } from './runtimeBackend'
 
 type Scope = 'chat' | 'group' | 'community'
 type Payload = { id?: string; content: string; contentType?: string; mediaUrl?: string | null; [key: string]: unknown }
-type Pending = { id: string; owner: string; scope: Scope; room: string; payload: Payload; createdAt: string; updatedAt?: string; senderId: string; state: 'pending' | 'failed'; attempts: number; retryAt: number; failureMessage?: string }
+type Pending = { id: string; owner: string; scope: Scope; room: string; payload: Payload; createdAt: string; updatedAt?: string; senderId: string; state: 'pending' | 'failed'; attempts: number; retryAt: number; failureMessage?: string; failureCode?: string }
 export type ImportedSticker = { id: string; title: string; isAnimated: boolean }
 type Attachment = { id: string; owner: string; bucket: string; blob: Blob; name: string; path: string; createdAt: number; uploadedUrl?: string; favoriteSticker?: ImportedSticker; favoriteSaved?: boolean }
 type Cached = { key: string; owner: string; value: Record<string, unknown> }
@@ -93,7 +93,7 @@ async function optimistic(item: Pending): Promise<GenericRow> {
   const media = String(item.payload.mediaUrl || '')
   return { ...item.payload, id: item.id, content_type: item.payload.contentType || 'text',
     media_url: media.startsWith(pendingPrefix) ? await attachmentUrl(item.owner, media.slice(pendingPrefix.length)) : media,
-    sender_id: item.senderId, created_at: item.createdAt, updated_at: item.updatedAt || item.createdAt, status: item.state, delivery_error: item.failureMessage || '',
+    sender_id: item.senderId, created_at: item.createdAt, updated_at: item.updatedAt || item.createdAt, status: item.state, delivery_error: item.failureMessage || '', delivery_error_code: item.failureCode || '',
     ...(item.scope === 'chat' ? { chat_id: item.room } : { [`${item.scope}_id`]: item.room }) }
 }
 export async function stageOfflineChatAttachment(bucket: string, file: File, path?: string, favoriteSticker?: ImportedSticker) {
@@ -114,7 +114,7 @@ export async function retryPendingWebMessage(id: string) {
   const item = await operation<Pending | undefined>('messages', false, s => s.get(id))
   requireOwner(owner)
   if (!item || item.owner !== owner) throw new Error('Este envío ya no está pendiente en este navegador. Actualiza la conversación para comprobarlo.')
-  item.state = 'pending'; item.retryAt = 0; item.failureMessage = undefined
+  item.state = 'pending'; item.retryAt = 0; item.failureMessage = undefined; item.failureCode = undefined
   await put('messages', item); changed(owner, { scope: item.scope, room: item.room, action: 'retry', message: await optimistic(item) })
   await flushWebOutbox()
 }
@@ -260,6 +260,7 @@ export async function flushWebOutbox() {
           clearOutboxProgress(owner,item.id)
           item.attempts += 1; item.state = isTransientOutboxError(error) ? 'pending' : 'failed'
           item.failureMessage = item.state==='failed' ? outboxFailureMessage(error) : undefined
+          item.failureCode = item.state === 'failed' ? apiErrorCode(error) : undefined
           item.retryAt = Date.now() + Math.min(60000, 1000 * 2 ** Math.min(item.attempts, 6))
           await put('messages', item); changed(owner, { scope: item.scope, room: item.room, action: 'failed', message: await optimistic(item) })
           if (item.state === 'pending') return

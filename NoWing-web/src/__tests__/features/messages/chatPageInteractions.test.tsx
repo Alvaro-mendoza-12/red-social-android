@@ -33,7 +33,6 @@ jest.mock('../../../components/ChatAttachmentMedia', () => ({ ChatAttachmentMedi
 jest.mock('../../../components/ChatProfilePanel', () => ({ ChatProfilePanel: () => null }))
 jest.mock('../../../components/ProfileStatusBadges', () => ({ ProfileStatusBadges: () => null }))
 jest.mock('../../../components/SpellingSuggestions', () => ({ SpellingSuggestions: () => null }))
-jest.mock('../../../components/DirectMessageRequestNotice', () => ({ DirectMessageRequestNotice: () => null }))
 jest.mock('../../../components/CommunityRaffles', () => ({ CommunityRaffles: () => null }))
 jest.mock('../../../components/CommunityQuestion', () => ({ CommunityQuestion: () => null, CollectionQuestionTools: () => null }))
 jest.mock('../../../components/CollectionInfo', () => ({ CollectionInfo: () => null }))
@@ -154,9 +153,9 @@ test('notification entry renders cached nickname and avatar while the server is 
   open('chat', { notificationParticipant: { id: 'friend', name: 'Nombre público', avatarUrl: '' } })
   expect(screen.getByRole('button', { name: 'Apodo privado Chat privado' })).toHaveAttribute('title', 'Ver perfil de Apodo privado')
   expect(screen.getByRole('img', { name: 'Apodo privado' })).toHaveAttribute('src', 'https://example.test/avatar.gif')
-  expect(screen.getByRole('status')).toHaveTextContent('Cargando mensajes')
+  expect(screen.getByText('Cargando mensajes…')).toHaveAttribute('role', 'status')
   expect(screen.queryByText('Todavía no hay mensajes en este chat.')).toBeNull()
-  expect(screen.getByRole('button', { name: 'Enviar mensaje' })).toBeDisabled()
+  expect(await screen.findByRole('button', { name: 'Enviar mensaje' })).toBeDisabled()
   await act(async () => { finish(response) })
   expect(await screen.findByText('Mensaje recibido')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Apodo privado Chat privado' })).toHaveAttribute('title', 'Ver perfil de Apodo privado')
@@ -723,4 +722,46 @@ test.each(deleteScopes)('%s poll identity renewal resets its lock without releas
   expect(screen.getByRole('button', { name: 'Creando...' })).toBeInTheDocument()
   await act(async () => { pending[1]() })
   expect(screen.queryByPlaceholderText('Pregunta')).not.toBeInTheDocument()
+})
+
+test('a pending introduction replaces all write controls and hides undelivered attempts', async () => {
+  jest.mocked(fallbackApiJson).mockImplementation(async path => path.endsWith('/request') ? { status: 'pending_outgoing' } as never : [] as never)
+  jest.mocked(loadFallbackChat).mockResolvedValue({
+    ...response, messages: [outgoing, { ...outgoing, id: 'failed-sticker', content: 'Sticker pendiente',
+      content_type: 'sticker', media_url: 'https://example.test/sticker.png', status: 'failed' }],
+  } as never)
+  open()
+  expect(await screen.findByText('Podrás escribir de nuevo cuando esta persona acepte o responda.')).toBeInTheDocument()
+  expect(await screen.findByText('Mensaje propio')).toBeInTheDocument()
+  expect(screen.queryByPlaceholderText('Escribe un mensaje...')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Stickers' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Enviar mensaje' })).toBeNull()
+  expect(screen.queryByText('Reintentar')).toBeNull()
+  expect(screen.queryByText('Sticker pendiente')).toBeNull()
+  expect(sendFallbackChatMessage).not.toHaveBeenCalled()
+})
+
+test('the composer opens when the recipient accepts', async () => {
+  let status = 'pending_outgoing'
+  jest.mocked(fallbackApiJson).mockImplementation(async path => path.endsWith('/request') ? { status } as never : [] as never)
+  open()
+  await screen.findByText('Podrás escribir de nuevo cuando esta persona acepte o responda.')
+  status = 'open'
+  fireEvent.click(screen.getByRole('button', { name: 'Actualizar' }))
+  expect(await screen.findByPlaceholderText('Escribe un mensaje...')).toBeInTheDocument()
+})
+
+test('the first queued introduction hides the composer before a server reread', async () => {
+  jest.mocked(fallbackApiJson).mockImplementation(async path => path.endsWith('/request') ? { status: 'new' } as never : [] as never)
+  jest.mocked(loadFallbackChat).mockResolvedValue({ ...response, messages: [] } as never)
+  jest.mocked(sendFallbackChatMessage).mockResolvedValue({
+    message: { ...outgoing, id: 'intro-local', content: 'Hola', status: 'pending' },
+  } as never)
+  open()
+  await screen.findByText(/Puedes enviar un solo mensaje/)
+  fireEvent.change(screen.getByPlaceholderText('Escribe un mensaje...'), { target: { value: 'Hola' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Enviar mensaje' }))
+  expect(await screen.findByText('Tu primer mensaje está pendiente de envío.')).toBeInTheDocument()
+  expect(screen.queryByPlaceholderText('Escribe un mensaje...')).toBeNull()
+  expect(sendFallbackChatMessage).toHaveBeenCalledTimes(1)
 })

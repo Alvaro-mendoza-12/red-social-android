@@ -1,5 +1,8 @@
 export function outboxFailureMessage(error: unknown) {
  const code=String((error as {code?:string})?.code||(error as Error)?.message||'')
+ if(code==='MESSAGE_REQUEST_PENDING'||code==='FRIEND_REQUEST_PENDING') return 'Podrás escribir de nuevo cuando esta persona acepte o responda.'
+ if(code==='MESSAGE_REQUEST_REJECTED'||code==='FRIEND_REQUEST_REJECTED') return 'Esta persona rechazó la solicitud de mensaje.'
+ if(code==='CHAT_BLOCKED_BY_RECIPIENT') return 'No puedes enviar mensajes a esta persona.'
  if(code==='CHAT_MEDIA_REFERENCE_FORBIDDEN'||code==='COLLECTION_MEDIA_REFERENCE_FORBIDDEN') return 'Este archivo ya no está disponible para enviar. Adjunta otra copia o elige otro sticker.'
  if(code==='AUTH_REQUIRED'||code==='INVALID_TOKEN') return 'Vuelve a iniciar sesión para enviar el mensaje. Tu mensaje sigue guardado aquí.'
  if(code==='CHAT_ACCESS_DENIED'||code==='COLLECTION_ACCESS_DENIED') return 'Ya no tienes acceso a esta conversación.'

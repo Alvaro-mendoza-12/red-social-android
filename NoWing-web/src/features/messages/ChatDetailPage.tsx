@@ -3,7 +3,7 @@ import { animatedImageFile } from '../../core/imageEditPolicy'
 import { messageDeliveryFeedback } from '../../core/outboxFailureMessage'
 import { MessageTimestamp } from '../../components/MessageTimestamp'
 import { ContactMessageCard } from '../../components/ContactMessageCard'
-import { DirectMessageRequestNotice } from '../../components/DirectMessageRequestNotice'
+import { DirectMessageRequestNotice, directMessageWriteRestriction, useDirectMessageRequest } from '../../components/DirectMessageRequestNotice'
 import { messageLocationUrl } from '../../core/messageLocation'
 import { shouldReplyToMessageDoubleClick } from '../../core/chatMessageGestures'
 import { readCachedValue } from '../../core/localCache'
@@ -39,7 +39,7 @@ import { conversationWindow } from '../../core/conversationWindow'
 import { captureConversationViewportAnchor, restoreConversationViewportAnchor } from '../../core/conversationViewport'
 import { sharedVideoReference } from '../../core/sharedVideoReference'
 import { SharedVideoCard } from '../../components/SharedVideoCard'
-import { cancelPendingWebMessage, retryPendingWebMessage } from '../../core/webOutbox'
+import { cancelPendingWebMessage, retryPendingWebMessage, type OutboxChangeDetail } from '../../core/webOutbox'
 import {
   Fragment,
   useCallback,
@@ -106,6 +106,7 @@ type ChatMessage = {
   updatedAt: string
   status: string
   deliveryError?: string
+  deliveryErrorCode?: string
   reactions: Record<string, string[]>
   replyToId: string | null
   pollId: string | null
@@ -372,6 +373,7 @@ function mapMessage(row: GenericRow): ChatMessage {
     updatedAt: textOf(row, ['updated_at', 'created_at'], ''),
     status: textOf(row, ['status'], 'sent'),
     deliveryError: textOf(row, ['delivery_error'], ''),
+    deliveryErrorCode: textOf(row, ['delivery_error_code'], ''),
     reactions: normalizeReactions(row.reactions),
     replyToId: textOf(row, ['reply_to_id'], '') || null,
     pollId: textOf(row, ['poll_id'], '') || null,
@@ -527,6 +529,24 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
   const cleanChatId = useMemo(() => chatId.trim().toLowerCase(), [chatId])
   const scheduleIdentity = useSyncExternalStore(subscribeStorageReadIdentity, getStorageReadIdentity, getStorageReadIdentity)
+  const directRequest = useDirectMessageRequest(cleanChatId, useUbuntu ? user?.id || '' : '', messages.length)
+  const { status: requestStatus, refresh: refreshRequest, recordSendRejection } = directRequest
+  const requestIdentity = JSON.stringify([user?.id, cleanChatId, scheduleIdentity])
+  const firstIntroduction = useRef<{ identity: string; id?: string } | null>(null)
+  const [reservedIntroduction, setReservedIntroduction] = useState<string>()
+  const waitingForDelivery = requestStatus === 'new' &&
+    (reservedIntroduction === requestIdentity || messages.some(message => message.senderId === user?.id && message.status === 'pending'))
+  const composeRestriction = directMessageWriteRestriction(requestStatus)
+    || (waitingForDelivery ? 'Tu primer mensaje está pendiente de envío.' : undefined)
+    || (directRequest.checking ? 'Verificando la conversación…' : undefined)
+  const composeRestrictionRef = useRef(composeRestriction)
+  composeRestrictionRef.current = composeRestriction
+  const canCompose = !composeRestriction
+  useEffect(() => {
+    if (!requestStatus || requestStatus === 'new' || firstIntroduction.current?.identity !== requestIdentity) return
+    firstIntroduction.current = null
+    setReservedIntroduction(undefined)
+  }, [requestIdentity, requestStatus])
   const scheduleContext = useRef(0)
   useEffect(() => {
     setScheduledDraft('')
@@ -717,6 +737,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }, [])
 
   const toggleAudioRecording = useCallback(async () => {
+    if (composeRestrictionRef.current) return
     const activeRecorder = audioRecorderRef.current
     if (activeRecorder && activeRecorder.state !== 'inactive') {
       activeRecorder.stop()
@@ -732,6 +753,10 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     try {
       discardRecordingRef.current = false
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (composeRestrictionRef.current) {
+        stream.getTracks().forEach(track => track.stop())
+        return
+      }
       audioStreamRef.current = stream
       const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus']
       const supportedMimeType = mimeCandidates.find((candidate) => {
@@ -811,10 +836,22 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     stopAudioStream(); setIsRecordingAudio(false)
   }, [user?.id, cleanChatId, stopAudioStream])
 
+  useEffect(() => {
+    if (canCompose) return
+    setShowStickers(false)
+    setDragActive(false)
+    setImageEditorFile(null)
+    discardRecordingRef.current = true
+    const recorder = audioRecorderRef.current
+    if (recorder && recorder.state !== 'inactive') recorder.stop()
+    stopAudioStream()
+    cancelPreparation()
+  }, [canCompose, cancelPreparation, stopAudioStream])
+
   const handleDropZoneDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
-    setDragActive(true)
+    if (!composeRestrictionRef.current) setDragActive(true)
   }, [])
 
   const handleDropZoneDragLeave = useCallback((event: DragEvent<HTMLElement>) => {
@@ -829,6 +866,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       event.preventDefault()
       event.stopPropagation()
       setDragActive(false)
+      if (composeRestrictionRef.current) return
       setError(null)
       startPreparation(progress => droppedAttachments(event.dataTransfer, progress))
     },
@@ -836,8 +874,9 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   )
 
   useEffect(() => {
-    if (editingMessageId) return
+    if (!canCompose || editingMessageId) return
     const paste = (event: ClipboardEvent) => {
+      if (composeRestrictionRef.current) return
       if (event.defaultPrevented || !canPasteIntoChat(event.target)) return
       const files = clipboardFilesFrom(event.clipboardData)
       const hasAttachments = files.length > 0 || clipboardMayContainImage(event.clipboardData) || isEmptyClipboardPaste(event.clipboardData)
@@ -867,14 +906,14 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         }
         for (const file of pastedFiles) {
           const sticker = pastedAsSticker(file, showStickers) || await isCopiedStickerImage(file, stickerHint)
-          if (pasteOwner !== preparationOwnerRef.current) return
+          if (pasteOwner !== preparationOwnerRef.current || composeRestrictionRef.current) return
           queueAttachmentFiles([file], true, sticker)
         }
       })()
     }
     window.addEventListener('paste', paste)
     return () => window.removeEventListener('paste', paste)
-  }, [editingMessageId, queueAttachmentFiles, showStickers, setDraft])
+  }, [canCompose, editingMessageId, queueAttachmentFiles, showStickers, setDraft])
 
   useEffect(() => {
     return () => {
@@ -1509,22 +1548,42 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
   async function sendMessage(input: SendMessageInput) {
     if (!user || !cleanChatId) return
+    if (composeRestrictionRef.current) throw new Error(composeRestrictionRef.current)
+    if (firstIntroduction.current?.identity === requestIdentity) throw new Error('Tu primer mensaje está pendiente de envío.')
     forceScrollToBottomRef.current = true
     scrollThreadToBottom('auto')
     if (useUbuntu) {
-      const response = await sendFallbackChatMessage(cleanChatId, {
-        content: input.content,
-        contentType: input.contentType ?? 'text',
-        mediaUrl: input.mediaUrl ?? null,
-        mediaSize: input.mediaSize ?? 0,
-        replyToId: input.replyToId ?? null,
-        isForwarded: input.isForwarded,
-        forwardedFromMessageId: input.forwardedFromMessageId,
-        forwardedFromUserId: input.forwardedFromUserId,
-      })
-      forceScrollToBottomRef.current = true
-      upsertMessageInState(mapMessage(response.message))
-      return
+      const introduction: { identity: string; id?: string } | null =
+        requestStatus === 'new' ? { identity: requestIdentity } : null
+      if (introduction) {
+        firstIntroduction.current = introduction
+        setReservedIntroduction(requestIdentity)
+      }
+      try {
+        const response = await sendFallbackChatMessage(cleanChatId, {
+          content: input.content,
+          contentType: input.contentType ?? 'text',
+          mediaUrl: input.mediaUrl ?? null,
+          mediaSize: input.mediaSize ?? 0,
+          replyToId: input.replyToId ?? null,
+          isForwarded: input.isForwarded,
+          forwardedFromMessageId: input.forwardedFromMessageId,
+          forwardedFromUserId: input.forwardedFromUserId,
+        })
+        if (introduction && firstIntroduction.current === introduction) {
+          introduction.id = textOf(response.message, ['id'], '')
+        }
+        forceScrollToBottomRef.current = true
+        upsertMessageInState(mapMessage(response.message))
+        return
+      } catch (error) {
+        if (introduction && firstIntroduction.current === introduction) {
+          firstIntroduction.current = null
+          setReservedIntroduction(undefined)
+        }
+        recordSendRejection(error)
+        throw error
+      }
     }
     if (!supabase) return
     const payload = {
@@ -1567,7 +1626,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     if (useUbuntu) {
       if (!user || !cleanChatId || pendingAttachments.length === 0) return
       const owner = preparationOwnerRef.current
-      const queued = [...pendingAttachments]
+      const queued = requestStatus === 'new' ? pendingAttachments.slice(0, 1) : [...pendingAttachments]
       setUploading(true)
       try {
         for (let index = 0; index < queued.length; index += 1) {
@@ -1633,11 +1692,22 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
   useEffect(() => {
     const update = (event: Event) => {
-      const detail = (event as CustomEvent<{ scope?: string; room?: string; action?: string; message?: GenericRow }>).detail
+      const detail = (event as CustomEvent<OutboxChangeDetail>).detail
+      if (detail?.owner && detail.owner !== user?.id) return
       if (detail?.scope && detail?.room) {
         if (detail.scope !== 'chat' || detail.room !== cleanChatId) return
-        if (detail.message && detail.action !== 'cancelled' && textOf(detail.message, ['id'], '')) {
-          upsertMessageInState(mapMessage(detail.message))
+        const id = textOf(detail.message || {}, ['id'], '')
+        if (detail.action === 'failed' || detail.action === 'cancelled') {
+          if (id && firstIntroduction.current?.identity === requestIdentity && id === firstIntroduction.current.id) {
+            firstIntroduction.current = null
+            setReservedIntroduction(undefined)
+          }
+        }
+        if (detail.action === 'delivered' || detail.action === 'cancelled') void refreshRequest()
+        if (detail.message && detail.action !== 'cancelled' && id) {
+          const row = mapMessage(detail.message)
+          if (detail.action === 'failed' && row.deliveryErrorCode) recordSendRejection({ code: row.deliveryErrorCode })
+          upsertMessageInState(row)
           return
         }
       }
@@ -1645,10 +1715,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
     }
     window.addEventListener('novvin:outbox-changed', update)
     return () => window.removeEventListener('novvin:outbox-changed', update)
-  }, [cleanChatId, loadChat, upsertMessageInState])
+  }, [cleanChatId, loadChat, recordSendRejection, refreshRequest, requestIdentity, upsertMessageInState, user?.id])
 
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (composeRestrictionRef.current) return
     if (!user || !cleanChatId || (!supabase && !useUbuntu)) {
       setError('No hay una sesión activa para enviar el mensaje')
       return
@@ -1719,6 +1790,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   function handleAttachFile(input: FileList | File[] | null) {
+    if (composeRestrictionRef.current) return
     setError(null)
     const selected = Array.from(input || [])
     startPreparation(progress => prepareAttachmentFiles(selected, progress))
@@ -1830,6 +1902,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   async function createChatPoll() {
+    if (composeRestrictionRef.current) return
     if (!user || (!supabase && !useUbuntu) || !cleanChatId || creatingPoll) return
     const question = pollQuestion.trim()
     const options = pollOptions
@@ -1915,6 +1988,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   async function scheduleMessage() {
+    if (composeRestrictionRef.current) return
     if (!user || (!supabase && !useUbuntu) || !cleanChatId || scheduling) return
     const content = scheduledDraft.trim()
     if (!content) return
@@ -2158,6 +2232,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
   }
 
   async function importSticker(source: File | null) {
+    if (composeRestrictionRef.current) return
     if (!source || !user || !cleanChatId) return
     const owner = preparationOwnerRef.current
     const [file] = await normalizeClipboardFiles([source])
@@ -2263,7 +2338,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
       onDragLeave={handleDropZoneDragLeave}
       onDrop={handleDropZoneDrop}
     >
-      {showBirthday && user && cleanChatId && otherParticipant ? <BirthdayComposer key={cleanChatId} owner={user.id} chatId={cleanChatId} recipient={otherParticipant.name} onClose={closeBirthday} onSend={async content => { await sendMessage({ content, contentType: 'birthday_card' }) }}/> : null}
+      {canCompose && showBirthday && user && cleanChatId && otherParticipant ? <BirthdayComposer key={cleanChatId} owner={user.id} chatId={cleanChatId} recipient={otherParticipant.name} onClose={closeBirthday} onSend={async content => { await sendMessage({ content, contentType: 'birthday_card' }) }}/> : null}
       {profilePanelOpen && otherParticipant ? <ChatProfilePanel key={otherParticipant.id} profileId={otherParticipant.id} onClose={() => setProfilePanelOpen(false)} /> : null}
       {dragActive ? (
         <div className="chat-drop-overlay">
@@ -2474,8 +2549,8 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         }}>{selectionBusy ? 'Eliminando…' : 'Eliminar para mí'}</button>
       </div> : null}
       {forwardMessages.length ? <ForwardMessagesDialog messages={forwardMessages} onClose={() => setForwardMessages([])} /> : null}
-      <div className="chat-thread-shell" inert={pendingAttachments.length > 0}>
-        {useUbuntu && user ? <DirectMessageRequestNotice key={`${user.id}:${cleanChatId}`} accountId={user.id} chatId={cleanChatId} revision={messages.length}/> : null}
+      <div className="chat-thread-shell" inert={canCompose && pendingAttachments.length > 0}>
+        {useUbuntu && user ? <DirectMessageRequestNotice request={directRequest}/> : null}
         <section className="chat-thread" tabIndex={0} aria-label="Historial de mensajes" ref={threadRef} onContextMenu={event => { if(event.target === event.currentTarget) { event.preventDefault(); setShowQuickShare(true) } }} onScroll={handleThreadScroll} onLoadCapture={keepLatestMessageVisible} onLoadedMetadataCapture={keepLatestMessageVisible}>
           {hasOlderMessages ? <button type="button" className="ghost-btn" disabled={loadingOlderMessages} onClick={() => loadOlderMessagesRef.current()}>
             {loadingOlderMessages ? 'Cargando mensajes…' : 'Ver mensajes anteriores'}
@@ -2494,6 +2569,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
               <small className="muted-line">Todavía no hay mensajes en este chat.</small>
             </div>
           ) : renderedMessages.map((message, index) => {
+          if (!canCompose && requestStatus === 'pending_outgoing' && message.senderId === user?.id && message.status === 'failed') return null
           const previousMessage = index > 0 ? renderedMessages[index - 1] : null
           const showDaySeparator =
             !previousMessage || dayKeyOf(previousMessage.createdAt) !== dayKeyOf(message.createdAt)
@@ -2522,7 +2598,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           )
 
           const inlinePhoto = Boolean(message.mediaUrl && !message.deletedForAll && !['sticker', 'location', 'contact', 'birthday_card', 'poll', 'raffle', 'question'].includes(message.contentType) && !isViewOnceType(message.contentType) && attachmentKind(message.contentType, message.mediaUrl) === 'image')
-          const photoTimestamp = inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id).catch(error => setError(friendlyError(error)))}/> : undefined
+          const photoTimestamp = inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={canCompose ? () => void retryPendingWebMessage(message.id).catch(error => setError(friendlyError(error))) : undefined}/> : undefined
           return (
             <Fragment key={message.id}>
               {showDaySeparator ? (
@@ -2654,7 +2730,7 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
 
                 {mine && message.status==='failed' ? <p className="message-delivery-error" role="status">{messageDeliveryFeedback(message.deliveryError)}</p> : null}
                 {mine && message.status==='pending' && message.mediaUrl ? <OutboxTransferStatus id={message.id}/> : null}
-                {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={() => void retryPendingWebMessage(message.id).catch(error => setError(friendlyError(error)))}/> : null}
+                {!inlinePhoto ? <MessageTimestamp createdAt={message.createdAt} mine={mine} status={deliveryState || 'sent'} edited={message.isEdited} readTitle={readByOther ? `Leído por ${otherParticipant?.name || "contacto"}` : undefined} onRetry={canCompose ? () => void retryPendingWebMessage(message.id).catch(error => setError(friendlyError(error))) : undefined}/> : null}
               </article>
             </Fragment>
           )
@@ -2693,22 +2769,22 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
         </div>
       ) : null}
 
-      {showStickers ? <StickerPicker onEmoji={emoji => { draftRevisionRef.current += 1; setDraft(current => current + emoji) }} onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
+      {canCompose && showStickers ? <StickerPicker onEmoji={emoji => { draftRevisionRef.current += 1; setDraft(current => current + emoji) }} onSelect={item => void sendSticker(item)} onImport={file => void importSticker(file)} onClose={() => setShowStickers(false)} /> : null}
 
-      {!pendingAttachments.length ? <SpellingSuggestions text={composerText} caret={spellingCaret} onReplace={(text,caret)=>{draftRevisionRef.current += 1;if(editingMessageId)setEditingDraft(text);else setDraft(text);setSpellingCaret(caret);requestAnimationFrame(()=>{const input=document.querySelector<HTMLInputElement>('.chat-composer .chat-input-field');input?.focus();input?.setSelectionRange(caret,caret)})}}/> : null}
+      {canCompose && !pendingAttachments.length ? <SpellingSuggestions text={composerText} caret={spellingCaret} onReplace={(text,caret)=>{draftRevisionRef.current += 1;if(editingMessageId)setEditingDraft(text);else setDraft(text);setSpellingCaret(caret);requestAnimationFrame(()=>{const input=document.querySelector<HTMLInputElement>('.chat-composer .chat-input-field');input?.focus();input?.setSelectionRange(caret,caret)})}}/> : null}
       {error ? <div className="chat-composer-error" role="alert"><span>{error}</span><button className="mini-action-btn" type="button" onClick={() => setError(null)}>Cerrar</button></div> : null}
-      {preparingAttachments ? <p className="attachment-preparing" role="status">{preparationStatus}</p> : null}
-      {isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
-      {imageEditorFile ? <ChatImageEditor asSticker={pendingAttachments.some(item => item.file === imageEditorFile && item.contentType === 'sticker')} file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
+      {canCompose && preparingAttachments ? <p className="attachment-preparing" role="status">{preparationStatus}</p> : null}
+      {canCompose && isRecordingAudio ? <RecordingIndicator onStop={() => audioRecorderRef.current?.stop()} onCancel={() => { discardRecordingRef.current = true; audioRecorderRef.current?.stop() }} /> : null}
+      {canCompose && imageEditorFile ? <ChatImageEditor asSticker={pendingAttachments.some(item => item.file === imageEditorFile && item.contentType === 'sticker')} file={imageEditorFile} onClose={() => setImageEditorFile(null)} onSave={file => setPendingAttachments(current => current.map(entry => { if (entry.file !== imageEditorFile) return entry; if (entry.previewUrl) URL.revokeObjectURL(entry.previewUrl); return { ...entry, file, previewUrl: previewUrlForFile(file) } }))} /> : null}
       {galleryIndex !== null && gallery[galleryIndex] ? <MediaViewer items={gallery} initialIndex={galleryIndex} onClose={() => setGalleryMessageId(null)} /> : null}
-      {pendingAttachments.length > 0 ? <ChatAttachmentPreview items={pendingAttachments} draft={draft} busy={sending || uploading} preparing={preparingAttachments} status={preparationStatus}
+      {canCompose && pendingAttachments.length > 0 ? <ChatAttachmentPreview items={pendingAttachments} draft={draft} busy={sending || uploading} preparing={preparingAttachments} status={preparationStatus}
         onClose={() => { cancelPreparation(); clearPendingAttachments() }} onRemove={removePendingAttachment} onAdd={handleAttachFile} onSend={handleSend}
         onCaption={(id, caption) => { updatePendingAttachmentCaption(id, caption); if (pendingAttachments[0]?.id === id) setDraft(caption) }}
         onEdit={id => setImageEditorFile(pendingAttachments.find(item => item.id === id)?.file || null)}
         onToggleSticker={id => setPendingAttachments(current => current.map(item => item.id === id ? { ...item, contentType: item.contentType === 'sticker' ? 'image' : 'sticker' } : item))}
       /> : null}
 
-      <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
+      {canCompose ? <form className="composer chat-composer shadow-lg" onSubmit={handleSend}>
         <button
           className="icon-btn"
           type="button"
@@ -2764,7 +2840,11 @@ export function ChatDetailPage({ chatIdOverride, embedded = false, onCloseChat, 
           {sending || uploading ? <LoaderCircle size={20} aria-hidden="true" />
             : editingMessageId ? <Check size={22} aria-hidden="true" /> : <Send size={21} aria-hidden="true" />}
         </button>
-      </form>
+      </form> : <aside className="chat-request-notice" role="status">
+        {requestStatus === 'pending_outgoing' ? <strong>Solicitud enviada</strong> : null}
+        <p>{composeRestriction}</p>
+        {requestStatus === 'pending_outgoing' ? <button type="button" className="ghost-btn" onClick={() => void refreshRequest()}>Actualizar</button> : null}
+      </aside>}
       {viewOnceLease ? <ViewOnceMediaDialog lease={viewOnceLease} onClose={() => setViewOnceLease(null)} /> : null}
     </section>
   )
