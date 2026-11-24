@@ -152,10 +152,10 @@ function registerBoardGameRoutes(app, { pool, authRequired, getIdentity, rollDie
         FROM fallback_board_rooms r
         JOIN (${accountAliases}) me ON me.id=$1::text::uuid
         LEFT JOIN fallback_board_invites i ON i.room_id=r.id AND i.recipient_id=$1
-       WHERE (r.seats ? $1 AND r.updated_at > now()-interval '7 days')
+       WHERE r.status<>'closed' AND ((r.seats ? $1 AND r.updated_at > now()-interval '7 days')
           OR (r.status='waiting' AND r.created_at > now()-interval '1 day'
               AND (r.visibility='public' OR i.room_id IS NOT NULL)
-              AND NOT EXISTS (SELECT 1 FROM LATERAL (${roomAccounts}) other WHERE ${blocked}))
+              AND NOT EXISTS (SELECT 1 FROM LATERAL (${roomAccounts}) other WHERE ${blocked})))
        ORDER BY (r.seats ? $1) DESC, r.updated_at DESC LIMIT 60`, [actor])
     return { rooms: rows.map(row => publicRoom(row, actor)) }
   })

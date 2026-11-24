@@ -143,4 +143,6 @@ test('authenticated board games persists matches, private invites, turns, reacti
   }
   assert.deepEqual((await request('Carla', checkersPath)).room.actions, [{ type: 'move', from: 40, to: 33 }])
   assert.equal((await request('Ana', checkersPath + '/close', 200, {})).room.status, 'closed')
+  assert.equal((await request('Carla', checkersPath)).room.status, 'closed')
+  assert.equal((await request('Ana', '/rooms')).rooms.some(room => room.id === publicRoom.id), false)
 })

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-24T05:17:07.872485+00:00",
-  "baseCommit": "0ca0bcdee0e519cd78f2ac30755d9fe2d61b28da",
+  "generatedAtUtc": "2026-11-24T10:52:30.248425+00:00",
+  "baseCommit": "e70833d0b594b86924ebafca465e76fa655e0950",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,8 +11,8 @@
   },
   "counts": {
     "pending": 3440,
-    "code-read": 1083,
-    "partial": 292
+    "code-read": 1082,
+    "partial": 294
   },
   "countsByPhase": {
     "android": {
@@ -27,8 +27,8 @@
     },
     "server": {
       "pending": 720,
-      "code-read": 216,
-      "partial": 54
+      "code-read": 214,
+      "partial": 56
     },
     "tooling-and-other": {
       "pending": 137,
@@ -38,7 +38,7 @@
     "web": {
       "partial": 76,
       "pending": 469,
-      "code-read": 134
+      "code-read": 135
     }
   },
   "files": [
@@ -339,9 +339,9 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "157fe3abf04d22208f1a494779915fce0bc5d5e9",
+      "gitBlobId": "8d29a6d61301f388e06f4a67eef53feb78cff15c",
       "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "NoWing-web/tests/board-online.test.mjs",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4592,6 +4592,14 @@
       "gitBlobId": "8344518f5c6ebf350daf58609ba1e41ed1f9ebe4",
       "reviewStatus": "code-read",
       "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/tests/board-online.test.mjs",
+      "phase": "web",
+      "gitBlobId": "a65104e4e864663463294816c88c6eff464ef108",
+      "reviewStatus": "code-read",
+      "evidence": "NoWing-web/tests/board-online.test.mjs",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25085,9 +25093,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/board-games/routes.js",
       "phase": "server",
-      "gitBlobId": "699b790e9e6d1e7e028dc516d1d699c605f0cbde",
-      "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "gitBlobId": "0d4373eb948222717c7033d58f07315f0218941b",
+      "reviewStatus": "partial",
+      "evidence": "NoWing-web/tests/board-online.test.mjs",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26495,9 +26503,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/board-games.test.js",
       "phase": "server",
-      "gitBlobId": "42cfd7f2761d228835d76c3b30827f41d4e60eb1",
-      "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "gitBlobId": "ef623f96038468c0d418515805c14a9a7178cad6",
+      "reviewStatus": "partial",
+      "evidence": "NoWing-web/tests/board-online.test.mjs",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

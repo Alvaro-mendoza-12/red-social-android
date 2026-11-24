@@ -95,7 +95,10 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
   let loading = false
   let reconciling = false
   let lastReaction = 0
+  let friendsLoadedFor
+  let lobbyNotice = ''
   const invited = new Set()
+  const pendingCreations = new Map()
   const url = (suffix = '') => '/rooms/' + room.id + suffix
   const status = message => { element('online-status').textContent = message }
 
@@ -108,6 +111,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       loading = false
       reconciling = false
       lastReaction = 0
+      friendsLoadedFor = undefined
       invited.clear()
       clearBoard()
     }
@@ -121,7 +125,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
 
   function displayRooms(rooms) {
     const chosen = selection().kind
-    const visible = rooms.filter(item => item.game === chosen || item.invited || item.seat >= 0)
+    const visible = rooms.filter(item => item.status !== 'closed' && (item.game === chosen || item.invited || item.seat >= 0))
     element('rooms').replaceChildren(...visible.map(item => {
       const label = item.seat >= 0 ? item.status === 'finished' ? 'Ver resultado' : 'Volver a la sala' :
         item.invited ? 'Aceptar invitación' : 'Unirme'
@@ -136,22 +140,21 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       })))
       return row
     }))
-    status(visible.length ? '' : 'No hay salas de este juego disponibles.')
+    status(lobbyNotice || (visible.length ? '' : 'No hay salas de este juego disponibles.'))
   }
 
   async function displayRoom(value, isCurrent) {
     if (room?.id === value.id && value.revision < room.revision) return
+    const key = value.game + ':' + value.capacity
+    if (pendingCreations.get(key) === value.id) pendingCreations.delete(key)
+    if (value.status === 'closed') {
+      lobby('La partida se cerró.')
+      return
+    }
     const changed = room?.id !== value.id || room?.revision !== value.revision
     room = value
     element('rooms').hidden = true
     element('room-controls').hidden = true
-    if (value.status === 'closed') {
-      clearBoard()
-      element('waiting').hidden = true
-      element('online-reactions').hidden = true
-      status('La partida se cerró.')
-      return
-    }
     if (value.status !== 'waiting') {
       status('')
       element('waiting').hidden = true
@@ -168,9 +171,10 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     element('waiting').hidden = false
     element('waiting-title').textContent = names[value.game] + (value.visibility === 'private' ? ' · Sala privada' : ' · Sala pública')
     element('waiting-description').textContent = value.count + ' de ' + value.capacity + ' jugadores. La partida empieza al completar la sala.'
-    if (!(changed && value.host)) return
+    if (!value.host || friendsLoadedFor === value.id) return
     const { friends } = await request('/friends')
-    if (!isCurrent()) return
+    if (!isCurrent() || room?.id !== value.id || room.status !== 'waiting') return
+    friendsLoadedFor = value.id
     element('friends').replaceChildren(...friends.map(friend => actionButton(
       invited.has(friend.id) ? 'Invitación enviada a ' + friend.name : 'Invitar a ' + friend.name,
       event => run(async current => {
@@ -199,7 +203,10 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
           if (isCurrent() && !room) displayRooms(rooms)
         }
       } catch (error) {
-        if (isCurrent()) status(messageFor(error))
+        if (isCurrent()) {
+          if (monitored && monitored === room?.id && error.message === 'BOARD_ROOM_NOT_FOUND') lobby(messageFor(error))
+          else status(messageFor(error))
+        }
       } finally {
         if (ticket === generation) reconciling = false
       }
@@ -222,7 +229,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     finally { if (isCurrent()) loading = false }
   }
 
-  function lobby() {
+  function lobby(notice = '') {
     if (mode !== 'online') show('online')
     else {
       generation++
@@ -233,6 +240,8 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     room = null
     invited.clear()
     lastReaction = 0
+    friendsLoadedFor = undefined
+    lobbyNotice = notice
     clearBoard()
     element('online-reactions').hidden = true
     element('reaction-status').textContent = ''
@@ -241,14 +250,27 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     element('rooms').hidden = false
     element('rooms').replaceChildren()
     element('room-controls').hidden = false
-    status('Buscando salas…')
+    status(lobbyNotice || 'Buscando salas…')
     void poll()
   }
 
   async function start(visibility, isCurrent) {
     const { kind, capacity } = selection()
-    const result = await request(visibility === 'public' ? '/match' : '/rooms',
-      { game: kind, capacity, visibility, requestId: crypto.randomUUID() })
+    const key = kind + ':' + capacity
+    const privateRoom = visibility === 'private'
+    // Private creation uses this ID as the room ID. Keep it until the server
+    // confirms the write, so a lost reply cannot create a second room.
+    const requestId = (privateRoom && pendingCreations.get(key)) || crypto.randomUUID()
+    if (privateRoom) pendingCreations.set(key, requestId)
+    let result
+    try {
+      result = await request(privateRoom ? '/rooms' : '/match', { game: kind, capacity, visibility, requestId })
+    } catch (error) {
+      if (privateRoom && isCurrent() && ['BOARD_ROOM_LIMIT', 'BOARD_ROOM_INVALID'].includes(error.message)) {
+        pendingCreations.delete(key)
+      }
+      throw error
+    }
     if (isCurrent()) await displayRoom(result.room, isCurrent)
   }
 
@@ -282,7 +304,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
   }
 
   element('open-offline').addEventListener('click', () => show('offline'))
-  element('open-online').addEventListener('click', lobby)
+  element('open-online').addEventListener('click', () => lobby())
   element('open-ranking').addEventListener('click', () => {
     if (mode !== 'ranking') show('ranking')
     clearInterval(clock)
@@ -291,7 +313,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       void loadRanking()
     }
   })
-  element('refresh-rooms').addEventListener('click', lobby)
+  element('refresh-rooms').addEventListener('click', () => lobby())
   element('find-room').addEventListener('click', () => run(current => start('public', current)))
   element('create-private').addEventListener('click', () => run(current => start('private', current)))
   element('leave-waiting').addEventListener('click', () => run(async current => {
