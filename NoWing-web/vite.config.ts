@@ -15,10 +15,29 @@ const sharedDiscoveryPublicKey = fs.existsSync(sharedDiscoveryPublicKeyPath)
 const backendDiscoveryPublicKey =
   String(process.env.VITE_BACKEND_DISCOVERY_PUBLIC_KEY || '').trim() || sharedDiscoveryPublicKey
 
+const boardNames = ['board-rules.js', 'board-match.js', 'chess-1.4.0.js', 'chess-LICENSE.txt']
+const boardEngine = path.resolve(import.meta.dirname, '../infrastructure/local-fallback/api/src/board-games/engine')
+const sharedBoardEngine: import('vite').Plugin = {
+  name: 'novvin-board-engine',
+  configureServer(server) {
+    server.middlewares.use('/board-games', (req, res, next) => {
+      const name = (req.url || '').split('?')[0].slice(1)
+      if (!boardNames.includes(name)) return next()
+      res.setHeader('Content-Type', name.endsWith('.js') ? 'text/javascript; charset=utf-8' : 'text/plain; charset=utf-8')
+      fs.createReadStream(path.join(boardEngine, name)).pipe(res)
+    })
+  },
+  generateBundle() {
+    for (const name of boardNames) this.emitFile({
+      type: 'asset', fileName: 'board-games/' + name, source: fs.readFileSync(path.join(boardEngine, name)),
+    })
+  },
+}
+
 // 🔥 OPTIMIZED VITE CONFIG - BASADO EN BEST PRACTICES OFICIALES
 // Implementación realista basada en documentación oficial de Vite
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), sharedBoardEngine],
   
   // 🔥 BEST PRACTICE: Optimización de resolución de módulos
   resolve: {

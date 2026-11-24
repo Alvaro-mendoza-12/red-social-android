@@ -1,4 +1,5 @@
 const crypto = require('crypto')
+const { ensureBoardGameTables, registerBoardGameRoutes } = require('./board-games/routes')
 const { candidateFitsCriteria, normalizeCandidateCriteria } = require('./playmatch-candidate-constraints')
 const {
   ensureDynamicPlayMatchCatalogTables,
@@ -250,6 +251,7 @@ async function ensurePlayMatchTables(pool) {
     )
   `)
   await ensureDynamicPlayMatchCatalogTables(pool)
+  await ensureBoardGameTables(pool)
 }
 
 async function findUserByAlias(db, rawId) {
@@ -790,6 +792,15 @@ function registerPlayMatchRoutes(app, {
     }
     return { user, identity }
   }
+
+  registerBoardGameRoutes(app, {
+    pool,
+    authRequired,
+    getIdentity: async (req, res) => {
+      const ctx = await context(req, res)
+      return ctx ? localUserId(ctx.user) : null
+    },
+  })
 
   app.get('/v1/data/playmatch/capabilities', authRequired, async (req, res, next) => {
     try {

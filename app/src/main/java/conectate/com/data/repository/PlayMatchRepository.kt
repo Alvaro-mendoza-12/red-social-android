@@ -79,6 +79,8 @@ class PlayMatchRepository @Inject constructor(
     suspend fun session(id: String) = withToken { api.session(it, id) }
     suspend fun cancel(id: String) = withToken { api.cancelSession(it, id) }
     suspend fun matches() = withToken(api::matches)
+    suspend fun boardRequest(method: String, path: String, body: String) =
+        withToken { api.boardRequest(it, method, path, body) }
     suspend fun decideMatch(id: String, decision: String, reason: String = "") = withToken { api.decideMatch(it, id, PlayMatchDecisionRequest(decision, reason)) }
 
     private suspend fun <T> withToken(block: suspend (String) -> Result<T>): Result<T> {

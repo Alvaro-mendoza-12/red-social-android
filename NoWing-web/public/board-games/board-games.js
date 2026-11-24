@@ -1,6 +1,8 @@
 import { createChess, chessActions, playChess, canClaimChessDraw, claimChessDraw,
   createCheckers, checkerActions, playCheckers, createLudo, rollLudo, playLudo,
   ludoActions, ludoSafe, ludoTrack, ludoHome, ludoCell, ludoColor } from './board-rules.js'
+import { boardMatch, boardTurn } from './board-match.js'
+import { onlineBoard } from './board-online.js'
 
 const element = id => document.getElementById(id)
 const state = { kind: 'chess', game: null, selection: null, bot: false, depth: 2, timer: 0 }
@@ -30,8 +32,10 @@ function randomIndex(bound) {
   do { crypto.getRandomValues(random) } while (random[0] >= limit)
   return random[0] % bound
 }
-const turn = () => state.kind === 'chess' ? Number(state.game.board.turn() === 'b') : state.game.turn
+const turn = () => boardTurn(state.kind, state.game)
 const botTurn = () => state.bot && turn() !== 0 && !state.game.outcome
+const cannotPlay = () => botTurn() || (state.room && state.room.seat !== turn())
+const selection = () => ({ kind: state.kind, capacity: state.kind === 'ludo' ? Number(element('online-players').value) : 2 })
 function player(side) {
   if (state.kind === 'ludo') return colors[ludoColor(state.game, side)]
   return state.kind === 'chess' ? ['Blancas','Negras'][side] : ['Claras','Rojas'][side]
@@ -43,20 +47,44 @@ function completeMove() {
 function updateSetup() {
   document.querySelectorAll('[data-game]').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.game === state.kind)))
   element('players-control').hidden = state.kind !== 'ludo'
+  element('online-players-control').hidden = state.kind !== 'ludo'
   element('level-control').hidden = element('mode').value !== 'bot'
 }
 function reset() {
   clearTimeout(state.timer)
   element('promotion').close()
   state.game = null
+  state.room = null
   state.selection = null
   element('table').hidden = true
-  element('setup').hidden = false
+  element('setup').hidden = online.mode() !== 'offline'
 }
+function showBoard() {
+  element('setup').hidden = true
+  element('table').hidden = false
+  element('game-title').textContent = gameNames[state.kind]
+  element('rules').textContent = rules[state.kind]
+  element('restart').textContent = state.room ? 'Volver a las salas' : 'Nueva partida'
+  render()
+}
+const online = onlineBoard({
+  selection,
+  clearBoard: () => reset(),
+  onRoom: room => {
+    state.kind = room.game
+    state.bot = false
+    state.room = room
+    state.game = boardMatch(room.game, room.capacity, room.actions)
+    state.selection = state.kind === 'checkers' ? state.game.forced : null
+    updateSetup()
+    showBoard()
+  },
+})
 document.querySelectorAll('[data-game]').forEach(node => node.addEventListener('click', () => {
   reset()
   state.kind = node.dataset.game
   updateSetup()
+  if (online.mode() === 'online') online.lobby()
 }))
 element('mode').addEventListener('change', updateSetup)
 element('setup').addEventListener('submit', event => {
@@ -65,20 +93,41 @@ element('setup').addEventListener('submit', event => {
   state.depth = Number(element('level').value)
   state.game = state.kind === 'chess' ? createChess() :
     state.kind === 'checkers' ? createCheckers() : createLudo(Number(element('players').value))
-  element('setup').hidden = true
-  element('table').hidden = false
-  element('game-title').textContent = gameNames[state.kind]
-  element('rules').textContent = rules[state.kind]
-  completeMove()
+  showBoard()
 })
-element('restart').addEventListener('click', reset)
-element('claim').addEventListener('click', () => { if (state.kind === 'chess' && claimChessDraw(state.game)) completeMove() })
+element('restart').addEventListener('click', () => { if (state.room) online.lobby(); else reset() })
+element('claim').addEventListener('click', () => {
+  if (state.room) void online.move({ type: 'claim' })
+  else if (state.kind === 'chess' && claimChessDraw(state.game)) completeMove()
+})
 element('resign').addEventListener('click', () => {
   if (!state.game || state.game.outcome) return
+  if (state.room) {
+    void online.move({ type: 'resign' })
+    return
+  }
   state.game.outcome = { winner: state.bot ? 1 : 1 - turn(), reason: 'Abandono' }
   completeMove()
 })
-element('roll').addEventListener('click', () => { if (!botTurn() && rollLudo(state.game, randomIndex(6) + 1)) completeMove() })
+element('roll').addEventListener('click', () => {
+  if (state.room) void online.move({ type: 'roll' })
+  else if (!botTurn() && rollLudo(state.game, randomIndex(6) + 1)) completeMove()
+})
+function move8(from, to, promotion) {
+  if (state.room) {
+    void online.move({ type: 'move', from, to, promotion })
+    return
+  }
+  const moved = state.kind === 'chess' ? playChess(state.game, { from, to, promotion }) : playCheckers(state.game, from, to)
+  if (moved) {
+    state.selection = state.kind === 'chess' ? null : state.game.forced
+    render()
+  }
+}
+function moveToken(token) {
+  if (state.room) void online.move({ type: 'move', token })
+  else if (playLudo(state.game, token)) completeMove()
+}
 
 function board8() {
   const board = element('board')
@@ -97,16 +146,16 @@ function board8() {
       if (destination.length) {
         if (chess && destination.length > 1) {
           const promotion = element('promotion')
+          const from = state.selection
+          const current = state.game
           promotion.returnValue = ''
           promotion.addEventListener('close', () => {
-            if (!state.game || !promotion.returnValue) return
-            if (playChess(state.game, { from: state.selection, to: square, promotion: promotion.returnValue })) completeMove()
+            if (state.game === current && promotion.returnValue) move8(from, square, promotion.returnValue)
           }, { once: true })
           promotion.showModal()
           return
         }
-        const moved = chess ? playChess(state.game, destination[0]) : playCheckers(state.game, state.selection, square)
-        if (moved) { state.selection = chess ? null : state.game.forced; render() }
+        move8(state.selection, square)
         return
       }
       state.selection = state.selection === square ? null : square
@@ -114,7 +163,7 @@ function board8() {
     }, (row + column) % 2 ? 'dark' : 'light')
     if (destination.length) node.classList.add('legal')
     if (state.selection === square) node.classList.add('chosen')
-    node.disabled = Boolean(state.game.outcome || botTurn() || (!selectable && !destination.length))
+    node.disabled = Boolean(state.game.outcome || cannotPlay() || (!selectable && !destination.length))
     let label = coordinate
     if (piece) {
       const mark = document.createElement('span')
@@ -153,8 +202,8 @@ function drawLudo() {
     const [row, column] = ludoBase[color]
     for (const [token, progress] of pieces.entries()) {
       const [y, x] = progress < 0 ? [row + 2 * (token >> 1), column + 2 * (token % 2)] : ludoCell(state.game, side, progress)
-      const enable = !botTurn() && side === turn() && legal.has(token)
-      const node = button(String(token + 1), () => { if (playLudo(state.game, token)) completeMove() }, 'token color-' + color)
+      const enable = !cannotPlay() && side === turn() && legal.has(token)
+      const node = button(String(token + 1), () => moveToken(token), 'token color-' + color)
       node.disabled = !enable
       node.setAttribute('aria-label', `${player(side)}, ficha ${token + 1}`)
       cells[y * 15 + x].append(node)
@@ -162,8 +211,8 @@ function drawLudo() {
   }
   board.replaceChildren(...cells)
   element('tokens').replaceChildren(...[...legal].map(token => {
-    const node = button('Mover ficha ' + (token + 1), () => { if (playLudo(state.game, token)) completeMove() })
-    node.disabled = botTurn()
+    const node = button('Mover ficha ' + (token + 1), () => moveToken(token))
+    node.disabled = Boolean(cannotPlay())
     return node
   }))
 }
@@ -209,14 +258,15 @@ function render() {
   const game = state.game
   const result = game.outcome
   const lastRoll = game.lastDie ? ` · ${player(game.lastDie.side)} sacó ${game.lastDie.value}` : ''
+  const onlineTurn = state.room ? (state.room.seat === turn() ? ' · Tu turno' : ' · Esperando jugada') : ''
   element('status').textContent = result ?
     `${result.winner === null ? 'Empate' : 'Gana ' + player(result.winner)} · ${result.reason}` :
-    `Turno: ${player(turn())}${botTurn() ? ' · Novvin' : ''}${state.kind === 'chess' && game.board.isCheck() ? ' · Jaque' : ''}${lastRoll}`
+    `Turno: ${player(turn())}${botTurn() ? ' · Novvin' : onlineTurn}${state.kind === 'chess' && game.board.isCheck() ? ' · Jaque' : ''}${lastRoll}`
   const ludo = state.kind === 'ludo'
   element('roll').hidden = !ludo || Boolean(result)
-  element('roll').disabled = botTurn() || game.die !== null
-  element('claim').hidden = state.kind !== 'chess' || !canClaimChessDraw(game) || botTurn()
-  element('resign').hidden = ludo || Boolean(result) || botTurn()
+  element('roll').disabled = Boolean(cannotPlay()) || game.die !== null
+  element('claim').hidden = state.kind !== 'chess' || !canClaimChessDraw(game) || Boolean(cannotPlay())
+  element('resign').hidden = ludo || Boolean(result) || Boolean(cannotPlay())
   element('tokens').replaceChildren()
   if (ludo) drawLudo()
   else board8()

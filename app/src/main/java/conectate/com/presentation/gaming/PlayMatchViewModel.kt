@@ -83,6 +83,9 @@ class PlayMatchViewModel @Inject constructor(
     private var discovery = newDiscovery()
     private var catalogRequestGeneration: Long = 0
 
+    internal suspend fun boardRequest(method: String, path: String, body: String) =
+        repository.boardRequest(method, path, body)
+
     init {
         viewModelScope.launch {
             authService.currentSession.map { it?.user?.id }.distinctUntilChanged().collect { id ->

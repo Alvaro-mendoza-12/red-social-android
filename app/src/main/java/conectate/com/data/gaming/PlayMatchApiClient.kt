@@ -96,6 +96,25 @@ class PlayMatchApiClient @Inject constructor(
         supabaseConfig.httpClient.post("$base/v1/data/playmatch/matches/${encodePath(id)}/decision") { playMatchHeaders(token); contentType(ContentType.Application.Json); setBody(body) }
     }.decode<PlayMatchDecisionResponse>()
 
+    suspend fun boardRequest(token: String, method: String, path: String, body: String): Result<String> {
+        val url = "/v1/data/playmatch/board-games$path"
+        val room = "/rooms/[0-9a-fA-F-]{36}"
+        return when {
+            method == "GET" && (path in setOf("/rooms", "/friends", "/ranking") || Regex(room).matches(path)) ->
+                execute(token) { base -> supabaseConfig.httpClient.get("$base$url") { playMatchHeaders(token) } }
+            method == "POST" && body.length <= 1_024 &&
+                (path in setOf("/rooms", "/match") || Regex("$room/(join|invite|actions|reactions|close)").matches(path)) ->
+                execute(token) { base ->
+                    supabaseConfig.httpClient.post("$base$url") {
+                        playMatchHeaders(token)
+                        contentType(ContentType.Application.Json)
+                        setBody(body)
+                    }
+                }
+            else -> Result.failure(PlayMatchApiException("BOARD_INVALID_REQUEST", 400))
+        }
+    }
+
     private suspend inline fun <reified T> get(token: String, path: String, key: String? = null): Result<T> = execute(token) { base ->
         supabaseConfig.httpClient.get("$base$path") { playMatchHeaders(token) }
     }.decode(key)

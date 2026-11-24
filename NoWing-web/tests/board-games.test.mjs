@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createChess, chessActions, playChess, claimChessDraw, canClaimChessDraw,
   createCheckers, checkerActions, playCheckers,
-  createLudo, ludoActions, ludoCell, rollLudo, playLudo } from '../public/board-games/board-rules.js'
+  createLudo, ludoActions, ludoCell, rollLudo, playLudo } from '../../infrastructure/local-fallback/api/src/board-games/engine/board-rules.js'
 
 test('chess validates turn and finishes Fool’s mate', () => {
   const game = createChess()

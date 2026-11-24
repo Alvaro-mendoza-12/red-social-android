@@ -423,6 +423,7 @@ android {
             java.setSrcDirs(listOf("src/main/java"))
             res.setSrcDirs(listOf("src/main/res"))
             assets.srcDir(rootProject.file("NoWing-web/public/board-games"))
+            assets.srcDir(rootProject.file("infrastructure/local-fallback/api/src/board-games/engine"))
         }
     }
 

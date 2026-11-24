@@ -128,7 +128,7 @@ fun GamesHomeScreen(
     PlayMatchNoticeHost(state, viewModel::clearNotice)
     var openBoardGames by rememberSaveable(account) { mutableStateOf(false) }
     if (openBoardGames) {
-        BoardGamesScreen(onBack = { openBoardGames = false })
+        BoardGamesScreen(onBack = { openBoardGames = false }, request = viewModel::boardRequest)
         return
     }
 
