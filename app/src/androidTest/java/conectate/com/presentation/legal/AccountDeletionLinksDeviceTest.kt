@@ -24,14 +24,14 @@ class AccountDeletionLinksDeviceTest {
         val opened = AtomicReference<String>()
         content(object : UriHandler { override fun openUri(uri: String) { opened.set(uri) } })
         compose.onNodeWithText("Eliminar mi cuenta y mis datos").performClick()
-        compose.runOnIdle { assertEquals("https://novvinapp.com/eliminar-cuenta", opened.get()) }
+        compose.runOnIdle { assertEquals("https://conectate.tail9b267c.ts.net/eliminar-cuenta", opened.get()) }
     }
 
-    @Test fun privacyOpensTheCanonicalPolicy() {
+    @Test fun privacyOpensThePublicPolicy() {
         val opened = AtomicReference<String>()
         content(object : UriHandler { override fun openUri(uri: String) { opened.set(uri) } })
         compose.onNodeWithText("Leer política de privacidad en la web").performClick()
-        compose.runOnIdle { assertEquals("https://novvinapp.com/privacidad", opened.get()) }
+        compose.runOnIdle { assertEquals("https://conectate.tail9b267c.ts.net/privacidad", opened.get()) }
     }
 
     @Test fun missingBrowserKeepsTheScreenAndOffersTheEmailContact() {

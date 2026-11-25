@@ -2,14 +2,18 @@ package conectate.com.presentation.messages.stickers
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import androidx.annotation.WorkerThread
+import androidx.exifinterface.media.ExifInterface
+import conectate.com.core.media.exifOrientationMatrix
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.segmentation.Segmentation
 import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions
@@ -17,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import kotlin.coroutines.resume
 import kotlin.math.max
 
@@ -26,27 +31,97 @@ suspend fun loadStickerBitmapFromUri(
     uri: Uri,
     maxDimension: Int = 1400
 ): Bitmap? = withContext(Dispatchers.IO) {
-    val decoded = runCatching {
+    if (maxDimension <= 0) return@withContext null
+    try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val source = android.graphics.ImageDecoder.createSource(context.contentResolver, uri)
-            android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                decoder.isMutableRequired = true
-            }
+            val source = ImageDecoder.createSource(context.contentResolver, uri)
+            decodeStickerBitmap(source, maxDimension)
         } else {
-            @Suppress("DEPRECATION")
-            MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+            decodeLegacyStickerBitmap(context, uri, maxDimension)
         }
-    }.getOrNull() ?: return@withContext null
+    } catch (_: IOException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
+    } catch (_: SecurityException) {
+        null
+    }
+}
 
-    val largest = max(decoded.width, decoded.height)
-    if (largest <= maxDimension) return@withContext decoded
-    val ratio = maxDimension.toFloat() / largest.toFloat()
-    Bitmap.createScaledBitmap(
-        decoded,
-        (decoded.width * ratio).toInt().coerceAtLeast(1),
-        (decoded.height * ratio).toInt().coerceAtLeast(1),
-        true
-    )
+@RequiresApi(Build.VERSION_CODES.P)
+internal fun decodeStickerBitmap(source: ImageDecoder.Source, maxDimension: Int): Bitmap {
+    return ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+        decoder.isMutableRequired = true
+        val width = info.size.width
+        val height = info.size.height
+        val edge = max(width, height)
+        if (edge > maxDimension) {
+            decoder.setTargetSize(
+                scaledStickerSide(width, edge, maxDimension),
+                scaledStickerSide(height, edge, maxDimension),
+            )
+        }
+    }
+}
+
+internal fun decodeLegacyStickerBitmap(context: Context, uri: Uri, maxDimension: Int): Bitmap? {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    val boundsStream = resolver.openInputStream(uri) ?: return null
+    boundsStream.use { BitmapFactory.decodeStream(it, null, bounds) }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    val edge = max(bounds.outWidth, bounds.outHeight)
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = stickerDecodeSampleSize(edge, maxDimension)
+        inMutable = true
+    }
+    val orientation = try {
+        resolver.openInputStream(uri)?.use {
+            ExifInterface(it).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        } ?: ExifInterface.ORIENTATION_NORMAL
+    } catch (_: IOException) {
+        ExifInterface.ORIENTATION_NORMAL
+    }
+    val original = resolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, options)
+    } ?: return null
+    val decodedEdge = max(original.width, original.height)
+    val scaled = if (decodedEdge > maxDimension) {
+        try {
+            Bitmap.createScaledBitmap(
+                original,
+                scaledStickerSide(original.width, decodedEdge, maxDimension),
+                scaledStickerSide(original.height, decodedEdge, maxDimension),
+                true,
+            )
+        } finally {
+            original.recycle()
+        }
+    } else {
+        original
+    }
+    val matrix = exifOrientationMatrix(orientation)
+    if (matrix.isIdentity) return scaled
+    // Bitmap.createBitmap may return its input for an equivalent transform.
+    var oriented: Bitmap? = null
+    try {
+        oriented = Bitmap.createBitmap(scaled, 0, 0, scaled.width, scaled.height, matrix, true)
+        return oriented
+    } finally {
+        if (oriented !== scaled) scaled.recycle()
+    }
+}
+
+internal fun stickerDecodeSampleSize(edge: Int, maxDimension: Int): Int {
+    require(edge > 0 && maxDimension > 0)
+    var sample = 1
+    // Keep enough pixels for the exact resize and cap the intermediate edge at twice the target.
+    while ((edge.toLong() + sample - 1) / sample > maxDimension * 2L) sample *= 2
+    return sample
+}
+
+private fun scaledStickerSide(side: Int, edge: Int, maxDimension: Int): Int {
+    return (side.toLong() * maxDimension / edge).toInt().coerceAtLeast(1)
 }
 
 suspend fun removeStickerBackgroundAi(bitmap: Bitmap): Result<Bitmap> = withContext(Dispatchers.Default) {

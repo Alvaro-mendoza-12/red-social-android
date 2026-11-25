@@ -38,7 +38,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -126,11 +125,22 @@ fun StickerEditor(
         )
         return
     }
-    val scope = rememberCoroutineScope()
-    val loadedBitmap by produceState<android.graphics.Bitmap?>(initialValue = null, imageUri) {
-        value = loadStickerBitmapFromUri(context, imageUri)
+    var bitmapLoad by remember(imageUri) { mutableStateOf<Result<android.graphics.Bitmap>?>(null) }
+    LaunchedEffect(imageUri) {
+        val bitmap = loadStickerBitmapFromUri(context, imageUri)
+        bitmapLoad = if (bitmap != null) Result.success(bitmap) else Result.failure(IOException())
+    }
+    val loadedBitmap = bitmapLoad
+    if (loadedBitmap?.isFailure == true) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            text = { Text("No se pudo abrir la imagen. Vuelve a seleccionarla.") },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
+        )
+        return
     }
 
+    val scope = rememberCoroutineScope()
     var workingBitmap by remember(imageUri) { mutableStateOf<android.graphics.Bitmap?>(null) }
     var transform by remember(imageUri) { mutableStateOf(StickerEditorTransform()) }
     var title by remember(imageUri) { mutableStateOf("") }
@@ -172,9 +182,9 @@ fun StickerEditor(
         activeStroke = emptyList()
     }
 
-    LaunchedEffect(loadedBitmap) {
-        if (workingBitmap == null && loadedBitmap != null) {
-            workingBitmap = loadedBitmap
+    LaunchedEffect(imageUri, loadedBitmap) {
+        if (workingBitmap == null) {
+            workingBitmap = loadedBitmap?.getOrNull()
         }
     }
 

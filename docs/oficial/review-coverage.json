@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-25T03:22:23.799843+00:00",
-  "baseCommit": "a042d092e6549ce1b5f6eae3fcfd2dd48ceceb70",
+  "generatedAtUtc": "2026-11-25T17:32:19.955686+00:00",
+  "baseCommit": "53047f6a97a3fd91be666914664bfde10e05589b",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,17 +11,17 @@
   },
   "counts": {
     "pending": 3418,
-    "code-read": 1092,
-    "partial": 304
+    "code-read": 1095,
+    "partial": 303
   },
   "countsByPhase": {
     "android": {
-      "pending": 1379,
-      "partial": 141,
-      "code-read": 629
+      "pending": 1378,
+      "partial": 140,
+      "code-read": 632
     },
     "documentation": {
-      "pending": 713,
+      "pending": 714,
       "code-read": 71,
       "partial": 22
     },
@@ -4895,9 +4895,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "26cc8619d1aacf169a621e9c92142c0351dd36f2",
+      "gitBlobId": "c23f9b8652d5bcc4a74e39266b5170445a43a5a9",
       "reviewStatus": "partial",
-      "evidence": "tools/verify_android_page_size.py",
+      "evidence": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -5345,9 +5345,9 @@
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/legal/AccountDeletionLinksDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "b871acd7beee5f26a2ad351208acf703f812ce7b",
+      "gitBlobId": "4700cdde659e4ef7192f39d5e114377735f900c7",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "evidence": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10815,9 +10815,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/legal/AccountDeletionLinks.kt",
       "phase": "android",
-      "gitBlobId": "7ae25940a19366ba9460e43dd8a179dffc43af99",
+      "gitBlobId": "b82056055c742b8bbd34c0bf2bf45ac258a15d6a",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/173-google-play-privacidad-y-eliminacion-2026-11-16.md",
+      "evidence": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10831,9 +10831,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/legal/PrivacyPolicyScreen.kt",
       "phase": "android",
-      "gitBlobId": "84a42c1bd5ea75fdeef7b991124f8f1d7ed38d92",
+      "gitBlobId": "9f1c3fca102b55eb6f2962dc582076e81a66853e",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/214-responsable-de-privacidad-y-candidata-android-2026-11-19.md",
+      "evidence": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12045,15 +12045,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/stickers/StickerCreator.kt",
       "phase": "android",
-      "gitBlobId": "4d1414d4133fb5923d73b94f3d9cf8912e4ea6a6",
-      "reviewStatus": "pending"
+      "gitBlobId": "eb7899d48b2a970a872f9000b1a18d31ec2bbd63",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/stickers/StickerEditor.kt",
       "phase": "android",
-      "gitBlobId": "9f75aea49b0c418cae4c018d80f387c6638033c7",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/122-stickers-monedero-imagenes-y-dominio-2026-11-12.md",
+      "gitBlobId": "56bd279134dee10a0c032112e9450f2fd2d1cee3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17901,6 +17903,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/messages/stickers/StickerBitmapLoadingTest.kt",
+      "phase": "android",
+      "gitBlobId": "91dcb537ad1aed5ce1a87d03d2ab60864a7246ce",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/navigation/AuthenticationJourneyRestorationTest.kt",
       "phase": "android",
       "gitBlobId": "dd09870ab06e066d9b93fccbd58bdb1ffc3fbd71",
@@ -22602,6 +22612,12 @@
       "file": "docs/oficial/242-compartir-y-reenviar-por-sesion-web-2026-11-23.md",
       "phase": "documentation",
       "gitBlobId": "9ed73516ec09aa75e236e2bdb1004c18158a9806",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
+      "phase": "documentation",
+      "gitBlobId": "73f262e5c68ee868b599adadcac8d89b4581df5a",
       "reviewStatus": "pending"
     },
     {

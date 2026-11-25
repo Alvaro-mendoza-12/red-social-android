@@ -16,6 +16,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 
+internal const val PUBLIC_PRIVACY_POLICY_URL = "https://conectate.tail9b267c.ts.net/privacidad"
+internal const val PUBLIC_ACCOUNT_DELETION_URL = "https://conectate.tail9b267c.ts.net/eliminar-cuenta"
+
 /** Opens the public request journey; opening a link never deletes an account. */
 @Composable
 internal fun AccountDeletionLinks(showPrivacyLink: Boolean = true) {
@@ -35,11 +38,11 @@ internal fun AccountDeletionLinks(showPrivacyLink: Boolean = true) {
             style = MaterialTheme.typography.bodyMedium,
         )
         OutlinedButton(
-            onClick = { openOfficialPage("https://novvinapp.com/eliminar-cuenta") },
+            onClick = { openOfficialPage(PUBLIC_ACCOUNT_DELETION_URL) },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Eliminar mi cuenta y mis datos") }
         if (showPrivacyLink) {
-            TextButton(onClick = { openOfficialPage("https://novvinapp.com/privacidad") }) {
+            TextButton(onClick = { openOfficialPage(PUBLIC_PRIVACY_POLICY_URL) }) {
                 Text("Leer política de privacidad en la web")
             }
         }
