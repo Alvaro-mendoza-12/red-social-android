@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-24T16:17:07.956737+00:00",
-  "baseCommit": "a40be77155571db7c049b80ab25003cd58c05c47",
+  "generatedAtUtc": "2026-11-25T00:31:38.599700+00:00",
+  "baseCommit": "079b3c94957d9e781a75c5c4c9a824c07c3eabc7",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,14 +11,14 @@
   },
   "counts": {
     "pending": 3433,
-    "code-read": 1085,
+    "code-read": 1087,
     "partial": 298
   },
   "countsByPhase": {
     "android": {
       "pending": 1394,
       "partial": 135,
-      "code-read": 622
+      "code-read": 624
     },
     "documentation": {
       "pending": 713,
@@ -8637,11 +8637,19 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/data/repository/MomentImagePayload.kt",
+      "phase": "android",
+      "gitBlobId": "aa7029d52f1c545c131a85eff19e652ea3730195",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/data/repository/MomentImagePayloadTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/data/repository/MomentRepository.kt",
       "phase": "android",
-      "gitBlobId": "352f22a56ce21450d7cf916268a9a08f5c0e1550",
+      "gitBlobId": "668f691b52c4631ff33694f645526d1abff46f9f",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "app/src/test/java/conectate/com/data/repository/MomentImagePayloadTest.kt",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16375,6 +16383,14 @@
       "phase": "android",
       "gitBlobId": "45242c90aa1ca16646572783903b34948e2405f7",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/repository/MomentImagePayloadTest.kt",
+      "phase": "android",
+      "gitBlobId": "27c9d79bb94b575dbae196eae32b6d140c8e02a6",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/data/repository/MomentImagePayloadTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/MultiAccountInboxRepositoryTest.kt",

@@ -4,9 +4,7 @@ import conectate.com.core.media.readMediaBytesWithLimit
 
 import android.content.Context
 import android.net.Uri
-import android.os.Build
 import android.provider.OpenableColumns
-import android.webkit.MimeTypeMap
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.Moment
 import conectate.com.data.model.MomentView
@@ -18,6 +16,9 @@ import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.supabase.AuthService
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
+import conectate.com.util.canonicalizeMediaContentType
+import conectate.com.util.guessMimeTypeFromUri
+import conectate.com.util.inferMimeTypeFromBytes
 import dagger.hilt.android.qualifiers.ApplicationContext
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.realtime.PostgresAction
@@ -38,8 +39,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import kotlinx.coroutines.flow.merge
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageDecoder
 import android.media.MediaMetadataRetriever
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -1111,144 +1110,23 @@ class MomentRepository @Inject constructor(
         }
     }
 
-    private data class MomentMediaPayload(
-        val bytes: ByteArray,
-        val contentType: String,
-        val extension: String
-    )
-
     private fun resolveMomentMediaPayload(
         mediaUri: Uri,
         mediaType: String,
-        bytes: ByteArray
+        bytes: ByteArray,
     ): Result<MomentMediaPayload> {
+        if (mediaType.trim().lowercase() != "video") return prepareMomentImage(bytes)
         if (bytes.isEmpty()) return Result.failure(Exception("Archivo vacío"))
 
-        val declared = canonicalizeContentType(context.contentResolver.getType(mediaUri))
-        val guessed = canonicalizeContentType(guessMimeFromUri(mediaUri))
-        val inferred = canonicalizeContentType(inferMimeType(bytes))
-
-        // Editors can change the encoding while the source provider still reports
-        // the original MIME. The bytes being uploaded determine the output suffix.
-        val candidates = listOfNotNull(inferred, declared, guessed)
-
-        return when (mediaType.trim().lowercase()) {
-            "video" -> {
-                var contentType = if (candidates.contains("video/mp4") || candidates.contains("audio/mp4")) {
-                    "video/mp4"
-                } else {
-                    return Result.failure(Exception("Formato de video no soportado. Usa MP4."))
-                }
-                Result.success(MomentMediaPayload(bytes = bytes, contentType = contentType, extension = "mp4"))
-            }
-            else -> {
-                val supportedImageTypes = setOf("image/jpeg", "image/png", "image/webp")
-
-                var contentType = candidates.firstOrNull { supportedImageTypes.contains(it) }
-                if (contentType != null) {
-                    var extension = preferredExtensionForMime(contentType) ?: "jpg"
-                    return Result.success(MomentMediaPayload(bytes = bytes, contentType = contentType, extension = extension))
-                }
-
-                // HEIC/HEIF or other image formats: try to transcode to JPEG.
-                val isSomeImage = candidates.any { it.startsWith("image/") }
-                if (!isSomeImage) {
-                    return Result.failure(Exception("Formato de imagen no soportado. Usa JPG/PNG/WebP."))
-                }
-
-                val jpegBytes = transcodeImageToJpeg(mediaUri) ?: return Result.failure(
-                    Exception("No se pudo convertir la imagen. Usa JPG/PNG/WebP.")
-                )
-
-                Result.success(MomentMediaPayload(bytes = jpegBytes, contentType = "image/jpeg", extension = "jpg"))
-            }
+        val candidates = listOfNotNull(
+            inferMimeTypeFromBytes(bytes),
+            canonicalizeMediaContentType(context.contentResolver.getType(mediaUri)),
+            canonicalizeMediaContentType(guessMimeTypeFromUri(mediaUri)),
+        )
+        if (candidates.none { it == "video/mp4" || it == "audio/mp4" }) {
+            return Result.failure(Exception("Formato de video no soportado. Usa MP4."))
         }
-    }
-
-    private fun canonicalizeContentType(contentType: String?): String? {
-        val clean = contentType?.trim()?.lowercase()?.substringBefore(";")?.trim().orEmpty()
-        if (clean.isBlank()) return null
-        return when (clean) {
-            "image/jpg" -> "image/jpeg"
-            else -> clean
-        }
-    }
-
-    private fun preferredExtensionForMime(contentType: String): String? {
-        return when (contentType) {
-            "image/jpeg" -> "jpg"
-            "image/png" -> "png"
-            "image/webp" -> "webp"
-            "video/mp4" -> "mp4"
-            else -> null
-        }
-    }
-
-    private fun guessMimeFromUri(uri: Uri): String? {
-        var extension = MimeTypeMap.getFileExtensionFromUrl(uri.toString())
-            ?.lowercase()
-            ?.trim()
-            ?.ifBlank { null }
-            ?: return null
-        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
-    }
-
-    private fun inferMimeType(bytes: ByteArray): String? {
-        if (bytes.size < 12) return null
-
-        if (bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() && bytes[2] == 0xFF.toByte()) {
-            return "image/jpeg"
-        }
-        if (
-            bytes[0] == 0x89.toByte() &&
-            bytes[1] == 0x50.toByte() &&
-            bytes[2] == 0x4E.toByte() &&
-            bytes[3] == 0x47.toByte()
-        ) {
-            return "image/png"
-        }
-        if (
-            bytes[0] == 0x52.toByte() &&
-            bytes[1] == 0x49.toByte() &&
-            bytes[2] == 0x46.toByte() &&
-            bytes[3] == 0x46.toByte() &&
-            bytes.getOrNull(8) == 0x57.toByte() &&
-            bytes.getOrNull(9) == 0x45.toByte() &&
-            bytes.getOrNull(10) == 0x42.toByte() &&
-            bytes.getOrNull(11) == 0x50.toByte()
-        ) {
-            return "image/webp"
-        }
-        if (
-            bytes.getOrNull(4) == 0x66.toByte() &&
-            bytes.getOrNull(5) == 0x74.toByte() &&
-            bytes.getOrNull(6) == 0x79.toByte() &&
-            bytes.getOrNull(7) == 0x70.toByte()
-        ) {
-            val brand = bytes.copyOfRange(8, 12).decodeToString().lowercase()
-            return if (brand.contains("m4a")) "audio/mp4" else "video/mp4"
-        }
-        return null
-    }
-
-    private fun transcodeImageToJpeg(mediaUri: Uri, quality: Int = 92): ByteArray? {
-        return try {
-            var bitmap = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val source = ImageDecoder.createSource(context.contentResolver, mediaUri)
-                ImageDecoder.decodeBitmap(source)
-            } else {
-                context.contentResolver.openInputStream(mediaUri)?.use { input ->
-                    BitmapFactory.decodeStream(input)
-                }
-            } ?: return null
-
-            val out = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(0, 100), out)
-            out.toByteArray()
-        } catch (e: Exception) {
-            android.util.Log.e("MomentRepository", "Image transcode to JPEG failed", e)
-            null
-        }
+        return Result.success(MomentMediaPayload(bytes, "video/mp4", "mp4"))
     }
 
     private fun readUriHeaderBytes(uri: Uri, maxBytes: Int = 512): ByteArray? {
