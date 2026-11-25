@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -62,6 +61,8 @@ import conectate.com.data.local.prefs.ThemePreferences
 import conectate.com.data.model.CallInvite
 import conectate.com.data.service.CallCancellationGuard
 import conectate.com.data.service.IncomingCallActionReceiver
+import conectate.com.data.service.INCOMING_CALL_AVATAR_MAX_BYTES
+import conectate.com.data.service.decodeIncomingCallAvatar
 import conectate.com.util.notificationAccountTargetFromIntent
 import conectate.com.presentation.components.CircularProfileImage
 import conectate.com.presentation.theme.RedSocialTheme
@@ -71,7 +72,9 @@ import conectate.com.util.TrustedNavigationIntents.markTrusted
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 @AndroidEntryPoint
@@ -90,6 +93,7 @@ class IncomingCallActivity : ComponentActivity() {
     private val answerErrorState = mutableStateOf<String?>(null)
     private val cancellationGuard by lazy { CallCancellationGuard(this) }
     private var cancellationObservation: Job? = null
+    private var avatarLoad: Job? = null
 
     private val acceptPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -144,7 +148,6 @@ class IncomingCallActivity : ComponentActivity() {
             terminalActionStarted.set(true)
             handlingState.value = true
         }
-        callerAvatarState.value = intent.toAvatarBitmapOrNull()
         observeCancellation(invite)
 
         setContent {
@@ -196,6 +199,7 @@ class IncomingCallActivity : ComponentActivity() {
             }
         }
 
+        loadCallerAvatar(intent)
         if (autoAccept && answerViewModel.state.value == IncomingAnswerState.Idle) {
             lifecycleScope.launch {
                 acceptInvite(invite)
@@ -233,7 +237,7 @@ class IncomingCallActivity : ComponentActivity() {
         answerErrorState.value = null
         pendingAcceptInvite = null
         activeInviteState.value = invite
-        callerAvatarState.value = intent.toAvatarBitmapOrNull()
+        loadCallerAvatar(intent)
         observeCancellation(invite)
         if (intent.getBooleanExtra(EXTRA_AUTO_ACCEPT, false)) {
             acceptInvite(invite)
@@ -248,6 +252,18 @@ class IncomingCallActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         activeInviteState.value?.let(::closeIfCancelled)
+    }
+
+    private fun loadCallerAvatar(source: Intent) {
+        avatarLoad?.cancel()
+        callerAvatarState.value = null
+        val bytes = source.getByteArrayExtra(EXTRA_CALLER_AVATAR_BYTES)
+            ?.takeIf { it.size in 1..INCOMING_CALL_AVATAR_MAX_BYTES } ?: return
+        val context = applicationContext
+        avatarLoad = lifecycleScope.launch {
+            val bitmap = withContext(Dispatchers.Default) { decodeIncomingCallAvatar(context, bytes) }
+            if (intent === source && activeInviteState.value != null) callerAvatarState.value = bitmap
+        }
     }
 
     private fun observeCancellation(invite: CallInvite) {
@@ -271,6 +287,7 @@ class IncomingCallActivity : ComponentActivity() {
             pendingAcceptInvite = null
             terminalActionStarted.set(true)
             activeInviteState.value = null
+            avatarLoad?.cancel()
             cancellationObservation?.cancel()
             finish()
         }
@@ -365,11 +382,6 @@ private fun Intent.toInviteOrNull(): CallInvite? {
         contextId = contextId,
         isVideo = isVideo,
     )
-}
-
-private fun Intent.toAvatarBitmapOrNull(): Bitmap? {
-    val bytes = getByteArrayExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES) ?: return null
-    return runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
 }
 
 @Composable

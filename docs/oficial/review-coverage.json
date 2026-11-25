@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-25T02:01:59.345733+00:00",
-  "baseCommit": "059e54cbeee13df25d8e73100db33dfc88b301b1",
+  "generatedAtUtc": "2026-11-25T03:22:23.799843+00:00",
+  "baseCommit": "a042d092e6549ce1b5f6eae3fcfd2dd48ceceb70",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3424,
-    "code-read": 1089,
-    "partial": 300
+    "pending": 3418,
+    "code-read": 1092,
+    "partial": 304
   },
   "countsByPhase": {
     "android": {
-      "pending": 1385,
-      "partial": 137,
-      "code-read": 626
+      "pending": 1379,
+      "partial": 141,
+      "code-read": 629
     },
     "documentation": {
       "pending": 713,
@@ -5223,14 +5223,18 @@
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/calls/IncomingCallCancellationTest.kt",
       "phase": "android",
-      "gitBlobId": "6cbd3ee828e5d44c98ecf59bac86ebfb7e79d080",
-      "reviewStatus": "pending"
+      "gitBlobId": "e11c9c7a67c4f30d93749387bc6b0b2d8668678f",
+      "reviewStatus": "partial",
+      "evidence": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/calls/IncomingCallRejectionTest.kt",
       "phase": "android",
-      "gitBlobId": "370b807a4d8184e17f8ac75637de8f9f6e00d366",
-      "reviewStatus": "pending"
+      "gitBlobId": "4c6c1dc033d25008978671c62e3d8994284616ae",
+      "reviewStatus": "partial",
+      "evidence": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/calls/IncomingCallScreenStateTest.kt",
@@ -9377,8 +9381,10 @@
     {
       "file": "app/src/main/java/conectate/com/data/service/IncomingCallNotificationFactory.kt",
       "phase": "android",
-      "gitBlobId": "8328f9bafda94dfe630ea047f305e30575710c82",
-      "reviewStatus": "pending"
+      "gitBlobId": "6a2e1054609852d1559bc9dd4ee56f75d25be630",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/service/IncomingCallRefreshPolicy.kt",
@@ -9401,9 +9407,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/service/MyFirebaseMessagingService.kt",
       "phase": "android",
-      "gitBlobId": "d771b6c7b5d8f555aae6f74a508db7f93af82a09",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "627e4515005cac97ab3313f8ddea8562bf0a5bfc",
+      "reviewStatus": "partial",
+      "evidence": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10001,8 +10007,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/calls/IncomingCallActivity.kt",
       "phase": "android",
-      "gitBlobId": "a62a68185683b03c5d2f6d5971a0603af2fc6f10",
-      "reviewStatus": "pending"
+      "gitBlobId": "6e0be7ee7433fbea309522255ae7c7900cf862f7",
+      "reviewStatus": "partial",
+      "evidence": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/calls/IncomingCallAnswerController.kt",
@@ -13859,8 +13867,10 @@
     {
       "file": "app/src/main/java/conectate/com/services/IncomingCallForegroundService.kt",
       "phase": "android",
-      "gitBlobId": "ce1d980309b7b0902da4905a8089e93334af3fba",
-      "reviewStatus": "pending"
+      "gitBlobId": "0b6dad09644da70324202c91f361d05fc5f263e7",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/services/LiveChatHeadService.kt",
@@ -16867,8 +16877,18 @@
     {
       "file": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
       "phase": "android",
-      "gitBlobId": "cc6ce196fe1e80572f37c3de279ffd79c1b77f2d",
-      "reviewStatus": "pending"
+      "gitBlobId": "b1cffc25fad5e227a68686b7d1d1efde1c704e19",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/data/service/IncomingCallAvatarTest.kt",
+      "phase": "android",
+      "gitBlobId": "db99ce175f5e6c3014d0e67431ce7cda1ff04161",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/data/service/IncomingCallAccountTargetTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/service/IncomingCallRefreshPolicyTest.kt",

@@ -7,16 +7,20 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.IconCompat
 import conectate.com.R
+import conectate.com.core.media.NotificationAvatarDecoder
 import conectate.com.data.model.CallInvite
 import conectate.com.presentation.calls.IncomingCallActivity
 import conectate.com.util.NotificationAccountTarget
+import conectate.com.util.inferMimeTypeFromBytes
 import conectate.com.util.putNotificationAccountTarget
+import java.io.ByteArrayOutputStream
 
 object IncomingCallNotificationFactory {
 
@@ -61,9 +65,7 @@ object IncomingCallNotificationFactory {
         val acceptPending = PendingIntent.getActivity(
             context,
             notificationId + 1,
-            buildIncomingCallActivityIntent(context, invite, avatarBytes, accountTarget).apply {
-                putExtra(IncomingCallActivity.EXTRA_AUTO_ACCEPT, true)
-            },
+            buildIncomingCallActivityIntent(context, invite, avatarBytes, accountTarget, autoAccept = true),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -72,7 +74,8 @@ object IncomingCallNotificationFactory {
             notificationId + 2,
             Intent(context, IncomingCallActionReceiver::class.java).apply {
                 action = IncomingCallActionReceiver.ACTION_DECLINE
-                copyInviteExtras(invite, avatarBytes)
+                data = callActionUri(invite.callId, "decline")
+                copyInviteExtras(invite)
                 putNotificationAccountTarget(accountTarget)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -108,21 +111,35 @@ object IncomingCallNotificationFactory {
             .build()
     }
 
-    private fun buildIncomingCallActivityIntent(
+    internal fun buildIncomingCallActivityIntent(
         context: Context,
         invite: CallInvite,
-        avatarBytes: ByteArray?,
-        accountTarget: NotificationAccountTarget?,
+        avatarBytes: ByteArray? = null,
+        accountTarget: NotificationAccountTarget? = null,
+        autoAccept: Boolean = false,
     ): Intent {
         return Intent(context, IncomingCallActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            copyInviteExtras(invite, avatarBytes)
+            // Android uses the URI for PendingIntent identity. Extras can be updated independently.
+            data = callActionUri(invite.callId, if (autoAccept) "answer" else "open")
+            copyInviteExtras(invite)
+            avatarBytes?.takeIf { it.size in 1..INCOMING_CALL_AVATAR_MAX_BYTES }?.let {
+                putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
+            }
+            if (autoAccept) putExtra(IncomingCallActivity.EXTRA_AUTO_ACCEPT, true)
             putNotificationAccountTarget(accountTarget)
         }
     }
+
+    private fun callActionUri(callId: String, action: String): Uri = Uri.Builder()
+        .scheme("novvin")
+        .authority("call-notification")
+        .appendPath(callId)
+        .appendPath(action)
+        .build()
 }
 
-private fun Intent.copyInviteExtras(invite: CallInvite, avatarBytes: ByteArray?): Intent {
+private fun Intent.copyInviteExtras(invite: CallInvite) {
     putExtra("call_id", invite.callId)
     putExtra("caller_user_id", invite.callerUserId)
     putExtra("caller_name", invite.callerName)
@@ -131,11 +148,31 @@ private fun Intent.copyInviteExtras(invite: CallInvite, avatarBytes: ByteArray?)
     putExtra("call_context_type", invite.contextType)
     putExtra("call_context_id", invite.contextId ?: "")
     putExtra("call_is_video", invite.isVideo)
-    avatarBytes?.let {
-        putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
-    }
-    return this
 }
 
+internal const val INCOMING_CALL_AVATAR_MAX_BYTES = 96_000
 
+internal fun Bitmap.encodeIncomingCallAvatar(): ByteArray? {
+    if (isRecycled) return null
+    val output = ByteArrayOutputStream()
+    for (quality in 90 downTo 45 step 15) {
+        output.reset()
+        if (compress(Bitmap.CompressFormat.JPEG, quality, output) &&
+            output.size() in 1..INCOMING_CALL_AVATAR_MAX_BYTES
+        ) {
+            return output.toByteArray()
+        }
+    }
+    return null
+}
 
+internal fun decodeIncomingCallAvatar(context: Context, bytes: ByteArray): Bitmap? {
+    if (bytes.size !in 4..INCOMING_CALL_AVATAR_MAX_BYTES || inferMimeTypeFromBytes(bytes) != "image/jpeg") {
+        return null
+    }
+    return try {
+        NotificationAvatarDecoder.decode(context, bytes)
+    } catch (_: Exception) {
+        null
+    }
+}

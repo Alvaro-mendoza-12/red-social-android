@@ -35,7 +35,6 @@ import conectate.com.util.MessageNotificationPayload
 import conectate.com.util.NotificationAccountTarget
 
 import conectate.com.util.notificationAccountTargetFromRemoteData
-import conectate.com.util.putNotificationAccountTarget
 import conectate.com.util.resolveStoredAccountForTarget
 import conectate.com.util.storedAccountDisplayLabel
 import conectate.com.services.IncomingCallForegroundService
@@ -45,7 +44,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
-import java.io.ByteArrayOutputStream
 
 @AndroidEntryPoint
 class MyFirebaseMessagingService : FirebaseMessagingService() {
@@ -747,33 +745,34 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         val serviceStarted = runCatching {
             // Start the ringing notification immediately. Avatar loading can happen after the UI is already visible.
-            IncomingCallForegroundService.start(this, invite, null, accountTarget)
+            IncomingCallForegroundService.start(this, invite, accountTarget)
         }.onFailure { error ->
             android.util.Log.e(TAG, "Incoming call foreground service failed: ${error.message}", error)
         }.isSuccess
 
         serviceScope.launch {
-            var avatarBitmap = getAvatarBitmap(invite.callerAvatarUrl)
-            var avatarBytes = avatarBitmap?.toNotificationAvatarBytes()
+            val avatarBitmap = conectate.com.core.media.NotificationAvatarLoader.load(
+                this@MyFirebaseMessagingService, invite.callerAvatarUrl,
+            ) ?: return@launch
+            val avatarBytes = avatarBitmap.encodeIncomingCallAvatar()
+            if (accountTarget != null && !canStillNotify(accountTarget)) return@launch
             if (!canRefreshIncomingCallAvatar(
                 notificationStillVisible = notificationManager.activeNotifications.any { it.id == invite.callId.hashCode() },
                 recentlyCancelled = wasCallRecentlyCancelled(invite.callId),
                 hasActiveCall = callRepository.activeCall.value != null,
                 elapsedMs = android.os.SystemClock.elapsedRealtime() - notificationStarted,
             )) return@launch
-            if (avatarBitmap != null || avatarBytes != null) {
-                notificationManager.notify(
-                    invite.callId.hashCode(),
-                    IncomingCallNotificationFactory.build(
-                        context = this@MyFirebaseMessagingService,
-                        invite = invite,
-                        avatarBitmap = avatarBitmap,
-                        avatarBytes = avatarBytes,
-                        accountTarget = accountTarget,
-                    )
-                )
-                // Updating the same notification is enough; restarting the service resets its ring timeout.
-            }
+            // Updating the same notification keeps the service's original ring timeout.
+            notificationManager.notify(
+                invite.callId.hashCode(),
+                IncomingCallNotificationFactory.build(
+                    context = this@MyFirebaseMessagingService,
+                    invite = invite,
+                    avatarBitmap = avatarBitmap,
+                    avatarBytes = avatarBytes,
+                    accountTarget = accountTarget,
+                ),
+            )
         }
 
         val notificationsGranted =
@@ -786,7 +785,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 
         if (!notificationsGranted) {
             runCatching {
-                startActivity(buildIncomingCallIntent(invite, null).putNotificationAccountTarget(accountTarget))
+                startActivity(IncomingCallNotificationFactory.buildIncomingCallActivityIntent(this, invite, accountTarget = accountTarget))
             }.onFailure { error ->
                 android.util.Log.w(TAG, "Incoming call fullscreen fallback failed: ${error.message}")
             }
@@ -795,40 +794,6 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         } else if (fullScreenBlocked) {
             android.util.Log.w(TAG, "Full screen intent blocked by OS relying on heads-up call notification")
         }
-    }
-
-    private fun buildIncomingCallIntent(
-        invite: conectate.com.data.model.CallInvite,
-        avatarBytes: ByteArray?
-    ): Intent {
-        return Intent(this, conectate.com.presentation.calls.IncomingCallActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            putExtra("call_id", invite.callId)
-            putExtra("caller_user_id", invite.callerUserId)
-            putExtra("caller_name", invite.callerName)
-            putExtra("caller_avatar_url", invite.callerAvatarUrl ?: "")
-            putExtra("call_title", invite.title)
-            putExtra("call_context_type", invite.contextType)
-            putExtra("call_context_id", invite.contextId ?: "")
-            putExtra("call_is_video", invite.isVideo)
-            avatarBytes?.let {
-                putExtra(conectate.com.presentation.calls.IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
-            }
-        }
-    }
-
-    private fun Bitmap.toNotificationAvatarBytes(maxSizeBytes: Int = 96_000): ByteArray? {
-        var quality = 90
-        while (quality >= 45) {
-            val stream = ByteArrayOutputStream()
-            compress(Bitmap.CompressFormat.JPEG, quality, stream)
-            val bytes = stream.toByteArray()
-            if (bytes.size <= maxSizeBytes || quality == 45) {
-                return bytes
-            }
-            quality -= 15
-        }
-        return null
     }
 
     private fun markCallRecentlyCancelled(callId: String) {

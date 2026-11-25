@@ -108,7 +108,7 @@ class IncomingCallCancellationTest {
                     })
                     IncomingCallForegroundService.start(activity,
                         CallInvite(id, "QA llamada local", UUID.randomUUID().toString(),
-                            "QA llamada local", null, "dm", null, false), null)
+                            "QA llamada local", null, "dm", null, false))
                 }
                 assertTrue("Ringing timeout left an answerable screen", destroyed.await(55, TimeUnit.SECONDS))
                 assertTrue("Timeout did not mark the expired invitation", CallCancellationGuard(context).contains(id))

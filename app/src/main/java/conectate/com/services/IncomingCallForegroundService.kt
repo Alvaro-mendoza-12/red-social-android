@@ -1,12 +1,9 @@
 package conectate.com.services
 
-import android.app.Notification
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.Ringtone
 import android.media.RingtoneManager
@@ -17,7 +14,6 @@ import conectate.com.core.concurrency.newSafeScope
 import conectate.com.data.model.CallInvite
 import conectate.com.data.service.IncomingCallNotificationFactory
 import conectate.com.data.service.CallCancellationGuard
-import conectate.com.presentation.calls.IncomingCallActivity
 import conectate.com.util.NotificationAccountTarget
 import conectate.com.util.notificationAccountTargetFromIntent
 import conectate.com.util.putNotificationAccountTarget
@@ -40,13 +36,6 @@ class IncomingCallForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> {
-                stopIncomingCallUi()
-                return START_NOT_STICKY
-            }
-        }
-
         val invite = intent?.toInviteOrNull()
         if (invite == null) {
             stopIncomingCallUi()
@@ -60,9 +49,17 @@ class IncomingCallForegroundService : Service() {
 
         currentCallId = invite.callId
         currentNotificationId = invite.callId.hashCode()
-        val avatarBitmap = intent.toAvatarBitmapOrNull()
         try {
-            startForeground(currentNotificationId, buildNotification(invite, avatarBitmap, notificationAccountTargetFromIntent(intent)))
+            startForeground(
+                currentNotificationId,
+                IncomingCallNotificationFactory.build(
+                    context = this,
+                    invite = invite,
+                    avatarBitmap = null,
+                    avatarBytes = null,
+                    accountTarget = notificationAccountTargetFromIntent(intent),
+                ),
+            )
         } catch (e: Exception) {
             android.util.Log.e("IncomingCallService", "Failed to start foreground service", e)
             // Do not ring invisibly when Android could not publish the call controls.
@@ -93,16 +90,6 @@ class IncomingCallForegroundService : Service() {
             currentNotificationId = 0
         }
         stopSelf()
-    }
-
-    private fun buildNotification(invite: CallInvite, avatarBitmap: Bitmap?, accountTarget: NotificationAccountTarget?): Notification {
-        return IncomingCallNotificationFactory.build(
-            context = this,
-            invite = invite,
-            avatarBitmap = avatarBitmap,
-            avatarBytes = avatarBitmap?.toNotificationAvatarBytes(),
-            accountTarget = accountTarget,
-        )
     }
 
     private fun startLoopingRingtone() {
@@ -143,9 +130,8 @@ class IncomingCallForegroundService : Service() {
 
     companion object {
         private const val ACTION_SHOW = "conectate.com.action.SHOW_INCOMING_CALL"
-        private const val ACTION_STOP = "conectate.com.action.STOP_INCOMING_CALL"
 
-        fun start(context: Context, invite: CallInvite, avatarBytes: ByteArray?, accountTarget: NotificationAccountTarget? = null) {
+        fun start(context: Context, invite: CallInvite, accountTarget: NotificationAccountTarget? = null) {
             val intent = Intent(context, IncomingCallForegroundService::class.java).apply {
                 action = ACTION_SHOW
                 putExtra("call_id", invite.callId)
@@ -157,9 +143,6 @@ class IncomingCallForegroundService : Service() {
                 putExtra("call_context_id", invite.contextId ?: "")
                 putExtra("call_is_video", invite.isVideo)
                 putNotificationAccountTarget(accountTarget)
-                avatarBytes?.let {
-                    putExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES, it)
-                }
             }
             ContextCompat.startForegroundService(context, intent)
         }
@@ -194,23 +177,4 @@ private fun Intent.toInviteOrNull(): CallInvite? {
         contextId = contextId,
         isVideo = isVideo
     )
-}
-
-private fun Intent.toAvatarBitmapOrNull(): Bitmap? {
-    val bytes = getByteArrayExtra(IncomingCallActivity.EXTRA_CALLER_AVATAR_BYTES) ?: return null
-    return runCatching { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }.getOrNull()
-}
-
-private fun Bitmap.toNotificationAvatarBytes(maxSizeBytes: Int = 96_000): ByteArray? {
-    var quality = 90
-    while (quality >= 45) {
-        val stream = java.io.ByteArrayOutputStream()
-        compress(Bitmap.CompressFormat.JPEG, quality, stream)
-        val bytes = stream.toByteArray()
-        if (bytes.size <= maxSizeBytes || quality == 45) {
-            return bytes
-        }
-        quality -= 15
-    }
-    return null
 }

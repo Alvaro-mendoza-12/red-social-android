@@ -68,7 +68,7 @@ class IncomingCallRejectionTest {
         val previous = invite()
         try {
             ActivityScenario.launch<IncomingCallActivity>(screenIntent(current)).use { scenario ->
-                scenario.onActivity { IncomingCallForegroundService.start(it, current, null, absentAccount) }
+                scenario.onActivity { IncomingCallForegroundService.start(it, current, absentAccount) }
                 assertTrue("Owned incoming service did not start", await(::incomingServiceIsRunning))
                 context.sendBroadcast(rejectIntent(previous))
                 assertTrue("Old notification action did not finish", await {
