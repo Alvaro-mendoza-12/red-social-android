@@ -1,7 +1,5 @@
 package conectate.com.presentation.live
 
-import androidx.annotation.DrawableRes
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,10 +22,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,31 +29,22 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CardGiftcard
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PersonAdd
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -74,260 +58,6 @@ import conectate.com.data.model.LiveComment
 import conectate.com.data.model.LiveGiftEvent
 import conectate.com.data.model.LiveGuestParticipant
 import conectate.com.data.model.LiveGuestRequest
-import conectate.com.data.model.User
-
-private data class FigmaGameOption(
-    val name: String,
-    val audience: String,
-    @param:DrawableRes val image: Int
-)
-
-private val figmaGames = listOf(
-    FigmaGameOption("Valorant", "12,4 mil directos", R.drawable.figma_live_game_valorant),
-    FigmaGameOption("Fortnite", "9,8 mil directos", R.drawable.figma_live_game_fortnite),
-    FigmaGameOption("League of Legends", "8,7 mil directos", R.drawable.figma_live_game_league),
-    FigmaGameOption("Apex Legends", "6,1 mil directos", R.drawable.figma_live_game_apex),
-    FigmaGameOption("Minecraft", "5,9 mil directos", R.drawable.figma_live_game_minecraft),
-    FigmaGameOption("Call of Duty", "5,2 mil directos", R.drawable.figma_live_game_call_of_duty)
-)
-
-/** Pantalla 2/12 del archivo Figma: selector de juego a pantalla completa. */
-@Composable
-internal fun FigmaGamePickerScreen(
-    selected: String?,
-    onBack: () -> Unit,
-    onSelect: (String) -> Unit
-) {
-    var query by remember { mutableStateOf("") }
-    val visibleGames = remember(query) {
-        val clean = query.trim()
-        if (clean.isEmpty()) figmaGames else figmaGames.filter { it.name.contains(clean, ignoreCase = true) }
-    }
-    FigmaAuxiliarySurface {
-        FigmaScreenHeader("Seleccionar Juego", onBack)
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp)
-        ) {
-            Text(
-                "Elige el juego que transmitirás",
-                color = LivePalette.Muted,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 2.dp, bottom = 14.dp)
-            )
-            FigmaSearchField(query, "Buscar juego", { query = it })
-            Spacer(Modifier.height(18.dp))
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("Juegos populares", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Black)
-                Spacer(Modifier.weight(1f))
-                Text("${visibleGames.size} disponibles", color = LivePalette.Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
-            Spacer(Modifier.height(12.dp))
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(bottom = 22.dp)
-            ) {
-                gridItems(visibleGames, key = { it.name }) { game ->
-                    val isSelected = selected == game.name
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(LivePalette.Surface)
-                            .border(
-                                width = if (isSelected) 2.dp else 1.dp,
-                                color = if (isSelected) LivePalette.Cyan else LivePalette.Border,
-                                shape = RoundedCornerShape(16.dp)
-                            )
-                            .clickable { onSelect(game.name) }
-                    ) {
-                        Box(Modifier.fillMaxWidth().aspectRatio(1.35f)) {
-                            Image(
-                                painter = painterResource(game.image),
-                                contentDescription = game.name,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                            Box(
-                                Modifier.fillMaxSize().background(
-                                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.74f)))
-                                )
-                            )
-                            if (isSelected) {
-                                Box(
-                                    Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(8.dp)
-                                        .size(24.dp)
-                                        .clip(CircleShape)
-                                        .background(LivePalette.Cyan),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Filled.Check, null, tint = Color.White, modifier = Modifier.size(15.dp))
-                                }
-                            }
-                        }
-                        Text(
-                            game.name,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(start = 11.dp, end = 11.dp, top = 10.dp)
-                        )
-                        Text(
-                            game.audience,
-                            color = LivePalette.Muted,
-                            fontSize = 9.sp,
-                            modifier = Modifier.padding(start = 11.dp, end = 11.dp, bottom = 11.dp, top = 2.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** Pantalla 3/12 del archivo Figma: invitaciones con pestañas, búsqueda y estado por amigo. */
-@Composable
-internal fun FigmaInviteFriendsScreen(
-    users: List<User>,
-    selectedIds: Set<String>,
-    onToggle: (String) -> Unit,
-    onBack: () -> Unit,
-    onDone: () -> Unit
-) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    var query by remember { mutableStateOf("") }
-    val visibleUsers = remember(users, query) {
-        val clean = query.trim()
-        if (clean.isEmpty()) users else users.filter {
-            it.displayName.contains(clean, ignoreCase = true) ||
-                it.username.orEmpty().contains(clean, ignoreCase = true)
-        }
-    }
-    FigmaAuxiliarySurface {
-        FigmaScreenHeader("Invitar Amigos", onBack, trailing = {
-            Text(
-                "Listo",
-                color = LivePalette.Cyan,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.clickable(onClick = onDone).padding(8.dp)
-            )
-        })
-        val tabs = listOf("Amigos", "Recientes", "Seguidores")
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-            tabs.forEachIndexed { index, label ->
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .clickable { selectedTab = index },
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        label,
-                        color = if (selectedTab == index) Color.White else LivePalette.Muted,
-                        fontSize = 12.sp,
-                        fontWeight = if (selectedTab == index) FontWeight.ExtraBold else FontWeight.Medium,
-                        modifier = Modifier.padding(vertical = 12.dp)
-                    )
-                    Box(
-                        Modifier
-                            .height(2.dp)
-                            .fillMaxWidth()
-                            .background(if (selectedTab == index) LivePalette.Cyan else Color.Transparent)
-                    )
-                }
-            }
-        }
-        Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-            Spacer(Modifier.height(14.dp))
-            FigmaSearchField(query, "Buscar amigos", { query = it })
-            Row(
-                Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Personas sugeridas", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
-                Spacer(Modifier.weight(1f))
-                if (selectedIds.isNotEmpty()) {
-                    Text("${selectedIds.size} invitados", color = LivePalette.Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-            if (visibleUsers.isEmpty()) {
-                Column(
-                    Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(Icons.Filled.Groups, null, tint = LivePalette.Muted, modifier = Modifier.size(42.dp))
-                    Spacer(Modifier.height(12.dp))
-                    Text("No hay personas para mostrar", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text("Sigue a personas para invitarlas a tu directo", color = LivePalette.Muted, fontSize = 11.sp)
-                }
-            } else {
-                LazyColumn(
-                    Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 18.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(visibleUsers, key = { it.id }) { user ->
-                        val invited = selectedIds.contains(user.id)
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable { onToggle(user.id) }
-                                .padding(horizontal = 4.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            conectate.com.presentation.components.CircularProfileImage(
-                                imageUrl = user.avatar_url, fallbackName = user.displayName,
-                                size = 46.dp, openMomentOnClick = false, showMomentRing = false,
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(LivePalette.Surface)
-                                    .border(1.dp, LivePalette.Purple.copy(alpha = .6f), CircleShape)
-                            )
-                            Spacer(Modifier.width(11.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(user.displayName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(user.username?.let { "@$it" } ?: "En Novvin", color = LivePalette.Muted, fontSize = 10.sp)
-                            }
-                            Box(
-                                Modifier
-                                    .widthIn(min = 78.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .then(
-                                        if (invited) Modifier.background(LivePalette.Surface)
-                                        else Modifier.background(LivePrimaryGradient)
-                                    )
-                                    .then(
-                                        if (invited) Modifier.border(1.dp, LivePalette.Border, RoundedCornerShape(10.dp)) else Modifier
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    if (invited) "Invitado" else "Invitar",
-                                    color = if (invited) LivePalette.Muted else Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 /** Pantalla 6/12 del archivo Figma: tablero de regalos del creador. */
 @Composable
@@ -454,8 +184,8 @@ internal fun FigmaBattleResultScreen(
             .navigationBarsPadding()
     ) {
         val compact = maxHeight < 700.dp
-        Image(
-            painter = painterResource(R.drawable.figma_live_battle_result),
+        AsyncImage(
+            model = R.drawable.figma_live_battle_result,
             contentDescription = null,
             contentScale = ContentScale.Crop,
             alpha = .22f,
@@ -744,28 +474,6 @@ private fun FigmaScreenHeader(
         )
         if (trailing != null) trailing() else Spacer(Modifier.size(34.dp))
     }
-}
-
-@Composable
-private fun FigmaSearchField(value: String, placeholder: String, onValueChange: (String) -> Unit) {
-    TextField(
-        value = value,
-        onValueChange = { onValueChange(it.take(48)) },
-        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-        singleLine = true,
-        leadingIcon = { Icon(Icons.Filled.Search, null, tint = LivePalette.Muted, modifier = Modifier.size(19.dp)) },
-        placeholder = { Text(placeholder, color = LivePalette.Muted, fontSize = 12.sp) },
-        shape = RoundedCornerShape(14.dp),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = LivePalette.Surface,
-            unfocusedContainerColor = LivePalette.Surface,
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            cursorColor = LivePalette.Cyan
-        )
-    )
 }
 
 @Composable

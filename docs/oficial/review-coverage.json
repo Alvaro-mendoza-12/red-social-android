@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-25T01:34:18.482394+00:00",
-  "baseCommit": "8073532e43858c6592cc8f3279352233ec0607d1",
+  "generatedAtUtc": "2026-11-25T02:01:59.345733+00:00",
+  "baseCommit": "059e54cbeee13df25d8e73100db33dfc88b301b1",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,14 +10,14 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3431,
+    "pending": 3424,
     "code-read": 1089,
-    "partial": 299
+    "partial": 300
   },
   "countsByPhase": {
     "android": {
-      "pending": 1392,
-      "partial": 136,
+      "pending": 1385,
+      "partial": 137,
       "code-read": 626
     },
     "documentation": {
@@ -6323,9 +6323,9 @@
     {
       "file": "app/src/main/java/conectate/com/SocialApp.kt",
       "phase": "android",
-      "gitBlobId": "d0ccf704626f33b7e4ab037a1fd9f03728192df3",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "bd9734b3df6a28c3272427d2dffdbf7c3ffcf8f1",
+      "reviewStatus": "partial",
+      "evidence": "app/src/main/java/conectate/com/presentation/live/LiveExperienceScaffold.kt",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10961,8 +10961,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveFigmaAuxiliaryScreens.kt",
       "phase": "android",
-      "gitBlobId": "2f2132ad85c178567b68c05bf0f2909b7e275007",
-      "reviewStatus": "pending"
+      "gitBlobId": "d3517b089e355b2cd222d471f9da98865dd59174",
+      "reviewStatus": "partial",
+      "evidence": "app/src/main/java/conectate/com/presentation/live/LiveExperienceScaffold.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/live/LiveFloatingChatWindow.kt",
@@ -14424,42 +14426,6 @@
       "file": "app/src/main/res/drawable-nodpi/figma_live_battle_result.webp",
       "phase": "android",
       "gitBlobId": "3fc7a7e698269e960a76bc95286a639ab0d5d967",
-      "reviewStatus": "pending"
-    },
-    {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_apex.webp",
-      "phase": "android",
-      "gitBlobId": "1bfb0d96e2af1e3e5acff3fa15cf4f562180c5c4",
-      "reviewStatus": "pending"
-    },
-    {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_call_of_duty.webp",
-      "phase": "android",
-      "gitBlobId": "d0ba817dbf5c66255c7154ebf0fe8e765468ffec",
-      "reviewStatus": "pending"
-    },
-    {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_fortnite.webp",
-      "phase": "android",
-      "gitBlobId": "3c47d6f89fe7ae383247e2f20d6660c5cf04b71f",
-      "reviewStatus": "pending"
-    },
-    {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_league.webp",
-      "phase": "android",
-      "gitBlobId": "bfc22ac42115624d306b5a2663f61acc121f543d",
-      "reviewStatus": "pending"
-    },
-    {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_minecraft.webp",
-      "phase": "android",
-      "gitBlobId": "7ae913dd0b068099b36de4a8f8a1a46704395aab",
-      "reviewStatus": "pending"
-    },
-    {
-      "file": "app/src/main/res/drawable-nodpi/figma_live_game_valorant.webp",
-      "phase": "android",
-      "gitBlobId": "e0e217a089ae7670cc2f8d70599143879927bee8",
       "reviewStatus": "pending"
     },
     {
@@ -24195,9 +24161,9 @@
     {
       "file": "gradle/libs.versions.toml",
       "phase": "android",
-      "gitBlobId": "911bf8997b8d7171b52ee23be28e2523bcb26fcb",
-      "reviewStatus": "partial",
-      "evidence": "app/src/test/java/conectate/com/presentation/wallet/GiftAnimatedArtworkTest.kt",
+      "gitBlobId": "71fbf098e0f197619caafe9f434f2a6badc74682",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/main/java/conectate/com/presentation/live/LiveExperienceScaffold.kt",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

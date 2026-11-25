@@ -14,8 +14,7 @@ import coil.request.CachePolicy
 import coil.util.DebugLogger
 import androidx.work.Configuration
 import com.google.firebase.FirebaseApp
-import com.google.firebase.crashlytics.ktx.crashlytics
-import com.google.firebase.ktx.Firebase
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import conectate.com.core.concurrency.newSafeScope
 import conectate.com.core.crash.CrashReporter
 import conectate.com.core.logging.AppLogger
@@ -87,9 +86,10 @@ class SocialApp : Application(), ImageLoaderFactory, Configuration.Provider {
         // Initialize crash reporting. Telemetry must never prevent the app from opening.
         runCatching {
             FirebaseApp.initializeApp(this)
-            Firebase.crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
-            Firebase.crashlytics.setCustomKey("app_version", BuildConfig.VERSION_NAME)
-            Firebase.crashlytics.setCustomKey("version_code", BuildConfig.VERSION_CODE)
+            val crashlytics = FirebaseCrashlytics.getInstance()
+            crashlytics.setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
+            crashlytics.setCustomKey("app_version", BuildConfig.VERSION_NAME)
+            crashlytics.setCustomKey("version_code", BuildConfig.VERSION_CODE)
         }.onFailure {
             android.util.Log.w("SocialApp", "Firebase/Crashlytics init skipped; app continues.", it)
         }
