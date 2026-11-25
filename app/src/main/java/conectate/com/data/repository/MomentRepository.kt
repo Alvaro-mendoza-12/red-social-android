@@ -14,6 +14,7 @@ import conectate.com.data.localfallback.LocalFallbackApiClient
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.localfallback.UbuntuRealtimeClient
 import conectate.com.data.supabase.AuthService
+import conectate.com.data.supabase.AuthSessionLease
 import conectate.com.data.supabase.StorageService
 import conectate.com.data.supabase.SupabaseConfig
 import conectate.com.util.canonicalizeMediaContentType
@@ -29,6 +30,7 @@ import io.github.jan.supabase.realtime.realtime
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.http.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -738,7 +740,7 @@ class MomentRepository @Inject constructor(
     // Keep this for compatibility if needed, but it just emits the state flow
     fun getMoments(): Flow<List<Moment>> = moments
 
-    suspend fun createMoment(
+    internal suspend fun createMoment(
         mediaUri: Uri,
         mediaType: String,
         durationHours: Int,
@@ -779,13 +781,15 @@ class MomentRepository @Inject constructor(
         musicOverlayScale: Float = 1f,
         musicOverlayRotation: Float = 0f,
         musicLyrics: String? = null,
+        publicationSession: AuthSessionLease = authService.captureAccountLease(),
     ): Result<Moment> = withContext(Dispatchers.IO) {
         val uploadedObjects = mutableListOf<Pair<String, String>>()
         var metadataPersisted = false
         var metadataSubmissionAttempted = false
         try {
-            var userId = authService.getCurrentUserId() ?: return@withContext Result.failure(Exception("No user logged in"))
-            var accessToken = authService.getAccessToken() ?: return@withContext Result.failure(Exception("No token"))
+            val userId = publicationSession.accountId
+                ?: return@withContext Result.failure(IllegalStateException("Inicia sesión para publicar el momento."))
+            publicationSession.requireCurrent()
 
             // 1. Upload media
             val sourceSizeBytes = queryUriSizeBytes(mediaUri)
@@ -822,6 +826,8 @@ class MomentRepository @Inject constructor(
             val uuid = UUID.randomUUID().toString()
             var fileName = "${userId}/$uuid.${payload.extension}"
              
+            ensureActive()
+            publicationSession.requireCurrent()
             val uploadResult = if (normalizedMediaType == "video") {
                 val mediaSizeBytes = sourceSizeBytes
                 if (mediaSizeBytes <= 0L) {
@@ -834,12 +840,12 @@ class MomentRepository @Inject constructor(
                     sizeBytes = mediaSizeBytes,
                     contentType = payload.contentType,
                     allowOverwrite = true,
-                    onProgress = {}
+                    expectedAccountId = userId,
+                    onProgress = {},
                 )
             } else {
-                storageService.uploadFile("moment-media", fileName, payload.bytes, payload.contentType)
+                storageService.uploadFile("moment-media", fileName, payload.bytes, payload.contentType, expectedAccountId = userId)
             }
-            if (uploadResult.isFailure) return@withContext Result.failure(uploadResult.exceptionOrNull() ?: Exception("Upload failed"))
 
             val mediaRemoteKey = uploadResult.getOrThrow().Key ?: fileName
             uploadedObjects += "moment-media" to mediaRemoteKey
@@ -865,6 +871,8 @@ class MomentRepository @Inject constructor(
                     ?: return@withContext Result.failure(Exception("Este formato de audio no es compatible."))
                 val localMusicExtension = momentMusicExtension(localMusicContentType)
                 val localMusicName = "$userId/moments/$uuid.$localMusicExtension"
+                ensureActive()
+                publicationSession.requireCurrent()
                 val localMusicUpload = storageService.uploadFileFromUri(
                     bucketName = "community-music",
                     fileName = localMusicName,
@@ -872,8 +880,9 @@ class MomentRepository @Inject constructor(
                     sizeBytes = localMusicSize,
                     contentType = localMusicContentType,
                     allowOverwrite = false,
+                    expectedAccountId = userId,
                     onProgress = {},
-                ).getOrElse { return@withContext Result.failure(it) }
+                ).getOrThrow()
                 val localMusicRemoteKey = localMusicUpload.Key ?: localMusicName
                 uploadedObjects += "community-music" to localMusicRemoteKey
                 requestedMusicUrl = UbuntuStorageUrl.rewrite(
@@ -942,13 +951,20 @@ class MomentRepository @Inject constructor(
                 
                 if (thumbBytes != null) {
                     val thumbFileName = "${userId}/${uuid}_thumb.jpg"
-                    val thumbUpload = storageService.uploadFile("moment-media", thumbFileName, thumbBytes, "image/jpeg")
+                    ensureActive()
+                    publicationSession.requireCurrent()
+                    val thumbUpload = storageService.uploadFile(
+                        "moment-media", thumbFileName, thumbBytes, "image/jpeg", expectedAccountId = userId,
+                    )
+                    if (thumbUpload.exceptionOrNull() is CancellationException) thumbUpload.getOrThrow()
                     if (thumbUpload.isSuccess) {
                         val thumbRemoteKey = thumbUpload.getOrThrow().Key ?: thumbFileName
                         uploadedObjects += "moment-media" to thumbRemoteKey
                         thumbnailUrl = UbuntuStorageUrl.rewrite(storageService.getPublicUrl("moment-media", thumbRemoteKey))
                     }
                 }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 android.util.Log.e("MomentRepository", "Thumbnail generation failed", e)
                 // Fallback: thumbnailUrl remains null
@@ -1006,6 +1022,11 @@ class MomentRepository @Inject constructor(
                 put("music_embedded", musicEmbedded && normalizedMediaType == "video" && hasMusic)
             }
 
+            ensureActive()
+            publicationSession.requireCurrent()
+            val accessToken = authService.getAccessTokenForAccountAwait(userId)
+                ?: return@withContext Result.failure(IllegalStateException("Inicia sesión para publicar el momento."))
+            publicationSession.requireCurrent()
             if (shouldUseUbuntuBackend()) {
                 // A timeout or a lost response cannot tell us whether the API
                 // committed the moment. Keep its media until reconciliation so
@@ -1055,9 +1076,9 @@ class MomentRepository @Inject constructor(
                     musicFadeOutMs = musicFadeOutMs.coerceIn(0L, 5_000L),
                     duckOriginalAudio = duckOriginalAudio,
                     musicEmbedded = musicEmbedded && normalizedMediaType == "video" && hasMusic,
-                ).getOrElse { return@withContext Result.failure(it) }
+                ).getOrThrow()
                 metadataPersisted = true
-                refreshMoments()
+                refreshAfterPublication(publicationSession)
                 return@withContext Result.success(createdMoment.normalizedStorageUrls())
             }
 
@@ -1082,16 +1103,19 @@ class MomentRepository @Inject constructor(
             if (response.status.isSuccess()) {
                 metadataPersisted = true
                 val createdMoment: Moment = response.body<List<Moment>>().first()
+                refreshAfterPublication(publicationSession)
                 Result.success(createdMoment)
             } else {
                 var errorBody = response.body<String>()
                 Result.failure(Exception("Failed to create moment: $errorBody"))
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (e: Exception) {
             android.util.Log.e("MomentRepository", "Exception creating moment", e)
             Result.failure(e)
         } finally {
-            if (!metadataPersisted && !metadataSubmissionAttempted) {
+            if (!metadataPersisted && !metadataSubmissionAttempted && publicationSession.isCurrent()) {
                 cleanupUploadedMomentObjects(uploadedObjects)
             } else if (!metadataPersisted && uploadedObjects.isNotEmpty()) {
                 android.util.Log.w(
@@ -1099,6 +1123,12 @@ class MomentRepository @Inject constructor(
                     "La publicación del momento quedó sin confirmar; se conserva su contenido para reconciliación.",
                 )
             }
+        }
+    }
+
+    private fun refreshAfterPublication(session: AuthSessionLease) {
+        scope.launch {
+            if (session.isCurrent()) refreshMoments()
         }
     }
 

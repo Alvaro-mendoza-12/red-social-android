@@ -15,6 +15,9 @@ import conectate.com.data.music.MomentMusicMixRequest
 import conectate.com.data.supabase.AuthService
 import conectate.com.util.UbuntuMedia
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -279,25 +282,33 @@ class CreateMomentViewModel @Inject constructor(
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
+        if (!_isUploading.compareAndSet(expect = false, update = true)) return
+        val publicationSession = authService.captureAccountLease()
         viewModelScope.launch {
-            if (_isUploading.value) return@launch
-            _isUploading.value = true
             var generatedComposition: java.io.File? = null
             var generatedMusicExcerpt: java.io.File? = null
-            try {
+            val outcome = try {
+                checkNotNull(publicationSession.accountId) { "Inicia sesión para publicar el momento." }
+                publicationSession.requireCurrent()
                 var publicationUri = uri
                 var musicEmbedded = false
                 var publicationMusicUri = musicUri
                 var publicationMusicStartMs = musicStartMs
                 var publicationLyrics = musicLyrics
                 if (musicUri != null) {
-                    val excerpt = kotlinx.coroutines.withTimeout(60_000L) {
-                        conectate.com.presentation.components.exportAudioClip(context.applicationContext, musicUri,
-                            musicStartMs, musicStartMs.coerceAtLeast(0L) + musicDurationMs.coerceIn(1_000L, 60_000L))
-                    }.getOrElse { error ->
-                        if (error is kotlinx.coroutines.CancellationException) throw error
-                        onError("No se pudo preparar el fragmento de música. Prueba otra canción.")
-                        return@launch
+                    val excerpt = try {
+                        kotlinx.coroutines.withTimeout(60_000L) {
+                            conectate.com.presentation.components.exportAudioClip(
+                                context.applicationContext, musicUri, musicStartMs,
+                                musicStartMs.coerceAtLeast(0L) + musicDurationMs.coerceIn(1_000L, 60_000L),
+                            )
+                        }.getOrElse { error ->
+                            if (error is CancellationException) throw error
+                            throw IllegalStateException("No se pudo preparar el fragmento de música. Prueba otra canción.", error)
+                        }
+                    } catch (timeout: TimeoutCancellationException) {
+                        ensureActive()
+                        throw IllegalStateException("La preparación de la música tardó demasiado. Inténtalo nuevamente.", timeout)
                     }
                     generatedMusicExcerpt = excerpt.path?.let { java.io.File(it) }
                     publicationMusicUri = excerpt
@@ -327,14 +338,19 @@ class CreateMomentViewModel @Inject constructor(
                             duckOriginalAudio = duckOriginalAudio,
                         ),
                     ).getOrElse { error ->
-                        onError("No se pudo combinar la música con el video: ${error.message ?: "exportación incompatible"}")
-                        return@launch
+                        if (error is CancellationException) throw error
+                        throw IllegalStateException(
+                            "No se pudo combinar la música con el video: ${error.message ?: "exportación incompatible"}",
+                            error,
+                        )
                     }
                     generatedComposition = mixed
                     publicationUri = Uri.fromFile(mixed)
                     musicEmbedded = true
                 }
-                val result = repository.createMoment(
+                ensureActive()
+                publicationSession.requireCurrent()
+                repository.createMoment(
                     mediaUri = publicationUri,
                     mediaType = mediaType,
                     durationHours = durationHours,
@@ -375,30 +391,30 @@ class CreateMomentViewModel @Inject constructor(
                     musicFadeOutMs = musicFadeOutMs,
                     duckOriginalAudio = duckOriginalAudio,
                     musicEmbedded = musicEmbedded,
-                )
-                if (result.isSuccess) {
-                    try {
-                        repository.refreshMoments()
-                        android.util.Log.d("CreateMomentViewModel", "Moments list refreshed after creation")
-                    } catch (error: Exception) {
-                        android.util.Log.e("CreateMomentViewModel", "Error refreshing moments after creation", error)
-                    }
-                    onSuccess()
-                } else {
-                    val errorMessage = result.exceptionOrNull()?.message ?: "No se pudo publicar el momento"
-                    onError(errorMessage)
-                }
-            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    publicationSession = publicationSession,
+                ).getOrThrow()
+                Result.success(Unit)
+            } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (error: Throwable) {
-                android.util.Log.e("CreateMomentViewModel", "Uncaught moment publish failure", error)
-                onError(error.message ?: "No se pudo publicar el momento")
+            } catch (error: Exception) {
+                android.util.Log.e("CreateMomentViewModel", "Falló la publicación del momento", error)
+                Result.failure(error)
             } finally {
                 generatedComposition?.delete()
                 generatedMusicExcerpt?.delete()
-                _isUploading.value = false
             }
-        }
+            ensureActive()
+            try {
+                if (publicationSession.accountId != null) publicationSession.requireCurrent()
+                outcome.fold(onSuccess = { onSuccess() }, onFailure = { error ->
+                    onError(error.message ?: "No se pudo publicar el momento")
+                })
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                android.util.Log.e("CreateMomentViewModel", "Falló la actualización del editor", error)
+            }
+        }.invokeOnCompletion { _isUploading.value = false }
     }
 
     private var audienceSearch: kotlinx.coroutines.Job? = null

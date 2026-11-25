@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-25T00:31:38.599700+00:00",
-  "baseCommit": "079b3c94957d9e781a75c5c4c9a824c07c3eabc7",
+  "generatedAtUtc": "2026-11-25T01:34:18.482394+00:00",
+  "baseCommit": "8073532e43858c6592cc8f3279352233ec0607d1",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3433,
-    "code-read": 1087,
-    "partial": 298
+    "pending": 3431,
+    "code-read": 1089,
+    "partial": 299
   },
   "countsByPhase": {
     "android": {
-      "pending": 1394,
-      "partial": 135,
-      "code-read": 624
+      "pending": 1392,
+      "partial": 136,
+      "code-read": 626
     },
     "documentation": {
       "pending": 713,
@@ -8647,9 +8647,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/MomentRepository.kt",
       "phase": "android",
-      "gitBlobId": "668f691b52c4631ff33694f645526d1abff46f9f",
+      "gitBlobId": "f12f692e2d1784fc3c748ed47793b21c647a76d2",
       "reviewStatus": "partial",
-      "evidence": "app/src/test/java/conectate/com/data/repository/MomentImagePayloadTest.kt",
+      "evidence": "app/src/test/java/conectate/com/presentation/social/MomentPublicationTest.kt",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12813,8 +12813,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/CreateMomentViewModel.kt",
       "phase": "android",
-      "gitBlobId": "50967dad94bf64bc1e6b68ed476c1b52656b3e8f",
-      "reviewStatus": "pending"
+      "gitBlobId": "27148a47eb5326e0c9fc02e223e2edf445707f46",
+      "reviewStatus": "partial",
+      "evidence": "app/src/test/java/conectate/com/presentation/social/MomentPublicationTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/social/CreatePostScreen.kt",
@@ -12985,8 +12987,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/MomentViewModel.kt",
       "phase": "android",
-      "gitBlobId": "93a72421bd9016c731940011d8799d59225c1ce8",
-      "reviewStatus": "pending"
+      "gitBlobId": "d835d1a0e77b93b9a5754315ac358f0594bd83be",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/presentation/social/MomentPublicationTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/social/MomentViewerScreen.kt",
@@ -18361,6 +18365,14 @@
       "phase": "android",
       "gitBlobId": "e5bec3ca2c1e6d7af03f142398f791225e7b3ad8",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/social/MomentPublicationTest.kt",
+      "phase": "android",
+      "gitBlobId": "482f2ade3595143c4a55cfa2b7aa76a0ce008647",
+      "reviewStatus": "code-read",
+      "evidence": "app/src/test/java/conectate/com/presentation/social/MomentPublicationTest.kt",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/social/MomentSoundtrackClockTest.kt",

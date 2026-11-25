@@ -1,6 +1,5 @@
 package conectate.com.presentation.social
 
-import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import conectate.com.data.model.Moment
@@ -26,14 +25,8 @@ class MomentViewModel @Inject constructor(
     private val _moments = MutableStateFlow<List<Moment>>(emptyList())
     val moments: StateFlow<List<Moment>> = _moments.asStateFlow()
 
-    private val _isUploading = MutableStateFlow(false)
-    val isUploading: StateFlow<Boolean> = _isUploading.asStateFlow()
-
     private val _isRefreshing = MutableStateFlow(true)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
-
-    private val _uploadError = MutableStateFlow<String?>(null)
-    val uploadError = _uploadError.asStateFlow()
 
     private val _viewers = MutableStateFlow<List<MomentView>>(emptyList())
     val viewers: StateFlow<List<MomentView>> = _viewers.asStateFlow()
@@ -72,70 +65,6 @@ class MomentViewModel @Inject constructor(
 
     fun refreshAuthorMoments(ownerIds: List<String>) {
         viewModelScope.launch { repository.refreshMomentsForAuthors(ownerIds) }
-    }
-
-    // Helper to manually add a moment (optimistic update)
-    fun addLocalMoment(moment: Moment) {
-        val currentList = _moments.value.toMutableList()
-        // Add to beginning or appropriate position based on logic, usually beginning for new
-        currentList.add(0, moment) 
-        _moments.value = currentList
-    }
-
-    fun uploadMoments(
-        uris: List<Uri>,
-        mediaTypes: List<String>,
-        durationHours: Int,
-        durationType: String,
-        visibility: String,
-        visibilityType: String,
-        excludedIds: List<String>,
-        caption: String? = null,
-        allowReplies: Boolean = true,
-        onSuccess: () -> Unit
-    ) {
-        val currentActiveCount = _moments.value.count { it.userId == currentUserId }
-        if (currentActiveCount + uris.size > 10) {
-            _uploadError.value = "Ya tienes $currentActiveCount momentos activos. El límite total es 10."
-            return
-        }
-
-        viewModelScope.launch {
-            _isUploading.value = true
-            _uploadError.value = null
-            var successCount = 0
-            
-            uris.forEachIndexed { index, uri ->
-                val result = repository.createMoment(
-                    mediaUri = uri, 
-                    mediaType = mediaTypes.getOrElse(index) { "image" }, 
-                    durationHours = durationHours, 
-                    durationType = durationType,
-                    visibility = visibility, 
-                    visibilityType = visibilityType,
-                    excludedIds = excludedIds,
-                    caption = caption,
-                    allowReplies = allowReplies
-                )
-                if (result.isSuccess) {
-                    successCount++
-                    // Optimistic update is now handled by the repository's flow
-                    // result.getOrNull()?.let { newMoment ->
-                    //     addLocalMoment(newMoment)
-                    // }
-                } else {
-                    _uploadError.value = "Error al subir el elemento ${index + 1}: ${result.exceptionOrNull()?.message}"
-                }
-            }
-            
-            _isUploading.value = false
-            if (successCount == uris.size) {
-                onSuccess()
-            } else if (successCount > 0) {
-                // Partial success
-                onSuccess()
-            }
-        }
     }
 
     fun recordView(momentId: String) {
