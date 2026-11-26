@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T21:37:40.291444+00:00",
-  "baseCommit": "31de5d75e7f98142ccd0905429843c4cdfd5ee81",
+  "generatedAtUtc": "2026-11-26T23:23:03.598871+00:00",
+  "baseCommit": "8f976a1c94edbc6b6ed65d533f3dbdc0b5ea0610",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3421,
-    "code-read": 1095,
-    "partial": 313
+    "pending": 3422,
+    "code-read": 1094,
+    "partial": 314
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 635
     },
     "documentation": {
-      "pending": 723,
+      "pending": 724,
       "code-read": 71,
       "partial": 22
     },
@@ -36,9 +36,9 @@
       "partial": 9
     },
     "web": {
-      "partial": 81,
+      "partial": 82,
       "pending": 471,
-      "code-read": 131
+      "code-read": 130
     }
   },
   "files": [
@@ -315,9 +315,9 @@
     {
       "file": "NoWing-web/public/board-games/board-center.css",
       "phase": "web",
-      "gitBlobId": "d246fcfe561581bb4aacfe2ff959f32f18fece52",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
+      "gitBlobId": "996ce40b484579212728dd7c8f72eae483f3b139",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/253-torneo-semanal-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -329,17 +329,17 @@
     {
       "file": "NoWing-web/public/board-games/board-games.css",
       "phase": "web",
-      "gitBlobId": "c6d497a697da5983ab68ede24df3dfaae0ae22ab",
+      "gitBlobId": "d3c2ad43620855976376aed79ffff1cdc95d7265",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/251-confirmar-jugada-android-2026-11-26.md",
+      "evidence": "docs/oficial/253-torneo-semanal-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-games.html",
       "phase": "web",
-      "gitBlobId": "3756d70d2d5c860e7572518c30caf3bfbbca8e60",
+      "gitBlobId": "aa4c9fc6c0885cdb5d51f38e4ed072698d12aa9a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/251-confirmar-jugada-android-2026-11-26.md",
+      "evidence": "docs/oficial/253-torneo-semanal-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -353,9 +353,9 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "ede0a8a0815f02749db06f9c6c316967cceae8bc",
+      "gitBlobId": "b18922ab3ae6b0c9b4a8735be34e3dddaf48d3aa",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/252-reloj-ajedrez-android-2026-11-26.md",
+      "evidence": "docs/oficial/253-torneo-semanal-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4617,9 +4617,9 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "aaaccd8e546556ad2b594abbf458dc98d351d861",
+      "gitBlobId": "6524e1976e71b13b5f98f5bee07260b7e43be354",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/252-reloj-ajedrez-android-2026-11-26.md",
+      "evidence": "docs/oficial/253-torneo-semanal-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22718,6 +22718,12 @@
       "file": "docs/oficial/252-reloj-ajedrez-android-2026-11-26.md",
       "phase": "documentation",
       "gitBlobId": "49e4d9be4a5957074afb5de5db10c8e7e8f47eeb",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/253-torneo-semanal-android-2026-11-26.md",
+      "phase": "documentation",
+      "gitBlobId": "05cc6c93742f94f4c66ef9388607aa829180880f",
       "reviewStatus": "pending"
     },
     {

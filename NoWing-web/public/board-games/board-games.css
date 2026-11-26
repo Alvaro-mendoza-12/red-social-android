@@ -97,7 +97,8 @@ button:disabled { opacity: .58; }
 #ranking ol { display: grid; gap: .32rem; padding-left: 1.5rem; }
 #ranking li { padding: .48rem .52rem; background: var(--raised); border-radius: .46rem; overflow-wrap: anywhere; }
 #previous-podium li:first-child { background: #433b30; border-inline-start: 3px solid var(--gold); }
-#ranking-period { font-variant-numeric: tabular-nums; }
+#ranking-countdown { color: var(--gold); font-size: 1.65rem; font-variant-numeric: tabular-nums; font-weight: 750; line-height: 1; }
+#retry-ranking { justify-self: start; }
 #setup { display: flex; gap: .58rem; flex-wrap: wrap; align-items: flex-end; margin: .64rem 0; }
 #setup label { display: grid; gap: .3rem; color: var(--muted); font-size: .84rem; }
 

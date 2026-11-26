@@ -72,13 +72,17 @@
       </section>
     </section>
     <section id="ranking" hidden aria-label="Torneo semanal">
-      <h2>Torneo semanal</h2>
+      <h2 id="ranking-title" tabindex="-1">Torneo semanal</h2>
       <p id="ranking-period" role="status"></p>
+      <p id="ranking-countdown" role="timer" aria-label="Tiempo restante de la semana" hidden></p>
+      <button type="button" id="retry-ranking" hidden>Actualizar clasificación</button>
       <p>Las victorias en partidas públicas cuentan para la clasificación.</p>
       <h3>Podio de la semana pasada</h3>
-      <ol id="previous-podium"></ol>
+      <ol id="previous-podium" hidden></ol>
+      <p id="previous-podium-empty" hidden>Todavía no hay podio.</p>
       <h3>Los 100 primeros</h3>
-      <ol id="weekly-top"></ol>
+      <ol id="weekly-top" hidden></ol>
+      <p id="weekly-top-empty" hidden>Todavía no hay victorias.</p>
     </section>
     <section id="catalog" aria-labelledby="catalog-title">
       <div class="catalog-heading">

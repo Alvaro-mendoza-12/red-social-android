@@ -62,7 +62,9 @@ h1 { margin: .18rem 0 0; font-size: clamp(1.95rem, 7.4vw, 4.2rem); }
 #waiting-seats li { display: flex; align-items: center; gap: .42rem; min-width: 0; overflow-wrap: anywhere; padding: .42rem; border-radius: .54rem; border: 1px solid var(--line); }
 #waiting-seats li.vacant { color: var(--muted); border-style: dashed; }
 #ranking { max-width: 47rem; }
-#ranking #previous-podium { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); }
+@media (min-width: 620px) {
+  #ranking #previous-podium { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); }
+}
 #previous-podium li { border-inline-start: 2px solid #75658b; }
 #previous-podium li:first-child { color: #ffe4ad; border-color: #ffc983; }
 #table { --game-accent: var(--gold); max-width: 62rem; margin-inline: auto; }

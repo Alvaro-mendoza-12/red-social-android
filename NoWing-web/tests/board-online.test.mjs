@@ -20,7 +20,9 @@ const waitingRoom = {
   host: true,
 }
 
-async function openLobby(t, respond, { resumeId, inviteId, delayPort = false, onRoom = () => {}, onClock = () => {} } = {}) {
+async function openLobby(t, respond, {
+  resumeId, inviteId, delayPort = false, onRoom = () => {}, onClock = () => {}, timerApis = ['setTimeout'],
+} = {}) {
   const query = new URLSearchParams({ mode: 'android' })
   if (resumeId) query.set('resume', resumeId)
   if (inviteId) query.set('invite', inviteId)
@@ -28,7 +30,7 @@ async function openLobby(t, respond, { resumeId, inviteId, delayPort = false, on
     url: 'https://appassets.androidplatform.net/board-games.html?' + query,
     pretendToBeVisual: true,
   })
-  t.mock.timers.enable({ apis: ['setTimeout'] })
+  t.mock.timers.enable({ apis: timerApis })
   for (const key of ['window', 'document', 'location', 'Event']) {
     Object.defineProperty(globalThis, key, { value: dom.window[key], configurable: true })
   }
@@ -422,6 +424,106 @@ test('delayed and repeated snapshots cannot replace a newer sample of the same c
     await lobby.tick(1800)
   }
   assert.deepEqual(clockSamples, [145000, 146000])
+})
+
+const weekEnd = Date.parse('2026-11-30T05:00:00Z')
+const rankingTimers = ['setTimeout', 'setInterval']
+const rankingSnapshot = (endsAt, serverNow, top = [], podium = []) => ({
+  endsAt: new Date(endsAt).toISOString(), serverNow: new Date(serverNow).toISOString(), top, podium,
+})
+function rankingClock(t) {
+  let now = 0
+  t.mock.method(performance, 'now', () => now)
+  return async (lobby, ms) => {
+    now += ms
+    await lobby.tick(ms)
+  }
+}
+const countdown = lobby => lobby.get('ranking-countdown')?.textContent || lobby.get('ranking-period').textContent
+
+test('the five-minute tournament countdown follows server time despite a change to the phone clock', async t => {
+  const advance = rankingClock(t)
+  let phoneTime = weekEnd - 300000
+  t.mock.method(Date, 'now', () => phoneTime)
+  let reads = 0
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path !== '/ranking') return { rooms: [] }
+    reads++
+    return rankingSnapshot(weekEnd, weekEnd - 301000)
+  }, { timerApis: rankingTimers })
+  await lobby.click('open-ranking')
+  assert.match(lobby.get('ranking-period').textContent, /medianoche/)
+  phoneTime += 1800000
+  await advance(lobby, 1000)
+  assert.match(countdown(lobby), /5:00/)
+  await advance(lobby, 1000)
+  assert.match(countdown(lobby), /4:59/)
+  assert.equal(reads, 1)
+})
+
+test('the weekly tournament retries a failed rollover and keeps the standings visible in the meantime', async t => {
+  const advance = rankingClock(t)
+  let wallTime = weekEnd - 1000
+  t.mock.method(Date, 'now', () => wallTime)
+  let reads = 0
+  const previous = [{ name: 'Ana', wins: 4 }]
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path !== '/ranking') return { rooms: [] }
+    if (++reads === 1) return rankingSnapshot(weekEnd, weekEnd - 1000, previous)
+    if (reads === 2) return new Error('BOARD_UNAVAILABLE')
+    return rankingSnapshot(weekEnd + 7 * 86400000, weekEnd + 5000, [], previous)
+  }, { timerApis: rankingTimers })
+  await lobby.click('open-ranking')
+  assert.match(countdown(lobby), /0:01/)
+  wallTime += 1000
+  await advance(lobby, 1000)
+  await advance(lobby, 1)
+  assert.equal(reads, 2)
+  assert.match(lobby.get('weekly-top').textContent, /Ana.*4 victorias/)
+  wallTime += 5000
+  await advance(lobby, 5000)
+  assert.equal(reads, 3)
+  assert.equal(lobby.get('weekly-top').children.length, 0)
+  assert.equal(lobby.get('weekly-top').hidden, true)
+  assert.equal(lobby.get('weekly-top-empty').hidden, false)
+  assert.match(lobby.get('previous-podium').textContent, /Ana.*4 victorias/)
+})
+
+test('an expired ranking snapshot waits before retrying and cannot be presented as the new week', async t => {
+  const advance = rankingClock(t)
+  let reads = 0
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path !== '/ranking') return { rooms: [] }
+    reads++
+    return rankingSnapshot(weekEnd, weekEnd, [{ name: 'Datos vencidos', wins: 7 }])
+  }, { timerApis: rankingTimers })
+  await lobby.click('open-ranking')
+  assert.doesNotMatch(lobby.get('weekly-top').textContent, /Datos vencidos/)
+  assert.match(lobby.get('ranking-period').textContent, /Actualizando/)
+  await advance(lobby, 4000)
+  assert.equal(reads, 1)
+  await advance(lobby, 1000)
+  assert.equal(reads, 2)
+})
+
+test('the tournament refreshes on reconnect and stops retrying after the player leaves', async t => {
+  const advance = rankingClock(t)
+  let reads = 0
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path !== '/ranking') return { rooms: [] }
+    if (++reads === 2) return rankingSnapshot(weekEnd, weekEnd - 3600000, [{ name: 'Bruno', wins: 2 }])
+    return new Error('BACKEND_UNAVAILABLE')
+  }, { timerApis: rankingTimers })
+  await lobby.click('open-ranking')
+  window.dispatchEvent(new window.Event('online'))
+  await settle()
+  assert.equal(reads, 2)
+  assert.match(lobby.get('weekly-top').textContent, /Bruno/)
+  await lobby.click('open-ranking')
+  assert.equal(reads, 3)
+  await lobby.click('open-offline')
+  await advance(lobby, 10000)
+  assert.equal(reads, 3)
 })
 
 test('the friends shortcut makes a private room and filters invitations by name', async t => {

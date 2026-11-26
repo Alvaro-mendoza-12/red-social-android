@@ -123,7 +123,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   let room
   let mode = 'offline'
   let timer
-  let clock
+  let rankingTimer
   let generation = 0
   let actionVersion = 0
   let loading = false
@@ -162,7 +162,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     if (next !== mode) {
       generation++
       clearTimeout(timer)
-      clearInterval(clock)
+      clearTimeout(rankingTimer)
       room = null
       roomToRestore = null
       moveStatus = null
@@ -450,10 +450,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     loading = true
     try { await task(isCurrent) }
     catch (error) {
-      if (isCurrent()) {
-        if (mode === 'ranking') element('ranking-period').textContent = messageFor(error)
-        else status(messageFor(error))
-      }
+      if (isCurrent()) status(messageFor(error))
     }
     finally { if (isCurrent()) loading = false }
   }
@@ -543,32 +540,83 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
   }
 
   const calendar = new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeZone: 'America/Bogota' })
+  const closingWeek = 'La semana terminó. Actualizando la clasificación…'
+  const countdownWindow = 5 * 60000
+  const rankingRetryDelay = 5000
+
+  function rankingStatus(message, seconds = null, retry = false) {
+    const period = element('ranking-period')
+    if (period.textContent !== message) period.textContent = message
+    const countdown = element('ranking-countdown')
+    countdown.hidden = seconds === null
+    countdown.textContent = seconds === null ? '' : Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0')
+    element('retry-ranking').hidden = !retry
+  }
+
+  function scheduleRanking(callback, delay) {
+    clearTimeout(rankingTimer)
+    rankingTimer = setTimeout(callback, delay)
+  }
+
+  function renderRanking(id, rows) {
+    const list = element(id)
+    list.hidden = !rows.length
+    element(id + '-empty').hidden = Boolean(rows.length)
+    list.replaceChildren(...rows.map(row => {
+      const item = document.createElement('li')
+      item.textContent = row.name + ' · ' + row.wins + (row.wins === 1 ? ' victoria' : ' victorias')
+      return item
+    }))
+  }
+
   function loadRanking() {
+    if (mode !== 'ranking' || loading || document.hidden) return
+    clearTimeout(rankingTimer)
     return run(async isCurrent => {
-      const ranking = await request('/ranking')
-      if (!isCurrent()) return
-      const render = (id, rows, empty) => element(id).replaceChildren(...(rows.length ? rows : [{ name: empty }]).map(row => {
-        const item = document.createElement('li')
-        item.textContent = row.wins === undefined ? row.name : row.name + ' · ' + row.wins + (row.wins === 1 ? ' victoria' : ' victorias')
-        return item
-      }))
-      render('previous-podium', ranking.podium, 'Todavía no hay podio.')
-      render('weekly-top', ranking.top, 'Todavía no hay victorias.')
-      const offset = Date.parse(ranking.serverNow) - Date.now()
-      const end = Date.parse(ranking.endsAt)
-      function tick() {
-        const remaining = Math.max(0, end - Date.now() - offset)
-        if (remaining > 300000) {
-          element('ranking-period').textContent = 'Cierre: ' + calendar.format(end) + ' a medianoche (Bogotá).'
+      try {
+        const ranking = await request('/ranking')
+        if (!isCurrent()) return
+        const end = Date.parse(ranking.endsAt)
+        const duration = end - Date.parse(ranking.serverNow)
+        if (!Number.isFinite(duration)) throw new Error('BOARD_UNAVAILABLE')
+        if (duration <= 0) {
+          rankingStatus(closingWeek)
+          scheduleRanking(loadRanking, rankingRetryDelay)
           return
         }
-        const seconds = Math.ceil(remaining / 1000)
-        element('ranking-period').textContent = 'La semana termina en ' + Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0')
-        if (!seconds && !loading) { clearInterval(clock); void loadRanking() }
+        const receivedAt = performance.now()
+        renderRanking('previous-podium', ranking.podium)
+        renderRanking('weekly-top', ranking.top)
+
+        function tick() {
+          if (!isCurrent() || document.hidden) return
+          const remaining = duration - (performance.now() - receivedAt)
+          if (remaining <= 0) {
+            rankingStatus(closingWeek)
+            scheduleRanking(loadRanking, 0)
+          } else if (remaining > countdownWindow) {
+            rankingStatus('Cierre: ' + calendar.format(end) + ' a medianoche (Bogotá).')
+            scheduleRanking(tick, remaining - countdownWindow)
+          } else {
+            const seconds = Math.ceil(remaining / 1000)
+            rankingStatus('La semana termina en', seconds)
+            scheduleRanking(tick, Math.max(1, remaining - (seconds - 1) * 1000))
+          }
+        }
+        tick()
+      } catch (error) {
+        if (!isCurrent()) return
+        const retry = connectionLost(error)
+        rankingStatus(retry ? 'No se pudo actualizar la clasificación. Reintentando…' : messageFor(error), null, true)
+        if (retry) scheduleRanking(loadRanking, rankingRetryDelay)
       }
-      tick()
-      clock = setInterval(tick, 1000)
     })
+  }
+
+  function refreshRanking() {
+    if (loading) return
+    rankingStatus('Actualizando la clasificación…')
+    void loadRanking()
   }
 
   for (const control of moveControls) control.addEventListener('click', event => {
@@ -585,12 +633,17 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     void run(current => start('private', current))
   })
   element('open-ranking').addEventListener('click', () => {
-    if (mode !== 'ranking') show('ranking')
-    clearInterval(clock)
-    if (!loading) {
-      element('ranking-period').textContent = 'Cargando clasificación…'
-      void loadRanking()
+    if (mode !== 'ranking') {
+      show('ranking')
+      const title = element('ranking-title')
+      title.focus({ preventScroll: true })
+      title.scrollIntoView?.({ block: 'start' })
     }
+    refreshRanking()
+  })
+  element('retry-ranking').addEventListener('click', () => {
+    element('ranking-title').focus({ preventScroll: true })
+    refreshRanking()
   })
   element('refresh-rooms').addEventListener('click', () => lobby('', { invitationId: requestedRoomId, resumeId: roomToRestore }))
   element('find-room').addEventListener('click', () => run(current => start('public', current)))
@@ -686,7 +739,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {},
     if (mode === 'online' && !reconciling) {
       clearTimeout(timer)
       void poll()
-    } else if (mode === 'offline') void readAvailability()
+    } else if (mode === 'ranking') void loadRanking()
+    else if (mode === 'offline') void readAvailability()
   }
   document.addEventListener('visibilitychange', refreshOnReturn)
   window.addEventListener('online', refreshOnReturn)
