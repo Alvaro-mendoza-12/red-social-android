@@ -59,6 +59,39 @@ class ChallengeControllerTest {
         assertEquals(3, f.roundCalls)
     }
 
+    @Test fun aSlowParticipationReadCannotDelayTheChangeToVoting() = runTest {
+        val f = Fixture(this)
+        f.active = round().copy(expiresAt = Instant.ofEpochMilli(1_000).toString())
+        f.readParticipation = { awaitCancellation() }
+        f.start()
+        f.active = f.active.copy(status = "voting", votingExpiresAt = Instant.ofEpochMilli(31_000).toString())
+        f.now = 1_000
+        advanceTimeBy(1_001); runCurrent()
+        assertEquals(2, f.roundCalls)
+        assertEquals("voting", f.controller.state.value.active?.status)
+        assertEquals(30, f.controller.state.value.remainingSeconds)
+        assertEquals(f.rows, f.controller.state.value.submissions)
+    }
+
+    @Test fun aSlowAnswerPollCannotDelayOpeningTheNextChallenge() = runTest {
+        val f = Fixture(this)
+        f.active = round().copy(expiresAt = Instant.ofEpochMilli(6_000).toString())
+        f.start()
+        f.readSubmissions = { awaitCancellation() }
+        f.now = 5_000
+        advanceTimeBy(5_000); runCurrent()
+        assertTrue(f.controller.state.value.loadingSubmissions)
+        f.now = 6_000
+        f.active = round("next")
+        f.rows = listOf(row(round = "next"))
+        f.readSubmissions = { Result.success(f.rows) }
+        advanceTimeBy(1_000); runCurrent()
+        assertEquals(2, f.roundCalls)
+        assertEquals("next", f.controller.state.value.active?.id)
+        assertEquals(f.rows, f.controller.state.value.submissions)
+        assertFalse(f.controller.state.value.loadingSubmissions)
+    }
+
     @Test fun aFailedRefreshPreservesConfirmedSubmissions() = runTest {
         val f = Fixture(this); f.start()
         f.readSubmissions = { Result.failure(IOException("offline")) }

@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url)
 const { JSDOM } = createRequire(require.resolve('jest-environment-jsdom'))('jsdom')
 const markup = await readFile(new URL('../public/board-games/board-games.html', import.meta.url), 'utf8')
 const settle = () => new Promise(resolve => setImmediate(resolve))
+const malformedPayload = Symbol('malformed native payload')
 const waitingRoom = {
   id: '00000000-0000-4000-8000-000000000001',
   revision: 1,
@@ -32,18 +33,24 @@ async function openLobby(t, respond, { resumeId, onRoom = () => {} } = {}) {
     for (const key of ['window', 'document', 'location', 'Event']) delete globalThis[key]
     dom.window.close()
   })
-  const port = {
+  const makePort = () => ({
     postMessage(message) {
       const request = JSON.parse(message)
       const response = respond(request)
       if (response === undefined) return
-      const reply = response instanceof Error ? { error: response.message } : { payload: JSON.stringify(response) }
-      queueMicrotask(() => this.onmessage({ data: JSON.stringify({ id: request.id, ...reply }) }))
+      const reply = response === malformedPayload ? { payload: '{' } : response instanceof Error
+        ? { error: response.message } : { payload: JSON.stringify(response) }
+      queueMicrotask(() => {
+        try { this.onmessage({ data: JSON.stringify({ id: request.id, ...reply }) }) }
+        catch (error) { wireErrors.push(error) }
+      })
     },
     close() {},
-  }
+  })
+  const wireErrors = []
   const { onlineBoard } = await import('../public/board-games/board-online.js?' + encodeURIComponent(t.name))
-  window.dispatchEvent(new window.MessageEvent('message', { data: 'novvin-board', ports: [port] }))
+  const connectPort = () => window.dispatchEvent(new window.MessageEvent('message', { data: 'novvin-board', ports: [makePort()] }))
+  connectPort()
   const controller = onlineBoard({
     selection: () => ({ kind: 'chess', capacity: 2 }),
     onRoom,
@@ -53,6 +60,11 @@ async function openLobby(t, respond, { resumeId, onRoom = () => {} } = {}) {
   await settle()
   return {
     controller,
+    wireErrors,
+    async reconnect() {
+      connectPort()
+      await settle()
+    },
     get: id => document.getElementById(id),
     async click(id) {
       document.getElementById(id).click()
@@ -135,6 +147,42 @@ test('retrying after a lost native reply reuses the room creation request ID', a
   await lobby.click('create-private')
   assert.equal(requestIds.length, 2)
   assert.equal(requestIds[0], requestIds[1])
+  assert.equal(lobby.get('waiting').hidden, false)
+})
+
+test('a malformed native reply releases the action and a retry keeps the private room request ID', async t => {
+  const ids = []
+  const lobby = await openLobby(t, ({ path, method, body }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [] }
+    if (path === '/rooms') {
+      ids.push(body.requestId)
+      return ids.length === 1 ? malformedPayload : { room: { ...waitingRoom, id: body.requestId } }
+    }
+    if (path === '/friends') return { friends: [] }
+  })
+  await lobby.click('create-private')
+  await lobby.click('create-private')
+  assert.equal(ids.length, 2)
+  assert.equal(ids[0], ids[1])
+  assert.equal(lobby.get('waiting').hidden, false)
+  assert.deepEqual(lobby.wireErrors, [])
+})
+
+test('replacing the native channel releases a pending action immediately', async t => {
+  const ids = []
+  const lobby = await openLobby(t, ({ path, method, body }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [] }
+    if (path === '/rooms') {
+      ids.push(body.requestId)
+      if (ids.length === 2) return { room: { ...waitingRoom, id: body.requestId } }
+    }
+    if (path === '/friends') return { friends: [] }
+  })
+  await lobby.click('create-private')
+  await lobby.reconnect()
+  await lobby.click('create-private')
+  assert.equal(ids.length, 2)
+  assert.equal(ids[0], ids[1])
   assert.equal(lobby.get('waiting').hidden, false)
 })
 

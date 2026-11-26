@@ -63,6 +63,7 @@ internal class ChallengeController(
     private var epoch = 0L
     private var visible = false
     private var visibleJob: Job? = null
+    private var detailsJob: Job? = null
     private var mineJob: Job? = null
     private var mineRevision = 0L
     private var participationRevision = 0L
@@ -74,6 +75,7 @@ internal class ChallengeController(
         if (lease.isCurrent()) return
         tasks.reset()
         visibleJob = null
+        detailsJob = null
         mineJob = null
         lease = captureLease()
         epoch++
@@ -91,21 +93,29 @@ internal class ChallengeController(
     fun setVisible(value: Boolean) {
         visible = value
         sessionChanged()
-        if (!value) { visibleJob?.cancel(); visibleJob = null }
-        else startVisibleLoop()
+        if (value) startVisibleLoop() else {
+            visibleJob?.cancel()
+            visibleJob = null
+            detailsJob?.cancel()
+        }
     }
 
     private fun startVisibleLoop() {
         if (!visible || !lease.isCurrent() || visibleJob?.isActive == true) return
         visibleJob = tasks.scope.launch {
-            refreshRound()
+            launch { refreshRound() }
             var ticks = 0
             while (true) {
                 delay(1_000)
+                val wasRunning = state.value.remainingSeconds > 0
                 tick()
                 ticks++
-                if (ticks % 15 == 0 || (ticks % 5 == 0 && state.value.remainingSeconds == 0)) refreshRound()
-                else if (ticks % 5 == 0 && canReadSubmissions()) refreshSubmissions()
+                val expired = state.value.remainingSeconds == 0
+                if (ticks % 15 == 0 || expired && (wasRunning || ticks % 5 == 0)) {
+                    launch { refreshRound() }
+                } else if (ticks % 5 == 0 && canReadSubmissions()) {
+                    state.value.active?.let(::requestDetails)
+                }
             }
         }
     }
@@ -137,19 +147,35 @@ internal class ChallengeController(
             result.fold(onSuccess = { round ->
                 val previous = state.value
                 if (!sameRound(previous.active, round)) {
+                    detailsJob?.cancel()
+                    detailsJob = null
                     participationRevision++
                     submissionsRevision++
                     mutableState.value = previous.copy(active = round, submissions = emptyList(),
                         hasParticipated = false, submitting = false, loadingSubmissions = false, pendingVotes = emptySet(), error = null)
-                } else mutableState.value = previous.copy(active = round, error = null)
+                } else {
+                    if (previous.active?.status == "active" && !previous.hasParticipated && round.status != "active") {
+                        detailsJob?.cancel()
+                        detailsJob = null
+                    }
+                    mutableState.value = previous.copy(active = round, error = null)
+                }
                 tick()
-                refreshParticipation(round)
-                if (current(expectedEpoch, round) && canReadSubmissions()) refreshSubmissions()
+                requestDetails(round)
             }, onFailure = {
                 mutableState.value = state.value.copy(error = "No pudimos actualizar la ronda. Puedes reintentar.")
             })
         } finally {
             if (current(expectedEpoch)) mutableState.value = state.value.copy(loadingRound = false)
+        }
+    }
+
+    private fun requestDetails(round: ActiveChallenge) {
+        if (!visible || detailsJob?.isActive == true) return
+        val expectedEpoch = epoch
+        detailsJob = tasks.scope.launch {
+            if (round.status == "active") refreshParticipation(round)
+            if (current(expectedEpoch, round) && canReadSubmissions()) refreshSubmissions()
         }
     }
 

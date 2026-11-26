@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T04:41:38.147205+00:00",
-  "baseCommit": "1d48f1114b27cbf1a7501f63d7dde8ef8deed113",
+  "generatedAtUtc": "2026-11-26T04:50:24.456200+00:00",
+  "baseCommit": "f0e49a9591379bb3bb2e432c971d71301066a9a3",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,17 +11,17 @@
   },
   "counts": {
     "pending": 3412,
-    "code-read": 1092,
+    "code-read": 1093,
     "partial": 313
   },
   "countsByPhase": {
     "android": {
-      "pending": 1373,
-      "partial": 142,
-      "code-read": 635
+      "pending": 1372,
+      "partial": 144,
+      "code-read": 634
     },
     "documentation": {
-      "pending": 715,
+      "pending": 716,
       "code-read": 71,
       "partial": 22
     },
@@ -36,9 +36,9 @@
       "partial": 9
     },
     "web": {
-      "partial": 81,
+      "partial": 79,
       "pending": 469,
-      "code-read": 130
+      "code-read": 132
     }
   },
   "files": [
@@ -339,9 +339,9 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "f74663bee9ddcaa8dc7d950246a3f25a5b23bd17",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "gitBlobId": "5c17ca07aca413a1eff384773182658085f67892",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/245-recuperacion-juegos-y-transicion-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4597,9 +4597,9 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "cf724973bd30408dd7ce8dee82c6c7dc87a47bbf",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "gitBlobId": "75e337a7b42301a47261164c79446202f4f99137",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/245-recuperacion-juegos-y-transicion-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12787,9 +12787,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/social/ChallengeController.kt",
       "phase": "android",
-      "gitBlobId": "64855feddc23443bc041fc3f1a8cecf0e4e2a4a8",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "1f4b53ff70e60dd08da13ca069ffad3fe0e454eb",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/245-recuperacion-juegos-y-transicion-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18279,8 +18279,10 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/social/ChallengeControllerTest.kt",
       "phase": "android",
-      "gitBlobId": "76d9d43d080b4da16790974f705327a5d0fade75",
-      "reviewStatus": "pending"
+      "gitBlobId": "541c2b9aed7d512d56d29849c2b7bb742aa517bd",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/245-recuperacion-juegos-y-transicion-rondas-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/presentation/social/ChallengeMediaKindTest.kt",
@@ -22634,6 +22636,12 @@
       "file": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "phase": "documentation",
       "gitBlobId": "1eaf21e69f022cdae30ee573fb9ede5982eaea80",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/245-recuperacion-juegos-y-transicion-rondas-2026-11-25.md",
+      "phase": "documentation",
+      "gitBlobId": "a857d13de02fa71ba36a9f159b096a15a4dfa773",
       "reviewStatus": "pending"
     },
     {

@@ -6,18 +6,33 @@ let nativePort
 let webToken
 let refresh
 
+function takeRequest(id) {
+  const pending = requests.get(id)
+  if (!pending) return
+  requests.delete(id)
+  clearTimeout(pending.timer)
+  return pending
+}
+
 if (android) window.addEventListener('message', event => {
   if (event.data !== 'novvin-board' || event.ports.length !== 1) return
   nativePort?.close()
-  nativePort = event.ports[0]
-  nativePort.onmessage = message => {
-    const { id, payload, error } = JSON.parse(message.data)
-    const pending = requests.get(id)
+  const port = event.ports[0]
+  nativePort = port
+  for (const id of requests.keys()) takeRequest(id).reject(new Error('BOARD_UNAVAILABLE'))
+  port.onmessage = message => {
+    if (nativePort !== port) return
+    let reply
+    try { reply = JSON.parse(message.data) } catch { return }
+    if (!reply || typeof reply !== 'object') return
+    const pending = takeRequest(reply.id)
     if (!pending) return
-    requests.delete(id)
-    clearTimeout(pending.timer)
-    if (error) pending.reject(new Error(error))
-    else pending.resolve(JSON.parse(payload))
+    if (typeof reply.error === 'string') {
+      pending.reject(new Error(reply.error))
+      return
+    }
+    try { pending.resolve(JSON.parse(reply.payload)) }
+    catch { pending.reject(new Error('BOARD_UNAVAILABLE')) }
   }
   window.dispatchEvent(new Event('novvin-board-ready'))
 })
@@ -28,11 +43,11 @@ async function request(path, body, retry = true) {
     return new Promise((resolve, reject) => {
       const id = ++nextRequest
       const timer = setTimeout(() => {
-        requests.delete(id)
-        reject(new Error('BOARD_UNAVAILABLE'))
+        takeRequest(id)?.reject(new Error('BOARD_UNAVAILABLE'))
       }, 12000)
       requests.set(id, { resolve, reject, timer })
-      nativePort.postMessage(JSON.stringify({ id, method: body ? 'POST' : 'GET', path, body }))
+      try { nativePort.postMessage(JSON.stringify({ id, method: body ? 'POST' : 'GET', path, body })) }
+      catch { takeRequest(id)?.reject(new Error('BOARD_UNAVAILABLE')) }
     })
   }
   if (!webToken) {
