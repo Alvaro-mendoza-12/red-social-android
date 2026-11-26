@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { createChess, chessActions, playChess, claimChessDraw, canClaimChessDraw,
   createCheckers, checkerActions, playCheckers,
   createLudo, ludoActions, ludoCell, rollLudo, playLudo,
@@ -126,4 +128,53 @@ test('four in a row requires gravity and wins on a vertical sequence', () => {
   assert.equal(playLineBoard(game, 0), false)
   for (const position of [35, 36, 28, 29, 21, 22, 14]) assert.ok(playLineBoard(game, position))
   assert.equal(game.outcome.winner, 0)
+})
+
+test('four in a row accepts a touch anywhere in a column and preserves keyboard focus', async t => {
+  const require = createRequire(import.meta.url)
+  const { JSDOM } = createRequire(require.resolve('jest-environment-jsdom'))('jsdom')
+  const assets = new URL('../public/board-games/', import.meta.url)
+  const engine = new URL('../../infrastructure/local-fallback/api/src/board-games/engine/', import.meta.url)
+  const markup = await readFile(new URL('board-games.html', assets), 'utf8')
+  const dom = new JSDOM(markup, { url: 'https://appassets.androidplatform.net/board-games.html?mode=android' })
+  const { window } = dom
+  window.scrollTo = () => {}
+  window.document.getElementById('promotion').close = () => {}
+  t.after(() => {
+    for (const key of ['window', 'document', 'location']) delete globalThis[key]
+    window.close()
+  })
+  for (const key of ['window', 'document', 'location']) {
+    Object.defineProperty(globalThis, key, { value: window[key], configurable: true })
+  }
+  // Gradle packages these modules together. Resolve the same imports in the source tree.
+  const source = await readFile(new URL('board-games.js', assets), 'utf8')
+  const module = source.replace(/'\.\/(board-(?:rules|match|online)\.js)'/g,
+    (_, file) => JSON.stringify(new URL(file, file === 'board-online.js' ? assets : engine).href))
+  await import('data:text/javascript;charset=utf-8,' + encodeURIComponent(module))
+
+  const document = window.document
+  document.querySelector('[data-game="connect_four"]').click()
+  document.getElementById('setup').dispatchEvent(new window.Event('submit', { cancelable: true }))
+  const grid = document.getElementById('board')
+  const column = number => grid.querySelector(`[data-column="${number}"]`)
+  assert.equal(grid.querySelectorAll('button').length, 7)
+  assert.equal(column(1).getAttribute('aria-label'), 'Columna 1. Vacía.')
+  assert.equal(column(1).lastElementChild.classList.contains('landing'), true)
+  column(1).focus()
+  column(1).firstElementChild.click()
+  assert.equal(column(1).lastElementChild.textContent, 'X')
+  assert.equal(document.activeElement, column(1))
+  assert.equal(column(1).getAttribute('aria-label'), 'Columna 1. Desde abajo, X.')
+
+  for (let remaining = 5; remaining > 0; remaining--) column(1).click()
+  assert.equal(column(1).disabled, true)
+  assert.equal(column(1).querySelector('.landing'), null)
+  assert.equal(column(2).disabled, false)
+  assert.equal(document.activeElement, column(2))
+
+  document.getElementById('restart').click()
+  for (const move of [1, 2, 1, 2, 1, 2, 1]) column(move).click()
+  assert.match(document.getElementById('status').textContent, /Gana X/)
+  assert.equal(grid.querySelectorAll('button:disabled').length, 7)
 })

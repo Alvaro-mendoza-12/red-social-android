@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T04:50:24.456200+00:00",
-  "baseCommit": "f0e49a9591379bb3bb2e432c971d71301066a9a3",
+  "generatedAtUtc": "2026-11-26T05:33:30.741116+00:00",
+  "baseCommit": "eb1273e62ea87bc5bfb25a7b47a3a565f9c7f412",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3412,
-    "code-read": 1093,
-    "partial": 313
+    "pending": 3413,
+    "code-read": 1096,
+    "partial": 310
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 634
     },
     "documentation": {
-      "pending": 716,
+      "pending": 717,
       "code-read": 71,
       "partial": 22
     },
@@ -36,9 +36,9 @@
       "partial": 9
     },
     "web": {
-      "partial": 79,
+      "partial": 76,
       "pending": 469,
-      "code-read": 132
+      "code-read": 135
     }
   },
   "files": [
@@ -315,33 +315,33 @@
     {
       "file": "NoWing-web/public/board-games/board-games.css",
       "phase": "web",
-      "gitBlobId": "ce488cf7155eee387c5690ee5a34db717853a36d",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "gitBlobId": "9167ca69f6792d88a9fb1f398ac6b2b135d7cf3f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/246-juegos-columnas-y-salas-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-games.html",
       "phase": "web",
-      "gitBlobId": "3fae963fba01bad243d35cd3371d2442f40026b7",
+      "gitBlobId": "393881705458f74a6ca97727787c3e9517c65c63",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "evidence": "docs/oficial/246-juegos-columnas-y-salas-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-games.js",
       "phase": "web",
-      "gitBlobId": "06437bae23e1a11f6d8d01c179f83b2fa2a553f2",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "gitBlobId": "eb0c040763601b407f35df5c70a7a7b18cb65a5e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/246-juegos-columnas-y-salas-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "5c17ca07aca413a1eff384773182658085f67892",
+      "gitBlobId": "b3ede07914b011da5456c4469dd2971f9ddad88d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/245-recuperacion-juegos-y-transicion-rondas-2026-11-25.md",
+      "evidence": "docs/oficial/246-juegos-columnas-y-salas-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4589,17 +4589,17 @@
     {
       "file": "NoWing-web/tests/board-games.test.mjs",
       "phase": "web",
-      "gitBlobId": "a499dd8a7b9c46afe59204d923c34ea5cf2c089a",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "gitBlobId": "3a7e15aaffb8bfd09f4aee29cc7d8bce97228ce7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/246-juegos-columnas-y-salas-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "75e337a7b42301a47261164c79446202f4f99137",
+      "gitBlobId": "af61fd0211a9fe7693478876f8df36d9d4efb329",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/245-recuperacion-juegos-y-transicion-rondas-2026-11-25.md",
+      "evidence": "docs/oficial/246-juegos-columnas-y-salas-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22642,6 +22642,12 @@
       "file": "docs/oficial/245-recuperacion-juegos-y-transicion-rondas-2026-11-25.md",
       "phase": "documentation",
       "gitBlobId": "a857d13de02fa71ba36a9f159b096a15a4dfa773",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/246-juegos-columnas-y-salas-2026-11-26.md",
+      "phase": "documentation",
+      "gitBlobId": "12e2860622eb3a1a6672a6a59e1075b10bb152af",
       "reviewStatus": "pending"
     },
     {

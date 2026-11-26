@@ -144,22 +144,62 @@ function moveToken(token) {
   else if (playLudo(state.game, token)) completeMove()
 }
 
+function playLineAt(position) {
+  if (state.room) void online.move({ type: 'move', position })
+  else if (playLineBoard(state.game, position)) completeMove()
+}
+
+function drawColumns(grid, game, actions) {
+  const activeColumn = grid.contains(document.activeElement) ? document.activeElement.dataset.column : undefined
+  const landingByColumn = new Map(actions.map(position => [position % game.width, position]))
+  const playable = !cannotPlay()
+  const columns = Array.from({ length: game.width }, (_, column) => {
+    const landing = landingByColumn.get(column)
+    const control = button('', () => playLineAt(landing), 'drop-column')
+    control.dataset.column = String(column + 1)
+    control.disabled = !playable || landing === undefined
+    const marks = []
+    for (let position = column; position < game.board.length; position += game.width) {
+      const side = game.board[position]
+      const slot = document.createElement('span')
+      slot.className = 'four-slot'
+      slot.setAttribute('aria-hidden', 'true')
+      if (side !== null) {
+        slot.textContent = player(side)
+        slot.classList.add('side-' + side)
+        marks.push(slot.textContent)
+      } else if (!control.disabled && position === landing) {
+        slot.classList.add('landing')
+      }
+      control.append(slot)
+    }
+    const contents = marks.length ? 'Desde abajo, ' + marks.reverse().join(', ') : 'Vacía'
+    control.setAttribute('aria-label', `Columna ${column + 1}. ${contents}.`)
+    return control
+  })
+  grid.replaceChildren(...columns)
+  if (activeColumn !== undefined) {
+    const next = columns.find(control => !control.disabled && control.dataset.column === activeColumn) ??
+      columns.find(control => !control.disabled)
+    next?.focus({ preventScroll: true })
+  }
+}
+
 function drawLineBoard() {
   const game = state.game
-  const actions = new Set(lineBoardActions(game))
   const grid = element('board')
   grid.className = 'board line-board ' + (game.gravity ? 'four' : 'three')
+  const actions = lineBoardActions(game)
+  if (game.gravity) {
+    drawColumns(grid, game, actions)
+    return
+  }
+  const legal = new Set(actions)
   grid.replaceChildren(...game.board.map((side, position) => {
-    const column = position % game.width
-    const target = game.gravity ? [...actions].find(move => move % game.width === column) : position
     const mark = side === null ? '' : player(side)
-    const cell = button(mark, () => {
-      if (state.room) void online.move({ type: 'move', position: target })
-      else if (playLineBoard(game, target)) completeMove()
-    }, mark ? `mark side-${side}` : 'empty')
-    const actionable = game.gravity ? target === position : actions.has(position)
-    cell.disabled = !actionable || Boolean(cannotPlay())
-    cell.setAttribute('aria-label', mark || (game.gravity ? `Columna ${column + 1}` : `Casilla ${position + 1}`))
+    const cell = button(mark, () => playLineAt(position), mark ? `mark side-${side}` : 'empty')
+    cell.disabled = !legal.has(position) || Boolean(cannotPlay())
+    cell.setAttribute('aria-label', mark || `Casilla ${position + 1}`)
     return cell
   }))
 }
@@ -306,9 +346,10 @@ function render() {
   const result = game.outcome
   const lastRoll = game.lastDie ? ` · ${player(game.lastDie.side)} sacó ${game.lastDie.value}` : ''
   const onlineTurn = state.room ? (state.room.seat === turn() ? ' · Tu turno' : ' · Esperando jugada') : ''
+  const moveHint = state.kind === 'connect_four' && !cannotPlay() ? ' · Elige una columna' : ''
   element('status').textContent = result ?
     `${result.winner === null ? 'Empate' : 'Gana ' + player(result.winner)} · ${result.reason}` :
-    `Turno: ${player(turn())}${botTurn() ? ' · Novvin' : onlineTurn}${state.kind === 'chess' && game.board.isCheck() ? ' · Jaque' : ''}${lastRoll}`
+    `Turno: ${player(turn())}${botTurn() ? ' · Novvin' : onlineTurn}${state.kind === 'chess' && game.board.isCheck() ? ' · Jaque' : ''}${lastRoll}${moveHint}`
   const ludo = state.kind === 'ludo'
   element('roll').hidden = !ludo || Boolean(result)
   element('roll').disabled = Boolean(cannotPlay()) || game.die !== null

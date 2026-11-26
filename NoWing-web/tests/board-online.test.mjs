@@ -36,11 +36,10 @@ async function openLobby(t, respond, { resumeId, onRoom = () => {} } = {}) {
   const makePort = () => ({
     postMessage(message) {
       const request = JSON.parse(message)
-      const response = respond(request)
-      if (response === undefined) return
-      const reply = response === malformedPayload ? { payload: '{' } : response instanceof Error
-        ? { error: response.message } : { payload: JSON.stringify(response) }
-      queueMicrotask(() => {
+      Promise.resolve(respond(request)).then(response => {
+        if (response === undefined) return
+        const reply = response === malformedPayload ? { payload: '{' } : response instanceof Error
+          ? { error: response.message } : { payload: JSON.stringify(response) }
         try { this.onmessage({ data: JSON.stringify({ id: request.id, ...reply }) }) }
         catch (error) { wireErrors.push(error) }
       })
@@ -93,6 +92,58 @@ test('a waiting host can invite friends after a transient lookup failure at the 
   await lobby.tick(5000)
   assert.equal(reads, 2)
   assert.equal(lobby.get('friends').querySelector('button').getAttribute('aria-label'), 'Invitar a Ana')
+})
+
+test('a slow friends lookup leaves the waiting room free to open the table', async t => {
+  let deliverFriends
+  const slowFriends = new Promise(resolve => { deliverFriends = resolve })
+  const playing = { ...waitingRoom, status: 'playing', revision: 2, count: 2, reactions: [] }
+  const opened = []
+  const lobby = await openLobby(t, ({ path, method }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [] }
+    if (path === '/rooms') return { room: waitingRoom }
+    if (path === '/rooms/' + waitingRoom.id) return { room: playing }
+    if (path === '/friends') return slowFriends
+  }, { onRoom: room => opened.push(room.id) })
+  await lobby.click('create-private')
+  await lobby.tick(5000)
+  assert.deepEqual(opened, [waitingRoom.id])
+  assert.equal(lobby.get('waiting').hidden, true)
+  deliverFriends({ friends: [{ id: 'friend', name: 'Ana' }] })
+  await settle()
+  assert.equal(lobby.get('friends').children.length, 0)
+})
+
+test('the host can close a room while friends are loading', async t => {
+  let closed = false
+  const lobby = await openLobby(t, ({ path, method }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [] }
+    if (path === '/rooms') return { room: waitingRoom }
+    if (path === '/rooms/' + waitingRoom.id + '/close') { closed = true; return {} }
+  })
+  await lobby.click('create-private')
+  await lobby.click('leave-waiting')
+  assert.equal(closed, true)
+  assert.equal(lobby.get('waiting').hidden, true)
+  assert.equal(lobby.get('room-controls').hidden, false)
+})
+
+test('a host can retry a failed friends lookup without leaving the room', async t => {
+  let attempts = 0
+  const lobby = await openLobby(t, ({ path, method }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [] }
+    if (path === '/rooms') return { room: waitingRoom }
+    if (path === '/friends') {
+      if (++attempts === 1) return new Error('BOARD_UNAVAILABLE')
+      return { friends: [{ id: 'friend', name: 'Ana' }] }
+    }
+  })
+  await lobby.click('create-private')
+  assert.match(lobby.get('friends-empty').textContent, /No pudimos cargar tus amistades/)
+  await lobby.click('retry-friends')
+  assert.equal(attempts, 2)
+  assert.equal(lobby.get('friends').querySelector('button').getAttribute('aria-label'), 'Invitar a Ana')
+  assert.equal(lobby.get('retry-friends').hidden, true)
 })
 
 test('returning from the Android opponent profile opens the same table and shows participant names', async t => {

@@ -83,12 +83,18 @@ nav button[aria-pressed="true"] { border-color: var(--accent); background: #304b
 .board .legal::after { content: ''; width: 27%; aspect-ratio: 1; border-radius: 50%; background: #132c2b9c; position: absolute; inset: 36.5%; pointer-events: none; }
 .line-board { gap: .5rem; padding: .5rem; background: #303852; }
 .line-board.three { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 23rem; }
-.line-board.four { grid-template-columns: repeat(7, minmax(0, 1fr)); aspect-ratio: 7 / 6; gap: .25rem; }
+.line-board.four { grid-template-columns: repeat(7, minmax(0, 1fr)); aspect-ratio: 7 / 6; gap: .15rem; padding: .35rem; }
 .board.line-board button { border-radius: .6rem; background: #171e35; border: 1px solid #4b5673; font-weight: 800; }
 .board.line-board button.empty:not(:disabled) { background: #273955; border-color: #82a8b2; }
 .board.line-board .side-0 { color: #a9f0d3; }
 .board.line-board .side-1 { color: #ffca91; }
-.line-board.four .mark { border-radius: 50%; }
+.board.line-board .drop-column { grid-template-rows: repeat(6, minmax(0, 1fr)); place-content: stretch;
+  place-items: center; gap: .12rem; padding: .12rem; border-color: transparent; background: #242b45; }
+.board.line-board .drop-column:not(:disabled) { border-color: #5a7193; }
+.board.line-board .drop-column:not(:disabled):is(:hover, :focus-visible) { background: #364968; }
+.four-slot { display: grid; place-items: center; width: min(100%, 3.9rem); aspect-ratio: 1;
+  border-radius: 50%; background: #171e35; font-size: clamp(.77rem, 5vmin, 1.85rem); }
+.four-slot.landing { border: 2px dashed #92aabc; }
 .line-board.four .side-0 { color: #153630; background: #a9f0d3; }
 .line-board.four .side-1 { color: #4f281d; background: #ffca91; }
 .piece { font-family: "Segoe UI Symbol", "DejaVu Sans", "Noto Sans Symbols 2", sans-serif; }

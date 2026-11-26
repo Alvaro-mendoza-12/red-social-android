@@ -114,6 +114,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
   let reconciling = false
   let lastReaction = 0
   let friendsLoadedFor
+  let friendsLoadingFor
   let lobbyNotice = ''
   const invited = new Set()
   const pendingCreations = new Map()
@@ -130,6 +131,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       reconciling = false
       lastReaction = 0
       friendsLoadedFor = undefined
+      friendsLoadingFor = undefined
       invited.clear()
       clearBoard()
     }
@@ -173,14 +175,14 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
         (item.invited ? ' · Invitación' : item.visibility === 'private' ? ' · Privada' : ' · Pública')
       row.append(title, actionButton(label, () => run(async isCurrent => {
         const result = item.seat >= 0 ? await request('/rooms/' + item.id) : await request('/rooms/' + item.id + '/join', {})
-        if (isCurrent()) await displayRoom(result.room, isCurrent)
+        if (isCurrent()) displayRoom(result.room)
       })))
       return row
     }))
     status(lobbyNotice || (visible.length ? '' : 'No hay salas de este juego disponibles.'))
   }
 
-  async function displayRoom(value, isCurrent) {
+  function displayRoom(value) {
     if (room?.id === value.id && value.revision < room.revision) return
     const key = value.game + ':' + value.capacity
     if (pendingCreations.get(key) === value.id) pendingCreations.delete(key)
@@ -212,12 +214,34 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     element('waiting-title').textContent = boardNames[value.game] + (value.visibility === 'private' ? ' · Sala privada' : ' · Sala pública')
     element('waiting-description').textContent = value.count + ' de ' + value.capacity + ' jugadores. La mesa se abre al completar la sala.'
     if (enteringRoom) element('waiting-title').focus()
-    const canInvite = value.host && value.visibility === 'private'
-    element('friend-filter-label').hidden = !canInvite
-    if (!canInvite || friendsLoadedFor === value.id) return
-    const { friends } = await request('/friends')
-    if (!isCurrent() || room?.id !== value.id || room.status !== 'waiting') return
-    friendsLoadedFor = value.id
+    void loadFriends()
+  }
+
+  async function loadFriends() {
+    if (room?.status !== 'waiting' || !room.host || room.visibility !== 'private') return
+    const id = room.id
+    if (friendsLoadedFor === id || friendsLoadingFor === id) return
+    const ticket = generation
+    const isCurrent = () => ticket === generation && room?.id === id && room.status === 'waiting'
+    friendsLoadingFor = id
+    element('friends-empty').textContent = 'Cargando amistades…'
+    element('friends-empty').hidden = false
+    element('retry-friends').hidden = true
+    try {
+      const { friends } = await request('/friends')
+      if (!isCurrent()) return
+      renderFriends(friends)
+      friendsLoadedFor = id
+    } catch {
+      if (!isCurrent()) return
+      element('friends-empty').textContent = 'No pudimos cargar tus amistades.'
+      element('retry-friends').hidden = false
+    } finally {
+      if (ticket === generation && friendsLoadingFor === id) friendsLoadingFor = undefined
+    }
+  }
+
+  function renderFriends(friends) {
     element('friends').replaceChildren(...friends.map(friend => {
       const row = document.createElement('div')
       row.className = 'friend-row'
@@ -237,6 +261,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       row.append(personLabel(friend.name), name, invite)
       return row
     }))
+    element('friend-filter-label').hidden = friends.length === 0
     filterFriends()
   }
 
@@ -250,7 +275,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       try {
         if (room && ['waiting', 'playing'].includes(room.status)) {
           const { room: latest } = await request(url())
-          if (isCurrent() && monitored === room?.id) await displayRoom(latest, isCurrent)
+          if (isCurrent() && monitored === room?.id) displayRoom(latest)
         } else if (!room) {
           const { rooms } = await request('/rooms')
           if (isCurrent() && !room) displayRooms(rooms)
@@ -294,6 +319,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     invited.clear()
     lastReaction = 0
     friendsLoadedFor = undefined
+    friendsLoadingFor = undefined
     lobbyNotice = notice
     clearBoard()
     element('online-reactions').hidden = true
@@ -301,6 +327,8 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     element('waiting').hidden = true
     element('friends').replaceChildren()
     element('friends-empty').hidden = true
+    element('retry-friends').hidden = true
+    element('friend-filter-label').hidden = true
     element('friend-filter').value = ''
     element('rooms').hidden = false
     element('rooms').replaceChildren()
@@ -326,7 +354,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       }
       throw error
     }
-    if (isCurrent()) await displayRoom(result.room, isCurrent)
+    if (isCurrent()) displayRoom(result.room)
   }
 
   const calendar = new Intl.DateTimeFormat('es', { dateStyle: 'medium', timeZone: 'America/Bogota' })
@@ -376,13 +404,14 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
   element('find-room').addEventListener('click', () => run(current => start('public', current)))
   element('create-private').addEventListener('click', () => run(current => start('private', current)))
   element('friend-filter').addEventListener('input', filterFriends)
+  element('retry-friends').addEventListener('click', () => void loadFriends())
   element('leave-waiting').addEventListener('click', () => run(async current => {
     await request(url('/close'), {})
     if (current()) lobby()
   }))
   element('reaction-buttons').replaceChildren(...emojis.map(emoji => actionButton(emoji, () => run(async current => {
     const { reactions } = await request(url('/reactions'), { emoji })
-    if (current()) await displayRoom({ ...room, reactions }, current)
+    if (current()) displayRoom({ ...room, reactions })
   }))))
   show('offline')
   const resumeId = android ? new URLSearchParams(location.search).get('resume') : null
@@ -391,7 +420,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       lobby()
       void run(async current => {
         const result = await request('/rooms/' + resumeId)
-        if (current()) await displayRoom(result.room, current)
+        if (current()) displayRoom(result.room)
       })
     }
     if (nativePort) queueMicrotask(resumeRoom)
@@ -437,7 +466,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     },
     move: event => run(async current => {
       const { room: updated } = await request(url('/actions'), { ...event, revision: room.revision })
-      if (current()) await displayRoom(updated, current)
+      if (current()) displayRoom(updated)
     }),
   }
 }
