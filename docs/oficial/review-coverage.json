@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T17:23:44.953493+00:00",
-  "baseCommit": "c1b7e8336a5833562e7fa523fc1b6bfdabff97c3",
+  "generatedAtUtc": "2026-11-26T19:36:14.299210+00:00",
+  "baseCommit": "e8d90353af2ef8dc2acabc76ecf1b0f5c10962d7",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3418,
+    "pending": 3419,
     "code-read": 1098,
     "partial": 310
   },
@@ -21,7 +21,7 @@
       "code-read": 635
     },
     "documentation": {
-      "pending": 720,
+      "pending": 721,
       "code-read": 71,
       "partial": 22
     },
@@ -353,9 +353,9 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "41f430e4a9163654698f4617b4969e089ce3e271",
+      "gitBlobId": "de1cb5d588c959e7fb1fa23353c504a450e2e865",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
+      "evidence": "docs/oficial/250-recuperar-partida-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4617,9 +4617,9 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "8409c6cd3e33f9b055f97b50273332d365f3baa3",
+      "gitBlobId": "76d04a78fcefe8623867cfe276f91a2f5382ac7b",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
+      "evidence": "docs/oficial/250-recuperar-partida-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22700,6 +22700,12 @@
       "file": "docs/oficial/25-prueba-fisica-momentos-y-playmatch-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "db690f3828e58ed5561e1e11d7a2002bb1f1adab",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/250-recuperar-partida-android-2026-11-26.md",
+      "phase": "documentation",
+      "gitBlobId": "9dc9f6cb3a905fa2ce6389d8d1e732cda0eeee9d",
       "reviewStatus": "pending"
     },
     {

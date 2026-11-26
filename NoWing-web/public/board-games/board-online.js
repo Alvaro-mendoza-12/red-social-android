@@ -85,6 +85,7 @@ export const boardNames = { chess: 'Ajedrez', checkers: 'Damas', ludo: 'Ludo',
 const emojis = [['👏', 'Aplaudir'], ['😄', 'Sonreír'], ['🔥', 'Enviar fuego'], ['🤝', 'Dar la mano'], ['🎉', 'Celebrar'], ['😮', 'Sorprenderse']]
 const messages = {
   BOARD_SIGN_IN: 'Inicia sesión en Novvin y vuelve a abrir Juegos.',
+  AUTH_REQUIRED: 'Inicia sesión en Novvin y vuelve a abrir Juegos.',
   BOARD_ROOM_NOT_FOUND: 'Esta sala ya no está disponible.',
   BOARD_ROOM_FULL: 'La sala se llenó o cerró. Elige otra partida.',
   BOARD_ROOM_LIMIT: 'Tienes varias salas abiertas. Sal de una para crear otra.',
@@ -124,6 +125,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
   let friendsLoadingFor
   let lobbyNotice = ''
   let requestedRoomId = null
+  let roomToRestore = null
   let roomsStamp
   let focusedInvitation = false
   let chatDraft
@@ -144,6 +146,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       clearTimeout(timer)
       clearInterval(clock)
       room = null
+      roomToRestore = null
       loading = false
       reconciling = false
       lastReaction = 0
@@ -268,6 +271,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
 
   function displayRoom(value) {
     if (room?.id === value.id && value.revision < room.revision) return
+    roomToRestore = null
     const key = value.game + ':' + value.capacity + ':' + (value.clockMinutes || 0)
     if (pendingCreations.get(key) === value.id) pendingCreations.delete(key)
     if (value.status === 'closed') {
@@ -385,19 +389,21 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     const isCurrent = () => ticket === generation && action === actionVersion && !loading
     if (!document.hidden && !loading && !reconciling) {
       reconciling = true
-      const monitored = room?.id
+      const monitored = room?.id || roomToRestore
       try {
-        if (room && (['waiting', 'playing'].includes(room.status) || room.status === 'finished' && room.rematch && !room.rematch.roomId)) {
-          const { room: latest } = await request(url())
-          if (isCurrent() && monitored === room?.id) displayRoom(latest)
+        if (roomToRestore || room && (['waiting', 'playing'].includes(room.status) || room.status === 'finished' && room.rematch && !room.rematch.roomId)) {
+          const { room: latest } = await request('/rooms/' + monitored)
+          if (isCurrent()) displayRoom(latest)
         } else if (!room) {
           const { rooms } = await request('/rooms')
           if (isCurrent() && !room) displayRooms(rooms)
         }
       } catch (error) {
         if (isCurrent()) {
-          if (monitored && monitored === room?.id && error.message === 'BOARD_ROOM_NOT_FOUND') lobby(messageFor(error))
-          else status(monitored && error.message === 'BOARD_UNAVAILABLE' ? 'Reconectando con la mesa… Tu partida sigue guardada.' : messageFor(error))
+          const authNeeded = ['AUTH_REQUIRED', 'BOARD_SIGN_IN'].includes(error.message)
+          const connectionLost = ['BOARD_UNAVAILABLE', 'BACKEND_UNAVAILABLE', 'PLAYMATCH_REQUEST_FAILED'].includes(error.message)
+          if ((roomToRestore && authNeeded) || (monitored && error.message === 'BOARD_ROOM_NOT_FOUND')) lobby(messageFor(error))
+          else status(roomToRestore || (monitored && connectionLost) ? 'Reconectando con la mesa…' : messageFor(error))
         }
       } finally {
         if (ticket === generation) reconciling = false
@@ -422,7 +428,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     finally { if (isCurrent()) loading = false }
   }
 
-  function lobby(notice = '', targetRoomId = null) {
+  function lobby(notice = '', { invitationId = null, resumeId = null } = {}) {
     if (mode !== 'online') show('online')
     else {
       generation++
@@ -436,7 +442,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     friendsLoadedFor = undefined
     friendsLoadingFor = undefined
     lobbyNotice = notice
-    requestedRoomId = targetRoomId
+    requestedRoomId = invitationId
+    roomToRestore = resumeId
     roomsStamp = undefined
     focusedInvitation = false
     clearBoard()
@@ -455,7 +462,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     element('rooms').replaceChildren()
     element('lobby-summary').hidden = true
     element('room-controls').hidden = false
-    status(lobbyNotice || 'Buscando salas…')
+    status(notice || (roomToRestore ? 'Recuperando tu partida…' : 'Buscando salas…'))
     void poll()
   }
 
@@ -523,7 +530,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       void loadRanking()
     }
   })
-  element('refresh-rooms').addEventListener('click', () => lobby())
+  element('refresh-rooms').addEventListener('click', () => lobby('', { invitationId: requestedRoomId, resumeId: roomToRestore }))
   element('find-room').addEventListener('click', () => run(current => start('public', current)))
   element('create-private').addEventListener('click', () => run(current => start('private', current)))
   element('friend-filter').addEventListener('input', filterFriends)
@@ -605,25 +612,22 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     else window.addEventListener('novvin-board-ready', action, { once: true })
   }
   if (resumeId && boardRoomId.test(resumeId)) {
-    const resumeRoom = () => {
-      lobby()
-      void run(async current => {
-        const result = await request('/rooms/' + resumeId)
-        if (current()) displayRoom(result.room)
-      })
-    }
-    whenReady(resumeRoom)
+    whenReady(() => {
+      if (mode === 'offline' && element('table').hidden) lobby('', { resumeId: resumeId.toLowerCase() })
+    })
   } else if (invitation && boardRoomId.test(invitation)) whenReady(() => {
-    if (mode === 'offline' && element('table').hidden) lobby('', invitation.toLowerCase())
+    if (mode === 'offline' && element('table').hidden) lobby('', { invitationId: invitation.toLowerCase() })
   })
   else whenReady(readAvailability)
-  document.addEventListener('visibilitychange', () => {
+  function refreshOnReturn() {
     if (document.hidden) return
     if (mode === 'online' && !reconciling) {
       clearTimeout(timer)
       void poll()
     } else if (mode === 'offline') void readAvailability()
-  })
+  }
+  document.addEventListener('visibilitychange', refreshOnReturn)
+  window.addEventListener('online', refreshOnReturn)
 
   return {
     mode: () => mode,

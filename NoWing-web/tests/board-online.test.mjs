@@ -218,6 +218,84 @@ test('returning from the Android opponent profile opens the same table and shows
   assert.equal(panel.querySelector('[data-turn="true"] .player-identity strong').textContent, 'Ana (tú)')
 })
 
+test('Android retries the same room after a temporary error while returning from chat', async t => {
+  const playing = { ...waitingRoom, revision: 2, status: 'playing', count: 2, reactions: [] }
+  const requests = []
+  const opened = []
+  const roomPath = '/rooms/' + playing.id
+  const lobby = await openLobby(t, ({ path, method }) => {
+    requests.push([method, path])
+    if (path !== roomPath) return { rooms: [] }
+    if (requests.length === 1) return new Error('BACKEND_UNAVAILABLE')
+    if (requests.length === 2) return new Error('BOARD_UNAVAILABLE')
+    return { room: playing }
+  }, { resumeId: playing.id, onRoom: room => opened.push(room) })
+  assert.match(lobby.get('online-status').textContent, /Reconectando con la mesa/)
+  assert.deepEqual(opened, [])
+  await lobby.tick(5000)
+  assert.deepEqual(opened, [])
+  await lobby.click('refresh-rooms')
+  assert.deepEqual(opened, [playing])
+  assert.deepEqual(requests, Array.from({ length: 3 }, () => ['GET', roomPath]))
+})
+
+test('unavailable Android resume rooms give a durable explanation and leave the lobby usable', async t => {
+  const other = { ...waitingRoom, id: '00000000-0000-4000-8000-000000000002' }
+  let reads = 0
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path === '/rooms/' + waitingRoom.id) {
+      reads++
+      return new Error('BOARD_ROOM_NOT_FOUND')
+    }
+    return { rooms: [other] }
+  }, { resumeId: waitingRoom.id })
+  await lobby.tick(5000)
+  assert.equal(reads, 1)
+  assert.match(lobby.get('online-status').textContent, /Esta sala ya no está disponible/)
+  assert.equal(lobby.get('room-controls').hidden, false)
+  assert.match(lobby.get('rooms').textContent, /Volver a la sala/)
+})
+
+test('restored connectivity checks the active table immediately and never replays a move', async t => {
+  const playing = { ...waitingRoom, revision: 2, status: 'playing', count: 2, reactions: [] }
+  const requests = []
+  const opened = []
+  let available = true
+  let latest = playing
+  const roomPath = '/rooms/' + playing.id
+  const lobby = await openLobby(t, ({ path, method }) => {
+    requests.push([method, path])
+    if (path === roomPath) return available ? { room: latest } : new Error('BOARD_UNAVAILABLE')
+    return { rooms: [] }
+  }, { resumeId: playing.id, onRoom: room => opened.push(room.revision) })
+  available = false
+  await lobby.tick(5000)
+  assert.deepEqual(opened, [2])
+  assert.equal(lobby.get('table-connection').hidden, false)
+  latest = { ...playing, revision: 3 }
+  available = true
+  window.dispatchEvent(new window.Event('online'))
+  await settle()
+  assert.deepEqual(opened, [2, 3])
+  assert.equal(lobby.get('table-connection').hidden, true)
+  assert.deepEqual(requests, Array.from({ length: 3 }, () => ['GET', roomPath]))
+})
+
+test('leaving Android recovery for local play discards a late resume reply', async t => {
+  const playing = { ...waitingRoom, revision: 2, status: 'playing', count: 2, reactions: [] }
+  let deliver
+  const response = new Promise(resolve => { deliver = resolve })
+  const opened = []
+  const lobby = await openLobby(t, ({ path }) => {
+    return path === '/rooms/' + playing.id ? response : { rooms: [] }
+  }, { resumeId: playing.id, onRoom: room => opened.push(room) })
+  await lobby.click('open-offline')
+  deliver({ room: playing })
+  await settle()
+  assert.equal(lobby.controller.mode(), 'offline')
+  assert.deepEqual(opened, [])
+})
+
 test('the friends shortcut makes a private room and filters invitations by name', async t => {
   let created
   const lobby = await openLobby(t, ({ path, method, body }) => {
