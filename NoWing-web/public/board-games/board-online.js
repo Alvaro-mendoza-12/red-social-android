@@ -80,7 +80,7 @@ async function request(path, body, retry = true) {
 
 export const boardNames = { chess: 'Ajedrez', checkers: 'Damas', ludo: 'Ludo',
   tic_tac_toe: 'Tres en raya', connect_four: 'Cuatro en línea' }
-const emojis = ['👏', '😄', '🔥', '🤝', '🎉', '😮']
+const emojis = [['👏', 'Aplaudir'], ['😄', 'Sonreír'], ['🔥', 'Enviar fuego'], ['🤝', 'Dar la mano'], ['🎉', 'Celebrar'], ['😮', 'Sorprenderse']]
 const messages = {
   BOARD_SIGN_IN: 'Inicia sesión en Novvin y vuelve a abrir Juegos.',
   BOARD_ROOM_NOT_FOUND: 'Esta sala ya no está disponible.',
@@ -409,10 +409,14 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     await request(url('/close'), {})
     if (current()) lobby()
   }))
-  element('reaction-buttons').replaceChildren(...emojis.map(emoji => actionButton(emoji, () => run(async current => {
-    const { reactions } = await request(url('/reactions'), { emoji })
-    if (current()) displayRoom({ ...room, reactions })
-  }))))
+  element('reaction-buttons').replaceChildren(...emojis.map(([emoji, label]) => {
+    const control = actionButton(emoji, () => run(async current => {
+      const { reactions } = await request(url('/reactions'), { emoji })
+      if (current()) displayRoom({ ...room, reactions })
+    }))
+    control.setAttribute('aria-label', label)
+    return control
+  }))
   show('offline')
   const resumeId = android ? new URLSearchParams(location.search).get('resume') : null
   if (resumeId && /^[0-9a-f-]{36}$/i.test(resumeId)) {
@@ -430,15 +434,16 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
   return {
     mode: () => mode,
     lobby,
-    renderPlayers: (currentRoom, turn, label) => {
+    renderPlayers: (currentRoom, turn, label, color = seat => seat) => {
       const panel = element('opponents')
       panel.hidden = !currentRoom
       if (!currentRoom) { panel.replaceChildren(); return }
-      const roster = currentRoom.players || Array.from({ length: currentRoom.count }, (_, seat) => ({ seat }))
+      const roster = currentRoom.players || Array.from({ length: currentRoom.count ?? currentRoom.capacity }, (_, seat) => ({ seat }))
       panel.replaceChildren(...roster.map(player => {
         const row = document.createElement('article')
         row.className = 'match-player'
         row.dataset.turn = String(player.seat === turn)
+        row.dataset.color = String(color(player.seat))
         const self = currentRoom.seat === player.seat
         const name = player.name || (self ? 'Tú' : 'Jugador ' + (player.seat + 1))
         const identity = document.createElement('div')

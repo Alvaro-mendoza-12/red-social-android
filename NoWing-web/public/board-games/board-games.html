@@ -10,26 +10,23 @@
 </head>
 <body>
   <main>
-    <header>
+    <header class="portal-header">
       <a id="back" href="/app/games">‹ Juegos</a>
       <span>Novvin</span>
     </header>
     <div id="hub">
-      <div class="intro">
-        <div><h1>Juegos de mesa</h1><p>Elige un tablero y juega con amigos, en línea o contra Novvin.</p></div>
-        <span class="intro-piece" aria-hidden="true">♞</span>
-      </div>
+      <h1>Juegos de mesa</h1>
       <nav id="games" aria-label="Elegir juego">
-        <button type="button" data-game="chess"><span aria-hidden="true">♞</span>Ajedrez</button>
-        <button type="button" data-game="ludo"><span aria-hidden="true">⚄</span>Ludo</button>
-        <button type="button" data-game="checkers"><span aria-hidden="true">●</span>Damas</button>
-        <button type="button" data-game="tic_tac_toe"><span aria-hidden="true">×</span>Tres en raya</button>
-        <button type="button" data-game="connect_four"><span aria-hidden="true">⁙</span>Cuatro en línea</button>
+        <button type="button" data-game="chess"><span class="game-preview" aria-hidden="true">♞</span><span>Ajedrez</span></button>
+        <button type="button" data-game="ludo"><span class="game-preview" aria-hidden="true">⚄</span><span>Ludo</span></button>
+        <button type="button" data-game="checkers"><span class="game-preview" aria-hidden="true"><i></i><i></i></span><span>Damas</span></button>
+        <button type="button" data-game="tic_tac_toe"><span class="game-preview" aria-hidden="true"><b>×</b><b>○</b></span><span>Tres en raya</span></button>
+        <button type="button" data-game="connect_four"><span class="game-preview" aria-hidden="true"><i></i><i></i><i></i></span><span>Cuatro en línea</span></button>
       </nav>
       <nav class="play-modes" aria-label="Modalidad de juego">
-        <button type="button" id="open-offline">En este dispositivo</button>
-        <button type="button" id="open-online">Jugar en línea</button>
+        <button type="button" class="primary" id="open-online">Jugar en línea</button>
         <button type="button" id="open-friends">Jugar con amigos</button>
+        <button type="button" id="open-offline">En este dispositivo</button>
         <button type="button" id="open-ranking">Torneo semanal</button>
       </nav>
     </div>
@@ -69,22 +66,25 @@
     </section>
     <section id="table" hidden aria-label="Partida">
       <div class="table-heading">
-        <div><h2 id="game-title" tabindex="-1"></h2><p id="status" role="status"></p></div>
-        <button id="return-to-lobby" type="button">Salir a juegos</button>
+        <h2 id="game-title" tabindex="-1"></h2>
+        <button id="return-to-lobby" type="button"><span aria-hidden="true">‹</span> Salir a juegos</button>
       </div>
       <div id="opponents" aria-label="Jugadores de la partida" hidden></div>
-      <div id="online-reactions" hidden aria-label="Reacciones">
-        <div id="reaction-buttons"></div>
-        <p id="reaction-status" role="status"></p>
+      <p id="status" role="status"></p>
+      <div class="board-stage">
+        <div id="board" role="group" aria-label="Tablero"></div>
       </div>
-      <div id="board" role="group" aria-label="Tablero"></div>
       <div class="turn-controls">
-        <button id="roll" type="button" hidden>Lanzar dado</button>
+        <button class="primary" id="roll" type="button" hidden><span id="die-face" aria-hidden="true">⚄</span><span id="roll-label">Lanzar dado</span></button>
         <div id="tokens"></div>
         <button id="claim" type="button" hidden>Reclamar tablas</button>
         <button id="resign" type="button" hidden>Abandonar</button>
         <button id="restart" type="button">Nueva partida</button>
       </div>
+      <section id="online-reactions" hidden aria-label="Reacciones">
+        <div id="reaction-buttons"></div>
+        <p id="reaction-status" role="status"></p>
+      </section>
       <dialog id="promotion" aria-label="Elegir promoción">
         <p>Promocionar a</p>
         <form method="dialog">

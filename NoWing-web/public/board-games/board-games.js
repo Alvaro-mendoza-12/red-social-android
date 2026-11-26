@@ -17,7 +17,7 @@ const rules = {
   tic_tac_toe: 'Coloca una marca en cada turno y forma una línea de tres en cualquier dirección.',
   connect_four: 'Elige una columna para dejar caer una ficha. Gana quien alinee cuatro fichas en horizontal, vertical o diagonal.',
 }
-if (new URLSearchParams(location.search).get('mode') === 'android') element('back').hidden = true
+if (new URLSearchParams(location.search).get('mode') === 'android') document.querySelector('.portal-header').hidden = true
 
 function button(label, action, className = '') {
   const node = document.createElement('button')
@@ -48,7 +48,7 @@ function completeMove() {
   render()
 }
 function updateSetup() {
-  document.querySelectorAll('[data-game]').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.game === state.kind)))
+  document.querySelectorAll('#games [data-game]').forEach(node => node.setAttribute('aria-pressed', String(node.dataset.game === state.kind)))
   element('players-control').hidden = state.kind !== 'ludo'
   element('online-players-control').hidden = state.kind !== 'ludo'
   element('level-control').hidden = element('mode').value !== 'bot'
@@ -58,6 +58,7 @@ function reset() {
   element('promotion').close()
   state.game = null
   state.room = null
+  state.rosterIdentity = null
   state.selection = null
   element('table').hidden = true
   element('hub').hidden = false
@@ -68,10 +69,10 @@ function showBoard() {
   element('hub').hidden = true
   element('setup').hidden = true
   element('table').hidden = false
+  element('table').dataset.game = state.kind
   element('game-title').textContent = boardNames[state.kind]
   element('rules').textContent = rules[state.kind]
   element('restart').hidden = Boolean(state.room)
-  online.renderPlayers(state.room, state.game.outcome ? null : turn(), player)
   render()
   if (opening) {
     window.scrollTo(0, 0)
@@ -91,7 +92,7 @@ const online = onlineBoard({
     showBoard()
   },
 })
-document.querySelectorAll('[data-game]').forEach(node => node.addEventListener('click', () => {
+document.querySelectorAll('#games [data-game]').forEach(node => node.addEventListener('click', () => {
   reset()
   state.kind = node.dataset.game
   updateSetup()
@@ -149,6 +150,23 @@ function playLineAt(position) {
   else if (playLineBoard(state.game, position)) completeMove()
 }
 
+function renderRoster(game) {
+  const identity = state.room || game
+  const activeSeat = game.outcome ? null : turn()
+  if (state.rosterIdentity === identity && state.rosterTurn === activeSeat) return
+  state.rosterIdentity = identity
+  state.rosterTurn = activeSeat
+  const local = {
+    seat: state.bot ? 0 : -1,
+    players: Array.from({ length: game.players ?? 2 }, (_, seat) => ({
+      seat,
+      name: state.bot ? (seat === 0 ? undefined : 'Novvin') : `Jugador ${seat + 1}`,
+    })),
+  }
+  online.renderPlayers(state.room || local, activeSeat, player,
+    state.kind === 'ludo' ? seat => ludoColor(game, seat) : undefined)
+}
+
 function drawColumns(grid, game, actions) {
   const activeColumn = grid.contains(document.activeElement) ? document.activeElement.dataset.column : undefined
   const landingByColumn = new Map(actions.map(position => [position % game.width, position]))
@@ -167,6 +185,7 @@ function drawColumns(grid, game, actions) {
       if (side !== null) {
         slot.textContent = player(side)
         slot.classList.add('side-' + side)
+        if (game.winningLine?.includes(position)) slot.classList.add('winning')
         marks.push(slot.textContent)
       } else if (!control.disabled && position === landing) {
         slot.classList.add('landing')
@@ -198,6 +217,7 @@ function drawLineBoard() {
   grid.replaceChildren(...game.board.map((side, position) => {
     const mark = side === null ? '' : player(side)
     const cell = button(mark, () => playLineAt(position), mark ? `mark side-${side}` : 'empty')
+    if (game.winningLine?.includes(position)) cell.classList.add('winning')
     cell.disabled = !legal.has(position) || Boolean(cannotPlay())
     cell.setAttribute('aria-label', mark || `Casilla ${position + 1}`)
     return cell
@@ -206,12 +226,15 @@ function drawLineBoard() {
 
 function board8() {
   const board = element('board')
-  board.className = 'board'
+  board.className = 'board eight ' + state.kind
   const chess = state.kind === 'chess'
   const legal = chess ? chessActions(state.game, state.selection) : checkerActions(state.game)
   const targets = legal.filter(move => move.from === state.selection)
   const squares = chess ? state.game.board.board().flat() : state.game.board
-  board.replaceChildren(...squares.map((piece, index) => {
+  const reverse = state.room?.seat === 1
+  board.replaceChildren(...squares.map((_, displayIndex) => {
+    const index = reverse ? 63 - displayIndex : displayIndex
+    const piece = squares[index]
     const row = index >> 3, column = index & 7
     const coordinate = String.fromCharCode(97 + column) + (8 - row)
     const square = chess ? coordinate : index
@@ -236,7 +259,11 @@ function board8() {
       state.selection = state.selection === square ? null : square
       render()
     }, (row + column) % 2 ? 'dark' : 'light')
-    if (destination.length) node.classList.add('legal')
+    if (destination.length) {
+      node.classList.add('legal')
+      if (destination.some(move => chess ? Boolean(move.captured) : move.capture !== null)) node.classList.add('capture')
+    }
+    if (state.game.lastMove?.includes(coordinate)) node.classList.add('last')
     if (state.selection === square) node.classList.add('chosen')
     node.disabled = Boolean(state.game.outcome || cannotPlay() || (!selectable && !destination.length))
     let label = coordinate
@@ -249,6 +276,14 @@ function board8() {
         ', ' + (piece.king ? 'dama' : 'ficha') + (piece.side === 0 ? ' clara' : ' roja')
       node.append(mark)
     }
+    if (displayIndex % 8 === 0) node.dataset.rank = coordinate[1]
+    if (displayIndex >= 56) {
+      const file = document.createElement('span')
+      file.className = 'square-file'
+      file.setAttribute('aria-hidden', 'true')
+      file.textContent = coordinate[0]
+      node.append(file)
+    }
     node.setAttribute('aria-label', label)
     return node
   }))
@@ -257,31 +292,68 @@ const ludoBase = [[1,1], [1,10], [10,10], [10,1]]
 function drawLudo() {
   const board = element('board')
   board.className = 'board ludo'
+  const game = state.game
+  const activeColors = new Set(game.pieces.map((_, seat) => ludoColor(game, seat)))
+  const cellAt = (row, column) => row * 15 + column
   const cells = Array.from({ length: 225 }, (_, index) => {
     const cell = document.createElement('div')
     const row = Math.floor(index / 15), column = index % 15
     const isBase = (row < 6 || row > 8) && (column < 6 || column > 8)
     const corner = row < 6 ? (column < 6 ? 0 : 1) : (column > 8 ? 2 : 3)
-    cell.className = 'cell' + (isBase ? ' color-' + corner : '')
+    cell.className = 'cell'
+    if (isBase) {
+      cell.classList.add('base', 'color-' + corner)
+      if (row % 9 > 0 && row % 9 < 5 && column % 9 > 0 && column % 9 < 5) cell.classList.add('base-inset')
+      if (!activeColors.has(corner)) cell.classList.add('inactive')
+    } else if (row >= 6 && row <= 8 && column >= 6 && column <= 8) {
+      cell.classList.add('board-center')
+    }
     return cell
   })
   for (const [index, [row, column]] of ludoTrack.entries()) {
-    const cell = cells[row * 15 + column]
+    const cell = cells[cellAt(row, column)]
     cell.classList.add('track')
-    if (ludoSafe.has(index)) cell.textContent = '★'
+    if (index % 13 === 0) cell.classList.add('safe-start', 'color-' + index / 13)
+    if (ludoSafe.has(index)) {
+      const star = document.createElement('span')
+      star.className = 'safe-mark'
+      star.textContent = '★'
+      star.setAttribute('aria-hidden', 'true')
+      cell.append(star)
+    }
   }
-  ludoHome.forEach((cellsInLane, side) => cellsInLane.forEach(([row, column]) => cells[row * 15 + column].classList.add('color-' + side)))
-  const legal = new Set(ludoActions(state.game).map(move => move.token))
-  for (const [side, pieces] of state.game.pieces.entries()) {
-    const color = ludoColor(state.game, side)
+  ludoHome.forEach((lane, color) => lane.forEach(([row, column]) => cells[cellAt(row, column)].classList.add('lane', 'color-' + color)))
+  function dock(color, token) {
     const [row, column] = ludoBase[color]
+    return [row + 2 * (token >> 1), column + 2 * (token % 2)]
+  }
+  for (const color of activeColors) {
+    for (let token = 0; token < 4; token++) cells[cellAt(...dock(color, token))].classList.add('dock')
+  }
+  const legal = new Set(ludoActions(game).map(move => move.token))
+  const placed = new Map()
+  for (const [side, pieces] of game.pieces.entries()) {
+    const color = ludoColor(game, side)
     for (const [token, progress] of pieces.entries()) {
-      const [y, x] = progress < 0 ? [row + 2 * (token >> 1), column + 2 * (token % 2)] : ludoCell(state.game, side, progress)
-      const enable = !cannotPlay() && side === turn() && legal.has(token)
-      const node = button(String(token + 1), () => moveToken(token), 'token color-' + color)
-      node.disabled = !enable
-      node.setAttribute('aria-label', `${player(side)}, ficha ${token + 1}`)
-      cells[y * 15 + x].append(node)
+      const index = cellAt(...(progress < 0 ? dock(color, token) : ludoCell(game, side, progress)))
+      const piece = { token, color, side, playable: !cannotPlay() && side === turn() && legal.has(token) }
+      if (placed.has(index)) placed.get(index).push(piece)
+      else placed.set(index, [piece])
+    }
+  }
+  for (const [index, pieces] of placed) {
+    const { token, color, side, playable } = pieces.find(piece => piece.playable) ?? pieces[0]
+    const node = button(String(token + 1), () => moveToken(token), 'token color-' + color)
+    node.disabled = !playable
+    const countLabel = pieces.length > 1 ? `. ${pieces.length} fichas en esta casilla` : ''
+    node.setAttribute('aria-label', `${player(side)}, ficha ${token + 1}${countLabel}`)
+    cells[index].append(node)
+    if (pieces.length > 1) {
+      const count = document.createElement('span')
+      count.className = 'token-count'
+      count.textContent = '×' + pieces.length
+      count.setAttribute('aria-hidden', 'true')
+      cells[index].append(count)
     }
   }
   board.replaceChildren(...cells)
@@ -344,6 +416,8 @@ function render() {
   clearTimeout(state.timer)
   const game = state.game
   const result = game.outcome
+  renderRoster(game)
+  element('table').dataset.finished = String(Boolean(result))
   const lastRoll = game.lastDie ? ` · ${player(game.lastDie.side)} sacó ${game.lastDie.value}` : ''
   const onlineTurn = state.room ? (state.room.seat === turn() ? ' · Tu turno' : ' · Esperando jugada') : ''
   const moveHint = state.kind === 'connect_four' && !cannotPlay() ? ' · Elige una columna' : ''
@@ -353,6 +427,10 @@ function render() {
   const ludo = state.kind === 'ludo'
   element('roll').hidden = !ludo || Boolean(result)
   element('roll').disabled = Boolean(cannotPlay()) || game.die !== null
+  if (ludo) {
+    element('die-face').textContent = game.lastDie ? '⚀⚁⚂⚃⚄⚅'[game.lastDie.value - 1] : '⚄'
+    element('roll-label').textContent = game.die === null ? 'Lanzar dado' : 'Elige una ficha'
+  }
   element('claim').hidden = state.kind !== 'chess' || !canClaimChessDraw(game) || Boolean(cannotPlay())
   element('resign').hidden = ludo || Boolean(result) || Boolean(cannotPlay())
   element('tokens').replaceChildren()

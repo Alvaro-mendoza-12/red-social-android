@@ -16,6 +16,7 @@ test('chess validates turn and finishes Fool’s mate', () => {
     assert.equal(playChess(game, { from, to }), true)
   }
   assert.deepEqual(game.outcome, { winner: 1, reason: 'Jaque mate' })
+  assert.deepEqual(game.lastMove, ['d8', 'h4'])
   assert.equal(chessActions(game).length, 0)
 })
 
@@ -60,6 +61,7 @@ test('checkers requires captures and chains the same piece', () => {
   assert.equal(game.forced,28)
   assert.ok(playCheckers(game,28,14))
   assert.equal(game.outcome?.winner,0)
+  assert.deepEqual(game.lastMove, ['e5', 'g7'])
 })
 
 test('checkers crowns on the back rank and ends the turn', () => {
@@ -120,6 +122,7 @@ test('three in a row ends on the first winning line and rejects occupied squares
   assert.equal(playLineBoard(game, 0), false)
   for (const position of [3, 1, 4, 2]) assert.ok(playLineBoard(game, position))
   assert.deepEqual(game.outcome, { winner: 0, reason: 'Línea completa' })
+  assert.deepEqual(game.winningLine, [0, 1, 2])
   assert.deepEqual(lineBoardActions(game), [])
 })
 
@@ -128,6 +131,15 @@ test('four in a row requires gravity and wins on a vertical sequence', () => {
   assert.equal(playLineBoard(game, 0), false)
   for (const position of [35, 36, 28, 29, 21, 22, 14]) assert.ok(playLineBoard(game, position))
   assert.equal(game.outcome.winner, 0)
+  assert.deepEqual(game.winningLine, [14, 21, 28, 35])
+})
+
+test('four in a row highlights a diagonal without including its supporting pieces', () => {
+  const game = createLineBoard('connect_four')
+  for (const position of [35, 29, 23, 31]) game.board[position] = 0
+  for (const position of [36, 37, 30, 38, 24]) game.board[position] = 1
+  assert.ok(playLineBoard(game, 17))
+  assert.deepEqual(game.winningLine, [35, 29, 23, 17])
 })
 
 test('four in a row accepts a touch anywhere in a column and preserves keyboard focus', async t => {
@@ -176,5 +188,6 @@ test('four in a row accepts a touch anywhere in a column and preserves keyboard 
   document.getElementById('restart').click()
   for (const move of [1, 2, 1, 2, 1, 2, 1]) column(move).click()
   assert.match(document.getElementById('status').textContent, /Gana X/)
+  assert.equal(grid.querySelectorAll('.four-slot.winning').length, 4)
   assert.equal(grid.querySelectorAll('button:disabled').length, 7)
 })

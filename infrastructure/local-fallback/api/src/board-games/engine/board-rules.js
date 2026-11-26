@@ -14,6 +14,7 @@ export function playChess(game, { from, to, promotion }) {
   const selected = chessActions(game, from).find(move => move.to === to && move.promotion === promotion)
   if (!selected) return false
   game.board.move({ from, to, promotion })
+  game.lastMove = [from, to]
   game.history.push(selected.san)
   const key = positionKey(game.board)
   game.positions[key] = (game.positions[key] ?? 0) + 1
@@ -83,7 +84,8 @@ export function playCheckers(game, from, to) {
   if (move.capture !== null) game.board[move.capture] = null
   game.quiet = piece.king && move.capture === null ? game.quiet + 1 : 0
   const coordinate = index => String.fromCharCode(97 + index % 8) + (8 - (index >> 3))
-  game.history.push(coordinate(from) + (move.capture === null ? '–' : '×') + coordinate(to))
+  game.lastMove = [coordinate(from), coordinate(to)]
+  game.history.push(game.lastMove.join(move.capture === null ? '–' : '×'))
   game.forced = move.capture === null || crowns ? null : to
   if (game.forced !== null && checkerActions(game).length) return true
   game.forced = null
@@ -187,18 +189,25 @@ export function playLineBoard(game, position) {
   game.board[position] = turn
   const x = position % width
   const y = Math.floor(position / width)
-  const count = (dx, dy) => {
-    let total = 0
+  const matching = (dx, dy) => {
+    const positions = []
     for (let col = x + dx, row = y + dy; col >= 0 && col < width && row >= 0 && row < height;
       col += dx, row += dy) {
-      if (game.board[row * width + col] !== turn) break
-      total++
+      const index = row * width + col
+      if (game.board[index] !== turn) break
+      positions.push(index)
     }
-    return total
+    return positions
   }
-  if ([[1, 0], [0, 1], [1, 1], [1, -1]].some(([dx, dy]) => 1 + count(dx, dy) + count(-dx, -dy) >= goal)) {
-    game.outcome = { winner: turn, reason: 'Línea completa' }
-  } else if (!game.board.includes(null)) game.outcome = { winner: null, reason: 'Tablero completo' }
+  for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
+    const line = [...matching(-dx, -dy).reverse(), position, ...matching(dx, dy)]
+    if (line.length >= goal) {
+      game.winningLine = line
+      game.outcome = { winner: turn, reason: 'Línea completa' }
+      break
+    }
+  }
+  if (!game.outcome && !game.board.includes(null)) game.outcome = { winner: null, reason: 'Tablero completo' }
   game.history.push(`${turn === 0 ? 'X' : 'O'} · ${x + 1}, ${y + 1}`)
   game.turn = 1 - turn
   return true
