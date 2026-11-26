@@ -2064,9 +2064,6 @@ function challengeId(row) {
   return normalizeId(textOf(row, ['id', 'challenge_id'], ''))
 }
 
-const CHALLENGE_ACTIVE_INTERVAL_SQL = "15 minutes"
-const CHALLENGE_VOTING_INTERVAL_SQL = "30 seconds"
-const CHALLENGE_PODIUM_INTERVAL_SQL = "6 seconds"
 const DEFAULT_CHALLENGE_MASTERS = [
   {
     title: 'Canta tu cancion favorita',
@@ -2232,120 +2229,49 @@ async function ensureActiveChallenge(pool, user) {
 }
 
 async function ensureActiveChallengeRecord(pool, user) {
-  const now = new Date()
-  const identity = userIdentity(user)
-  let masters = await ensureDefaultChallengeMasters(pool, identity.displayUserId)
-  let activeRows = await localActiveChallenges(pool, 50)
-  // An expired round without responses has no vote/podium to show. Start the
-  // next usable round instead of making the first returning user wait 36 seconds.
-  const emptyExpired = new Set()
-  for (const row of activeRows) {
-    if (textOf(row, ['status'], '').toLowerCase() === 'active' && toMillis(row.expires_at) &&
-        toMillis(row.expires_at) <= now.getTime() && !(await hasChallengeSubmissions(pool, row.id))) {
-      await purgeChallengeSession(pool, row.id)
-      emptyExpired.add(normalizeId(row.id))
-    }
-  }
-  activeRows = activeRows.filter(row => !emptyExpired.has(normalizeId(row.id)))
-  const existing = activeRows.find((row) => {
-    const status = textOf(row, ['status'], '').toLowerCase()
-    const expiresAt = toMillis(row.expires_at)
-    const votingExpiresAt = toMillis(row.voting_expires_at)
-    if (status === 'voting') return !votingExpiresAt || votingExpiresAt > now.getTime()
-    if (status === 'completed') return expiresAt && expiresAt > now.getTime()
-    return status === 'active' && (!expiresAt || expiresAt > now.getTime())
-  })
-  if (existing) {
-    const status = textOf(existing, ['status'], '').toLowerCase()
-    const expiresAt = toMillis(existing.expires_at)
-    const maxActiveExpiresAt = now.getTime() + 15 * 60 * 1000
-    const existingMaster = masters.find((row) => challengeId(row) === normalizeId(textOf(existing, ['challenge_id'], '')))
-    const existingTitle = textOf(existingMaster || {}, ['title'], '').trim().toLowerCase()
-    if (
-      status === 'active' &&
-      existingTitle === 'reto creativo del dia' &&
-      masters.length > 1 &&
-      !(await hasChallengeSubmissions(pool, textOf(existing, ['id'], '')))
-    ) {
-      await purgeChallengeSession(pool, textOf(existing, ['id'], ''))
-    } else {
-    if (status === 'active' && (!expiresAt || expiresAt > maxActiveExpiresAt)) {
-      const { rows } = await pool.query(
+  const { challengeTimeline, newChallengeDeadlines } = require('./challenge-mutations')
+  const now = Date.now()
+  const masters = await ensureDefaultChallengeMasters(pool, userIdentity(user).displayUserId)
+  const [current] = await localActiveChallenges(pool, 1)
+  if (current) {
+    const { phase, expiresAt, votingExpiresAt } = challengeTimeline(current, now)
+    const master = masters.find(row => challengeId(row) === normalizeId(current.challenge_id))
+    const replaceEmptyDefault = phase === 'active' && masters.length > 1 &&
+      textOf(master || {}, ['title'], '').trim().toLowerCase() === 'reto creativo del dia'
+    const needsResponses = phase === 'active' ? replaceEmptyDefault : current.status !== 'completed'
+    if (phase !== 'expired' && (!needsResponses || await hasChallengeSubmissions(pool, current.id))) {
+      const nextVoteEnd = votingExpiresAt ?? toMillis(current.voting_expires_at)
+      if (current.status === phase && toMillis(current.expires_at) === expiresAt &&
+          (!nextVoteEnd || toMillis(current.voting_expires_at) === nextVoteEnd)) return current
+      const winners = phase === 'completed' && current.status !== 'completed'
+        ? await challengeWinnerIds(pool, current.id, 3) : arrayOf(current, ['winner_ids'])
+      const { rows: [updated] } = await pool.query(
         `UPDATE fallback_active_challenges
-         SET expires_at = NOW() + INTERVAL '${CHALLENGE_ACTIVE_INTERVAL_SQL}',
-             voting_expires_at = NOW() + INTERVAL '${CHALLENGE_ACTIVE_INTERVAL_SQL}' + INTERVAL '${CHALLENGE_VOTING_INTERVAL_SQL}',
-             updated_at = NOW()
+         SET status = $2, expires_at = $3, voting_expires_at = $4,
+             winner_ids = $5::jsonb, updated_at = NOW()
          WHERE id = $1::uuid
          RETURNING id::text, challenge_id::text, expires_at, voting_expires_at, status, winner_ids, created_at, updated_at`,
-        [textOf(existing, ['id'], '')],
+        [current.id, phase, new Date(expiresAt), nextVoteEnd ? new Date(nextVoteEnd) : null, JSON.stringify(winners)],
       )
-      if (rows[0]) return normalizeImportedRow(rows[0])
+      return normalizeImportedRow(updated)
     }
-    return existing
-    }
-  }
-
-  const expiredCompleted = activeRows.find((row) => {
-    const status = textOf(row, ['status'], '').toLowerCase()
-    const expiresAt = toMillis(row.expires_at)
-    return status === 'completed' && expiresAt && expiresAt <= now.getTime()
-  })
-  if (expiredCompleted) {
-    await purgeChallengeSession(pool, textOf(expiredCompleted, ['id'], ''))
-  }
-
-  const expiredVoting = activeRows.find((row) => {
-    const status = textOf(row, ['status'], '').toLowerCase()
-    const votingExpiresAt = toMillis(row.voting_expires_at)
-    return status === 'voting' && votingExpiresAt && votingExpiresAt <= now.getTime()
-  })
-  if (expiredVoting) {
-    const winners = await challengeWinnerIds(pool, textOf(expiredVoting, ['id'], ''), 3)
-    const { rows } = await pool.query(
-      `UPDATE fallback_active_challenges
-       SET status = 'completed',
-           winner_ids = $2::jsonb,
-           expires_at = NOW() + INTERVAL '${CHALLENGE_PODIUM_INTERVAL_SQL}',
-           updated_at = NOW()
-       WHERE id = $1::uuid
-       RETURNING id::text, challenge_id::text, expires_at, voting_expires_at, status, winner_ids, created_at, updated_at`,
-      [textOf(expiredVoting, ['id'], ''), JSON.stringify(winners)],
-    )
-    if (rows[0]) return normalizeImportedRow(rows[0])
-  }
-
-  const expiredActive = activeRows.find((row) => {
-    const status = textOf(row, ['status'], '').toLowerCase()
-    const expiresAt = toMillis(row.expires_at)
-    return status === 'active' && expiresAt && expiresAt <= now.getTime()
-  })
-  if (expiredActive) {
-    const { rows } = await pool.query(
-      `UPDATE fallback_active_challenges
-       SET status = 'voting',
-           voting_expires_at = CASE
-             WHEN voting_expires_at IS NULL OR voting_expires_at <= NOW()
-             THEN NOW() + INTERVAL '${CHALLENGE_VOTING_INTERVAL_SQL}'
-             ELSE voting_expires_at
-           END,
-           updated_at = NOW()
-       WHERE id = $1::uuid
-       RETURNING id::text, challenge_id::text, expires_at, voting_expires_at, status, winner_ids, created_at, updated_at`,
-      [textOf(expiredActive, ['id'], '')],
-    )
-    if (rows[0]) return normalizeImportedRow(rows[0])
+    await purgeChallengeSession(pool, current.id)
   }
 
   const availableMasters = masters.length > 1
     ? masters.filter((row) => textOf(row, ['title'], '').trim().toLowerCase() !== 'reto creativo del dia')
     : masters
-  const masterPool = availableMasters.length > 0 ? availableMasters : masters
+  const eligible = availableMasters.length > 0 ? availableMasters : masters
+  const previousId = normalizeId(current?.challenge_id)
+  const alternatives = eligible.filter(row => challengeId(row) !== previousId)
+  const masterPool = alternatives.length ? alternatives : eligible
   const master = masterPool[Math.floor(Math.random() * masterPool.length)]
+  const { expiresAt, votingExpiresAt } = newChallengeDeadlines(now)
   const { rows } = await pool.query(
-    `INSERT INTO fallback_active_challenges(challenge_id, expires_at, voting_expires_at, status)
-     VALUES ($1::uuid, NOW() + INTERVAL '${CHALLENGE_ACTIVE_INTERVAL_SQL}', NOW() + INTERVAL '${CHALLENGE_ACTIVE_INTERVAL_SQL}' + INTERVAL '${CHALLENGE_VOTING_INTERVAL_SQL}', 'active')
+    `INSERT INTO fallback_active_challenges(challenge_id, expires_at, voting_expires_at, created_at, status)
+     VALUES ($1::uuid, $2, $3, $4, 'active')
      RETURNING id::text, challenge_id::text, expires_at, voting_expires_at, status, winner_ids, created_at, updated_at`,
-    [challengeId(master)],
+    [challengeId(master), new Date(expiresAt), new Date(votingExpiresAt), new Date(now)],
   )
   return normalizeImportedRow(rows[0])
 }

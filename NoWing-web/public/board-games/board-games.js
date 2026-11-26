@@ -1,12 +1,11 @@
 import { createChess, chessActions, playChess, canClaimChessDraw, claimChessDraw,
-  createCheckers, checkerActions, playCheckers, createLudo, rollLudo, playLudo,
-  ludoActions, ludoSafe, ludoTrack, ludoHome, ludoCell, ludoColor } from './board-rules.js'
+  checkerActions, playCheckers, rollLudo, playLudo,
+  ludoActions, ludoSafe, ludoTrack, ludoHome, ludoCell, ludoColor, lineBoardActions, playLineBoard } from './board-rules.js'
 import { boardMatch, boardTurn } from './board-match.js'
-import { onlineBoard } from './board-online.js'
+import { boardNames, onlineBoard } from './board-online.js'
 
 const element = id => document.getElementById(id)
 const state = { kind: 'chess', game: null, selection: null, bot: false, depth: 2, timer: 0 }
-const gameNames = { chess: 'Ajedrez', checkers: 'Damas', ludo: 'Ludo' }
 const colors = ['Rojo', 'Verde', 'Amarillo', 'Azul']
 const symbols = { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' }
 const pieceNames = { k:'rey', q:'dama', r:'torre', b:'alfil', n:'caballo', p:'peón' }
@@ -15,6 +14,8 @@ const rules = {
   chess: 'Elige una pieza y una casilla legal. Incluye enroque, captura al paso y las cuatro promociones. Puedes reclamar tablas desde la posición actual cuando corresponde.',
   checkers: 'Damas inglesas de 8 × 8. Las fichas avanzan en diagonal. La captura y la cadena son obligatorias. Una ficha coronada termina su turno.',
   ludo: 'Tira seis para salir y repite turno con seis. Las estrellas son seguras. La llegada requiere un número exacto. La clasificación se completa cuando falta un jugador por llegar.',
+  tic_tac_toe: 'Coloca una marca en cada turno y forma una línea de tres en cualquier dirección.',
+  connect_four: 'Elige una columna para dejar caer una ficha. Gana quien alinee cuatro fichas en horizontal, vertical o diagonal.',
 }
 if (new URLSearchParams(location.search).get('mode') === 'android') element('back').hidden = true
 
@@ -36,8 +37,10 @@ const turn = () => boardTurn(state.kind, state.game)
 const botTurn = () => state.bot && turn() !== 0 && !state.game.outcome
 const cannotPlay = () => botTurn() || (state.room && state.room.seat !== turn())
 const selection = () => ({ kind: state.kind, capacity: state.kind === 'ludo' ? Number(element('online-players').value) : 2 })
+const isLineGame = () => state.kind === 'tic_tac_toe' || state.kind === 'connect_four'
 function player(side) {
   if (state.kind === 'ludo') return colors[ludoColor(state.game, side)]
+  if (isLineGame()) return ['X', 'O'][side]
   return state.kind === 'chess' ? ['Blancas','Negras'][side] : ['Claras','Rojas'][side]
 }
 function completeMove() {
@@ -57,15 +60,23 @@ function reset() {
   state.room = null
   state.selection = null
   element('table').hidden = true
+  element('hub').hidden = false
   element('setup').hidden = online.mode() !== 'offline'
 }
 function showBoard() {
+  const opening = element('table').hidden
+  element('hub').hidden = true
   element('setup').hidden = true
   element('table').hidden = false
-  element('game-title').textContent = gameNames[state.kind]
+  element('game-title').textContent = boardNames[state.kind]
   element('rules').textContent = rules[state.kind]
-  element('restart').textContent = state.room ? 'Volver a las salas' : 'Nueva partida'
+  element('restart').hidden = Boolean(state.room)
+  online.renderPlayers(state.room, state.game.outcome ? null : turn(), player)
   render()
+  if (opening) {
+    window.scrollTo(0, 0)
+    element('game-title').focus({ preventScroll: true })
+  }
 }
 const online = onlineBoard({
   selection,
@@ -91,11 +102,15 @@ element('setup').addEventListener('submit', event => {
   event.preventDefault()
   state.bot = element('mode').value === 'bot'
   state.depth = Number(element('level').value)
-  state.game = state.kind === 'chess' ? createChess() :
-    state.kind === 'checkers' ? createCheckers() : createLudo(Number(element('players').value))
+  state.game = boardMatch(state.kind, Number(element('players').value), [])
   showBoard()
 })
-element('restart').addEventListener('click', () => { if (state.room) online.lobby(); else reset() })
+element('restart').addEventListener('click', () => {
+  state.game = boardMatch(state.kind, Number(element('players').value), [])
+  state.selection = null
+  showBoard()
+})
+element('return-to-lobby').addEventListener('click', () => { if (state.room) online.lobby(); else reset() })
 element('claim').addEventListener('click', () => {
   if (state.room) void online.move({ type: 'claim' })
   else if (state.kind === 'chess' && claimChessDraw(state.game)) completeMove()
@@ -127,6 +142,26 @@ function move8(from, to, promotion) {
 function moveToken(token) {
   if (state.room) void online.move({ type: 'move', token })
   else if (playLudo(state.game, token)) completeMove()
+}
+
+function drawLineBoard() {
+  const game = state.game
+  const actions = new Set(lineBoardActions(game))
+  const grid = element('board')
+  grid.className = 'board line-board ' + (game.gravity ? 'four' : 'three')
+  grid.replaceChildren(...game.board.map((side, position) => {
+    const column = position % game.width
+    const target = game.gravity ? [...actions].find(move => move % game.width === column) : position
+    const mark = side === null ? '' : player(side)
+    const cell = button(mark, () => {
+      if (state.room) void online.move({ type: 'move', position: target })
+      else if (playLineBoard(game, target)) completeMove()
+    }, mark ? `mark side-${side}` : 'empty')
+    const actionable = game.gravity ? target === position : actions.has(position)
+    cell.disabled = !actionable || Boolean(cannotPlay())
+    cell.setAttribute('aria-label', mark || (game.gravity ? `Columna ${column + 1}` : `Casilla ${position + 1}`))
+    return cell
+  }))
 }
 
 function board8() {
@@ -243,6 +278,18 @@ function runBot() {
       return (candidate.capture === null ? 0 : 3) + Number(copy.board[candidate.to].king) - Number(losesPiece) * 2
     })
     playCheckers(state.game, move.from, move.to)
+  } else if (isLineGame()) {
+    const move = botChoice(lineBoardActions(state.game), position => {
+      const trial = structuredClone(state.game)
+      playLineBoard(trial, position)
+      if (trial.outcome?.winner === state.game.turn) return 100
+      const rivalCanWin = lineBoardActions(trial).some(reply => {
+        const replyGame = structuredClone(trial)
+        return playLineBoard(replyGame, reply) && replyGame.outcome?.winner === trial.turn
+      })
+      return (rivalCanWin ? -50 : 0) - Math.abs(position % trial.width - (trial.width - 1) / 2)
+    })
+    playLineBoard(state.game, move)
   } else if (state.game.die === null) rollLudo(state.game, randomIndex(6) + 1)
   else {
     const move = botChoice(ludoActions(state.game), candidate => candidate.to === 56 ? 100 :
@@ -269,6 +316,7 @@ function render() {
   element('resign').hidden = ludo || Boolean(result) || Boolean(cannotPlay())
   element('tokens').replaceChildren()
   if (ludo) drawLudo()
+  else if (isLineGame()) drawLineBoard()
   else board8()
   const log = game.history.slice(-80).map(move => {
     const item = document.createElement('li')

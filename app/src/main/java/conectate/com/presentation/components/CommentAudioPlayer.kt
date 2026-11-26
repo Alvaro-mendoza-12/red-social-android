@@ -1,5 +1,6 @@
 package conectate.com.presentation.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -11,6 +12,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -45,7 +48,7 @@ internal fun isSupportedDirectAudioSource(rawUrl: String): Boolean = runCatching
 
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
-fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
+fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier, showAsDisc: Boolean = false) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val resolved = remember(audioUrl) { UbuntuMedia.resolveUrl(audioUrl) ?: audioUrl }
@@ -157,17 +160,37 @@ fun CommentAudioPlayer(audioUrl: String, modifier: Modifier = Modifier) {
         }
     }
 
-    Column(modifier.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = .3f), CircleShape)
-        .padding(horizontal = 8.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    val accent = MaterialTheme.colorScheme.primary
+    val background = if (showAsDisc) MaterialTheme.colorScheme.surfaceContainerHigh
+        else MaterialTheme.colorScheme.primaryContainer.copy(alpha = .3f)
+    val shape = if (showAsDisc) MaterialTheme.shapes.large else CircleShape
+    Column(modifier.background(background, shape)
+        .padding(if (showAsDisc) PaddingValues(12.dp) else PaddingValues(horizontal = 8.dp, vertical = 6.dp)),
+        verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = ::togglePlay, modifier = Modifier.size(36.dp)) {
-                if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                else Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    if (isPlaying) "Pausar" else "Reproducir", tint = MaterialTheme.colorScheme.primary)
+            val visualSize = if (showAsDisc) 76.dp else 36.dp
+            Box(Modifier.size(visualSize), contentAlignment = Alignment.Center) {
+                if (showAsDisc) Canvas(Modifier.fillMaxSize()) {
+                    drawCircle(Color(0xFF211D30))
+                    for (ratio in listOf(.83f, .9f, .96f)) {
+                        drawCircle(Color.White.copy(alpha = .19f), radius = size.minDimension * .5f * ratio,
+                            style = Stroke(width = 1.dp.toPx()))
+                    }
+                    drawCircle(accent, radius = size.minDimension * .24f)
+                }
+                val iconTint = if (showAsDisc) MaterialTheme.colorScheme.onPrimary else accent
+                IconButton(onClick = ::togglePlay, modifier = Modifier.fillMaxSize()) {
+                    if (isLoading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = iconTint)
+                    else Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        if (isPlaying) "Pausar" else "Reproducir", tint = iconTint)
+                }
             }
-            Spacer(Modifier.width(8.dp))
-            LinearProgressIndicator(progress = { progress }, modifier = Modifier.weight(1f).height(4.dp).clip(CircleShape),
-                color = MaterialTheme.colorScheme.primary, trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .2f))
+            Spacer(Modifier.width(if (showAsDisc) 14.dp else 8.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (showAsDisc) Text("Música de entrada", style = MaterialTheme.typography.titleSmall)
+                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
+                    color = accent, trackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = .2f))
+            }
         }
         error?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) }

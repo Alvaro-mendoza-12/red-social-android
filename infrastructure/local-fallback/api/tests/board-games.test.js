@@ -32,6 +32,8 @@ async function fixture() {
   await pool.query("INSERT INTO fallback_friends VALUES($1,$2,'accepted')", [oldAna, oldCarla])
   await pool.query('INSERT INTO fallback_user_blocks VALUES($1,$2)', [oldAna, id.blocked])
   await ensureBoardGameTables(pool)
+  await pool.query(`ALTER TABLE fallback_board_rooms DROP CONSTRAINT fallback_board_rooms_kind_check,
+    ADD CHECK (kind IN ('chess', 'checkers', 'ludo'))`)
   await ensureBoardGameTables(pool)
   const app = express()
   app.use(express.json())
@@ -83,6 +85,7 @@ test('authenticated board games persists matches, private invites, turns, reacti
     [await joinRequests[0](), await joinRequests[1]()]
   assert.equal(waiting.room.id, match.room.id)
   assert.equal(match.room.status, 'playing')
+  assert.deepEqual(match.room.players.map(({ id }) => id).sort(), [id.Bruno, oldAna].sort())
   const path = roomPath(match.room)
   const players = match.room.seat === 1 && (await request('Ana', path)).room.seat === 0 ? ['Ana', 'Bruno'] : ['Bruno', 'Ana']
   let revision = match.room.revision
@@ -145,4 +148,19 @@ test('authenticated board games persists matches, private invites, turns, reacti
   assert.equal((await request('Ana', checkersPath + '/close', 200, {})).room.status, 'closed')
   assert.equal((await request('Carla', checkersPath)).room.status, 'closed')
   assert.equal((await request('Ana', '/rooms')).rooms.some(room => room.id === publicRoom.id), false)
+
+  for (const [kind, moves] of [['tic_tac_toe', [0, 3, 1, 4, 2]], ['connect_four', [35, 36, 28, 29, 21, 22, 14]]]) {
+    const { room: open } = await start('Ana', kind, 'private')
+    const target = roomPath(open)
+    await request('Ana', target + '/invite', 200, { recipientId: id.Carla })
+    let { room } = await request('Carla', target + '/join', 200, {})
+    assert.equal(room.status, 'playing')
+    for (const [index, position] of moves.entries()) {
+      const result = await request(index % 2 ? 'Carla' : 'Ana', target + '/actions', 200,
+        { type: 'move', position, revision: room.revision })
+      room = result.room
+    }
+    assert.equal(room.status, 'finished')
+    assert.deepEqual(room.actions.map(action => action.position), moves)
+  }
 })

@@ -1,7 +1,8 @@
 import { createChess, playChess, claimChessDraw, createCheckers, playCheckers,
-  createLudo, rollLudo, playLudo } from './board-rules.js'
+  createLudo, rollLudo, playLudo, createLineBoard, playLineBoard } from './board-rules.js'
 
-const factories = { chess: createChess, checkers: createCheckers, ludo: createLudo }
+const factories = { chess: createChess, checkers: createCheckers, ludo: createLudo,
+  tic_tac_toe: () => createLineBoard('tic_tac_toe'), connect_four: () => createLineBoard('connect_four') }
 export const boardKinds = Object.keys(factories)
 export function boardTurn(kind, game) {
   return kind === 'chess' ? Number(game.board.turn() === 'b') : game.turn
@@ -21,6 +22,7 @@ export function applyBoardEvent(kind, game, event) {
     if (kind === 'chess') return playChess(game, event)
     if (kind === 'checkers') return playCheckers(game, event.from, event.to)
     if (kind === 'ludo') return playLudo(game, event.token)
+    if (kind === 'tic_tac_toe' || kind === 'connect_four') return playLineBoard(game, event.position)
   }
   if (event.type === 'roll' && kind === 'ludo') return rollLudo(game, event.roll)
   if (event.type === 'resign' && kind !== 'ludo') {

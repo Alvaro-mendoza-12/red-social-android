@@ -453,6 +453,7 @@ fun ProfileScreen(
     var postToEdit by remember { mutableStateOf<Post?>(null) }
     var profileInfoTab by rememberSaveable(userId) { mutableIntStateOf(0) }
     var profileQrLink by remember { mutableStateOf<String?>(null) }
+    var profileToShare by remember(userId) { mutableStateOf<User?>(null) }
     var showProfileViewers by remember { mutableStateOf(false) }
     var identityDialogUser by remember { mutableStateOf<User?>(null) }
     
@@ -520,6 +521,18 @@ fun ProfileScreen(
         )
     }
 
+    profileToShare?.let { shared ->
+        val link = publicProfileShareLink(shared)
+        CollectionShareDialog(
+            title = "Compartir perfil",
+            link = link,
+            navController = mainNavController ?: navController,
+            showQr = false,
+            shareText = buildProfileInvitation(shared.displayName, profilePublicHandle(shared), link),
+            onDismiss = { profileToShare = null },
+        )
+    }
+
     if (showProfileViewers) {
         LaunchedEffect(viewModel) {
             val owner = (profileState as? ProfileUiState.Success)?.user
@@ -535,7 +548,13 @@ fun ProfileScreen(
                     showProfileViewers = false
                     viewModel.clearProfileViewersTransientState()
                     (mainNavController ?: navController).navigate(Screen.UserProfile.createRoute(visitorId))
-                })
+                },
+                onPrivacy = {
+                    showProfileViewers = false
+                    viewModel.clearProfileViewersTransientState()
+                    (mainNavController ?: navController).navigate(Screen.Settings.route)
+                },
+            )
         }
     }
 
@@ -959,24 +978,7 @@ fun ProfileScreen(
                                                 Text("Editar", maxLines = 1, fontSize = 12.sp)
                                             }
                                             OutlinedButton(
-                                                onClick = {
-                                                    val link = publicProfileShareLink(user)
-                                                    context.startActivity(
-                                                        Intent.createChooser(
-                                                            Intent(Intent.ACTION_SEND).apply {
-                                                                type = "text/plain"
-                                                                // Put the public profile first so destinations can preview its card.
-                                                                // across messengers; download and guest viewing live there.
-                                                                putExtra(Intent.EXTRA_TEXT,
-                                                                    buildProfileInvitation(user.displayName, profilePublicHandle(user), link))
-                                                                val title = "${user.displayName} (@${profilePublicHandle(user)}) · Novvin"
-                                                                putExtra(Intent.EXTRA_TITLE, title)
-                                                                putExtra(Intent.EXTRA_SUBJECT, title)
-                                                            },
-                                                            "Compartir perfil",
-                                                        )
-                                                    )
-                                                },
+                                                onClick = { profileToShare = user },
                                                 modifier = Modifier.weight(1f).heightIn(min = 40.dp),
                                                 shape = RoundedCornerShape(10.dp),
                                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)

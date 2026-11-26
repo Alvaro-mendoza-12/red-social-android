@@ -165,3 +165,41 @@ export function playLudo(game, token) {
   } else if (!extraTurn || game.rankings.includes(side)) nextLudoTurn(game)
   return true
 }
+const lineRules = {
+  tic_tac_toe: { width: 3, height: 3, goal: 3, gravity: false },
+  connect_four: { width: 7, height: 6, goal: 4, gravity: true },
+}
+
+export function createLineBoard(kind) {
+  const rules = lineRules[kind]
+  return { ...rules, board: Array(rules.width * rules.height).fill(null), turn: 0, outcome: null, history: [] }
+}
+
+export function lineBoardActions(game) {
+  if (game.outcome) return []
+  return game.board.flatMap((side, position) => side === null && (!game.gravity ||
+    position + game.width >= game.board.length || game.board[position + game.width] !== null) ? [position] : [])
+}
+
+export function playLineBoard(game, position) {
+  if (!lineBoardActions(game).includes(position)) return false
+  const { width, height, goal, turn } = game
+  game.board[position] = turn
+  const x = position % width
+  const y = Math.floor(position / width)
+  const count = (dx, dy) => {
+    let total = 0
+    for (let col = x + dx, row = y + dy; col >= 0 && col < width && row >= 0 && row < height;
+      col += dx, row += dy) {
+      if (game.board[row * width + col] !== turn) break
+      total++
+    }
+    return total
+  }
+  if ([[1, 0], [0, 1], [1, 1], [1, -1]].some(([dx, dy]) => 1 + count(dx, dy) + count(-dx, -dy) >= goal)) {
+    game.outcome = { winner: turn, reason: 'Línea completa' }
+  } else if (!game.board.includes(null)) game.outcome = { winner: null, reason: 'Tablero completo' }
+  game.history.push(`${turn === 0 ? 'X' : 'O'} · ${x + 1}, ${y + 1}`)
+  game.turn = 1 - turn
+  return true
+}

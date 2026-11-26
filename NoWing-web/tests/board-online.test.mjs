@@ -19,17 +19,17 @@ const waitingRoom = {
   host: true,
 }
 
-async function openLobby(t, respond) {
+async function openLobby(t, respond, { resumeId, onRoom = () => {} } = {}) {
   const dom = new JSDOM(markup, {
-    url: 'https://appassets.androidplatform.net/board-games.html?mode=android',
+    url: 'https://appassets.androidplatform.net/board-games.html?mode=android' + (resumeId ? '&resume=' + resumeId : ''),
     pretendToBeVisual: true,
   })
   t.mock.timers.enable({ apis: ['setTimeout'] })
-  for (const key of ['window', 'document', 'location']) {
+  for (const key of ['window', 'document', 'location', 'Event']) {
     Object.defineProperty(globalThis, key, { value: dom.window[key], configurable: true })
   }
   t.after(() => {
-    for (const key of ['window', 'document', 'location']) delete globalThis[key]
+    for (const key of ['window', 'document', 'location', 'Event']) delete globalThis[key]
     dom.window.close()
   })
   const port = {
@@ -46,12 +46,13 @@ async function openLobby(t, respond) {
   window.dispatchEvent(new window.MessageEvent('message', { data: 'novvin-board', ports: [port] }))
   const controller = onlineBoard({
     selection: () => ({ kind: 'chess', capacity: 2 }),
-    onRoom() {},
+    onRoom,
     clearBoard() {},
   })
-  controller.lobby()
+  if (!resumeId) controller.lobby()
   await settle()
   return {
+    controller,
     get: id => document.getElementById(id),
     async click(id) {
       document.getElementById(id).click()
@@ -79,7 +80,44 @@ test('a waiting host can invite friends after a transient lookup failure at the 
   assert.equal(lobby.get('waiting').hidden, false)
   await lobby.tick(5000)
   assert.equal(reads, 2)
-  assert.equal(lobby.get('friends').textContent, 'Invitar a Ana')
+  assert.equal(lobby.get('friends').querySelector('button').getAttribute('aria-label'), 'Invitar a Ana')
+})
+
+test('returning from the Android opponent profile opens the same table and shows participant names', async t => {
+  const players = [{ id: 'own', seat: 0, name: 'Ana' }, { id: 'opponent', seat: 1, name: 'Bruno' }]
+  const playing = { ...waitingRoom, revision: 2, status: 'playing', count: 2, players, reactions: [] }
+  const opened = []
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path === '/rooms') return { rooms: [] }
+    if (path === '/rooms/' + waitingRoom.id) return { room: playing }
+  }, { resumeId: waitingRoom.id, onRoom: room => opened.push(room) })
+  assert.deepEqual(opened.map(room => room.id), [waitingRoom.id])
+  lobby.controller.renderPlayers(opened[0], 0, seat => ['Blancas', 'Negras'][seat])
+  const panel = lobby.get('opponents')
+  assert.match(panel.textContent, /Ana \(tú\).*Bruno/)
+  assert.equal(panel.querySelectorAll('button').length, 2)
+  assert.equal(panel.querySelector('[data-turn="true"] .player-identity strong').textContent, 'Ana (tú)')
+})
+
+test('the friends shortcut makes a private room and filters invitations by name', async t => {
+  let created
+  const lobby = await openLobby(t, ({ path, method, body }) => {
+    if (path === '/rooms' && method === 'GET') return { rooms: [] }
+    if (path === '/rooms') { created = body; return { room: waitingRoom } }
+    if (path === '/friends') return { friends: [{ id: 'friend', name: 'Ángela' }] }
+  })
+  await lobby.click('open-friends')
+  assert.equal(created.visibility, 'private')
+  assert.equal(lobby.get('hub').hidden, true)
+  assert.equal(lobby.get('waiting').hidden, false)
+  const search = lobby.get('friend-filter')
+  search.value = 'angela'
+  search.dispatchEvent(new window.Event('input'))
+  assert.equal(lobby.get('friends').firstElementChild.hidden, false)
+  search.value = 'bruno'
+  search.dispatchEvent(new window.Event('input'))
+  assert.equal(lobby.get('friends').firstElementChild.hidden, true)
+  assert.equal(lobby.get('friends-empty').hidden, false)
 })
 
 test('retrying after a lost native reply reuses the room creation request ID', async t => {

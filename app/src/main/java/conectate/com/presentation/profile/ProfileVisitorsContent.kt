@@ -18,10 +18,14 @@ internal fun ProfileVisitorsContent(
     state: ProfileVisitorsState,
     onRetry: () -> Unit,
     onOpenProfile: (String) -> Unit,
+    onPrivacy: (() -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxWidth().heightIn(max = 500.dp)) {
         Text("Visitas recientes", style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        onPrivacy?.let {
+            TextButton(onClick = it, modifier = Modifier.padding(horizontal = 8.dp)) { Text("Gestionar historial de visitas") }
+        }
         if (state.loading) {
             Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {

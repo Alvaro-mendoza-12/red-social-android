@@ -24,11 +24,17 @@ import kotlinx.coroutines.launch
 fun InternalShareDialog(
     userRepository: UserRepository,
     onDismiss: () -> Unit,
+    recentUsers: List<User> = emptyList(),
+    confirmLabel: String = "Enviar",
     onShareWithUser: (User) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<User>>(emptyList()) }
     var selectedUser by remember { mutableStateOf<User?>(null) }
+    val query = searchQuery.trim()
+    val visibleUsers = if (query.length < 2) recentUsers.filter { it.displayName.contains(query, ignoreCase = true) }
+        else (recentUsers.filter { it.displayName.contains(query, ignoreCase = true) } + searchResults).deduplicateShareTargets()
+    val selected = visibleUsers.find { it.id == selectedUser?.id }
     LaunchedEffect(searchQuery) {
         selectedUser = null
         searchResults = emptyList()
@@ -57,7 +63,7 @@ fun InternalShareDialog(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(searchResults, key = { user -> user.id.ifBlank { user.email.ifBlank { user.displayName } } }) { user ->
+                    items(visibleUsers, key = { user -> user.id.ifBlank { user.email.ifBlank { user.displayName } } }) { user ->
                         val isSelected = selectedUser?.id == user.id
                         val backgroundColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                         
@@ -96,11 +102,11 @@ fun InternalShareDialog(
         confirmButton = {
             Button(
                 onClick = { 
-                    selectedUser?.let { onShareWithUser(it) }
+                    selected?.let { onShareWithUser(it) }
                 },
-                enabled = selectedUser != null
+                enabled = selected != null
             ) {
-                Text("Enviar")
+                Text(confirmLabel)
             }
         },
         dismissButton = {

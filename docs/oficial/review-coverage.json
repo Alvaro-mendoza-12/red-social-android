@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-25T17:32:19.955686+00:00",
-  "baseCommit": "53047f6a97a3fd91be666914664bfde10e05589b",
+  "generatedAtUtc": "2026-11-26T04:41:38.147205+00:00",
+  "baseCommit": "1d48f1114b27cbf1a7501f63d7dde8ef8deed113",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,25 +10,25 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3418,
-    "code-read": 1095,
-    "partial": 303
+    "pending": 3412,
+    "code-read": 1092,
+    "partial": 313
   },
   "countsByPhase": {
     "android": {
-      "pending": 1378,
-      "partial": 140,
-      "code-read": 632
+      "pending": 1373,
+      "partial": 142,
+      "code-read": 635
     },
     "documentation": {
-      "pending": 714,
+      "pending": 715,
       "code-read": 71,
       "partial": 22
     },
     "server": {
-      "pending": 720,
-      "code-read": 214,
-      "partial": 56
+      "pending": 718,
+      "code-read": 213,
+      "partial": 59
     },
     "tooling-and-other": {
       "pending": 137,
@@ -36,9 +36,9 @@
       "partial": 9
     },
     "web": {
-      "partial": 76,
+      "partial": 81,
       "pending": 469,
-      "code-read": 135
+      "code-read": 130
     }
   },
   "files": [
@@ -315,33 +315,33 @@
     {
       "file": "NoWing-web/public/board-games/board-games.css",
       "phase": "web",
-      "gitBlobId": "36e20e28562e306be564acb025914948f0895f65",
-      "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "gitBlobId": "ce488cf7155eee387c5690ee5a34db717853a36d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-games.html",
       "phase": "web",
-      "gitBlobId": "3b9f23cb0aee57c281ecc8159da3093c0b6b3f64",
+      "gitBlobId": "3fae963fba01bad243d35cd3371d2442f40026b7",
       "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-games.js",
       "phase": "web",
-      "gitBlobId": "89a94767e9643a4852a19a40a7ffe87f04a8ffd4",
-      "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "gitBlobId": "06437bae23e1a11f6d8d01c179f83b2fa2a553f2",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "8d29a6d61301f388e06f4a67eef53feb78cff15c",
-      "reviewStatus": "code-read",
-      "evidence": "NoWing-web/tests/board-online.test.mjs",
+      "gitBlobId": "f74663bee9ddcaa8dc7d950246a3f25a5b23bd17",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4589,17 +4589,17 @@
     {
       "file": "NoWing-web/tests/board-games.test.mjs",
       "phase": "web",
-      "gitBlobId": "8344518f5c6ebf350daf58609ba1e41ed1f9ebe4",
-      "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "gitBlobId": "a499dd8a7b9c46afe59204d923c34ea5cf2c089a",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "a65104e4e864663463294816c88c6eff464ef108",
-      "reviewStatus": "code-read",
-      "evidence": "NoWing-web/tests/board-online.test.mjs",
+      "gitBlobId": "cf724973bd30408dd7ce8dee82c6c7dc87a47bbf",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -5337,9 +5337,9 @@
     {
       "file": "app/src/androidTest/java/conectate/com/presentation/gaming/BoardGamesDeviceTest.kt",
       "phase": "android",
-      "gitBlobId": "75feee81d173f4e6a756bb7af6000a7e53d1f4cb",
-      "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "gitBlobId": "01b9f8e27b0a9c6ef1f034fc2e27b29096a76c4c",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10217,8 +10217,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/CommentAudioPlayer.kt",
       "phase": "android",
-      "gitBlobId": "0dbb850eb70e8844a608454da085aa95b68d2795",
-      "reviewStatus": "pending"
+      "gitBlobId": "b185484686384d0aa0d34d69442470b708910eda",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/CommentDialog.kt",
@@ -10333,8 +10335,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/components/InternalShareDialog.kt",
       "phase": "android",
-      "gitBlobId": "7a80b1090e7acc3f3c4098e1a7da41065af640f3",
-      "reviewStatus": "pending"
+      "gitBlobId": "f1a81069e5fae1a9fc91f070fbc96524470fa842",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/components/LegacyStickerContent.kt",
@@ -10719,9 +10723,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/BoardGamesScreen.kt",
       "phase": "android",
-      "gitBlobId": "233ad049da19248f324688c0356e947741be672d",
+      "gitBlobId": "046e53811f144cb59cb55bb6f396b64ac4cf278a",
       "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10763,9 +10767,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/PlayMatchScreens.kt",
       "phase": "android",
-      "gitBlobId": "237cebef9ce360ebfdc4de2f6666b53b5c665634",
+      "gitBlobId": "def5e875e1c948daf3a4cdab05e7de838f5be5c9",
       "reviewStatus": "partial",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -11323,8 +11327,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/CollectionShareDialog.kt",
       "phase": "android",
-      "gitBlobId": "3df81bb84f087f404dca723810cd05cfea883005",
-      "reviewStatus": "pending"
+      "gitBlobId": "e6bd911aafe23b8915cda9e292425fa6b6203c9d",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/messages/CommunitiesTab.kt",
@@ -12467,8 +12473,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileMusicSection.kt",
       "phase": "android",
-      "gitBlobId": "532b3435bd7db74fbc8ed542148fe9d848df50c1",
-      "reviewStatus": "pending"
+      "gitBlobId": "efab684439401fec066e646843c26630483c7bc0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileMusicViewModel.kt",
@@ -12505,9 +12513,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileScreen.kt",
       "phase": "android",
-      "gitBlobId": "baa4705a25372f5107f14201dbc01782914cb9bd",
+      "gitBlobId": "878549e6f7ba211ffae79786e455abe4f2b6c2e7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12551,8 +12559,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileVisitorsContent.kt",
       "phase": "android",
-      "gitBlobId": "e4593b2b3211c34cbdec8873b883bdefa335283f",
-      "reviewStatus": "pending"
+      "gitBlobId": "f53aae1a5a2e05d15bfcdb36a0cb7a09206ab09f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/ProfileVisitorsLoader.kt",
@@ -22621,6 +22631,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "phase": "documentation",
+      "gitBlobId": "1eaf21e69f022cdae30ee573fb9ede5982eaea80",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/25-prueba-fisica-momentos-y-playmatch-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "db690f3828e58ed5561e1e11d7a2002bb1f1adab",
@@ -25101,17 +25117,17 @@
     {
       "file": "infrastructure/local-fallback/api/src/board-games/engine/board-match.js",
       "phase": "server",
-      "gitBlobId": "f6e623f0483ab9af55860f1d067d9f2d498d0ab6",
+      "gitBlobId": "182f5c99a89a49747048d557a54206620b1a87d6",
       "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/board-games/engine/board-rules.js",
       "phase": "server",
-      "gitBlobId": "c6d011fb2ca3633e92b124006622a045d14c8a77",
-      "reviewStatus": "code-read",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "gitBlobId": "d0d7c293a139c9d9683998e86f4ad1e4045bbbf7",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25137,9 +25153,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/board-games/routes.js",
       "phase": "server",
-      "gitBlobId": "0d4373eb948222717c7033d58f07315f0218941b",
+      "gitBlobId": "041727c893948403147a1dba4682d199e1705f42",
       "reviewStatus": "partial",
-      "evidence": "NoWing-web/tests/board-online.test.mjs",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25167,8 +25183,10 @@
     {
       "file": "infrastructure/local-fallback/api/src/challenge-mutations.js",
       "phase": "server",
-      "gitBlobId": "2b80ca3d5e46eabb360b1b743314dca206874b74",
-      "reviewStatus": "pending"
+      "gitBlobId": "b31f9eb771c378343ea83b03732b93854b4e8aaa",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/client-auth-session.js",
@@ -25289,9 +25307,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/data-routes.js",
       "phase": "server",
-      "gitBlobId": "6a6d45f7480c42260a885c89ed01ab047ed6582a",
+      "gitBlobId": "3036f2a1a5f06bdbee55eb7ab1ce2670940a9592",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/238-fase-1-compartir-publicaciones-android-2026-11-22.md",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26547,9 +26565,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/board-games.test.js",
       "phase": "server",
-      "gitBlobId": "ef623f96038468c0d418515805c14a9a7178cad6",
+      "gitBlobId": "0d2b5fd3b38fe65072d2826ddef9204c7832b555",
       "reviewStatus": "partial",
-      "evidence": "NoWing-web/tests/board-online.test.mjs",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26577,8 +26595,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/challenge-mutations.test.js",
       "phase": "server",
-      "gitBlobId": "8b1dfc825fe97f0420a4a7c66100bdc3dfb8c3a7",
-      "reviewStatus": "pending"
+      "gitBlobId": "85ecd28bfae2c9444d23c2e5f3943caf52744203",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/chat-clear-ownership.test.js",

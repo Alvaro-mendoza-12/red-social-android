@@ -19,6 +19,7 @@ if (android) window.addEventListener('message', event => {
     if (error) pending.reject(new Error(error))
     else pending.resolve(JSON.parse(payload))
   }
+  window.dispatchEvent(new Event('novvin-board-ready'))
 })
 
 async function request(path, body, retry = true) {
@@ -62,7 +63,8 @@ async function request(path, body, retry = true) {
   return payload
 }
 
-const names = { chess: 'Ajedrez', checkers: 'Damas', ludo: 'Ludo' }
+export const boardNames = { chess: 'Ajedrez', checkers: 'Damas', ludo: 'Ludo',
+  tic_tac_toe: 'Tres en raya', connect_four: 'Cuatro en línea' }
 const emojis = ['👏', '😄', '🔥', '🤝', '🎉', '😮']
 const messages = {
   BOARD_SIGN_IN: 'Inicia sesión en Novvin y vuelve a abrir Juegos.',
@@ -76,6 +78,7 @@ const messages = {
   BOARD_PLAYER_NOT_FOUND: 'La invitación no está disponible para esta persona.',
   BOARD_INVITES_LIMIT: 'Alcanzaste el máximo de invitaciones de esta sala.',
   BOARD_ROOM_NOT_PLAYING: 'La partida ya cambió de estado.',
+  BOARD_ROOM_INVALID: 'Este juego todavía no está disponible en línea. Puedes jugar en este dispositivo.',
 }
 const messageFor = error => messages[error.message] || 'No se pudo conectar con Juegos en línea. Inténtalo nuevamente.'
 function actionButton(label, handler) {
@@ -123,6 +126,25 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     for (const id of ['offline', 'online', 'ranking']) element('open-' + id).setAttribute('aria-pressed', String(mode === id))
   }
 
+  const normalized = value => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase('es').trim()
+
+  function personLabel(name) {
+    const badge = document.createElement('span')
+    badge.className = 'person-avatar'
+    badge.setAttribute('aria-hidden', 'true')
+    badge.textContent = Array.from(name.trim())[0]?.toLocaleUpperCase('es') || 'J'
+    return badge
+  }
+
+  function filterFriends() {
+    const query = normalized(element('friend-filter').value)
+    const rows = [...element('friends').children]
+    rows.forEach(row => { row.hidden = !row.dataset.search.includes(query) })
+    const empty = element('friends-empty')
+    empty.hidden = rows.some(row => !row.hidden)
+    empty.textContent = rows.length ? 'No hay amigos que coincidan con tu búsqueda.' : 'Aquí aparecen tus amistades aceptadas.'
+  }
+
   function displayRooms(rooms) {
     const chosen = selection().kind
     const visible = rooms.filter(item => item.status !== 'closed' && (item.game === chosen || item.invited || item.seat >= 0))
@@ -132,7 +154,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       const row = document.createElement('div')
       row.className = 'room-row'
       const title = document.createElement('span')
-      title.textContent = names[item.game] + ' · ' + item.count + '/' + item.capacity +
+      title.textContent = boardNames[item.game] + ' · ' + item.count + '/' + item.capacity +
         (item.invited ? ' · Invitación' : item.visibility === 'private' ? ' · Privada' : ' · Pública')
       row.append(title, actionButton(label, () => run(async isCurrent => {
         const result = item.seat >= 0 ? await request('/rooms/' + item.id) : await request('/rooms/' + item.id + '/join', {})
@@ -151,8 +173,10 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       lobby('La partida se cerró.')
       return
     }
-    const changed = room?.id !== value.id || room?.revision !== value.revision
+    const enteringRoom = room?.id !== value.id
+    const changed = enteringRoom || room?.revision !== value.revision
     room = value
+    element('hub').hidden = true
     element('rooms').hidden = true
     element('room-controls').hidden = true
     if (value.status !== 'waiting') {
@@ -163,28 +187,42 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
       const reaction = value.reactions.at(-1)
       if (reaction && reaction.at > lastReaction && Date.now() - reaction.at < 30000) {
         lastReaction = reaction.at
-        element('reaction-status').textContent = 'Jugador ' + (reaction.seat + 1) + ' · ' + reaction.emoji
+        const author = value.players?.find(player => player.seat === reaction.seat)?.name
+        element('reaction-status').textContent = (author || 'Jugador ' + (reaction.seat + 1)) + ' · ' + reaction.emoji
       }
       return
     }
     status('')
     element('waiting').hidden = false
-    element('waiting-title').textContent = names[value.game] + (value.visibility === 'private' ? ' · Sala privada' : ' · Sala pública')
-    element('waiting-description').textContent = value.count + ' de ' + value.capacity + ' jugadores. La partida empieza al completar la sala.'
-    if (!value.host || friendsLoadedFor === value.id) return
+    element('waiting-title').textContent = boardNames[value.game] + (value.visibility === 'private' ? ' · Sala privada' : ' · Sala pública')
+    element('waiting-description').textContent = value.count + ' de ' + value.capacity + ' jugadores. La mesa se abre al completar la sala.'
+    if (enteringRoom) element('waiting-title').focus()
+    const canInvite = value.host && value.visibility === 'private'
+    element('friend-filter-label').hidden = !canInvite
+    if (!canInvite || friendsLoadedFor === value.id) return
     const { friends } = await request('/friends')
     if (!isCurrent() || room?.id !== value.id || room.status !== 'waiting') return
     friendsLoadedFor = value.id
-    element('friends').replaceChildren(...friends.map(friend => actionButton(
-      invited.has(friend.id) ? 'Invitación enviada a ' + friend.name : 'Invitar a ' + friend.name,
-      event => run(async current => {
+    element('friends').replaceChildren(...friends.map(friend => {
+      const row = document.createElement('div')
+      row.className = 'friend-row'
+      row.dataset.search = normalized(friend.name)
+      const name = document.createElement('span')
+      name.textContent = friend.name
+      const invite = actionButton(invited.has(friend.id) ? 'Enviada' : 'Invitar', () => run(async current => {
         await request(url('/invite'), { recipientId: friend.id })
         if (!current()) return
         invited.add(friend.id)
-        event.target.textContent = 'Invitación enviada a ' + friend.name
-        event.target.disabled = true
-      }),
-    )))
+        invite.textContent = 'Enviada'
+        invite.setAttribute('aria-label', 'Invitación enviada a ' + friend.name)
+        invite.disabled = true
+      }))
+      invite.disabled = invited.has(friend.id)
+      invite.setAttribute('aria-label', invite.disabled ? 'Invitación enviada a ' + friend.name : 'Invitar a ' + friend.name)
+      row.append(personLabel(friend.name), name, invite)
+      return row
+    }))
+    filterFriends()
   }
 
   async function poll() {
@@ -247,6 +285,8 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     element('reaction-status').textContent = ''
     element('waiting').hidden = true
     element('friends').replaceChildren()
+    element('friends-empty').hidden = true
+    element('friend-filter').value = ''
     element('rooms').hidden = false
     element('rooms').replaceChildren()
     element('room-controls').hidden = false
@@ -305,6 +345,10 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
 
   element('open-offline').addEventListener('click', () => show('offline'))
   element('open-online').addEventListener('click', () => lobby())
+  element('open-friends').addEventListener('click', () => {
+    lobby()
+    void run(current => start('private', current))
+  })
   element('open-ranking').addEventListener('click', () => {
     if (mode !== 'ranking') show('ranking')
     clearInterval(clock)
@@ -316,6 +360,7 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
   element('refresh-rooms').addEventListener('click', () => lobby())
   element('find-room').addEventListener('click', () => run(current => start('public', current)))
   element('create-private').addEventListener('click', () => run(current => start('private', current)))
+  element('friend-filter').addEventListener('input', filterFriends)
   element('leave-waiting').addEventListener('click', () => run(async current => {
     await request(url('/close'), {})
     if (current()) lobby()
@@ -325,9 +370,56 @@ export function onlineBoard({ selection, onRoom, clearBoard }) {
     if (current()) await displayRoom({ ...room, reactions }, current)
   }))))
   show('offline')
+  const resumeId = android ? new URLSearchParams(location.search).get('resume') : null
+  if (resumeId && /^[0-9a-f-]{36}$/i.test(resumeId)) {
+    const resumeRoom = () => {
+      lobby()
+      void run(async current => {
+        const result = await request('/rooms/' + resumeId)
+        if (current()) await displayRoom(result.room, current)
+      })
+    }
+    if (nativePort) queueMicrotask(resumeRoom)
+    else window.addEventListener('novvin-board-ready', resumeRoom, { once: true })
+  }
+
   return {
     mode: () => mode,
     lobby,
+    renderPlayers: (currentRoom, turn, label) => {
+      const panel = element('opponents')
+      panel.hidden = !currentRoom
+      if (!currentRoom) { panel.replaceChildren(); return }
+      const roster = currentRoom.players || Array.from({ length: currentRoom.count }, (_, seat) => ({ seat }))
+      panel.replaceChildren(...roster.map(player => {
+        const row = document.createElement('article')
+        row.className = 'match-player'
+        row.dataset.turn = String(player.seat === turn)
+        const self = currentRoom.seat === player.seat
+        const name = player.name || (self ? 'Tú' : 'Jugador ' + (player.seat + 1))
+        const identity = document.createElement('div')
+        identity.className = 'player-identity'
+        const summary = document.createElement('div')
+        const title = document.createElement('strong')
+        title.textContent = self && player.name ? name + ' (tú)' : name
+        const role = document.createElement('small')
+        role.textContent = label(player.seat) + (player.seat === turn ? ' · En turno' : '')
+        summary.append(title, role)
+        identity.append(personLabel(name), summary)
+        row.append(identity)
+        if (!self && player.id && android && nativePort) {
+          const actions = document.createElement('div')
+          actions.className = 'player-actions'
+          for (const [action, text] of [['profile', 'Perfil'], ['chat', 'Chat y llamadas']]) {
+            actions.append(actionButton(text, () => nativePort.postMessage(JSON.stringify({
+              action, opponentId: player.id, roomId: currentRoom.id,
+            }))))
+          }
+          row.append(actions)
+        }
+        return row
+      }))
+    },
     move: event => run(async current => {
       const { room: updated } = await request(url('/actions'), { ...event, revision: room.revision })
       if (current()) await displayRoom(updated, current)

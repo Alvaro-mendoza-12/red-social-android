@@ -1,16 +1,11 @@
 package conectate.com.presentation.profile
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -49,32 +44,7 @@ internal fun ProfileMusicContent(
                 }
             }
         }
-        if (summary?.presentation == "disc") {
-            val accent = MaterialTheme.colorScheme.primary
-            Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-                Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-                        Canvas(Modifier.fillMaxSize()) {
-                            drawCircle(Color(0xFF20212A))
-                            listOf(.72f, .84f, .94f).forEach { drawCircle(Color.White.copy(alpha = .15f), radius = size.minDimension * .5f * it,
-                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())) }
-                            drawCircle(accent, radius = size.minDimension * .23f)
-                            drawCircle(Color(0xFF20212A), radius = size.minDimension * .04f)
-                        }
-                    }
-                    Column(Modifier.weight(1f)) {
-                        Text("Mi música", style = MaterialTheme.typography.titleMedium)
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.MusicNote, null, Modifier.size(16.dp))
-                            Text("Música de entrada", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                }
-            }
-        }
-        // Retain the native, explicit play controls in either presentation.
-        CommentAudioPlayer(audioUrl = url, modifier = Modifier.fillMaxWidth())
+        CommentAudioPlayer(audioUrl = url, modifier = Modifier.fillMaxWidth(), showAsDisc = summary?.presentation == "disc")
         if (summary != null) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {

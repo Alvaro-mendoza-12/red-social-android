@@ -127,8 +127,17 @@ fun GamesHomeScreen(
     }
     PlayMatchNoticeHost(state, viewModel::clearNotice)
     var openBoardGames by rememberSaveable(account) { mutableStateOf(false) }
+    var resumeBoardRoom by rememberSaveable(account) { mutableStateOf<String?>(null) }
     if (openBoardGames) {
-        BoardGamesScreen(onBack = { openBoardGames = false }, request = viewModel::boardRequest)
+        BoardGamesScreen(
+            onBack = { resumeBoardRoom = null; openBoardGames = false },
+            request = viewModel::boardRequest,
+            resumeRoomId = resumeBoardRoom,
+            onOpenOpponent = { roomId, userId, openChat ->
+                resumeBoardRoom = roomId
+                if (openChat) onOpenChat(userId) else onOpenPlayer(userId)
+            },
+        )
         return
     }
 
@@ -141,11 +150,22 @@ fun GamesHomeScreen(
         Box(Modifier.fillMaxWidth().padding(horizontal = PlayMatchDimensions.ScreenPadding, vertical = 10.dp)) {
             PlayMatchHeader(state.profile?.avatarUrl, state.profile?.avatarMediaType, onOpenProfile)
         }
-        androidx.compose.material3.Button(
+        Card(
             onClick = { openBoardGames = true },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = PlayMatchDimensions.ScreenPadding),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = PlayMatchDimensions.ScreenPadding, vertical = 6.dp),
+            colors = CardDefaults.cardColors(containerColor = PlayMatchColors.Card),
+            border = BorderStroke(1.dp, PlayMatchColors.Accent.copy(alpha = .45f)),
         ) {
-            Text("Jugar Ajedrez, Ludo o Damas")
+            Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.SportsEsports, null, tint = PlayMatchColors.Accent, modifier = Modifier.size(32.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Juegos de mesa", color = PlayMatchColors.White, style = MaterialTheme.typography.titleMedium)
+                    Text("Juega con amigos, en línea o contra Novvin", color = PlayMatchColors.SecondaryText,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = PlayMatchColors.Accent)
+            }
         }
         if (!state.capabilities.enabled) {
             Box(Modifier.padding(PlayMatchDimensions.ScreenPadding)) {

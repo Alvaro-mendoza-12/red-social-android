@@ -2,7 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createChess, chessActions, playChess, claimChessDraw, canClaimChessDraw,
   createCheckers, checkerActions, playCheckers,
-  createLudo, ludoActions, ludoCell, rollLudo, playLudo } from '../../infrastructure/local-fallback/api/src/board-games/engine/board-rules.js'
+  createLudo, ludoActions, ludoCell, rollLudo, playLudo,
+  createLineBoard, lineBoardActions, playLineBoard } from '../../infrastructure/local-fallback/api/src/board-games/engine/board-rules.js'
 
 test('chess validates turn and finishes Fool’s mate', () => {
   const game = createChess()
@@ -109,4 +110,20 @@ test('ludo captures and completes ranked results', () => {
   assert.deepEqual(game.rankings,[0,1,2])
   assert.equal(game.outcome.winner,0)
   assert.deepEqual(ludoCell(game,0,56),[7,6])
+})
+
+test('three in a row ends on the first winning line and rejects occupied squares', () => {
+  const game = createLineBoard('tic_tac_toe')
+  assert.ok(playLineBoard(game, 0))
+  assert.equal(playLineBoard(game, 0), false)
+  for (const position of [3, 1, 4, 2]) assert.ok(playLineBoard(game, position))
+  assert.deepEqual(game.outcome, { winner: 0, reason: 'Línea completa' })
+  assert.deepEqual(lineBoardActions(game), [])
+})
+
+test('four in a row requires gravity and wins on a vertical sequence', () => {
+  const game = createLineBoard('connect_four')
+  assert.equal(playLineBoard(game, 0), false)
+  for (const position of [35, 36, 28, 29, 21, 22, 14]) assert.ok(playLineBoard(game, position))
+  assert.equal(game.outcome.winner, 0)
 })

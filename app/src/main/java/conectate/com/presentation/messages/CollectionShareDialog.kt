@@ -28,6 +28,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import conectate.com.data.model.User
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
 
@@ -46,6 +49,8 @@ fun CollectionShareDialog(
     navController: androidx.navigation.NavController? = null,
     canRevoke: Boolean = false,
     onScan: (() -> Unit)? = null,
+    showQr: Boolean = true,
+    shareText: String = link,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -56,13 +61,30 @@ fun CollectionShareDialog(
     var revokeConfirm by remember(link) { mutableStateOf(false) }
     var busy by remember(link) { mutableStateOf(false) }
     var error by remember(link) { mutableStateOf<String?>(null) }
-    val qrBitmap = remember(link) { generateCollectionQr(link) }
-    if (internalShare && navController != null) conectate.com.presentation.components.InternalShareDialog(
-        userRepository = services.users(), onDismiss = { internalShare = false }, onShareWithUser = { user ->
-            internalShare = false; onDismiss()
-            navController.navigate(conectate.com.presentation.navigation.Screen.Chat.createRoute(user.id, initialMessage = "Te invito a unirte:\n$link"))
+    val qrBitmap = remember(link, showQr) { if (showQr) generateCollectionQr(link) else null }
+    if (internalShare && navController != null) {
+        val share = hiltViewModel<ShareDestinationViewModel>()
+        val destinations by share.destinations.collectAsStateWithLifecycle()
+        val recentChats = remember(destinations) {
+            destinations.mapNotNull { destination ->
+                val peer = destination.peerUserId?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                User(id = peer, full_name = destination.title, avatar_url = destination.imageUrl)
+            }.distinctBy(User::id)
         }
-    )
+        conectate.com.presentation.components.InternalShareDialog(
+            userRepository = services.users(),
+            onDismiss = { internalShare = false },
+            recentUsers = recentChats,
+            confirmLabel = "Abrir chat",
+            onShareWithUser = { user ->
+                internalShare = false
+                onDismiss()
+                val message = if (isCollection) "Te invito a unirte:\n$link" else shareText
+                navController.navigate(conectate.com.presentation.navigation.Screen.Chat.createRoute(user.id, initialMessage = message))
+            },
+        )
+    }
+    if (internalShare) return
     if (revokeConfirm) AlertDialog(onDismissRequest = { if (!busy) revokeConfirm = false },
         title = { Text("¿Revocar las invitaciones?") }, text = { Text("Los enlaces y códigos QR anteriores dejarán de permitir nuevas entradas. Los integrantes actuales conservan su acceso.") },
         confirmButton = { TextButton(enabled = !busy, onClick = { scope.launch {
@@ -87,19 +109,17 @@ fun CollectionShareDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Image(
-                    bitmap = qrBitmap.asImageBitmap(),
-                    contentDescription = "Código QR para compartir",
-                    modifier = Modifier.size(240.dp)
-                )
-                Text(if (isCollection) "Escanea para ver la invitación antes de unirte. Caduca en 72 horas." else "Escanea este código o comparte el enlace para abrir el perfil.")
+                if (qrBitmap != null) {
+                    Image(qrBitmap.asImageBitmap(), "Código QR para compartir", Modifier.size(240.dp))
+                    Text(if (isCollection) "Escanea para ver la invitación antes de unirte. Caduca en 72 horas." else "Escanea este código o comparte el enlace para abrir el perfil.")
+                }
+                if (navController != null) Button(onClick = { internalShare = true }) { Text("Enviar en Novvin") }
                 TextButton(onClick = {
                     (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText(title, link))
                     android.widget.Toast.makeText(context, "Enlace copiado", android.widget.Toast.LENGTH_SHORT).show()
                 }) { Text("Copiar enlace") }
-                if (navController != null) Button(onClick = { internalShare = true }) { Text("Enviar en Novvin") }
-                TextButton(enabled = !busy, onClick = { scope.launch {
+                if (qrBitmap != null) TextButton(enabled = !busy, onClick = { scope.launch {
                     busy = true
                     runCatching {
                         val uri = withContext(Dispatchers.IO) {
@@ -125,12 +145,12 @@ fun CollectionShareDialog(
             Button(onClick = {
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, link)
+                    putExtra(Intent.EXTRA_TEXT, shareText)
                 }
                 context.startActivity(Intent.createChooser(intent, title))
             }) {
                 Icon(Icons.Default.Share, contentDescription = null)
-                Text("Compartir")
+                Text(if (navController != null) "Otras apps" else "Compartir")
             }
         },
         dismissButton = {

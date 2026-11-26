@@ -2,6 +2,37 @@
 
 function problem(code, status = 400) { return Object.assign(new Error(code), { code, status }) }
 const clean = value => String(value || '').trim().toLowerCase()
+const ROUND_MS = 15 * 60_000
+const VOTING_MS = 30_000
+const PODIUM_MS = 6_000
+const SUBMISSION_MS = ROUND_MS - VOTING_MS - PODIUM_MS
+
+const time = value => value ? new Date(value).getTime() : NaN
+
+function newChallengeDeadlines(now) {
+  return { expiresAt: now + SUBMISSION_MS, votingExpiresAt: now + ROUND_MS - PODIUM_MS }
+}
+
+function challengeTimeline(row, now) {
+  const expiresAt = time(row.expires_at)
+  const createdAt = time(row.created_at)
+  const storedVoteEnd = time(row.voting_expires_at)
+  if (row.status === 'completed') {
+    const end = Number.isFinite(storedVoteEnd) ? Math.min(expiresAt, storedVoteEnd + PODIUM_MS) : expiresAt
+    return { phase: end > now ? 'completed' : 'expired', expiresAt: end }
+  }
+  if (!['active', 'voting'].includes(row.status) || !Number.isFinite(expiresAt)) return { phase: 'expired' }
+
+  const submissionEnd = Number.isFinite(createdAt) ? Math.min(expiresAt, createdAt + SUBMISSION_MS) : expiresAt
+  const voteEnd = Number.isFinite(storedVoteEnd)
+    ? Math.min(storedVoteEnd, submissionEnd + VOTING_MS) : submissionEnd + VOTING_MS
+  if (row.status === 'active' && now < submissionEnd) {
+    return { phase: 'active', expiresAt: submissionEnd, votingExpiresAt: voteEnd }
+  }
+  if (now < voteEnd) return { phase: 'voting', expiresAt: submissionEnd, votingExpiresAt: voteEnd }
+  const podiumEnd = voteEnd + PODIUM_MS
+  return { phase: now < podiumEnd ? 'completed' : 'expired', expiresAt: podiumEnd, votingExpiresAt: voteEnd }
+}
 
 /** The global round and its mutations use the same short transaction-level lock. */
 async function withChallengeTransaction(pool, operation) {
@@ -23,8 +54,9 @@ async function withChallengeTransaction(pool, operation) {
 function requireOpenRound(row, voting = false) {
   if (!row) throw problem('CHALLENGE_NOT_FOUND', 404)
   const now = new Date(row.checked_at).getTime()
-  const deadline = new Date(voting ? row.voting_expires_at || row.expires_at : row.expires_at).getTime()
-  const allowed = voting ? ['active', 'voting'].includes(row.status) : row.status === 'active'
+  const timeline = challengeTimeline(row, now)
+  const deadline = voting ? timeline.votingExpiresAt : timeline.expiresAt
+  const allowed = voting ? ['active', 'voting'].includes(timeline.phase) : timeline.phase === 'active'
   if (!allowed || !Number.isFinite(now) || !Number.isFinite(deadline) || deadline <= now)
     throw problem(voting ? 'CHALLENGE_VOTING_ENDED' : 'CHALLENGE_SUBMISSION_ENDED', 409)
 }
@@ -71,7 +103,7 @@ async function submitChallenge(pool, identity, activeChallengeId, input, authori
   if (contentUrl && !(await authorizeMedia(contentUrl))) throw problem('CHALLENGE_MEDIA_STORAGE_OWNERSHIP_REQUIRED', 403)
   return withChallengeTransaction(pool, async client => {
     const { rows: rounds } = await client.query(`SELECT id::text, challenge_id::text, status,
-      expires_at, voting_expires_at, clock_timestamp() AS checked_at FROM fallback_active_challenges
+      expires_at, voting_expires_at, created_at, clock_timestamp() AS checked_at FROM fallback_active_challenges
       WHERE lower(id::text)=$1 FOR UPDATE`, [activeId])
     const round = rounds[0]
     requireOpenRound(round)
@@ -112,7 +144,7 @@ async function setChallengeVote(pool, identity, submissionId, input = {}) {
   if (field && typeof input[field] !== 'boolean') throw problem('CHALLENGE_VOTE_STATE_INVALID')
   return withChallengeTransaction(pool, async client => {
     const { rows } = await client.query(`SELECT a.id::text, a.challenge_id::text, a.status,
-      a.expires_at,a.voting_expires_at,clock_timestamp() AS checked_at
+      a.expires_at,a.voting_expires_at,a.created_at,clock_timestamp() AS checked_at
       FROM fallback_challenge_submissions s JOIN fallback_active_challenges a
         ON lower(a.id::text)=lower(s.active_challenge_id)
       WHERE lower(s.id::text)=$1 FOR UPDATE OF a,s`, [id])
@@ -133,4 +165,5 @@ async function setChallengeVote(pool, identity, submissionId, input = {}) {
   })
 }
 
-module.exports = { withChallengeTransaction, requireOpenRound, purgeChallengeRound, deleteChallengeMaster, submitChallenge, setChallengeVote }
+module.exports = { challengeTimeline, newChallengeDeadlines, withChallengeTransaction, requireOpenRound,
+  purgeChallengeRound, deleteChallengeMaster, submitChallenge, setChallengeVote }

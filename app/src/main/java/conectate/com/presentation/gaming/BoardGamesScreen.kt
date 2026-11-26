@@ -11,15 +11,24 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.dp
 import conectate.com.data.gaming.PlayMatchApiException
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -45,11 +54,19 @@ private fun permittedOrigin(uri: Uri): Boolean =
 internal fun BoardGamesScreen(
     onBack: () -> Unit,
     request: suspend (method: String, path: String, body: String) -> Result<String>,
+    resumeRoomId: String? = null,
+    onOpenOpponent: (roomId: String, userId: String, openChat: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
+    val openOpponent = rememberUpdatedState(onOpenOpponent)
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize().background(PlayMatchColors.Background).statusBarsPadding()) {
-        TextButton(onClick = onBack) { Text("Volver a Juegos") }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver a Juegos", tint = PlayMatchColors.White)
+            }
+            Text("Juegos", color = PlayMatchColors.White, style = MaterialTheme.typography.titleMedium)
+        }
         AndroidView(
             modifier = Modifier.fillMaxWidth().weight(1f),
             factory = { context ->
@@ -65,9 +82,21 @@ internal fun BoardGamesScreen(
                             (view.tag as? WebMessagePort)?.close()
                             val ports = view.createWebMessageChannel()
                             view.tag = ports[0]
+                            var activeRoomId: String? = null
+                            var allowedOpponents = emptySet<String>()
                             ports[0].setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
                                 override fun onMessage(port: WebMessagePort, message: WebMessage) {
+                                    if (view.tag !== port) return
                                     val envelope = runCatching { JSONObject(message.data.orEmpty()) }.getOrNull() ?: return
+                                    val action = envelope.optString("action")
+                                    if (action in setOf("profile", "chat")) {
+                                        val roomId = envelope.optString("roomId")
+                                        val userId = envelope.optString("opponentId")
+                                        if (roomId == activeRoomId && userId in allowedOpponents) {
+                                            openOpponent.value(roomId, userId, action == "chat")
+                                        }
+                                        return
+                                    }
                                     val id = envelope.optInt("id")
                                     val method = envelope.optString("method")
                                     val path = envelope.optString("path")
@@ -76,7 +105,22 @@ internal fun BoardGamesScreen(
                                     scope.launch {
                                         val response = JSONObject().put("id", id)
                                         request(method, path, body).fold(
-                                            onSuccess = { response.put("payload", it) },
+                                            onSuccess = { payload ->
+                                                val room = runCatching { JSONObject(payload).optJSONObject("room") }.getOrNull()
+                                                if (room != null) {
+                                                    activeRoomId = room.optString("id")
+                                                    val ownSeat = room.optInt("seat", -1)
+                                                    val players = room.optJSONArray("players")
+                                                    allowedOpponents = if (players == null || ownSeat < 0 || room.optString("status") == "closed") emptySet() else buildSet {
+                                                        for (index in 0 until players.length()) {
+                                                            val player = players.optJSONObject(index) ?: continue
+                                                            val playerId = player.optString("id")
+                                                            if (player.optInt("seat", -1) != ownSeat && playerId.isNotBlank()) add(playerId)
+                                                        }
+                                                    }
+                                                }
+                                                response.put("payload", payload)
+                                            },
                                             onFailure = { response.put("error", (it as? PlayMatchApiException)?.code ?: "BOARD_UNAVAILABLE") },
                                         )
                                         if (view.tag === port) {
@@ -109,7 +153,9 @@ internal fun BoardGamesScreen(
                             }
                         }
                     }
-                    loadUrl("https://$gameHost$gamePage?mode=android")
+                    val page = Uri.parse("https://$gameHost$gamePage").buildUpon().appendQueryParameter("mode", "android")
+                    if (resumeRoomId != null) page.appendQueryParameter("resume", resumeRoomId)
+                    loadUrl(page.build().toString())
                 }
             },
             onRelease = { webView ->

@@ -2,7 +2,7 @@
 
 const { randomInt } = require('node:crypto')
 const engine = () => import('./engine/board-match.js')
-const kinds = new Set(['chess', 'checkers', 'ludo'])
+const kinds = new Set(['chess', 'checkers', 'ludo', 'tic_tac_toe', 'connect_four'])
 const emotes = new Set(['👏', '😄', '🔥', '🤝', '🎉', '😮'])
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
 const root = '/v1/data/playmatch/board-games'
@@ -31,7 +31,7 @@ async function ensureBoardGameTables(pool) {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS fallback_board_rooms (
       id UUID PRIMARY KEY,
-      kind TEXT NOT NULL CHECK (kind IN ('chess', 'checkers', 'ludo')),
+      kind TEXT NOT NULL CHECK (kind IN ('chess', 'checkers', 'ludo', 'tic_tac_toe', 'connect_four')),
       capacity INT NOT NULL CHECK (capacity BETWEEN 2 AND 4),
       host_id TEXT NOT NULL,
       visibility TEXT NOT NULL CHECK (visibility IN ('public', 'private')),
@@ -47,6 +47,17 @@ async function ensureBoardGameTables(pool) {
       finished_at TIMESTAMPTZ,
       CHECK (kind = 'ludo' OR capacity = 2)
     )`)
+  await pool.query(`DO $$
+    BEGIN
+      PERFORM pg_advisory_xact_lock(19110, 103);
+      IF EXISTS (SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'fallback_board_rooms'::regclass AND conname = 'fallback_board_rooms_kind_check'
+            AND strpos(pg_get_constraintdef(oid), 'connect_four') = 0) THEN
+        ALTER TABLE fallback_board_rooms DROP CONSTRAINT fallback_board_rooms_kind_check;
+        ALTER TABLE fallback_board_rooms ADD CONSTRAINT fallback_board_rooms_kind_check
+          CHECK (kind IN ('chess', 'checkers', 'ludo', 'tic_tac_toe', 'connect_four'));
+      END IF;
+    END $$`)
   await pool.query(`
     CREATE INDEX IF NOT EXISTS fallback_board_public_waiting
     ON fallback_board_rooms (kind, created_at DESC)
@@ -77,7 +88,19 @@ function publicRoom(row, actor) {
   }
 }
 function snapshot(row, actor) {
-  return { ...publicRoom(row, actor), revision: row.revision, actions: row.events, reactions: row.reactions }
+  return { ...publicRoom(row, actor), revision: row.revision, actions: row.events, reactions: row.reactions,
+    players: row.seats.includes(actor) ? row.seats.map((id, seat) => ({ id, seat })) : [] }
+}
+
+async function resolvePlayerNames(pool, players) {
+  if (!players.length) return players
+  const { rows } = await pool.query(`SELECT id::text, COALESCE(supabase_user_id,id)::text AS profile_id,
+    COALESCE(NULLIF(display_name,''),'Jugador de Novvin') AS name
+    FROM fallback_users WHERE id=ANY($1::uuid[])`, [players.map(player => player.id)])
+  const profiles = new Map(rows.map(row => [row.id, row]))
+  return players.map(({ id, seat }) => ({
+    id: profiles.get(id)?.profile_id || id, seat, name: profiles.get(id)?.name || 'Jugador de Novvin',
+  }))
 }
 function requireMember(row, actor) {
   const seat = row.seats.indexOf(actor)
@@ -129,6 +152,10 @@ function playerAction(kind, body, rollDie) {
   if (kind === 'ludo' && Number.isInteger(body.token) && body.token >= 0 && body.token < 4) {
     return { type: 'move', token: body.token }
   }
+  if (['tic_tac_toe','connect_four'].includes(kind) && Number.isInteger(body.position) &&
+      body.position >= 0 && body.position < (kind === 'tic_tac_toe' ? 9 : 42)) {
+    return { type: 'move', position: body.position }
+  }
   return null
 }
 
@@ -137,7 +164,9 @@ function registerBoardGameRoutes(app, { pool, authRequired, getIdentity, rollDie
     try {
       const actor = await getIdentity(req, res)
       if (!actor) return
-      res.set('Cache-Control', 'no-store').json(await handle(req, actor))
+      const result = await handle(req, actor)
+      if (result.room?.players) result.room.players = await resolvePlayerNames(pool, result.room.players)
+      res.set('Cache-Control', 'no-store').json(result)
     } catch (error) {
       if (Number.isInteger(error.status) && /^BOARD_/.test(error.code || '')) {
         return res.status(error.status).json({ error: error.code })

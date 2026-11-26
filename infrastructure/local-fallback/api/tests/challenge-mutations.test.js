@@ -1,7 +1,7 @@
 'use strict'
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { withChallengeTransaction, requireOpenRound, submitChallenge, setChallengeVote, deleteChallengeMaster } = require('../src/challenge-mutations')
+const { challengeTimeline, withChallengeTransaction, requireOpenRound, submitChallenge, setChallengeVote, deleteChallengeMaster } = require('../src/challenge-mutations')
 
 const identity = { displayUserId: 'public-actor', ids: new Set(['public-actor', 'local-actor']) }
 const active = () => ({ id: 'round', challenge_id: 'master', status: 'active',
@@ -54,6 +54,59 @@ test('only the appropriate unexpired phases allow submissions and votes', () => 
     { ...active(), status: 'completed' }, { ...active(), status: 'unknown' },
     { ...active(), voting_expires_at: '2026-11-01T11:59:00Z' },
   ]) assert.throws(() => requireOpenRound(row, true), { code: 'CHALLENGE_VOTING_ENDED', status: 409 })
+})
+
+test('a legacy vote without a deadline expires after its original window', () => {
+  const round = { ...active(), status: 'voting', voting_expires_at: null }
+  assert.equal(challengeTimeline(round, Date.parse('2026-11-01T12:10:29Z')).phase, 'voting')
+  assert.equal(challengeTimeline(round, Date.parse('2026-11-01T12:10:30Z')).phase, 'completed')
+  assert.equal(challengeTimeline(round, Date.parse('2026-11-01T12:10:36Z')).phase, 'expired')
+  assert.throws(() => requireOpenRound({ ...round, checked_at: '2026-11-03T12:10:00Z' }, true),
+    { code: 'CHALLENGE_VOTING_ENDED' })
+})
+
+test('a participant returning days later does not restart the vote or the podium', () => {
+  const now = Date.parse('2026-11-03T12:00:00Z')
+  const round = { ...active(), created_at: '2026-11-01T11:55:00Z' }
+  for (const status of ['active', 'voting', 'completed']) {
+    assert.equal(challengeTimeline({ ...round, status }, now).phase, 'expired')
+  }
+  const longLegacyRound = { ...round, expires_at: '2026-11-02T11:55:00Z', voting_expires_at: '2026-11-02T11:55:30Z' }
+  assert.equal(challengeTimeline(longLegacyRound, Date.parse('2026-11-01T12:09:25Z')).phase, 'voting')
+  assert.equal(challengeTimeline(longLegacyRound, Date.parse('2026-11-01T12:10:00Z')).phase, 'expired')
+  assert.equal(challengeTimeline(longLegacyRound, now).phase, 'expired')
+})
+
+test('returning to an old voting round with a submission opens a different challenge immediately', async t => {
+  const { PGlite } = require('@electric-sql/pglite')
+  const { ensureActiveChallenge } = require('../src/data-routes')
+  const db = new PGlite()
+  t.after(() => db.close())
+  await db.exec(`CREATE TABLE fallback_challenges_master (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(), title TEXT, description TEXT,
+    challenge_type TEXT, difficulty TEXT, creator_id TEXT, created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now());
+    CREATE TABLE fallback_active_challenges (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(), challenge_id UUID, expires_at TIMESTAMPTZ,
+      voting_expires_at TIMESTAMPTZ, status TEXT, winner_ids JSONB DEFAULT '[]',
+      created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ DEFAULT now());
+    CREATE TABLE fallback_challenge_submissions (id UUID DEFAULT gen_random_uuid(), active_challenge_id TEXT);
+    CREATE TABLE fallback_challenge_votes (submission_id TEXT);
+    INSERT INTO fallback_challenges_master(title) SELECT 'Reto ' || value FROM generate_series(1,8) value;`)
+  const { rows: [old] } = await db.query(`INSERT INTO fallback_active_challenges
+    (challenge_id, expires_at, created_at, status)
+    SELECT id, now() - interval '2 days', now() - interval '2 days 15 minutes', 'voting'
+    FROM fallback_challenges_master ORDER BY title LIMIT 1 RETURNING id::text, challenge_id::text`)
+  await db.query('INSERT INTO fallback_challenge_submissions(active_challenge_id) VALUES($1)', [old.id])
+  const pool = { connect: async () => ({ query: (...args) => db.query(...args), release() {} }) }
+  const next = await ensureActiveChallenge(pool, { id: 'test-user' })
+  assert.equal(next.status, 'active')
+  assert.notEqual(next.id, old.id)
+  assert.notEqual(next.challenge_id, old.challenge_id)
+  assert.equal(Date.parse(next.expires_at) - Date.parse(next.created_at), (14 * 60 + 24) * 1000)
+  assert.equal(Date.parse(next.voting_expires_at) + 6000 - Date.parse(next.created_at), 15 * 60_000)
+  const again = await ensureActiveChallenge(pool, { id: 'test-user' })
+  assert.equal(again.id, next.id)
 })
 
 test('a missing round cannot create an orphan submission', async () => {

@@ -14,17 +14,25 @@
       <a id="back" href="/app/games">‹ Juegos</a>
       <span>Novvin</span>
     </header>
-    <h1>Juegos de mesa</h1>
-    <nav id="games" aria-label="Elegir juego">
-      <button type="button" data-game="chess"><span aria-hidden="true">♞</span>Ajedrez</button>
-      <button type="button" data-game="ludo"><span aria-hidden="true">⚄</span>Ludo</button>
-      <button type="button" data-game="checkers"><span aria-hidden="true">●</span>Damas</button>
-    </nav>
-    <nav class="play-modes" aria-label="Modalidad de juego">
-      <button type="button" id="open-offline">En este dispositivo</button>
-      <button type="button" id="open-online">Jugar en línea</button>
-      <button type="button" id="open-ranking">Torneo semanal</button>
-    </nav>
+    <div id="hub">
+      <div class="intro">
+        <div><h1>Juegos de mesa</h1><p>Elige un tablero y juega con amigos, en línea o contra Novvin.</p></div>
+        <span class="intro-piece" aria-hidden="true">♞</span>
+      </div>
+      <nav id="games" aria-label="Elegir juego">
+        <button type="button" data-game="chess"><span aria-hidden="true">♞</span>Ajedrez</button>
+        <button type="button" data-game="ludo"><span aria-hidden="true">⚄</span>Ludo</button>
+        <button type="button" data-game="checkers"><span aria-hidden="true">●</span>Damas</button>
+        <button type="button" data-game="tic_tac_toe"><span aria-hidden="true">×</span>Tres en raya</button>
+        <button type="button" data-game="connect_four"><span aria-hidden="true">⁙</span>Cuatro en línea</button>
+      </nav>
+      <nav class="play-modes" aria-label="Modalidad de juego">
+        <button type="button" id="open-offline">En este dispositivo</button>
+        <button type="button" id="open-online">Jugar en línea</button>
+        <button type="button" id="open-friends">Jugar con amigos</button>
+        <button type="button" id="open-ranking">Torneo semanal</button>
+      </nav>
+    </div>
     <form id="setup">
       <label>Modo<select id="mode"><option value="local">En este dispositivo</option><option value="bot">Contra Novvin</option></select></label>
       <label id="players-control" hidden>Jugadores<select id="players"><option>2</option><option>3</option><option>4</option></select></label>
@@ -41,16 +49,18 @@
       </div>
       <div id="rooms"></div>
       <section id="waiting" hidden>
-        <h2 id="waiting-title"></h2>
+        <h2 id="waiting-title" tabindex="-1"></h2>
         <p id="waiting-description"></p>
+        <label id="friend-filter-label" hidden>Buscar en tus amigos<input id="friend-filter" type="search" maxlength="80"></label>
         <div id="friends"></div>
+        <p id="friends-empty" hidden></p>
         <button type="button" id="leave-waiting">Salir de la sala</button>
       </section>
     </section>
     <section id="ranking" hidden aria-label="Torneo semanal">
       <h2>Torneo semanal</h2>
       <p id="ranking-period" role="status"></p>
-      <p>Se cuentan las victorias en partidas públicas de Ajedrez, Ludo y Damas.</p>
+      <p>Las victorias en partidas públicas cuentan para la clasificación.</p>
       <h3>Podio de la semana pasada</h3>
       <ol id="previous-podium"></ol>
       <h3>Los 100 primeros</h3>
@@ -58,9 +68,10 @@
     </section>
     <section id="table" hidden aria-label="Partida">
       <div class="table-heading">
-        <h2 id="game-title"></h2>
-        <p id="status" role="status"></p>
+        <div><h2 id="game-title" tabindex="-1"></h2><p id="status" role="status"></p></div>
+        <button id="return-to-lobby" type="button">Salir a juegos</button>
       </div>
+      <div id="opponents" aria-label="Jugadores de la partida" hidden></div>
       <div id="online-reactions" hidden aria-label="Reacciones">
         <div id="reaction-buttons"></div>
         <p id="reaction-status" role="status"></p>
