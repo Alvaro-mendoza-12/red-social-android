@@ -134,10 +134,13 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
   const pendingCreations = new Map()
   const url = (suffix = '') => '/rooms/' + room.id + suffix
   const status = message => {
-    element('online-status').textContent = message
+    const inTable = room != null && room.status !== 'waiting'
+    const lobbyStatus = element('online-status')
+    lobbyStatus.hidden = inTable
+    lobbyStatus.textContent = inTable ? '' : message
     const connection = element('table-connection')
-    connection.textContent = message
-    connection.hidden = !room || room.status === 'waiting' || !message
+    connection.textContent = inTable ? message : ''
+    connection.hidden = !inTable || !message
   }
 
   function show(next) {

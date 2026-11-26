@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T19:36:14.299210+00:00",
-  "baseCommit": "e8d90353af2ef8dc2acabc76ecf1b0f5c10962d7",
+  "generatedAtUtc": "2026-11-26T19:42:35.226370+00:00",
+  "baseCommit": "0bbea1bfa4f46a2598168ceecd9c0dcb50f323b7",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -353,7 +353,7 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "de1cb5d588c959e7fb1fa23353c504a450e2e865",
+      "gitBlobId": "4e969adc8614f6f4b09131a4bdda90e3152324de",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/250-recuperar-partida-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -4617,7 +4617,7 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "76d04a78fcefe8623867cfe276f91a2f5382ac7b",
+      "gitBlobId": "f13ab3b6f812afd802a73fee96d43f81d1c8bd2b",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/250-recuperar-partida-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -22705,7 +22705,7 @@
     {
       "file": "docs/oficial/250-recuperar-partida-android-2026-11-26.md",
       "phase": "documentation",
-      "gitBlobId": "9dc9f6cb3a905fa2ce6389d8d1e732cda0eeee9d",
+      "gitBlobId": "f43e5f69d888878237fcc798aa5daf79d0197540",
       "reviewStatus": "pending"
     },
     {

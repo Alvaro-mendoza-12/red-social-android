@@ -271,6 +271,7 @@ test('restored connectivity checks the active table immediately and never replay
   available = false
   await lobby.tick(5000)
   assert.deepEqual(opened, [2])
+  assert.equal(lobby.get('online-status').hidden, true)
   assert.equal(lobby.get('table-connection').hidden, false)
   latest = { ...playing, revision: 3 }
   available = true
