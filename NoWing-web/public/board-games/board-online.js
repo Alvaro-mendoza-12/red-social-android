@@ -119,7 +119,7 @@ function actionButton(label, handler) {
   return button
 }
 
-export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} }) {
+export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {}, onClock = () => {} }) {
   let room
   let mode = 'offline'
   let timer
@@ -300,7 +300,9 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     }
     const enteringRoom = room?.id !== value.id
     const changed = enteringRoom || room?.revision !== value.revision
-    room = value
+    const clock = value.clock
+    const newerClock = !changed && clock?.startedAt != null && clock.serverNow > (room.clock?.serverNow ?? -Infinity)
+    room = changed || newerClock || !room?.clock ? value : { ...value, clock: room.clock }
     if (value.status !== 'playing' || (moveStatus?.phase === 'retry' && moveStatus.revision !== value.revision)) moveStatus = null
     element('hub').hidden = true
     element('catalog').hidden = true
@@ -312,6 +314,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       element('waiting').hidden = true
       element('online-reactions').hidden = value.status !== 'playing'
       if (changed) onRoom(value)
+      else if (newerClock) onClock(clock)
       updateSocial(value, enteringRoom)
       const reaction = value.reactions?.at(-1)
       if (reaction && reaction.at > lastReaction && Date.now() - reaction.at < 30000) {

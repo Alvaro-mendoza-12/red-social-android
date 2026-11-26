@@ -88,6 +88,7 @@ function reset() {
   clearTimeout(state.timer)
   clearInterval(state.chessTimer)
   state.chessClock = null
+  state.remoteClock = null
   state.lastRendered = null
   element('promotion').close()
   if (element('abandon-dialog').open) element('abandon-dialog').close()
@@ -120,6 +121,10 @@ const online = onlineBoard({
   selection,
   clearBoard: () => reset(),
   onRooms: rooms => { listedRooms = rooms; updateAvailability() },
+  onClock: clock => {
+    sampleRemoteClock(clock)
+    tickChessClock()
+  },
   onRoom: room => {
     state.kind = room.game
     state.bot = false
@@ -127,7 +132,7 @@ const online = onlineBoard({
     state.game = boardMatch(room.game, room.capacity, room.actions)
     clearInterval(state.chessTimer)
     state.chessClock = null
-    state.roomClockReceivedAt = performance.now()
+    sampleRemoteClock(room.clock)
     if (room.clock?.startedAt != null) state.chessTimer = setInterval(tickChessClock, 200)
     state.selection = state.kind === 'checkers' ? state.game.forced : null
     updateSetup()
@@ -167,13 +172,17 @@ function startLocal() {
   showBoard()
 }
 
+function sampleRemoteClock(clock) {
+  state.remoteClock = clock ? { ...clock, receivedAt: performance.now() } : null
+}
+
 function tickChessClock() {
   const clock = state.chessClock
-  if (state.room?.clock) {
-    const remote = state.room.clock
+  const remote = state.remoteClock
+  if (remote) {
     const remaining = [...remote.remaining]
     if (remote.startedAt != null) {
-      const elapsed = Math.max(0, remote.serverNow - remote.startedAt + performance.now() - state.roomClockReceivedAt)
+      const elapsed = Math.max(0, remote.serverNow - remote.startedAt + performance.now() - remote.receivedAt)
       remaining[remote.seat] = Math.max(0, remaining[remote.seat] - elapsed)
     }
     drawClock(remaining, remote.startedAt != null ? remote.seat : -1)

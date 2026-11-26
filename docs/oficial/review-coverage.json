@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T20:32:37.407090+00:00",
-  "baseCommit": "61758dafe58dac1955072fc1d2a8d22943a97c27",
+  "generatedAtUtc": "2026-11-26T21:37:40.291444+00:00",
+  "baseCommit": "31de5d75e7f98142ccd0905429843c4cdfd5ee81",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3420,
-    "code-read": 1096,
-    "partial": 312
+    "pending": 3421,
+    "code-read": 1095,
+    "partial": 313
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 635
     },
     "documentation": {
-      "pending": 722,
+      "pending": 723,
       "code-read": 71,
       "partial": 22
     },
@@ -36,9 +36,9 @@
       "partial": 9
     },
     "web": {
-      "partial": 80,
+      "partial": 81,
       "pending": 471,
-      "code-read": 132
+      "code-read": 131
     }
   },
   "files": [
@@ -345,17 +345,17 @@
     {
       "file": "NoWing-web/public/board-games/board-games.js",
       "phase": "web",
-      "gitBlobId": "2ad99466648caae9a05a99c3b9055259b5d0f060",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
+      "gitBlobId": "098b437ed1ec936db99c9b70aab16afafdd39132",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/252-reloj-ajedrez-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "03e3f0686f0f79478734a458fbf81e1390caa7bb",
+      "gitBlobId": "ede0a8a0815f02749db06f9c6c316967cceae8bc",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/251-confirmar-jugada-android-2026-11-26.md",
+      "evidence": "docs/oficial/252-reloj-ajedrez-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4617,9 +4617,9 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "fcaa7a0d419f2533ad492cf0745b2ae3d0aa7a99",
+      "gitBlobId": "aaaccd8e546556ad2b594abbf458dc98d351d861",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/251-confirmar-jugada-android-2026-11-26.md",
+      "evidence": "docs/oficial/252-reloj-ajedrez-android-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22712,6 +22712,12 @@
       "file": "docs/oficial/251-confirmar-jugada-android-2026-11-26.md",
       "phase": "documentation",
       "gitBlobId": "4130ad4877aed009602d5095c4408ec6215955da",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/252-reloj-ajedrez-android-2026-11-26.md",
+      "phase": "documentation",
+      "gitBlobId": "49e4d9be4a5957074afb5de5db10c8e7e8f47eeb",
       "reviewStatus": "pending"
     },
     {

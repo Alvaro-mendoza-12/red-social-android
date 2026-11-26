@@ -20,7 +20,7 @@ const waitingRoom = {
   host: true,
 }
 
-async function openLobby(t, respond, { resumeId, inviteId, delayPort = false, onRoom = () => {} } = {}) {
+async function openLobby(t, respond, { resumeId, inviteId, delayPort = false, onRoom = () => {}, onClock = () => {} } = {}) {
   const query = new URLSearchParams({ mode: 'android' })
   if (resumeId) query.set('resume', resumeId)
   if (inviteId) query.set('invite', inviteId)
@@ -56,6 +56,7 @@ async function openLobby(t, respond, { resumeId, inviteId, delayPort = false, on
   const controller = onlineBoard({
     selection: () => ({ kind: 'chess', capacity: 2 }),
     onRoom,
+    onClock,
     clearBoard() {},
   })
   if (!resumeId && !inviteId) controller.lobby()
@@ -384,6 +385,43 @@ test('a server revision conflict immediately fetches the updated table without r
   await settle()
   assert.deepEqual(opened, [2, 3])
   assert.deepEqual(requests, [['GET', roomPath], ['POST', roomPath + '/actions'], ['GET', roomPath]])
+})
+
+test('resuming a timed table applies the new server clock without reopening the board', async t => {
+  const clock = { minutes: 3, remaining: [180000, 180000], seat: 0, startedAt: 100000, serverNow: 100000 }
+  const playing = { ...waitingRoom, clock, revision: 2, status: 'playing', count: 2, actions: [], reactions: [] }
+  let room = playing
+  const opened = []
+  const clockSamples = []
+  const lobby = await openLobby(t, ({ path }) => {
+    return path === '/rooms/' + playing.id ? { room } : { rooms: [] }
+  }, { resumeId: playing.id, onRoom: value => opened.push(value.revision), onClock: value => clockSamples.push(value.serverNow) })
+  assert.deepEqual(opened, [2])
+  room = { ...playing, clock: { ...clock, serverNow: 145000 } }
+  window.dispatchEvent(new window.Event('online'))
+  await settle()
+  assert.deepEqual(clockSamples, [145000])
+  assert.deepEqual(opened, [2])
+
+  room = { ...playing, clock: { ...clock, startedAt: null, remaining: [0, 180000], serverNow: 280000 }, revision: 3, status: 'finished' }
+  await lobby.tick(1800)
+  assert.deepEqual(opened, [2, 3])
+  assert.deepEqual(clockSamples, [145000])
+})
+
+test('delayed and repeated snapshots cannot replace a newer sample of the same clock', async t => {
+  const clock = { minutes: 3, remaining: [180000, 180000], seat: 0, startedAt: 100000, serverNow: 100000 }
+  const playing = { ...waitingRoom, clock, revision: 2, status: 'playing', count: 2, actions: [], reactions: [] }
+  let serverNow = clock.serverNow
+  const clockSamples = []
+  const lobby = await openLobby(t, ({ path }) => {
+    return path === '/rooms/' + playing.id ? { room: { ...playing, clock: { ...clock, serverNow } } } : { rooms: [] }
+  }, { resumeId: playing.id, onClock: value => clockSamples.push(value.serverNow) })
+  for (const time of [145000, 130000, 140000, 145000, 146000]) {
+    serverNow = time
+    await lobby.tick(1800)
+  }
+  assert.deepEqual(clockSamples, [145000, 146000])
 })
 
 test('the friends shortcut makes a private room and filters invitations by name', async t => {
