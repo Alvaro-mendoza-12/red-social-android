@@ -58,6 +58,7 @@ internal fun BoardGamesScreen(
     onBack: () -> Unit,
     request: suspend (method: String, path: String, body: String) -> Result<String>,
     resumeRoomId: String? = null,
+    invitationRoomId: String? = null,
     onOpenOpponent: (roomId: String, userId: String, openChat: Boolean) -> Unit = { _, _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
@@ -66,7 +67,7 @@ internal fun BoardGamesScreen(
     Column(Modifier.fillMaxSize().background(PlayMatchColors.Background).statusBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver a Juegos", tint = PlayMatchColors.White)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, if (invitationRoomId != null) "Volver" else "Volver a Juegos", tint = PlayMatchColors.White)
             }
             Text("Juegos", color = PlayMatchColors.White, style = MaterialTheme.typography.titleMedium)
         }
@@ -158,6 +159,7 @@ internal fun BoardGamesScreen(
                     }
                     val page = Uri.parse("https://$gameHost$gamePage").buildUpon().appendQueryParameter("mode", "android")
                     if (resumeRoomId != null) page.appendQueryParameter("resume", resumeRoomId)
+                    else if (invitationRoomId != null) page.appendQueryParameter("invite", invitationRoomId)
                     loadUrl(page.build().toString())
                 }
             },

@@ -1,6 +1,7 @@
 const element = id => document.getElementById(id)
 const android = new URLSearchParams(location.search).get('mode') === 'android'
 const invitation = new URLSearchParams(location.search).get('invite')
+const boardRoomId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
 const requests = new Map()
 let nextRequest = 0
 let nativePort
@@ -122,6 +123,9 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
   let friendsLoadedFor
   let friendsLoadingFor
   let lobbyNotice = ''
+  let requestedRoomId = null
+  let roomsStamp
+  let focusedInvitation = false
   let chatDraft
   let chatStamp
   const invited = new Set()
@@ -179,7 +183,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     onRooms(rooms)
     const chosen = selection().kind
     const visible = rooms.filter(item => item.status !== 'closed' && (item.game === chosen || item.invited || item.seat >= 0))
-    if (invitation) visible.sort((left, right) => Number(right.id === invitation) - Number(left.id === invitation))
+    const requested = visible.find(item => item.id === requestedRoomId && (item.invited || item.seat >= 0))
+    if (requested) visible.sort((left, right) => Number(right === requested) - Number(left === requested))
     const summary = element('lobby-summary')
     const results = rooms.filter(item => item.seat >= 0 && item.result)
     summary.hidden = !results.length
@@ -188,12 +193,14 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       const draws = results.filter(item => item.result === 'draw').length
       summary.textContent = `Resultados recientes · Victorias ${wins} · Empates ${draws} · Derrotas ${results.length - wins - draws}`
     }
-    element('rooms').replaceChildren(...visible.map(item => {
+    const stamp = JSON.stringify(visible)
+    if (stamp !== roomsStamp) element('rooms').replaceChildren(...visible.map(item => {
       const label = item.seat >= 0 ? item.status === 'finished' ? 'Ver resultado' : 'Volver a la sala' :
         item.invited ? 'Aceptar invitación' : 'Unirme'
       const row = document.createElement('div')
       row.className = 'room-row'
       row.dataset.roomKind = item.invited ? 'invite' : item.status === 'playing' ? 'active' : 'other'
+      row.dataset.requested = String(item === requested)
       const info = document.createElement('div')
       const title = document.createElement('strong')
       title.textContent = boardNames[item.game]
@@ -202,13 +209,23 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       details.textContent = `${phase} · ${item.count}/${item.capacity} · ${item.visibility === 'private' ? 'Privada' : 'Pública'}` +
         (item.clockMinutes ? ` · ${item.clockMinutes} min` : '')
       info.append(title, details)
-      row.append(info, actionButton(label, () => run(async isCurrent => {
+      const open = actionButton(label, () => run(async isCurrent => {
         const result = item.seat >= 0 ? await request('/rooms/' + item.id) : await request('/rooms/' + item.id + '/join', {})
         if (isCurrent()) displayRoom(result.room)
-      })))
+      }))
+      if (item === requested) open.className = 'primary'
+      row.append(info, open)
       return row
     }))
-    status(lobbyNotice || (visible.length ? '' : 'No hay salas de este juego disponibles.'))
+    roomsStamp = stamp
+    if (requested && !focusedInvitation) {
+      const action = element('rooms').querySelector('[data-requested="true"] button')
+      action?.focus({ preventScroll: true })
+      action?.scrollIntoView?.({ block: 'nearest' })
+      focusedInvitation = true
+    }
+    const inviteNotice = requestedRoomId && !requested ? 'Esta invitación ya no está disponible.' : ''
+    status(lobbyNotice || inviteNotice || (visible.length ? '' : 'No hay salas de este juego disponibles.'))
   }
 
   function updateSocial(value, enteringRoom) {
@@ -405,7 +422,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     finally { if (isCurrent()) loading = false }
   }
 
-  function lobby(notice = '') {
+  function lobby(notice = '', targetRoomId = null) {
     if (mode !== 'online') show('online')
     else {
       generation++
@@ -419,6 +436,9 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     friendsLoadedFor = undefined
     friendsLoadingFor = undefined
     lobbyNotice = notice
+    requestedRoomId = targetRoomId
+    roomsStamp = undefined
+    focusedInvitation = false
     clearBoard()
     element('online-reactions').hidden = true
     element('reaction-status').textContent = ''
@@ -580,7 +600,11 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
   }
   show('offline')
   const resumeId = android ? new URLSearchParams(location.search).get('resume') : null
-  if (resumeId && /^[0-9a-f-]{36}$/i.test(resumeId)) {
+  const whenReady = action => {
+    if (!android || nativePort) queueMicrotask(action)
+    else window.addEventListener('novvin-board-ready', action, { once: true })
+  }
+  if (resumeId && boardRoomId.test(resumeId)) {
     const resumeRoom = () => {
       lobby()
       void run(async current => {
@@ -588,11 +612,11 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
         if (current()) displayRoom(result.room)
       })
     }
-    if (nativePort) queueMicrotask(resumeRoom)
-    else window.addEventListener('novvin-board-ready', resumeRoom, { once: true })
-  } else if (!android && /^[0-9a-f-]{36}$/i.test(invitation || '')) queueMicrotask(() => lobby())
-  else if (!android || nativePort) queueMicrotask(readAvailability)
-  else window.addEventListener('novvin-board-ready', readAvailability, { once: true })
+    whenReady(resumeRoom)
+  } else if (invitation && boardRoomId.test(invitation)) whenReady(() => {
+    if (mode === 'offline' && element('table').hidden) lobby('', invitation.toLowerCase())
+  })
+  else whenReady(readAvailability)
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) return
     if (mode === 'online' && !reconciling) {

@@ -10,6 +10,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import conectate.com.presentation.gaming.addBoardInvitationRoute
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
@@ -17,6 +18,7 @@ internal fun androidx.navigation.NavGraphBuilder.addMainRoutes(
     isLoggedIn: Boolean
 ) {
     addRaffleRoutes(navController, isLoggedIn)
+    addBoardInvitationRoute(navController, isLoggedIn)
     composable(Screen.Surveys.route, arguments = listOf(
         navArgument("id") { type = NavType.StringType; defaultValue = "" },
         navArgument("key") { type = NavType.StringType; defaultValue = "" },

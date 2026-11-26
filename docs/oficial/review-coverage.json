@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T07:19:29.948489+00:00",
-  "baseCommit": "497d1aee3aa4c0bc9a4750a7f94161d02223ea2b",
+  "generatedAtUtc": "2026-11-26T17:23:44.953493+00:00",
+  "baseCommit": "c1b7e8336a5833562e7fa523fc1b6bfdabff97c3",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3417,
-    "code-read": 1096,
-    "partial": 311
+    "pending": 3418,
+    "code-read": 1098,
+    "partial": 310
   },
   "countsByPhase": {
     "android": {
       "pending": 1372,
-      "partial": 146,
-      "code-read": 632
+      "partial": 144,
+      "code-read": 635
     },
     "documentation": {
-      "pending": 719,
+      "pending": 720,
       "code-read": 71,
       "partial": 22
     },
@@ -36,9 +36,9 @@
       "partial": 9
     },
     "web": {
-      "partial": 77,
+      "partial": 78,
       "pending": 471,
-      "code-read": 135
+      "code-read": 134
     }
   },
   "files": [
@@ -353,9 +353,9 @@
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "468f5afdd66cc86a21aeac4e6c0e7ebe894efa36",
+      "gitBlobId": "41f430e4a9163654698f4617b4969e089ce3e271",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
+      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4617,9 +4617,9 @@
     {
       "file": "NoWing-web/tests/board-online.test.mjs",
       "phase": "web",
-      "gitBlobId": "af61fd0211a9fe7693478876f8df36d9d4efb329",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/246-juegos-columnas-y-salas-2026-11-26.md",
+      "gitBlobId": "8409c6cd3e33f9b055f97b50273332d365f3baa3",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10743,9 +10743,17 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/BoardGamesScreen.kt",
       "phase": "android",
-      "gitBlobId": "a7f416e4be13ac676e30c90f27a3ca282d53f203",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
+      "gitBlobId": "50e88c913e5322347a11dcd80c9ed84137dc4972",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/gaming/BoardInvitationRoute.kt",
+      "phase": "android",
+      "gitBlobId": "7ad0af5043958889ae17a2c2546de5d997f169f7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12179,9 +12187,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/navigation/MainNavigationRoutes.kt",
       "phase": "android",
-      "gitBlobId": "6d599619f637ea87a97b719c278111ab51d0caac",
+      "gitBlobId": "da8212d48f93f90ed64c906e8708f95063434c85",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/174-comentarios-busqueda-y-medios-android-2026-11-17.md",
+      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12405,9 +12413,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/NotificationNavigation.kt",
       "phase": "android",
-      "gitBlobId": "9fb1e0757941aebf66f69b89c37b4a1dbf4cbaca",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
+      "gitBlobId": "32d588acf07da6809fad55447fd954773f6f1e50",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -18141,9 +18149,9 @@
     {
       "file": "app/src/test/java/conectate/com/presentation/profile/NotificationNavigationTest.kt",
       "phase": "android",
-      "gitBlobId": "f51ff11b78c96b31a97e4311f83eda61822525db",
+      "gitBlobId": "b2c2abb2b7a3f0cb64d69aa831096a8a4d4de4d1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22680,6 +22688,12 @@
       "file": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "phase": "documentation",
       "gitBlobId": "09c0a31d5d247721b548f05a73a289a9d78e3550",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/249-aviso-invitacion-de-juegos-2026-11-26.md",
+      "phase": "documentation",
+      "gitBlobId": "070dd48eeb1a5a7f882eac00e41e780a59b5c17e",
       "reviewStatus": "pending"
     },
     {

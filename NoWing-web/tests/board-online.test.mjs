@@ -20,9 +20,12 @@ const waitingRoom = {
   host: true,
 }
 
-async function openLobby(t, respond, { resumeId, onRoom = () => {} } = {}) {
+async function openLobby(t, respond, { resumeId, inviteId, delayPort = false, onRoom = () => {} } = {}) {
+  const query = new URLSearchParams({ mode: 'android' })
+  if (resumeId) query.set('resume', resumeId)
+  if (inviteId) query.set('invite', inviteId)
   const dom = new JSDOM(markup, {
-    url: 'https://appassets.androidplatform.net/board-games.html?mode=android' + (resumeId ? '&resume=' + resumeId : ''),
+    url: 'https://appassets.androidplatform.net/board-games.html?' + query,
     pretendToBeVisual: true,
   })
   t.mock.timers.enable({ apis: ['setTimeout'] })
@@ -49,13 +52,13 @@ async function openLobby(t, respond, { resumeId, onRoom = () => {} } = {}) {
   const wireErrors = []
   const { onlineBoard } = await import('../public/board-games/board-online.js?' + encodeURIComponent(t.name))
   const connectPort = () => window.dispatchEvent(new window.MessageEvent('message', { data: 'novvin-board', ports: [makePort()] }))
-  connectPort()
+  if (!delayPort) connectPort()
   const controller = onlineBoard({
     selection: () => ({ kind: 'chess', capacity: 2 }),
     onRoom,
     clearBoard() {},
   })
-  if (!resumeId) controller.lobby()
+  if (!resumeId && !inviteId) controller.lobby()
   await settle()
   return {
     controller,
@@ -75,6 +78,59 @@ async function openLobby(t, respond, { resumeId, onRoom = () => {} } = {}) {
     },
   }
 }
+
+test('an Android notice waits for the native channel and presents the specified invitation for consent', async t => {
+  const invited = { ...waitingRoom, game: 'gomoku', invited: true, seat: -1, host: false }
+  const unrelated = { ...invited, id: '00000000-0000-4000-8000-000000000002', game: 'ludo' }
+  const played = { ...invited, count: 2, seat: 1, status: 'playing', actions: [], reactions: [] }
+  const requests = []
+  const opened = []
+  const lobby = await openLobby(t, ({ path, method }) => {
+    requests.push([method, path])
+    if (path === '/rooms') return { rooms: [unrelated, invited] }
+    if (path === `/rooms/${invited.id}/join`) return { room: played }
+  }, { inviteId: invited.id, delayPort: true, onRoom: room => opened.push(room.id) })
+  assert.deepEqual(requests, [])
+  await lobby.reconnect()
+  assert.equal(lobby.get('online').hidden, false)
+  const row = lobby.get('rooms').firstElementChild
+  assert.match(row.textContent, /Gomoku/)
+  assert.equal(row.dataset.requested, 'true')
+  assert.equal(document.activeElement, row.querySelector('button'))
+  assert.deepEqual(requests, [['GET', '/rooms']])
+  await lobby.tick(5000)
+  assert.equal(document.activeElement, row.querySelector('button'))
+  row.querySelector('button').click()
+  await settle()
+  assert.deepEqual(requests.at(-1), ['POST', `/rooms/${invited.id}/join`])
+  assert.deepEqual(opened, [invited.id])
+})
+
+test('an unavailable board invitation leaves the regular lobby usable', async t => {
+  const unrelated = { ...waitingRoom, id: '00000000-0000-4000-8000-000000000002' }
+  const lobby = await openLobby(t, ({ path }) => {
+    if (path === '/rooms') return { rooms: [unrelated] }
+  }, { inviteId: waitingRoom.id })
+  assert.match(lobby.get('online-status').textContent, /invita.*ya no est/i)
+  assert.equal(lobby.get('room-controls').hidden, false)
+  assert.match(lobby.get('rooms').textContent, /Ajedrez/)
+  await lobby.click('open-online')
+  assert.equal(lobby.get('online-status').textContent, '')
+})
+
+test('opening the same board notice after accepting reads the match without another join', async t => {
+  const accepted = { ...waitingRoom, game: 'reversi', seat: 1, count: 2, invited: false, status: 'playing', actions: [], reactions: [] }
+  const requests = []
+  const lobby = await openLobby(t, ({ path, method }) => {
+    requests.push([method, path])
+    return path === '/rooms' ? { rooms: [accepted] } : { room: accepted }
+  }, { inviteId: accepted.id })
+  const button = lobby.get('rooms').querySelector('button')
+  assert.equal(button.textContent, 'Volver a la sala')
+  button.click()
+  await settle()
+  assert.deepEqual(requests, [['GET', '/rooms'], ['GET', `/rooms/${accepted.id}`]])
+})
 
 test('a waiting host can invite friends after a transient lookup failure at the same room revision', async t => {
   let reads = 0

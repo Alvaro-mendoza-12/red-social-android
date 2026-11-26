@@ -75,4 +75,22 @@ class NotificationNavigationTest {
         assertEquals("target", controller.currentBackStackEntry?.arguments?.getString("postId"))
         assertNull(controller.currentBackStackEntry?.arguments?.getString("focusCommentId"))
     }
+
+    @Test fun boardInviteNavigatesToItsOwnRoomAndBackReturnsToTheNoticeList() {
+        val controller = controller()
+        val id = "12345678-1234-4321-9876-123456789ABC"
+        val invitation = notice("board_invite").copy(targetId = id)
+        handleNotificationNavigation(controller, invitation)
+        assertEquals("board_invitation/{roomId}", controller.currentDestination?.route)
+        assertEquals(id.lowercase(), controller.currentBackStackEntry?.arguments?.getString("roomId"))
+        assertTrue(controller.popBackStack())
+        assertEquals(Screen.Notifications.route, controller.currentDestination?.route)
+    }
+
+    @Test fun incompleteBoardNoticeStillOpensGames() {
+        val fallback = Screen.Home.createRoute(startTab = Screen.Games.route)
+        for (id in listOf(null, "------------------------------------", "board_invitation/other")) {
+            assertEquals(fallback, notificationDestination(notice("board_invite").copy(targetId = id)))
+        }
+    }
 }
