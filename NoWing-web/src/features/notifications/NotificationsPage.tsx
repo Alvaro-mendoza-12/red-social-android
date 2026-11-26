@@ -191,6 +191,7 @@ function resolveNotificationAction(item: NotificationItem): NotificationAction |
   const videoTargetId = item.videoId || (targetType === 'video' ? item.targetId : '')
 
   if (type === 'group_voice_room_invite' && item.targetId) return { label: 'Unirse a la sala de voz', path: `/app/voice/${encodeURIComponent(item.targetId)}?join=1` }
+  if (type === 'board_invite' && item.targetId) return { label: 'Ver invitación', path: `/board-games/board-games.html?invite=${encodeURIComponent(item.targetId)}` }
   if (targetType === 'live' && item.targetId) return { label: 'Ver directo', path: `/app/live/${encodeURIComponent(item.targetId)}` }
   if (targetType === 'moment' && item.targetId) return { label: 'Ver momento', path: `/app/moments/view/${encodeURIComponent(item.targetId)}` }
   if (postTargetId) return { label: 'Ver publicación', path: `/app/feed/post/${postTargetId}` }
@@ -525,7 +526,8 @@ export function NotificationsPage() {
         senderName && !['usuario', 'alguien', 'novvin'].includes(senderName.toLowerCase())
         ? { id: item.actorId, name: senderName, avatarUrl: item.actorAvatar }
         : undefined
-      navigate(action.path, { state: notificationParticipant ? { notificationParticipant } : undefined })
+      if (item.type.toLowerCase() === 'board_invite' && action.path.startsWith('/board-games/')) window.location.assign(action.path)
+      else navigate(action.path, { state: notificationParticipant ? { notificationParticipant } : undefined })
     } finally {
       setOpeningId(null)
     }

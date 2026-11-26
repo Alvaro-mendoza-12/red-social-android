@@ -26,6 +26,8 @@ async function fixture() {
   await pool.query('CREATE TABLE fallback_users(id uuid PRIMARY KEY, supabase_user_id uuid, display_name text)')
   await pool.query('CREATE TABLE fallback_user_blocks(blocker_id text, blocked_id text)')
   await pool.query('CREATE TABLE fallback_friends(sender_id text, receiver_id text, status text)')
+  await pool.query(`CREATE TABLE fallback_notifications(id uuid DEFAULT gen_random_uuid(), recipient_id text, actor_id text,
+    actor_name text, type text, target_id text, target_type text, content text, extra_data jsonb)`)
   for (const [name, userId] of Object.entries(id)) {
     await pool.query('INSERT INTO fallback_users VALUES($1,$2,$3)', [userId, name === 'Ana' ? oldAna : name === 'Carla' ? oldCarla : null, name])
   }
@@ -37,6 +39,8 @@ async function fixture() {
   await ensureBoardGameTables(pool)
   const app = express()
   app.use(express.json())
+  const notifications = []
+  let offset = 0
   registerBoardGameRoutes(app, {
     pool,
     authRequired: (req, res, next) => {
@@ -44,6 +48,8 @@ async function fixture() {
       next()
     },
     getIdentity: req => req.get('Authorization'),
+    publishInvite: invite => notifications.push(invite),
+    now: () => Date.now() + offset,
     rollDie: () => 6,
   })
   const server = app.listen(0, '127.0.0.1')
@@ -52,10 +58,12 @@ async function fixture() {
   return {
     pool,
     native,
-    async request(who, path, status = 200, body) {
+    notifications,
+    advanceClock(milliseconds) { offset += milliseconds },
+    async request(who, path, status = 200, body, boardProtocol = '') {
       const response = await fetch(base + path, {
         method: body ? 'POST' : 'GET',
-        headers: { Authorization: id[who] || '', 'Content-Type': 'application/json' },
+        headers: { Authorization: id[who] || '', 'Content-Type': 'application/json', 'X-Novvin-Board-Protocol': boardProtocol },
         body: body ? JSON.stringify(body) : undefined,
       })
       const raw = await response.text()
@@ -124,6 +132,9 @@ test('authenticated board games persists matches, private invites, turns, reacti
   await request('Carla', privatePath + '/join', 404, {})
   await request('Ana', privatePath + '/invite', 404, { recipientId: id.Bruno })
   await request('Ana', privatePath + '/invite', 200, { recipientId: id.Carla })
+  await request('Ana', privatePath + '/invite', 200, { recipientId: id.Carla })
+  assert.equal(env.notifications.filter(notification => notification.target_id === privateRoom.id).length, 1)
+  assert.equal(env.notifications[0].recipient_id, oldCarla)
   assert.equal((await request('Carla', '/rooms')).rooms.find(room => room.id === privateRoom.id).invited, true)
   const { room: ludo } = await request('Carla', privatePath + '/join', 200, {})
   const { room: rolled } = await request('Ana', privatePath + '/actions', 200, { type: 'roll', roll: 2, revision: ludo.revision })
@@ -155,6 +166,17 @@ test('authenticated board games persists matches, private invites, turns, reacti
     await request('Ana', target + '/invite', 200, { recipientId: id.Carla })
     let { room } = await request('Carla', target + '/join', 200, {})
     assert.equal(room.status, 'playing')
+    assert.equal((await request('Ana', target + '/rematch', 409, {})).error, 'BOARD_REMATCH_UNAVAILABLE')
+    const messageId = randomUUID()
+    const message = { text: ' Buena partida ', messageId }
+    await request('Bruno', target + '/chat', 404, message)
+    await request('Ana', target + '/chat', 422, { text: ' ', messageId })
+    const chatResult = await request('Ana', target + '/chat', 200, message)
+    assert.equal(chatResult.room.revision, room.revision)
+    assert.equal(chatResult.room.chat[0].text, 'Buena partida')
+    assert.deepEqual((await request('Carla', target)).room.chat, chatResult.room.chat)
+    assert.equal((await request('Ana', target + '/chat', 200, message)).room.chat.length, 1)
+    await request('Ana', target + '/chat', 429, { ...message, messageId: randomUUID() })
     for (const [index, position] of moves.entries()) {
       const result = await request(index % 2 ? 'Carla' : 'Ana', target + '/actions', 200,
         { type: 'move', position, revision: room.revision })
@@ -162,5 +184,64 @@ test('authenticated board games persists matches, private invites, turns, reacti
     }
     assert.equal(room.status, 'finished')
     assert.deepEqual(room.actions.map(action => action.position), moves)
+    await request('Ana', target + '/chat', 409, message)
+    await request('Bruno', target + '/rematch', 404, {})
+    const requestRematch = who => request(who, target + '/rematch', 200, {})
+    assert.deepEqual((await requestRematch('Ana')).room.rematch, { seats: [0], roomId: null })
+    assert.deepEqual((await requestRematch('Ana')).room.rematch, { seats: [0], roomId: null })
+    await pool.query('INSERT INTO fallback_user_blocks VALUES($1,$2)', [oldAna, oldCarla])
+    assert.equal((await request('Carla', target + '/rematch', 409, {})).error, 'BOARD_SOCIAL_UNAVAILABLE')
+    await pool.query('DELETE FROM fallback_user_blocks WHERE blocker_id=$1 AND blocked_id=$2', [oldAna, oldCarla])
+    const { roomId: rematchId } = (await requestRematch('Carla')).room.rematch
+    assert.notEqual(rematchId, room.id)
+    assert.equal((await requestRematch('Carla')).room.rematch.roomId, rematchId)
+    assert.equal((await request('Ana', target)).room.rematch.roomId, rematchId)
+    const { room: replay } = await request('Ana', '/rooms/' + rematchId)
+    assert.equal(replay.status, 'playing')
+    assert.equal(replay.seat, 1)
+    assert.deepEqual(replay.actions, [])
+    assert.deepEqual(replay.chat, [])
+    await request('Ana', '/rooms/' + rematchId + '/close', 200, {})
   }
+
+  for (const [kind, position] of [['reversi', 19], ['gomoku', 112]]) {
+    const input = { game: kind, capacity: 2, visibility: 'private', requestId: randomUUID() }
+    await request('Ana', '/rooms', 400, input)
+    const { room: open } = await request('Ana', '/rooms', 200, input, '2')
+    const target = roomPath(open)
+    assert.equal((await request('Ana', '/rooms')).rooms.some(item => item.id === open.id), false)
+    await request('Ana', target, 404)
+    await request('Bruno', target + '/players', 404, { query: 'Ana' }, '2')
+    assert.deepEqual((await request('Ana', target + '/players', 200, { query: 'Brun' }, '2')).friends.map(person => person.name), ['Bruno'])
+    assert.deepEqual((await request('Ana', target + '/players', 200, { query: 'blocked' }, '2')).friends, [])
+    await request('Ana', target + '/invite', 404, { recipientId: id.blocked }, '2')
+    await request('Ana', target + '/invite', 200, { recipientId: id.Bruno }, '2')
+    assert.equal((await request('Bruno', '/rooms', 200, undefined, '2')).rooms.find(item => item.id === open.id).invited, true)
+    await request('Bruno', target + '/join', 404, {})
+    let { room } = await request('Bruno', target + '/join', 200, {}, '2')
+    const action = { type: 'move', position, revision: room.revision }
+    await request('Bruno', target + '/actions', 409, action, '2')
+    ;({ room } = await request('Ana', target + '/actions', 200, action, '2'))
+    assert.deepEqual((await request('Bruno', target, 200, undefined, '2')).room.actions, [{ type: 'move', position }])
+  }
+
+  const timed = { game: 'chess', capacity: 2, visibility: 'public', clockMinutes: 3, requestId: randomUUID() }
+  await request('Ana', '/match', 400, timed)
+  const { room: waitingClock } = await request('Ana', '/match', 200, timed, '2')
+  assert.equal(waitingClock.clock.startedAt, null)
+  assert.equal((await request('Bruno', '/rooms')).rooms.some(item => item.id === waitingClock.id), false)
+  let { room: playingClock } = await request('Bruno', '/match', 200, { ...timed, requestId: randomUUID() }, '2')
+  assert.equal(playingClock.id, waitingClock.id)
+  assert.equal(playingClock.clock.seat, 0)
+  env.advanceClock(2000)
+  const clockPath = roomPath(playingClock)
+  ;({ room: playingClock } = await request('Ana', clockPath + '/actions', 200,
+    { type: 'move', from: 'e2', to: 'e4', revision: playingClock.revision }, '2'))
+  assert.equal(playingClock.clock.seat, 1)
+  assert.ok(playingClock.clock.remaining[0] <= 178000)
+  env.advanceClock(180001)
+  const { room: expired } = await request('Ana', clockPath, 200, undefined, '2')
+  assert.equal(expired.status, 'finished')
+  assert.deepEqual(expired.actions.at(-1), { type: 'timeout', seat: 1 })
+  assert.deepEqual((await request('Bruno', clockPath, 200, undefined, '2')).room.actions, expired.actions)
 })

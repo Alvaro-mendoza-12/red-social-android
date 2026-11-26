@@ -796,6 +796,7 @@ function registerPlayMatchRoutes(app, {
   registerBoardGameRoutes(app, {
     pool,
     authRequired,
+    publishInvite: notification => publishRealtimeEvent(`user:${notification.recipient_id}`, { event: 'notification', notification }),
     getIdentity: async (req, res) => {
       const ctx = await context(req, res)
       return ctx ? localUserId(ctx.user) : null

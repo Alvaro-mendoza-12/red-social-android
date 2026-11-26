@@ -101,12 +101,16 @@ class PlayMatchApiClient @Inject constructor(
         val room = "/rooms/[0-9a-fA-F-]{36}"
         return when {
             method == "GET" && (path in setOf("/rooms", "/friends", "/ranking") || Regex(room).matches(path)) ->
-                execute(token) { base -> supabaseConfig.httpClient.get("$base$url") { playMatchHeaders(token) } }
+                execute(token) { base -> supabaseConfig.httpClient.get("$base$url") {
+                    playMatchHeaders(token)
+                    header("X-Novvin-Board-Protocol", "2")
+                } }
             method == "POST" && body.length <= 1_024 &&
-                (path in setOf("/rooms", "/match") || Regex("$room/(join|invite|actions|reactions|close)").matches(path)) ->
+                (path in setOf("/rooms", "/match") || Regex("$room/(join|invite|actions|reactions|close|chat|rematch|players)").matches(path)) ->
                 execute(token) { base ->
                     supabaseConfig.httpClient.post("$base$url") {
                         playMatchHeaders(token)
+                        header("X-Novvin-Board-Protocol", "2")
                         contentType(ContentType.Application.Json)
                         setBody(body)
                     }

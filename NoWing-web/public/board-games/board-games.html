@@ -6,6 +6,7 @@
   <meta name="robots" content="noindex">
   <title>Juegos de mesa · Novvin</title>
   <link rel="stylesheet" href="./board-games.css">
+  <link rel="stylesheet" href="./board-center.css">
   <script type="module" src="./board-games.js"></script>
 </head>
 <body>
@@ -15,39 +16,54 @@
       <span>Novvin</span>
     </header>
     <div id="hub">
-      <h1>Juegos de mesa</h1>
-      <nav id="games" aria-label="Elegir juego">
-        <button type="button" data-game="chess"><span class="game-preview" aria-hidden="true">♞</span><span>Ajedrez</span></button>
-        <button type="button" data-game="ludo"><span class="game-preview" aria-hidden="true">⚄</span><span>Ludo</span></button>
-        <button type="button" data-game="checkers"><span class="game-preview" aria-hidden="true"><i></i><i></i></span><span>Damas</span></button>
-        <button type="button" data-game="tic_tac_toe"><span class="game-preview" aria-hidden="true"><b>×</b><b>○</b></span><span>Tres en raya</span></button>
-        <button type="button" data-game="connect_four"><span class="game-preview" aria-hidden="true"><i></i><i></i><i></i></span><span>Cuatro en línea</span></button>
-      </nav>
-      <nav class="play-modes" aria-label="Modalidad de juego">
-        <button type="button" class="primary" id="open-online">Jugar en línea</button>
-        <button type="button" id="open-friends">Jugar con amigos</button>
-        <button type="button" id="open-offline">En este dispositivo</button>
-        <button type="button" id="open-ranking">Torneo semanal</button>
-      </nav>
+      <div class="center-heading">
+        <div><p class="center-brand">Novvin</p><h1>Sala de Juegos</h1></div>
+        <div class="center-actions"><button type="button" id="open-activity">Mis partidas</button><button type="button" id="open-ranking">Torneo semanal</button></div>
+      </div>
+      <section class="featured" id="featured" data-cover="chess" aria-labelledby="featured-title">
+        <div class="cover featured-cover" aria-hidden="true"></div>
+        <div class="featured-copy">
+          <p id="featured-meta">Estrategia · 2 jugadores</p>
+          <h2 id="featured-title" tabindex="-1">Ajedrez</h2>
+          <p id="featured-description">Domina el centro, protege tu rey y encuentra el jaque mate.</p>
+          <p id="featured-availability"></p>
+          <div class="play-modes" aria-label="Modalidad de juego">
+            <button type="button" class="primary" id="open-online">Jugar en línea</button>
+            <button type="button" id="open-friends">Jugar con amigos</button>
+            <button type="button" id="open-offline">En este dispositivo</button>
+          </div>
+        </div>
+      </section>
     </div>
     <form id="setup">
       <label>Modo<select id="mode"><option value="local">En este dispositivo</option><option value="bot">Contra Novvin</option></select></label>
       <label id="players-control" hidden>Jugadores<select id="players"><option>2</option><option>3</option><option>4</option></select></label>
       <label id="level-control" hidden>Dificultad<select id="level"><option value="0">Principiante</option><option value="1">Fácil</option><option value="2" selected>Intermedio</option><option value="3">Avanzado</option><option value="4">Experto</option></select></label>
+      <label id="clock-control">Reloj de ajedrez<select id="chess-time"><option value="0">Sin límite</option><option value="3">3 minutos</option><option value="5">5 minutos</option><option value="10">10 minutos</option></select></label>
       <button class="primary" type="submit">Empezar partida</button>
     </form>
     <section id="online" hidden aria-label="Partidas en línea">
       <p id="online-status" role="status"></p>
+      <p id="lobby-summary" hidden></p>
       <div id="room-controls">
         <label id="online-players-control" hidden>Jugadores de Ludo<select id="online-players"><option>2</option><option>3</option><option>4</option></select></label>
+        <label id="online-clock-control">Reloj de ajedrez<select id="online-clock"><option value="0">Sin límite</option><option value="3">3 minutos</option><option value="5">5 minutos</option><option value="10">10 minutos</option></select></label>
         <button type="button" id="find-room" class="primary">Encontrar partida</button>
         <button type="button" id="create-private">Invitar amigos</button>
         <button type="button" id="refresh-rooms">Actualizar salas</button>
       </div>
       <div id="rooms"></div>
       <section id="waiting" hidden>
+        <div class="waiting-art" id="waiting-art" data-cover="chess" aria-hidden="true"><div class="cover"></div></div>
         <h2 id="waiting-title" tabindex="-1"></h2>
         <p id="waiting-description"></p>
+        <ol id="waiting-seats" aria-label="Puestos de la mesa"></ol>
+        <form id="player-search" hidden>
+          <label for="player-query">Buscar jugadores de Novvin</label>
+          <div><input id="player-query" minlength="2" maxlength="80" type="search" required><button type="submit">Buscar</button></div>
+        </form>
+        <p id="player-search-status" role="status" hidden></p>
+        <div id="players-found"></div>
         <label id="friend-filter-label" hidden>Buscar en tus amigos<input id="friend-filter" type="search" maxlength="80"></label>
         <div id="friends"></div>
         <p id="friends-empty" role="status" hidden></p>
@@ -64,6 +80,26 @@
       <h3>Los 100 primeros</h3>
       <ol id="weekly-top"></ol>
     </section>
+    <section id="catalog" aria-labelledby="catalog-title">
+      <div class="catalog-heading">
+        <h2 id="catalog-title">Catálogo</h2>
+        <div id="game-filters" aria-label="Filtrar juegos">
+          <button type="button" data-filter="all" aria-pressed="true">Todos</button>
+          <button type="button" data-filter="strategy" aria-pressed="false">Estrategia</button>
+          <button type="button" data-filter="quick" aria-pressed="false">Rápidos</button>
+          <button type="button" data-filter="friends" aria-pressed="false">Para amigos</button>
+        </div>
+      </div>
+      <nav id="games" aria-label="Elegir juego">
+        <button type="button" data-game="chess" data-cover="chess" data-category="strategy"><span class="cover" aria-hidden="true"></span><span>Ajedrez</span></button>
+        <button type="button" data-game="ludo" data-cover="ludo" data-category="friends"><span class="cover" aria-hidden="true"></span><span>Ludo</span></button>
+        <button type="button" data-game="checkers" data-cover="checkers" data-category="strategy"><span class="cover" aria-hidden="true"></span><span>Damas</span></button>
+        <button type="button" data-game="tic_tac_toe" data-cover="tic_tac_toe" data-category="quick"><span class="cover" aria-hidden="true"></span><span>Tres en raya</span></button>
+        <button type="button" data-game="connect_four" data-cover="connect_four" data-category="quick"><span class="cover" aria-hidden="true"></span><span>Cuatro en línea</span></button>
+        <button type="button" data-game="reversi" data-cover="reversi" data-category="strategy"><span class="cover" aria-hidden="true"></span><span>Reversi</span></button>
+        <button type="button" data-game="gomoku" data-cover="gomoku" data-category="strategy"><span class="cover" aria-hidden="true"></span><span>Gomoku</span></button>
+      </nav>
+    </section>
     <section id="table" hidden aria-label="Partida">
       <div class="table-heading">
         <h2 id="game-title" tabindex="-1"></h2>
@@ -71,20 +107,38 @@
       </div>
       <div id="opponents" aria-label="Jugadores de la partida" hidden></div>
       <p id="status" role="status"></p>
-      <div class="board-stage">
-        <div id="board" role="group" aria-label="Tablero"></div>
-      </div>
-      <div class="turn-controls">
+      <p id="table-connection" role="status" hidden></p>
+      <div class="table-layout">
+      <div class="playing-field">
+        <div id="chess-clock" hidden aria-label="Tiempo de ajedrez"><span id="white-time"></span><span id="black-time"></span></div>
+        <div class="board-stage"><div id="board" role="group" aria-label="Tablero"></div></div>
+        <section id="result-panel" class="result-panel" hidden aria-labelledby="result-title">
+          <h3 id="result-title"></h3><p id="result-detail"></p>
+          <button class="primary" id="request-rematch" type="button" hidden>Solicitar revancha</button>
+          <p id="rematch-status" role="status" hidden></p>
+        </section>
+        <div class="turn-controls">
         <button class="primary" id="roll" type="button" hidden><span id="die-face" aria-hidden="true">⚄</span><span id="roll-label">Lanzar dado</span></button>
         <div id="tokens"></div>
         <button id="claim" type="button" hidden>Reclamar tablas</button>
         <button id="resign" type="button" hidden>Abandonar</button>
         <button id="restart" type="button">Nueva partida</button>
+        </div>
       </div>
+      <aside class="table-tools" aria-label="Actividad de la partida">
       <section id="online-reactions" hidden aria-label="Reacciones">
         <div id="reaction-buttons"></div>
         <p id="reaction-status" role="status"></p>
       </section>
+      <details id="table-chat" hidden>
+        <summary>Chat de la mesa</summary>
+        <ol id="table-messages" role="log" aria-label="Mensajes de la mesa"></ol>
+        <form id="table-chat-form"><label class="visually-hidden" for="table-message">Mensaje</label><input id="table-message" maxlength="240" placeholder="Escribe un mensaje" required><button type="submit">Enviar</button></form>
+      </details>
+      <details><summary>Historial</summary><ol id="moves"></ol></details>
+      <details><summary>Reglas de esta partida</summary><p id="rules"></p></details>
+      </aside>
+      </div>
       <dialog id="promotion" aria-label="Elegir promoción">
         <p>Promocionar a</p>
         <form method="dialog">
@@ -93,8 +147,11 @@
           <button value="">Volver</button>
         </form>
       </dialog>
-      <details><summary>Historial</summary><ol id="moves"></ol></details>
-      <details><summary>Reglas de esta partida</summary><p id="rules"></p></details>
+      <dialog id="abandon-dialog" aria-labelledby="abandon-title">
+        <h3 id="abandon-title">¿Abandonar la partida?</h3>
+        <p>La partida terminará y se registrará el abandono.</p>
+        <form method="dialog"><button value="keep" autofocus>Seguir jugando</button><button class="primary" value="abandon">Abandonar partida</button></form>
+      </dialog>
     </section>
   </main>
 </body>

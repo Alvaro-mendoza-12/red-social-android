@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T06:20:50.171904+00:00",
-  "baseCommit": "2a48f85ec4cfcbf9646a5ccc652fde3bce5cb620",
+  "generatedAtUtc": "2026-11-26T07:19:29.948489+00:00",
+  "baseCommit": "497d1aee3aa4c0bc9a4750a7f94161d02223ea2b",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,25 +10,25 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3414,
-    "code-read": 1097,
-    "partial": 309
+    "pending": 3417,
+    "code-read": 1096,
+    "partial": 311
   },
   "countsByPhase": {
     "android": {
       "pending": 1372,
-      "partial": 144,
-      "code-read": 634
+      "partial": 146,
+      "code-read": 632
     },
     "documentation": {
-      "pending": 718,
+      "pending": 719,
       "code-read": 71,
       "partial": 22
     },
     "server": {
       "pending": 718,
-      "code-read": 214,
-      "partial": 58
+      "code-read": 215,
+      "partial": 57
     },
     "tooling-and-other": {
       "pending": 137,
@@ -36,8 +36,8 @@
       "partial": 9
     },
     "web": {
-      "partial": 76,
-      "pending": 469,
+      "partial": 77,
+      "pending": 471,
       "code-read": 135
     }
   },
@@ -313,6 +313,20 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/public/board-games/board-center.css",
+      "phase": "web",
+      "gitBlobId": "d246fcfe561581bb4aacfe2ff959f32f18fece52",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/public/board-games/board-cover-atlas.webp",
+      "phase": "web",
+      "gitBlobId": "cd56734a4e95afaa35549134ed53c59859f43f9b",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "NoWing-web/public/board-games/board-games.css",
       "phase": "web",
       "gitBlobId": "e150679f4267113b56a8f811c991d17b091bd66b",
@@ -323,26 +337,32 @@
     {
       "file": "NoWing-web/public/board-games/board-games.html",
       "phase": "web",
-      "gitBlobId": "1e4bc2bac4ab509448cf67eb5ac7ab2dffa5b8b1",
+      "gitBlobId": "9db094247eba5963b8a674466cc1df546208a080",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/247-diseno-cinco-juegos-de-mesa-2026-11-26.md",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-games.js",
       "phase": "web",
-      "gitBlobId": "df6d43676be5acba0d9581504f227ebdbf8a9fdd",
+      "gitBlobId": "2ad99466648caae9a05a99c3b9055259b5d0f060",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/247-diseno-cinco-juegos-de-mesa-2026-11-26.md",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/public/board-games/board-online.js",
       "phase": "web",
-      "gitBlobId": "e319c6b2e9c779695afad166a69ba396e905efe6",
+      "gitBlobId": "468f5afdd66cc86a21aeac4e6c0e7ebe894efa36",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/247-diseno-cinco-juegos-de-mesa-2026-11-26.md",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "NoWing-web/public/board-games/board-strategy-atlas.webp",
+      "phase": "web",
+      "gitBlobId": "61eba3d0f02eaf75838875de9d6f252c7524cb4f",
+      "reviewStatus": "pending"
     },
     {
       "file": "NoWing-web/public/conectate-logo.svg",
@@ -3963,9 +3983,9 @@
     {
       "file": "NoWing-web/src/features/notifications/NotificationsPage.tsx",
       "phase": "web",
-      "gitBlobId": "f1502deab98974cac835496844dfbcb985ac6d32",
+      "gitBlobId": "0b02d69801c518f5cfdd8bdab2d707419959553c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4589,9 +4609,9 @@
     {
       "file": "NoWing-web/tests/board-games.test.mjs",
       "phase": "web",
-      "gitBlobId": "7978186ecdc2aed50415df0650b0838e74ed277b",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/247-diseno-cinco-juegos-de-mesa-2026-11-26.md",
+      "gitBlobId": "7b689e0ec711603549258e8db702463f8c5d5230",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4895,9 +4915,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "c23f9b8652d5bcc4a74e39266b5170445a43a5a9",
+      "gitBlobId": "0d8c52a5fb845f3eb4b61e3b75973dafb8fd42b2",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/243-editor-de-stickers-y-peso-apk-2026-11-25.md",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7073,9 +7093,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/gaming/PlayMatchApiClient.kt",
       "phase": "android",
-      "gitBlobId": "0f170c36398af28d1e751b57c31901ec9db49d5a",
+      "gitBlobId": "0e84044cb6759c0f9c9f5fbdd0b79d8c12bf2925",
       "reviewStatus": "partial",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10723,9 +10743,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/gaming/BoardGamesScreen.kt",
       "phase": "android",
-      "gitBlobId": "046e53811f144cb59cb55bb6f396b64ac4cf278a",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "gitBlobId": "a7f416e4be13ac676e30c90f27a3ca282d53f203",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12385,9 +12405,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/NotificationNavigation.kt",
       "phase": "android",
-      "gitBlobId": "b55c26bfeded04eb4c67ea52cf2cd9d94076c0a8",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "gitBlobId": "9fb1e0757941aebf66f69b89c37b4a1dbf4cbaca",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22657,6 +22677,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
+      "phase": "documentation",
+      "gitBlobId": "09c0a31d5d247721b548f05a73a289a9d78e3550",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/25-prueba-fisica-momentos-y-playmatch-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "db690f3828e58ed5561e1e11d7a2002bb1f1adab",
@@ -25137,17 +25163,17 @@
     {
       "file": "infrastructure/local-fallback/api/src/board-games/engine/board-match.js",
       "phase": "server",
-      "gitBlobId": "182f5c99a89a49747048d557a54206620b1a87d6",
+      "gitBlobId": "0e7ca341edf17bc5652ee3985dab237ad31eb93c",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/src/board-games/engine/board-rules.js",
       "phase": "server",
-      "gitBlobId": "4a0b2aebf98f04b8c7ea72394d3385258268b18f",
+      "gitBlobId": "21b2eb4645bdbd77a6534c730cef2837cc58c5c9",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/247-diseno-cinco-juegos-de-mesa-2026-11-26.md",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25173,9 +25199,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/board-games/routes.js",
       "phase": "server",
-      "gitBlobId": "041727c893948403147a1dba4682d199e1705f42",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "gitBlobId": "8dfff8e45553dd10e2c66517ac6903125c0a34de",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -25827,9 +25853,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/playmatch-routes.js",
       "phase": "server",
-      "gitBlobId": "7f9a6a38f5b435be2f4b3526d0384eeca3a8f376",
+      "gitBlobId": "51216521e05b79c0a980aa7a2d061c625441f548",
       "reviewStatus": "partial",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26585,9 +26611,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/board-games.test.js",
       "phase": "server",
-      "gitBlobId": "0d2b5fd3b38fe65072d2826ddef9204c7832b555",
+      "gitBlobId": "a0547cfb275a360e21877c985de67da7824f5624",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/244-juegos-de-mesa-perfil-rondas-2026-11-25.md",
+      "evidence": "docs/oficial/248-centro-juegos-novvin-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

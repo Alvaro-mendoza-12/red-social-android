@@ -5,7 +5,7 @@ import { createRequire } from 'node:module'
 import { createChess, chessActions, playChess, claimChessDraw, canClaimChessDraw,
   createCheckers, checkerActions, playCheckers,
   createLudo, ludoActions, ludoCell, rollLudo, playLudo,
-  createLineBoard, lineBoardActions, playLineBoard } from '../../infrastructure/local-fallback/api/src/board-games/engine/board-rules.js'
+  createLineBoard, lineBoardActions, playLineBoard, createReversi, reversiActions, playReversi } from '../../infrastructure/local-fallback/api/src/board-games/engine/board-rules.js'
 
 test('chess validates turn and finishes Fool’s mate', () => {
   const game = createChess()
@@ -140,6 +140,36 @@ test('four in a row highlights a diagonal without including its supporting piece
   for (const position of [36, 37, 30, 38, 24]) game.board[position] = 1
   assert.ok(playLineBoard(game, 17))
   assert.deepEqual(game.winningLine, [35, 29, 23, 17])
+})
+
+test('gomoku requires five aligned stones on a fifteen by fifteen board', () => {
+  const game = createLineBoard('gomoku')
+  assert.equal(game.board.length, 225)
+  for (const position of [112, 0, 113, 15, 114, 30, 115, 45]) assert.ok(playLineBoard(game, position))
+  assert.equal(game.outcome, null)
+  assert.equal(playLineBoard(game, 112), false)
+  assert.ok(playLineBoard(game, 116))
+  assert.deepEqual(game.winningLine, [112, 113, 114, 115, 116])
+})
+
+test('reversi brackets the opponent, skips an unavailable turn, and scores both colors', () => {
+  const game = createReversi()
+  assert.deepEqual(reversiActions(game), [19, 26, 37, 44])
+  assert.equal(playReversi(game, 20), false)
+  assert.ok(playReversi(game, 19))
+  assert.deepEqual(game.flipped, [27])
+  assert.equal(game.board[27], 0)
+  assert.equal(game.turn, 1)
+
+  const end = createReversi()
+  end.board.fill(0)
+  end.board[1] = end.board[3] = 1
+  end.board[0] = end.board[4] = null
+  assert.ok(playReversi(end, 0))
+  assert.equal(end.passed, 1)
+  assert.equal(end.turn, 0)
+  assert.ok(playReversi(end, 4))
+  assert.deepEqual(end.outcome, { winner: 0, reason: '64 negras · 0 blancas' })
 })
 
 test('four in a row accepts a touch anywhere in a column and preserves keyboard focus', async t => {

@@ -170,6 +170,7 @@ export function playLudo(game, token) {
 const lineRules = {
   tic_tac_toe: { width: 3, height: 3, goal: 3, gravity: false },
   connect_four: { width: 7, height: 6, goal: 4, gravity: true },
+  gomoku: { width: 15, height: 15, goal: 5, gravity: false },
 }
 
 export function createLineBoard(kind) {
@@ -187,6 +188,7 @@ export function playLineBoard(game, position) {
   if (!lineBoardActions(game).includes(position)) return false
   const { width, height, goal, turn } = game
   game.board[position] = turn
+  game.lastPosition = position
   const x = position % width
   const y = Math.floor(position / width)
   const matching = (dx, dy) => {
@@ -210,5 +212,56 @@ export function playLineBoard(game, position) {
   if (!game.outcome && !game.board.includes(null)) game.outcome = { winner: null, reason: 'Tablero completo' }
   game.history.push(`${turn === 0 ? 'X' : 'O'} · ${x + 1}, ${y + 1}`)
   game.turn = 1 - turn
+  return true
+}
+
+const reversiDirections = [-1, 0, 1].flatMap(row => [-1, 0, 1].map(column => [row, column]))
+  .filter(([row, column]) => row !== 0 || column !== 0)
+
+export function createReversi() {
+  const board = Array(64).fill(null)
+  board[27] = board[36] = 1
+  board[28] = board[35] = 0
+  return { width: 8, height: 8, board, turn: 0, outcome: null, history: [] }
+}
+
+function reversiFlips(game, position, turn) {
+  if (game.board[position] !== null) return []
+  return reversiDirections.flatMap(([dy, dx]) => {
+    let row = (position >> 3) + dy
+    let column = (position & 7) + dx
+    const captured = []
+    while (gridIndex(row, column) !== -1 && game.board[gridIndex(row, column)] === 1 - turn) {
+      captured.push(gridIndex(row, column))
+      row += dy
+      column += dx
+    }
+    return game.board[gridIndex(row, column)] === turn ? captured : []
+  })
+}
+
+export function reversiActions(game, turn = game.turn) {
+  if (game.outcome) return []
+  return game.board.flatMap((_, position) => reversiFlips(game, position, turn).length ? [position] : [])
+}
+
+export function playReversi(game, position) {
+  if (game.outcome || !Number.isInteger(position)) return false
+  const turn = game.turn
+  const flipped = reversiFlips(game, position, turn)
+  if (!flipped.length) return false
+  for (const index of [position, ...flipped]) game.board[index] = turn
+  game.lastPosition = position
+  game.flipped = flipped
+  game.history.push(`${turn ? 'Blancas' : 'Negras'} · ${String.fromCharCode(97 + (position & 7))}${8 - (position >> 3)} · ${flipped.length} ${flipped.length === 1 ? 'ficha' : 'fichas'}`)
+  const next = 1 - turn
+  game.passed = null
+  if (reversiActions(game, next).length) game.turn = next
+  else if (reversiActions(game, turn).length) game.passed = next
+  else {
+    const black = game.board.filter(side => side === 0).length
+    const white = game.board.filter(side => side === 1).length
+    game.outcome = { winner: black === white ? null : Number(white > black), reason: `${black} negras · ${white} blancas` }
+  }
   return true
 }

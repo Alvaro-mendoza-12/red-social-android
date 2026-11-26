@@ -39,6 +39,9 @@ private const val gamePage = "/board-games.html"
 private val contentTypes = mapOf(
     gamePage to "text/html",
     "/board-games.css" to "text/css",
+    "/board-center.css" to "text/css",
+    "/board-cover-atlas.webp" to "image/webp",
+    "/board-strategy-atlas.webp" to "image/webp",
     "/board-games.js" to "text/javascript",
     "/board-online.js" to "text/javascript",
     "/board-match.js" to "text/javascript",
@@ -140,9 +143,9 @@ internal fun BoardGamesScreen(
                             val mime = if (permittedOrigin(request.url)) contentTypes[path] else null
                             return if (request.method == "GET" && path != null && mime != null) {
                                 WebResourceResponse(
-                                    mime, "UTF-8", 200, "OK",
+                                    mime, if (mime.startsWith("image/")) null else "UTF-8", 200, "OK",
                                     mapOf("Content-Security-Policy" to
-                                        "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'"),
+                                        "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'"),
                                     context.assets.open(path.removePrefix("/")),
                                 )
                             } else {

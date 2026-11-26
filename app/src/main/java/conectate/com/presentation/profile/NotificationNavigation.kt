@@ -55,6 +55,7 @@ internal fun notificationDestination(notice: Notification): String? {
         "admin_access_audit" -> (extra("target_user_id") ?: target)?.let(Screen.UserProfile::createRoute)
         "admin_access_changed" -> Screen.AdminPanel.route
         "challenge_invite" -> Screen.Home.roundsRoute()
+        "board_invite" -> Screen.Home.createRoute(startTab = Screen.Games.route)
         "account_suspended", "account_enabled" -> notice.recipientId.trim().takeIf(String::isNotBlank)
             ?.let(Screen.UserProfile::createRoute)
         "notification_digest" -> Screen.NotificationSettings.route
