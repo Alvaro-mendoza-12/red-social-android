@@ -103,6 +103,14 @@ const messages = {
   BOARD_SOCIAL_UNAVAILABLE: 'El chat o la revancha ya no están disponibles en esta mesa.',
 }
 const messageFor = error => messages[error.message] || 'No se pudo conectar con Juegos en línea. Inténtalo nuevamente.'
+const connectionErrors = new Set(['BOARD_UNAVAILABLE', 'BACKEND_UNAVAILABLE', 'PLAYMATCH_REQUEST_FAILED'])
+const connectionLost = error => connectionErrors.has(error.message) || error instanceof TypeError || error instanceof SyntaxError
+const staleMoveErrors = new Set(['BOARD_REVISION_CHANGED', 'BOARD_ROOM_NOT_PLAYING', 'BOARD_OUT_OF_TURN'])
+const moveMessages = {
+  sending: 'Enviando la jugada…',
+  verifying: 'Verificando la jugada…',
+  retry: 'Tablero actualizado. Puedes volver a intentar la jugada.',
+}
 function actionButton(label, handler) {
   const button = document.createElement('button')
   button.type = 'button'
@@ -126,6 +134,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
   let lobbyNotice = ''
   let requestedRoomId = null
   let roomToRestore = null
+  let moveStatus = null
   let roomsStamp
   let focusedInvitation = false
   let chatDraft
@@ -133,6 +142,8 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
   const invited = new Set()
   const pendingCreations = new Map()
   const url = (suffix = '') => '/rooms/' + room.id + suffix
+  const moveControls = [element('board'), document.querySelector('.turn-controls')]
+  const movePending = () => moveStatus?.phase === 'sending' || moveStatus?.phase === 'verifying'
   const status = message => {
     const inTable = room != null && room.status !== 'waiting'
     const lobbyStatus = element('online-status')
@@ -141,6 +152,10 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     const connection = element('table-connection')
     connection.textContent = inTable ? message : ''
     connection.hidden = !inTable || !message
+    for (const control of moveControls) {
+      if (movePending()) control.setAttribute('aria-disabled', 'true')
+      else control.removeAttribute('aria-disabled')
+    }
   }
 
   function show(next) {
@@ -150,12 +165,14 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       clearInterval(clock)
       room = null
       roomToRestore = null
+      moveStatus = null
       loading = false
       reconciling = false
       lastReaction = 0
       friendsLoadedFor = undefined
       friendsLoadingFor = undefined
       invited.clear()
+      status('')
       clearBoard()
     }
     mode = next
@@ -284,13 +301,14 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     const enteringRoom = room?.id !== value.id
     const changed = enteringRoom || room?.revision !== value.revision
     room = value
+    if (value.status !== 'playing' || (moveStatus?.phase === 'retry' && moveStatus.revision !== value.revision)) moveStatus = null
     element('hub').hidden = true
     element('catalog').hidden = true
     element('rooms').hidden = true
     element('lobby-summary').hidden = true
     element('room-controls').hidden = true
     if (value.status !== 'waiting') {
-      status('')
+      status(moveMessages[moveStatus?.phase] || '')
       element('waiting').hidden = true
       element('online-reactions').hidden = value.status !== 'playing'
       if (changed) onRoom(value)
@@ -396,7 +414,12 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       try {
         if (roomToRestore || room && (['waiting', 'playing'].includes(room.status) || room.status === 'finished' && room.rematch && !room.rematch.roomId)) {
           const { room: latest } = await request('/rooms/' + monitored)
-          if (isCurrent()) displayRoom(latest)
+          if (isCurrent() && (!room || latest.revision >= room.revision)) {
+            if (moveStatus?.phase === 'verifying') {
+              moveStatus = latest.revision === moveStatus.revision ? { ...moveStatus, phase: 'retry' } : null
+            }
+            displayRoom(latest)
+          }
         } else if (!room) {
           const { rooms } = await request('/rooms')
           if (isCurrent() && !room) displayRooms(rooms)
@@ -404,9 +427,10 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       } catch (error) {
         if (isCurrent()) {
           const authNeeded = ['AUTH_REQUIRED', 'BOARD_SIGN_IN'].includes(error.message)
-          const connectionLost = ['BOARD_UNAVAILABLE', 'BACKEND_UNAVAILABLE', 'PLAYMATCH_REQUEST_FAILED'].includes(error.message)
-          if ((roomToRestore && authNeeded) || (monitored && error.message === 'BOARD_ROOM_NOT_FOUND')) lobby(messageFor(error))
-          else status(roomToRestore || (monitored && connectionLost) ? 'Reconectando con la mesa…' : messageFor(error))
+          const verifyingMove = moveStatus?.phase === 'verifying'
+          if (((roomToRestore || verifyingMove) && authNeeded) || (monitored && error.message === 'BOARD_ROOM_NOT_FOUND')) lobby(messageFor(error))
+          else if (verifyingMove) status(moveMessages.verifying)
+          else status(roomToRestore || (monitored && connectionLost(error)) ? 'Reconectando con la mesa…' : messageFor(error))
         }
       } finally {
         if (ticket === generation) reconciling = false
@@ -431,6 +455,31 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     finally { if (isCurrent()) loading = false }
   }
 
+  async function move(event) {
+    if (room?.status !== 'playing' || movePending()) return
+    await run(async current => {
+      const revision = room.revision
+      moveStatus = { revision, phase: 'sending' }
+      status(moveMessages.sending)
+      try {
+        const { room: updated } = await request(url('/actions'), { ...event, revision })
+        if (current()) {
+          moveStatus = null
+          displayRoom(updated)
+        }
+      } catch (error) {
+        if (!current()) return
+        if (!connectionLost(error) && !staleMoveErrors.has(error.message)) {
+          moveStatus = null
+          throw error
+        }
+        moveStatus = { revision, phase: 'verifying' }
+        status(moveMessages.verifying)
+      }
+    })
+    if (moveStatus?.phase === 'verifying') refreshOnReturn()
+  }
+
   function lobby(notice = '', { invitationId = null, resumeId = null } = {}) {
     if (mode !== 'online') show('online')
     else {
@@ -440,6 +489,7 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
       reconciling = false
     }
     room = null
+    moveStatus = null
     invited.clear()
     lastReaction = 0
     friendsLoadedFor = undefined
@@ -518,6 +568,12 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
     })
   }
 
+  for (const control of moveControls) control.addEventListener('click', event => {
+    if (movePending()) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }, { capture: true })
   element('open-offline').addEventListener('click', () => show('offline'))
   element('open-online').addEventListener('click', () => lobby())
   element('open-activity').addEventListener('click', () => lobby())
@@ -670,9 +726,6 @@ export function onlineBoard({ selection, onRoom, clearBoard, onRooms = () => {} 
         return row
       }))
     },
-    move: event => run(async current => {
-      const { room: updated } = await request(url('/actions'), { ...event, revision: room.revision })
-      if (current()) displayRoom(updated)
-    }),
+    move,
   }
 }

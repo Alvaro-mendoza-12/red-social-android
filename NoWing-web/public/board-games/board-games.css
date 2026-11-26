@@ -31,6 +31,9 @@ button { font-weight: 680; line-height: 1.18; touch-action: manipulation; }
 button:not(:disabled) { cursor: pointer; }
 button:not(:disabled):hover { border-color: var(--aqua); }
 button:disabled { opacity: .58; }
+#board[aria-disabled="true"], .turn-controls[aria-disabled="true"] { cursor: wait; }
+#board[aria-disabled="true"] button, .turn-controls[aria-disabled="true"] button { pointer-events: none; }
+.turn-controls[aria-disabled="true"] { opacity: .58; }
 :where(button, a, select, input, summary):focus-visible { outline: 3px solid var(--aqua); outline-offset: 2px; }
 .primary { background: var(--gold); color: #28201a; border-color: var(--gold); font-weight: 780; }
 

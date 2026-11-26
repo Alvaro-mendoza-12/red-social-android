@@ -297,6 +297,95 @@ test('leaving Android recovery for local play discards a late resume reply', asy
   assert.deepEqual(opened, [])
 })
 
+test('a slow move is announced while Android waits for the server response', async t => {
+  const playing = { ...waitingRoom, revision: 2, status: 'playing', count: 2, actions: [], reactions: [] }
+  const updated = { ...playing, revision: 3 }
+  const opened = []
+  let acknowledge
+  const reply = new Promise(resolve => { acknowledge = resolve })
+  const lobby = await openLobby(t, ({ path, method }) => {
+    if (method === 'POST') return reply
+    return path === '/rooms/' + playing.id ? { room: playing } : { rooms: [] }
+  }, { resumeId: playing.id, onRoom: room => opened.push(room.revision) })
+  const move = lobby.controller.move({ type: 'move', from: 'e2', to: 'e4' })
+  await settle()
+  assert.match(lobby.get('table-connection').textContent, /Enviando la jugada/)
+  assert.equal(lobby.get('board').getAttribute('aria-disabled'), 'true')
+  acknowledge({ room: updated })
+  await move
+  assert.deepEqual(opened, [2, 3])
+  assert.equal(lobby.get('table-connection').hidden, true)
+  assert.equal(lobby.get('board').hasAttribute('aria-disabled'), false)
+})
+
+test('a timed-out move stays locked while recovery reads fail and is never sent again by the client', async t => {
+  const playing = { ...waitingRoom, game: 'ludo', revision: 2, status: 'playing', count: 2, actions: [], reactions: [] }
+  const updated = { ...playing, revision: 3, actions: [{ type: 'roll', value: 6 }] }
+  const requests = []
+  const opened = []
+  let deliver
+  const check = new Promise(resolve => { deliver = resolve })
+  const roomPath = '/rooms/' + playing.id
+  const lobby = await openLobby(t, ({ path, method, body }) => {
+    requests.push({ path, method, body })
+    if (method === 'POST') return
+    if (path !== roomPath) return { rooms: [] }
+    if (requests.length === 1) return { room: playing }
+    if (requests.length === 3) return new Error('BACKEND_UNAVAILABLE')
+    return check
+  }, { resumeId: playing.id, onRoom: room => opened.push(room.revision) })
+  const roll = lobby.controller.move({ type: 'roll' })
+  await lobby.tick(12000)
+  await roll
+  assert.match(lobby.get('table-connection').textContent, /Verificando la jugada/)
+  await lobby.controller.move({ type: 'roll' })
+  window.dispatchEvent(new window.Event('online'))
+  await settle()
+  await lobby.controller.move({ type: 'roll' })
+  assert.deepEqual(requests.map(({ method }) => method), ['GET', 'POST', 'GET', 'GET'])
+  assert.equal(requests[1].body.revision, 2)
+  deliver({ room: updated })
+  await settle()
+  assert.deepEqual(opened, [2, 3])
+  assert.equal(lobby.get('table-connection').hidden, true)
+})
+
+test('an unchanged server snapshot lets the player retry explicitly after a lost response', async t => {
+  const playing = { ...waitingRoom, revision: 2, status: 'playing', count: 2, actions: [], reactions: [] }
+  const actions = []
+  const lobby = await openLobby(t, ({ path, method, body }) => {
+    if (method === 'POST') {
+      actions.push(body)
+      return actions.length === 1 ? new Error('BOARD_UNAVAILABLE') : { room: { ...playing, revision: 3 } }
+    }
+    return path === '/rooms/' + playing.id ? { room: playing } : { rooms: [] }
+  }, { resumeId: playing.id })
+  await lobby.controller.move({ type: 'move', from: 'e2', to: 'e4' })
+  await settle()
+  assert.equal(actions.length, 1)
+  assert.match(lobby.get('table-connection').textContent, /volver a intentar la jugada/)
+  await lobby.controller.move({ type: 'move', from: 'e2', to: 'e4' })
+  assert.deepEqual(actions.map(action => action.revision), [2, 2])
+  assert.equal(lobby.get('table-connection').hidden, true)
+})
+
+test('a server revision conflict immediately fetches the updated table without replaying the action', async t => {
+  const playing = { ...waitingRoom, revision: 2, status: 'playing', count: 2, actions: [], reactions: [] }
+  const opened = []
+  const requests = []
+  const roomPath = '/rooms/' + playing.id
+  const lobby = await openLobby(t, ({ path, method }) => {
+    requests.push([method, path])
+    if (method === 'POST') return new Error('BOARD_REVISION_CHANGED')
+    if (path === roomPath) return { room: requests.length === 1 ? playing : { ...playing, revision: 3 } }
+    return { rooms: [] }
+  }, { resumeId: playing.id, onRoom: room => opened.push(room.revision) })
+  await lobby.controller.move({ type: 'move', from: 'e2', to: 'e4' })
+  await settle()
+  assert.deepEqual(opened, [2, 3])
+  assert.deepEqual(requests, [['GET', roomPath], ['POST', roomPath + '/actions'], ['GET', roomPath]])
+})
+
 test('the friends shortcut makes a private room and filters invitations by name', async t => {
   let created
   const lobby = await openLobby(t, ({ path, method, body }) => {
