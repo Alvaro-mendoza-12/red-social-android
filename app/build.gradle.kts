@@ -208,7 +208,7 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 193
+        versionCode = 194
         versionName = "9.2.1"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
