@@ -1,6 +1,6 @@
 import './voice.css'
 import { SafeAvatar } from '../../components/SafeAvatar'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Headphones, Radio, RefreshCw, Users } from 'lucide-react'
 import { StatusView } from '../../components/StatusView'
@@ -83,7 +83,7 @@ function resolveParticipantCount(row: GenericRow): number {
 
 function mapRoom(row: GenericRow): VoiceRoom {
   return {
-    id: textOf(row, ['id'], crypto.randomUUID()),
+    id: textOf(row, ['id'], ''),
     title: textOf(row, ['name', 'title', 'readable_id'], 'Sala de voz'),
     topic: textOf(row, ['topic', 'description'], 'Sin descripción'),
     creatorId: textOf(row, ['creator_id', 'owner_id'], ''),
@@ -95,10 +95,17 @@ function mapRoom(row: GenericRow): VoiceRoom {
   }
 }
 
+function canListRoom(row: GenericRow) {
+  return Boolean(row && textOf(row, ['id'], '').trim() && isStandaloneVoiceRoom(row))
+}
+
 export function VoiceRoomsPage() {
   const { user, isFallbackSession } = useAuth()
   const useUbuntuVoice = shouldUseUbuntuBackend(isFallbackSession)
   const roomsCacheKey = `voice:rooms:list:v2:${user?.id ?? 'signed-out'}`
+  const loadSequence = useRef(0)
+  const activeDirectory = useRef(roomsCacheKey)
+  activeDirectory.current = roomsCacheKey
   const [rooms, setRooms] = useState<VoiceRoom[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -115,6 +122,8 @@ export function VoiceRoomsPage() {
   const totalParticipants = rooms.reduce((sum, room) => sum + room.participantCount, 0)
 
   const loadRooms = useCallback(async (options?: { silent?: boolean }) => {
+    const sequence = ++loadSequence.current
+    const isCurrent = () => sequence === loadSequence.current && activeDirectory.current === roomsCacheKey
     if (useUbuntuVoice) {
       if (options?.silent) {
         setSyncing(true)
@@ -124,16 +133,21 @@ export function VoiceRoomsPage() {
       }
       try {
         const response = await loadFallbackVoiceRooms()
-        const mapped = (response.rooms ?? response.items ?? []).filter(isStandaloneVoiceRoom).map(mapRoom)
-        setRooms(mapped)
-        writeCachedValue(roomsCacheKey, mapped)
+        const mapped = (response.rooms ?? response.items ?? []).filter(canListRoom).map(mapRoom)
+        if (isCurrent()) {
+          setRooms(mapped)
+          setError(null)
+          writeCachedValue(roomsCacheKey, mapped)
+        }
       } catch (caught) {
-        if (!options?.silent) {
+        if (isCurrent() && !options?.silent) {
           setError(friendlyError(caught, 'No se pudieron cargar las salas de voz desde Ubuntu'))
         }
       } finally {
-        setLoading(false)
-        setSyncing(false)
+        if (isCurrent()) {
+          setLoading(false)
+          setSyncing(false)
+        }
       }
       return
     }
@@ -159,7 +173,7 @@ export function VoiceRoomsPage() {
         .limit(60)
       if (queryError) throw queryError
 
-      let mapped = ((data ?? []) as GenericRow[]).filter(isStandaloneVoiceRoom).map(mapRoom)
+      let mapped = ((data ?? []) as GenericRow[]).filter(canListRoom).map(mapRoom)
       const creatorIds = Array.from(new Set(mapped.map((room) => room.creatorId).filter(Boolean)))
       if (creatorIds.length > 0) {
         const { data: profileRows } = await supabase
@@ -185,16 +199,21 @@ export function VoiceRoomsPage() {
           }
         })
       }
-      setRooms(mapped)
-      writeCachedValue(roomsCacheKey, mapped)
+      if (isCurrent()) {
+        setRooms(mapped)
+        setError(null)
+        writeCachedValue(roomsCacheKey, mapped)
+      }
     } catch (caught) {
       reportSupabaseServiceRestrictionIfPresent('voice-rooms-load', caught)
-      if (!options?.silent) {
+      if (isCurrent() && !options?.silent) {
         setError(friendlyError(caught, 'No se pudieron cargar las salas de voz'))
       }
     } finally {
-      setLoading(false)
-      setSyncing(false)
+      if (isCurrent()) {
+        setLoading(false)
+        setSyncing(false)
+      }
     }
   }, [roomsCacheKey, useUbuntuVoice])
 
@@ -204,9 +223,11 @@ export function VoiceRoomsPage() {
       setRooms(cached)
       setLoading(false)
       void loadRooms({ silent: true })
-      return
+    } else {
+      setRooms([])
+      void loadRooms({ silent: false })
     }
-    void loadRooms({ silent: false })
+    return () => { loadSequence.current += 1 }
   }, [loadRooms, roomsCacheKey])
 
   useEffect(() => {

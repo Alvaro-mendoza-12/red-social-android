@@ -829,10 +829,17 @@ export async function loadFallbackVoiceRooms(): Promise<FallbackVoiceRoomsRespon
 }
 
 export async function loadFallbackVoiceRoom(roomId: string): Promise<FallbackVoiceRoomResponse> {
-  return fallbackApiJson<FallbackVoiceRoomResponse>(
+  const payload = await fallbackApiJson<FallbackVoiceRoomResponse>(
     `/v1/data/voice/rooms/${encodeURIComponent(roomId)}`,
     { cache: 'no-store', signal: AbortSignal.timeout(12_000) },
   )
+  if (!payload?.room || typeof payload.room !== 'object' || Array.isArray(payload.room)) {
+    throw new Error('La sala ya no está disponible.')
+  }
+  const participants = Array.isArray(payload.participants)
+    ? payload.participants.filter(row => row && typeof row === 'object' && !Array.isArray(row))
+    : []
+  return { ...payload, participants }
 }
 
 export async function joinFallbackVoiceRoom(
