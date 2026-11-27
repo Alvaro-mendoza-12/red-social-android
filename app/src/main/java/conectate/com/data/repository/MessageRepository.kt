@@ -3173,120 +3173,85 @@ class MessageRepository @Inject constructor(
         }
     }
 
-    fun markChatAsReadInBackground(chatId: String) {
-        scope.launch {
-            markChatAsRead(chatId)
-        }
-    }
-
-    suspend fun markChatAsRead(chatId: String): Result<Unit> {
-        return try {
-            var userId = authService.getCurrentUserId()?.trim()?.lowercase()
-                ?: return Result.failure(Exception("No user"))
-            var token = authService.getAccessToken()
-            var cleanId = chatId.trim().lowercase()
-            
-            var now = java.time.Instant.now().toString()
-            
-            // 1. Sync global read state. Ubuntu is authoritative in local fallback sessions.
-            if (shouldUseUbuntuBackend()) {
-                if (!token.isNullOrBlank()) {
-                    localFallbackApiClient.markChatAsRead(token, cleanId)
-                        .onFailure { e ->
-                            android.util.Log.w("MessageRepository", "Ubuntu markChatAsRead failed for $cleanId", e)
-                        }
+    internal suspend fun markChatAsRead(
+        accountLease: conectate.com.data.supabase.AuthSessionLease,
+        chatId: String,
+    ) {
+        val accountId = checkNotNull(accountLease.accountId)
+        val cleanId = chatId.trim().lowercase()
+        val readThrough = java.time.Instant.now().toString()
+        conectate.com.data.repository.collection.applyCollectionReadReceipt(
+            requireRemoteConfirmation = true,
+            isSessionCurrent = accountLease::isCurrent,
+            synchronize = synchronize@{
+                val token = authService.getAccessTokenForAccountAwait(accountId)
+                    ?.takeIf(String::isNotBlank) ?: return@synchronize false
+                accountLease.requireCurrent()
+                if (shouldUseUbuntuBackend()) {
+                    localFallbackApiClient.markChatAsRead(token, cleanId).getOrThrow()
+                    true
                 } else {
-                    android.util.Log.w("MessageRepository", "markChatAsRead: no Ubuntu session token")
+                    confirmLegacyChatRead(accountLease, cleanId, accountId, token, readThrough)
                 }
-            } else if (!token.isNullOrBlank()) {
-                var remoteReadSynced = false
-                runCatching {
-                    supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_read") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        setBody(buildJsonObject { put("p_chat_id", cleanId) })
-                    }
-                }.onSuccess { response ->
-                    remoteReadSynced = response.status.isSuccess()
-                    if (!remoteReadSynced) {
-                        android.util.Log.w("MessageRepository", "secure_mark_messages_read failed for $cleanId: ${response.status}")
-                    }
-                }.onFailure { e ->
-                    android.util.Log.w("MessageRepository", "secure_mark_messages_read exception for $cleanId", e)
-                }
-
-                if (!remoteReadSynced) {
-                    val messageUpdate = buildJsonObject {
-                        put("status", "read")
-                        put("read_at", now)
-                        put("delivered_at", now)
-                        put("updated_at", now)
-                    }
-                    runCatching {
-                        supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
-                            header("Authorization", "Bearer $token")
-                            header("apikey", supabaseConfig.supabaseAnonKey)
-                            header("Content-Type", "application/json")
-                            parameter("chat_id", "eq.$cleanId")
-                            parameter("sender_id", "neq.$userId") // Only mark others' messages as read
-                            parameter("read_at", "is.null")
-                            setBody(messageUpdate)
-                        }
-                    }.onFailure { e ->
-                        android.util.Log.w("MessageRepository", "markChatAsRead fallback patch failed for $cleanId", e)
+            },
+            applyLocal = {
+                authService.withAccountLocalStorage(accountLease) {
+                    database.withTransaction {
+                        accountLease.requireCurrent()
+                        messageDao.markReadThrough(cleanId, accountId, readThrough)
+                        chatDao.reconcileUnreadCount(cleanId, accountId)
+                        accountLease.requireCurrent()
                     }
                 }
-                
-                // 2. Sync 'chat_participants' for general metadata
-                val participantUpdate = buildJsonObject { put("last_read_at", now) }
-                runCatching {
-                    supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
-                        header("Authorization", "Bearer $token")
-                        header("apikey", supabaseConfig.supabaseAnonKey)
-                        header("Content-Type", "application/json")
-                        parameter("chat_id", "eq.$cleanId")
-                        parameter("user_id", "eq.$userId")
-                        setBody(participantUpdate)
-                    }
-                }.onFailure { e ->
-                    android.util.Log.w("MessageRepository", "chat_participants last_read_at sync failed for $cleanId", e)
-                }
-            } else {
-                android.util.Log.w("MessageRepository", "markChatAsRead: no session token; remote sync skipped")
-            }
-
-            // Instant local convergence for read state (viewport/read receipt UX).
-            messageDao.markAllAsRead(cleanId, userId, now)
-            
-            // 3. Update Local State for Unread Count
-             var currentChats = _userChats.value.toMutableList()
-             val index = currentChats.indexOfFirst { it.chat.id.trim().lowercase() == cleanId }
-             if (index != -1) {
-                 currentChats[index] = currentChats[index].copy(unreadCount = 0)
-                 _userChats.value = currentChats
-             }
-
-             // --- ADDED: Clear Android Notifications ---
-             try {
-                 var notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-                 notificationManager.cancel(cleanId.hashCode())
-             } catch (e: Exception) {
-                 android.util.Log.e("MessageRepository", "Error clearing notification", e)
-             }
-             
-             // 4. Update Room
-             chatDao.markAsRead(cleanId)
-             sessionStateStore.rememberLocalReadOverride(cleanId)
-             
-            Result.success(Unit)
-        } catch (e: Exception) { 
-            android.util.Log.e("MessageRepository", "markChatAsRead failed", e)
-            Result.failure(e) 
-        }
+            },
+        )
     }
 
-
+    private suspend fun confirmLegacyChatRead(
+        accountLease: conectate.com.data.supabase.AuthSessionLease,
+        chatId: String,
+        accountId: String,
+        token: String,
+        readThrough: String,
+    ): Boolean {
+        val response = supabaseConfig.httpClient.post("${supabaseConfig.supabaseUrl}/rest/v1/rpc/secure_mark_messages_read") {
+            header("Authorization", "Bearer $token")
+            header("apikey", supabaseConfig.supabaseAnonKey)
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject { put("p_chat_id", chatId) })
+        }
+        accountLease.requireCurrent()
+        if (response.status == HttpStatusCode.NotFound) {
+            // Older schemas may lack the RPC. Preserve their update only when the RPC is absent.
+            val updated = supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/messages") {
+                header("Authorization", "Bearer $token")
+                header("apikey", supabaseConfig.supabaseAnonKey)
+                contentType(ContentType.Application.Json)
+                parameter("chat_id", "eq.$chatId")
+                parameter("sender_id", "neq.$accountId")
+                parameter("read_at", "is.null")
+                parameter("created_at", "lte.$readThrough")
+                setBody(buildJsonObject {
+                    put("status", "read")
+                    put("read_at", readThrough)
+                    put("delivered_at", readThrough)
+                    put("updated_at", readThrough)
+                })
+            }
+            if (!updated.status.isSuccess()) return false
+        } else if (!response.status.isSuccess()) {
+            return false
+        }
+        accountLease.requireCurrent()
+        return supabaseConfig.httpClient.patch("${supabaseConfig.supabaseUrl}/rest/v1/chat_participants") {
+            header("Authorization", "Bearer $token")
+            header("apikey", supabaseConfig.supabaseAnonKey)
+            contentType(ContentType.Application.Json)
+            parameter("chat_id", "eq.$chatId")
+            parameter("user_id", "eq.$accountId")
+            setBody(buildJsonObject { put("last_read_at", readThrough) })
+        }.status.isSuccess()
+    }
 
     suspend fun markMessageAsDelivered(chatId: String, messageId: String): Result<Unit> =
         markMessageAsDelivered(authService.captureAccountLease(), chatId, messageId)
