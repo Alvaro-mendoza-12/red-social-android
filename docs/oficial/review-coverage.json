@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T10:44:05.478096+00:00",
-  "baseCommit": "76c0b3507957c34ab9471bbf88f91e2d5bcdaeb9",
+  "generatedAtUtc": "2026-11-27T11:21:31.475867+00:00",
+  "baseCommit": "b136b9b31a0ca81ca3e5dd74c1ff7a4b24e73b87",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,17 +11,17 @@
   },
   "counts": {
     "pending": 3416,
-    "code-read": 1123,
+    "code-read": 1125,
     "partial": 321
   },
   "countsByPhase": {
     "android": {
-      "pending": 1362,
+      "pending": 1360,
       "partial": 146,
-      "code-read": 649
+      "code-read": 651
     },
     "documentation": {
-      "pending": 739,
+      "pending": 741,
       "code-read": 71,
       "partial": 22
     },
@@ -9589,15 +9589,17 @@
     {
       "file": "app/src/main/java/conectate/com/data/supabase/ResumableUploadProtocol.kt",
       "phase": "android",
-      "gitBlobId": "4b7f96e475f5951b5f7b5b588beb30c6457fc722",
-      "reviewStatus": "pending"
+      "gitBlobId": "52aeb9558756e82f9499941f19c6ffa7a171aad6",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/270-offsets-reanudables-android-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/supabase/StorageService.kt",
       "phase": "android",
-      "gitBlobId": "6f16432a24ed43e909aac3b9c11adaace062607a",
+      "gitBlobId": "75645f313f9e462e4b794107caa45a85b6edf778",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
+      "evidence": "docs/oficial/270-offsets-reanudables-android-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17099,8 +17101,10 @@
     {
       "file": "app/src/test/java/conectate/com/data/supabase/ResumableUploadProtocolTest.kt",
       "phase": "android",
-      "gitBlobId": "882be38b65bda6aac940d1440a02aa90d7da288b",
-      "reviewStatus": "pending"
+      "gitBlobId": "53545851564253758309d7b5668d684c5096c7e2",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/270-offsets-reanudables-android-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/supabase/StorageUploadCallTest.kt",
@@ -22955,9 +22959,21 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/269-web-activa-y-apk-arm64-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "d1b1d56bf6c1caa0be85756ced12928e2c748a4a",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/27-musica-completa-y-watchdog-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "cc31397708974073e63ceb261ee6eff5709d8fda",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/270-offsets-reanudables-android-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "6e6ebac3a0b0c9f70434e83a78fe366b8bc07733",
       "reviewStatus": "pending"
     },
     {

@@ -29,10 +29,13 @@ internal fun tusMetadataHeader(values: Map<String, String>): String {
     }
 }
 
-internal fun resumableUploadOffset(headerValue: String?): Long? {
+internal fun resumableUploadOffset(
+    headerValue: String?,
+    allowedOffsets: LongRange = 0L..Long.MAX_VALUE,
+): Long? {
     val value = headerValue?.trim().orEmpty()
-    if (value.isEmpty() || value.any { !it.isDigit() }) return null
-    return value.toLongOrNull()?.takeIf { it >= 0L }
+    if (value.isEmpty() || value.any { it !in '0'..'9' }) return null
+    return value.toLongOrNull()?.takeIf { it in allowedOffsets }
 }
 
 internal fun boundedResumableChunkSize(totalBytes: Long, offsetBytes: Long): Long {

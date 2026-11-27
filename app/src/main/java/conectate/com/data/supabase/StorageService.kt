@@ -644,6 +644,9 @@ class StorageService @Inject constructor(
                 persistTusSession(sessionKey, createdSessionUrl)
                 uploadSession.requireCurrent()
                 initialStatus = readTusUploadStatus(createdSessionUrl, accessToken)
+                if (initialStatus.length != sizeBytes) {
+                    throw IOException("El estado reanudable del servidor no coincide con el archivo.")
+                }
             }
 
             val activeSessionUrl = sessionUrl
@@ -654,7 +657,7 @@ class StorageService @Inject constructor(
                 currentCoroutineContext().ensureActive()
                 uploadSession.requireCurrent()
                 try {
-                    val nextOffset = uploadTusChunk(
+                    offset = uploadTusChunk(
                         sessionUrl = activeSessionUrl,
                         accessToken = accessToken,
                         sourceUri = sourceUri,
@@ -662,10 +665,6 @@ class StorageService @Inject constructor(
                         totalBytes = sizeBytes,
                         onProgress = onProgress,
                     )
-                    if (nextOffset !in (offset + 1)..sizeBytes) {
-                        throw IOException("El servidor devolvió un offset de subida inválido.")
-                    }
-                    offset = nextOffset
                     recoveries = 0
                 } catch (error: StorageUploadHttpException) {
                     uploadSession.requireCurrent()
@@ -829,10 +828,10 @@ class StorageService @Inject constructor(
             if (!response.isSuccessful) {
                 throw response.storageUploadFailure("No se pudo consultar el progreso de la subida. Inténtalo de nuevo.")
             }
-            val offset = resumableUploadOffset(response.header("Upload-Offset"))
-                ?: throw IOException("El servidor no devolvió un offset reanudable válido.")
             val length = resumableUploadOffset(response.header("Upload-Length"))
                 ?: throw IOException("El servidor no devolvió el tamaño reanudable válido.")
+            val offset = resumableUploadOffset(response.header("Upload-Offset"), 0L..length)
+                ?: throw IOException("El servidor no devolvió un offset reanudable válido.")
             return TusUploadStatus(
                 offset = offset,
                 length = length,
@@ -884,8 +883,9 @@ class StorageService @Inject constructor(
             if (response.code != 204) {
                 throw response.storageUploadFailure("No se pudo enviar un fragmento de la subida. Inténtalo de nuevo.")
             }
-            return resumableUploadOffset(response.header("Upload-Offset"))
-                ?: throw IOException("El servidor no confirmó el fragmento subido.")
+            val expectedOffset = offsetBytes + chunkBytes
+            return resumableUploadOffset(response.header("Upload-Offset"), expectedOffset..expectedOffset)
+                ?: throw IOException("El servidor no confirmó todos los bytes del fragmento subido.")
         }
     }
 

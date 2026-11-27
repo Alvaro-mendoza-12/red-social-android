@@ -51,6 +51,27 @@ class ResumableUploadProtocolTest {
         assertNull(resumableUploadOffset("-1"))
         assertNull(resumableUploadOffset("6.2"))
         assertNull(resumableUploadOffset(""))
+        assertNull(resumableUploadOffset("٠١٢"))
+        assertNull(resumableUploadOffset("9223372036854775808"))
+    }
+
+    @Test
+    fun `fragment acknowledgement must match exactly the bytes sent`() {
+        val sentFrom = RESUMABLE_UPLOAD_CHUNK_BYTES
+        val sentUntil = sentFrom + RESUMABLE_UPLOAD_CHUNK_BYTES
+        val expected = sentUntil..sentUntil
+        assertEquals(sentUntil, resumableUploadOffset(sentUntil.toString(), expected))
+        assertNull(resumableUploadOffset((sentUntil - 1).toString(), expected))
+        assertNull(resumableUploadOffset((sentUntil + 1).toString(), expected))
+        assertNull(resumableUploadOffset(null, expected))
+    }
+
+    @Test
+    fun `resume query only accepts offsets within the reported length`() {
+        val length = 8L * 1024 * 1024
+        assertEquals(0L, resumableUploadOffset("0", 0L..length))
+        assertEquals(length, resumableUploadOffset(length.toString(), 0L..length))
+        assertNull(resumableUploadOffset((length + 1).toString(), 0L..length))
     }
 
     @Test
