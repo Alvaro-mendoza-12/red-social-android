@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T08:09:53.193420+00:00",
-  "baseCommit": "7a6d52ebbe5633a328cbe2944f41556726888be3",
+  "generatedAtUtc": "2026-11-27T08:15:24.699731+00:00",
+  "baseCommit": "0d1fcfc7ebcbe46c64488bad0525ef46e08e6aa0",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3416,
+    "pending": 3417,
     "code-read": 1114,
     "partial": 318
   },
@@ -21,7 +21,7 @@
       "partial": 142
     },
     "documentation": {
-      "pending": 731,
+      "pending": 732,
       "code-read": 71,
       "partial": 22
     },
@@ -22859,6 +22859,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/261-migracion-historica-y-solicitudes-de-mensajes-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "f3d2bd5538cf3cb5e534cb4d0f4bc2f3d2d44914",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/27-musica-completa-y-watchdog-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "cc31397708974073e63ceb261ee6eff5709d8fda",
@@ -27991,9 +27997,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/schema-migrations.postgres.test.js",
       "phase": "server",
-      "gitBlobId": "c40ca0f0eef8517ba928dc95aab9578917366d82",
+      "gitBlobId": "0a02959dff92d1f038dee6add291fdcd80946a2b",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/231-actualizacion-con-huellas-historicas-de-migracion-2026-11-20.md",
+      "evidence": "docs/oficial/261-migracion-historica-y-solicitudes-de-mensajes-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28937,9 +28943,9 @@
     {
       "file": "infrastructure/local-fallback/scripts/apply-schema-migration.sql",
       "phase": "server",
-      "gitBlobId": "2508de37ade748b69ddffb1a018449f36a6d64bc",
+      "gitBlobId": "c4a73cf24ad2c0c4bf3721fd27a9f6a334bf5e0d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/231-actualizacion-con-huellas-historicas-de-migracion-2026-11-20.md",
+      "evidence": "docs/oficial/261-migracion-historica-y-solicitudes-de-mensajes-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

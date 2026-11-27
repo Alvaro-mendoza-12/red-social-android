@@ -6,6 +6,7 @@ const { createHash, randomBytes } = require('node:crypto')
 const { readFileSync, readdirSync } = require('node:fs')
 const path = require('node:path')
 const { Client } = require('pg')
+const { ensureDirectMessageRequestPolicy } = require('../src/direct-message-request-policy')
 
 const connectionString = process.env.NOVVIN_SCHEMA_TEST_DATABASE_URL
 const root = path.resolve(__dirname, '../..')
@@ -52,6 +53,23 @@ test('PostgreSQL applies each migration and its checksum atomically', { skip: !c
       assert.equal(rows[0].checksum_sha256, createHash('sha256').update(bytes).digest('hex'))
       assert.equal(await apply(second, filename, bytes), 'MIGRATION_ALREADY_APPLIED=' + filename)
     }
+
+    const superseded = '026_pending_friendship_allows_conversation.sql'
+    const historicalSource = readFileSync(path.join(directory, superseded), 'utf8').replace(/\r\n/g, '\n')
+    const readGuard = async () => (await first.query(
+      "SELECT pg_get_functiondef('public.fallback_guard_introductory_message()'::regprocedure) AS definition",
+    )).rows[0].definition
+    await ensureDirectMessageRequestPolicy(first)
+    const currentGuard = await readGuard()
+    assert.match(currentGuard, /MESSAGE_REQUEST_PENDING/)
+    // Model an existing API-managed database where this old migration is absent from the ledger.
+    await first.query('DELETE FROM fallback_schema_migrations WHERE filename = $1', [superseded])
+    for (const bytes of [historicalSource, historicalSource.replace(/\n/g, '\r\n')]) {
+      assert.equal(await apply(second, superseded, bytes), 'MIGRATION_SUPERSEDED=' + superseded)
+    }
+    await assert.rejects(apply(second, superseded, historicalSource + '\nSELECT 1;'), /checksum/i)
+    assert.equal(await readGuard(), currentGuard)
+    assert.equal((await first.query('SELECT 1 FROM fallback_schema_migrations WHERE filename = $1', [superseded])).rowCount, 0)
 
     for (const historical of ['002_sync_support.sql', '003_password_migration_notice.sql']) {
       const lf = readFileSync(path.join(directory, historical), 'utf8').replace(/\r\n/g, '\n')

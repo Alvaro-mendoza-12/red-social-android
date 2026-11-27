@@ -52,6 +52,31 @@ BEGIN
     RETURN 'MIGRATION_ALREADY_APPLIED=' || migration_name;
   END IF;
 
+  IF migration_name = '026_pending_friendship_allows_conversation.sql' THEN
+    -- Serialize with the API's schema initializer before checking its trigger.
+    PERFORM pg_advisory_xact_lock(hashtext('novvin:api:schema-initialization:v1'));
+    IF to_regprocedure('public.fallback_direct_message_request_state(text,text)') IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM pg_catalog.pg_trigger AS trg
+        JOIN pg_catalog.pg_proc AS guard ON guard.oid = trg.tgfoid
+        WHERE trg.tgrelid = to_regclass('public.fallback_messages')
+          AND trg.tgname = 'trg_fallback_guard_introductory_message'
+          AND guard.oid = to_regprocedure('public.fallback_guard_introductory_message()')
+          AND NOT trg.tgisinternal
+          AND guard.prosrc LIKE '%fallback_direct_message_request_state(%'
+          AND guard.prosrc LIKE '%MESSAGE_REQUEST_PENDING%'
+      ) THEN
+      IF checksum NOT IN (
+        '00c256d0113129072589ba99fa1bf81fd6827b46c4e59d9398c7a26a1dc9e933',
+        '923baf68a02babc4d561b024922b1938a2936b4967251fca81b56dab1d42c320'
+      ) THEN
+        RAISE EXCEPTION 'Checksum de migración histórica sustituida no coincide: %', migration_name;
+      END IF;
+      -- The running API already installed the replacement. Do not record SQL we did not execute.
+      RETURN 'MIGRATION_SUPERSEDED=' || migration_name;
+    END IF;
+  END IF;
+
   body := convert_from(source_bytes, 'UTF8');
   -- These immutable files have one outer BEGIN/COMMIT pair. Keep hashing
   -- their original bytes while the caller's statement owns the transaction.

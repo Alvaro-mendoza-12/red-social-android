@@ -1,0 +1,7 @@
+# Protección de las solicitudes de mensajes durante un despliegue
+
+27 de noviembre de 2026 · Una consulta de solo lectura confirmó que PostgreSQL en Ubuntu usa el control vigente de solicitudes. El disparador comprueba la participación en el chat y limita al remitente a un primer mensaje mientras espera la respuesta o la aceptación. La migración `026_pending_friendship_allows_conversation.sql` conserva una versión histórica del disparador que reemplazaría esa lógica si se aplicara a la base activa.
+
+El ejecutor de migraciones comprueba si la API ya instaló el control vigente. Coordina la comprobación con el bloqueo que usa la API para inicializar el esquema. Si encuentra el disparador actual y la huella coincide con el SQL histórico, registra `MIGRATION_SUPERSEDED` en la salida. El historial de migraciones aplicadas conserva únicamente las que se ejecutaron. El flujo de instalación inicial puede seguir ejecutando la migración histórica antes de que la API instale el control vigente.
+
+El ensayo con PostgreSQL 16.15 sin acceso a la red externa cubrió una instalación nueva y una actualización con el control de solicitudes vigente. Verificó que ambos formatos históricos de fin de línea conservan el disparador, que los bytes modificados se rechazan y que el disparador conserva su definición. Las comprobaciones de atomicidad y de historial existentes también pasaron. La consulta al servidor activo fue de solo lectura. La revisión integral permanece abierta.
