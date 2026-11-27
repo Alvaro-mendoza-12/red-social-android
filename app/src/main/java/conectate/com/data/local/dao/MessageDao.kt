@@ -64,6 +64,13 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE chat_id = :chatId ORDER BY created_at ASC")
     suspend fun getMessagesSync(chatId: String): List<MessageEntity>
 
+    @Query("""
+        SELECT id, chat_id AS conversationId, sender_id AS senderId, status,
+            delivered_at AS deliveredAt, read_at AS readAt
+        FROM messages WHERE id IN (:messageIds)
+    """)
+    suspend fun getVisibleReadCandidates(messageIds: List<String>): List<VisibleReadCandidate>
+
     suspend fun getMessagesForChat(chatId: String): List<Message> =
         getMessagesSync(chatId).map { it.toDomain() }
 

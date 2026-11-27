@@ -169,6 +169,13 @@ interface GroupDao {
     @Query("SELECT * FROM group_messages WHERE group_id = :groupId ORDER BY created_at ASC")
     suspend fun getMessagesSync(groupId: String): List<GroupMessageEntity>
 
+    @Query("""
+        SELECT id, group_id AS conversationId, sender_id AS senderId, status,
+            NULL AS deliveredAt, NULL AS readAt
+        FROM group_messages WHERE id IN (:messageIds)
+    """)
+    suspend fun getVisibleReadCandidates(messageIds: List<String>): List<VisibleReadCandidate>
+
     @Query("DELETE FROM group_messages WHERE group_id = :roomId AND id IN (:ids) AND is_synced = 1 AND pending_action IS NULL")
     suspend fun deleteInaccessibleHistory(roomId: String, ids: List<String>)
 
@@ -262,6 +269,18 @@ interface GroupDao {
         currentUserId: String,
         messageIds: List<String>
     )
+
+    @Transaction
+    suspend fun applyVisibleReads(
+        groupId: String,
+        now: String,
+        currentUserId: String,
+        batches: List<List<String>>,
+        newlySeen: Int,
+    ) {
+        for (batch in batches) markMessagesAsReadByIds(groupId, now, currentUserId, batch)
+        subtractReadMessages(groupId, newlySeen)
+    }
 
     @Query(
         "SELECT COUNT(*) FROM group_messages " +

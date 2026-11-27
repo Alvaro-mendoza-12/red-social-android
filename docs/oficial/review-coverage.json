@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T09:15:40.541163+00:00",
-  "baseCommit": "fc4a1ecd15fb053c796ce6815150cece7577e8a9",
+  "generatedAtUtc": "2026-11-27T10:00:35.004532+00:00",
+  "baseCommit": "f796ec767d55851e6a30b78f7d8394783a99a7c4",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3411,
-    "code-read": 1122,
-    "partial": 319
+    "pending": 3412,
+    "code-read": 1121,
+    "partial": 322
   },
   "countsByPhase": {
     "android": {
       "pending": 1362,
-      "partial": 143,
-      "code-read": 650
+      "partial": 146,
+      "code-read": 649
     },
     "documentation": {
-      "pending": 734,
+      "pending": 735,
       "code-read": 71,
       "partial": 22
     },
@@ -7299,9 +7299,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/local/dao/CommunityDao.kt",
       "phase": "android",
-      "gitBlobId": "1857184a28279da23326cfca74c9e81af5b96b28",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "6944beef9c25f68b86089de48ad48daa5e4231e0",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7319,9 +7319,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/local/dao/GroupDao.kt",
       "phase": "android",
-      "gitBlobId": "564fb7095510d95befd2ca9924245a5b3e35b276",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "2976c308fffaf991a26a0cc840edbc45e7f8378e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7339,9 +7339,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/local/dao/MessageDao.kt",
       "phase": "android",
-      "gitBlobId": "29c7ace02044a6832d1e1420fa347d0dbf0c9693",
+      "gitBlobId": "58968ee2426abbea0a931740efb55ddb8947b046",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7367,6 +7367,14 @@
       "phase": "android",
       "gitBlobId": "07929981a8d40234f0daf094314b5009d58fd708",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/local/dao/VisibleReadCandidate.kt",
+      "phase": "android",
+      "gitBlobId": "eeaaac3471c18c832a22a8e8644830125b72e2c0",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/local/entity/ChatEntity.kt",
@@ -8463,9 +8471,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/CommunityRepository.kt",
       "phase": "android",
-      "gitBlobId": "237e4039a43445fceb1bc38abe10b0738aaba22f",
+      "gitBlobId": "a96ab3767d876c584393faf086ba31c86cf05b8e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8547,9 +8555,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/GroupRepository.kt",
       "phase": "android",
-      "gitBlobId": "78c9c98f8ab9f66cd9701b8af877d28cc4e8a8d1",
+      "gitBlobId": "63a17eafdd2dadd6662403e788a4c26b279c92d1",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8699,9 +8707,9 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/MessageRepository.kt",
       "phase": "android",
-      "gitBlobId": "085c09ea38268670a528197c6bffd772d17b7153",
+      "gitBlobId": "6b336431b7fa1030a4803f1614a82e9072749ec8",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/263-acciones-de-notificaciones-android-2026-11-27.md",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -9390,6 +9398,14 @@
       "gitBlobId": "5fbd2c453017b00ed87d9fc4658ab8b0c8ab2806",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/data/repository/message/VisibleReadSelection.kt",
+      "phase": "android",
+      "gitBlobId": "8fa6bf8fa77c451ed2b7a713ecbc5a3fbf60c1c1",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16829,9 +16845,9 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/message/ConversationReadDeliveryRoomTest.kt",
       "phase": "android",
-      "gitBlobId": "f3cfc29258d5df0307af01ec01e97290d05b69b8",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "306eb1c05a34ae4653de0e611eddaabe5c2e3f88",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22898,6 +22914,12 @@
       "file": "docs/oficial/263-acciones-de-notificaciones-android-2026-11-27.md",
       "phase": "documentation",
       "gitBlobId": "9cd782f4c259f59f311e4bc89a632d4114964e0a",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "6f395f1f42a469b37df244edfc2c617eebc8619d",
       "reviewStatus": "pending"
     },
     {

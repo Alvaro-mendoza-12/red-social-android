@@ -1,6 +1,7 @@
 package conectate.com.data.repository.message
 
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import conectate.com.data.auth.AccountLocalStorageGate
@@ -20,6 +21,7 @@ import conectate.com.test.UnitTestApplication
 import conectate.com.util.ConversationReadEvent
 import conectate.com.util.ConversationReadStore
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -101,6 +103,66 @@ open class ConversationReadDeliveryRoomTest {
         "chat" -> db.chatDao().getChatById(room)?.unread_count
         "group" -> db.groupDao().getGroupById(room)?.unread_count
         else -> db.communityDao().getCommunityById(room)?.unread_count
+    }
+
+    @Test fun visibleSelectionUsesOnlyRequestedIncomingUnreadRowsInTheConversation() = runBlocking {
+        val otherRoom = UUID.randomUUID().toString()
+        val outside = UUID.randomUUID().toString()
+        db.chatDao().insertChat(ChatEntity(otherRoom, null, false, peer, "[]", time, "Other", null))
+        db.groupDao().upsertGroup(GroupEntity(otherRoom, "Other", null, null, time, a, null, null))
+        db.communityDao().insertCommunities(listOf(CommunityEntity(otherRoom, "Other", null, null, null, false, time, a, null, null)))
+        db.messageDao().insertMessage(MessageEntity.fromDomain(Message(outside, otherRoom, peer, "Text", created_at = time, status = "sent")))
+        db.groupDao().insertMessages(listOf(GroupMessageEntity.fromDomain(GroupMessage(outside, otherRoom, peer, "Text", created_at = time, status = "sent"))))
+        db.communityDao().insertMessages(listOf(CommunityMessageEntity.fromDomain(CommunityMessage(id = outside, community_id = otherRoom, sender_id = peer, content = "Text", created_at = time, status = "sent"))))
+        // A preserved direct read timestamp wins over that row's older delivery status.
+        db.messageDao().insertMessage(db.messageDao().getMessageById(first)!!.copy(read_at = time, status = "sent"))
+        db.groupDao().markMessagesAsReadByIds(room, time, a, listOf(first))
+        db.communityDao().markMessagesAsReadByIds(room, time, a, listOf(first))
+
+        val visible = listOf(first, second, outgoing, outside)
+        assertEquals(setOf(second), selectVisibleIncomingReadIds(visible, room, a, db.messageDao()::getVisibleReadCandidates))
+        assertEquals(setOf(second), selectVisibleIncomingReadIds(visible, room, a, db.groupDao()::getVisibleReadCandidates))
+        assertEquals(setOf(second), selectVisibleIncomingReadIds(visible, room, a, db.communityDao()::getVisibleReadCandidates))
+    }
+
+    @Test fun visibleSelectionChunksABatchLargerThanTheLegacySqliteBindLimit() = runBlocking {
+        val visible = listOf(first) + List(1_000) { UUID.randomUUID().toString() } + listOf(second, outgoing)
+        val querySizes = mutableListOf<Int>()
+        val ids = selectVisibleIncomingReadIds(visible, room, a) { batch ->
+            querySizes.add(batch.size)
+            db.messageDao().getVisibleReadCandidates(batch)
+        }
+
+        assertEquals(setOf(first, second), ids)
+        assertEquals(listOf(200, 200, 200, 200, 200, 3), querySizes)
+    }
+
+    @Test fun aFailedVisibleReadBatchKeepsCollectionMessagesAndUnreadCountConsistent() = runBlocking {
+        val batches = listOf(listOf(first), listOf(second))
+        val updates = mapOf<String, suspend () -> Unit>(
+            "group" to { db.groupDao().applyVisibleReads(room, later, a, batches, 2) },
+            "community" to { db.communityDao().applyVisibleReads(room, later, a, batches, 2) },
+        )
+        for ((kind, applyReads) in updates) {
+            val sqlite = db.openHelper.writableDatabase
+            sqlite.execSQL("""
+                CREATE TRIGGER fail_visible_read BEFORE UPDATE OF status ON ${kind}_messages
+                WHEN NEW.id = '$second' BEGIN SELECT RAISE(ABORT, 'injected batch failure'); END
+            """.trimIndent())
+            try {
+                val failure = runCatching { applyReads() }.exceptionOrNull()
+                assertTrue(failure is SQLiteException && failure.message.orEmpty().contains("injected batch failure"))
+                assertEquals("sent", status(kind, first))
+                assertEquals("sent", status(kind, second))
+                assertEquals(2, unread(kind))
+            } finally {
+                sqlite.execSQL("DROP TRIGGER fail_visible_read")
+            }
+            applyReads()
+            assertEquals("read", status(kind, first))
+            assertEquals("read", status(kind, second))
+            assertEquals(0, unread(kind))
+        }
     }
 
     @Test fun confirmedIdsAffectOnlyIncomingRowsAndReconcileAllThreeConversationKinds() = runBlocking {

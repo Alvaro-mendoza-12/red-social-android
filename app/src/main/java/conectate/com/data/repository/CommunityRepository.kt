@@ -1,4 +1,7 @@
 package conectate.com.data.repository
+
+import conectate.com.data.repository.message.selectVisibleIncomingReadIds
+import conectate.com.data.repository.message.VISIBLE_READ_BATCH_SIZE
 import conectate.com.core.messaging.UnreadPolicy
 
 import android.content.Context
@@ -1781,17 +1784,15 @@ class CommunityRepository @Inject constructor(
             if (cleanMessageIds.isEmpty()) return@withContext
             val session = captureSessionSnapshot(currentUserId)
             if (authService.isLocalFallbackSession() && localFallbackApiClient.isConfigured) {
-                val incomingIds = communityDao.getMessagesSync(cleanId).filter {
-                    it.id in cleanMessageIds && it.sender_id.trim().lowercase() != currentUserId &&
-                        conectate.com.core.messaging.UnreadPolicy.isEligibleStatusForReadTransition(it.status)
-                }.map { it.id }
+                val incomingIds = selectVisibleIncomingReadIds(cleanMessageIds, cleanId, currentUserId, communityDao::getVisibleReadCandidates)
                 if (!isSessionSnapshotValid(session, "community-visible-local")) return@withContext
-                val newlySeen = readJournal.record(currentUserId, "community", cleanId, incomingIds)
-                communityDao.markMessagesAsReadByIds(cleanId, now, currentUserId, incomingIds)
-                communityDao.subtractReadMessages(cleanId, newlySeen.size)
-                _activeCommunityMessages[cleanId]?.update { messages -> messages.map {
-                    if (it.id in incomingIds) it.copy(status = "read", read_at = now) else it
-                } }
+                if (incomingIds.isNotEmpty()) {
+                    val newlySeen = readJournal.record(currentUserId, "community", cleanId, incomingIds)
+                    communityDao.applyVisibleReads(cleanId, now, currentUserId, incomingIds.chunked(VISIBLE_READ_BATCH_SIZE), newlySeen.size)
+                    _activeCommunityMessages[cleanId]?.update { messages -> messages.map {
+                        if (it.id in incomingIds) it.copy(status = "read", read_at = now) else it
+                    } }
+                }
                 if (!token.isNullOrBlank()) readSynchronizer.flush(currentUserId, "community", token)
                 return@withContext
             }

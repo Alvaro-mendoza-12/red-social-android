@@ -55,6 +55,8 @@ import conectate.com.data.localfallback.MessageSendHttpException
 import conectate.com.data.localfallback.isRetryableMessageHttpStatus
 import conectate.com.data.repository.message.executeMessageSend
 import conectate.com.data.repository.message.distinctHistoryAccess
+import conectate.com.data.repository.message.selectVisibleIncomingReadIds
+import conectate.com.data.repository.message.VISIBLE_READ_BATCH_SIZE
 import conectate.com.data.localfallback.LocalFallbackInboxItem
 import conectate.com.data.localfallback.UbuntuStorageUrl
 import conectate.com.data.local.entity.ChatEntity
@@ -3390,20 +3392,23 @@ class MessageRepository @Inject constructor(
 
             var now = java.time.Instant.now().toString()
             if (shouldUseUbuntuBackend()) {
-                val incomingIds = messageDao.getMessagesForChat(cleanId).filter {
-                    it.id in cleanMessageIds && it.sender_id.trim().lowercase() != currentUserId &&
-                        conectate.com.core.messaging.UnreadPolicy.isEligibleStatusForReadTransition(it.status)
-                }.map { it.id }
+                val incomingIds = selectVisibleIncomingReadIds(cleanMessageIds, cleanId, currentUserId, messageDao::getVisibleReadCandidates)
                 if (!isSessionSnapshotValid(session, "visible-read-local")) return@withContext Result.failure(Exception("La cuenta cambió."))
-                val newlySeen = readJournal.record(currentUserId, "chat", cleanId, incomingIds)
-                messageDao.markMessagesAsReadByIds(cleanId, currentUserId, now, incomingIds)
-                chatDao.subtractReadMessages(cleanId, newlySeen.size)
-                _userChats.update { chats -> chats.map {
-                    if (it.chat.id == cleanId) it.copy(unreadCount = (it.unreadCount - newlySeen.size).coerceAtLeast(0)) else it
-                } }
-                _activeChatMessages[cleanId]?.update { messages -> messages.map {
-                    if (it.id in incomingIds) it.copy(status = "read", read_at = now) else it
-                } }
+                if (incomingIds.isNotEmpty()) {
+                    val newlySeen = readJournal.record(currentUserId, "chat", cleanId, incomingIds)
+                    database.withTransaction {
+                        for (batch in incomingIds.chunked(VISIBLE_READ_BATCH_SIZE)) {
+                            messageDao.markMessagesAsReadByIds(cleanId, currentUserId, now, batch)
+                        }
+                        chatDao.subtractReadMessages(cleanId, newlySeen.size)
+                    }
+                    _userChats.update { chats -> chats.map {
+                        if (it.chat.id == cleanId) it.copy(unreadCount = (it.unreadCount - newlySeen.size).coerceAtLeast(0)) else it
+                    } }
+                    _activeChatMessages[cleanId]?.update { messages -> messages.map {
+                        if (it.id in incomingIds) it.copy(status = "read", read_at = now) else it
+                    } }
+                }
                 authService.getAccessToken()?.let { readSynchronizer.flush(currentUserId, "chat", it) }
                 return@withContext Result.success(Unit)
             }

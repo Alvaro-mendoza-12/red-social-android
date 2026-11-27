@@ -151,6 +151,13 @@ interface CommunityDao {
     @Query("SELECT * FROM community_messages WHERE community_id = :communityId ORDER BY created_at ASC")
     suspend fun getMessagesSync(communityId: String): List<CommunityMessageEntity>
 
+    @Query("""
+        SELECT id, community_id AS conversationId, sender_id AS senderId, status,
+            NULL AS deliveredAt, NULL AS readAt
+        FROM community_messages WHERE id IN (:messageIds)
+    """)
+    suspend fun getVisibleReadCandidates(messageIds: List<String>): List<VisibleReadCandidate>
+
     @Query("DELETE FROM community_messages WHERE community_id = :roomId AND id IN (:ids) AND is_synced = 1 AND pending_action IS NULL")
     suspend fun deleteInaccessibleHistory(roomId: String, ids: List<String>)
 
@@ -242,6 +249,18 @@ interface CommunityDao {
         currentUserId: String,
         messageIds: List<String>
     )
+
+    @Transaction
+    suspend fun applyVisibleReads(
+        communityId: String,
+        now: String,
+        currentUserId: String,
+        batches: List<List<String>>,
+        newlySeen: Int,
+    ) {
+        for (batch in batches) markMessagesAsReadByIds(communityId, now, currentUserId, batch)
+        subtractReadMessages(communityId, newlySeen)
+    }
 
     @Query(
             "SELECT COUNT(*) FROM community_messages " +
