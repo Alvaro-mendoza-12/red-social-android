@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T07:14:03.742745+00:00",
-  "baseCommit": "23444cb4cc00bb322e9aed4351654c42473d6838",
+  "generatedAtUtc": "2026-11-27T07:31:17.092419+00:00",
+  "baseCommit": "a47b34b8844d91f9476489f7104aa90fce908abb",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,15 +10,15 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3417,
+    "pending": 3418,
     "code-read": 1111,
-    "partial": 318
+    "partial": 317
   },
   "countsByPhase": {
     "android": {
-      "pending": 1370,
-      "partial": 143,
-      "code-read": 641
+      "pending": 1371,
+      "code-read": 641,
+      "partial": 142
     },
     "documentation": {
       "pending": 730,
@@ -4971,10 +4971,8 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "81df0c76fc9bc4ecce7c9a8c8d13cc88dbe08ca7",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
-      "note": "Code read is not complete flow validation or a production-readiness certificate."
+      "gitBlobId": "d64361853c7492ba6ab0857c3929c484924077c0",
+      "reviewStatus": "pending"
     },
     {
       "file": "app/lint.xml",
@@ -22843,7 +22841,7 @@
     {
       "file": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
       "phase": "documentation",
-      "gitBlobId": "8257ef12ed74d451125e262ade2044c6fd56bb51",
+      "gitBlobId": "90a0dc078f474c11a77d442d4617b12f25dff804",
       "reviewStatus": "pending"
     },
     {
