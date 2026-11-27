@@ -16,8 +16,8 @@ Gitleaks escaneó 43 MB de la instantánea versionada de Android y Gradle. La ú
 
 Gradle generó la APK universal y el AAB firmados desde `a156710c`. Se comprobaron el certificado de subida, `targetSdk 36`, los recursos de Juegos dentro de ambos archivos y el código compilado. Pasaron la validación del AAB con Bundletool, el control de R8 sobre 17 componentes de la aplicación y la alineación de la APK y de sus 14 bibliotecas de 64 bits. Gradle ejecutó la tarea habitual de mapas de Crashlytics del ensamblado de lanzamiento. El candidato sigue pendiente de revisión en Google Play.
 
-El emulador aceptó la actualización de 187 a 188 y la APK inició sin conexión. La primera medición de vuelta desde Inicio devolvió un tiempo de espera de ADB. En otro arranque, el emulador superó el plazo de inicio del sistema.
+El emulador aceptó la actualización de 187 a 188 y la APK inició sin conexión. Tras los tiempos de espera de los primeros ensayos, se comprobó el regreso a Novvin desde Ajustes de Android. La actividad recuperó el primer plano en el mismo proceso y el búfer de fallos quedó vacío.
 
-El primer intento con la suite completa se interrumpió por el cierre del proceso de pruebas de Gradle. Se guardó ese registro por separado de las pruebas focalizadas aprobadas y se inició un segundo intento con procesos que se renuevan cada 20 clases.
+El primer intento con la suite completa se interrumpió por el cierre del proceso de pruebas de Gradle. El segundo intento renovó el proceso cada 20 clases y aprobó las 3.603 pruebas de la variante `release` en 601 clases, sin fallos, errores ni omisiones.
 
 Quedan pendientes el recorrido autenticado de Rondas, Juegos, chat y Videos con cambios de red, el audio y micrófono entre dos teléfonos, y la medición del editor con fotos grandes. La revisión móvil integral continúa abierta.
