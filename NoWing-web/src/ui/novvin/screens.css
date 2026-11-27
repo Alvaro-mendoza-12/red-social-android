@@ -1726,6 +1726,15 @@
   .chat-header-row {
     padding: 10px 12px;
   }
+  .chat-header-row > .row-actions:first-child,
+  .chat-header-row .identity-link {
+    flex: 1 1 0;
+  }
+  .chat-header-row .icon-btn-sm,
+  .chat-header-row .avatar-sm,
+  .chat-header-row > .chat-head-actions {
+    flex-shrink: 0;
+  }
   .chat-header-row > .row-actions:last-child {
     gap: 0;
   }
@@ -1736,6 +1745,11 @@
   }
   .chat-header-row strong {
     max-width: 160px;
+  }
+  .chat-header-row small {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
   .chat-thread {
     padding: 14px 12px;
