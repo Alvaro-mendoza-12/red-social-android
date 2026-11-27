@@ -73,8 +73,11 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     val posts = _posts.asStateFlow()
     private val _moments = MutableStateFlow<List<GuestContent>>(emptyList())
     val moments = _moments.asStateFlow()
-    private val _profiles = MutableStateFlow<List<GuestProfile>>(emptyList())
-    val profiles = _profiles.asStateFlow()
+    internal val profileSearch = GuestProfileSearch(viewModelScope) { query ->
+        withContext(Dispatchers.IO) { api.searchProfiles(query) }.also {
+            api.savedIdentity()?.let { identity -> _identity.value = identity }
+        }
+    }
     private val _selectedProfile = MutableStateFlow<GuestProfile?>(null)
     val selectedProfile = _selectedProfile.asStateFlow()
     internal val comments = GuestComments(viewModelScope) { kind, id ->
@@ -84,7 +87,6 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     }
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
-    private var searchJob: Job? = null
     private var refreshJob: Job? = null
     private var profileJob: Job? = null
     private var contentJob: Job? = null
@@ -146,17 +148,6 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
         }
     }
 
-    fun search(query: String) {
-        searchJob?.cancel()
-        _profiles.value = emptyList()
-        _error.value = null
-        if (query.trim().length < 2) return
-        searchJob = viewModelScope.launch {
-            request { delay(350); api.searchProfiles(query) }
-                .onSuccess { _profiles.value = it; _error.value = null }
-        }
-    }
-
     fun openProfile(id: String) {
         closeProfile()
         profileJob = viewModelScope.launch {
@@ -171,7 +162,8 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     fun consumePendingProfile() = api.consumePendingProfile()
     fun leave() {
         comments.close()
-        listOf(searchJob, refreshJob, profileJob, contentJob, enterJob).forEach { it?.cancel() }
+        profileSearch.clear()
+        listOf(refreshJob, profileJob, contentJob, enterJob).forEach { it?.cancel() }
         api.clear(); api.clearPendingProfile(); api.consumePendingPreview()
         _identity.value = null
     }
@@ -188,7 +180,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
     val videos by viewModel.videos.collectAsState()
     val posts by viewModel.posts.collectAsState()
     val moments by viewModel.moments.collectAsState()
-    val profiles by viewModel.profiles.collectAsState()
+    val profileSearch by viewModel.profileSearch.state.collectAsState()
     val selectedProfile by viewModel.selectedProfile.collectAsState()
     val comments by viewModel.comments.state.collectAsState()
     val previewContent by viewModel.previewContent.collectAsState()
@@ -203,6 +195,11 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
 
     LaunchedEffect(Unit) { viewModel.enter() }
     LaunchedEffect(section, identity?.id) { if (identity != null) viewModel.refresh(section) }
+    val canSearchProfiles = identity != null && (section == "messages" || section == "search")
+    DisposableEffect(viewModel, canSearchProfiles) {
+        if (canSearchProfiles) viewModel.profileSearch.submit(query)
+        onDispose { if (canSearchProfiles) viewModel.profileSearch.clear() }
+    }
     LaunchedEffect(identity?.id, pendingPreview) {
         if (identity == null) return@LaunchedEffect
         when (val preview = viewModel.consumePendingPreview()) {
@@ -400,10 +397,9 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                 if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth())
                 error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(vertical = 8.dp))
-                    TextButton(onClick = {
-                        if (section == "messages" || section == "search") viewModel.search(query)
-                        else viewModel.refresh(section)
-                    }) { Text("Reintentar") }
+                    if (section == "videos" || section == "social") {
+                        TextButton(onClick = { viewModel.refresh(section) }) { Text("Reintentar") }
+                    }
                 }
                 when (section) {
                     "videos" -> if (busy == 0 || videos.isNotEmpty()) GuestContentList(
@@ -453,23 +449,34 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                         )
                         OutlinedTextField(
                             value = query,
-                            onValueChange = { query = it; viewModel.search(it) },
+                            onValueChange = { query = it; viewModel.profileSearch.submit(it) },
                             label = { Text("Buscar personas") },
                             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                         )
+                        val searchResults = profileSearch
+                        if (searchResults is GuestProfileSearchState.Loading) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                        }
+                        if (searchResults is GuestProfileSearchState.Failed) {
+                            Text(searchResults.message, color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                            TextButton(onClick = { viewModel.profileSearch.retry(searchResults) }) { Text("Reintentar") }
+                        }
                         LazyColumn {
-                            if (query.trim().length >= 2 && profiles.isEmpty() && busy == 0 && error == null) {
-                                item { Text("No encontramos personas. Prueba otro nombre o @usuario.", modifier = Modifier.padding(vertical = 16.dp)) }
-                            }
-                            items(profiles, key = { it.id }) { profile ->
-                                ListItem(
-                                    headlineContent = { Text("@${profile.username ?: "usuario"}") },
-                                    supportingContent = { Text(profile.displayName) },
-                                    leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
-                                    modifier = Modifier.clickable { viewModel.openProfile(profile.id) },
-                                )
+                            if (searchResults is GuestProfileSearchState.Results) {
+                                if (searchResults.profiles.isEmpty()) {
+                                    item { Text("No encontramos personas. Prueba otro nombre o @usuario.", modifier = Modifier.padding(vertical = 16.dp)) }
+                                }
+                                items(searchResults.profiles, key = { it.id }) { profile ->
+                                    ListItem(
+                                        headlineContent = { Text("@${profile.username ?: "usuario"}") },
+                                        supportingContent = { Text(profile.displayName) },
+                                        leadingContent = { Icon(Icons.Default.Person, contentDescription = null) },
+                                        modifier = Modifier.clickable { viewModel.openProfile(profile.id) },
+                                    )
+                                }
                             }
                         }
                     }
