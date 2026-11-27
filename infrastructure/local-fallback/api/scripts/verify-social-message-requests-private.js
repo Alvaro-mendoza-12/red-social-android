@@ -34,6 +34,20 @@ async function main(){
     await executor.query(`INSERT INTO fallback_messages(id,chat_id,sender_id,content) VALUES($1,$2,$3,'fixture only') ON CONFLICT(id) DO NOTHING`,[msg,id,from]);return msg
   }
   const state=async(id,viewer)=> (await pool.query('SELECT fallback_direct_message_request_state($1,$2) AS s',[id,viewer])).rows[0].s
+  await check('aliases represent one participant and null entries grant no visibility',async()=>{
+    const recipient=await newRecipient()
+    const id=await chat(A,recipient)
+    await pool.query('UPDATE fallback_chats SET participants=$2 WHERE id=$1',[id,[A,alias.toUpperCase(),null,recipient]])
+    assert.equal((await state(id,alias)).status,'new')
+    assert.equal((await state(id,recipient)).status,'new')
+    assert.equal((await state(id,null)).status,'unavailable')
+    assert.equal((await state(id,C)).status,'unavailable')
+    await pool.query('UPDATE fallback_chats SET participants=array_append(participants,$2) WHERE id=$1',[id,C])
+    assert.equal((await state(id,alias)).status,'unavailable')
+    await pool.query('UPDATE fallback_chats SET is_group=TRUE WHERE id=$1',[id])
+    assert.equal((await state(id,alias)).status,'open')
+    assert.equal((await state(id,null)).status,'unavailable')
+  })
   const first=await chat()
   let firstId
   await check('unknown recipient sees new, sender gets exactly one introduction',async()=>{

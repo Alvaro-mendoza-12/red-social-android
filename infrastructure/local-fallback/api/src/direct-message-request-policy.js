@@ -64,17 +64,19 @@ async function ensureDirectMessageRequestPolicy(pool) {
   await pool.query(`CREATE OR REPLACE FUNCTION fallback_direct_message_request_state(raw_chat TEXT,raw_viewer TEXT)
     RETURNS JSONB LANGUAGE plpgsql STABLE AS $$
     DECLARE chat RECORD; request RECORD; viewer TEXT; other TEXT; original_sender TEXT; senders INTEGER;
-      sender_ids TEXT[]; imported_ids TEXT[];
+      participant_ids TEXT[]; sender_ids TEXT[]; imported_ids TEXT[];
     BEGIN
       viewer:=fallback_request_identity(raw_viewer);
       SELECT * INTO chat FROM fallback_chats WHERE id::text=lower(raw_chat);
-      IF NOT FOUND OR NOT EXISTS (SELECT 1 FROM unnest(chat.participants) p WHERE fallback_request_identity(p)=viewer)
+      IF NOT FOUND THEN RETURN jsonb_build_object('status','unavailable'); END IF;
+      participant_ids:=array_remove(ARRAY(
+        SELECT DISTINCT fallback_request_identity(p) FROM unnest(chat.participants) p
+      ),NULL);
+      IF viewer IS NULL OR NOT (viewer=ANY(participant_ids))
         THEN RETURN jsonb_build_object('status','unavailable'); END IF;
       IF chat.is_group THEN RETURN jsonb_build_object('status','open'); END IF;
-      SELECT fallback_request_identity(p) INTO other FROM unnest(chat.participants) p
-        WHERE fallback_request_identity(p)<>viewer LIMIT 1;
-      IF other IS NULL OR (SELECT count(DISTINCT fallback_request_identity(p)) FROM unnest(chat.participants) p)<>2
-        THEN RETURN jsonb_build_object('status','unavailable'); END IF;
+      IF cardinality(participant_ids)<>2 THEN RETURN jsonb_build_object('status','unavailable'); END IF;
+      other:=CASE WHEN participant_ids[1]=viewer THEN participant_ids[2] ELSE participant_ids[1] END;
       IF EXISTS (SELECT 1 FROM fallback_user_blocks WHERE
         (fallback_request_identity(blocker_id)=viewer AND fallback_request_identity(blocked_id)=other)
         OR (fallback_request_identity(blocker_id)=other AND fallback_request_identity(blocked_id)=viewer))
@@ -93,7 +95,8 @@ async function ensureDirectMessageRequestPolicy(pool) {
       -- Existing conversations with replies stay open. Unanswered introductions
       -- are limited even when created by an older Android version.
       SELECT COALESCE(array_agg(DISTINCT fallback_request_identity(sender_id)),ARRAY[]::TEXT[])
-        INTO sender_ids FROM fallback_messages WHERE chat_id::text=chat.id::text;
+        INTO sender_ids FROM fallback_messages
+        WHERE lower(chat_id)=chat.id::text AND chat_id=chat.id::text;
       SELECT COALESCE(array_agg(DISTINCT fallback_request_identity(COALESCE(row->>'sender_id',row->>'senderId'))),ARRAY[]::TEXT[])
         INTO imported_ids FROM fallback_compat_rows WHERE table_name='messages'
         AND COALESCE(row->>'chat_id',row->>'chatId')=chat.id::text;
