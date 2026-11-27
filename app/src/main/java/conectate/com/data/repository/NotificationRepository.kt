@@ -69,6 +69,10 @@ class NotificationRepository @Inject constructor(
         }
     }
 
+    private fun refreshAfterConfirmedMutation(lease: AuthSessionLease) {
+        if (unreadCounter.invalidatePending(lease)) scheduleRealtimeUnreadRefresh(lease)
+    }
+
     private fun scheduleMomentExpiryRefresh(notifications: List<Notification>, lease: AuthSessionLease) {
         if (!lease.isCurrent()) return
         val now = System.currentTimeMillis()
@@ -161,11 +165,12 @@ class NotificationRepository @Inject constructor(
     internal suspend fun getNotifications(accountLease: AuthSessionLease): Result<List<conectate.com.data.model.Notification>> = notificationCall(accountLease) { userId, token ->
         return@notificationCall try {
             if (authService.isLocalFallbackSession()) {
-                val request = unreadCounter.begin()
+                val request = unreadCounter.begin(accountLease)
 
                 return@notificationCall localFallbackApiClient.loadNotifications(token)
                     .map { response ->
-                    accountLease.requireCurrent()
+                        currentCoroutineContext().ensureActive()
+                        accountLease.requireCurrent()
                         val visibleUnread = (response.unreadCount - response.items.count {
                                 it.isRetiredNotification() && !it.isRead
                             }).coerceAtLeast(0)
@@ -359,7 +364,7 @@ class NotificationRepository @Inject constructor(
         if (authService.isLocalFallbackSession()) {
 
             return@notificationCall localFallbackApiClient.markNotificationRead(token, notificationId)
-                .onSuccess { scheduleRealtimeUnreadRefresh(accountLease) }
+                .onSuccess { refreshAfterConfirmedMutation(accountLease) }
         }
 
         return@notificationCall safeRepositoryCall<Unit>("notifications.markAsRead") {
@@ -387,7 +392,7 @@ class NotificationRepository @Inject constructor(
                 }
             }
 
-            scheduleRealtimeUnreadRefresh(accountLease)
+            refreshAfterConfirmedMutation(accountLease)
             Unit
         }
     }
@@ -397,7 +402,7 @@ class NotificationRepository @Inject constructor(
     internal suspend fun markAllAsRead(accountLease: AuthSessionLease): Result<Unit> = notificationCall(accountLease) { userId, token ->
         if (authService.isLocalFallbackSession()) {
             return@notificationCall localFallbackApiClient.markAllNotificationsRead(token)
-                .onSuccess { scheduleRealtimeUnreadRefresh(accountLease) }
+                .onSuccess { refreshAfterConfirmedMutation(accountLease) }
         }
 
         return@notificationCall safeRepositoryCall<Unit>("notifications.markAllAsRead") {
@@ -422,7 +427,7 @@ class NotificationRepository @Inject constructor(
                 }
             }
 
-            scheduleRealtimeUnreadRefresh(accountLease)
+            refreshAfterConfirmedMutation(accountLease)
             Unit
         }
     }
@@ -504,11 +509,12 @@ class NotificationRepository @Inject constructor(
     suspend fun getUnreadCount(): Result<Int> = getUnreadCount(authService.captureAccountLease())
 
     internal suspend fun getUnreadCount(accountLease: AuthSessionLease): Result<Int> = notificationCall(accountLease) { userId, token ->
-        val request = unreadCounter.begin()
+        val request = unreadCounter.begin(accountLease)
         if (authService.isLocalFallbackSession()) {
 
             return@notificationCall localFallbackApiClient.loadNotifications(token, unreadOnly = true, limit = 500)
                 .map { response ->
+                    currentCoroutineContext().ensureActive()
                     accountLease.requireCurrent()
                     val visibleUnread = (response.unreadCount - response.items.count {
                         it.isRetiredNotification() && !it.isRead
@@ -537,6 +543,7 @@ class NotificationRepository @Inject constructor(
 
             val contentRange = response.headers["Content-Range"]
             val count = contentRange?.substringAfter("/")?.toIntOrNull() ?: 0
+            currentCoroutineContext().ensureActive()
             accountLease.requireCurrent()
             unreadCounter.publish(request, count)
             count
@@ -870,7 +877,7 @@ class NotificationRepository @Inject constructor(
         if (authService.isLocalFallbackSession()) {
 
             return@notificationCall localFallbackApiClient.deleteNotification(token, id)
-                .onSuccess { scheduleRealtimeUnreadRefresh(accountLease) }
+                .onSuccess { refreshAfterConfirmedMutation(accountLease) }
         }
 
         return@notificationCall safeRepositoryCall("notifications.delete") {
@@ -883,6 +890,7 @@ class NotificationRepository @Inject constructor(
             if (!response.status.isSuccess()) {
                 throw IllegalStateException("Error deleting notification: ${response.status}")
             }
+            refreshAfterConfirmedMutation(accountLease)
         }
     }
 
@@ -891,7 +899,7 @@ class NotificationRepository @Inject constructor(
     internal suspend fun deleteAllNotifications(accountLease: AuthSessionLease): Result<Unit> = notificationCall(accountLease) { userId, token ->
         if (authService.isLocalFallbackSession()) {
             return@notificationCall localFallbackApiClient.deleteAllNotifications(token)
-                .onSuccess { scheduleRealtimeUnreadRefresh(accountLease) }
+                .onSuccess { refreshAfterConfirmedMutation(accountLease) }
         }
 
         return@notificationCall safeRepositoryCall<Unit>("notifications.deleteAll") {
@@ -903,7 +911,7 @@ class NotificationRepository @Inject constructor(
             if (!response.status.isSuccess()) {
                 throw IllegalStateException("Error deleting all notifications: ${response.status}")
             }
-            scheduleRealtimeUnreadRefresh(accountLease)
+            refreshAfterConfirmedMutation(accountLease)
             Unit
         }
     }

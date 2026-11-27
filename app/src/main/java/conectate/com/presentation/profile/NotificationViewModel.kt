@@ -399,7 +399,6 @@ class NotificationViewModel @Inject constructor(
                 val current = _notificationsState.value as? NotificationsUiState.Success
                 if (current != null) _notificationsState.value = NotificationsUiState.Success(
                     current.notifications.map { if (it.id == notificationId) it.copy(isRead = true) else it })
-                updateUnreadCount()
             },
             failure = { feedback(notificationError(it, "No se pudo marcar como leída. Inténtalo de nuevo.")) },
         )
@@ -426,7 +425,6 @@ class NotificationViewModel @Inject constructor(
                 notificationHelper.clearSocialNotification(accountId, notificationId)
                 val current = _notificationsState.value as? NotificationsUiState.Success
                 if (current != null) _notificationsState.value = NotificationsUiState.Success(current.notifications.filterNot { it.id == notificationId })
-                updateUnreadCount()
             },
             failure = { feedback(notificationError(it, "No se pudo borrar la notificación. Inténtalo de nuevo.")) },
         )
@@ -440,7 +438,6 @@ class NotificationViewModel @Inject constructor(
                 requests.cancel("list")
                 notificationHelper.clearAllSocialNotifications(accountId)
                 _notificationsState.value = NotificationsUiState.Success(emptyList())
-                updateUnreadCount()
             },
             failure = { feedback(notificationError(it, "No se pudieron borrar las notificaciones. Reintenta.")) },
         )

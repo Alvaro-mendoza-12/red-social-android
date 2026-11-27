@@ -1,5 +1,6 @@
 package conectate.com.data.repository
 
+import conectate.com.data.supabase.AuthSessionLease
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -14,7 +15,15 @@ internal class NotificationUnreadCounter(accountId: () -> String?) {
     data class Request(val session: SessionWriteGuard.Snapshot, val order: Long)
 
     @Synchronized
-    fun begin(): Request = Request(session.capture(), ++nextRequest)
+    fun begin(lease: AuthSessionLease): Request = Request(session.capture(lease, null), ++nextRequest)
+
+    @Synchronized
+    fun invalidatePending(lease: AuthSessionLease): Boolean {
+        val owner = session.capture(lease.accountId)
+        if (!lease.isCurrent() || owner.accountId == null || !session.isValid(owner)) return false
+        appliedRequest = ++nextRequest
+        return true
+    }
 
     @Synchronized
     fun isCurrent(request: Request): Boolean = request.session.accountId != null && session.isValid(request.session)
