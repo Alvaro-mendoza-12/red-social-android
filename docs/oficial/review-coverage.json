@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T03:46:01.354385+00:00",
-  "baseCommit": "b97862616ccfe6fc51b1d295274484a7ae4f2107",
+  "generatedAtUtc": "2026-11-27T05:59:58.279165+00:00",
+  "baseCommit": "b5b0a650006a7044dd91690fc998aaa2b4aaacd9",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3422,
-    "code-read": 1104,
-    "partial": 316
+    "pending": 3421,
+    "code-read": 1105,
+    "partial": 318
   },
   "countsByPhase": {
     "android": {
@@ -21,19 +21,19 @@
       "code-read": 640
     },
     "documentation": {
-      "pending": 727,
+      "pending": 728,
       "code-read": 71,
       "partial": 22
     },
     "server": {
       "pending": 718,
-      "code-read": 215,
+      "code-read": 216,
       "partial": 57
     },
     "tooling-and-other": {
-      "pending": 137,
+      "pending": 135,
       "code-read": 43,
-      "partial": 9
+      "partial": 11
     },
     "web": {
       "partial": 85,
@@ -22823,6 +22823,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/257-auditoria-produccion-y-entrada-web-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "b9ff19020b1ed1ade272045a780f204f8d76f350",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/26-firma-aab-android-studio-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "ff4823d5f10fcd2523ad6dd32f61c3c518688438",
@@ -29397,6 +29403,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/public-web-entry/prepare.mjs",
+      "phase": "server",
+      "gitBlobId": "ef099db2096fb9cbe42f71e94453058b3d45fa48",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/257-auditoria-produccion-y-entrada-web-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/service-mesh/istio-config.yaml",
       "phase": "server",
       "gitBlobId": "b7204bacff91a77ad3f6bb311b4ddad8d8f54fa7",
@@ -31680,7 +31694,9 @@
       "file": "tools/loadtest/run-ubuntu-staging-soak.mjs",
       "phase": "tooling-and-other",
       "gitBlobId": "469c4e24cabf0ec45f88a75e2ed44e2535e883ec",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/257-auditoria-produccion-y-entrada-web-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/loadtest/staging-arrivals.mjs",
@@ -31702,7 +31718,9 @@
       "file": "tools/loadtest/staging-soak.test.mjs",
       "phase": "tooling-and-other",
       "gitBlobId": "62170504bac986b0df52099ee524c3bbad446398",
-      "reviewStatus": "pending"
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/257-auditoria-produccion-y-entrada-web-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "tools/perf_budgets.json",

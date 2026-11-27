@@ -39,6 +39,8 @@ import { runStagingArrivals } from './staging-arrivals.mjs'
 
 const FORBIDDEN_PRODUCTION_HOST_PATTERNS = [
   /(^|\.)novvinapp\.com$/i,
+  /(^|\.)conectate\.tail9b267c\.ts\.net$/i,
+  /^(?:conectate|100\.91\.84\.2|192\.168\.18\.22)$/i,
   /(^|\.)novvin\.app$/i,
   /(^|\.)conectate\.com$/i,
   /(^|\.)supabase\.co$/i,

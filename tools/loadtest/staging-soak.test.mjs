@@ -14,6 +14,27 @@ import { setTimeout as wait } from 'node:timers/promises'
 
 const script = fileURLToPath(new URL('./run-ubuntu-staging-soak.mjs', import.meta.url))
 
+test('the private staging override still rejects each known production ingress before setup', async () => {
+  for (const [setting, address] of [
+    ['STAGING_API_URLS', 'https://conectate.tail9b267c.ts.net.:8443'],
+    ['STAGING_REALTIME_URLS', 'http://100.91.84.2'],
+    ['STAGING_SIGNALING_URLS', 'http://192.168.18.22'],
+    ['STAGING_API_URLS', 'https://conectate'],
+  ]) {
+    const runner = spawn(process.execPath, [script], {
+      env: { ...process.env, NOVVIN_STAGING_ISOLATED: 'true', NOVVIN_ALLOW_NON_LOOPBACK_STAGING_HOST: 'true',
+        STAGING_API_URLS: 'http://127.0.0.1', STAGING_REALTIME_URLS: '', STAGING_SIGNALING_URLS: '',
+        [setting]: address, SOAK_DURATION_SECONDS: 'invalid' },
+      stdio: ['ignore', 'ignore', 'pipe'],
+    })
+    let stderr = ''
+    runner.stderr.on('data', chunk => { stderr += chunk })
+    const [status] = await once(runner, 'close')
+    assert.equal(status, 2, stderr)
+    assert.match(stderr, /forbidden production domain/)
+  }
+})
+
 async function runFixture(t, { writeStatus = 201, wrongId = false, seedRejected = false,
   duration = '1', silentRecipient = false, arrivalRate = '0', fixtures, requestState = 'open' } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'novvin-soak-contract-'))
