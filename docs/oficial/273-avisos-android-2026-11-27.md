@@ -1,0 +1,11 @@
+# Avisos de actualización y novedades en Android
+
+27 de noviembre de 2026. Continúa la [verificación del aviso de Google Play](256-actualizacion-google-play-2026-11-26.md) y la [entrega Android 193](271-android-193-subidas-reanudables-2026-11-27.md).
+
+El cliente pedía el catálogo de avisos cada 15 segundos cuando recibía un aviso para una versión futura, incluso si Google Play no ofrecía esa actualización. Durante el diálogo de Play, el mismo bucle también se mantenía activo por novedades que quedaban ocultas. Android conserva la consulta inicial al retomar la pantalla y limita las consultas posteriores a los avisos que se pueden mostrar. El diálogo de Play obtiene sus notas únicamente del aviso que coincide con la versión disponible. La retirada de un aviso visible sigue comprobándose en la siguiente consulta.
+
+Cada reanudación obtiene una visita propia. El estado visible, el botón de cierre y la pausa identifican esa visita. Un cierre retenido al cambiar de cuenta o al volver a la misma cuenta ya no retira avisos de la visita nueva. Una respuesta cancelada tampoco actualiza los avisos ni su caché. Android conserva por cuenta los avisos descartados y puede mostrar las novedades guardadas cuando el servidor está temporalmente inaccesible.
+
+Pasaron 18 pruebas JVM de release en 4 clases. Siete casos nuevos usaron el ViewModel real y un reloj virtual. Cubrieron el catálogo sin oferta de Play, una oferta de otra versión, la retirada de las notas de una actualización, el cierre por cuenta, el retorno a la misma cuenta, la respuesta tardía y la caché sin conexión. Las pruebas existentes comprobaron la política de Google Play, el vencimiento de avisos y su orden. La compilación 193 publicada es anterior al cambio. Quedan pendientes el recorrido visual en dispositivo y una actualización ofrecida por Google Play a una cuenta de prueba.
+
+La consulta del catálogo público para el código 193 devolvió HTTP 200, `Cache-Control: no-store` y cero avisos activos. Ubuntu mantuvo `/health` en 200 y `/ready` en 503. Los resolutores públicos seguían anunciando las firmas de ClamAV 28194. SSH pidió renovar la autenticación de Tailscale antes de permitir una nueva comprobación interna del host. [Actualización de firmas de ClamAV](https://docs.clamav.net/manual/Usage/SignatureManagement.html).

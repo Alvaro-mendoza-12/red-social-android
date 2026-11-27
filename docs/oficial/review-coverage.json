@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T13:06:05.560271+00:00",
-  "baseCommit": "424ea94ad9c6d23299627a6478821c6a1bb5044b",
+  "generatedAtUtc": "2026-11-27T18:39:42.365327+00:00",
+  "baseCommit": "f59d265bc459b0d1ae3e0c2c46ea4e33418306c4",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,19 +10,19 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3418,
-    "code-read": 1125,
+    "pending": 3415,
+    "code-read": 1130,
     "partial": 321
   },
   "countsByPhase": {
     "android": {
-      "pending": 1360,
+      "pending": 1357,
       "partial": 146,
-      "code-read": 651
+      "code-read": 655
     },
     "documentation": {
       "pending": 743,
-      "code-read": 71,
+      "code-read": 72,
       "partial": 22
     },
     "server": {
@@ -6485,7 +6485,7 @@
       "phase": "android",
       "gitBlobId": "8977f14af7794cc7582c3dac03d14f49f81e1cac",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -7734,7 +7734,9 @@
       "file": "app/src/main/java/conectate/com/data/localfallback/SystemAnnouncement.kt",
       "phase": "android",
       "gitBlobId": "140cff3a9c5783c22395a973180d8aa2792b22fb",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/localfallback/UbuntuRealtimeClient.kt",
@@ -10221,7 +10223,7 @@
       "phase": "android",
       "gitBlobId": "10fed8dd807fbd82dc8485f6c1121760657f7068",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10229,7 +10231,7 @@
       "phase": "android",
       "gitBlobId": "beae9b3750e269a125d70cd52ccfbada9a2fd6c9",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10245,15 +10247,15 @@
       "phase": "android",
       "gitBlobId": "13b75e25db3015013537b7b622b710206dc91219",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/common/SystemAnnouncementHost.kt",
       "phase": "android",
-      "gitBlobId": "a4f26fca5b1566d7d2eb5479241f5a8544d392f8",
+      "gitBlobId": "29ac46c77843d8c81e2b4866d04528009dcb0956",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -15974,13 +15976,17 @@
       "file": "app/src/test/java/conectate/com/data/localfallback/SystemAnnouncementOrderingTest.kt",
       "phase": "android",
       "gitBlobId": "6a9122fa94e2780ce6867d4023f8c38ec8cf0d32",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/localfallback/SystemAnnouncementTest.kt",
       "phase": "android",
       "gitBlobId": "ff986ed6a6485afd411fe3cb3868c2b13f1b260a",
-      "reviewStatus": "pending"
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/localfallback/UbuntuRealtimeAdmissionTest.kt",
@@ -17401,7 +17407,15 @@
       "phase": "android",
       "gitBlobId": "83fae882f1603d42d74dfc2c8a6306a8ab15773f",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/test/java/conectate/com/presentation/common/SystemAnnouncementViewModelTest.kt",
+      "phase": "android",
+      "gitBlobId": "556a7c149b527e2a7de5474d5324b7781c4f4891",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22987,6 +23001,14 @@
       "phase": "documentation",
       "gitBlobId": "cc366290e9a3d68749ed063a18ef1d0279d46eb7",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/273-avisos-android-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "31981e8e5c19f2b70b12af99f3265202b6d18f33",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "docs/oficial/28-fragmentos-musicales-en-video-2026-09-16.md",
