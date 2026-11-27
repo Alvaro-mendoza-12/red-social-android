@@ -66,7 +66,7 @@ services:
       STORAGE_CLAMD_PORT: "3310"
       STORAGE_CLAMD_POLICY_FILE: /policy/storage-scan-policy.json
       STORAGE_CLAMD_CONFIG_FILE: /policy/clamd-storage.conf
-      STORAGE_CLAMD_POLICY_SHA256: 958f7db206acd79d28504a91e026d0f3de1607fd81aae932fd52a5d07d6ce6c8
+      STORAGE_CLAMD_POLICY_SHA256: dbae7274df0cb5192703c6bb04aab2d69c93ed7a5c70fd7ebde3d939bc45f245
     volumes:
       - ./storage-antivirus/clamd.conf:/policy/clamd-storage.conf:ro
       - ./storage-antivirus/storage-scan-policy.json:/policy/storage-scan-policy.json:ro

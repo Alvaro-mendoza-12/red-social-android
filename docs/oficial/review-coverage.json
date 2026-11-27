@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T06:16:20.365980+00:00",
-  "baseCommit": "1b867e018fae87cc1e803b88b7fac3b4ccf707be",
+  "generatedAtUtc": "2026-11-27T07:14:03.742745+00:00",
+  "baseCommit": "23444cb4cc00bb322e9aed4351654c42473d6838",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3420,
-    "code-read": 1106,
-    "partial": 319
+    "pending": 3417,
+    "code-read": 1111,
+    "partial": 318
   },
   "countsByPhase": {
     "android": {
@@ -21,18 +21,18 @@
       "code-read": 641
     },
     "documentation": {
-      "pending": 729,
+      "pending": 730,
       "code-read": 71,
       "partial": 22
     },
     "server": {
-      "pending": 718,
-      "code-read": 216,
-      "partial": 57
+      "pending": 715,
+      "code-read": 220,
+      "partial": 56
     },
     "tooling-and-other": {
-      "pending": 135,
-      "code-read": 43,
+      "code-read": 44,
+      "pending": 134,
       "partial": 11
     },
     "web": {
@@ -51,8 +51,10 @@
     {
       "file": ".gitattributes",
       "phase": "tooling-and-other",
-      "gitBlobId": "8f4d70f2c1d23685e1c698b89af6e0b620c4f04b",
-      "reviewStatus": "pending"
+      "gitBlobId": "94d4e032ddf71c190b64941ecf4942fba48a583a",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": ".github/fixtures/android-google-services.json",
@@ -22839,6 +22841,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "8257ef12ed74d451125e262ade2044c6fd56bb51",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/26-firma-aab-android-studio-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "ff4823d5f10fcd2523ad6dd32f61c3c518688438",
@@ -24629,9 +24637,9 @@
     {
       "file": "infrastructure/local-fallback/api/Dockerfile",
       "phase": "server",
-      "gitBlobId": "b64426c41a83801f1bc168ceed394b59941182fc",
+      "gitBlobId": "d4a29d40f4930992f8750701df438165086e077d",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26911,9 +26919,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/container-runtime-security.test.js",
       "phase": "server",
-      "gitBlobId": "a8c398e7be225ee043246e1a55c0abee37ec2080",
-      "reviewStatus": "partial",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "gitBlobId": "f88bada77badc31510c6c122851063a93ac68684",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28677,8 +28685,10 @@
     {
       "file": "infrastructure/local-fallback/docker-compose.storage-antivirus.yml",
       "phase": "server",
-      "gitBlobId": "97fe344a83c8381f561871a981e53ba630f28067",
-      "reviewStatus": "pending"
+      "gitBlobId": "4b559203e44033e2f81774544af37ff237a8f3fc",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/docker-compose.yml",
@@ -29133,8 +29143,10 @@
     {
       "file": "infrastructure/local-fallback/scripts/tests/test_api_source_provenance.py",
       "phase": "server",
-      "gitBlobId": "ab7616e7e6ab307116534c5edd052f37d3e35c90",
-      "reviewStatus": "pending"
+      "gitBlobId": "2a4642d4a9ed2155f413b12e919ba7c8069b98e3",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/upgrade-host-reviewed.sh",
@@ -29153,8 +29165,10 @@
     {
       "file": "infrastructure/local-fallback/scripts/verify-api-source-provenance.py",
       "phase": "server",
-      "gitBlobId": "dec3f84cf2d19d11df36674f7103de17525440c6",
-      "reviewStatus": "pending"
+      "gitBlobId": "831bfa81fd9f980733d1a63580a7e8f1ea4c88ec",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/verify-backup-storage.py",
@@ -29309,9 +29323,9 @@
     {
       "file": "infrastructure/local-fallback/storage-antivirus/Dockerfile",
       "phase": "server",
-      "gitBlobId": "1d6f5aa1e19c9c2d4cc1b365a2dd3b4cc8ed523f",
+      "gitBlobId": "bffc5f1d6f3a4920f503b1e1422766148e9a3102",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -29347,9 +29361,9 @@
     {
       "file": "infrastructure/local-fallback/survey-antivirus/Dockerfile",
       "phase": "server",
-      "gitBlobId": "bcba8e5a832e1e3f9c879a63f414a05804736479",
+      "gitBlobId": "8c58df36d26d8cf71052c0bd841e7451ab0268e8",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/259-novvin-190-dns-y-procedencia-ubuntu-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

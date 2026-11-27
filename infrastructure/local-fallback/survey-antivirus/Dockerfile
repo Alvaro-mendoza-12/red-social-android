@@ -3,7 +3,7 @@ FROM node:22.23.5-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa5345499
 # Require the patched runtime libraries even when the base tag is cached.
 RUN apk add --no-cache --upgrade 'zlib>=1.4-r0' 'libssl3>=3.5.9-r1' 'libcrypto3>=3.5.9-r1'
 
-RUN apk add --no-cache clamav-daemon \
+RUN apk add --no-cache 'clamav-daemon>=1.4.7-r0' \
   && addgroup -S -g 10001 novvin \
   && adduser -S -D -H -u 10001 -G novvin novvin
 

@@ -1,2 +1,4 @@
 *.sh text eol=lf
 infrastructure/local-fallback/db/migrations/*.sql text eol=lf
+infrastructure/local-fallback/*-antivirus/*.conf text eol=lf
+infrastructure/local-fallback/storage-antivirus/storage-scan-policy.json text eol=lf
