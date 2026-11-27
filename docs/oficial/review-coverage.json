@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-26T23:23:03.598871+00:00",
-  "baseCommit": "8f976a1c94edbc6b6ed65d533f3dbdc0b5ea0610",
+  "generatedAtUtc": "2026-11-27T00:21:50.921702+00:00",
+  "baseCommit": "007f6be7cfd55cc6801f06da546cbd85bf572d99",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,9 +10,9 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3422,
-    "code-read": 1094,
-    "partial": 314
+    "pending": 3421,
+    "code-read": 1099,
+    "partial": 317
   },
   "countsByPhase": {
     "android": {
@@ -21,7 +21,7 @@
       "code-read": 635
     },
     "documentation": {
-      "pending": 724,
+      "pending": 725,
       "code-read": 71,
       "partial": 22
     },
@@ -36,9 +36,9 @@
       "partial": 9
     },
     "web": {
-      "partial": 82,
-      "pending": 471,
-      "code-read": 130
+      "partial": 85,
+      "pending": 469,
+      "code-read": 135
     }
   },
   "files": [
@@ -281,15 +281,17 @@
     {
       "file": "NoWing-web/package-lock.json",
       "phase": "web",
-      "gitBlobId": "650cbc5a860002e93eb99a218644cb60386e41b9",
-      "reviewStatus": "pending"
+      "gitBlobId": "1a94302527d5c5177f13d0da9af2b028ee45dc7e",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/package.json",
       "phase": "web",
-      "gitBlobId": "1dda397b00da8525f720c8658d972a0545ddaa73",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "gitBlobId": "837d2afb68cb2ea652414cd7ee7f4db1a3cbf69d",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -345,9 +347,9 @@
     {
       "file": "NoWing-web/public/board-games/board-games.js",
       "phase": "web",
-      "gitBlobId": "098b437ed1ec936db99c9b70aab16afafdd39132",
+      "gitBlobId": "1c0fb03a3d23091e39989d4be057466c64bdd17c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/252-reloj-ajedrez-android-2026-11-26.md",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -1931,6 +1933,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/features/games/BoardGamesEntry.test.tsx",
+      "phase": "web",
+      "gitBlobId": "f161aa61577e4bab132181daf451f4e9c0b6806c",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/features/games/GamesWorkspace.test.tsx",
       "phase": "web",
       "gitBlobId": "649775e344d98a226b9691d57bd556e1de262885",
@@ -2031,6 +2041,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/__tests__/features/reels/reelFilePreparation.test.ts",
+      "phase": "web",
+      "gitBlobId": "fb73b59110c72381dcc7ebf11643f1e56dfce977",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/__tests__/features/reports/MyReportsPage.test.tsx",
       "phase": "web",
       "gitBlobId": "d94b36ebe20d9e66d6abe9151251d0a923646970",
@@ -2049,6 +2067,14 @@
       "phase": "web",
       "gitBlobId": "c19b938a8119a13f961dba1a0191f90c73f7f3c7",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/__tests__/features/voice/VoiceRoomsPage.test.tsx",
+      "phase": "web",
+      "gitBlobId": "5f5ea3046370b72e2f8feca9dae47784417b9648",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/features/voice/WebRTCManager.test.ts",
@@ -3135,9 +3161,9 @@
     {
       "file": "NoWing-web/src/core/fallbackData.ts",
       "phase": "web",
-      "gitBlobId": "0691ed445bf4aabf6d5fc092398866ca2abc240a",
+      "gitBlobId": "9b942f1a44a6cfaf86918e6a4d7236e4f8553737",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3711,6 +3737,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "NoWing-web/src/features/games/BoardGamesEntry.tsx",
+      "phase": "web",
+      "gitBlobId": "0ccb426a5e7b6afde2e6e5e14583010ebdee40cb",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "NoWing-web/src/features/games/GameCatalog.tsx",
       "phase": "web",
       "gitBlobId": "193c904affed42e0dfeaf6717478a66fe355e3fa",
@@ -3721,9 +3755,9 @@
     {
       "file": "NoWing-web/src/features/games/GamesPage.tsx",
       "phase": "web",
-      "gitBlobId": "92f19221cb7780176a1fb3fff35c308afcda0b10",
+      "gitBlobId": "e8a978b52518299e0e88538b458ae3b742889775",
       "reviewStatus": "partial",
-      "evidence": "NoWing-web/tests/board-games.test.mjs",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -3731,6 +3765,14 @@
       "phase": "web",
       "gitBlobId": "1f15c7d53eed5ec3119276221d638de0cf0621c4",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/features/games/boardGamesEntry.css",
+      "phase": "web",
+      "gitBlobId": "0a7beaddff72c33b63ec0f6c89a491fc0ba9c810",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/games/games.css",
@@ -4085,9 +4127,9 @@
     {
       "file": "NoWing-web/src/features/reels/ReelsPage.tsx",
       "phase": "web",
-      "gitBlobId": "20a79689590da1995fe86dc6b597e82131bd16fb",
+      "gitBlobId": "894c8c6c314d81635f662f8eb3fcc3a2714d715d",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/225-conversor-y-controles-de-integracion-2026-11-20.md",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4103,6 +4145,14 @@
       "phase": "web",
       "gitBlobId": "9e80ca9b7fe34161ee6e88f3414591f96d023b9d",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/features/reels/reelFilePreparation.ts",
+      "phase": "web",
+      "gitBlobId": "f7796e13cd795013d5f6b368b692ddb8fbb9d79e",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/reports/MyReportsPage.tsx",
@@ -4227,8 +4277,10 @@
     {
       "file": "NoWing-web/src/features/voice/VoiceRoomsPage.tsx",
       "phase": "web",
-      "gitBlobId": "7c3477f5088397901bfe21215a91b758432c61e7",
-      "reviewStatus": "pending"
+      "gitBlobId": "0211c7d26b8be6fc697186dac0103b2274c43cd3",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/features/voice/WebRTCManager.ts",
@@ -4571,9 +4623,9 @@
     {
       "file": "NoWing-web/src/ui/novvin/screens.css",
       "phase": "web",
-      "gitBlobId": "553933d95336a064133e6194c91b207bb4580377",
+      "gitBlobId": "55401ccb23aa050a47fe6560b756b8769ae534a9",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/212-auditoria-integral-mensajeria-medios-llamadas-voz-perfil-2026-11-19.md",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -4721,9 +4773,9 @@
     {
       "file": "NoWing-web/vite.config.ts",
       "phase": "web",
-      "gitBlobId": "31838f5b1c388e4c218eab82c6aaf268e6a3ea18",
+      "gitBlobId": "ee5fc581df8e0419abdac339d1a8e4f54ca2fa05",
       "reviewStatus": "partial",
-      "evidence": "infrastructure/local-fallback/api/tests/board-games.test.js",
+      "evidence": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22724,6 +22776,12 @@
       "file": "docs/oficial/253-torneo-semanal-android-2026-11-26.md",
       "phase": "documentation",
       "gitBlobId": "05cc6c93742f94f4c66ef9388607aa829180880f",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/254-auditoria-web-y-juegos-2026-11-26.md",
+      "phase": "documentation",
+      "gitBlobId": "84640f6a6ac03cda1201f04fe4b85d74bf36af90",
       "reviewStatus": "pending"
     },
     {
