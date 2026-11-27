@@ -1959,6 +1959,10 @@ function registerAdminModerationRoutes(app, {
     try {
       const context = await adminGuard(req, res, { minimum: 'view' })
       if (!context) return
+      const imported = await pool.query(`SELECT table_name FROM information_schema.columns
+        WHERE table_schema = 'supabase_import' AND column_name = 'id'
+          AND table_name IN ('profiles', 'users', 'videos')`)
+      const tables = new Set(imported.rows.map((row) => row.table_name))
       const { rows } = await pool.query(`
         WITH deleted_identities AS (
           SELECT lower(user_id) AS id
@@ -1967,12 +1971,8 @@ function registerAdminModerationRoutes(app, {
         canonical_users AS (
           SELECT lower(COALESCE(NULLIF(supabase_user_id::text, ''), id::text)) AS id
           FROM fallback_users
-          UNION
-          SELECT lower(id::text)
-          FROM supabase_import.profiles
-          UNION
-          SELECT lower(id::text)
-          FROM supabase_import.users
+          ${tables.has('profiles') ? 'UNION SELECT lower(id::text) FROM supabase_import.profiles' : ''}
+          ${tables.has('users') ? 'UNION SELECT lower(id::text) FROM supabase_import.users' : ''}
           UNION
           SELECT lower(COALESCE(NULLIF(row->>'id', ''), NULLIF(row->>'user_id', ''), row_id))
           FROM fallback_compat_rows
@@ -1985,13 +1985,12 @@ function registerAdminModerationRoutes(app, {
             SELECT 1 FROM fallback_video_deletions d
             WHERE lower(d.video_id) = lower(v.id::text)
           )
-          UNION
-          SELECT lower(v.id::text)
-          FROM supabase_import.videos v
-          WHERE NOT EXISTS (
-            SELECT 1 FROM fallback_video_deletions d
-            WHERE lower(d.video_id) = lower(v.id::text)
-          )
+          ${tables.has('videos') ? `UNION
+            SELECT lower(v.id::text) FROM supabase_import.videos v
+            WHERE NOT EXISTS (
+              SELECT 1 FROM fallback_video_deletions d
+              WHERE lower(d.video_id) = lower(v.id::text)
+            )` : ''}
           UNION
           SELECT lower(COALESCE(NULLIF(row->>'id', ''), row_id))
           FROM fallback_compat_rows c

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T10:11:13.959828+00:00",
-  "baseCommit": "400f604eea2d45e82d8ef42147d361d58a15b185",
+  "generatedAtUtc": "2026-11-27T10:33:18.857689+00:00",
+  "baseCommit": "d388f93e03300369eb5cf00911a03c328cdb014d",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3413,
+    "pending": 3414,
     "code-read": 1122,
     "partial": 321
   },
@@ -21,7 +21,7 @@
       "code-read": 649
     },
     "documentation": {
-      "pending": 736,
+      "pending": 737,
       "code-read": 71,
       "partial": 22
     },
@@ -22929,6 +22929,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/267-estadisticas-del-panel-y-rondas-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "3d42a4e763873ee176d10fb0d21b270acc10716d",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/27-musica-completa-y-watchdog-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "cc31397708974073e63ceb261ee6eff5709d8fda",
@@ -25291,9 +25297,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/admin-moderation-routes.js",
       "phase": "server",
-      "gitBlobId": "1f5f5c4f6cff5b3c537c9a0c764a3f73a99c49c7",
+      "gitBlobId": "b6477c91cf705ffdebb692477216db2ee2b66162",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/267-estadisticas-del-panel-y-rondas-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -26687,9 +26693,9 @@
     {
       "file": "infrastructure/local-fallback/api/tests/admin-moderation-routes.test.js",
       "phase": "server",
-      "gitBlobId": "6b4d3bb6816dafe152cae8df8881737a5a89dd9c",
+      "gitBlobId": "967bd95d007b36e342360bacf62a6e4c32d90705",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/267-estadisticas-del-panel-y-rondas-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {

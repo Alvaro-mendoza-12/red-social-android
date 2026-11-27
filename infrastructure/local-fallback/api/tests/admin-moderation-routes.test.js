@@ -256,6 +256,38 @@ async function testRoutePermissionsAndValidation() {
   assert.deepStrictEqual(invalid.body, { error: 'BADGE_IDS_INVALID' })
 }
 
+async function testStatsWithOptionalImportTables() {
+  for (const available of [[], ['users'], ['profiles', 'videos'], ['profiles', 'users', 'videos']]) {
+    const { app, routes } = fakeApp()
+    const pool = {
+      async query(sql) {
+        if (sql.includes('SELECT u.email,')) {
+          return { rows: [{ email: 'auditor@example.test', is_admin: true, admin_access_level: 'view' }] }
+        }
+        if (sql.includes('FROM information_schema.columns')) {
+          return { rows: available.map((table_name) => ({ table_name })) }
+        }
+        assert.ok(sql.includes('FROM fallback_users'))
+        assert.ok(sql.includes('FROM fallback_videos'))
+        for (const name of ['profiles', 'users', 'videos']) {
+          assert.strictEqual(sql.includes(`FROM supabase_import.${name}`), available.includes(name))
+        }
+        return { rows: [{ total_users: 4, total_videos: 2 }] }
+      },
+    }
+    registerAdminModerationRoutes(app, {
+      pool,
+      authRequired: (_req, _res, next) => next(),
+      getCurrentUser: async () => ({ id: ADMIN_ID }),
+      userIdentity: () => ({ localUserId: ADMIN_ID, displayUserId: ADMIN_ID }),
+    })
+    const route = routes.find((entry) => entry.method === 'get' && entry.path === '/v1/data/admin/stats')
+    const response = await invokeRoute(route)
+    assert.strictEqual(response.statusCode, 200)
+    assert.deepStrictEqual(response.body, { stats: { total_users: 4, total_videos: 2 } })
+  }
+}
+
 async function testPartialDecorationUpdate() {
   const { app, routes } = fakeApp()
   let storedPatch = null
@@ -536,6 +568,7 @@ async function testFakeAccountHardDelete() {
 async function run() {
   await testHelpers()
   await testRoutePermissionsAndValidation()
+  await testStatsWithOptionalImportTables()
   await testPartialDecorationUpdate()
   await testCustomBadgeDelete()
   await testFakeAccountHardDelete()
