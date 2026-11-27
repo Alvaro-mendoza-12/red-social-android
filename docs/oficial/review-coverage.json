@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T07:31:17.092419+00:00",
-  "baseCommit": "a47b34b8844d91f9476489f7104aa90fce908abb",
+  "generatedAtUtc": "2026-11-27T07:58:42.666619+00:00",
+  "baseCommit": "5339f9a8d6d8043e46a10df9325cee3d9751bd3a",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,25 +10,25 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3418,
-    "code-read": 1111,
-    "partial": 317
+    "pending": 3417,
+    "code-read": 1112,
+    "partial": 318
   },
   "countsByPhase": {
     "android": {
-      "pending": 1371,
-      "code-read": 641,
+      "pending": 1370,
+      "code-read": 642,
       "partial": 142
     },
     "documentation": {
-      "pending": 730,
+      "pending": 731,
       "code-read": 71,
       "partial": 22
     },
     "server": {
-      "pending": 715,
+      "pending": 714,
       "code-read": 220,
-      "partial": 56
+      "partial": 57
     },
     "tooling-and-other": {
       "code-read": 44,
@@ -9563,17 +9563,17 @@
     {
       "file": "app/src/main/java/conectate/com/data/supabase/StorageService.kt",
       "phase": "android",
-      "gitBlobId": "3e422bec8640ca687bfa9349f776475cd3ee3507",
+      "gitBlobId": "6f16432a24ed43e909aac3b9c11adaace062607a",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/supabase/StorageUploadCall.kt",
       "phase": "android",
-      "gitBlobId": "726ee1f29cf61ecd756e10c8c252b4551c4f96e9",
+      "gitBlobId": "c2981e540ed88d9f60d96516bd729208948304cf",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17057,8 +17057,10 @@
     {
       "file": "app/src/test/java/conectate/com/data/supabase/StorageUploadCallTest.kt",
       "phase": "android",
-      "gitBlobId": "f8fb84e3eb6f82f410fe953a265951ee12e79ab7",
-      "reviewStatus": "pending"
+      "gitBlobId": "0752518b2ae4b2e20ebb2914b4fc3b0eb9e44f9f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/supabase/StreamUploadTimingCalculatorTest.kt",
@@ -22851,6 +22853,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "e20914725b7d86b4ef45f6abe68165b35f75fb44",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/27-musica-completa-y-watchdog-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "cc31397708974073e63ceb261ee6eff5709d8fda",
@@ -26411,9 +26419,9 @@
     {
       "file": "infrastructure/local-fallback/api/src/storage-routes.js",
       "phase": "server",
-      "gitBlobId": "de92a88808eb414be380e5a494faf5582086129e",
+      "gitBlobId": "02539a18fcf4880cd9da7692cf843d87b9eae6d7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -28189,8 +28197,10 @@
     {
       "file": "infrastructure/local-fallback/api/tests/storage-routes.test.js",
       "phase": "server",
-      "gitBlobId": "9681e8f71446d2535b2b79a311cbcb9ff9bd7e46",
-      "reviewStatus": "pending"
+      "gitBlobId": "793b7a92d3a68ff61ca4f864bf1507b5e6ec9b96",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/api/tests/storage-scan-readiness.test.js",

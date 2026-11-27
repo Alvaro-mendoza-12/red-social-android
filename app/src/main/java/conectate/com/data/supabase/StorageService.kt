@@ -444,7 +444,11 @@ class StorageService @Inject constructor(
 
         try {
             largeUploadClient.newCall(request).awaitStorageResponse().use { response ->
-                val responseText = response.body?.string().orEmpty()
+                val responseText = if (response.isSuccessful || !isLocalFallbackUpload) {
+                    response.body?.string().orEmpty()
+                } else {
+                    ""
+                }
                 uploadSession.requireCurrent()
                 if (!response.isSuccessful) {
                     recordStreamUploadTiming(
@@ -458,7 +462,8 @@ class StorageService @Inject constructor(
                     )
                     appMetrics.recordFailure("media_upload", attributes = metricAttrs + ("http_status" to response.code.toString()))
                     return@withContext Result.failure(
-                        buildSupabaseHttpException(response.code, responseText, "No se pudo subir el archivo.")
+                        if (isLocalFallbackUpload) response.storageUploadFailure("No se pudo subir el archivo. Inténtalo de nuevo.")
+                        else buildSupabaseHttpException(response.code, responseText, "No se pudo subir el archivo.")
                     )
                 }
                 ownedProgress(1f)
@@ -564,11 +569,6 @@ class StorageService @Inject constructor(
         val createdAtMs: Long,
     )
 
-    private class TusUploadHttpException(
-        val statusCode: Int,
-        message: String,
-    ) : IOException(message)
-
     /**
      * Returns null only when the installed local server does not advertise
      * TUS. That preserves compatibility during a rolling server deployment;
@@ -609,7 +609,7 @@ class StorageService @Inject constructor(
                 try {
                     uploadSession.requireCurrent()
                     readTusUploadStatus(persistedUrl, accessToken)
-                } catch (error: TusUploadHttpException) {
+                } catch (error: StorageUploadHttpException) {
                     if (error.statusCode == 404 || error.statusCode == 410) {
                         clearPersistedTusSession(sessionKey)
                         sessionUrl = null
@@ -667,9 +667,9 @@ class StorageService @Inject constructor(
                     }
                     offset = nextOffset
                     recoveries = 0
-                } catch (error: TusUploadHttpException) {
+                } catch (error: StorageUploadHttpException) {
                     uploadSession.requireCurrent()
-                    if (error.statusCode != 409 && error.statusCode !in 500..599) throw error
+                    if (!error.canRecoverOffset) throw error
                     offset = recoverTusOffset(activeSessionUrl, accessToken, sizeBytes, recoveries++)
                 } catch (error: IOException) {
                     uploadSession.requireCurrent()
@@ -827,7 +827,7 @@ class StorageService @Inject constructor(
             .build()
         largeUploadClient.newCall(request).awaitStorageResponse().use { response ->
             if (!response.isSuccessful) {
-                throw TusUploadHttpException(response.code, "No se pudo consultar el progreso de la subida.")
+                throw response.storageUploadFailure("No se pudo consultar el progreso de la subida. Inténtalo de nuevo.")
             }
             val offset = resumableUploadOffset(response.header("Upload-Offset"))
                 ?: throw IOException("El servidor no devolvió un offset reanudable válido.")
@@ -882,7 +882,7 @@ class StorageService @Inject constructor(
             .build()
         largeUploadClient.newCall(request).awaitStorageResponse().use { response ->
             if (response.code != 204) {
-                throw TusUploadHttpException(response.code, "No se pudo enviar un fragmento de la subida.")
+                throw response.storageUploadFailure("No se pudo enviar un fragmento de la subida. Inténtalo de nuevo.")
             }
             return resumableUploadOffset(response.header("Upload-Offset"))
                 ?: throw IOException("El servidor no confirmó el fragmento subido.")

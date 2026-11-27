@@ -26,6 +26,7 @@ const UPLOAD_RESERVATION = Symbol('server-owned-upload-reservation')
 const FINALIZATION_CONNECTION = Symbol('storage-finalization-connection')
 const FINALIZATION_ALIVE = Symbol('storage-finalization-lock-alive')
 const { safeErrorLogDetails } = require('./request-observability')
+const { publicApiError } = require('./public-api-error')
 const { validateMessagingUpload } = require('./messaging-upload-policy')
 
 const execFileAsync = promisify(execFile)
@@ -1837,7 +1838,15 @@ function registerStorageRoutes(app, { pool, authRequired, storageScanCoordinator
   const resumableItemRoute = /^\/storage\/v1\/upload\/resumable\/([0-9a-f-]{36})$/i
   const sendTusError = (res, error) => {
     setTusHeaders(res)
-    res.status(Number(error?.status || 500)).json({ error: error?.message || 'RESUMABLE_UPLOAD_FAILED' })
+    const requestId = res.req?.requestId
+    const { status, code } = publicApiError(error)
+    if (status >= 500) {
+      console.error('[storage] resumable upload failed', {
+        requestId,
+        ...safeErrorLogDetails(error, { production: true }),
+      })
+    }
+    res.status(status).json({ error: code, requestId })
   }
 
   app.options(resumableCollectionRoute, (_req, res) => {

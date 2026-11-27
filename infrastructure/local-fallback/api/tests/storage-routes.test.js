@@ -503,12 +503,15 @@ async function run() {
   // meaningful without needing ffmpeg in the unit-test environment.
   const resumableRows = new Map()
   const resumableObjects = new Map()
+  let resumableUnavailable = false
+  let finalizationUnavailable = false
   const resumableQuery = async (sql, values = []) => {
     const normalized = sql.replace(/\s+/g, ' ').trim()
     if (normalized.startsWith('DELETE FROM fallback_resumable_uploads') && normalized.includes('expires_at <= NOW()')) {
       return { rows: [] }
     }
     if (normalized.startsWith('INSERT INTO fallback_resumable_uploads')) {
+      if (resumableUnavailable) throw Object.assign(new Error('Private storage failure details'), { status: 503 })
       const [id, ownerId, bucket, objectPath, contentType, length, metadata, allowOverwrite, expiresAt] = values
       resumableRows.set(id, {
         id,
@@ -579,9 +582,19 @@ async function run() {
     },
   }
   const resumableApp = express()
+  const resumableRequestId = '6dcf4279-a3f7-4530-816e-01cb1a72d5d7'
+  resumableApp.use((req, res, next) => {
+    req.requestId = resumableRequestId
+    res.setHeader('X-Request-ID', req.requestId)
+    next()
+  })
   registerStorageRoutes(resumableApp, {
     pool: resumablePool,
-    storageFinalizationConnection: () => resumablePool.connect(), storageUploadAdmission: { async reserve({ id = crypto.randomUUID(), ownerId }) { return { id, assertAlive() {}, async finish() {} } }, async claimTus(id) { return { id, assertAlive() {}, async finish() {} } } },
+    storageFinalizationConnection() {
+      if (finalizationUnavailable) throw Object.assign(new Error('Temporary internal failure'), { status: 503 })
+      return resumablePool.connect()
+    },
+    storageUploadAdmission: { async reserve({ id = crypto.randomUUID(), ownerId }) { return { id, assertAlive() {}, async finish() {} } }, async claimTus(id) { return { id, assertAlive() {}, async finish() {} } } },
     authRequired(req, _res, next) {
       req.auth = { sub: String(req.headers['x-test-user'] || 'test-user') }
       next()
@@ -600,7 +613,7 @@ async function run() {
       `objectName ${Buffer.from('test-user/resumable.wav').toString('base64')}`,
       `contentType ${Buffer.from('audio/wav').toString('base64')}`,
     ].join(',')
-    const createResponse = await fetch(baseUrl, {
+    const createOptions = {
       method: 'POST',
       headers: {
         'Tus-Resumable': '1.0.0',
@@ -608,7 +621,16 @@ async function run() {
         'Upload-Metadata': metadata,
         'x-test-user': 'test-user',
       },
-    })
+    }
+    resumableUnavailable = true
+    const unavailable = await fetch(baseUrl, createOptions)
+    assert.equal(unavailable.status, 503)
+    assert.equal(unavailable.headers.get('tus-resumable'), '1.0.0')
+    assert.equal(unavailable.headers.get('x-request-id'), resumableRequestId)
+    assert.deepEqual(await unavailable.json(), { error: 'INTERNAL_ERROR', requestId: resumableRequestId })
+    assert.equal(resumableRows.size, 0)
+    resumableUnavailable = false
+    const createResponse = await fetch(baseUrl, createOptions)
     assert.equal(createResponse.status, 201)
     const uploadUrl = new URL(createResponse.headers.get('location'), baseUrl).toString()
     assert.equal(createResponse.headers.get('upload-offset'), '0')
@@ -657,6 +679,17 @@ async function run() {
       objectFilePath('group-audio', 'test-user/resumable.wav'),
       resumableUploadFilePath(uploadId),
     )
+    finalizationUnavailable = true
+    const interruptedFinalization = await fetch(uploadUrl, {
+      method: 'HEAD',
+      headers: { 'Tus-Resumable': '1.0.0', 'x-test-user': 'test-user' },
+    })
+    assert.equal(interruptedFinalization.status, 503)
+    assert.equal(interruptedFinalization.headers.get('tus-resumable'), '1.0.0')
+    assert.equal(orphaned.state, 'finalizing')
+    assert.equal(Number(orphaned.upload_offset), audioBytes.length)
+    assert.deepEqual(await fs.promises.readFile(resumableUploadFilePath(uploadId)), audioBytes)
+    finalizationUnavailable = false
     const recoveredFinalization = await fetch(uploadUrl, {
       method: 'HEAD',
       headers: { 'Tus-Resumable': '1.0.0', 'x-test-user': 'test-user' },
