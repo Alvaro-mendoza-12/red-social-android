@@ -42,7 +42,6 @@ import androidx.media3.ui.PlayerView
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import conectate.com.data.localfallback.GuestContent
-import conectate.com.data.localfallback.GuestComment
 import conectate.com.data.localfallback.GuestIdentity
 import conectate.com.data.localfallback.GuestModeApi
 import conectate.com.data.localfallback.GuestPendingPreview
@@ -78,15 +77,17 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     val profiles = _profiles.asStateFlow()
     private val _selectedProfile = MutableStateFlow<GuestProfile?>(null)
     val selectedProfile = _selectedProfile.asStateFlow()
-    private val _comments = MutableStateFlow<List<GuestComment>>(emptyList())
-    val comments = _comments.asStateFlow()
+    internal val comments = GuestComments(viewModelScope) { kind, id ->
+        withContext(Dispatchers.IO) { api.comments(kind, id) }.also {
+            api.savedIdentity()?.let { identity -> _identity.value = identity }
+        }
+    }
     private val _error = MutableStateFlow<String?>(null)
     val error = _error.asStateFlow()
     private var searchJob: Job? = null
     private var refreshJob: Job? = null
     private var profileJob: Job? = null
     private var contentJob: Job? = null
-    private var commentsJob: Job? = null
     private var enterJob: Job? = null
     private val _busy = MutableStateFlow(0)
     val busy = _busy.asStateFlow()
@@ -168,17 +169,9 @@ class GuestModeViewModel @Inject constructor(private val api: GuestModeApi) : Vi
     fun rememberProfileForSignup() { _selectedProfile.value?.id?.let(api::rememberPendingProfile) }
     fun clearPendingProfile() = api.clearPendingProfile()
     fun consumePendingProfile() = api.consumePendingProfile()
-    fun loadComments(kind: String, id: String) {
-        commentsJob?.cancel()
-        _comments.value = emptyList()
-        commentsJob = viewModelScope.launch {
-            request { api.comments(kind, id) }
-                .onSuccess { _comments.value = it }
-        }
-    }
-    fun clearComments() { commentsJob?.cancel(); _comments.value = emptyList() }
     fun leave() {
-        listOf(searchJob, refreshJob, profileJob, contentJob, commentsJob, enterJob).forEach { it?.cancel() }
+        comments.close()
+        listOf(searchJob, refreshJob, profileJob, contentJob, enterJob).forEach { it?.cancel() }
         api.clear(); api.clearPendingProfile(); api.consumePendingPreview()
         _identity.value = null
     }
@@ -197,7 +190,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
     val moments by viewModel.moments.collectAsState()
     val profiles by viewModel.profiles.collectAsState()
     val selectedProfile by viewModel.selectedProfile.collectAsState()
-    val comments by viewModel.comments.collectAsState()
+    val comments by viewModel.comments.state.collectAsState()
     val previewContent by viewModel.previewContent.collectAsState()
     val pendingPreview by viewModel.pendingPreview.collectAsState()
     val error by viewModel.error.collectAsState()
@@ -207,7 +200,6 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
     var restrictedAction by remember { mutableStateOf<String?>(null) }
     var playingVideo by remember { mutableStateOf<String?>(null) }
     var previewImage by remember { mutableStateOf<String?>(null) }
-    var commentTarget by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     LaunchedEffect(Unit) { viewModel.enter() }
     LaunchedEffect(section, identity?.id) { if (identity != null) viewModel.refresh(section) }
@@ -318,27 +310,33 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
         )
     }
 
-    commentTarget?.let { target ->
+    comments?.let { state ->
+        val close = { viewModel.comments.close(state.visit) }
         AlertDialog(
-            onDismissRequest = { commentTarget = null; viewModel.clearComments() },
+            onDismissRequest = close,
             title = { Text("Comentarios") },
             text = {
                 Column {
-                    if (busy > 0) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    error?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = { viewModel.loadComments(target.first, target.second) }) { Text("Reintentar") }
-                    }
-                    LazyColumn(modifier = Modifier.weight(1f, fill = false).heightIn(max = 340.dp)) {
-                        if (comments.isEmpty() && busy == 0 && error == null) item { Text("Aún no hay comentarios.") }
-                        items(comments.take(100), key = { it.id }) { comment ->
-                            Text("${comment.userName}: ${comment.content}", modifier = Modifier.padding(vertical = 6.dp))
+                    when (state) {
+                        is GuestCommentsState.Loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+                        is GuestCommentsState.Failed -> {
+                            Text(state.message, color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+                            TextButton(onClick = { viewModel.comments.retry(state.visit) }) { Text("Reintentar") }
+                        }
+                        is GuestCommentsState.Ready -> LazyColumn(
+                            modifier = Modifier.weight(1f, fill = false).heightIn(max = 340.dp),
+                        ) {
+                            if (state.comments.isEmpty()) item { Text("Aún no hay comentarios.") }
+                            items(state.comments, key = { it.id }) { comment ->
+                                Text("${comment.userName}: ${comment.content}", modifier = Modifier.padding(vertical = 6.dp))
+                            }
                         }
                     }
                     TextButton(onClick = { restrictedAction = "comentar" }) { Text("Escribir comentario") }
                 }
             },
-            confirmButton = { TextButton(onClick = { commentTarget = null; viewModel.clearComments() }) { Text("Cerrar") } },
+            confirmButton = { TextButton(onClick = close) { Text("Cerrar") } },
         )
     }
 
@@ -417,7 +415,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                             else conectate.com.presentation.common.AppFeedbackBus.showError("Este video no está disponible. Prueba con otro.")
                         },
                         onProfile = { viewModel.openProfile(it.userId) },
-                        onComments = { video -> commentTarget = "videos" to video.id; viewModel.loadComments("videos", video.id) },
+                        onComments = { video -> viewModel.comments.open("videos", video.id) },
                         onRestricted = { restrictedAction = it },
                     )
                     "social" -> {
@@ -444,7 +442,7 @@ fun GuestScreen(navController: NavController, viewModel: GuestModeViewModel = hi
                             posts, "Aún no hay publicaciones públicas",
                             onOpen = { viewModel.openContent("posts", it.id) },
                             onProfile = { viewModel.openProfile(it.userId) },
-                            onComments = { post -> commentTarget = "posts" to post.id; viewModel.loadComments("posts", post.id) },
+                            onComments = { post -> viewModel.comments.open("posts", post.id) },
                             onRestricted = { restrictedAction = it },
                         )
                     }

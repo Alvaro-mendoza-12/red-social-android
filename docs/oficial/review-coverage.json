@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T18:39:42.365327+00:00",
-  "baseCommit": "f59d265bc459b0d1ae3e0c2c46ea4e33418306c4",
+  "generatedAtUtc": "2026-11-27T19:23:20.526557+00:00",
+  "baseCommit": "b4546865d5f3a4797bcd667a5aafbddee7a00e52",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,18 +11,18 @@
   },
   "counts": {
     "pending": 3415,
-    "code-read": 1130,
-    "partial": 321
+    "code-read": 1132,
+    "partial": 322
   },
   "countsByPhase": {
     "android": {
       "pending": 1357,
-      "partial": 146,
-      "code-read": 655
+      "partial": 147,
+      "code-read": 656
     },
     "documentation": {
       "pending": 743,
-      "code-read": 72,
+      "code-read": 73,
       "partial": 22
     },
     "server": {
@@ -9967,11 +9967,19 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/auth/GuestComments.kt",
+      "phase": "android",
+      "gitBlobId": "e4de5545c68b62832414aaaf3e6db8434b2abfe7",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/274-comentarios-invitados-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/auth/GuestScreen.kt",
       "phase": "android",
-      "gitBlobId": "b7490242a48a0cadc7596f55697f7be78a0e2711",
-      "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "gitBlobId": "8ce3a426251212bcee67ad2816771af67935c3e9",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/274-comentarios-invitados-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -17319,6 +17327,14 @@
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/auth/GuestCommentsTest.kt",
+      "phase": "android",
+      "gitBlobId": "60bd727df2d36adbd2fe8052a8d9d302bb868982",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/274-comentarios-invitados-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/auth/GuestSocialSectionsTest.kt",
       "phase": "android",
       "gitBlobId": "a626feaf94d371cb8bcfab555a4e7d7c63348e8c",
@@ -23008,6 +23024,14 @@
       "gitBlobId": "31981e8e5c19f2b70b12af99f3265202b6d18f33",
       "reviewStatus": "code-read",
       "evidence": "docs/oficial/273-avisos-android-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "docs/oficial/274-comentarios-invitados-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "e2a20c1d01a759abb5b9600d34a1d2d6611c3395",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/274-comentarios-invitados-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
