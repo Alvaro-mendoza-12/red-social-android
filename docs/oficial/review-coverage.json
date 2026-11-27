@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T10:42:04.935069+00:00",
-  "baseCommit": "4bc97dd5c15458e6df534c228972c4f19ec50e4d",
+  "generatedAtUtc": "2026-11-27T10:44:05.478096+00:00",
+  "baseCommit": "76c0b3507957c34ab9471bbf88f91e2d5bcdaeb9",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,8 +10,8 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3415,
-    "code-read": 1122,
+    "pending": 3416,
+    "code-read": 1123,
     "partial": 321
   },
   "countsByPhase": {
@@ -21,7 +21,7 @@
       "code-read": 649
     },
     "documentation": {
-      "pending": 738,
+      "pending": 739,
       "code-read": 71,
       "partial": 22
     },
@@ -38,7 +38,7 @@
     "web": {
       "partial": 86,
       "pending": 468,
-      "code-read": 135
+      "code-read": 136
     }
   },
   "files": [
@@ -949,9 +949,9 @@
     {
       "file": "NoWing-web/src/__tests__/components/DirectMessageRequestNotice.test.tsx",
       "phase": "web",
-      "gitBlobId": "5a2371e0b9726441542d5b2c916668f26aa34253",
+      "gitBlobId": "63498bd2a30f4e24bc8699441df52f764bf71d70",
       "reviewStatus": "code-read",
-      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
+      "evidence": "docs/oficial/268-solicitudes-web-y-validacion-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2399,9 +2399,9 @@
     {
       "file": "NoWing-web/src/components/DirectMessageRequestNotice.tsx",
       "phase": "web",
-      "gitBlobId": "7f8aadfa63dd48011abbac301b01df3ce0ccc6da",
+      "gitBlobId": "b468acfb77c97964a11d8f1eb57388f66bc4426c",
       "reviewStatus": "code-read",
-      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
+      "evidence": "docs/oficial/268-solicitudes-web-y-validacion-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -2881,6 +2881,14 @@
       "phase": "web",
       "gitBlobId": "14c7dfea85efb00c19b63885290caf35e482ca86",
       "reviewStatus": "pending"
+    },
+    {
+      "file": "NoWing-web/src/components/useDirectMessageRequest.ts",
+      "phase": "web",
+      "gitBlobId": "0217aa196be516781dcb60549a989f68761b8028",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/268-solicitudes-web-y-validacion-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/components/useReactionBursts.ts",
@@ -3859,9 +3867,9 @@
     {
       "file": "NoWing-web/src/features/messages/ChatDetailPage.tsx",
       "phase": "web",
-      "gitBlobId": "dbd4d2745e0415317ddd5ac4676faa14a5c4243e",
+      "gitBlobId": "ee5ad8e561094aee429cd8d42a6d53198bc6f198",
       "reviewStatus": "partial",
-      "evidence": "NoWing-web/src/__tests__/features/messages/chatPageInteractions.test.tsx",
+      "evidence": "docs/oficial/268-solicitudes-web-y-validacion-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22938,6 +22946,12 @@
       "file": "docs/oficial/267-estadisticas-del-panel-y-rondas-2026-11-27.md",
       "phase": "documentation",
       "gitBlobId": "3d42a4e763873ee176d10fb0d21b270acc10716d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/268-solicitudes-web-y-validacion-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "d62f776168d288bfdaab2edf821dab0db454f9d3",
       "reviewStatus": "pending"
     },
     {
