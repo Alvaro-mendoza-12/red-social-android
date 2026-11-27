@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T11:21:31.475867+00:00",
-  "baseCommit": "b136b9b31a0ca81ca3e5dd74c1ff7a4b24e73b87",
+  "generatedAtUtc": "2026-11-27T13:06:05.560271+00:00",
+  "baseCommit": "424ea94ad9c6d23299627a6478821c6a1bb5044b",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3416,
+    "pending": 3418,
     "code-read": 1125,
     "partial": 321
   },
@@ -21,7 +21,7 @@
       "code-read": 651
     },
     "documentation": {
-      "pending": 741,
+      "pending": 743,
       "code-read": 71,
       "partial": 22
     },
@@ -4979,9 +4979,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "bce55c16a682d2340ac40f67ce0917b7fcec331e",
+      "gitBlobId": "e54359d95499c781ed48ee9f54b302ac2a3882bc",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/265-android-192-lectura-y-notificaciones-2026-11-27.md",
+      "evidence": "docs/oficial/271-android-193-subidas-reanudables-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22974,6 +22974,18 @@
       "file": "docs/oficial/270-offsets-reanudables-android-2026-11-27.md",
       "phase": "documentation",
       "gitBlobId": "6e6ebac3a0b0c9f70434e83a78fe366b8bc07733",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/271-android-193-subidas-reanudables-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "f1912c5d67201728293ee295dbb7e11d6116d828",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/272-compresion-y-carga-web-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "cc366290e9a3d68749ed063a18ef1d0279d46eb7",
       "reviewStatus": "pending"
     },
     {
