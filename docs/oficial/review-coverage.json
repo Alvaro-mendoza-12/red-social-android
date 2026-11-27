@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T10:33:18.857689+00:00",
-  "baseCommit": "d388f93e03300369eb5cf00911a03c328cdb014d",
+  "generatedAtUtc": "2026-11-27T10:42:04.935069+00:00",
+  "baseCommit": "4bc97dd5c15458e6df534c228972c4f19ec50e4d",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,7 +10,7 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3414,
+    "pending": 3415,
     "code-read": 1122,
     "partial": 321
   },
@@ -21,7 +21,7 @@
       "code-read": 649
     },
     "documentation": {
-      "pending": 737,
+      "pending": 738,
       "code-read": 71,
       "partial": 22
     },
@@ -4971,9 +4971,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "18dd2925f2a90631e0b13c68bd3fb0b05cfb6410",
+      "gitBlobId": "bce55c16a682d2340ac40f67ce0917b7fcec331e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/262-android-191-subidas-y-verificacion-2026-11-27.md",
+      "evidence": "docs/oficial/265-android-192-lectura-y-notificaciones-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -22920,6 +22920,12 @@
       "file": "docs/oficial/264-lectura-visible-android-y-diagnostico-ubuntu-2026-11-27.md",
       "phase": "documentation",
       "gitBlobId": "6f395f1f42a469b37df244edfc2c617eebc8619d",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/265-android-192-lectura-y-notificaciones-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "0cfd4c708a28d305e55bd7d7b01193aca8922130",
       "reviewStatus": "pending"
     },
     {
