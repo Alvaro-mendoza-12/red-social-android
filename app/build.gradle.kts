@@ -208,7 +208,7 @@ android {
         applicationId = "conectate.com"
         minSdk = 24
         targetSdk = 36
-        versionCode = 188
+        versionCode = 189
         versionName = "9.2.1"
         buildConfigField("String", "BUILD_COMMIT", buildCommit.asBuildConfigString())
 
@@ -621,6 +621,7 @@ dependencies {
     implementation(libs.androidx.hilt.work)
     implementation(libs.jsoup)
     implementation(libs.google.play.billing)
+    implementation(libs.google.play.app.update)
     implementation(libs.androidx.exifinterface)
 
     testImplementation("com.google.protobuf:protobuf-javalite:3.25.9")

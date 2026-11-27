@@ -1,9 +1,6 @@
 package conectate.com.presentation.common
 
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -13,7 +10,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -118,32 +114,38 @@ internal fun noticeSchedule(notice: SystemAnnouncement, zone: ZoneId = ZoneId.sy
 }
 
 @Composable
-fun SystemAnnouncementHost(owner: String?) {
+fun SystemAnnouncementHost(
+    owner: String?,
+    playUpdateVersion: Int? = null,
+    onDismissPlayUpdate: () -> Unit = {},
+) {
     val viewModel: SystemAnnouncementViewModel = hiltViewModel()
     val notices by viewModel.notices.collectAsStateWithLifecycle()
     LifecycleResumeEffect(owner) {
         viewModel.watchVisibleNotices(owner)
         onPauseOrDispose { viewModel.stopWatching(owner) }
     }
-    notices.firstOrNull()?.let { notice ->
-        SystemAnnouncementDialog(notice, onDismiss = { viewModel.dismiss(notice.id) }, remaining = notices.size)
+    if (playUpdateVersion != null) {
+        val notes = notices.firstOrNull { it.kind == "update" && it.versionCode == playUpdateVersion }
+        PlayStoreUpdateDialog(notes, onDismissPlayUpdate)
+        return
+    }
+    val otherNotices = notices.filterNot { it.kind == "update" }
+    otherNotices.firstOrNull()?.let { notice ->
+        SystemAnnouncementDialog(notice, onDismiss = { viewModel.dismiss(notice.id) }, remaining = otherNotices.size)
     }
 }
 
 @Composable
 fun SystemAnnouncementDialog(notice: SystemAnnouncement, onDismiss: () -> Unit, remaining: Int = 1) {
-    val context = LocalContext.current
     AlertDialog(
         modifier = Modifier.testTag("system_announcement"),
         onDismissRequest = onDismiss,
         title = {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(when (notice.kind) {
-                        "maintenance" -> "Mantenimiento de Novvin"
-                        "update" -> "Actualización de Novvin"
-                        else -> "Novedades de Novvin"
-                    }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    Text(if (notice.kind == "maintenance") "Mantenimiento de Novvin" else "Novedades de Novvin",
+                        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                     if (remaining > 1) Text("Quedan $remaining avisos", style = MaterialTheme.typography.labelMedium)
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
@@ -156,22 +158,8 @@ fun SystemAnnouncementDialog(notice: SystemAnnouncement, onDismiss: () -> Unit, 
                 Text(notice.title, style = MaterialTheme.typography.titleLarge)
                 noticeSchedule(notice)?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
                 Text(notice.body)
-                if (notice.kind == "update") Text("¿Deseas actualizar Novvin?", style = MaterialTheme.typography.titleSmall)
             }
         },
-        confirmButton = {
-            Button(onClick = {
-                if (notice.kind == "update") {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=conectate.com"))
-                    val opened = runCatching { context.startActivity(intent) }.isSuccess
-                    if (!opened) {
-                        Toast.makeText(context, "No se pudo abrir Google Play. Inténtalo de nuevo.", Toast.LENGTH_LONG).show()
-                        return@Button
-                    }
-                }
-                onDismiss()
-            }) { Text(if (notice.kind == "update") "Actualizar" else "Entendido") }
-        },
-        dismissButton = { if (notice.kind == "update") TextButton(onClick = onDismiss) { Text("Más tarde") } },
+        confirmButton = { Button(onClick = onDismiss) { Text("Entendido") } },
     )
 }

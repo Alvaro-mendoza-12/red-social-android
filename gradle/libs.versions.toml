@@ -53,6 +53,7 @@ securityCrypto = "1.1.0-alpha06"
 jsoup = "1.23.2"
 desugarJdkLibs = "2.1.5"
 playBilling = "9.1.0"
+playAppUpdate = "2.1.0"
 
 # Room
 room = "2.8.4"
@@ -148,6 +149,7 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 android-desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugarJdkLibs" }
 google-play-billing = { group = "com.android.billingclient", name = "billing", version.ref = "playBilling" }
+google-play-app-update = { group = "com.google.android.play", name = "app-update", version.ref = "playAppUpdate" }
 
 # Room
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }

@@ -141,8 +141,17 @@ fun MainActivityContent(
         // Drive the first route from the asynchronously restored session StateFlow. Calling
         // AuthService.isLoggedIn() here reads encrypted preferences synchronously during Compose.
         val isLoggedIn = session?.user?.id?.isNotBlank() == true
-        if (!isInitializing && !isLoggedIn) SystemAnnouncementHost(null)
-        if (isLoggedIn) StartupPrompts(session?.user?.id)
+        val playUpdateViewModel: PlayStoreUpdateViewModel = hiltViewModel()
+        val playUpdateVersion by playUpdateViewModel.availableVersion.collectAsStateWithLifecycle()
+        when {
+            !isInitializing && playUpdateVersion != null -> SystemAnnouncementHost(
+                owner = session?.user?.id,
+                playUpdateVersion = playUpdateVersion,
+                onDismissPlayUpdate = playUpdateViewModel::dismiss,
+            )
+            !isInitializing && !isLoggedIn -> SystemAnnouncementHost(null)
+            isLoggedIn -> StartupPrompts(session?.user?.id)
+        }
         val notificationRepository = authenticatedRepository(isLoggedIn, notificationRepositoryProvider, "notification repository")
         val voiceRoomRepository = authenticatedRepository(isLoggedIn, voiceRoomRepositoryProvider, "voice repository")
         val callRepository = authenticatedRepository(isLoggedIn, callRepositoryProvider, "call repository")
