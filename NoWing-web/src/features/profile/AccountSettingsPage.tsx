@@ -164,6 +164,7 @@ function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnTy
   const sections = ['perfil', 'privacidad', 'seguridad', 'acceso-qr', 'preferencias-web'] as const
   const activeSection = sections.find(section => location.hash === `#${section}-ajustes`) ?? 'perfil'
   const mounted = useRef(false)
+  const loadRevision = useRef(0)
   useEffect(() => {
     mounted.current = true
     return () => { mounted.current = false }
@@ -201,6 +202,7 @@ function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnTy
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [savingProfile, setSavingProfile] = useState(false)
@@ -218,13 +220,17 @@ function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnTy
     [user?.id],
   )
   const loadSettings = useCallback(async () => {
+    const revision = ++loadRevision.current
+    const isCurrent = () => mounted.current && loadRevision.current === revision
+    setLoading(true)
+    setLoadFailed(false)
+    setError(null)
     if (isFallbackSession) {
-      setLoading(true)
-      setError(null)
       try {
         const response = await loadFallbackProfileMe()
-        if (!mounted.current) return
-        const profile = response.profile ?? {}
+        if (!isCurrent()) return
+        const profile = response.profile
+        if (!profile || Object.keys(profile).length === 0) throw new Error('El perfil no está disponible.')
         const metadata = (user?.user_metadata ?? {}) as Record<string, unknown>
         setModel((current) => ({
           ...current,
@@ -279,10 +285,10 @@ function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnTy
         setHasIsPrivate(true)
         setHasProfileVisibility(true)
         setHasPrivacyAcceptance(false)
-      } catch (caught) {
-        setError(friendlyError(caught, 'No se pudo cargar ajustes locales'))
+      } catch {
+        if (isCurrent()) setLoadFailed(true)
       } finally {
-        setLoading(false)
+        if (isCurrent()) setLoading(false)
       }
       return
     }
@@ -290,8 +296,6 @@ function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnTy
       setLoading(false)
       return
     }
-    setLoading(true)
-    setError(null)
     setInfo(null)
     try {
       const { data, error: profileError } = await supabase
@@ -299,8 +303,10 @@ function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnTy
         .select('*')
         .eq('id', user.id)
         .limit(1)
+      if (!isCurrent()) return
       if (profileError) throw profileError
-      const row = ((data ?? []) as GenericRow[])[0] ?? {}
+      const row = ((data ?? []) as GenericRow[])[0]
+      if (!row || Object.keys(row).length === 0) throw new Error('El perfil no está disponible.')
       setHasIsPrivate(Object.prototype.hasOwnProperty.call(row, 'is_private'))
       setHasProfileVisibility(Object.prototype.hasOwnProperty.call(row, 'profile_visibility'))
       setHasPrivacyAcceptance(Object.prototype.hasOwnProperty.call(row, 'privacy_policy_accepted'))
@@ -334,10 +340,10 @@ function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnTy
         profileVisibility: textOf(row, ['profile_visibility'], 'everyone'),
         privacyAccepted: toBoolean(row.privacy_policy_accepted),
       })
-    } catch (caught) {
-      setError(friendlyError(caught, 'No se pudo cargar ajustes'))
+    } catch {
+      if (isCurrent()) setLoadFailed(true)
     } finally {
-      setLoading(false)
+      if (isCurrent()) setLoading(false)
     }
   }, [isFallbackSession, user])
 
@@ -618,12 +624,22 @@ function AccountSettingsForm({ user, isFallbackSession, signOut }: Pick<ReturnTy
 
   if (!supabase && !isFallbackSession) {
     return (
-      <StatusView title="Supabase no configurado" description="Configura .env para usar ajustes." />
+      <StatusView title="Tus ajustes no están disponibles" description="Vuelve a iniciar sesión para acceder a tu cuenta." />
     )
   }
 
   if (loading) {
     return <StatusView title="Cargando ajustes" description="Espera un momento…" />
+  }
+
+  if (loadFailed) {
+    return (
+      <StatusView
+        title="No se pudieron cargar tus ajustes"
+        description="Revisa tu conexión y vuelve a intentar cargar tus preferencias."
+        action={<button className="primary-btn" type="button" onClick={() => void loadSettings()}>Reintentar</button>}
+      />
+    )
   }
 
   return (

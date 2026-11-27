@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T05:59:58.279165+00:00",
-  "baseCommit": "b5b0a650006a7044dd91690fc998aaa2b4aaacd9",
+  "generatedAtUtc": "2026-11-27T06:16:20.365980+00:00",
+  "baseCommit": "1b867e018fae87cc1e803b88b7fac3b4ccf707be",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,18 +10,18 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3421,
-    "code-read": 1105,
-    "partial": 318
+    "pending": 3420,
+    "code-read": 1106,
+    "partial": 319
   },
   "countsByPhase": {
     "android": {
-      "pending": 1371,
+      "pending": 1370,
       "partial": 143,
-      "code-read": 640
+      "code-read": 641
     },
     "documentation": {
-      "pending": 728,
+      "pending": 729,
       "code-read": 71,
       "partial": 22
     },
@@ -36,8 +36,8 @@
       "partial": 11
     },
     "web": {
-      "partial": 85,
-      "pending": 469,
+      "partial": 86,
+      "pending": 468,
       "code-read": 135
     }
   },
@@ -297,9 +297,9 @@
     {
       "file": "NoWing-web/public/.well-known/assetlinks.json",
       "phase": "web",
-      "gitBlobId": "59571743faf45dac701caa6405f99660a3955412",
+      "gitBlobId": "6f4b193c03b7324eb7556a504d5bac3ac8a484c0",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/119-dominio-y-recuperacion-bandeja-2026-11-12.md",
+      "evidence": "docs/oficial/258-notificaciones-ajustes-y-restauracion-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -851,8 +851,10 @@
     {
       "file": "NoWing-web/src/__tests__/components/AccountSettingsIdentity.test.tsx",
       "phase": "web",
-      "gitBlobId": "80bc2ba57967d7b9f25cdf36b800d7d497a727bb",
-      "reviewStatus": "pending"
+      "gitBlobId": "1b7d802cad7e2996e768779ee52d96845d25f999",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/258-notificaciones-ajustes-y-restauracion-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "NoWing-web/src/__tests__/components/AccountSettingsPassword.test.tsx",
@@ -4063,9 +4065,9 @@
     {
       "file": "NoWing-web/src/features/profile/AccountSettingsPage.tsx",
       "phase": "web",
-      "gitBlobId": "6fffda58b552c1124a091e6130797133a04ec2e3",
+      "gitBlobId": "9d5d9c269eced3775792817c3a142a1ff685d5c0",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/224-certificacion-independiente-2026-11-20.md",
+      "evidence": "docs/oficial/258-notificaciones-ajustes-y-restauracion-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -8761,17 +8763,17 @@
     {
       "file": "app/src/main/java/conectate/com/data/repository/NotificationRepository.kt",
       "phase": "android",
-      "gitBlobId": "a42da42e973b5677e4385552d26217a4ce69d78f",
+      "gitBlobId": "e96e85b73c6fa54ba2494f669b1b9aa5f06bdc2c",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/205-sesion-de-controles-de-llamada-2026-11-18.md",
+      "evidence": "docs/oficial/258-notificaciones-ajustes-y-restauracion-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/data/repository/NotificationUnreadCounter.kt",
       "phase": "android",
-      "gitBlobId": "2beda12969b72aac0a1a146daa8831b74f056537",
+      "gitBlobId": "5ed85e16dd9e0e3ab2460e418cf6f444f6cd0b6f",
       "reviewStatus": "code-read",
-      "evidence": "docs/oficial/101-mobile-inicio-cuentas-y-comentarios-2026-10-31.md",
+      "evidence": "docs/oficial/258-notificaciones-ajustes-y-restauracion-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -12523,9 +12525,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/profile/NotificationViewModel.kt",
       "phase": "android",
-      "gitBlobId": "95c8e3ed45fc93c7a0acfabb402e6ca6c9b5cdc2",
+      "gitBlobId": "921479a4bcd5bc744f9fdc995459d5e8309fbda2",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/180-salas-de-voz-en-grupos-2026-11-17.md",
+      "evidence": "docs/oficial/258-notificaciones-ajustes-y-restauracion-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -16507,8 +16509,10 @@
     {
       "file": "app/src/test/java/conectate/com/data/repository/NotificationUnreadCounterTest.kt",
       "phase": "android",
-      "gitBlobId": "ab7b264fa30ffebc01fa29a2284c65a41dccac17",
-      "reviewStatus": "pending"
+      "gitBlobId": "047a1d9c1e25fc0e4dc18c68d03eb313b32280de",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/258-notificaciones-ajustes-y-restauracion-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/test/java/conectate/com/data/repository/OfflineVideoLibraryVisitTest.kt",
@@ -22826,6 +22830,12 @@
       "file": "docs/oficial/257-auditoria-produccion-y-entrada-web-2026-11-27.md",
       "phase": "documentation",
       "gitBlobId": "b9ff19020b1ed1ade272045a780f204f8d76f350",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/258-notificaciones-ajustes-y-restauracion-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "7ae7ad60a9206aaff88b7fde06bac50976f1a91c",
       "reviewStatus": "pending"
     },
     {
@@ -31693,7 +31703,7 @@
     {
       "file": "tools/loadtest/run-ubuntu-staging-soak.mjs",
       "phase": "tooling-and-other",
-      "gitBlobId": "469c4e24cabf0ec45f88a75e2ed44e2535e883ec",
+      "gitBlobId": "d9ac89a50d58c7fa3ba0fd29bbab40418e4e2d84",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/257-auditoria-produccion-y-entrada-web-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -31717,7 +31727,7 @@
     {
       "file": "tools/loadtest/staging-soak.test.mjs",
       "phase": "tooling-and-other",
-      "gitBlobId": "62170504bac986b0df52099ee524c3bbad446398",
+      "gitBlobId": "02a7a74663be048f2c992b5d8b2e8baa5afe5797",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/257-auditoria-produccion-y-entrada-web-2026-11-27.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."

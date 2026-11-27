@@ -79,10 +79,22 @@ test('changing backend with the same account ID resets password drafts',async()=
   await screen.findByDisplayValue('first')
   fireEvent.change(screen.getByLabelText('Nueva contraseña'),{target:{value:'synthetic-draft'}})
   mockIsFallbackSession=false;view.rerender(page())
-  expect(screen.getByText('Supabase no configurado')).toBeInTheDocument()
+  expect(screen.getByText('Tus ajustes no están disponibles')).toBeInTheDocument()
   mockIsFallbackSession=true;view.rerender(page())
   await screen.findByDisplayValue('first')
   expect(screen.getByLabelText('Nueva contraseña')).toHaveValue('')
+})
+
+test('a failed account read hides editable privacy defaults and can retry', async () => {
+  jest.mocked(loadFallbackProfileMe).mockRejectedValueOnce(new Error('backend request failed'))
+  render(page())
+  await screen.findByText('No se pudieron cargar tus ajustes')
+  expect(screen.queryByLabelText('Quién puede ver tu perfil')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Guardar personalización' })).not.toBeInTheDocument()
+  expect(screen.queryByText('backend request failed')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+  await screen.findByDisplayValue('first')
+  expect(updateFallbackProfileMe).not.toHaveBeenCalled()
 })
 
 test('a save from a previous login cannot update the new session of the same account',async()=>{
