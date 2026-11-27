@@ -17,6 +17,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -63,6 +64,7 @@ internal class ChallengeController(
     private var epoch = 0L
     private var visible = false
     private var visibleJob: Job? = null
+    private var roundJob: Job? = null
     private var detailsJob: Job? = null
     private var mineJob: Job? = null
     private var mineRevision = 0L
@@ -75,6 +77,7 @@ internal class ChallengeController(
         if (lease.isCurrent()) return
         tasks.reset()
         visibleJob = null
+        roundJob = null
         detailsJob = null
         mineJob = null
         lease = captureLease()
@@ -96,14 +99,18 @@ internal class ChallengeController(
         if (value) startVisibleLoop() else {
             visibleJob?.cancel()
             visibleJob = null
+            roundJob?.cancel()
+            roundJob = null
+            mutableState.value = state.value.copy(loadingRound = false)
             detailsJob?.cancel()
         }
     }
 
     private fun startVisibleLoop() {
         if (!visible || !lease.isCurrent() || visibleJob?.isActive == true) return
+        tick()
+        requestRound()
         visibleJob = tasks.scope.launch {
-            launch { refreshRound() }
             var ticks = 0
             while (true) {
                 delay(1_000)
@@ -112,7 +119,7 @@ internal class ChallengeController(
                 ticks++
                 val expired = state.value.remainingSeconds == 0
                 if (ticks % 15 == 0 || expired && (wasRunning || ticks % 5 == 0)) {
-                    launch { refreshRound() }
+                    requestRound()
                 } else if (ticks % 5 == 0 && canReadSubmissions()) {
                     state.value.active?.let(::requestDetails)
                 }
@@ -122,7 +129,12 @@ internal class ChallengeController(
 
     fun refresh() {
         sessionChanged()
-        if (visible && lease.isCurrent()) tasks.scope.launch { refreshRound() }
+        requestRound()
+    }
+
+    private fun requestRound() {
+        if (!visible || !lease.isCurrent() || roundJob?.isActive == true) return
+        roundJob = tasks.scope.launch { refreshRound() }
     }
 
     internal fun tick() {
@@ -166,7 +178,9 @@ internal class ChallengeController(
                 mutableState.value = state.value.copy(error = "No pudimos actualizar la ronda. Puedes reintentar.")
             })
         } finally {
-            if (current(expectedEpoch)) mutableState.value = state.value.copy(loadingRound = false)
+            if (currentCoroutineContext().isActive && current(expectedEpoch)) {
+                mutableState.value = state.value.copy(loadingRound = false)
+            }
         }
     }
 

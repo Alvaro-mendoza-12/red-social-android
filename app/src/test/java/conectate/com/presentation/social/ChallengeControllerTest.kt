@@ -59,6 +59,41 @@ class ChallengeControllerTest {
         assertEquals(3, f.roundCalls)
     }
 
+    @Test fun returningStartsAReadEvenIfThePreviousManualRefreshHasNotReturned() = runTest {
+        val f = Fixture(this); f.start()
+        val staleReply = CompletableDeferred<ActiveChallenge>()
+        f.readRound = { withContext(NonCancellable) { Result.success(staleReply.await()) } }
+        f.controller.refresh(); runCurrent()
+        val wasLoading = f.controller.state.value.loadingRound
+
+        f.controller.setVisible(false)
+        val wasLoadingInBackground = f.controller.state.value.loadingRound
+        f.readRound = { Result.success(round("after-resume")) }
+        f.controller.setVisible(true); runCurrent()
+        val roundBeforeLateReply = f.controller.state.value.active?.id
+
+        staleReply.complete(round("old-response")); runCurrent()
+        assertTrue(wasLoading)
+        assertFalse(wasLoadingInBackground)
+        assertEquals(3, f.roundCalls)
+        assertEquals("after-resume", roundBeforeLateReply)
+        assertEquals("after-resume", f.controller.state.value.active?.id)
+        assertFalse(f.controller.state.value.loadingRound)
+    }
+
+    @Test fun returningRecalculatesTheCountdownWhileTheNetworkIsStillPending() = runTest {
+        val f = Fixture(this); f.start()
+        assertEquals(600, f.controller.state.value.remainingSeconds)
+
+        f.controller.setVisible(false)
+        f.now = 610_000
+        f.readRound = { awaitCancellation() }
+        f.controller.setVisible(true); runCurrent()
+
+        assertTrue(f.controller.state.value.loadingRound)
+        assertEquals(0, f.controller.state.value.remainingSeconds)
+    }
+
     @Test fun aSlowParticipationReadCannotDelayTheChangeToVoting() = runTest {
         val f = Fixture(this)
         f.active = round().copy(expiresAt = Instant.ofEpochMilli(1_000).toString())
