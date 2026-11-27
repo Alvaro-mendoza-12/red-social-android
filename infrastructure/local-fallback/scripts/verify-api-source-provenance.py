@@ -2,33 +2,72 @@
 import argparse
 import datetime
 import hashlib
+import io
 import json
 import pathlib
 import re
 import shutil
 import subprocess
+import tarfile
+
+
+API_SOURCE = "infrastructure/local-fallback/api/src"
+
+
+def source_digest(data):
+    return hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def source_hashes(directory):
     return {
-        file.relative_to(directory).as_posix(): hashlib.sha256(
-            file.read_bytes().replace(b"\r\n", b"\n")
-        ).hexdigest()
+        file.relative_to(directory).as_posix(): source_digest(file.read_bytes())
         for file in sorted(directory.rglob("*.js")) if file.is_file()
     }
 
 
-def comparison(local, remote, ready):
-    different = sorted(name for name, digest in local.items() if remote.get(name) != digest)
+def git_source(root, ref):
+    command = ["git", "-C", str(root)]
+    revision = subprocess.check_output(
+        [*command, "rev-parse", "--verify", "--end-of-options", ref + "^{commit}"],
+        stderr=subprocess.DEVNULL, timeout=10, text=True,
+    ).strip()
+    data = subprocess.check_output(
+        [*command, "archive", "--format=tar", revision, "--", API_SOURCE],
+        stderr=subprocess.DEVNULL, timeout=30,
+    )
+    records = {}
+    with tarfile.open(fileobj=io.BytesIO(data)) as archive:
+        for entry in archive:
+            if entry.isfile() and entry.name.endswith(".js"):
+                name = pathlib.PurePosixPath(entry.name).relative_to(API_SOURCE).as_posix()
+                with archive.extractfile(entry) as file:
+                    records[name] = source_digest(file.read())
+    return revision, records
+
+
+def comparison(local, remote, ready, release=None, expected_commit=None):
+    missing = sorted(set(local) - set(remote))
+    changed = sorted(name for name in local.keys() & remote.keys() if local[name] != remote[name])
+    different = sorted(missing + changed)
     extra = sorted(set(remote) - set(local))
+    metadata = release if isinstance(release, dict) else {}
+    marker_matches = (
+        metadata.get("commit") == expected_commit
+        and bool(re.fullmatch(r"[0-9a-f]{64}", str(metadata.get("sourceDigest", ""))))
+        and bool(metadata.get("release"))
+    ) if expected_commit else None
     return {
         "scope": "API src JavaScript only; excludes configuration, schema and other services",
-        "ok": bool(local) and ready is True and not different and not extra,
+        "ok": bool(local) and ready is True and not different and not extra and marker_matches is not False,
         "sourceFiles": len(local),
+        "deployedFiles": len(remote),
         "matched": len(local) - len(different),
         "different": different,
+        "changed": changed,
+        "missing": missing,
         "extra": extra,
         "ready": ready is True,
+        "releaseCommitMatches": marker_matches,
     }
 
 
@@ -51,8 +90,11 @@ for(const file of fs.readdirSync(base,{recursive:true})) {
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ssh-target", required=True, help="SSH user@host; key login must already work")
-    parser.add_argument("--identity", required=True, type=pathlib.Path, help="Existing SSH identity file")
+    parser.add_argument("--ssh-target", required=True, help="SSH user@host with non-interactive access")
+    parser.add_argument("--identity", type=pathlib.Path, help="Override the configured SSH identity with an existing file")
+    parser.add_argument("--ref", help="Compare the tracked files of a Git commit or ref")
+    parser.add_argument("--require-release-commit", action="store_true",
+                        help="Fail if the release marker does not name the selected Git commit")
     parser.add_argument("--container", default="conectate-local-fallback-api-main")
     parser.add_argument("--output", type=pathlib.Path)
     args = parser.parse_args()
@@ -60,26 +102,33 @@ def main():
         parser.error("Use a plain user@host SSH target")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}", args.container):
         parser.error("Invalid container name")
-    if not args.identity.is_file():
+    if args.identity is not None and not args.identity.is_file():
         parser.error("SSH identity file does not exist")
+    if args.require_release_commit and args.ref is None:
+        parser.error("--require-release-commit requires --ref")
     ssh = shutil.which("ssh")
     if not ssh:
         parser.error("OpenSSH client is required")
     root = pathlib.Path(__file__).resolve().parents[3]
-    local = source_hashes(root / "infrastructure/local-fallback/api/src")
-    command = [ssh, "-i", str(args.identity.resolve()), "-o", "BatchMode=yes", "-o",
-               "ConnectTimeout=6", args.ssh_target, f"docker exec -i {args.container} node"]
+    identity = ["-i", str(args.identity.resolve())] if args.identity else []
+    command = [ssh, *identity, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+               "-o", "ConnectTimeout=6", args.ssh_target, f"docker exec -i {args.container} node"]
     try:
+        revision, local = git_source(root, args.ref) if args.ref else (None, source_hashes(root / API_SOURCE))
         process = subprocess.run(command, input=REMOTE.encode(), capture_output=True, timeout=25)
         if process.returncode:
             raise RuntimeError("Remote comparison failed")
         data = json.loads(process.stdout)
-        report = comparison(local, data["hashes"], data["ready"])
+        release = data.get("release")
+        metadata = release if isinstance(release, dict) else {}
+        report = comparison(local, data["hashes"], data["ready"], metadata,
+                            revision if args.require_release_commit else None)
         report["checkedAtUtc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        report["releaseMetadata"] = {key: data.get("release", {}).get(key)
+        report["comparisonCommit"] = revision
+        report["releaseMetadata"] = {key: metadata.get(key)
                                      for key in ["release", "commit", "sourceDigest", "deployedAtUtc", "environment"]}
-    except (OSError, ValueError, KeyError, RuntimeError, subprocess.TimeoutExpired):
-        parser.exit(1, "Read-only comparison failed; SSH output and server data withheld.\n")
+    except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError, tarfile.TarError):
+        parser.exit(1, "Read-only comparison failed. Check the Git ref, SSH connection and API container.\n")
     if args.output:
         args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
