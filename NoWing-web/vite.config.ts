@@ -98,7 +98,7 @@ export default defineConfig({
             moduleId.includes('/node_modules/@supabase/')
           ) return 'api'
           if (moduleId.includes('/node_modules/socket.io')) return 'realtime'
-          return 'vendor'
+          return undefined
         },
         
         // 🔥 BEST PRACTICE: Nombres de chunks optimizados
