@@ -10,28 +10,50 @@ COMPOSE_LOCK="${CONECTATE_COMPOSE_LOCK:-$HOME/.cache/conectate-compose.lock}"
 mkdir -p "$(dirname "$COMPOSE_LOCK")"
 cd "$ROOT_DIR"
 
-healthy() {
-  curl -fsS --max-time 8 http://127.0.0.1:3080/ready >/dev/null || return 1
+health_state() {
+  local readiness running service ai_container updater
+  readiness="$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:3080/ready)" || return 1
+  case "$readiness" in
+    200) ;;
+    503) curl -fsS --max-time 8 http://127.0.0.1:3080/health >/dev/null || return 1 ;;
+    *) return 1 ;;
+  esac
   docker compose exec -T db pg_isready -U conectate -d conectate_fallback >/dev/null || return 1
-  local service
+  running="$(docker compose ps --status running --services)" || return 1
   for service in "${EXPECTED_SERVICES[@]}"; do
-    docker compose ps --status running --services | grep -Fxq "$service" || return 1
+    grep -Fxq "$service" <<<"$running" || return 1
   done
-  local ai_container
-  ai_container="$(docker compose ps -q ai-chatbot)"
+  ai_container="$(docker compose ps -q ai-chatbot)" || return 1
   [ -n "$ai_container" ] || return 1
   [ "$(docker inspect --format '{{.State.Health.Status}}' "$ai_container" 2>/dev/null)" = "healthy" ] || return 1
+
+  [ "$readiness" = "200" ] && return 0
+  grep -Fxq storage-antivirus <<<"$running" || return 1
+  grep -Fxq storage-antivirus-updater <<<"$running" || return 1
+  updater="$(docker compose ps -q storage-antivirus-updater)" || return 1
+  [ -n "$updater" ] || return 1
+  [ "$(docker inspect --format '{{.State.Health.Status}}' "$updater" 2>/dev/null)" = "unhealthy" ] || return 1
+  return 2
 }
 
-if ! healthy; then
+fail_storage_readiness() {
+  echo "ERROR: backend disponible con /ready 503 y actualizador de firmas degradado; se omite la reconciliacion del stack"
+  exit 1
+}
+
+state=0
+health_state || state=$?
+if [ "$state" -eq 1 ]; then
   echo "WARN: stack degradado; intentando recuperacion controlada"
   (
     flock --wait 240 9 || exit 1
     # A deployment can finish while this watchdog waits for the same lock.
     # Recheck before mutating: stale failure evidence must not interrupt a
     # recovered proxy and its active WebSocket/media sessions.
-    if healthy; then
+    if health_state; then
       echo "RECOVERY_SKIPPED: stack recuperado mientras se esperaba el bloqueo"
+    elif [ "$?" -eq 2 ]; then
+      fail_storage_readiness
     else
       docker compose up -d --remove-orphans
       # Recovery can recreate upstream containers; refresh their DNS while
@@ -44,11 +66,17 @@ if ! healthy; then
   ) 9>"$COMPOSE_LOCK"
   for _ in $(seq 1 12); do
     sleep 5
-    healthy && break
+    state=0
+    health_state || state=$?
+    [ "$state" -eq 1 ] || break
   done
 fi
 
-if ! healthy; then
+if [ "$state" -eq 2 ]; then
+  fail_storage_readiness
+fi
+
+if [ "$state" -ne 0 ]; then
   echo "ERROR: backend Ubuntu no se recupero"
   docker compose ps
   docker compose logs --tail=80 api ai-chatbot edge signaling realtime-gateway

@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T07:58:42.666619+00:00",
-  "baseCommit": "5339f9a8d6d8043e46a10df9325cee3d9751bd3a",
+  "generatedAtUtc": "2026-11-27T08:09:53.193420+00:00",
+  "baseCommit": "7a6d52ebbe5633a328cbe2944f41556726888be3",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -10,8 +10,8 @@
     "code-read": "Full source read at this hash; follow-ups, integration and runtime validation may still be open."
   },
   "counts": {
-    "pending": 3417,
-    "code-read": 1112,
+    "pending": 3416,
+    "code-read": 1114,
     "partial": 318
   },
   "countsByPhase": {
@@ -26,8 +26,8 @@
       "partial": 22
     },
     "server": {
-      "pending": 714,
-      "code-read": 220,
+      "pending": 713,
+      "code-read": 222,
       "partial": 57
     },
     "tooling-and-other": {
@@ -22855,7 +22855,7 @@
     {
       "file": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
       "phase": "documentation",
-      "gitBlobId": "e20914725b7d86b4ef45f6abe68165b35f75fb44",
+      "gitBlobId": "086095b572940b2d7f19d245a91faf1a4c398bf6",
       "reviewStatus": "pending"
     },
     {
@@ -27179,6 +27179,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "infrastructure/local-fallback/api/tests/health-watchdog.test.js",
+      "phase": "server",
+      "gitBlobId": "9fc2789d5d51c0e68cf07e56b30fd26158eab12f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "infrastructure/local-fallback/api/tests/import-supabase-storage.test.js",
       "phase": "server",
       "gitBlobId": "11d665414d045a14a5d236e4556a9b2c628b24b6",
@@ -29013,8 +29021,10 @@
     {
       "file": "infrastructure/local-fallback/scripts/health-watchdog.sh",
       "phase": "server",
-      "gitBlobId": "57f63e4bd26fb23facf4d91dbbd3c022f83b02fc",
-      "reviewStatus": "pending"
+      "gitBlobId": "d926b13830d071a417e706cdab4e60126870995f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/260-subidas-reanudables-durante-incidentes-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "infrastructure/local-fallback/scripts/host-maintenance149.py",
