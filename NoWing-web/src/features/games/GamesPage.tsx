@@ -10,6 +10,7 @@ import { uploadFallbackFile } from '../../core/fallbackData'
 import './games.css'
 import { emptyPlayerFilters, matchReadiness, readSavedGames, useGamePlayers, writeSavedGames, type PlayerFilters, type SavedGame } from './playMatchWorkspace'
 import { GameCatalog } from './GameCatalog'
+import { BoardGamesEntry } from './BoardGamesEntry'
 
 type Game = { id: string; name: string; imageUrl?: string; iconUrl?: string; coverUrl?: string; platforms: string[]; ranks: string[]; roles: string[]; rankSchemas?: { ranks: { key: string; displayName: string }[] }[]; roleDefinitions?: { key: string; displayName: string }[] }
 type UserGame = { id: string; gameId: string; gameName: string; platform: string; rank: string; role: string }
@@ -51,11 +52,7 @@ export function GamesPage() {
     return <section className="surface-card games-state"><h2>Juegos</h2><p>Inicia sesión con Novvin para abrir PlayMatch.</p></section>
   }
   return <>
-    <section className="surface-card games-state">
-      <h2>Juegos de mesa</h2>
-      <p>Ajedrez, Ludo y Damas en este dispositivo o contra Novvin.</p>
-      <a className="primary-btn" href="/board-games/board-games.html">Abrir juegos de mesa</a>
-    </section>
+    <BoardGamesEntry key={user.id} accountId={user.id} />
     <GamesWorkspace key={user.id} accountId={user.id} />
   </>
 }

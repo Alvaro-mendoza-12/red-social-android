@@ -30,6 +30,8 @@ const rules = {
   reversi: 'Coloca un disco donde puedas encerrar y voltear al menos un disco rival. Si no tienes jugadas, pasas turno. Gana quien tenga más discos cuando nadie pueda seguir.',
   gomoku: 'Coloca una piedra en una intersección vacía. Gana quien alinee cinco o más piedras en horizontal, vertical o diagonal.',
 }
+const requestedGame = new URLSearchParams(location.search).get('game')
+if (requestedGame && Object.prototype.hasOwnProperty.call(gameDetails, requestedGame)) state.kind = requestedGame
 if (new URLSearchParams(location.search).get('mode') === 'android') document.querySelector('.portal-header').hidden = true
 
 function button(label, action, className = '') {
