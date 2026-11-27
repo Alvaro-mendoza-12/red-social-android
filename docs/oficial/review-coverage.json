@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T08:15:24.699731+00:00",
-  "baseCommit": "0d1fcfc7ebcbe46c64488bad0525ef46e08e6aa0",
+  "generatedAtUtc": "2026-11-27T08:52:54.353999+00:00",
+  "baseCommit": "67348838a69c926875a4a1100aeef12e4eb7010e",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -12,16 +12,16 @@
   "counts": {
     "pending": 3417,
     "code-read": 1114,
-    "partial": 318
+    "partial": 319
   },
   "countsByPhase": {
     "android": {
-      "pending": 1370,
-      "code-read": 642,
-      "partial": 142
+      "pending": 1369,
+      "partial": 143,
+      "code-read": 642
     },
     "documentation": {
-      "pending": 732,
+      "pending": 733,
       "code-read": 71,
       "partial": 22
     },
@@ -4971,8 +4971,10 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "d64361853c7492ba6ab0857c3929c484924077c0",
-      "reviewStatus": "pending"
+      "gitBlobId": "18dd2925f2a90631e0b13c68bd3fb0b05cfb6410",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/262-android-191-subidas-y-verificacion-2026-11-27.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/lint.xml",
@@ -22862,6 +22864,12 @@
       "file": "docs/oficial/261-migracion-historica-y-solicitudes-de-mensajes-2026-11-27.md",
       "phase": "documentation",
       "gitBlobId": "f3d2bd5538cf3cb5e534cb4d0f4bc2f3d2d44914",
+      "reviewStatus": "pending"
+    },
+    {
+      "file": "docs/oficial/262-android-191-subidas-y-verificacion-2026-11-27.md",
+      "phase": "documentation",
+      "gitBlobId": "0006ba22d3e3dc04cb381a79c4a955cae75d3f86",
       "reviewStatus": "pending"
     },
     {
