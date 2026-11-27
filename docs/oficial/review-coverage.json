@@ -1,6 +1,6 @@
 {
-  "generatedAtUtc": "2026-11-27T02:45:24.664207+00:00",
-  "baseCommit": "9580e4f12ec68c2242559732a32902feb2da5e8f",
+  "generatedAtUtc": "2026-11-27T03:46:01.354385+00:00",
+  "baseCommit": "b97862616ccfe6fc51b1d295274484a7ae4f2107",
   "hashPolicy": "Git clean-filtered blob identity; equivalent LF/CRLF checkouts have the same review hash.",
   "scope": "Candidate Git index; unrelated working-tree edits and ignored files excluded.",
   "workflow": "Android first, then web and shared backend; no phase is closed by inventory generation.",
@@ -11,17 +11,17 @@
   },
   "counts": {
     "pending": 3422,
-    "code-read": 1101,
-    "partial": 315
+    "code-read": 1104,
+    "partial": 316
   },
   "countsByPhase": {
     "android": {
-      "pending": 1372,
-      "partial": 142,
-      "code-read": 637
+      "pending": 1371,
+      "partial": 143,
+      "code-read": 640
     },
     "documentation": {
-      "pending": 726,
+      "pending": 727,
       "code-read": 71,
       "partial": 22
     },
@@ -4967,9 +4967,9 @@
     {
       "file": "app/build.gradle.kts",
       "phase": "android",
-      "gitBlobId": "ec2d8f59ca6452bccdd8e18a6c1e85a5e6ce2d13",
+      "gitBlobId": "81df0c76fc9bc4ecce7c9a8c8d13cc88dbe08ca7",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/255-rondas-al-volver-2026-11-26.md",
+      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10143,9 +10143,9 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/common/MainActivityContent.kt",
       "phase": "android",
-      "gitBlobId": "ddfbaccad235199362b5a5ac88f7f0c14a65fd68",
+      "gitBlobId": "0b687c7ec5882266c1b06e1e8ee80e7d4a64e08e",
       "reviewStatus": "partial",
-      "evidence": "docs/oficial/139-visitas-notificacion-y-cierre-live-2026-11-14.md",
+      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
@@ -10179,6 +10179,22 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/main/java/conectate/com/presentation/common/PlayStoreUpdate.kt",
+      "phase": "android",
+      "gitBlobId": "10fed8dd807fbd82dc8485f6c1121760657f7068",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
+      "file": "app/src/main/java/conectate/com/presentation/common/PlayStoreUpdateReminder.kt",
+      "phase": "android",
+      "gitBlobId": "beae9b3750e269a125d70cd52ccfbada9a2fd6c9",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/main/java/conectate/com/presentation/common/SessionSideEffects.kt",
       "phase": "android",
       "gitBlobId": "92c7a95f4b65f60644e815453e285da6a02e842c",
@@ -10197,8 +10213,10 @@
     {
       "file": "app/src/main/java/conectate/com/presentation/common/SystemAnnouncementHost.kt",
       "phase": "android",
-      "gitBlobId": "8d6d5e7c3942d8043e544a9e206879e2284e9478",
-      "reviewStatus": "pending"
+      "gitBlobId": "a4f26fca5b1566d7d2eb5479241f5a8544d392f8",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
       "file": "app/src/main/java/conectate/com/presentation/common/UserFacingErrorMessage.kt",
@@ -17321,6 +17339,14 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "app/src/test/java/conectate/com/presentation/common/PlayStoreUpdateReminderTest.kt",
+      "phase": "android",
+      "gitBlobId": "83fae882f1603d42d74dfc2c8a6306a8ab15773f",
+      "reviewStatus": "code-read",
+      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "note": "Code read is not complete flow validation or a production-readiness certificate."
+    },
+    {
       "file": "app/src/test/java/conectate/com/presentation/common/UserFacingErrorMessageTest.kt",
       "phase": "android",
       "gitBlobId": "11480861f253f84773645d93a6648448d6dc4e8e",
@@ -22791,6 +22817,12 @@
       "reviewStatus": "pending"
     },
     {
+      "file": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
+      "phase": "documentation",
+      "gitBlobId": "5f12d1a2332ac9d7474a9507dec02ebb5bb768bf",
+      "reviewStatus": "pending"
+    },
+    {
       "file": "docs/oficial/26-firma-aab-android-studio-2026-09-14.md",
       "phase": "documentation",
       "gitBlobId": "ff4823d5f10fcd2523ad6dd32f61c3c518688438",
@@ -24361,9 +24393,9 @@
     {
       "file": "gradle/libs.versions.toml",
       "phase": "android",
-      "gitBlobId": "71fbf098e0f197619caafe9f434f2a6badc74682",
-      "reviewStatus": "code-read",
-      "evidence": "app/src/main/java/conectate/com/presentation/live/LiveExperienceScaffold.kt",
+      "gitBlobId": "8486161dcc191574bb7a19cce1caa67ff80e50aa",
+      "reviewStatus": "partial",
+      "evidence": "docs/oficial/256-actualizacion-google-play-2026-11-26.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
     },
     {
