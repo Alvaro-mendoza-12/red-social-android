@@ -8,6 +8,8 @@ Antes de la corrección, la sala podía volver a mostrar **Sala sincronizada** m
 
 Dos cuentas de prueba iniciaron sesión en Chromium y entraron en una sala casual. Tras cortar y restaurar la red del navegador que iniciaba la negociación, se confirmó la reincorporación y el aumento de paquetes RTP y energía de audio recibidos en ambos navegadores. Se usó un tono sintético de 440 Hz y señalización real con Redis privado. El aviso mantuvo 10 px de separación a 320 y 390 px y 16 px a 1024 px. El botón midió 44 px de alto en los tres tamaños.
 
+Durante el aviso de reconexión, la barra de controles permanece en el flujo de la página para que no tape el botón. El ensayo verificó el acceso al botón en tres puntos bajo el puntero en cada ancho. La barra volvió a acompañar el desplazamiento una vez restablecida la sala.
+
 ## Escenario de voz
 
 La prueba HTTP verificó la creación de salas casuales y de escenario, el ingreso de la audiencia con el micrófono silenciado, la solicitud de palabra y el rechazo de la autopromoción. El moderador pudo subir a una persona al escenario, silenciarla y devolverla a la audiencia. PostgreSQL confirmó que se habían eliminado los usuarios, las salas y sus participaciones de la prueba.

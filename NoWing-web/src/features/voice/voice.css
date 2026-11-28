@@ -225,6 +225,9 @@
   border-radius: 14px;
 }
 @media(max-width:767px) { .voice-room-controls { bottom: calc(84px + env(safe-area-inset-bottom)); } }
+.voice-room-controls.voice-room-controls-reconnecting {
+  position: static;
+}
 .voice-control-btn {
   display: flex;
   gap: 7px;

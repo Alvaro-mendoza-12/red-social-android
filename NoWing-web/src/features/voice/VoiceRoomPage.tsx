@@ -392,6 +392,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
   const remoteParticipants = participants.filter((participant) => participant.userId !== user?.id)
   const connectedPeerCount = Object.values(peerStates).filter((state) => state === 'connected').length
   const connectionQuality = connectedPeerCount > 0 ? 'Audio conectado' : isJoined ? (remoteParticipants.length ? 'Conectando audio…' : 'En la sala') : 'Sin conectar'
+  const showReconnect = Boolean(joinError) && isJoined && !signalingReady
 
   useEffect(() => { receivedChatIds.current.clear(); deletedChatIds.current.clear(); confirmedDeletedChatIds.current.clear(); unreadChatIds.current.clear(); setChatMessages([]); setChatDraft(''); setChatUnread(0) }, [roomId, user?.id])
   useEffect(() => {
@@ -1679,7 +1680,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
       {joinError ? (
         <article className="voice-room-alert" role="status">
           <span>{joinError}</span>
-          {isJoined && !signalingReady ? <button className="ghost-btn" type="button" onClick={() => {
+          {showReconnect ? <button className="ghost-btn" type="button" onClick={() => {
             const manager = webrtcManagerRef.current
             if (manager) void connectSignaling(manager).catch(() => setJoinError('No se pudo reconectar la sala. Reintenta cuando vuelva la conexión.'))
           }}>Reconectar voz</button> : null}
@@ -1858,7 +1859,7 @@ export function VoiceRoomPage({ roomIdOverride, minimized = false, onExit }: { r
           </section>
         </aside>
       </div>
-        <footer className={`voice-room-controls${isJoined ? ' joined' : ''}`} aria-label="Controles de sala">
+        <footer className={`voice-room-controls${isJoined ? ' joined' : ''}${showReconnect ? ' voice-room-controls-reconnecting' : ''}`} aria-label="Controles de sala">
           <button className="voice-control-btn" type="button" onClick={() => setCinemaMode(value => !value)} aria-pressed={cinemaMode} aria-label={cinemaMode ? 'Salir del modo cine' : 'Activar modo cine'} title={cinemaMode ? 'Salir del modo cine' : 'Modo cine'}>{cinemaMode ? <Minimize2 size={18}/> : <Maximize2 size={18}/>}Modo cine</button>
           <button className="voice-control-btn" type="button" title={chatOpen ? 'Ocultar chat' : 'Mostrar chat'} aria-label={chatOpen ? 'Ocultar chat de la sala' : 'Mostrar chat de la sala'} aria-expanded={chatOpen} onClick={() => { setChatOpen(value => !value); window.setTimeout(() => document.querySelector('.voice-chat-section')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 0) }}><MessageCircle size={18}/>Chat{chatUnread ? ` (${chatUnread})` : ''}</button>
           <button className="voice-control-btn" type="button" onClick={() => void openDeviceSettings()} aria-label="Ajustes de audio y video" aria-expanded={showDeviceSettings}><Settings size={18} />Ajustes</button>

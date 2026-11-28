@@ -4281,7 +4281,7 @@
     {
       "file": "NoWing-web/src/features/voice/VoiceRoomPage.tsx",
       "phase": "web",
-      "gitBlobId": "6c1f6f1db38767e8e4e65cf3c62ec4f27edca3be",
+      "gitBlobId": "edca73eba526f2276207a539904944557be676ac",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/285-voz-y-llamadas-validacion.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -4317,7 +4317,7 @@
     {
       "file": "NoWing-web/src/features/voice/voice.css",
       "phase": "web",
-      "gitBlobId": "934b0a49523188edea3e4326f58af753c0d9d371",
+      "gitBlobId": "31024910d2c08d86d49f369924e4f0ed5e7dd057",
       "reviewStatus": "partial",
       "evidence": "docs/oficial/285-voz-y-llamadas-validacion.md",
       "note": "Code read is not complete flow validation or a production-readiness certificate."
@@ -23119,7 +23119,7 @@
     {
       "file": "docs/oficial/285-voz-y-llamadas-validacion.md",
       "phase": "documentation",
-      "gitBlobId": "96c83ffbbf8731040dec5a061f4f892d0dbab21a",
+      "gitBlobId": "41e2b959c9a2fa4e8ab1a205c3b51b252163fa38",
       "reviewStatus": "pending"
     },
     {
